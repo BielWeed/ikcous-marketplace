@@ -114,3 +114,30 @@ container, grade), o dono de cada arquivo e as tarefas. Regras fixas:
   minha conta; D8 = F8 pedido, notificações, sobre a loja e login.
 - Harness visual e contrato (Onda 0) ficam na `proxima/base`; se não estiverem lá, pare e avise no
   PR em vez de improvisar.
+
+## Sessões no Codex (frentes D1–D8)
+
+As frentes D1–D8 (layout de computador) rodam em sessões do **Codex**, isoladas das sessões do
+Claude. Quem escreveu não revisa: o Codex escreve, a coordenação (Claude) revisa, mede e junta.
+
+1. **Pré-condição.** Rode `git fetch origin proxima/base` e confira que existem, em
+   `origin/proxima/base`, os arquivos `src/hooks/useTelaDeComputador.ts` (Onda 0, contrato) e
+   `scripts/visual/vitrine/README.md` (harness visual). Se algum faltar, **não mude nada**: responda
+   "A base ainda não está pronta (Onda 0/harness)" e pare.
+2. **Branch.** `codex/desktop-fN-<nome>` (ex.: `codex/desktop-f3-produto`), criada a partir de
+   `origin/proxima/base`. Push só nela. Nunca em `proxima/base`, `claude/*`, na branch padrão ou em
+   branch de outra frente.
+3. **PR rascunho** com base `proxima/base`, título `[Codex] FN — <frente>`, com: tarefas feitas,
+   verificação com saída real, harness (diff do celular por tela × largura; prints desktop
+   1024/1280/1440/1920) e o que ficou de fora. Escreva "Aguardando revisão independente da
+   coordenação". Não se aprove, não mescle.
+4. **Escopo.** Só as tarefas e os arquivos da sua frente no
+   [plano](2026-09-28-app-cliente-desktop.md) (seção A e seção E), com os contratos da seção B.
+   Nunca toque: arquivos de outra frente; `src/components/ui/custom/CouponInput.tsx` e componentes
+   de cupom (frente B); a tela Vender/PDV (frente A); `supabase/`, migrations e edge functions.
+5. **Celular intacto.** Só tokens `lg:`/`xl:`/`2xl:` ou peças só-desktop escondidas abaixo de
+   `lg`. Prova: `scripts/visual/vitrine` com diff = 0 px em 360/375/390/414 nas telas da frente.
+   Sem Chromium e sem conseguir instalar, diga isso no PR — a coordenação roda o harness.
+6. **Verificação:** V1 em toda tarefa e V2 no fim da frente (seção D do plano). Commits em
+   Conventional Commits com escopo de `.commitlintrc.json`. Todas as regras comuns do topo deste
+   arquivo valem (nada de banco, `npm run dev` contra o banco real, `.env*`, `--no-verify`).
