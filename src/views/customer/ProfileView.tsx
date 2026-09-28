@@ -1,3 +1,4 @@
+import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
 import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { Button } from "@/components/ui/button";
 import { AddressList } from "@/components/ui/custom/AddressList";
@@ -13,6 +14,8 @@ import {
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useOrders } from "@/hooks/useOrders";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
   PREDEFINED_AVATARS,
@@ -44,7 +47,7 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const containerVariants = {
@@ -75,6 +78,12 @@ import { useStore } from "@/contexts/StoreContext";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { haptic } from "@/utils/haptic";
 
+const MenuDaConta = lazy(() =>
+  import("@/components/desktop/MenuDaConta").then((m) => ({
+    default: m.MenuDaConta,
+  })),
+);
+
 interface ProfileViewProps {
   onNavigate: (view: View, id?: string) => void;
   /** A aba fica montada escondida; `true` quando é a aba visível. */
@@ -82,6 +91,7 @@ interface ProfileViewProps {
 }
 
 export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
+  const computador = useTelaDeComputador();
   const {
     user,
     profile,
@@ -341,8 +351,24 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
   }
 
   return (
-    <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
-      <div className="group relative h-48 w-full overflow-hidden bg-zinc-100 shadow-inner">
+    <div
+      className={cn(
+        "pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50",
+        CONTAINER_DO_COMPUTADOR,
+        "lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:content-start lg:items-start lg:gap-x-8 lg:pt-8",
+      )}
+    >
+      {computador && (
+        <Suspense fallback={null}>
+          <MenuDaConta atual="profile" onNavigate={onNavigate} />
+        </Suspense>
+      )}
+      <div
+        className={cn(
+          "group relative h-48 w-full overflow-hidden bg-zinc-100 shadow-inner",
+          "lg:col-start-2 lg:h-56 lg:rounded-3xl",
+        )}
+      >
         <img
           src={profile?.cover_url || defaultCover}
           alt="Capa de Perfil"
@@ -370,7 +396,10 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mx-auto max-w-md space-y-6 px-4"
+        className={cn(
+          "mx-auto max-w-md space-y-6 px-4",
+          "lg:col-start-2 lg:w-full lg:min-w-0 lg:max-w-none lg:px-0",
+        )}
       >
         {/* Header Info - Shifted Up to Overlap Cover */}
         <motion.div
@@ -445,118 +474,121 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
         </motion.div>
 
         {/* Delivery Addresses */}
-        <motion.div
-          variants={itemVariants}
-          className={`overflow-hidden border border-zinc-100 bg-white shadow-sm transition-all duration-300 ${
-            !isAddressesExpanded ? "rounded-[1.75rem]" : "rounded-[2.5rem]"
-          }`}
-        >
-          <div
-            className={`flex items-center justify-between border-b border-zinc-50 bg-zinc-50/50 transition-all duration-300 ${
-              !isAddressesExpanded ? "px-5 py-3" : "p-6"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              <MapPin
-                className={`text-zinc-400 transition-all duration-300 ${!isAddressesExpanded ? "size-3.5" : "size-4"}`}
-              />
-              <span
-                className={`font-black uppercase tracking-[0.2em] text-zinc-500 transition-all duration-300 ${
-                  !isAddressesExpanded ? "text-[9px]" : "text-[10px]"
-                }`}
-              >
-                Endereços de Entrega
-              </span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onNavigate("address-form")}
-              className={`rounded-full border border-zinc-100 bg-white px-3 font-black uppercase tracking-widest transition-all duration-300 hover:bg-zinc-100 ${
-                !isAddressesExpanded ? "h-7 text-[8px]" : "h-8 text-[9px]"
-              }`}
-            >
-              <Plus
-                className={`mr-1 transition-all duration-300 ${!isAddressesExpanded ? "size-2.5" : "size-3"}`}
-              />
-              Novo
-            </Button>
-          </div>
-          <div
-            className={`transition-all duration-300 ${!isAddressesExpanded ? "p-3.5" : "p-6"}`}
-          >
-            {addressesLoading ? (
-              <div className="animate-pulse space-y-4">
-                <div className="flex h-28 flex-col justify-between rounded-3xl border border-transparent bg-zinc-50/50 p-6">
-                  <div className="flex items-center gap-3">
-                    <div className="size-10 rounded-2xl bg-zinc-100" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 w-1/3 rounded bg-zinc-100" />
-                      <div className="h-3 w-1/4 rounded bg-zinc-100" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="h-3 w-3/4 rounded bg-zinc-100" />
-                    <div className="h-3 w-1/2 rounded bg-zinc-100" />
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <>
-                <AddressList
-                  addresses={addresses}
-                  compact={!isAddressesExpanded}
-                  showMaps
-                  onEdit={(addr) => {
-                    onNavigate("address-form", addr.id);
-                  }}
-                  onDelete={deleteAddress}
-                />
-                {addresses.length > 0 && (
-                  <button
-                    onClick={() => {
-                      setIsAddressesExpanded(!isAddressesExpanded);
-                      haptic.light();
-                    }}
-                    className={`flex w-full items-center justify-center gap-1.5 rounded-xl border-t border-zinc-100 bg-zinc-50/10 font-black uppercase tracking-widest text-zinc-400 transition-all duration-300 hover:bg-zinc-50/35 hover:text-zinc-900 ${
-                      !isAddressesExpanded
-                        ? "mt-3 py-2 text-[8px]"
-                        : "mt-4 py-3 text-[10px]"
-                    }`}
-                  >
-                    {isAddressesExpanded ? (
-                      <>
-                        Ver menos detalhes
-                        <ChevronUp className="size-3.5" />
-                      </>
-                    ) : (
-                      <>
-                        Ver mais detalhes
-                        <ChevronDown className="size-3.5" />
-                      </>
-                    )}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-        </motion.div>
-
-        {/* Active Orders */}
-        {activeOrders.length > 0 && (
+        <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
           <motion.div
             variants={itemVariants}
-            className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+            className={`overflow-hidden border border-zinc-100 bg-white shadow-sm transition-all duration-300 ${
+              !isAddressesExpanded ? "rounded-[1.75rem]" : "rounded-[2.5rem]"
+            }`}
           >
-            <div className="flex items-center gap-3 border-b border-zinc-50 bg-zinc-50/50 p-6">
-              <div className="size-2 animate-pulse rounded-full bg-emerald-500" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Pedidos em Andamento
-              </span>
+            <div
+              className={`flex items-center justify-between border-b border-zinc-50 bg-zinc-50/50 transition-all duration-300 ${
+                !isAddressesExpanded ? "px-5 py-3" : "p-6"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <MapPin
+                  className={`text-zinc-400 transition-all duration-300 ${!isAddressesExpanded ? "size-3.5" : "size-4"}`}
+                />
+                <span
+                  className={`font-black uppercase tracking-[0.2em] text-zinc-500 transition-all duration-300 ${
+                    !isAddressesExpanded ? "text-[9px]" : "text-[10px]"
+                  }`}
+                >
+                  Endereços de Entrega
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onNavigate("address-form")}
+                className={`rounded-full border border-zinc-100 bg-white px-3 font-black uppercase tracking-widest transition-all duration-300 hover:bg-zinc-100 ${
+                  !isAddressesExpanded ? "h-7 text-[8px]" : "h-8 text-[9px]"
+                }`}
+              >
+                <Plus
+                  className={`mr-1 transition-all duration-300 ${!isAddressesExpanded ? "size-2.5" : "size-3"}`}
+                />
+                Novo
+              </Button>
             </div>
-            <div className="space-y-6 p-6">
-              {(isOrdersExpanded ? activeOrders : activeOrders.slice(0, 1)).map(
-                (order, idx) => {
+            <div
+              className={`transition-all duration-300 ${!isAddressesExpanded ? "p-3.5" : "p-6"}`}
+            >
+              {addressesLoading ? (
+                <div className="animate-pulse space-y-4">
+                  <div className="flex h-28 flex-col justify-between rounded-3xl border border-transparent bg-zinc-50/50 p-6">
+                    <div className="flex items-center gap-3">
+                      <div className="size-10 rounded-2xl bg-zinc-100" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-1/3 rounded bg-zinc-100" />
+                        <div className="h-3 w-1/4 rounded bg-zinc-100" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 w-3/4 rounded bg-zinc-100" />
+                      <div className="h-3 w-1/2 rounded bg-zinc-100" />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <AddressList
+                    addresses={addresses}
+                    compact={!isAddressesExpanded}
+                    showMaps
+                    onEdit={(addr) => {
+                      onNavigate("address-form", addr.id);
+                    }}
+                    onDelete={deleteAddress}
+                  />
+                  {addresses.length > 0 && (
+                    <button
+                      onClick={() => {
+                        setIsAddressesExpanded(!isAddressesExpanded);
+                        haptic.light();
+                      }}
+                      className={`flex w-full items-center justify-center gap-1.5 rounded-xl border-t border-zinc-100 bg-zinc-50/10 font-black uppercase tracking-widest text-zinc-400 transition-all duration-300 hover:bg-zinc-50/35 hover:text-zinc-900 ${
+                        !isAddressesExpanded
+                          ? "mt-3 py-2 text-[8px]"
+                          : "mt-4 py-3 text-[10px]"
+                      }`}
+                    >
+                      {isAddressesExpanded ? (
+                        <>
+                          Ver menos detalhes
+                          <ChevronUp className="size-3.5" />
+                        </>
+                      ) : (
+                        <>
+                          Ver mais detalhes
+                          <ChevronDown className="size-3.5" />
+                        </>
+                      )}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Active Orders */}
+          {activeOrders.length > 0 && (
+            <motion.div
+              variants={itemVariants}
+              className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+            >
+              <div className="flex items-center gap-3 border-b border-zinc-50 bg-zinc-50/50 p-6">
+                <div className="size-2 animate-pulse rounded-full bg-emerald-500" />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  Pedidos em Andamento
+                </span>
+              </div>
+              <div className="space-y-6 p-6">
+                {(isOrdersExpanded
+                  ? activeOrders
+                  : activeOrders.slice(0, 1)
+                ).map((order, idx) => {
                   const firstItem = order.items?.[0];
                   const firstItemImage = firstItem?.image;
                   const firstItemName = firstItem?.name || "Pedido";
@@ -629,38 +661,41 @@ export function ProfileView({ onNavigate, isActive = true }: ProfileViewProps) {
                       </div>
                     </div>
                   );
-                },
+                })}
+              </div>
+              {activeOrders.length > 1 && (
+                <button
+                  onClick={() => {
+                    setIsOrdersExpanded(!isOrdersExpanded);
+                    haptic.light();
+                  }}
+                  className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50/10 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:bg-zinc-50/35 hover:text-zinc-900"
+                >
+                  {isOrdersExpanded ? (
+                    <>
+                      Ver menos
+                      <ChevronUp className="size-3.5" />
+                    </>
+                  ) : (
+                    <>
+                      Ver mais ({activeOrders.length - 1}{" "}
+                      {activeOrders.length - 1 === 1 ? "outro" : "outros"})
+                      <ChevronDown className="size-3.5" />
+                    </>
+                  )}
+                </button>
               )}
-            </div>
-            {activeOrders.length > 1 && (
-              <button
-                onClick={() => {
-                  setIsOrdersExpanded(!isOrdersExpanded);
-                  haptic.light();
-                }}
-                className="flex w-full items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50/10 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:bg-zinc-50/35 hover:text-zinc-900"
-              >
-                {isOrdersExpanded ? (
-                  <>
-                    Ver menos
-                    <ChevronUp className="size-3.5" />
-                  </>
-                ) : (
-                  <>
-                    Ver mais ({activeOrders.length - 1}{" "}
-                    {activeOrders.length - 1 === 1 ? "outro" : "outros"})
-                    <ChevronDown className="size-3.5" />
-                  </>
-                )}
-              </button>
-            )}
-          </motion.div>
-        )}
+            </motion.div>
+          )}
+        </div>
 
         {/* Order History & Menu */}
         <motion.div
           variants={itemVariants}
-          className="overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm"
+          className={cn(
+            "overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-white shadow-sm",
+            "lg:hidden",
+          )}
         >
           <button
             onClick={() => onNavigate("account-settings")}

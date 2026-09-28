@@ -1,7 +1,9 @@
+import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { StarRating } from "@/components/ui/custom/StarRating";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStore } from "@/contexts/StoreContext";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { getPredefinedCoverSvg } from "@/utils/covers";
 import { haptic } from "@/utils/haptic";
@@ -304,9 +306,19 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
 
   if (loading) {
     return (
-      <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
+      <div
+        className={cn(
+          "pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50",
+          "lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-8",
+        )}
+      >
         {/* Banner Skeleton */}
-        <div className="relative h-44 w-full animate-pulse bg-zinc-100" />
+        <div
+          className={cn(
+            "relative h-44 w-full animate-pulse bg-zinc-100",
+            "lg:h-56 lg:rounded-3xl",
+          )}
+        />
 
         <div className="relative z-10 mx-auto -mt-12 max-w-md space-y-6 px-4">
           {/* Header Skeleton */}
@@ -391,9 +403,19 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
   }
 
   return (
-    <div className="pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50">
+    <div
+      className={cn(
+        "pb-customer min-h-full bg-gradient-to-b from-white to-zinc-50/50",
+        "lg:mx-auto lg:max-w-5xl lg:px-8 lg:pt-8",
+      )}
+    >
       {/* Header Cover Banner */}
-      <div className="group relative h-44 w-full overflow-hidden bg-zinc-100 shadow-inner">
+      <div
+        className={cn(
+          "group relative h-44 w-full overflow-hidden bg-zinc-100 shadow-inner",
+          "lg:h-56 lg:rounded-3xl",
+        )}
+      >
         <img
           src={profile.cover_url || defaultCover}
           alt="Capa de Perfil"
@@ -406,65 +428,76 @@ export function UserProfileView({ userId, onNavigate }: UserProfileViewProps) {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="mx-auto max-w-md space-y-6 px-4"
+        className={cn(
+          "mx-auto max-w-md space-y-6 px-4",
+          "lg:grid lg:max-w-none lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:space-y-0 lg:px-0 lg:pt-8",
+        )}
       >
         {/* Avatar and Main Info - Overlapping Cover */}
-        <motion.div
-          variants={itemVariants}
-          className="relative z-10 -mt-12 flex flex-col items-center justify-center pb-2"
-        >
-          <div className="hover:scale-102 mb-3 flex size-24 items-center justify-center overflow-hidden rounded-[28px] border-[6px] border-white bg-white shadow-premium transition-transform duration-300">
-            {profile.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={profile.full_name || "Avatar"}
-                className="size-full object-cover duration-300 animate-in fade-in"
-              />
-            ) : (
-              <div className="flex size-full select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xl font-bold text-zinc-700 duration-300 animate-in fade-in">
-                {getInitials(profile.full_name || "")}
+        <div className={cn("space-y-6", COLUNA_FIXA_NO_COMPUTADOR)}>
+          <motion.div
+            variants={itemVariants}
+            className={cn(
+              "relative z-10 -mt-12 flex flex-col items-center justify-center pb-2",
+              "lg:mt-0",
+            )}
+          >
+            <div className="hover:scale-102 mb-3 flex size-24 items-center justify-center overflow-hidden rounded-[28px] border-[6px] border-white bg-white shadow-premium transition-transform duration-300">
+              {profile.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt={profile.full_name || "Avatar"}
+                  className="size-full object-cover duration-300 animate-in fade-in"
+                />
+              ) : (
+                <div className="flex size-full select-none items-center justify-center bg-gradient-to-br from-zinc-100 to-zinc-200 text-xl font-bold text-zinc-700 duration-300 animate-in fade-in">
+                  {getInitials(profile.full_name || "")}
+                </div>
+              )}
+            </div>
+
+            <h1 className="flex items-center justify-center gap-1.5 text-2xl font-black leading-none tracking-tighter text-zinc-900">
+              {profile.full_name || "Usuário do App"}
+            </h1>
+
+            {formattedMemberSince && (
+              <div className="mt-2 flex items-center gap-1 rounded-full border border-zinc-200/20 bg-zinc-100/60 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                <Calendar className="size-3 text-zinc-400" />
+                {formattedMemberSince}
               </div>
             )}
-          </div>
+          </motion.div>
 
-          <h1 className="flex items-center justify-center gap-1.5 text-2xl font-black leading-none tracking-tighter text-zinc-900">
-            {profile.full_name || "Usuário do App"}
-          </h1>
-
-          {formattedMemberSince && (
-            <div className="mt-2 flex items-center gap-1 rounded-full border border-zinc-200/20 bg-zinc-100/60 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-zinc-400">
-              <Calendar className="size-3 text-zinc-400" />
-              {formattedMemberSince}
+          {/* Profile Stats Grid */}
+          <motion.div
+            variants={itemVariants}
+            className="grid grid-cols-2 gap-3.5"
+          >
+            <div className="group flex flex-col items-center justify-center rounded-3xl border border-zinc-100 bg-white p-4 text-center shadow-sm transition-all duration-300 hover:shadow-md">
+              <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
+                {/* Falha da sub-consulta não conta zero: "—" é não sei, 0 é zero. */}
+                {reviewsError ? "—" : reviews.length}
+              </span>
+              <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                Avaliações
+              </span>
             </div>
-          )}
-        </motion.div>
-
-        {/* Profile Stats Grid */}
-        <motion.div
-          variants={itemVariants}
-          className="grid grid-cols-2 gap-3.5"
-        >
-          <div className="group flex flex-col items-center justify-center rounded-3xl border border-zinc-100 bg-white p-4 text-center shadow-sm transition-all duration-300 hover:shadow-md">
-            <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
-              {/* Falha da sub-consulta não conta zero: "—" é não sei, 0 é zero. */}
-              {reviewsError ? "—" : reviews.length}
-            </span>
-            <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-              Avaliações
-            </span>
-          </div>
-          <div className="group flex flex-col items-center justify-center rounded-3xl border border-zinc-100 bg-white p-4 text-center shadow-sm transition-all duration-300 hover:shadow-md">
-            <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
-              {questionsError ? "—" : questions.length}
-            </span>
-            <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-              Perguntas
-            </span>
-          </div>
-        </motion.div>
+            <div className="group flex flex-col items-center justify-center rounded-3xl border border-zinc-100 bg-white p-4 text-center shadow-sm transition-all duration-300 hover:shadow-md">
+              <span className="text-2xl font-black leading-none tracking-tight text-zinc-950 transition-transform duration-300 group-hover:scale-110">
+                {questionsError ? "—" : questions.length}
+              </span>
+              <span className="mt-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
+                Perguntas
+              </span>
+            </div>
+          </motion.div>
+        </div>
 
         {/* Activity Tabs */}
-        <motion.div variants={itemVariants} className="space-y-4">
+        <motion.div
+          variants={itemVariants}
+          className={cn("space-y-4", "lg:min-w-0")}
+        >
           {/* Tab Navigation */}
           <div className="relative flex border-b border-zinc-100">
             <button
