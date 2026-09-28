@@ -346,4 +346,77 @@ describe("FluxoDeCaixaGrafico — painel de saldo quando todos os pontos conheci
     const texto = (tela.textContent ?? "").replace(/\s/g, " ");
     expect(texto).toContain("Saldo sem mudança desde 30/08: R$ 100,00");
   });
+
+  // 3ª revisão: os dois testes acima só usam saldo 0 ou positivo e leem
+  // `tela.textContent` inteiro — não pegam um mutante que tire o sinal de
+  // `formatarSaldoComSinal` (ex.: trocar por `formatarBRL`) nem um que force
+  // `ocultos` para false nessa chamada. Este teste usa saldo NEGATIVO
+  // constante e lê só o <p> "Saldo sem mudança", nos dois modos (visível e
+  // atrás do "olho").
+  it("2 pontos, ambos saldo −50: o <p> 'Saldo sem mudança' escreve o sinal de menos", () => {
+    const pontos: readonly PontoDoFluxo[] = [
+      {
+        dia: "2026-08-29",
+        entradas: 0,
+        saidas: 20,
+        resultado: -20,
+        saldo: null,
+      },
+      { dia: "2026-08-30", entradas: 0, saidas: 0, resultado: 0, saldo: -50 },
+      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: -50 },
+    ];
+    const tela = montar(
+      <FluxoDeCaixaGrafico
+        pontos={pontos}
+        carregando={false}
+        ativo={true}
+        marco="2026-08-30"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    const paragrafo = [...tela.querySelectorAll("p")].find((p) =>
+      (p.textContent ?? "").includes("Saldo sem mudança"),
+    );
+    expect(paragrafo).toBeTruthy();
+    const texto = (paragrafo?.textContent ?? "").replace(/\s/g, " ");
+    expect(texto).toContain("−R$ 50,00");
+  });
+
+  it("2 pontos, ambos saldo −50, valores ocultos: o <p> 'Saldo sem mudança' mostra 'R$ ••••', nunca o número", () => {
+    const pontos: readonly PontoDoFluxo[] = [
+      {
+        dia: "2026-08-29",
+        entradas: 0,
+        saidas: 20,
+        resultado: -20,
+        saldo: null,
+      },
+      { dia: "2026-08-30", entradas: 0, saidas: 0, resultado: 0, saldo: -50 },
+      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: -50 },
+    ];
+    const tela = montar(
+      <ContextoValoresOcultos.Provider value={true}>
+        <FluxoDeCaixaGrafico
+          pontos={pontos}
+          carregando={false}
+          ativo={true}
+          marco="2026-08-30"
+        />
+      </ContextoValoresOcultos.Provider>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    const paragrafo = [...tela.querySelectorAll("p")].find((p) =>
+      (p.textContent ?? "").includes("Saldo sem mudança"),
+    );
+    expect(paragrafo).toBeTruthy();
+    const texto = paragrafo?.textContent ?? "";
+    expect(texto).toContain("R$ ••••");
+    expect(texto).not.toContain("50,00");
+  });
 });
