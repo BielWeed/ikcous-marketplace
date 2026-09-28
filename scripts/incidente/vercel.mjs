@@ -121,8 +121,13 @@ console.table(
     commit: (d.meta?.githubCommitSha ?? "").slice(0, 8),
   })),
 );
-const base = deployments.find((d) => d.meta?.githubCommitSha) ?? deployments[0];
-if (!base) parar("Nenhum deploy de produção para refazer.");
+// O último deploy de produção que estava no ar (READY) antes do incidente — não o
+// último vindo do Git: as releases 1.5.x sobem pela CLI, sem meta do GitHub.
+const pedido = (process.env.REDEPLOY_DE ?? "").trim();
+const base = pedido
+  ? deployments.find((d) => d.uid === pedido)
+  : deployments.find((d) => d.state === "READY");
+if (!base) parar(`Deploy para refazer não encontrado (${pedido || "nenhum READY"}).`);
 console.log(`Refazendo o deploy ${base.uid} (${base.meta?.githubCommitRef ?? "?"} @ ${(base.meta?.githubCommitSha ?? "").slice(0, 8)})`);
 const novo = await api("POST", "/v13/deployments?forceNew=1", {
   name: projeto.name,
@@ -157,6 +162,7 @@ const { domains = [] } = (await api("GET", `/v9/projects/${projeto.id}/domains`)
 const nomes = domains.filter((d) => !d.redirect && !d.gitBranch).map((d) => d.name);
 console.log("\n== Domínios de produção ==");
 let falhas = 0;
+let naoCadastrados = 0;
 for (const nome of nomes) {
   try {
     const resposta = await fetch(`https://${nome}/`, { redirect: "manual" });
@@ -164,12 +170,26 @@ for (const nome of nomes) {
       .filter(([k]) => k.startsWith("x-ikcous"))
       .map(([k, v]) => `${k}=${v}`)
       .join(" ");
-    if (resposta.status >= 500) falhas++;
-    console.log(`${resposta.status} ${nome} ${cabecalhos}`);
+    // Domínio fora da caderneta da frota fica fechado de propósito (porteiro).
+    const foraDaFrota =
+      resposta.headers.get("x-ikcous-caderneta") === "miss" &&
+      resposta.headers.get("x-ikcous-porteiro") === "sem-loja";
+    if (foraDaFrota) naoCadastrados++;
+    else if (resposta.status >= 500) falhas++;
+    console.log(`${resposta.status} ${nome} ${cabecalhos}${foraDaFrota ? " (fora da frota)" : ""}`);
   } catch (erro) {
     falhas++;
     console.log(`ERRO ${nome}: ${erro.message}`);
   }
 }
-if (falhas > 0) parar(`${falhas} domínio(s) ainda respondendo erro.`);
-console.log("Todos os domínios de produção responderam sem erro de servidor.");
+for (const nome of ["ickous-marketplace.vercel.app", "savycollection.vercel.app"]) {
+  try {
+    const resposta = await fetch(`https://${nome}/version.json`, { cache: "no-store" });
+    console.log(`version.json de ${nome}: ${(await resposta.text()).slice(0, 400)}`);
+  } catch (erro) {
+    console.log(`version.json de ${nome}: ${erro.message}`);
+  }
+}
+if (naoCadastrados > 0) console.log(`${naoCadastrados} domínio(s) fora da frota, fechados de propósito.`);
+if (falhas > 0) parar(`${falhas} domínio(s) da frota ainda respondendo erro.`);
+console.log("Todos os domínios da frota responderam sem erro de servidor.");

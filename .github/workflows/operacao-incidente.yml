@@ -35,3 +35,5 @@ jobs:
       - run: node scripts/incidente/vercel.mjs
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          # Produção que estava no ar antes do incidente (25/09 19:31 UTC, linha 1.5.9).
+          REDEPLOY_DE: dpl_DybomesLqkuLhNWMkAqZHpRkY4YH
