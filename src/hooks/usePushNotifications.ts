@@ -1,5 +1,6 @@
 import { chavePublicaVapid } from "@/config/configuracaoDaLoja";
 import { useAuth } from "@/hooks/useAuth";
+import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -19,12 +20,66 @@ import { toast } from "sonner";
 // fechado sem escolha nenhuma (permissão ainda PENDENTE) — mandar essa
 // pessoa para configurações mostra "Perguntar", nada aparentemente errado,
 // e ela nunca descobre que basta tocar de novo.
+//
+// Uma TERCEIRA causa de permissão só aparece DEPOIS de `requestPermission()`
+// responder "granted": o SITE tem permissão, mas o APARELHO não deixa
+// (`permissao_do_aparelho`). Achado de 28/09/2026 no Android: o site já
+// tinha permissão no Chrome, então `requestPermission()` respondeu "granted"
+// sem perguntar nada; o app instalado pela tela de início (uma WebAPK, que o
+// Android trata como um app separado) estava com Notificações "Sem
+// permissão" nas configurações do celular, e `subscribe()` lançou
+// `AbortError: Registration failed - permission denied`. Página web nenhuma
+// consegue ligar essa chave — o que se pode fazer é dizer onde ela está.
 type PushSubscribeErrorOrigin =
   | "permissao_negada"
   | "permissao_pendente"
+  | "permissao_do_aparelho"
   | "navegador"
   | "banco"
   | "sem_conta";
+
+// Instalado = roda sozinho, sem a barra do navegador. É o mesmo par de sinais
+// que `App.tsx` e `AdminLayout.tsx` já usam (`display-mode: standalone`, e
+// `navigator.standalone` do iOS), SEM o `?standalone` da URL que os dois
+// aceitam: ele força o layout standalone e não prova instalação nenhuma (vale
+// em qualquer aba), e aqui a resposta escolhe entre "deste app" e "do
+// navegador" — numa aba com `?standalone` dizer "deste app" mandaria a pessoa
+// procurar um app que ela não abriu.
+// Sem `matchMedia` (ambiente que não implementa, como o jsdom) não há
+// prova de instalação: vale "aba", e o tratamento do erro não quebra.
+function estaComoAppInstalado(): boolean {
+  if (
+    typeof globalThis.matchMedia === "function" &&
+    globalThis.matchMedia("(display-mode: standalone)").matches
+  ) {
+    return true;
+  }
+  return (
+    typeof navigator !== "undefined" &&
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+// `NotAllowedError`, ou `AbortError` cujo texto diz "permission denied" — o
+// segundo é o que um Chrome real lançou no caso medido (o nome é genérico e
+// a causa só aparece na mensagem); em outros casos o nome vem como o
+// primeiro. Sem diferenciar maiúsculas: o texto é da engine e não é
+// contrato. Só conta como bloqueio do APARELHO com a permissão do SITE já
+// "granted" (lida agora, não a de antes): com o site sem permissão a causa é
+// outra e "o celular está bloqueando" seria palpite — cai em "navegador",
+// como qualquer outro erro de `subscribe()`.
+// Duck typing em vez de `instanceof`: só `name` e `message` importam.
+function falhouPorPermissaoDoAparelho(erro: unknown): boolean {
+  if (Notification.permission !== "granted") return false;
+  if (typeof erro !== "object" || erro === null) return false;
+  const { name, message } = erro as { name?: unknown; message?: unknown };
+  if (name === "NotAllowedError") return true;
+  return (
+    name === "AbortError" &&
+    typeof message === "string" &&
+    message.toLowerCase().includes("permission denied")
+  );
+}
 
 // A frase de "banco" honra o que o `postgrest-js` realmente garante: ele
 // devolve `{ error }` em vez de lançar (`shouldThrowOnError: false`), então
@@ -61,6 +116,28 @@ function mensagemDaOrigem(origin: PushSubscribeErrorOrigin): string {
       // deles deixaria a frase falsa na outra tela — "de novo" já aponta
       // para o botão que a pessoa acabou de tocar.
       return "Toque de novo e escolha Permitir quando o navegador perguntar.";
+    case "permissao_do_aparelho":
+      // Duas frases porque o caminho é outro: o app instalado tem entrada
+      // PRÓPRIA na lista de Apps do celular; na aba, quem tem a chave é o
+      // navegador. Nenhuma cita Android ou iOS pelo nome, e a mesma regra do
+      // caso acima vale: sem nome de botão (esta frase sai no banner e no
+      // painel, com controles de nomes diferentes — "toque de novo" já aponta
+      // para o que a pessoa acabou de tocar).
+      //
+      // O nome do app é o do MANIFESTO (`branding.appName` — a mesma fotografia
+      // que preparou o HTML e o manifesto): é com ele que o app aparece na
+      // lista de Apps do celular, e é lá que a pessoa vai procurá-lo. Não se
+      // adivinha o nome do navegador (o user agent de um Chromium qualquer
+      // diz "Chrome"): "o seu navegador" é verdade em qualquer um.
+      //
+      // Medido no Android (Chrome e WebAPK). No iOS NÃO foi medido: lá a
+      // permissão é do próprio web app instalado, e o Safari fora do modo
+      // instalado nem expõe `PushManager` — que este ramo não chegue ao iOS é
+      // inferência. Se chegar, a entrada "Apps" das Configurações só existe do
+      // iOS 18 em diante.
+      return estaComoAppInstalado()
+        ? `O celular está bloqueando as notificações deste app. Abra as configurações do celular → Apps → ${nomeDaLoja()} → Notificações, ative e toque de novo.`
+        : "O celular está bloqueando as notificações do navegador. Abra as configurações do celular → Apps → o seu navegador → Notificações, ative e toque de novo.";
     case "navegador":
       return "Não foi possível ativar as notificações neste navegador. Tente novamente ou use um navegador atualizado.";
     case "banco":
@@ -303,8 +380,17 @@ export function usePushNotifications() {
         // Causa heterogênea (MDN: NotAllowedError, AbortError,
         // NotSupportedError… cada engine com o seu texto) — família
         // "navegador", frase genérica e honesta, não uma prescrição que só
-        // serve para um subtipo.
-        throw new PushSubscribeError("navegador", subscribeError);
+        // serve para um subtipo. A EXCEÇÃO é a única que se reconhece com
+        // certeza: o site tem permissão e o aparelho a nega (ver
+        // `falhouPorPermissaoDoAparelho`). Nada é gravado nem desfeito aqui —
+        // o erro acontece antes do `upsert` e a permissão do site fica como
+        // está.
+        throw new PushSubscribeError(
+          falhouPorPermissaoDoAparelho(subscribeError)
+            ? "permissao_do_aparelho"
+            : "navegador",
+          subscribeError,
+        );
       }
 
       // `user` já foi garantido acima, antes de pedir a permissão —
