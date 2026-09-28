@@ -87,7 +87,7 @@ const fim = new Date();
 const inicio = new Date(fim.getTime() - 3 * 60 * 60 * 1000);
 async function logs(titulo, consulta) {
   const q = new URLSearchParams({ sql: consulta, iso_timestamp_start: inicio.toISOString(), iso_timestamp_end: fim.toISOString() });
-  const r = await api("GET", `/projects/${REF}/analytics/endpoints/logs?${q}`);
+  const r = await api("GET", `/projects/${REF}/analytics/endpoints/logs.all?${q}`);
   console.log(`\n== ${titulo} ==`);
   if (r?.ERRO || r?.error) return console.log(JSON.stringify(r.ERRO ? r : r.error).slice(0, 400));
   const linhas = r?.result ?? [];
@@ -104,3 +104,24 @@ await logs("Chamadas às functions de pagamento (3 h)", `select timestamp, event
   order by timestamp desc limit 60`);
 await logs("Mensagens das functions (3 h)", `select timestamp, event_message from function_logs
   order by timestamp desc limit 80`);
+
+// 7. Por que o pg_cron não roda: onde os jobs apontam, se o agendador existe,
+// e o que o Postgres registrou sobre ele.
+mostra("Jobs (banco/usuário/nó)", await sql("SELECT jobid, jobname, database, username, nodename, nodeport, active FROM cron.job ORDER BY jobid"));
+mostra("Histórico total do pg_cron", await sql("SELECT count(*) AS execucoes, max(start_time) AS ultima FROM cron.job_run_details"));
+mostra("Configuração do pg_cron", await sql(`SELECT current_database() AS banco_atual,
+  current_setting('cron.database_name', true) AS cron_database_name,
+  current_setting('cron.use_background_workers', true) AS background_workers,
+  current_setting('cron.log_run', true) AS log_run,
+  current_setting('cron.host', true) AS cron_host`));
+mostra("Extensões", await sql("SELECT extname, extversion FROM pg_extension WHERE extname IN ('pg_cron', 'pg_net', 'supabase_vault')"));
+mostra("Processo do agendador (pg_stat_activity)", await sql(`SELECT pid, backend_type, application_name, state, backend_start
+  FROM pg_stat_activity WHERE backend_type ILIKE '%cron%' OR application_name ILIKE '%cron%' OR backend_type ILIKE '%pg_net%'`));
+mostra("O pedido de R$ 1 agora", await sql(`SELECT left(id::text, 8) AS id, status, payment_status, expires_at, paid_at, updated_at
+  FROM public.marketplace_orders WHERE created_at > now() - interval '6 hours' AND total = 1.00`));
+await logs("Postgres: mensagens do cron/pg_net (3 h)", `select timestamp, event_message from postgres_logs
+  where regexp_contains(event_message, '(?i)cron|pg_net|scheduler')
+  order by timestamp desc limit 30`);
+await logs("Borda: chamadas ao webhook do MP (3 h)", `select timestamp, event_message from edge_logs
+  where regexp_contains(event_message, 'webhook-mercadopago|reconciliar-pagamentos|criar-pagamento')
+  order by timestamp desc limit 40`);
