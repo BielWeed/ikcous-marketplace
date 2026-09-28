@@ -300,7 +300,12 @@ export function SearchBar({
           />
 
           {/* Floating Solid White Card directly under Search Input */}
-          <div className={cn("fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5", "lg:max-w-[640px] lg:w-[calc(min(100vw,1280px)-672px)] 2xl:w-[640px]")}>
+          <div
+            className={cn(
+              "fixed inset-x-0 top-[calc(var(--header-height)+6px)] z-[100] mx-auto max-h-[72vh] w-[calc(100vw-24px)] max-w-lg overflow-y-auto rounded-[28px] border border-zinc-200/90 bg-white p-4 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.35)] duration-200 animate-in fade-in slide-in-from-top-2 sm:p-5",
+              "lg:max-w-[640px] lg:w-[calc(min(100vw,1280px)-384px)] lg:slide-in-from-top-0 2xl:w-[640px]",
+            )}
+          >
             {/* 1. PREDICTIVE AUTOCOMPLETE TERMS */}
             {predictedTerms.length > 0 && (
               <div className="mb-4 border-b border-zinc-100 pb-3">

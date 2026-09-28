@@ -12,10 +12,10 @@ import {
   Bell,
   CheckCircle2,
   Info,
-  OctagonX,
   LockKeyhole,
+  OctagonX,
 } from "lucide-react";
-import { lazy, Suspense, memo, useEffect, useRef, useState } from "react";
+import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
 import { SearchBar } from "./SearchBar";
 
 import { buildIdentity } from "@/config/buildIdentity";
@@ -23,7 +23,11 @@ import { useNotificationCenter } from "@/contexts/NotificationContextCore";
 import { useStore } from "@/contexts/StoreContext";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 
-const NavegacaoDoTopo = lazy(() => import("@/components/desktop/NavegacaoDoTopo").then((m) => ({ default: m.NavegacaoDoTopo })));
+const NavegacaoDoTopo = lazy(() =>
+  import("@/components/desktop/NavegacaoDoTopo").then((m) => ({
+    default: m.NavegacaoDoTopo,
+  })),
+);
 
 // Ponto de encaixe do centro da barra, usado quando não há busca (hoje:
 // "address-form" e "checkout"). ID ESTÁVEL de propósito — o CheckoutView
@@ -180,9 +184,20 @@ export const Header = memo(function Header({
         } as React.CSSProperties
       }
     >
-      <div className={cn("relative flex h-[var(--header-height)] items-center justify-between gap-2.5 px-3 xs:px-4 md:grid md:grid-cols-[180px,1fr,auto]", "lg:grid-cols-[minmax(280px,1fr)_minmax(0,640px)_minmax(280px,1fr)] lg:gap-6", CONTAINER_DO_COMPUTADOR)}>
+      <div
+        className={cn(
+          "relative flex h-[var(--header-height)] items-center justify-between gap-2.5 px-3 xs:px-4 md:grid md:grid-cols-[180px,1fr,auto]",
+          "lg:grid-cols-[minmax(0,1fr)_minmax(0,640px)_minmax(0,1fr)] lg:gap-4 xl:gap-6",
+          CONTAINER_DO_COMPUTADOR,
+        )}
+      >
         {/* LEFT: Logo and optional Back Button */}
-        <div className={cn("z-[70] flex shrink-0 items-center gap-2 xs:gap-3 md:w-[180px]", "lg:w-auto lg:min-w-0")}>
+        <div
+          className={cn(
+            "z-[70] flex shrink-0 items-center gap-2 xs:gap-3 md:w-[180px]",
+            "lg:w-auto lg:min-w-0",
+          )}
+        >
           {showBackButton && (
             <button
               onClick={() => {
@@ -208,7 +223,12 @@ export const Header = memo(function Header({
             aria-label="Ir para o Início"
           >
             {logoSrc ? (
-              <div className={cn("flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]", "lg:h-10 lg:max-w-[200px]")}>
+              <div
+                className={cn(
+                  "flex h-8 max-w-[100px] items-center overflow-hidden rounded-[8px] xs:max-w-[120px]",
+                  "lg:h-10 lg:max-w-[140px] xl:max-w-[200px]",
+                )}
+              >
                 <img
                   key={`${logoSelection.revision}:${logoState}`}
                   src={logoSrc}
@@ -293,7 +313,12 @@ export const Header = memo(function Header({
               "lg:max-w-[640px] lg:gap-3",
             )}
           >
-            {computador && <span className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-zinc-600"><LockKeyhole aria-hidden="true" className="size-4" />Compra segura</span>}
+            {computador && (
+              <span className="flex items-center gap-2 whitespace-nowrap text-sm font-semibold text-zinc-600">
+                <LockKeyhole aria-hidden="true" className="size-4" />
+                Compra segura
+              </span>
+            )}
           </div>
         ) : (
           <motion.div
@@ -324,7 +349,12 @@ export const Header = memo(function Header({
         )}
 
         {/* RIGHT: Notification Morphing Container (Bell expands into Vinho Nobre rounded capsule) */}
-        <div className={cn("z-[70] flex shrink-0 items-center justify-end gap-1.5 md:min-w-[100px]", "lg:relative lg:min-w-0")}>
+        <div
+          className={cn(
+            "z-[70] flex shrink-0 items-center justify-end gap-1.5 md:min-w-[100px]",
+            "lg:relative lg:min-w-0",
+          )}
+        >
           <AnimatePresence mode="wait">
             {activeToast ? (
               <motion.button
@@ -353,7 +383,10 @@ export const Header = memo(function Header({
                     dispensarToast();
                   }
                 }}
-                className={cn("flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95", "lg:absolute lg:right-[calc(100%+24px)] lg:max-w-[200px]")}
+                className={cn(
+                  "flex shrink-0 cursor-pointer items-center gap-2 overflow-hidden whitespace-nowrap rounded-full border border-zinc-800 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 py-1.5 pl-2 pr-3.5 text-white shadow-[0_8px_25px_rgba(0,0,0,0.4)] backdrop-blur-md transition-all hover:border-zinc-700 active:scale-95",
+                  "lg:absolute lg:right-[calc(100%+24px)] lg:max-w-[200px]",
+                )}
               >
                 <motion.div
                   initial={{ scale: 0.4, opacity: 0 }}
@@ -386,48 +419,54 @@ export const Header = memo(function Header({
                   ✨
                 </motion.span>
               </motion.button>
-            ) : !computador && (
-              <motion.div
-                layout
-                key="header-standard-actions"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{
-                  type: "spring",
-                  stiffness: 350,
-                  damping: 30,
-                  mass: 0.8,
-                }}
-                className="flex items-center gap-2"
-              >
-                <button
-                  onClick={() => {
-                    haptic.light();
-                    onOpenNotifications?.();
+            ) : (
+              !computador && (
+                <motion.div
+                  layout
+                  key="header-standard-actions"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{
+                    type: "spring",
+                    stiffness: 350,
+                    damping: 30,
+                    mass: 0.8,
                   }}
-                  // Laudo de acessibilidade 03/09, achado 5: o contador de
-                  // não lidas da bolinha era mudo para o leitor de tela.
-                  aria-label={
-                    unreadCount > 0
-                      ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
-                      : "Notificações"
-                  }
-                  className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-zinc-100 active:scale-90 xs:size-10"
+                  className="flex items-center gap-2"
                 >
-                  <Bell className="size-4.5 text-zinc-700 xs:size-5" />
-                  {unreadCount > 0 && (
-                    <span className="animate-pulse-subtle absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-sm">
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-              </motion.div>
+                  <button
+                    onClick={() => {
+                      haptic.light();
+                      onOpenNotifications?.();
+                    }}
+                    // Laudo de acessibilidade 03/09, achado 5: o contador de
+                    // não lidas da bolinha era mudo para o leitor de tela.
+                    aria-label={
+                      unreadCount > 0
+                        ? `Notificações, ${unreadCount} não ${unreadCount === 1 ? "lida" : "lidas"}`
+                        : "Notificações"
+                    }
+                    className="relative flex size-9 items-center justify-center rounded-full bg-zinc-50 transition-colors after:absolute after:-inset-1 after:content-[''] hover:bg-zinc-100 active:scale-90 xs:size-10"
+                  >
+                    <Bell className="size-4.5 text-zinc-700 xs:size-5" />
+                    {unreadCount > 0 && (
+                      <span className="animate-pulse-subtle absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white shadow-sm">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </button>
+                </motion.div>
+              )
             )}
           </AnimatePresence>
           {computador && (
             <Suspense fallback={null}>
-              <NavegacaoDoTopo currentView={currentView} onNavigate={onNavigate} onOpenNotifications={onOpenNotifications} />
+              <NavegacaoDoTopo
+                currentView={currentView}
+                onNavigate={onNavigate}
+                onOpenNotifications={onOpenNotifications}
+              />
             </Suspense>
           )}
         </div>

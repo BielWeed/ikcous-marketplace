@@ -13,7 +13,9 @@ export function triggerFlyingCartAnimation(
   if (typeof window === "undefined") return;
 
   const targetId = "bottom-nav-cart";
-  const target = (ehTelaDeComputador() && document.getElementById("header-cart")) || document.getElementById(targetId);
+  const target =
+    (ehTelaDeComputador() && document.getElementById("header-cart")) ||
+    document.getElementById(targetId);
 
   if (!target) {
     console.warn(

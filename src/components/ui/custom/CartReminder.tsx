@@ -87,7 +87,12 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   const itemCount = getCartCount();
 
   return (
-    <div className={cn("pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24", "lg:bottom-8 lg:justify-end lg:px-8")}>
+    <div
+      className={cn(
+        "pointer-events-none fixed inset-x-0 bottom-[calc(76px+var(--safe-area-bottom,0px))] z-40 flex justify-center px-4 md:bottom-24",
+        "lg:bottom-8 lg:justify-end lg:px-8",
+      )}
+    >
       <AnimatePresence>
         {isVisible && (
           <motion.div
@@ -95,7 +100,10 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className={cn("group pointer-events-auto relative flex w-full max-w-md items-center gap-3 overflow-hidden rounded-2xl border border-zinc-100/40 bg-white/95 px-3.5 py-2.5 shadow-lg shadow-black/10 backdrop-blur-md", "lg:w-[400px]")}
+            className={cn(
+              "group pointer-events-auto relative flex w-full max-w-md items-center gap-3 overflow-hidden rounded-2xl border border-zinc-100/40 bg-white/95 px-3.5 py-2.5 shadow-lg shadow-black/10 backdrop-blur-md",
+              "lg:w-[400px]",
+            )}
           >
             {/* Subtle Glow */}
             <div className="absolute right-0 top-0 size-20 -translate-y-1/2 translate-x-1/2 rounded-full bg-emerald-500/5 blur-2xl" />

@@ -2999,7 +2999,10 @@ const AppContent = () => {
               fallback={
                 <nav
                   aria-label="Navegação principal"
-                  className={cn("pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md", "lg:hidden")}
+                  className={cn(
+                    "pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md",
+                    "lg:hidden",
+                  )}
                 >
                   <div className="h-[64px]" />
                 </nav>

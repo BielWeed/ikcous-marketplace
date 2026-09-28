@@ -38,10 +38,10 @@ export function MenuDaContaDoTopo({
       <button
         type="button"
         onClick={() => onNavigate("auth")}
-        className="flex h-10 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary"
+        className="flex h-10 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary lg:size-7 lg:justify-center lg:p-0 xl:h-10 xl:w-auto xl:justify-start xl:px-2"
       >
         <User aria-hidden="true" className="size-5" />
-        Entrar
+        <span className="lg:hidden xl:inline">Entrar</span>
       </button>
     );
 
@@ -50,11 +50,14 @@ export function MenuDaContaDoTopo({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="flex h-10 min-w-0 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex h-10 min-w-0 items-center gap-1 rounded-xl px-2 text-xs font-bold text-zinc-700 hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary lg:size-7 lg:justify-center lg:p-0 xl:h-10 xl:w-auto xl:justify-start xl:px-2"
         >
           <User aria-hidden="true" className="size-5 shrink-0" />
-          <span className="max-w-20 truncate">{nome}</span>
-          <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
+          <span className="max-w-20 truncate lg:hidden xl:inline">{nome}</span>
+          <ChevronDown
+            aria-hidden="true"
+            className="size-3 shrink-0 lg:hidden xl:block"
+          />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

@@ -13,7 +13,7 @@ interface NavegacaoDoTopoProps {
 }
 
 const botao =
-  "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-zinc-100 aria-[current=page]:text-zinc-950";
+  "relative flex size-10 shrink-0 items-center justify-center rounded-xl text-zinc-700 transition-colors hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-zinc-100 aria-[current=page]:text-zinc-950 lg:size-7 xl:size-10";
 const selo =
   "absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-zinc-950 px-1 text-[10px] font-black text-white";
 function rotuloComContagem(nome: string, quantidade: number) {
@@ -35,7 +35,7 @@ export function NavegacaoDoTopo({
   return (
     <nav
       aria-label="Navegação principal"
-      className="hidden max-w-full items-center gap-1 lg:flex"
+      className="hidden max-w-full items-center gap-1 lg:flex lg:gap-0 xl:gap-1"
     >
       <button
         type="button"
@@ -95,7 +95,7 @@ export function NavegacaoDoTopo({
           aria-label="Painel da loja"
           title="Painel da loja"
           onClick={() => onNavigate("admin-dashboard")}
-          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-primary"
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-950 text-white hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-primary lg:size-7 xl:size-10"
         >
           <Store aria-hidden="true" className="size-5" />
         </button>
