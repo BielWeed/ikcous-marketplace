@@ -289,13 +289,13 @@ function isProductFormDirty(
 
   if (a.images.length !== b.images.length) return true;
   for (let i = 0; i < a.images.length; i++) {
-    if (a.images[i] !== b.images[i]) return true;
+    if (a.images.at(i) !== b.images.at(i)) return true;
   }
 
   if (a.variants.length !== b.variants.length) return true;
   for (let i = 0; i < a.variants.length; i++) {
-    const vA = a.variants[i];
-    const vB = b.variants[i];
+    const vA = a.variants.at(i)!;
+    const vB = b.variants.at(i)!;
     if (
       vA.id !== vB.id ||
       vA.productId !== vB.productId ||
@@ -495,6 +495,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const toggleHelp = (key: string) => {
     setExpandedHelp((prev) => ({
       ...prev,
+      // eslint-disable-next-line security/detect-object-injection -- `key` é sempre um literal fixo dos call sites deste arquivo (productVariants/productData/productPricing)
       [key]: !prev[key],
     }));
   };
@@ -589,7 +590,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         const newUrl = urls[0];
         setFormData((prev) => {
           const newImages = [...prev.images];
-          newImages[adjustingImgIndex] = newUrl;
+          newImages.splice(adjustingImgIndex, 1, newUrl);
           return {
             ...prev,
             images: newImages,
@@ -1822,7 +1823,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   const hasActiveVariants = formData.variants.some((v) => v.active);
 
   return (
-    <div className="relative h-auto min-h-full overflow-x-hidden bg-zinc-950 pb-[calc(11.25rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] lg:pb-28 text-white">
+    <div className="relative h-auto min-h-full overflow-x-hidden bg-zinc-950 pb-[calc(11.25rem+var(--safe-area-bottom-fixed,env(safe-area-inset-bottom,0px)))] text-white lg:pb-28">
       {/* Background Decor */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute right-0 top-0 h-[500px] w-[500px] rounded-full bg-emerald-500/5 blur-[120px]" />
@@ -2655,17 +2656,17 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   )}
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 via-transparent to-emerald-500/5" />
-                  <div className="relative z-10 flex flex-col items-center text-center p-6 space-y-3">
-                    <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500 group-hover/upload:scale-110 transition-all duration-300 shadow-xl">
+                  <div className="relative z-10 flex flex-col items-center space-y-3 p-6 text-center">
+                    <div className="flex size-14 items-center justify-center rounded-2xl border border-white/5 bg-zinc-950/80 text-zinc-400 shadow-xl transition-all duration-300 group-hover/upload:scale-110 group-hover/upload:border-emerald-500/30 group-hover/upload:text-emerald-500">
                       <Camera className="size-6" />
                     </div>
                     <div className="space-y-1">
-                      <p className="text-xs font-black uppercase tracking-widest text-zinc-300 group-hover/upload:text-emerald-400 transition-colors">
+                      <p className="text-xs font-black uppercase tracking-widest text-zinc-300 transition-colors group-hover/upload:text-emerald-400">
                         {isDragging
                           ? "Solte para enviar!"
                           : "Adicionar Fotos do Produto"}
                       </p>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
                         Arraste as imagens aqui ou clique para buscar
                       </p>
                     </div>
@@ -2719,9 +2720,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             ) : (
               <div className="relative w-full">
                 {/* Single horizontal scroll carousel for ALL images */}
-                <div className="flex flex-row gap-4 overflow-x-auto px-2 pb-4 pt-2 snap-x scroll-smooth scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent">
+                <div className="scrollbar-thin scrollbar-thumb-zinc-800 scrollbar-track-transparent flex snap-x flex-row gap-4 overflow-x-auto scroll-smooth px-2 pb-4 pt-2">
                   <AnimatePresence>
                     {formData.images.map((image, index) => {
+                      // eslint-disable-next-line security/detect-object-injection -- `image` é URL do próprio `formData.images`; lookup inofensivo num Record de metadados controlado pelo componente
                       const meta = imageMetadata[image];
                       const isCover = index === 0;
                       return (
@@ -2744,7 +2746,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                             />
 
                             {/* Actions Overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100 duration-300">
+                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-t from-black/90 via-black/35 to-transparent opacity-100 transition-opacity duration-300 hover-hover:opacity-0 hover-hover:group-hover/img:opacity-100">
                               <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
@@ -2832,7 +2834,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.8, opacity: 0 }}
-                        className="relative flex aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start animate-pulse flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5"
+                        className="relative flex aspect-[4/5] w-40 shrink-0 animate-pulse snap-start flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5 sm:w-48"
                       >
                         <Loader2 className="size-5 animate-spin text-emerald-400" />
                         <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
@@ -2846,7 +2848,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 </div>
 
                 {formData.images.length > 1 && (
-                  <span className="ml-1 mt-1 block text-[9px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
+                  <span className="ml-1 mt-1 block flex animate-pulse select-none items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
                     ↔ Deslize para o lado para ver mais fotos
                   </span>
                 )}
