@@ -1,10 +1,17 @@
+import {
+  CONTAINER_DO_COMPUTADOR,
+  GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+  TITULO_DE_PAGINA_NO_COMPUTADOR,
+} from "@/components/desktop/medidas";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { ProductCardSkeleton } from "@/components/ui/custom/ProductCardSkeleton";
 import { useStore } from "@/contexts/StoreContext";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { cn } from "@/lib/utils";
 import type { Product, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AnimatePresence, motion, usePresence } from "framer-motion";
@@ -32,6 +39,7 @@ export const FavoritesView = React.memo(function FavoritesView({
   isActive = true,
 }: FavoritesViewProps) {
   const { config, products } = useStore();
+  const computador = useTelaDeComputador();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
@@ -66,20 +74,40 @@ export const FavoritesView = React.memo(function FavoritesView({
 
   if (loading) {
     return (
-      <div className="pb-customer min-h-full overflow-x-hidden bg-zinc-50/30">
+      <div
+        className={cn(
+          "pb-customer min-h-full overflow-x-hidden bg-zinc-50/30",
+          CONTAINER_DO_COMPUTADOR,
+        )}
+      >
         {/* Header Premium - Minimalist & Compact */}
-        <div className="sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6">
+        <div
+          className={cn(
+            "sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6",
+            "lg:top-6 lg:px-0 lg:py-6",
+          )}
+        >
           <div className="flex items-center gap-2.5">
             <Heart className="size-4 fill-zinc-950/10 text-zinc-950" />
-            <h1 className="pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950">
+            <h1
+              className={cn(
+                "pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950",
+                TITULO_DE_PAGINA_NO_COMPUTADOR,
+              )}
+            >
               Favoritos
             </h1>
           </div>
         </div>
 
         {/* Skeletons Grid */}
-        <div className="px-4 py-2">
-          <div className="grid grid-cols-2 gap-4 sm:gap-6">
+        <div className={cn("px-4 py-2", "lg:px-0 lg:py-8")}>
+          <div
+            className={cn(
+              "grid grid-cols-2 gap-4 sm:gap-6",
+              GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+            )}
+          >
             {Array.from({ length: 4 }).map((_, idx) => (
               <ProductCardSkeleton key={idx} />
             ))}
@@ -226,7 +254,10 @@ export const FavoritesView = React.memo(function FavoritesView({
             initial={{ opacity: 0, y: 25 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5, duration: 0.6 }}
-            className="mt-10 w-full max-w-md border-t border-zinc-100 pt-6"
+            className={cn(
+              "mt-10 w-full max-w-md border-t border-zinc-100 pt-6",
+              "lg:max-w-5xl",
+            )}
           >
             <div className="mb-4 text-center">
               <span className="inline-block rounded-full bg-secondary/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-primary">
@@ -240,7 +271,12 @@ export const FavoritesView = React.memo(function FavoritesView({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-3 sm:gap-4",
+                "lg:grid-cols-4 lg:gap-5",
+              )}
+            >
               {suggestedProducts.map((product) => (
                 <ProductCard
                   key={product.id}
@@ -263,26 +299,56 @@ export const FavoritesView = React.memo(function FavoritesView({
   }
 
   return (
-    <div className="pb-customer-summary min-h-full overflow-x-hidden bg-zinc-50/30">
+    <div
+      className={cn(
+        "pb-customer-summary min-h-full overflow-x-hidden bg-zinc-50/30",
+        CONTAINER_DO_COMPUTADOR,
+      )}
+    >
       {/* Header Premium - Minimalist & Compact */}
-      <div className="sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6">
+      <div
+        className={cn(
+          "sticky top-[-2px] z-40 flex items-center justify-between border-b border-zinc-100 bg-white/80 p-4 backdrop-blur-md transition-all duration-300 xs:px-6",
+          "lg:top-6 lg:px-0 lg:py-6",
+        )}
+      >
         <div className="flex items-center gap-2.5">
           <Heart className="size-4 fill-zinc-950/10 text-zinc-950" />
-          <h1 className="pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950">
+          <h1
+            className={cn(
+              "pt-0.5 text-[13px] font-black uppercase tracking-[0.25em] text-zinc-950",
+              TITULO_DE_PAGINA_NO_COMPUTADOR,
+            )}
+          >
             Favoritos
           </h1>
         </div>
-        <div className="flex items-center">
+        <div className={cn("flex items-center", "lg:gap-6")}>
           <span className="rounded-full border border-zinc-200/20 bg-zinc-100/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-400">
             {favorites.length} {favorites.length === 1 ? "item" : "itens"}
           </span>
+          {computador && (
+            <button
+              type="button"
+              onClick={() => onNavigate("home")}
+              className="lg:flex lg:min-h-11 lg:items-center lg:gap-2 lg:rounded-xl lg:px-4 lg:py-2 lg:text-sm lg:font-bold lg:text-primary lg:transition-colors lg:hover:bg-zinc-100 lg:focus-visible:outline lg:focus-visible:outline-2 lg:focus-visible:outline-offset-2 lg:focus-visible:outline-primary"
+            >
+              Continuar comprando
+              <ArrowRight aria-hidden="true" className="lg:size-4" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Products Grid with AnimatePresence */}
-      <div className="px-4 py-2">
+      <div className={cn("px-4 py-2", "lg:px-0 lg:py-8")}>
         <AnimatePresence mode="popLayout" initial={false}>
-          <div className="grid grid-cols-2 gap-4 sm:gap-6">
+          <div
+            className={cn(
+              "grid grid-cols-2 gap-4 sm:gap-6",
+              GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+            )}
+          >
             {favorites.map((product, index) => (
               <motion.div
                 key={product.id}
@@ -322,7 +388,12 @@ export const FavoritesView = React.memo(function FavoritesView({
         createPortal(
           <AnimatePresence>
             {isActive && isPresent && isReady && (
-              <div className="bottom-docked-navigation pointer-events-none fixed inset-x-0 z-[90] px-6 md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
+              <div
+                className={cn(
+                  "bottom-docked-navigation pointer-events-none fixed inset-x-0 z-[90] px-6 md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2",
+                  "lg:hidden",
+                )}
+              >
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
