@@ -1,0 +1,10 @@
+{
+  "lojas": [
+    {
+      "perfil": "almeidastoremc",
+      "projeto": "loja-almeida-store",
+      "conta": "SUPABASE_ACCESS_TOKEN",
+      "organizacao": "doidyyhdafcbpfmiciii"
+    }
+  ]
+}

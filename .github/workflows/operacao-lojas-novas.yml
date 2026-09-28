@@ -1,0 +1,31 @@
+# Temporário (28/09/2026): cria os projetos Supabase das lojas novas de
+# clientes (um por loja), a pedido do dono. Só cria projeto e lê chave
+# publicável; esquema, functions e front vêm em passos seguintes.
+name: Operação — lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-novas.mjs
+      - scripts/incidente/lojas-novas.json
+      - .github/workflows/operacao-lojas-novas.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-novas
+  cancel-in-progress: false
+jobs:
+  criar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Cria os projetos das lojas novas
+        run: node scripts/incidente/lojas-novas.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
+          SUPABASE_ACCESS_TOKEN_CONTA3: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA3 }}
