@@ -4,7 +4,7 @@ name: Operação do incidente — conferir segredos (temporário)
 on:
   push:
     branches: [infra/operacao-incidente]
-    paths: [scripts/incidente/conferir-segredos.mjs, scripts/incidente/logs-funcoes.mjs, .github/workflows/operacao-conferir.yml]
+    paths: [scripts/incidente/conferir-segredos.mjs, scripts/incidente/logs-funcoes.mjs, scripts/incidente/migracoes-pendentes.mjs, .github/workflows/operacao-conferir.yml]
 permissions:
   contents: read
 jobs:
@@ -19,7 +19,15 @@ jobs:
       - run: node scripts/incidente/conferir-segredos.mjs
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      - run: node scripts/incidente/logs-funcoes.mjs
+      - name: Migrations da Super atualização x ledger do banco novo
         if: always()
+        run: |
+          git fetch --depth=1 origin claude/app-major-upgrade-wmc8x2
+          git ls-tree --name-only FETCH_HEAD supabase/migrations/ > /tmp/migracoes.txt
+          node scripts/incidente/migracoes-pendentes.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      - run: node scripts/incidente/logs-funcoes.mjs
+        if: false
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
