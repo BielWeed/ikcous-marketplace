@@ -1,0 +1,24 @@
+# Temporário (28/09/2026): SÓ LEITURA — testa a leitura de perfis públicos do
+# Instagram a partir do runner, para montar o catálogo das lojas novas.
+name: Operação — leitura do Instagram (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/instagram.mjs
+      - .github/workflows/operacao-instagram.yml
+permissions:
+  contents: read
+jobs:
+  instagram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Lê perfis públicos
+        run: node scripts/incidente/instagram.mjs
+        env:
+          PERFIS: "instagram,nike,natura"
