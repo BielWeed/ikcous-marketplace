@@ -317,6 +317,8 @@ export function useStoreIdentityEditor(active = true) {
       if (target.kind === "app-icons") {
         const prepared = await prepareIdentityAppIcons(file, {
           signal: op.options.signal,
+          primaryColor: before.draft!.fields.primaryColor,
+          logoUrl: `${op.origin}/storage/v1/object/public/branding/${before.draft!.assets.header.path}`,
         });
         if (!op.isCurrent()) return;
         const candidates = Object.fromEntries(
@@ -351,7 +353,20 @@ export function useStoreIdentityEditor(active = true) {
           if (!uploaded.has(image.asset.path)) {
             uploaded.set(
               image.asset.path,
-              await uploadIdentityImage(image, op.options),
+              await uploadIdentityImage(image, {
+                ...op.options,
+                onProgress: (progress) => {
+                  if (op.isCurrent())
+                    publish({
+                      ...model.current,
+                      phase:
+                        progress.stage === "verifying"
+                          ? "verifying"
+                          : "uploading",
+                      progress,
+                    });
+                },
+              }),
             );
             if (!op.isCurrent()) return;
           }

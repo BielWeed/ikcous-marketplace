@@ -221,6 +221,12 @@ export function IdentitySettingsSection({
                   ? `${hint}. Atualiza também os ícones Apple, 192 e com máscara, preservando as escolhas individuais deste rascunho`
                   : hint,
               )}
+              {role === "icon_512" && (
+                <p className="text-xs text-zinc-400">
+                  No Android, o ícone mostra a logo da loja sobre a cor
+                  principal.
+                </p>
+              )}
             </section>
           );
         })}

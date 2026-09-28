@@ -132,14 +132,27 @@ describe("rascunho de identidade separado da fotografia", () => {
       origin,
     );
     expect(first.assets.icon_192).toEqual(custom.asset);
+    const maskable = uploaded(file("custom-maskable.png", 512, 512));
+    const withMaskable = changeIdentityEditorDraft(
+      first,
+      { kind: "asset", roles: ["maskable_512"], uploaded: maskable },
+      origin,
+    );
     const apple = uploaded(file("custom-apple.png", 180, 180));
     const advanced = changeIdentityEditorDraft(
-      first,
+      withMaskable,
       { kind: "asset", roles: ["apple_touch"], uploaded: apple },
       origin,
     );
-    const reconciled = reconcileIdentityEditorDraft(
+    expect(advanced.assets.maskable_512).toEqual(maskable.asset);
+    const afterPrincipal = changeIdentityEditorDraft(
       advanced,
+      appIcons("principal") as never,
+      origin,
+    );
+    expect(afterPrincipal.assets.maskable_512).toEqual(maskable.asset);
+    const reconciled = reconcileIdentityEditorDraft(
+      afterPrincipal,
       snapshot(),
       origin,
     );
@@ -150,9 +163,7 @@ describe("rascunho de identidade separado da fotografia", () => {
     );
     expect(next.assets.icon_192).toEqual(custom.asset);
     expect(next.assets.apple_touch).toEqual(apple.asset);
-    expect(next.assets.maskable_512).toEqual(
-      appIcons("outro").uploaded.maskable_512.asset,
-    );
+    expect(next.assets.maskable_512).toEqual(maskable.asset);
   });
 
   it("recusa o conjunto inteiro se um tamanho ou uma origem estiver errado", () => {

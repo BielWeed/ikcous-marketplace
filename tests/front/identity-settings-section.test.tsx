@@ -242,7 +242,10 @@ describe("editor de identidade sobre fotografia RPC", () => {
     };
     return {
       icon_512: large,
-      maskable_512: large,
+      maskable_512: {
+        blob: new Blob(["maskable"]),
+        asset: asset("new-maskable.png", 512, 512),
+      },
       icon_192: {
         blob: new Blob(["small"]),
         asset: asset("new-192.png", 192, 192),
@@ -264,6 +267,20 @@ describe("editor de identidade sobre fotografia RPC", () => {
     await render();
     await select("Trocar Ícone 192");
     await select("Trocar ícone do aplicativo");
+    expect(h.prepareIcons).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.objectContaining({
+        primaryColor: "#ABCDEF",
+        logoUrl: `${h.origin}/storage/v1/object/public/branding/${snapshot().identity.branding_assets.header.path}`,
+      }),
+    );
+    expect(host.textContent).toContain(
+      "No Android, o ícone mostra a logo da loja sobre a cor principal.",
+    );
+    expect(h.upload).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ onProgress: expect.any(Function) }),
+    );
     await click("Salvar identidade");
     const saved = h.save.mock.calls[0][0].desired.branding_assets;
     expect(saved.icon_512).toEqual(icons.icon_512.asset);
