@@ -181,6 +181,7 @@ import { CartProvider } from "@/contexts/CartContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
 import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import type { Product, SortOption, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 
@@ -198,6 +199,12 @@ import { haptic } from "@/utils/haptic";
 // Este arquivo NÃO pode voltar a importar framer-motion (nem módulo que o
 // importe estaticamente) — cavalca o teste
 // tests/front/perf-entrada-sem-animacao-no-1o-paint.test.ts.
+const RodapeDaLoja = React.lazy(() =>
+  import("@/components/desktop/RodapeDaLoja").then((m) => ({
+    default: m.RodapeDaLoja,
+  })),
+);
+
 const Header = React.lazy(() =>
   import("@/components/ui/custom/Header").then((m) => ({ default: m.Header })),
 );
@@ -507,6 +514,7 @@ const AppBadgeSynchronizer = React.memo(function AppBadgeSynchronizer() {
 });
 
 const AppContent = () => {
+  const computador = useTelaDeComputador();
   const { user, isAdmin, adminStatus, loading: authLoading } = useAuth();
   const { products, loading: productsLoading } = useProducts();
   const { navigate: startTransition, isSupported: isTransitionSupported } =
@@ -2399,6 +2407,13 @@ const AppContent = () => {
     }
   };
 
+  const rodape =
+    computador && !["checkout", "address-form"].includes(currentView) ? (
+      <React.Suspense fallback={null}>
+        <RodapeDaLoja onNavigate={handleNavigate} />
+      </React.Suspense>
+    ) : null;
+
   const renderCustomerContent = () => {
     const isMaintenanceMode = modoManutencao();
     if (isMaintenanceMode) {
@@ -2515,6 +2530,7 @@ const AppContent = () => {
                   />
                 </DeferredTabContent>
               </LocalErrorBoundary>
+              {activeTabIdx === 0 && rodape}
             </TabWrapper>
 
             <TabWrapper
@@ -2544,6 +2560,7 @@ const AppContent = () => {
                   />
                 </DeferredTabContent>
               </LocalErrorBoundary>
+              {activeTabIdx === 1 && rodape}
             </TabWrapper>
 
             <TabWrapper
@@ -2571,6 +2588,7 @@ const AppContent = () => {
                   />
                 </DeferredTabContent>
               </LocalErrorBoundary>
+              {activeTabIdx === 2 && rodape}
             </TabWrapper>
 
             <TabWrapper
@@ -2591,6 +2609,7 @@ const AppContent = () => {
                   />
                 </DeferredTabContent>
               </LocalErrorBoundary>
+              {activeTabIdx === 3 && rodape}
             </TabWrapper>
           </div>
         ) : (
@@ -2634,6 +2653,7 @@ const AppContent = () => {
                     />
                   </DeferredTabContent>
                 </LocalErrorBoundary>
+                {activeTabIdx === 0 && rodape}
               </TabWrapper>
 
               <TabWrapper
@@ -2661,6 +2681,7 @@ const AppContent = () => {
                     />
                   </DeferredTabContent>
                 </LocalErrorBoundary>
+                {activeTabIdx === 1 && rodape}
               </TabWrapper>
 
               <TabWrapper
@@ -2689,6 +2710,7 @@ const AppContent = () => {
                     />
                   </DeferredTabContent>
                 </LocalErrorBoundary>
+                {activeTabIdx === 2 && rodape}
               </TabWrapper>
 
               <TabWrapper
@@ -2709,6 +2731,7 @@ const AppContent = () => {
                     />
                   </DeferredTabContent>
                 </LocalErrorBoundary>
+                {activeTabIdx === 3 && rodape}
               </TabWrapper>
             </MainTabsMotionShell>
           </React.Suspense>
@@ -2722,6 +2745,7 @@ const AppContent = () => {
               style={{ viewTransitionName: "main-content" }}
             >
               {renderCustomerSecondaryView()}
+              {rodape}
             </div>
           )
         ) : (
@@ -2734,6 +2758,7 @@ const AppContent = () => {
               duration={getFramerMotionDuration()}
             >
               {renderCustomerSecondaryView()}
+              {rodape}
             </SecondaryViewMotionShell>
           </React.Suspense>
         )}
@@ -2848,6 +2873,7 @@ const AppContent = () => {
             }
           >
             <Header
+              currentView={currentView}
               onNavigate={handleNavigate}
               showBackButton={
                 currentView !== "home" &&
@@ -2973,7 +2999,7 @@ const AppContent = () => {
               fallback={
                 <nav
                   aria-label="Navegação principal"
-                  className="pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md"
+                  className={cn("pb-safe fixed inset-x-0 bottom-0 z-[120] flex-shrink-0 border-t border-zinc-100 bg-white/95 shadow-sm backdrop-blur-xl md:bottom-6 md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2 md:rounded-2xl md:border md:border-zinc-200 md:shadow-md", "lg:hidden")}
                 >
                   <div className="h-[64px]" />
                 </nav>
