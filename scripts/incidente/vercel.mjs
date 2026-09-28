@@ -195,3 +195,4 @@ for (const nome of ["ickous-marketplace.vercel.app", "savycollection.vercel.app"
 if (naoCadastrados > 0) console.log(`${naoCadastrados} domínio(s) fora da frota, fechados de propósito.`);
 if (falhas > 0) parar(`${falhas} domínio(s) da frota ainda respondendo erro.`);
 console.log("Todos os domínios da frota responderam sem erro de servidor.");
+// release 1.5.10 (28/09/2026): deploy do merge do PR #670

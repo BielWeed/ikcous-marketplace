@@ -36,7 +36,7 @@ jobs:
       - run: node scripts/incidente/vercel.mjs
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          # O que estava no ar antes do incidente: deploy de 25/09 19:31 UTC = merge do
-          # #663 na branch da Super atualização (package.json 1.5.9).
+          # Release 1.5.10 (28/09/2026): merge do PR #670 na branch da Super atualização.
+          
           DEPLOY_REF: claude/app-major-upgrade-wmc8x2
-          DEPLOY_SHA: 846023e0da42639ecb7ff1966d9557e6874f6dfa
+          DEPLOY_SHA: ac0cf483193503aa74075d6a8b0125253a84a1e2
