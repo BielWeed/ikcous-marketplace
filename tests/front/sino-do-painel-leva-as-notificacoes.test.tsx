@@ -67,8 +67,9 @@ vi.mock("@/lib/supabase", () => ({
                     itens: [],
                     contagem: {
                       solicitada: DEVOLUCOES_SOLICITADAS,
-                      autorizada: DEVOLUCOES_EM_OUTROS_ESTADOS,
-                      concluida: DEVOLUCOES_EM_OUTROS_ESTADOS,
+                      aprovada: DEVOLUCOES_EM_OUTROS_ESTADOS,
+                      em_transito: DEVOLUCOES_EM_OUTROS_ESTADOS,
+                      recebida: DEVOLUCOES_EM_OUTROS_ESTADOS,
                     },
                   },
               error:
@@ -344,7 +345,7 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
     });
   });
 
-  it("devoluções autorizadas ou concluídas não acendem o sino", async () => {
+  it("devoluções aprovadas, em trânsito ou recebidas não acendem o sino", async () => {
     DEVOLUCOES_EM_OUTROS_ESTADOS = 3;
     const { sino } = await montarPainel();
     await esperarContagensChegarem();

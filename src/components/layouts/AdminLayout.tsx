@@ -225,10 +225,11 @@ export function AdminLayout({
         // Mesmo critério da lista em useAvisosDoLojista: só solicitada
         // aguarda a resposta da loja. A contagem vem inteira, sem depender
         // da página retornada. Resposta inválida também é falha da fonte.
-        const { data: devolucoesData, error: devolucoesErr } = await supabase.rpc(
-          "admin_devolucoes_listar",
-          { p_status: "solicitada", p_limite: 1 },
-        );
+        const { data: devolucoesData, error: devolucoesErr } =
+          await supabase.rpc("admin_devolucoes_listar", {
+            p_status: "solicitada",
+            p_limite: 1,
+          });
         const devolucoes = lerListaAdmin(devolucoesData);
         if (devolucoesErr || !devolucoes) {
           falhouAlgumaConsulta = true;
