@@ -139,7 +139,13 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
   // array novo de `coupons` (o fetch do hook chegando) não cancela a carga.
   const alcanceGravado = editingCoupon?.alcance;
   useEffect(() => {
-    if (!couponId || alcanceGravado !== "exclusivo") return;
+    if (!couponId || alcanceGravado !== "exclusivo") {
+      // O alcance deixou de ser exclusivo (inclusive o otimista revertido de
+      // um salvar que falhou): a lista não se aplica e nada fica travado
+      // (revisão, 2ª rodada, R2-b).
+      setListaDoExclusivo("nao_se_aplica");
+      return;
+    }
     let vivo = true;
     setListaDoExclusivo("carregando");
     lerClientesDoCupom(couponId)

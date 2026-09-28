@@ -329,6 +329,71 @@ describe("formulário de cupom — Quem pode usar", () => {
     expect(container?.textContent).toContain("Na lista (1)");
   });
 
+  it("salvar que falha depois do otimista não deixa a lista travada", async () => {
+    // Revisão, 2ª rodada (R2-b): o update otimista virava o alcance para
+    // exclusivo, a falha revertia, e a tela ficava em "Carregando a lista…"
+    // com o salvar recusado para sempre.
+    const cupom = {
+      id: "cupom-1",
+      code: "NATAL",
+      type: "percentage",
+      value: 25,
+      minPurchase: 0,
+      usageLimit: 0,
+      active: true,
+      usageCount: 0,
+      alcance: "codigo",
+    };
+    estadoCoupons = { coupons: [cupom], loading: false };
+    lerClientesDoCupom.mockReturnValue(new Promise(() => {}));
+    buscarClientesParaCupom.mockResolvedValue([
+      { id: "u-ana", full_name: "Ana Prova", email: null },
+    ]);
+    const redesenhar = async () => {
+      await act(async () => {
+        root?.render(
+          <AdminCouponFormView
+            couponId="cupom-1"
+            onNavigate={onNavigate}
+            onSetDirty={() => {}}
+          />,
+        );
+      });
+    };
+    updateCoupon.mockImplementation(
+      async (_id: string, mudancas: Record<string, unknown>) => {
+        // Como o useCoupons real: otimista antes do await, reverte na falha.
+        estadoCoupons = {
+          coupons: [{ ...cupom, ...mudancas }],
+          loading: false,
+        };
+        await redesenhar();
+        estadoCoupons = { coupons: [cupom], loading: false };
+        await redesenhar();
+        throw new Error("duplicate key");
+      },
+    );
+    await montar("cupom-1");
+    await clicar(botao("Clientes escolhidos"));
+    await digitar("#coupon-clientes-busca", "an", 400);
+    await clicar(botao("Ana Prova"));
+    await clicar(botao("Salvar Cupom"));
+    await act(async () => {});
+
+    const busca = container?.querySelector(
+      "#coupon-clientes-busca",
+    ) as HTMLInputElement;
+    expect(busca.disabled).toBe(false);
+    expect(container?.textContent).not.toContain("Carregando a lista…");
+
+    toastError.mockClear();
+    updateCoupon.mockReset();
+    updateCoupon.mockResolvedValue(undefined);
+    definirClientesDoCupom.mockResolvedValue(undefined);
+    await clicar(botao("Salvar Cupom"));
+    expect(updateCoupon).toHaveBeenCalledTimes(1);
+  });
+
   it("vitrine sem limite nem validade mostra o aviso", async () => {
     await montar();
     await clicar(botao("Todos os clientes"));

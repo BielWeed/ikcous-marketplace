@@ -1004,7 +1004,7 @@ export function CheckoutView({
     if (pendente.conta !== null && agora === null) return;
     cupomPendenteDoRascunhoRef.current = null;
     if (pendente.conta === null || pendente.conta === agora) {
-      setAppliedCoupon({ code: pendente.codigo, discount: 0 });
+      setAppliedCoupon({ code: pendente.codigo, discount: 0, conta: agora });
     }
   }, [storeConfigLoaded, authLoading, user]);
 
@@ -1243,6 +1243,14 @@ export function CheckoutView({
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
+    /**
+     * DONO do cupom na tela (id da conta; null = convidado), gravado na hora
+     * do Aplicar/restauração/revalidação. O rascunho carimba ESTE dono —
+     * nunca a conta de agora: no commit em que a conta troca, o cupom velho
+     * ainda está no estado, e carimbá-lo com a conta nova o faria reaparecer
+     * na tela dela (revisão de risco, 2ª rodada, R2-1).
+     */
+    conta: string | null;
   } | null>(null);
   const [couponError, setCouponError] = useState<string>("");
   // Frente B: o código em validação agora (toque em "Aplicar") — trava o
@@ -1453,6 +1461,7 @@ export function CheckoutView({
           setAppliedCoupon({
             code: codigoDoCupom,
             discount: resultado.discount,
+            conta: user?.id ?? null,
           });
         } else {
           setAppliedCoupon(null);
@@ -1542,7 +1551,7 @@ export function CheckoutView({
           cupomPendenteDoRascunhoRef.current?.codigo ??
           null,
         contaDoCupom: cupomRef.current
-          ? contaRef.current
+          ? cupomRef.current.conta
           : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
       if (!rascunhoTemConteudo(rascunho)) return;
@@ -1573,7 +1582,7 @@ export function CheckoutView({
         cupomPendenteDoRascunhoRef.current?.codigo ??
         null,
       contaDoCupom: appliedCoupon
-        ? (user?.id ?? null)
+        ? appliedCoupon.conta
         : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
     if (!rascunhoTemConteudo(rascunho)) return;
@@ -2319,7 +2328,11 @@ export function CheckoutView({
 
       if (result.valid) {
         cupomConferidoRef.current = { code, subtotal, conta: contaQuePediu };
-        setAppliedCoupon({ code, discount: result.discount });
+        setAppliedCoupon({
+          code,
+          discount: result.discount,
+          conta: contaQuePediu,
+        });
       } else {
         setCouponError(result.message || "Cupom inválido");
         // O cupom da lista pode ter esgotado/vencido desde a última busca.
