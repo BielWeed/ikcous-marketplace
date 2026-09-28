@@ -60,7 +60,9 @@ vi.mock("@/contexts/StoreContext", () => ({
       storeName: "Loja do Gabriel",
       storeCity: "Manaus",
       storeState: "AM",
-      logoUrl: null,
+      // Logo larga cadastrada (como a da Savy): o cartão tem de preferir o
+      // ícone do app mesmo assim — o teste do ícone trava essa prioridade.
+      logoUrl: "https://exemplo.test/logo-larga.png",
       originCep: "69000-000",
     },
     isLoaded: true,
@@ -302,6 +304,7 @@ describe("Início do painel", () => {
       'section[aria-label="Sua loja"] img',
     );
     expect(imagem?.getAttribute("src")).toBe(buildIdentity.localUrls.icon_192);
+    expect(imagem?.getAttribute("src")).not.toBe("https://exemplo.test/logo-larga.png");
   });
 
   it("função ainda não criada no banco vira aviso honesto, não número zero", async () => {

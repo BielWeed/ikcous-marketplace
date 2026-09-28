@@ -80,7 +80,8 @@ function SecaoLojaProntaEEstoqueBaixo({
  * cabeçalho: pedido do dono (28/09), porque a logo-palavra "SAVY",
  * transparente e escura, sumia no quadrado escuro deste cartão. O ícone vem
  * quadrado, com fundo próprio e por loja — `buildIdentity` é a ficha que o
- * porteiro escreve para o host aberto. A logo cadastrada fica de reserva.
+ * porteiro escreve para o host aberto (`icon_192` é obrigatório nela). Se a
+ * imagem falhar, o `PerfilDaLoja` mostra a inicial.
  */
 function PerfilDaLojaComDados({
   responsavel,
@@ -89,7 +90,7 @@ function PerfilDaLojaComDados({
   return (
     <PerfilDaLoja
       nome={nomeDaLoja(config)}
-      logoUrl={buildIdentity.localUrls.icon_192 || config.logoUrl || null}
+      logoUrl={buildIdentity.localUrls.icon_192}
       cidade={config.storeCity ?? null}
       uf={config.storeState ?? null}
       responsavel={responsavel}
