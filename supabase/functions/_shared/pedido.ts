@@ -106,8 +106,28 @@ const ROTULO_DO_ONLINE = new Map<string, string>([
   ["debito", "Cartao de debito pelo site"],
 ]);
 
-export function rotuloDoPagamento(metodo: unknown, metodoOnline?: unknown): string {
+// Venda do BALCAO (canal presencial, frente A de 28/09/2026 — achado D3): o
+// e-mail dizia "Dinheiro na entrega" para quem pagou em dinheiro no caixa da
+// loja. Mesmo vocabulario da tela (`src/lib/forma-de-pagamento.ts`).
+const ROTULO_NO_BALCAO = new Map<string, string>([
+  ["pix", "PIX na chave da loja"],
+  ["card", "Cartao na maquininha"],
+  ["cash", "Dinheiro"],
+]);
+
+export function rotuloDoPagamento(
+  metodo: unknown,
+  metodoOnline?: unknown,
+  canal?: unknown,
+): string {
   const chave = String(metodo ?? "").toLowerCase();
+  if (canal === "presencial") {
+    if (chave === "online") {
+      return String(metodoOnline ?? "").toLowerCase() === "pix" ? "PIX com QR no balcao" : "Pagamento pelo app";
+    }
+    const noBalcao = ROTULO_NO_BALCAO.get(chave);
+    if (noBalcao) return noBalcao;
+  }
   if (chave === "online" && metodoOnline !== undefined && metodoOnline !== null && metodoOnline !== "") {
     return ROTULO_DO_ONLINE.get(String(metodoOnline).toLowerCase()) ?? "Pagamento pelo site";
   }
