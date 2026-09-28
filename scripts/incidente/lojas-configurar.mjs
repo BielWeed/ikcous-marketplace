@@ -132,7 +132,7 @@ for (const loja of lojas) {
         password: `${loja.prefixo_senha ?? ""}${senhaAdmin}`,
         email_confirm: true,
         app_metadata: { role: "admin" },
-        user_metadata: { name: `Admin ${loja.nome}` },
+        user_metadata: { name: loja.nome, full_name: loja.nome },
       };
       let r = await chamar(base, { metodo: "POST", headers: h, corpo });
       if (!r.ok && [400, 409, 422].includes(r.status)) {
