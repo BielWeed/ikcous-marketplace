@@ -206,6 +206,10 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
   });
 
   it("num dia ANTES do marco (saldo: null), o balão mostra “—” e nunca inventa o −R$ 187,40", () => {
+    // 3 dias (não 2): com só 1 saldo conhecido ("2+ pontos" é outro cenário,
+    // testado à parte em "painel de saldo com poucos pontos conhecidos") o
+    // AreaChart nem monta — este teste quer o caminho NORMAL (linha do saldo
+    // desenhada), só com um dia ANTES do marco no meio.
     const antesDoMarco: readonly PontoDoFluxo[] = [
       { dia: "2026-08-29", entradas: 0, saidas: 0, resultado: 0, saldo: null },
       {
@@ -215,6 +219,7 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
         resultado: 187.4,
         saldo: 0,
       },
+      { dia: "2026-08-31", entradas: 0, saidas: 0, resultado: 0, saldo: 0 },
     ];
     const tela = montar(
       <FluxoDeCaixaGrafico
@@ -247,5 +252,56 @@ describe("FluxoDeCaixaGrafico — um balão só por toque, com o sinal certo", (
     expect(texto).toContain("Sábado, 29 de agosto");
     expect(texto).toContain("—");
     expect(texto).not.toContain("187,40");
+
+    // Revisão independente (contraste): o "—" do balão estava em
+    // text-zinc-500 sobre o fundo do balão (#09090b/95%) — ~4,12:1, abaixo de
+    // AA (4,5:1) para texto de 11px. text-zinc-400 é o mesmo tom usado no
+    // resto do cartão (rótulos "Saldo"/"Entradas e saídas", a nota abaixo do
+    // gráfico) — já medido.
+    const spanDoTraco = [...balões[0]!.querySelectorAll("span")].find((el) =>
+      (el.textContent ?? "").trim().startsWith("—"),
+    );
+    expect(spanDoTraco).toBeTruthy();
+    expect(spanDoTraco?.className).toContain("text-zinc-400");
+    expect(spanDoTraco?.className).not.toContain("text-zinc-500");
+  });
+
+  it("na tabela 'Ver os números em tabela', o “—” de um dia sem saldo conhecido também usa zinc-400", () => {
+    // Dia COM movimento (entra na tabela — ela só lista `diasComMovimento`)
+    // mas ANTES do marco: acontece quando um lançamento antigo é importado
+    // depois de a conta já ter um saldo inicial mais recente.
+    const pontos: readonly PontoDoFluxo[] = [
+      {
+        dia: "2026-08-29",
+        entradas: 50,
+        saidas: 0,
+        resultado: 50,
+        saldo: null,
+      },
+      { dia: "2026-08-30", entradas: 0, saidas: 0, resultado: 0, saldo: 50 },
+    ];
+    const tela = montar(
+      <FluxoDeCaixaGrafico
+        pontos={pontos}
+        carregando={false}
+        ativo={true}
+        marco="2026-08-30"
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+
+    const linhas = [...tela.querySelectorAll("table tbody tr")];
+    const linhaDoDia = linhas.find((tr) =>
+      (tr.textContent ?? "").includes("29/08"),
+    );
+    expect(linhaDoDia).toBeTruthy();
+    const spanDoTraco = [
+      ...(linhaDoDia as HTMLElement).querySelectorAll("span"),
+    ].find((el) => (el.textContent ?? "").trim() === "—");
+    expect(spanDoTraco).toBeTruthy();
+    expect(spanDoTraco?.className).toContain("text-zinc-400");
+    expect(spanDoTraco?.className).not.toContain("text-zinc-500");
   });
 });

@@ -38,6 +38,20 @@ interface PontoDoGrafico extends PontoDoFluxo {
   readonly saidaNegativa: number;
 }
 
+/**
+ * Saldo com sinal, respeitando o "olho" que esconde valores — usada no
+ * balão e no painel que substitui o AreaChart quando há poucos pontos de
+ * saldo conhecido (ver `poucosPontosDeSaldo` mais abaixo). Achado do
+ * Gabriel: nunca `formatarBRL` puro aqui — ele devolve sempre o valor
+ * ABSOLUTO (certo para entradas/saídas, que nunca são negativas; errado
+ * para saldo, que pode ser negativo). `formatarBRLComSinal` só quando
+ * negativo: nunca um "+" na frente de saldo positivo.
+ */
+function formatarSaldoComSinal(valor: number, ocultos: boolean): string {
+  if (ocultos) return "R$ ••••";
+  return valor < 0 ? formatarBRLComSinal(valor) : formatarBRL(valor);
+}
+
 function ConteudoDoTooltip({
   active,
   payload,
@@ -94,23 +108,14 @@ function ConteudoDoTooltip({
           // reconstrução "hoje − Σ depois" não é válida aí (fin__saldos só
           // conta movimento com `data >= saldo_inicial_em`). Nunca inventar
           // um número; "—" é a resposta honesta.
-          <span className="text-right font-bold text-zinc-500">
+          <span className="text-right font-bold text-zinc-400">
             — <span className="font-normal">antes do saldo inicial</span>
           </span>
         ) : (
           <span
             className={`font-bold tabular-nums ${ponto.saldo < 0 ? "text-red-300" : "text-white"}`}
           >
-            {/* Achado do Gabriel: aqui era `formatarBRL`, que devolve sempre
-                o valor ABSOLUTO (certo para entradas/saídas, que nunca são
-                negativas) — o saldo apagava o sinal de "−" mesmo desenhado
-                abaixo de zero no gráfico. `formatarBRLComSinal` só quando
-                negativo: nunca um "+" na frente de saldo positivo. */}
-            {ocultos
-              ? "R$ ••••"
-              : ponto.saldo < 0
-                ? formatarBRLComSinal(ponto.saldo)
-                : formatarBRL(ponto.saldo)}
+            {formatarSaldoComSinal(ponto.saldo, ocultos)}
           </span>
         )}
       </p>
@@ -177,6 +182,18 @@ export function FluxoDeCaixaGrafico({
     () => pontos.filter((p) => p.entradas > 0 || p.saidas > 0),
     [pontos],
   );
+  // Achado da revisão independente: com o marco perto de hoje (bem provável
+  // na loja real — as contas de sistema nascem com `saldoInicialEm` = o dia
+  // em que a migration rodou), quase todo dia da janela fica com `saldo:
+  // null`. Um AreaChart com 0 ou 1 ponto de saldo VERDADEIRO desenha um eixo
+  // Y sem sentido (recharts inventa uma escala pro domínio de largura zero —
+  // "R$ 1, R$ 2, R$ 3, R$ 4") e nenhuma linha. Com menos de 2 pontos
+  // conhecidos, nem tentamos desenhar: um texto curto substitui o painel.
+  const pontosComSaldo = useMemo(
+    () => pontos.filter((p) => p.saldo !== null),
+    [pontos],
+  );
+  const poucosPontosDeSaldo = pontosComSaldo.length < 2;
 
   const eixoY = (
     <YAxis
@@ -238,70 +255,90 @@ export function FluxoDeCaixaGrafico({
           <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400">
             Saldo
           </p>
-          <div className="h-[110px] w-full min-w-0">
-            <ResponsiveContainer
-              width="100%"
-              height="100%"
-              minWidth={0}
-              debounce={150}
-            >
-              <AreaChart
-                data={dados}
-                syncId="fin-fluxo"
-                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+          {poucosPontosDeSaldo ? (
+            <div className="flex h-[56px] w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 px-3 text-center">
+              <p className="text-[11px] text-zinc-400">
+                {marco
+                  ? `O saldo aparece aqui a partir de ${formatarDataCurta(marco)}, data do saldo inicial das contas.`
+                  : "Ainda não há saldo suficiente nesta janela para desenhar a linha."}
+              </p>
+              {pontosComSaldo.length === 1 ? (
+                <p className="text-[11px] font-bold text-white">
+                  Saldo de hoje:{" "}
+                  {formatarSaldoComSinal(pontosComSaldo[0].saldo!, ocultos)}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="h-[110px] w-full min-w-0">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={0}
+                debounce={150}
               >
-                <defs>
-                  <linearGradient id="fin-saldo" x1="0" y1="0" x2="0" y2="1">
-                    <stop
-                      offset="5%"
-                      stopColor={COR_SALDO}
-                      stopOpacity={0.18}
-                    />
-                    <stop offset="95%" stopColor={COR_SALDO} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  vertical={false}
-                  stroke="#ffffff"
-                  strokeOpacity={0.04}
-                />
-                <XAxis dataKey="dia" hide />
-                {eixoY}
-                {/* Sem balão aqui — só o cursor tracejado, sincronizado com o
-                    gráfico de baixo pelo `syncId`. O balão de verdade é
-                    renderizado uma vez só, no `<Tooltip>` do BarChart. */}
-                <Tooltip
-                  content={() => null}
-                  cursor={{
-                    stroke: "rgba(255,255,255,0.15)",
-                    strokeDasharray: "4 4",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="saldo"
-                  stroke={COR_SALDO}
-                  strokeWidth={2}
-                  fill="url(#fin-saldo)"
-                  dot={false}
-                  // Dia antes do marco do saldo inicial chega com `saldo:
-                  // null` (achado do coordenador) — `connectNulls={false}`
-                  // (explícito, já é o padrão do recharts) deixa a linha
-                  // NASCER a partir do marco, em vez de "inventar" um trecho
-                  // ligando o último dia sem saldo conhecido ao primeiro com
-                  // saldo de verdade.
-                  connectNulls={false}
-                  activeDot={{
-                    r: 4,
-                    fill: COR_SALDO,
-                    stroke: "#09090b",
-                    strokeWidth: 2,
-                  }}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+                <AreaChart
+                  data={dados}
+                  syncId="fin-fluxo"
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="fin-saldo" x1="0" y1="0" x2="0" y2="1">
+                      <stop
+                        offset="5%"
+                        stopColor={COR_SALDO}
+                        stopOpacity={0.18}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor={COR_SALDO}
+                        stopOpacity={0}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    vertical={false}
+                    stroke="#ffffff"
+                    strokeOpacity={0.04}
+                  />
+                  <XAxis dataKey="dia" hide />
+                  {eixoY}
+                  {/* Sem balão aqui — só o cursor tracejado, sincronizado com
+                      o gráfico de baixo pelo `syncId`. O balão de verdade é
+                      renderizado uma vez só, no `<Tooltip>` do BarChart. */}
+                  <Tooltip
+                    content={() => null}
+                    cursor={{
+                      stroke: "rgba(255,255,255,0.15)",
+                      strokeDasharray: "4 4",
+                    }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="saldo"
+                    stroke={COR_SALDO}
+                    strokeWidth={2}
+                    fill="url(#fin-saldo)"
+                    dot={false}
+                    // Dia antes do marco do saldo inicial chega com `saldo:
+                    // null` (achado do coordenador) — `connectNulls={false}`
+                    // (explícito, já é o padrão do recharts) deixa a linha
+                    // NASCER a partir do marco, em vez de "inventar" um
+                    // trecho ligando o último dia sem saldo conhecido ao
+                    // primeiro com saldo de verdade.
+                    connectNulls={false}
+                    activeDot={{
+                      r: 4,
+                      fill: COR_SALDO,
+                      stroke: "#09090b",
+                      strokeWidth: 2,
+                    }}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Linha + rótulo entre os dois painéis: sem isto, o fim do eixo
               de cima ("−R$ 150") ficava colado no começo do eixo de baixo
@@ -371,9 +408,18 @@ export function FluxoDeCaixaGrafico({
       )}
       {marco && pontos.some((p) => p.saldo === null) ? (
         <p className="text-[11px] text-zinc-400">
-          O saldo só aparece a partir de {formatarDataCurta(marco)}, data do
-          saldo inicial das contas. Para ver antes disso, ajuste o saldo inicial
-          em Contas e categorias.
+          {poucosPontosDeSaldo ? (
+            // O painel que substitui o AreaChart (acima) já diz "a partir de
+            // DD/MM" — repetir aqui seria a MESMA frase duas vezes na tela;
+            // só a dica de ação fica de pé.
+            "Ajuste o saldo inicial em Contas e categorias para ver o saldo de dias anteriores."
+          ) : (
+            <>
+              O saldo só aparece a partir de {formatarDataCurta(marco)}, data do
+              saldo inicial das contas. Para ver antes disso, ajuste o saldo
+              inicial em Contas e categorias.
+            </>
+          )}
         </p>
       ) : null}
 
@@ -413,7 +459,7 @@ export function FluxoDeCaixaGrafico({
                   </td>
                   <td className="p-2 text-right text-white">
                     {p.saldo === null ? (
-                      <span className="text-zinc-500">—</span>
+                      <span className="text-zinc-400">—</span>
                     ) : (
                       <Dinheiro valor={p.saldo} />
                     )}

@@ -247,8 +247,8 @@ export function ContaFolha({
           </Campo>
         </div>
         <p className="-mt-2 text-[11px] text-zinc-500">
-          Quanto havia na conta nesse dia. O saldo de hoje é o saldo inicial
-          mais tudo o que entrou e menos tudo o que saiu depois dessa data.
+          Quanto a conta tinha no começo desse dia, antes dos lançamentos dele.
+          Lançamentos desse dia em diante entram no saldo de hoje.
         </p>
         <LinhaDoInterruptor
           id="fin-conta-ativa"
