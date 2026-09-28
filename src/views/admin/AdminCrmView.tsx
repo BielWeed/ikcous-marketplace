@@ -164,6 +164,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
           titulo="Dashboard CRM"
+          tituloEncolhe
           acoes={
             <button
               type="button"

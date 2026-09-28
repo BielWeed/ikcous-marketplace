@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { ReactNode } from "react";
 
 /**
@@ -16,11 +17,20 @@ import type { ReactNode } from "react";
  * A linha que abraça título e ações (padding/centralização) continua na
  * view de propósito: ela muda de contexto por tela — linha solta nas
  * listas vs. barra sticky com `max-w-4xl` nos ajustes — e não é cópia.
+ *
+ * `tituloEncolhe` (achado do dono, 28/09/2026): o título é `shrink-0` por
+ * padrão — nas 21 telas com título curto ("Pedidos", "Produtos"...) isso
+ * nunca foi problema, mas "Dashboard CRM" abaixo de ~356px empurrava as
+ * ações (o botão Sincronizar) para fora da tela. Como a view põe
+ * `overflow-x-clip` na raiz para não rolar de lado, o botão sumia em vez
+ * de rolar até ele. Opt-in por prop para não mudar nada nas outras 21
+ * telas (default preserva as mesmas classes de sempre).
  */
 export function AdminPageHeader({
   titulo,
   children,
   acoes,
+  tituloEncolhe = false,
 }: {
   /** Texto do título — a view passa o MESMO texto de antes. */
   titulo: string;
@@ -28,12 +38,35 @@ export function AdminPageHeader({
   children?: ReactNode;
   /** Lado direito da linha (botões de ação, alertas). */
   acoes?: ReactNode;
+  /**
+   * Deixa o título encolher e truncar (com "…") em vez de forçar a
+   * largura mínima do texto inteiro — usa em telas com título comprido e
+   * pouco espaço (hoje só o Dashboard CRM). Default `false`: comportamento
+   * idêntico ao de sempre.
+   */
+  tituloEncolhe?: boolean;
 }) {
   return (
     <>
-      <h1 className="flex shrink-0 select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl">
-        <span className="flex flex-nowrap items-baseline whitespace-nowrap">
-          <span className="italic text-white">{titulo}</span>
+      <h1
+        className={cn(
+          "flex select-none items-center gap-3 text-2xl font-black uppercase leading-none tracking-tighter md:text-3xl",
+          tituloEncolhe ? "min-w-0" : "shrink-0",
+        )}
+      >
+        <span
+          className={cn(
+            "flex items-baseline",
+            tituloEncolhe
+              ? "min-w-0 truncate"
+              : "flex-nowrap whitespace-nowrap",
+          )}
+        >
+          <span
+            className={cn("italic text-white", tituloEncolhe && "truncate")}
+          >
+            {titulo}
+          </span>
         </span>
         {children}
       </h1>
