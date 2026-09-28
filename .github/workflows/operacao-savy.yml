@@ -1,10 +1,15 @@
-# Temporário (28/09/2026): propagação da 1.5.10 ao banco da Savy. Etapa 1 = só
-# leitura (diagnóstico). Autorizado pelo dono no chat.
+# Temporário (28/09/2026): propagação da 1.5.10 ao banco da Savy
+# (gnjsrucsmjkajijrakzr). Diagnóstico só de leitura → prova das 10 migrations
+# (74–83) em BEGIN/ROLLBACK → apply uma a uma → as 11 edge functions da mesma
+# versão. Autorizado pelo dono no chat e aprovado por ele no modo "Perguntar".
 name: Operação — banco da Savy (temporário)
 on:
   push:
     branches: [infra/operacao-incidente]
-    paths: [scripts/incidente/savy.mjs, .github/workflows/operacao-savy.yml]
+    paths:
+      - scripts/incidente/savy.mjs
+      - scripts/incidente/savy-aplicar.mjs
+      - .github/workflows/operacao-savy.yml
 permissions:
   contents: read
 concurrency:
@@ -13,7 +18,7 @@ concurrency:
 jobs:
   savy:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -26,3 +31,28 @@ jobs:
           node scripts/incidente/savy.mjs
         env:
           SUPABASE_ACCESS_TOKEN_SAVY: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+      - name: Prova e apply das migrations 74–83
+        run: |
+          git worktree add --detach /tmp/super FETCH_HEAD
+          mkdir -p /tmp/mig
+          cp /tmp/super/supabase/migrations/2026117[4-9]*.sql /tmp/super/supabase/migrations/2026118[0-3]*.sql /tmp/mig/
+          ls /tmp/mig
+          node scripts/incidente/savy-aplicar.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Publica as 11 functions da 1.5.10 na Savy
+        working-directory: /tmp/super
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+        run: |
+          set -euo pipefail
+          for n in calculate-shipping credenciais-mercado-pago criar-pagamento estornar-pagamento \
+                   melhor-envio-etiqueta notify-new-order reconciliar-pagamentos \
+                   send-order-confirmation send-otp-email send-push webhook-mercadopago; do
+            echo "::group::supabase functions deploy $n --project-ref gnjsrucsmjkajijrakzr"
+            supabase functions deploy "$n" --project-ref gnjsrucsmjkajijrakzr
+            echo "::endgroup::"
+          done
