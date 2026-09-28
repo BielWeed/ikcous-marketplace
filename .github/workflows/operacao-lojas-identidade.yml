@@ -1,0 +1,30 @@
+# Temporário (28/09/2026): identidade (logo, ícones e cores) das lojas novas.
+name: Operação — identidade das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-identidade.mjs
+      - .github/workflows/operacao-lojas-identidade.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-identidade
+  cancel-in-progress: false
+jobs:
+  identidade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: npm install --prefix /tmp/ferr --no-save --no-audit --no-fund sharp@0.34
+      - name: Gera e grava a identidade
+        run: node scripts/incidente/lojas-identidade.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
+      - name: Confere as lojas pelo endereço
+        run: sleep 70 && node scripts/incidente/lojas-fumaca.mjs
