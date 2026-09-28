@@ -18,6 +18,17 @@ já existe nasce "Quem tiver o código"; a validação mantém a assinatura). Co
 antigo, o checkout só mostra o campo de digitar (sem lista, sem aviso), mas o painel **falha ao
 salvar** um cupom em que o lojista mudou "Quem pode usar" — por isso o banco vai primeiro.
 
+**Não marque nenhum cupom como "Clientes escolhidos" antes do passo 3 (front) estar no ar.** O
+checkout antigo guarda o código do cupom no rascunho da aba sem dizer de quem ele é: outra conta
+que entrar na mesma aba veria o código (não conseguiria usar — o banco recusa —, mas veria).
+
+**Resíduo conhecido (revisão de risco, B1):** quem não está na lista de um exclusivo e digita o
+código dele no pedido pode receber o motivo real da recusa ("exige compra mínima de R$ X",
+"expirou", "atingiu o limite", "está desativado") em vez de "não existe" — a mensagem vem da
+`create_marketplace_order_v24`, que roda antes do gatilho. Isso só revela que o código existe; o
+gatilho continua impedindo o uso. Por isso, para exclusivo, use o botão **Gerar** (código
+aleatório, difícil de adivinhar). Fechar isso exige reescrever a v24 — fica para um pedido à parte.
+
 ## 1. Migration 20261187000000
 
 GitHub → Actions → **Aplicar migrations (Supabase)** → Run workflow:
@@ -78,8 +89,11 @@ Deploy normal. Teste de fumaça no celular, com uma conta de teste:
   (recria a coluna com 0).
 - 20261187: [`rollback-manual-20261187000000_o_checkout_mostra_os_cupons_da_cliente.sql`](../../supabase/migrations/rollback-manual-20261187000000_o_checkout_mostra_os_cupons_da_cliente.sql).
   **Antes de rodar:** ele DESATIVA todo cupom exclusivo (senão, sem a regra do dono, o código
-  passaria a valer para qualquer um) e os cupons "Todos os clientes" somem do checkout. Reative à
-  mão, depois de conferir, o que fizer sentido.
+  passaria a valer para qualquer um) e os cupons "Todos os clientes" somem do checkout.
+  **Atenção ao reativar:** depois do rollback (e mesmo se a 20261187 for reaplicada), os
+  ex-exclusivos voltam como "Quem tiver o código" — reativar um deles o abre para QUALQUER pessoa
+  que tenha o código. Só reative o que pode ser público, ou reaplique a migration e marque de novo
+  "Clientes escolhidos" com a lista antes de reativar.
 
 Os rollbacks não passam pelo workflow (ele só aceita nomes `AAAAMMDDHHMMSS_*.sql`): rode no SQL
 Editor, arquivo inteiro de uma vez.

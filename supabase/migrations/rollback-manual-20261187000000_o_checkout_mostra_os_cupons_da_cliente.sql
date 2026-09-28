@@ -1,15 +1,18 @@
 -- ============================================================================
 -- Rollback manual — O checkout mostra os cupons da cliente (20261187000000)
 -- ============================================================================
--- Desfaz na ordem inversa. SEM BEGIN/COMMIT (regra da casa) — rode pelo
--- workflow ou num `psql -1`, que já é uma transação só.
+-- Desfaz na ordem inversa. SEM BEGIN/COMMIT (regra da casa). O workflow
+-- aplicar-migrations.yml NÃO aceita este nome (só AAAAMMDDHHMMSS_*.sql): rode
+-- no SQL Editor do projeto, o arquivo inteiro de uma vez (uma transação só),
+-- como diz docs/runbooks/publicar-cupons-no-checkout.md.
 --
 -- ATENÇÃO (decisão do dono antes de rodar): cupons 'vitrine' voltam a ser
 -- secretos (somem do checkout) e cupons 'exclusivo' viram cupons de código
 -- comum — QUALQUER pessoa com o código passa a poder usar. Por isso o passo 1
 -- DESATIVA os exclusivos antes de apagar a coluna: a volta nunca abre um
--- exclusivo para todo mundo em silêncio. Reative à mão, depois de conferir,
--- o que fizer sentido.
+-- exclusivo para todo mundo em silêncio. Reativar um deles depois (mesmo com
+-- a 20261187 reaplicada, que o devolve como 'codigo') o torna público para
+-- quem tiver o código — só reative o que pode ser público.
 
 -- 1. Exclusivo nunca vira público na volta.
 UPDATE public.coupons SET active = false WHERE alcance = 'exclusivo';

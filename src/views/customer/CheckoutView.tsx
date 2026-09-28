@@ -1428,6 +1428,10 @@ export function CheckoutView({
         if (!vivo) return;
         if (resultado.networkError) return;
         if (resultado.valid) {
+          // O par que ACABOU de ser validado vira a referência: subtotal que
+          // vai e volta (100 → 150 → 100) revalida de novo em vez de manter
+          // o desconto de 150 (revisão de risco, M1).
+          cupomConferidoRef.current = { code: codigoDoCupom, subtotal };
           setAppliedCoupon({
             code: codigoDoCupom,
             discount: resultado.discount,

@@ -23,8 +23,11 @@ let respostaDaValidacao: () => Promise<{
   discount: number;
   message?: string;
 }> = async () => ({ valid: true, discount: 15 });
-const validateCoupon = vi.fn((_codigo: string, _subtotal: number) =>
-  respostaDaValidacao(),
+let descontoPorSubtotal: ((subtotal: number) => number) | null = null;
+const validateCoupon = vi.fn((_codigo: string, subtotal: number) =>
+  descontoPorSubtotal
+    ? Promise.resolve({ valid: true, discount: descontoPorSubtotal(subtotal) })
+    : respostaDaValidacao(),
 );
 
 const CUPONS: CupomDisponivel[] = [
@@ -174,6 +177,7 @@ async function esvaziarFila() {
 beforeEach(() => {
   validateCoupon.mockClear();
   respostaDaValidacao = async () => ({ valid: true, discount: 15 });
+  descontoPorSubtotal = null;
   mockUser = null;
   mockAuthLoading = false;
   sessionStorage.clear();
@@ -271,6 +275,35 @@ describe("CheckoutView — seção de cupons disponíveis", () => {
     await esvaziarFila();
     expect(hospedeiro.textContent).toContain("VIP15 aplicado");
     expect(validateCoupon).toHaveBeenCalledWith("VIP15", 100);
+  });
+
+  it("subtotal que vai e volta (100 → 150 → 100) revalida e volta ao desconto de 100", async () => {
+    // Revisão de risco, M1: o atalho da revalidação guardava só o par do
+    // toque — na volta para 100 a tela ficava com o desconto de 150.
+    descontoPorSubtotal = (subtotal) => subtotal / 10;
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    const comSubtotal = async (subtotal: number) => {
+      await act(async () => {
+        raiz.render(
+          <CheckoutView
+            subtotal={subtotal}
+            onNavigate={onNavigate}
+            onSetBackOverride={onSetBackOverride}
+          />,
+        );
+      });
+      await esvaziarFila();
+    };
+    await comSubtotal(100);
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a010,00");
+    await comSubtotal(150);
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
+    await comSubtotal(100);
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a010,00");
   });
 
   it("trocar de conta com o checkout aberto tira o cupom aplicado", async () => {

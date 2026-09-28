@@ -76,4 +76,7 @@ reais no corpo do PR.
 ## Fora desta frente
 
 D5 (limite por cliente), defeitos 9–11 e 14 da investigação (oráculo da validação para anon, CHECK
-de `value`, `UNIQUE(code)` sensível a caixa, pedido de R$ 0,00 online), D8.
+de `value`, `UNIQUE(code)` sensível a caixa, pedido de R$ 0,00 online), D8, e o resíduo B1 da
+revisão de risco: a `create_marketplace_order_v24` diz o motivo real (mínimo, validade, limite,
+desativado) a quem digita o código de um exclusivo que não é seu, antes de o gatilho recusar — só
+revela que o código existe; fechar exige reescrever a v24 (mitigação: botão "Gerar" código).
