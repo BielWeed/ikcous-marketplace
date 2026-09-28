@@ -180,7 +180,15 @@ export const CuponsDoCheckout = memo(function CuponsDoCheckout({
   const outros = cupons.filter(
     (c) => c.codigo.toUpperCase() !== codigoAplicado,
   );
-  const melhor = melhorCupom(outros);
+  // "Melhor opção" só quando economiza MAIS que o cupom já aplicado.
+  const candidatoAMelhor = melhorCupom(outros);
+  const melhor =
+    candidatoAMelhor &&
+    (!appliedCoupon ||
+      (outros.find((c) => c.codigo === candidatoAMelhor)?.desconto ?? 0) >
+        appliedCoupon.discount)
+      ? candidatoAMelhor
+      : null;
   const visiveis = verTodos ? outros : outros.slice(0, VISIVEIS_DE_INICIO);
   const escondidos = outros.length - visiveis.length;
 

@@ -306,6 +306,57 @@ describe("CheckoutView — seção de cupons disponíveis", () => {
     expect(hospedeiro.textContent).toContain("Você economiza R$\u00a010,00");
   });
 
+  it("convidado aplica, entra na conta e volta: o cupom fica e é revalidado para a conta", async () => {
+    // Revisão, I1: o funil da P6 manda o convidado entrar na conta no meio
+    // do checkout — cupom de convidado nunca é exclusivo, então volta.
+    mockUser = null;
+    await renderizar();
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    mockUser = { id: "conta-ana" };
+    await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    // Uma validação do toque + uma revalidação para a conta nova.
+    expect(validateCoupon).toHaveBeenCalledTimes(2);
+  });
+
+  it("validação em voo da conta A não aplica o cupom na tela da conta B", async () => {
+    // Revisão, I2: a resposta que chega depois da troca é descartada.
+    let soltar: (v: { valid: boolean; discount: number }) => void = () => {};
+    respostaDaValidacao = () =>
+      new Promise((r) => {
+        soltar = r;
+      });
+    mockUser = { id: "conta-ana" };
+    const CheckoutView = await renderizar();
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    mockUser = { id: "conta-bia" };
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await act(async () => {
+      soltar({ valid: true, discount: 15 });
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+    expect(sessionStorage.getItem(CHAVE_DO_RASCUNHO) ?? "").not.toContain(
+      "VIP15",
+    );
+  });
+
   it("trocar de conta com o checkout aberto tira o cupom aplicado", async () => {
     mockUser = { id: "conta-ana" };
     const CheckoutView = await renderizar();

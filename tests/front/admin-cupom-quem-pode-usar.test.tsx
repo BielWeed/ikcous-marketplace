@@ -233,11 +233,105 @@ describe("formulário de cupom — Quem pode usar", () => {
     expect(container?.textContent).toContain("Bia Prova");
   });
 
+  it("o fetch dos cupons chegando no meio da carga não perde a lista gravada", async () => {
+    // Revisão, B2: um array novo de `coupons` cancelava a carga e a tela
+    // ficava em "Carregando a lista…"; salvar trocava a lista real.
+    const cupom = {
+      id: "cupom-2",
+      code: "VIPBIA",
+      type: "fixed",
+      value: 10,
+      active: true,
+      usageCount: 0,
+      alcance: "exclusivo",
+    };
+    estadoCoupons = { coupons: [cupom], loading: false };
+    let resolver: (v: unknown) => void = () => {};
+    lerClientesDoCupom.mockReturnValue(
+      new Promise((r) => {
+        resolver = r;
+      }),
+    );
+    buscarClientesParaCupom.mockResolvedValue([
+      { id: "u-caio", full_name: "Caio Novo", email: null },
+    ]);
+    updateCoupon.mockResolvedValue(undefined);
+    definirClientesDoCupom.mockResolvedValue(undefined);
+    await montar("cupom-2");
+
+    // Salvar enquanto a lista carrega é recusado.
+    await clicar(botao("Salvar Cupom"));
+    expect(updateCoupon).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      "Aguarde: a lista de clientes deste cupom ainda está carregando.",
+    );
+
+    estadoCoupons = { coupons: [{ ...cupom }], loading: false };
+    await act(async () => {
+      root?.render(
+        <AdminCouponFormView
+          couponId="cupom-2"
+          onNavigate={onNavigate}
+          onSetDirty={() => {}}
+        />,
+      );
+    });
+    await act(async () => {
+      resolver([
+        { id: "u-bia", nome: "Bia Prova", email: null },
+        { id: "u-duda", nome: "Duda", email: null },
+      ]);
+    });
+    await act(async () => {});
+    expect(container?.textContent).toContain("Na lista (2)");
+
+    await digitar("#coupon-clientes-busca", "ca", 400);
+    await clicar(botao("Caio Novo"));
+    await clicar(botao("Salvar Cupom"));
+    expect(definirClientesDoCupom).toHaveBeenCalledWith("cupom-2", [
+      "u-bia",
+      "u-caio",
+      "u-duda",
+    ]);
+  });
+
+  it("lista que não carregou trava a edição e o salvar, e oferece carregar de novo", async () => {
+    estadoCoupons = {
+      coupons: [
+        {
+          id: "cupom-3",
+          code: "VIPX",
+          type: "fixed",
+          value: 10,
+          active: true,
+          usageCount: 0,
+          alcance: "exclusivo",
+        },
+      ],
+      loading: false,
+    };
+    lerClientesDoCupom.mockRejectedValueOnce(new Error("rede"));
+    await montar("cupom-3");
+    expect(container?.textContent).toContain("não carregou");
+    const busca = container?.querySelector(
+      "#coupon-clientes-busca",
+    ) as HTMLInputElement;
+    expect(busca.disabled).toBe(true);
+    await clicar(botao("Salvar Cupom"));
+    expect(updateCoupon).not.toHaveBeenCalled();
+    expect(definirClientesDoCupom).not.toHaveBeenCalled();
+
+    lerClientesDoCupom.mockResolvedValueOnce([
+      { id: "u-x", nome: "Xis", email: null },
+    ]);
+    await clicar(botao("Carregar de novo"));
+    await act(async () => {});
+    expect(container?.textContent).toContain("Na lista (1)");
+  });
+
   it("vitrine sem limite nem validade mostra o aviso", async () => {
     await montar();
     await clicar(botao("Todos os clientes"));
-    expect(container?.textContent).toContain(
-      "sem limite de uso nem validade",
-    );
+    expect(container?.textContent).toContain("sem limite de uso nem validade");
   });
 });

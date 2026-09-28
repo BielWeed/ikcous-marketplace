@@ -64,6 +64,9 @@ export interface QuemPodeUsarOCupomProps {
   readonly clientes: readonly ClienteDoCupom[];
   readonly onClientes: (clientes: ClienteDoCupom[]) => void;
   readonly carregandoClientes: boolean;
+  /** A lista gravada não carregou: nada de editar/salvar até carregar. */
+  readonly falhaAoCarregar?: boolean;
+  readonly onCarregarDeNovo?: () => void;
   readonly buscarClientes: (
     termo: string,
   ) => Promise<readonly ClienteEncontrado[]>;
@@ -78,6 +81,8 @@ export function QuemPodeUsarOCupom({
   clientes,
   onClientes,
   carregandoClientes,
+  falhaAoCarregar = false,
+  onCarregarDeNovo,
   buscarClientes,
   semLimiteNemValidade,
   desabilitado,
@@ -90,6 +95,9 @@ export function QuemPodeUsarOCupom({
   const [erroDaBusca, setErroDaBusca] = useState(false);
   const rodadaRef = useRef(0);
   const esperaRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Lista gravada ainda carregando (ou que falhou): não se mexe nela.
+  const listaTravada = carregandoClientes || falhaAoCarregar;
 
   function aoDigitar(valor: string): void {
     setTermo(valor);
@@ -203,6 +211,7 @@ export function QuemPodeUsarOCupom({
             <input
               id="coupon-clientes-busca"
               type="search"
+              disabled={listaTravada}
               autoComplete="off"
               value={termo}
               onChange={(e) => aoDigitar(e.target.value)}
@@ -238,7 +247,7 @@ export function QuemPodeUsarOCupom({
                     <button
                       type="button"
                       onClick={() => adicionar(c)}
-                      disabled={jaEsta}
+                      disabled={jaEsta || listaTravada}
                       className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg px-2 text-left hover:bg-white/[0.05] disabled:opacity-50"
                     >
                       <span className="min-w-0">
@@ -268,7 +277,22 @@ export function QuemPodeUsarOCupom({
                 ? "Carregando a lista…"
                 : `Na lista (${clientes.length})`}
             </p>
-            {!carregandoClientes && clientes.length === 0 && (
+            {falhaAoCarregar && (
+              <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-red-500/20 bg-red-500/10 p-2">
+                <p role="alert" className="text-[11px] text-red-300">
+                  A lista de clientes deste cupom não carregou. Nada pode ser
+                  mudado nela até carregar.
+                </p>
+                <button
+                  type="button"
+                  onClick={onCarregarDeNovo}
+                  className="min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-white/10"
+                >
+                  Carregar de novo
+                </button>
+              </div>
+            )}
+            {!listaTravada && clientes.length === 0 && (
               <p className="text-[11px] text-amber-300">
                 Nenhum cliente ainda — sem ninguém na lista, ninguém consegue
                 usar este cupom.
@@ -289,6 +313,7 @@ export function QuemPodeUsarOCupom({
                   <button
                     type="button"
                     onClick={() => remover(c.id)}
+                    disabled={listaTravada}
                     aria-label={`Tirar ${c.nome || c.email || "cliente"} da lista`}
                     className="flex size-7 shrink-0 items-center justify-center rounded-full text-zinc-400 hover:bg-white/10 hover:text-white"
                   >

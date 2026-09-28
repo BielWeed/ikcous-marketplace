@@ -126,6 +126,22 @@ describe("useCuponsDoCheckout", () => {
     expect(ultimo?.cupons.map((c) => c.codigo)).toEqual(["B"]);
   });
 
+  it("falha depois de mudar o subtotal tira a lista velha da tela", async () => {
+    // Revisão, M3: os "faltam R$ X" eram do subtotal anterior.
+    rpc.mockResolvedValueOnce({ data: [linha("A")], error: null });
+    const trocar = await montar({ subtotal: 50, userId: null, ligado: true });
+    await esperarPausa();
+    expect(ultimo?.cupons).toHaveLength(1);
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: { message: "Failed to fetch" },
+    });
+    await trocar({ subtotal: 90, userId: null, ligado: true });
+    await esperarPausa();
+    expect(ultimo?.situacao).toBe("erro");
+    expect(ultimo?.cupons).toEqual([]);
+  });
+
   it("resposta atrasada de um subtotal velho é descartada", async () => {
     let soltarVelha: (v: unknown) => void = () => {};
     rpc

@@ -68,6 +68,9 @@ export function useCuponsDoCheckout({ subtotal, userId, ligado }: Parametros) {
           setSituacao("indisponivel");
           return;
         }
+        // A lista de antes era de OUTRO subtotal ("faltam R$ X" velho): sai
+        // da tela e fica o "Tentar de novo" (revisão, M3).
+        setCupons((antes) => (antes.length === 0 ? antes : []));
         setSituacao("erro");
         return;
       }

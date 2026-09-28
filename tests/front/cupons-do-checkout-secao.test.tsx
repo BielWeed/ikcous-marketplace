@@ -156,6 +156,16 @@ describe("CuponsDoCheckout", () => {
     );
   });
 
+  it("com um cupom aplicado, 'Melhor opção' só aparece se economiza MAIS", () => {
+    // Revisão, M1: com VIP15 aplicado, VITRINE10 (10) não é "melhor".
+    montar({ appliedCoupon: { code: "VIP15", discount: 15 } });
+    expect(hospedeiro.textContent).not.toContain("Melhor opção");
+    act(() => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    montar({ appliedCoupon: { code: "QUARTO5", discount: 5 } });
+    expect(cartoes()[0].textContent).toContain("Melhor opção");
+  });
+
   it("cupom restaurado (desconto 0) diz que está conferindo, não 'R$ 0,00'", () => {
     montar({ appliedCoupon: { code: "VIP15", discount: 0 } });
     expect(hospedeiro.textContent).toContain("Conferindo o desconto…");

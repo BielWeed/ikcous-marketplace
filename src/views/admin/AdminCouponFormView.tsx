@@ -73,8 +73,13 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
   // sem lista vale para ninguém).
   const [clientes, setClientes] = useState<ClienteDoCupom[]>([]);
   const [clientesIniciais, setClientesIniciais] = useState<string[]>([]);
-  const [carregandoClientes, setCarregandoClientes] = useState(false);
-  const clientesCarregadosRef = useRef<string | null>(null);
+  // Estado EXPLÍCITO da lista gravada (revisão, B2): enquanto ela não
+  // carregou, `[]` NÃO é "ninguém" — editar e salvar ficam travados, senão o
+  // salvar trocaria a lista real por uma vazia/parcial sem aviso.
+  const [listaDoExclusivo, setListaDoExclusivo] = useState<
+    "nao_se_aplica" | "carregando" | "ok" | "falhou"
+  >("nao_se_aplica");
+  const [tentativaDaLista, setTentativaDaLista] = useState(0);
   const editingCoupon = couponId
     ? coupons.find((c) => c.id === couponId)
     : null;
@@ -130,32 +135,31 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     // já digitou nesta tela antes da carga chegar.
   }, [couponId, coupons, formData]);
 
-  // Lista do exclusivo: carrega UMA vez por cupom, quando ele é exclusivo.
+  // Lista do exclusivo: depende só de VALORES (id e alcance gravado) — um
+  // array novo de `coupons` (o fetch do hook chegando) não cancela a carga.
+  const alcanceGravado = editingCoupon?.alcance;
   useEffect(() => {
-    if (!couponId || clientesCarregadosRef.current === couponId) return;
-    const editing = coupons.find((c) => c.id === couponId);
-    if (!editing || editing.alcance !== "exclusivo") return;
-    clientesCarregadosRef.current = couponId;
+    if (!couponId || alcanceGravado !== "exclusivo") return;
     let vivo = true;
-    setCarregandoClientes(true);
+    setListaDoExclusivo("carregando");
     lerClientesDoCupom(couponId)
       .then((lista) => {
         if (!vivo) return;
         setClientes(lista);
         setClientesIniciais(lista.map((c) => c.id).sort());
+        setListaDoExclusivo("ok");
       })
       .catch(() => {
         if (!vivo) return;
-        clientesCarregadosRef.current = null;
+        setListaDoExclusivo("falhou");
         toast.error("Não foi possível carregar os clientes deste cupom.");
-      })
-      .finally(() => {
-        if (vivo) setCarregandoClientes(false);
       });
     return () => {
       vivo = false;
     };
-  }, [couponId, coupons, lerClientesDoCupom]);
+  }, [couponId, alcanceGravado, lerClientesDoCupom, tentativaDaLista]);
+  const listaTravada =
+    listaDoExclusivo === "carregando" || listaDoExclusivo === "falhou";
 
   const idsDosClientes = clientes.map((c) => c.id).sort();
   const clientesMudaram =
@@ -230,6 +234,14 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     }
 
     const alcance = formData.alcance ?? "codigo";
+    if (listaTravada) {
+      toast.error(
+        listaDoExclusivo === "carregando"
+          ? "Aguarde: a lista de clientes deste cupom ainda está carregando."
+          : "A lista de clientes deste cupom não carregou. Tente carregar de novo antes de salvar.",
+      );
+      return;
+    }
     if (alcance === "exclusivo" && clientes.length === 0) {
       toast.error("Escolha pelo menos um cliente para o cupom exclusivo.");
       return;
@@ -626,7 +638,9 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                 }
                 clientes={clientes}
                 onClientes={setClientes}
-                carregandoClientes={carregandoClientes}
+                carregandoClientes={listaDoExclusivo === "carregando"}
+                falhaAoCarregar={listaDoExclusivo === "falhou"}
+                onCarregarDeNovo={() => setTentativaDaLista((n) => n + 1)}
                 buscarClientes={buscarClientesParaCupom}
                 semLimiteNemValidade={
                   !formData.validUntil && !Number(formData.usageLimit)
