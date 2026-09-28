@@ -68,17 +68,19 @@ function almeida() {
 
 // ---------- Space: fênix preta, "A LOJA DOS KIT", SPACE geométrica pesada.
 function space() {
-  const fenix = `<g transform="translate(532 292) scale(0.95)" fill="#0B0B0B">
-    <path d="M100 78 C92 70 88 60 90 50 C82 50 74 54 68 58 L78 46 C84 40 94 36 104 38 L118 28 L112 42 C120 50 122 62 116 74 Z"/>
-    <path d="M94 82 L66 70 L6 22 L42 44 L18 8 L52 36 L36 0 L64 30 L58 4 L78 34 L76 14 L96 62 Z"/>
-    <path d="M110 82 L140 70 L198 22 L162 44 L186 8 L152 36 L168 0 L140 30 L146 4 L126 34 L128 14 L110 62 Z"/>
-    <path d="M86 80 C84 104 90 124 102 136 C114 124 120 104 118 80 Z"/>
-    <path d="M96 132 L74 182 L96 160 L102 188 L108 160 L130 182 L108 132 Z"/></g>`;
+  // Fênix heráldica: asas abertas para cima com penas, cabeça virada para a
+  // esquerda com crista, corpo e cauda em chama (como no perfil).
+  const fenix = `<g transform="translate(546 330) scale(0.8)" fill="#0B0B0B">
+    <path d="M96 78 L60 84 L28 70 L6 48 L-18 10 L4 16 L-6 -16 L18 4 L10 -30 L34 -2 L32 -38 L52 -6 L56 -36 L68 0 L78 -22 L84 20 L92 50 Z" stroke="#0B0B0B" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M104 78 L140 84 L172 70 L194 48 L218 10 L196 16 L206 -16 L182 4 L190 -30 L166 -2 L168 -38 L148 -6 L144 -36 L132 0 L122 -22 L116 20 L108 50 Z" stroke="#0B0B0B" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M102 64 C90 64 84 56 84 46 L70 42 L84 34 C86 24 94 18 104 18 L110 2 L112 16 L126 4 L118 24 C122 34 120 52 110 60 Z"/>
+    <path d="M88 66 C84 94 88 120 101 142 C114 120 118 94 114 66 Z"/>
+    <path d="M94 134 C88 152 80 164 68 174 C82 172 92 164 96 154 C96 166 98 178 101 188 C104 178 106 166 106 154 C110 164 120 172 134 174 C122 164 114 152 108 134 Z"/></g>`;
   const loja = texto(fonte.semi, "A LOJA DOS KIT", { tam: 44, x: 232, y: 470, tracking: 2 });
   const nome = texto(fonte.black, "SPACE", { tam: 150, x: 226, y: 590, largura: 548, tracking: 18 });
   const marca = `${fenix}<path d="${loja.d}" fill="#0B0B0B"/><path d="${nome.d}" fill="#0B0B0B"/>`;
   const circulo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="500" fill="#FFFFFF"/>${marca}</svg>`;
-  const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="214 272 572 336">${marca}</svg>`;
+  const topo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="214 250 572 360">${marca}</svg>`;
   return { circulo, topo, fundo: "#FFFFFF" };
 }
 
