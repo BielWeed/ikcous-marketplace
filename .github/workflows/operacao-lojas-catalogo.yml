@@ -1,0 +1,30 @@
+# Temporário (28/09/2026): importa o catálogo curado (a partir do Instagram
+# público de cada cliente) nas lojas novas.
+name: Operação — catálogo das lojas novas (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/lojas-catalogo.mjs
+      - scripts/incidente/catalogos/**
+      - .github/workflows/operacao-lojas-catalogo.yml
+permissions:
+  contents: read
+concurrency:
+  group: lojas-catalogo
+  cancel-in-progress: false
+jobs:
+  catalogo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: npm install --prefix /tmp/ferr --no-save --no-audit --no-fund sharp@0.34
+      - name: Importa os catálogos
+        run: node scripts/incidente/lojas-catalogo.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_CONTA2: ${{ secrets.SUPABASE_ACCESS_TOKEN_CONTA2 }}
