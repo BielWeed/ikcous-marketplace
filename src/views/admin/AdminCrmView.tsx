@@ -169,7 +169,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
               type="button"
               disabled={sincronizando || isOffline}
               onClick={sincronizar}
-              className="group flex min-h-11 items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
+              className="group flex min-h-11 items-center gap-3 rounded-2xl border border-solid border-white/10 bg-white/5 px-4 py-2 transition-all hover:bg-white/10 disabled:opacity-50 sm:px-6 sm:py-3"
               aria-label="Sincronizar os números do CRM"
             >
               <RefreshCw
@@ -188,7 +188,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           <button
             type="button"
             onClick={() => setMostrarAjuda(true)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-solid border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
             title="Guia de Ajuda e Informações"
             aria-label="Guia de Ajuda e Informações"
           >
@@ -288,7 +288,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                     aria-pressed={escolhido}
                     onClick={() => setPeriodo(item.id)}
                     className={cn(
-                      "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-lg border px-1 text-center text-[11px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5",
+                      "flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-lg border border-solid px-1 text-center text-[11px] font-bold transition-colors lg:w-auto lg:shrink-0 lg:px-3.5",
                       FOCO_DO_CRM,
                       escolhido
                         ? "border-admin-gold/40 bg-admin-gold/15 text-admin-gold"
@@ -323,7 +323,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
             <button
               type="button"
               onClick={atualizarVisao}
-              className="flex min-h-11 shrink-0 items-center rounded-xl border border-red-500/20 px-3 text-[10px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10"
+              className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[10px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10"
             >
               Tentar de novo
             </button>
