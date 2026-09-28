@@ -15,7 +15,8 @@
       "nome": "Almeida Store",
       "frota_id": "cliente-02",
       "slug": "almeidastore",
-      "admin_email": "ikcous.imports+almeidastore@gmail.com"
+      "admin_email": "ikcous.imports+almeidastore@gmail.com",
+      "prefixo_senha": "AlmeidaStore"
     },
     {
       "perfil": "brand_meliz",
@@ -25,7 +26,8 @@
       "nome": "Brand Meliz",
       "frota_id": "cliente-03",
       "slug": "brandmeliz",
-      "admin_email": "ikcous.imports+brandmeliz@gmail.com"
+      "admin_email": "ikcous.imports+brandmeliz@gmail.com",
+      "prefixo_senha": "BrandMeliz"
     },
     {
       "perfil": "space_lojadoskit",
@@ -35,7 +37,8 @@
       "nome": "Space Loja dos Kit",
       "frota_id": "cliente-04",
       "slug": "spacelojadoskit",
-      "admin_email": "ikcous.imports+spacelojadoskit@gmail.com"
+      "admin_email": "ikcous.imports+spacelojadoskit@gmail.com",
+      "prefixo_senha": "SpaceLojaDosKit"
     }
   ]
 }
