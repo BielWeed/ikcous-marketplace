@@ -182,6 +182,63 @@ token (j) e mascararia as pendências f/i — publicação ilusória. Atualizaç
 coordenação (29/09): destino pela **#718 mínima** e check pelo **#717**;
 #671 amplo fora. **Nenhum deploy ao projeto antigo pausado.**
 
+## 6.2 ESTÁGIOS SEM PIX REAL PAGO (restrição explícita do dono, 29/09: zero custo)
+
+O dono NÃO pagará compra PIX de teste. O gate "PIX real observado" foi
+REESTRUTURADO em estágios — cada um declara o que PROVA e o que NÃO prova.
+
+**Estágio A — publicar INERTE (zero custo, zero cliente impactado).**
+Fundado nos travadores REAIS do código: (1) checkout online só aparece com
+`pagamentoOnline === true` na configuração da loja (`configuracaoDaLoja.ts`,
+falha fechada); (2) PIX é bloqueado NO SERVIDOR sem chave própria de
+assinatura da loja (`criar-pagamento` → 409 `pixSemChaveDeAssinatura`,
+frente 3 — flag por loja de fato); (3) cartão nasce DESLIGADO em
+`config_pagamento_cartao` e só o dono liga após pedido de teste. Logo:
+publicar as functions com a loja sem credencial válida/chave própria
+mantém TODO meio online inerte — "na entrega" segue normal. PROVA:
+código no ar sem regressão. NÃO PROVA: nada sobre dinheiro.
+
+**Estágio B — validações GRATUITAS oficiais (test mode, sem custo).**
+Com credenciais de TESTE do MP (APP_USR) + projeto sandbox, segundo a doc
+oficial atual:
+- **PIX**: doc "Realizar uma compra teste com Pix" (checkout-api-orders/
+  integration-test/pix) — order com valores PREDEFINIDOS
+  (`payer.first_name: "APRO"`) nasce `action_required`/`waiting_transfer`
+  **com QR completo** e o status **muda sozinho para approved** — ciclo
+  criação→QR→aprovação SEM pagar nada. PROVA: contrato da criação, forma do
+  QR, transição de status, leitura da reconciliação/retomada contra dados
+  com shape do MP. NÃO PROVA: trilha bancária real de PIX, credenciais de
+  produção, prazo real de expiração.
+- **Webhook + assinatura**: doc de notificações — URL de TESTE +
+  **"Simular notificação"** (tipo de evento + Data ID, envio assinado com a
+  chave secreta da aplicação) contra o webhook do sandbox. PROVA: validação
+  HMAC (`x-signature`), reconsulta, `confirmar_pagamento` idempotente,
+  handlers. NÃO PROVA: entrega assíncrona real em produção com credencial
+  produtiva (atrasos/retries vivos).
+- **Cartão**: matriz oficial de testes (APRO/OTHE/CONT/CALL… + cartões de
+  teste) via Brick — valida 3DS/recusas/sentinela. Meio segue DESLIGADO em
+  produção; NÃO PROVA: adquirente real.
+- **Estorno**: doc oficial — refund de teste com token APP_USR. PROVA:
+  interpretação de status/regras novas (terminal do refund da linha).
+  NÃO PROVA: tempos/status reais do MP produtivo (ressalva T8 de sempre).
+
+**Estágio C — primeiro PIX REAL sem custo do dono (decisão dele).**
+Caminho sem adiantamento: a loja é real e vive — o primeiro PIX real pode
+ser **compra voluntária de um cliente** após o dono liberar (credenciais
+produtivas + chave própria + webhook produtivo com a MESMA chave +
+`pagamentoOnline=true`). Condições: monitoração de logs no dia, reconciliador
+como backstop (pg_cron provado ativo), rollback por function pronto, e
+policies P1/P2 tratando pagamento tardio/divergente. RISCOS REAIS a
+declarar: cliente paga e pedido não confirma (mitigado pelo reconciliador +
+confirmação manual admin + estorno), cobrança duplicada (mitigada pelas
+frentes 2/7 + idempotência por tentativa). **NÃO presumimos que acontecerá
+nem quando**; se o dono preferir autoteste pagando e estornando a própria
+loja, é custo dele — EXCLUÍDO por restrição explícita.
+
+**Rótulo honesto permanente**: o sistema é "validado em test mode + suítes
+locais + três revisões adversariais; produção com PIX real PENDENTE de
+observação" — **nunca declarar 100% funcional** antes do Estágio C observado.
+
 ## 7. Riscos residuais declarados
 
 1. Busca da Orders API UNVERIFIED em produção (nome de campo/param já
