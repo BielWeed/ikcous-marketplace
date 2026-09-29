@@ -1,0 +1,133 @@
+# Diagnóstico SOMENTE LEITURA das pré-condições de pagamento (29/09/2026).
+#
+# Revisão independente do PR #716 (4 achados bloqueantes) CORRIGIDA:
+#   (1) FALSE-GREEN: toda falha de consulta/download encerra o run com exit 1.
+#   (2) LOG SEM CORPO: erros só method+caminho+status; return_message do cron
+#       NÃO é impresso — respostas podem carregar dado sensível.
+#   (3) COFRE: marcador pela CHAVE EXATA (`pagamentos_mercado_pago`,
+#       constante do repositório); presença NÃO comprova validade.
+#   (4) GERAÇÃO: sem binário — matriz por migration do PR #666 + prova de
+#       SCHEMA independente do ledger (devolucoes/config_pagamento_cartao),
+#       porque aplicar-migrations.yml NÃO grava o ledger.
+#
+# Garantias: SQL SOMENTE pelo endpoint oficial /database/query/read-only
+# (escopo database_read; a API recusa escrita nele por construção); token só
+# como env, nunca impresso; corpos de function → só booleans (indício);
+# sem deploy/DDL/compra. Arquivo de incidente.
+name: Diagnóstico de pagamentos (somente leitura)
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: diagnostico-pagamentos
+  cancel-in-progress: false
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Migrations + cron + cofre + marcadores das functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          node --input-type=module -e '
+            const REF = "dekxabvqdsuukijblazl";
+            const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
+            if (token === "") { console.log("::error::Falta o secret SUPABASE_ACCESS_TOKEN"); process.exit(1); }
+            let falhas = 0;
+            // (2) Log sem corpo: erros carregam SÓ metodo+caminho+status.
+            // Endpoint OFICIAL somente leitura (revisão final do PR #716):
+            // /database/query/read-only — escopo database_read do token; a
+            // API recusa escrita nele por construção. Sem read_only:true
+            // improvisado: o endpoint dedicado É a garantia.
+            const apiJson = async (caminho, corpo) => {
+              const resposta = await fetch(`https://api.supabase.com/v1${caminho}`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify(corpo),
+              });
+              if (!resposta.ok) throw new Error(`POST ${caminho} → ${resposta.status}`);
+              return JSON.parse(await resposta.text());
+            };
+            const sql = async (query, op) => {
+              try { return await apiJson(`/projects/${REF}/database/query/read-only`, { query }); }
+              // Erro fixo por operação: um 2xx com JSON inválido também pode
+              // incluir trechos do corpo em e.message. Nunca imprimi-lo.
+              catch { falhas++; console.log(`::error::consulta falhou (${op})`); return null; }
+            };
+
+            // (4) Matriz de migrations do PR #666 — INDÍCIO (o workflow atual
+            // de aplicação não grava o ledger; a prova concreta é o schema).
+            // WHERE version IN: sem LIMIT/ORDER — só as 6 procuradas.
+            const DO_PR_666 = ["20261175000000", "20261176000000", "20261177000000", "20261178000000", "20261179000000", "20261180000000"];
+            const listaMigs = DO_PR_666.map((v) => `$$${v}$$`).join(", ");
+            const migs = await sql(`SELECT version FROM supabase_migrations.schema_migrations WHERE version IN (${listaMigs})`, "migrations");
+            if (migs) {
+              const vistas = new Set(migs.map((m) => String(m.version)));
+              console.log("== [INDÍCIO] Migrations do PR #666 no ledger (aplicar-migrations NÃO grava ledger) ==");
+              let n = 0;
+              for (const v of DO_PR_666) { const tem = vistas.has(v); if (tem) n++; console.log(`- ${v}: ${tem ? "no ledger" : "ausente no ledger"}`); }
+              console.log(`ledger: ${n}/${DO_PR_666.length}`);
+            }
+            // PROVA CONCRETA de geração (independe do ledger): tabelas que só
+            // existem no PR #666 — objetos de schema, não registro.
+            const tabelas = await sql("SELECT table_name FROM information_schema.tables WHERE table_schema=$$public$$ AND table_name IN ($$devolucoes$$, $$config_pagamento_cartao$$)", "schema");
+            const existem = new Set((tabelas ?? []).map((t) => t.table_name));
+            console.log(`== [PROVA CONCRETA] Schema: devolucoes=${existem.has("devolucoes") ? "EXISTE" : "não existe"} | config_pagamento_cartao=${existem.has("config_pagamento_cartao") ? "EXISTE" : "não existe"} ==`);
+
+            // (2) Reconciliador — SOMENTE jobs do reconciliador (não listar
+            // jobs alheios); status/horário SEM return_message.
+            const jobs = await sql("SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname ILIKE $$%reconcil%$$ ORDER BY jobname", "cron-jobs");
+            console.log("== pg_cron: jobs do reconciliador ==");
+            if (jobs && jobs.length) for (const j of jobs) console.log(`- ${j.jobname} | ${j.schedule} | ativo: ${j.active}`);
+            else console.log("(nenhum job com nome reconcil* — RECONCILIADOR NÃO AGENDADO)");
+            const runs = await sql("SELECT r.jobid, r.status, r.start_time FROM cron.job_run_details r JOIN cron.job j ON j.jobid = r.jobid WHERE j.jobname ILIKE $$%reconcil%$$ AND r.start_time > now() - make_interval(days => 3) ORDER BY r.start_time DESC LIMIT 8", "cron-runs");
+            console.log("== Runs do reconciliador (últimos 3 dias; sem return_message) ==");
+            if (runs && runs.length) for (const r of runs) console.log(`- job ${r.jobid} | ${r.status} | ${String(r.start_time).slice(0, 19)}`);
+            else console.log("(nenhuma execução nos últimos 3 dias — reconciliador SEM prova de vida)");
+
+            // (3) Cofre — chave EXATA do registro do lojista; presença ≠ validade.
+            // ENV FALLBACK: não verificável por leitura sem expor valores — os
+            // env MP_* da function ficam fora deste diagnóstico por desenho.
+            const cofre = await sql("SELECT EXISTS (SELECT 1 FROM public.app_settings WHERE key=$$pagamentos_mercado_pago$$) AS presente", "cofre");
+            if (cofre) console.log(`== Registro MP do lojista: ${cofre[0]?.presente === true ? "PRESENTE (presença NÃO comprova validade)" : "AUSENTE"} ==`);
+            console.log("Fallback de env MP_* NÃO é verificado aqui — fica para o checklist por loja");
+
+            // (4) Marcadores nos corpos — INDÍCIO de geração/correção
+            // implantada, NÃO prova funcional. Booleans, sem despejar código.
+            const MARCADORES = [
+              ["linha-nova Orders API/idempotência por tentativa", "chaveDeIdempotencia"],
+              ["frente 3: política PIX chave própria", "pixSemChaveDeAssinatura"],
+              ["frente 7: recuperação do 409 PIX", "recuperarOrderPixDoIdempotencia"],
+            ];
+            const WEBHOOK = [
+              ["linha-nova W9: formato confiável do estorno", "formatoConfiavelParaEstorno"],
+              ["frente 8: fim da reserva global do segredo", "reserva do ambiente não vale"],
+              ["frente 9: recusa ilegível sob sentinela", "vaga em SENTINELA"],
+            ];
+            const ESTORNO = [["frente 5: gate estorno_de_sistema", "estorno_de_sistema"]];
+            for (const [slug, marcas] of [["criar-pagamento", MARCADORES], ["webhook-mercadopago", WEBHOOK], ["estornar-pagamento", ESTORNO]]) {
+              try {
+                // /body devolve código CRU (não JSON) — fetch direto.
+                const resposta = await fetch(`https://api.supabase.com/v1/projects/${REF}/functions/${slug}/body`, {
+                  headers: { Authorization: `Bearer ${token}` },
+                });
+                const texto = await resposta.text();
+                if (!resposta.ok) { falhas++; console.log(`::error::body ${slug} → ${resposta.status}`); continue; }
+                console.log(`== ${slug} (${texto.length} bytes) ==`);
+                for (const [nome, marcador] of marcas) console.log(`- ${nome}: ${texto.includes(marcador) ? "PRESENTE" : "ausente"}`);
+              } catch {
+                // Erro FIXO (sem e.message): falha de rede/status no download.
+                falhas++;
+                console.log(`::error::body ${slug} falhou (rede/status sem detalhe)`);
+              }
+            }
+
+            // (1) Diagnóstico incompleto NÃO é verde.
+            if (falhas > 0) {
+              console.log(`::error::${falhas} chamada(s) falharam — run VERMELHO por honestidade.`);
+              process.exit(1);
+            }
+            console.log("Diagnóstico completo: todas as consultas responderam.");
+          '
