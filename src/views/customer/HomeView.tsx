@@ -1,3 +1,4 @@
+import { IOSInstallGuide } from "@/components/pwa/IOSInstallGuide";
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
@@ -380,6 +381,7 @@ export const HomeView = React.memo(function HomeView({
           h2 — sem h1 nenhum na página, o leitor de tela nunca anuncia o
           nome da loja como título do documento. sr-only: zero pixel muda. */}
       <h1 className="sr-only">{nomeDaLoja}</h1>
+      {!searchQuery && selectedCategory === "Todas" && <IOSInstallGuide />}
       {/* Top Banners - Full Width */}
       {!searchQuery &&
         selectedCategory === "Todas" &&
