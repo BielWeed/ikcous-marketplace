@@ -24,6 +24,9 @@ import {
  *   INALCANÇÁVEL — está, mas nenhum papel da origem tem SELECT/EXECUTE.
  */
 import {
+  SQL_BUCKETS,
+  SQL_FUNCOES,
+  SQL_RELACOES,
   avaliar,
   conferirProjeto,
   extrairDeConteudo,
@@ -31,9 +34,6 @@ import {
   refDoProjeto,
   lerCatalogoPelaApi,
   montarCatalogo,
-  SQL_BUCKETS,
-  SQL_FUNCOES,
-  SQL_RELACOES,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
 
 const CATÁLOGO = () => ({
@@ -336,15 +336,18 @@ const LINHAS_FN = [
 ];
 
 /** fetch falso que responde por SQL e registra o que recebeu. */
-function fetchFalso(respostas: Record<string, { status: number; corpo: string }>) {
+function fetchFalso(
+  respostas: Record<string, { status: number; corpo: string }>,
+) {
   const chamadas: { url: string; init: RequestInit }[] = [];
   const impl = (url: string, init: RequestInit) => {
     chamadas.push({ url, init });
     const query = JSON.parse(String(init.body)).query as string;
-    const r = respostas[query] ?? { status: 500, corpo: "sem resposta semeada" };
-    return Promise.resolve(
-      new Response(r.corpo, { status: r.status }),
-    );
+    const r = respostas[query] ?? {
+      status: 500,
+      corpo: "sem resposta semeada",
+    };
+    return Promise.resolve(new Response(r.corpo, { status: r.status }));
   };
   return { impl: impl as unknown as typeof fetch, chamadas };
 }
@@ -357,7 +360,11 @@ const RESPOSTAS_OK = () => ({
 
 Deno.test("API: usa SÓ o endpoint somente leitura, com bearer, e as 3 consultas idênticas às constantes", async () => {
   const { impl, chamadas } = fetchFalso(RESPOSTAS_OK());
-  await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref: REF_FALSO, fetchImpl: impl });
+  await lerCatalogoPelaApi({
+    token: TOKEN_FALSO,
+    ref: REF_FALSO,
+    fetchImpl: impl,
+  });
   assertEquals(chamadas.length, 3);
   for (const c of chamadas) {
     assertEquals(
@@ -386,7 +393,10 @@ Deno.test("API e pg produzem o MESMO catálogo para as mesmas linhas (montagem �
   const viaPg = montarCatalogo(LINHAS_REL, LINHAS_FN, [{ id: "products" }]);
   assertEquals(viaApi, viaPg);
   // grants por sobrecarga agregados: f alcançável por authenticated E service_role
-  assertEquals([...viaApi.funcoes.get("f")!].sort(), ["authenticated", "service_role"]);
+  assertEquals([...viaApi.funcoes.get("f")!].sort(), [
+    "authenticated",
+    "service_role",
+  ]);
   assertEquals(viaApi.funcoes.get("g")!.size, 0);
   assertEquals(viaApi.bucketsAcessivel, true);
 });
@@ -400,24 +410,52 @@ Deno.test("API: o veredito estrito não afrouxa — objeto ausente e inalcançá
   });
   const r = avaliar(
     [
-      { tipo: "from", nome: "vw_sumida", onde: "src/a.ts:1", papeis: ["anon", "authenticated"] },
-      { tipo: "from", nome: "produtos", onde: "src/b.ts:2", papeis: ["anon", "authenticated"] },
-      { tipo: "rpc", nome: "g", onde: "src/c.ts:3", papeis: ["anon", "authenticated"] },
+      {
+        tipo: "from",
+        nome: "vw_sumida",
+        onde: "src/a.ts:1",
+        papeis: ["anon", "authenticated"],
+      },
+      {
+        tipo: "from",
+        nome: "produtos",
+        onde: "src/b.ts:2",
+        papeis: ["anon", "authenticated"],
+      },
+      {
+        tipo: "rpc",
+        nome: "g",
+        onde: "src/c.ts:3",
+        papeis: ["anon", "authenticated"],
+      },
     ],
     catalogo,
   );
-  assertEquals(r.ausentes.map((a) => a.nome), ["vw_sumida"]);
+  assertEquals(
+    r.ausentes.map((a) => a.nome),
+    ["vw_sumida"],
+  );
   assertEquals(r.inalcançaveis.map((a) => a.nome).sort(), ["g", "produtos"]);
 });
 
 Deno.test("API: falha em relações ou funções é FATAL e o erro não carrega corpo nem token", async () => {
-  for (const [qual, sql] of [["relações", SQL_RELACOES], ["funções", SQL_FUNCOES]] as const) {
+  for (const [qual, sql] of [
+    ["relações", SQL_RELACOES],
+    ["funções", SQL_FUNCOES],
+  ] as const) {
     const respostas = RESPOSTAS_OK();
-    respostas[sql] = { status: 401, corpo: `{"message":"Bearer ${TOKEN_FALSO} inválido","dado":"segredo"}` };
+    respostas[sql] = {
+      status: 401,
+      corpo: `{"message":"Bearer ${TOKEN_FALSO} inválido","dado":"segredo"}`,
+    };
     const { impl } = fetchFalso(respostas);
     let erro = "";
     try {
-      await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref: REF_FALSO, fetchImpl: impl });
+      await lerCatalogoPelaApi({
+        token: TOKEN_FALSO,
+        ref: REF_FALSO,
+        fetchImpl: impl,
+      });
     } catch (e) {
       erro = (e as Error).message;
     }
@@ -434,7 +472,11 @@ Deno.test("API: resposta 200 que não é lista de linhas também é FATAL (nunca
   const { impl } = fetchFalso(respostas);
   let erro = "";
   try {
-    await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref: REF_FALSO, fetchImpl: impl });
+    await lerCatalogoPelaApi({
+      token: TOKEN_FALSO,
+      ref: REF_FALSO,
+      fetchImpl: impl,
+    });
   } catch (e) {
     erro = (e as Error).message;
   }
@@ -443,7 +485,10 @@ Deno.test("API: resposta 200 que não é lista de linhas também é FATAL (nunca
 
 Deno.test("API: storage inacessível deixa o bucket CEGO (mesma tolerância da conexão pg), sem derrubar tabelas e funções", async () => {
   const respostas = RESPOSTAS_OK();
-  respostas[SQL_BUCKETS] = { status: 400, corpo: "permission denied for schema storage" };
+  respostas[SQL_BUCKETS] = {
+    status: 400,
+    corpo: "permission denied for schema storage",
+  };
   const { impl } = fetchFalso(respostas);
   const catalogo = await lerCatalogoPelaApi({
     token: TOKEN_FALSO,
@@ -477,7 +522,10 @@ Deno.test("API: ref fora do formato e token vazio são recusados antes de qualqu
 
 Deno.test("o SQL de catálogo do detector e o do wrapper do banco efêmero são IDÊNTICOS", () => {
   const efemero = Deno.readTextFileSync(
-    new URL("../scripts/ci/banco/objetos-do-codigo-efemero.cjs", import.meta.url),
+    new URL(
+      "../scripts/ci/banco/objetos-do-codigo-efemero.cjs",
+      import.meta.url,
+    ),
   ).replace(/\r\n/g, "\n");
   for (const sql of [SQL_RELACOES, SQL_FUNCOES]) {
     assert(
