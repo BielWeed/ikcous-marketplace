@@ -516,9 +516,41 @@ Deno.test("E14b - Orders 201 refunded com refunds na resposta -> mp_refund_id é
               reference_id: "12345678",
               amount: "100.00",
               // A doc mostra o refund nascendo "processing" mesmo no refund
-              // TOTAL — o status da ORDER é que decide 'concluido'; o id é
-              // legível de qualquer forma.
+              // TOTAL. P1 da revisão independente (29/09/2026): o status da
+              // ORDER não decide mais sozinho — refund da linha não-terminal
+              // deixa em_processamento (o cron confirma pela consulta).
               status: "processing",
+            },
+          ],
+        },
+      },
+      linhaCom(),
+      pedidoOrder(),
+    ),
+    {
+      tipo: "em_processamento",
+      mp_refund_id: "REF01J67CQQH5904WDBVZEM1234D",
+      mp_status: "refunded",
+    },
+  );
+
+  // O MESMO refund TERMINAL ('processed') conclui com o id gravado — o
+  // contrato de seleção do id (REF, nunca o topo) segue intacto.
+  assertEquals(
+    interpretarResposta(
+      201,
+      {
+        id: "ORD0000ABCD222233334444555566",
+        status: "refunded",
+        status_detail: "refunded",
+        transactions: {
+          refunds: [
+            {
+              id: "REF01J67CQQH5904WDBVZEM1234D",
+              transaction_id: "PAY01J67CQQH5904WDBVZEM4JMEP3",
+              reference_id: "12345678",
+              amount: "100.00",
+              status: "processed",
             },
           ],
         },
@@ -536,7 +568,13 @@ Deno.test("E14b - Orders 201 refunded com refunds na resposta -> mp_refund_id é
   );
 });
 
-Deno.test("E14c - Orders 201 com VÁRIOS refunds na resposta -> o id do MAIS RECENTE (date_created); sem refunds legíveis -> string vazia, NUNCA o id da order", () => {
+Deno.test("E14c - Orders 201, refund DA LINHA ainda 'processing' -> em_processamento (NUNCA concluido); terminal 'processed' -> concluido com o id do mais recente", () => {
+  // P1 da revisão independente (29/09/2026): o topo da order vira
+  // partially_refunded ANTES de o refund DESTA linha terminar. Concluir
+  // aqui fechava a linha com dinheiro ainda em andamento no MP — o POST de
+  // retorno PODE nascer 'processing'. Mudança consciente de contrato:
+  // concluir exige terminal do REFUND DA LINHA; 'processing' deixa a linha
+  // em_processamento (o cron esclarece pela consulta, GET terminais-estrito).
   const comVarios = interpretarResposta(
     201,
     {
@@ -553,8 +591,35 @@ Deno.test("E14c - Orders 201 com VÁRIOS refunds na resposta -> o id do MAIS REC
     linhaCom({ amount: 70 }),
     pedidoOrder(),
   );
-  assertEquals(comVarios.tipo, "concluido");
-  assertEquals((comVarios as { mp_refund_id: string }).mp_refund_id, "REF_NOVO");
+  assertEquals(comVarios.tipo, "em_processamento");
+  assertEquals(
+    (comVarios as { mp_refund_id: string | null }).mp_refund_id,
+    "REF_NOVO",
+  );
+
+  // O MESMO cenário com o refund TERMINAL: concluido com o id do mais
+  // recente (contrato original do E14b/E14c preservado para o caso certo).
+  const comTerminal = interpretarResposta(
+    201,
+    {
+      id: "ORD0000ABCD222233334444555566",
+      status: "processed",
+      status_detail: "partially_refunded",
+      transactions: {
+        refunds: [
+          { id: "REF_ANTIGO", amount: "30.00", status: "processed", date_created: "2026-09-01T10:00:00.000Z" },
+          { id: "REF_NOVO", amount: "70.00", status: "processed", date_created: "2026-09-29T02:00:00.000Z" },
+        ],
+      },
+    },
+    linhaCom({ amount: 70 }),
+    pedidoOrder(),
+  );
+  assertEquals(comTerminal.tipo, "concluido");
+  assertEquals(
+    (comTerminal as { mp_refund_id: string }).mp_refund_id,
+    "REF_NOVO",
+  );
 
   // Sem refunds na resposta (o corpo mínimo do E14 original): NADA de id da
   // order — string vazia; quem decidir depois é a CONSULTA (GET), como sempre.

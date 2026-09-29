@@ -269,10 +269,10 @@ function idComoString(valor: unknown): string {
  * `refundQueCobreALinha`). Nenhum candidato do valor certo: string vazia —
  * quem esclarece é a CONSULTA (GET), como sempre; o id da order nunca.
  */
-function idDoRefundNaResposta(
+function refundDaLinhaNaResposta(
   c: Record<string, unknown>,
   linha: LinhaEstorno,
-): string {
+): Record<string, unknown> | null {
     const centavosDaLinha = emCentavos(linha.amount);
     const comId = refundsDaOrder(c).filter((r) =>
         (typeof r.id === "string" && r.id !== "") || typeof r.id === "number"
@@ -283,8 +283,7 @@ function idDoRefundNaResposta(
             emCentavos(valor) === centavosDaLinha;
     });
     const candidatos = doValorDaLinha.length > 0 ? doValorDaLinha : [];
-    if (candidatos.length === 0) return "";
-    if (candidatos.length === 1) return idComoString(candidatos[0].id);
+    if (candidatos.length === 0) return null;
     let melhor = candidatos[0];
     let melhorData = dataCreatedMs(melhor);
     for (const refund of candidatos.slice(1)) {
@@ -294,7 +293,7 @@ function idDoRefundNaResposta(
             melhorData = data;
         }
     }
-    return idComoString(melhor.id);
+    return melhor;
 }
 
 /**
@@ -503,11 +502,32 @@ function interpretarOrders(
     // devolução é o da LINHA: o corpo da order não traz o valor do refund
     // no topo, e quem sabe quanto foi pedido é o nosso ledger.
     if (mpStatus === "refunded" || detail === "partially_refunded") {
+      // P1 da revisão independente (29/09/2026): o topo da order vira
+      // refunded/partially_refunded ANTES de o refund DESTA linha terminar —
+      // o retorno do POST pode nascer 'processing'. Concluir exige o
+      // TERMINAL do refund da linha (`processed`, STATUS_REFUND_CONCLUIDO);
+      // não-terminal deixa a linha em_processamento COM o id gravado (o
+      // cron/webhook esclarece pela consulta, que já é terminais-estrita).
+      // Sem candidato legível do valor da linha: contrato do E14 original —
+      // concluido com id vazio, quem preenche é a consulta (GET).
+      const refundDaLinha = refundDaLinhaNaResposta(c, linha);
+      if (
+        refundDaLinha !== null &&
+        String(refundDaLinha.status ?? "") !== STATUS_REFUND_CONCLUIDO
+      ) {
+        return {
+          tipo: "em_processamento",
+          mp_refund_id: idComoString(refundDaLinha.id),
+          mp_status: mpStatus,
+        };
+      }
       return {
         tipo: "concluido",
         // Id do REFUND (transactions.refunds[].id), nunca o id do topo da
-        // order — ver idDoRefundNaResposta acima (E14b/E14c, 29/09/2026).
-        mp_refund_id: idDoRefundNaResposta(c, linha),
+        // order — ver refundDaLinhaNaResposta acima (E14b/E14c, 29/09/2026).
+        mp_refund_id: refundDaLinha !== null
+          ? idComoString(refundDaLinha.id)
+          : "",
         mp_status: mpStatus,
         mp_status_detail: detail,
         valor: linha.amount,

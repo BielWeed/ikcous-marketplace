@@ -10,8 +10,8 @@
 |---|---|
 | Front de produção fala com o projeto NOVO | Bundle público de `brandmeliz.vercel.app` contém `dekxabvqdsuukijblazl.supabase.co` |
 | Projeto ANTIGO morto | `supabase projects list`: `cafkrminfnokvgjqtkle` = `INACTIVE` (pausado por fatura, 28/09) |
-| Token da conta antiga NÃO publica no novo | `functions list --project-ref dekxabvqdsuukijblazl` → **403** (projeto na org IKCOUS) |
-| As 3 functions financeiras EXISTEM no novo | Sondas públicas: `criar-pagamento`/`reconciliar` → 401 "Missing authorization header"; `webhook-mercadopago` → 400 |
+| Token da conta antiga NÃO publica no novo | ~~`functions list` → **403**~~ **SUPERADO (29/09)**: PAT escopado novo no secret `SUPABASE_ACCESS_TOKEN`; workflow "Prova de acesso" (PR #715, merged) rodou **SUCCESS** — GET projeto **200** (`ACTIVE_HEALTHY`) e GET functions **200** (11 functions `ACTIVE`). Acesso de LEITURA provado; publicar ainda é outra coisa (cofre/webhook/cron abaixo) |
+| As 3 functions financeiras EXISTEM no novo | Lista real do run da prova: `criar-pagamento`, `reconciliar-pagamentos`, `webhook-mercadopago`, `estornar-pagamento` etc. — 11 `ACTIVE`, implantadas em massa em **28/09 ~06:00Z** (timestamps sequenciais do deploy roteirizado da migração; `send-order-whatsapp` ficou de fora) |
 | Segredos/configuração delas = PENDENTES/DESCONHECIDOS | Runbook da migração (PR #671, `migrar-banco-da-loja.md`, §"E agora?"): partes **f** (functions + segredos, incl. RECOLETAR cofre MP do lojista), **h** (Auth/SMTP), **i** (webhook MP), **j** (segredos Actions) listadas como faltantes |
 
 **Conclusão**: o destino ativo é `dekxabvqdsuukijblazl`, mas o pipeline de
@@ -40,9 +40,16 @@ achismo**:
 2. Pedido de teste do checklist (§4 do runbook): a resposta da `criar-pagamento`
    da geração nova carrega `statusPagamento`/`paymentId` no formato Orders API
    (`ORD…`); a antiga, formato Payments (`pay…`/QR clássico).
-3. `SELECT * FROM supabase_migrations.schema_migrations ORDER BY version DESC
-   LIMIT 5` no banco novo (via job "Código x banco" com `DATABASE_URL` novo):
-   presença de `20261175`–`20261180` decide A vs B.
+3. **Objetos REAIS do schema, não o ledger**: o `aplicar-migrations.yml`
+   NÃO grava `supabase_migrations.schema_migrations` (AGENTS.md) — presença
+   de `20261175`–`20261180` no ledger é só **indício** (aplicação parcial
+   não prova linha completa; ausência não prova schema antigo). A decisão
+   A/B é por objetos concretos: `information_schema.tables` para
+   `devolucoes` e `config_pagamento_cartao` (só existem no PR #666), RPCs
+   `fin_*`/devolução em `information_schema.routines`, colunas novas em
+   `marketplace_orders` (`tentativas_de_pagamento`, `metodo_online`,
+   `estorno_manual_registrado_em`). O workflow "Diagnóstico de pagamentos"
+   (PR #716, somente leitura) já consulta exatamente esses objetos.
 
 **Regra de segurança enquanto não distinguido**: tratar como **Cenário B** (o
 mais conservador) — a publicação da #711 acompanha a promoção da linha claude

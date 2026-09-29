@@ -243,6 +243,23 @@ describe("CheckoutView — retomada não monta pagamento antes do método real (
     );
   });
 
+  it("pedido de DÉBITO com leitura atrasada: mesma proteção — nada antes da leitura, depois já em 'cartao'", async () => {
+    await renderizarRetomada();
+
+    expect(montagensDoPagamento).toBe(0);
+
+    await act(async () => {
+      resolverALeitura({ total: 88.25, metodo_online: "debito" });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(montagensDoPagamento).toBe(1);
+    expect(propsCapturadasDoPagamento?.metodo).toBe("cartao");
+    expect(propsCapturadasDoPagamento?.orderId).toBe("ped-777");
+  });
+
   it("pedido de PIX com leitura atrasada: retoma normalmente DEPOIS da leitura", async () => {
     await renderizarRetomada();
 
