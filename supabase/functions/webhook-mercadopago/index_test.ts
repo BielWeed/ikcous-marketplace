@@ -2722,6 +2722,70 @@ Deno.test("W2b - achado MÉDIO da revisão do P1 de estorno: linha em_processame
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r2");
 });
 
+Deno.test("W2c - hardening do achado MÉDIO da revisão final: DUAS pendentes com o MESMO mp_refund_id (ledger anômalo) -> SÓ a primeira conclui no lote; a segunda fica para o cron (1 RPC)", async () => {
+  // Estado já viola o P0 de origem (nenhum fluxo próprio o produz), mas a
+  // revisão final apontou que o filtro por valor (id !== próprio) derrotaria
+  // o re-add de reivindicados para a SEGUNDA linha — as duas concluiriam com
+  // o mesmo refund (crédito duplo dentro do cap). A trava: ids concluídos
+  // NESTE lote voltam a bloquear mesmo sendo id 'próprio' da linha seguinte.
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-x",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: "r9",
+      tentativas: 1,
+      concluido_em: null,
+    },
+    {
+      id: "linha-y",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: "r9",
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r9", amount: "30.00", status: "processed" }],
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  // SÓ a primeira linha do lote conclui; a segunda fica pendente para o cron.
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-x");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r9");
+});
+
 Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA linha 'sistema' concluída; a MESMA notificação de novo -> zero inserções, zero RPC nova", async () => {
   const registro = {
     chamadasRpc: [] as any[],

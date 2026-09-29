@@ -775,6 +775,11 @@ async function registrarDesfechoDoEstorno(args: {
       // tentar_depois para sempre (só o cron concluía). Os ids das OUTRAS
       // linhas permanecem: um refund credita UMA linha (P0). Paridade com
       // o cron, que exclui a própria linha com .neq('id', ...).
+      // Segunda camada para o lote (achado da revisão final, teste W2c):
+      // DUAS pendentes com o MESMO id (ledger anômalo) não concluem as
+      // duas — o acúmulo em memória de `pedido.valor_estornado` (I-B,
+      // abaixo) + a guarda de soma bruta (E37) recusam a 2ª linha ainda
+      // neste ciclo; ela fica para o cron, que relê o banco por linha.
       idsJaReivindicados: Array.from(reivindicados).filter(
         (id) => id !== linha.mp_refund_id,
       ),
