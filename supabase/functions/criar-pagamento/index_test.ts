@@ -1430,6 +1430,87 @@ Deno.test("handler: PIX devolve QR, imagem e ticket_url no formato que o front j
   assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/sandbox/payments/999/ticket");
 });
 
+Deno.test("SANDBOX-OFICIAL: payload BYTE A BYTE da doc oficial do sandbox PIX (APRO/auto-aprovação) atravessa o handler inteiro — prova de CONTRATO local, zero custo", async () => {
+  // Decisão do dono (29/09): confiar após o teste PIX 'fake' OFICIAL do
+  // sandbox do MP. O projeto sandbox Supabase foi REMOVIDO (404), então a
+  // prova executável hoje é o payload EXATO que a doc oficial documenta
+  // para o sandbox de PIX (checkout-api-orders/integration-test/pix):
+  // order criada com valores predefinidos nasce `action_required`/
+  // `waiting_transfer` com QR completo e muda sozinha para approved.
+  // Este teste prende que o handler consome esse shape INTEIRO sem
+  // depender de campo extra. PROVA: mapeamento/contrato. NÃO PROVA:
+  // comportamento da API viva nem trilha bancária real.
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro: { valoresUpdate?: Record<string, unknown> } = {};
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const corpoOficialDaDoc = {
+    id: "ORD01JP84C939T20S0P1DN382FQ6K",
+    type: "online",
+    processing_mode: "automatic",
+    external_reference: "ext_ref_1234",
+    total_amount: "50.00",
+    payer: { email: "test_user_br@testuser.com", first_name: "APRO" },
+    country_code: "BRA",
+    user_id: "123456",
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    capture_mode: "automatic",
+    created_date: "2025-03-13T16:11:10.826Z",
+    last_updated_date: "2025-03-13T16:11:11.736Z",
+    integration_data: { application_id: "123456789" },
+    transactions: {
+      payments: [
+        {
+          id: "PAY01JP84C939T20S0P1DN6FCMWQC",
+          amount: "50.00",
+          reference_id: "0002gw9x2v",
+          status: "action_required",
+          status_detail: "waiting_transfer",
+          payment_method: {
+            id: "pix",
+            type: "bank_transfer",
+            ticket_url:
+              "https://www.mercadopago.com.br/sandbox/payments/104669748043/ticket?caller_id=1985141462&hash=1eff4445-4454-4308-a6b0-d2a1651ca44f",
+            qr_code:
+              "00020126580014br.gov.bcb.pix0136b76aa9c2-2ec4-4110-954e-ebfe34f05b615204000053039865406200.005802BR5918TESTUSER20543760926009Sao Paulo62250521mpqrinter1046697480436304B70B",
+            qr_code_base64: "",
+          },
+        },
+      ],
+    },
+  };
+  const fetchImpl = async () =>
+    new Response(JSON.stringify(corpoOficialDaDoc), { status: 201 });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // Id adotado é o da ORDER (prefixo ORD) — reconsulta e webhook casam.
+  assertEquals(corpo.paymentId, "ORD01JP84C939T20S0P1DN382FQ6K");
+  assertEquals(
+    registro.valoresUpdate?.gateway_payment_id,
+    "ORD01JP84C939T20S0P1DN382FQ6K",
+  );
+  // QR EMV completo chega inteiro ao cliente (copiar e colar).
+  assertEquals(
+    corpo.qrCode,
+    "00020126580014br.gov.bcb.pix0136b76aa9c2-2ec4-4110-954e-ebfe34f05b615204000053039865406200.005802BR5918TESTUSER20543760926009Sao Paulo62250521mpqrinter1046697480436304B70B",
+  );
+  // A doc traz qr_code_base64 VAZIO no sandbox — o contrato do front
+  // suporta ausência de imagem sem quebrar (string vazia surfaced).
+  assertEquals(corpo.qrCodeBase64, "");
+  assertEquals(
+    corpo.ticketUrl,
+    "https://www.mercadopago.com.br/sandbox/payments/104669748043/ticket?caller_id=1985141462&hash=1eff4445-4454-4308-a6b0-d2a1651ca44f",
+  );
+  assertEquals(corpo.statusPagamento, "aguardando");
+});
+
 Deno.test("handler: PIX com par conhecido e recusado no ramo de CRIAÇÃO devolve 'recusado', não o default de 'aguardando'", async () => {
   // CHECKOUT-080 (#213), teste novo: o default 'aguardando' do ramo de
   // CRIAÇÃO (ver comentário grande no chamador) só se aplica ao par

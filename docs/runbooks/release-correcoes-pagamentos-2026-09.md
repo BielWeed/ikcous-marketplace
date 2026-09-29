@@ -283,6 +283,44 @@ chave própria + webhook produtivo com a MESMA chave + `ligar_pix`.
 **Rótulo permanente** (§6.2): test mode + suítes + três revisões
 adversariais; produção com PIX real PENDENTE de observação — nunca 100%.
 
+## 6.4 GATE FINAL DE RELEASE PÚBLICO (proposta executável, 29/09)
+
+Decisão do dono: publicar para todos com PIX **publicável-desligado**;
+ativação é dele/lojista pela UI quando quiser; compra real é observação
+POSTERIOR, não condição. Checklist do gate (ordem):
+
+1. **[OK] Código**: 3 vereditos adversariais APROVADOS; suítes —
+   criar-pagamento **189/0** (incl. `SANDBOX-OFICIAL`), estorno 56/0,
+   estornar-pagamento 23/0, reconciliar 57/0, webhook 123/0, retomada
+   12/12.
+2. **[OK] Prova de contrato sandbox OFICIAL, local e gratuita**: teste
+   `SANDBOX-OFICIAL` alimenta o handler com o payload BYTE A BYTE da doc
+   oficial do sandbox PIX (APRO → `action_required`/`waiting_transfer`,
+   QR EMV completo, `qr_code_base64` vazio, ticket_url sandbox) e prende:
+   200 ao cliente, id ORD adotado como `gateway_payment_id`, QR EMV
+   íntegro ao cliente. **PROVA**: mapeamento/contrato contra o shape
+   oficial. **NÃO PROVA**: API viva, trilha bancária, produção.
+   (Opcional e grátis, se o dono quiser um dia: chamada ao sandbox vivo
+   com token APP_USR de teste via secret — não é gate.)
+3. **[OK] Travas de publicação inerte**: `pagamento_online` DEFAULT false
+   (migration 20261150000000); `ligar_pix` RECUSA sem teste de conexão
+   bem-sucedido + Public Key válida (UI Ajustes — ativação autônoma do
+   lojista, sem editar banco e sem nós); PIX 409 sem chave própria de
+   assinatura (frente 3); cartão nasce desligado; front falha fechada.
+4. **[OK] Destino**: #718 na branch-base da release; #720 em develop;
+   nenhum deploy executado.
+5. **[PENDENTE] Port do `ci.yml` do #717 para a branch-base** (em
+   andamento) — último bloco técnico de arquivo; depois disso o CI da
+   #711 deve fechar verde (a falha "Código x banco" restante era a da
+   base).
+6. **[DECISÃO DO DONO] Merge da #711 + dispatch `publicar-functions`
+   (`projeto=loja`, agora destino ATIVO) + front** — atos dele ou
+   autorização expressa na hora.
+7. **[PÓS] Primeira transação orgânica**: monitorar (logs webhook,
+   `cron.job_run_details`, `aguardando`>15 min com cobrança), pausa por
+   `desligar_pix` (segundos), rollback por function; P1 honra pagamento
+   tardio; entrega segue manual no painel.
+
 
 
 ## 7. Riscos residuais declarados
