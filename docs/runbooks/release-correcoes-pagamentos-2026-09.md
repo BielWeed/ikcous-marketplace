@@ -338,10 +338,25 @@ POSTERIOR, não condição. Checklist do gate (ordem):
 
 ## 6.5 PLANO EXATO DE DEPLOY/FRONT/ROLLBACK (29/09, base atualizada)
 
+**⚠️ FATO CRÍTICO VERCEL (achado do dono/Codex + confirmação própria por
+leitura HTTP, 29/09)**: os DOIS domínios públicos servem HOJE o MESMO
+deployment — `ickous-marketplace.vercel.app` e `brandmeliz.vercel.app`
+respondem `version.json` idêntico: `codeVersion 1.5.12`, `codeSha
+95dbc8c561d4d17a48a2b701bc56a50ec274d689`, `source: database`,
+`promotable: true` — um deployment PREVIEW da branch `production`
+(`95dbc8c5`), não o target Production, apesar de
+`productionBranch=main`. **Consequência**: mesclar a #711 na major OU
+publicar Functions **sozinho NÃO coloca o checkout novo nos domínios** — o
+release do front exige re-apontar AMBOS os aliases para o deployment da
+linha de release, com SHA exato servido e rollback registrado. O check
+Vercel da #711 está FAIL por **rate limit 24 h (externo)**; demais checks
+re-conferidos no HEAD final.
+
 **Pré (verificado)**: base com destino #718 + `ci.yml` #721 (merge
 `ec930dd3`); PR #711 **0 conflitos** contra a base (merge-tree) e CI verde
-após incorporação — única falha restante é **Vercel rate-limit externo**
-(retry 24 h, não é código). Três vereditos adversariais APROVADOS.
+exceto Vercel rate-limit externo. Três vereditos adversariais APROVADOS.
+**Bloqueio restante declarado: COORDENAÇÃO do front (aliases Vercel) + o
+rate-limit externo — não é mais bloqueio de arquivo/código.**
 
 **Sequência exata**:
 1. **Merge da #711 na base** (ato do dono). Anotar o SHA pré-merge da base
@@ -354,9 +369,15 @@ após incorporação — única falha restante é **Vercel rate-limit externo**
    `updated_at` novos; diagnóstico read-only mostrando os MARCADORES das
    frentes PRESENTES nos corpos; checkout "na entrega" normal; PIX segue
    INERTE (flag false + gate 409 + cartão off).
-4. **Front**: build/deploy Vercel da linha de release — promoção a
-   produção **alinhada com a sessão de produto** (linha do incidente
-   1.35.0/1.5.12 em recuperação); conferir `version.json`.
+4. **Front — AMBOS os aliases, com SHA exato** (coordenado com a sessão de
+   produto, que já estabilizou a linha em 1.5.12): build/deploy Vercel da
+   linha de release → **re-apontar `ickous-marketplace.vercel.app` E
+   `brandmeliz.vercel.app` para o deployment novo** (o estado atual é
+   preview da branch `production` em `95dbc8c5` — servir novo código
+   NÃO é automático) → **verificar `version.json` nos DOIS domínios**
+   mostrando o `codeVersion`/`codeSha` novos. **Rollback do front =
+   re-alias para o deployment registrado `95dbc8c5`** (o atual, NUNCA o
+   `03a89fa2` pré-remoção PII).
 5. **Ativação (quando o dono quiser)**: Ajustes → credenciais MP produtivas
    → **Testar conexão** (precisa dar verde) → chave de assinatura própria →
    webhook produtivo com a MESMA chave → `ligar_pix` (recusa 409 sem
