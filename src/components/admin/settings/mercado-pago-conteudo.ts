@@ -74,9 +74,10 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
       'As chaves ficam no painel de desenvolvedores do Mercado Pago (developers.mercadopago.com), com a MESMA conta do seu app. Se o agente não conseguir te levar até lá, o caminho direto é: entrar no site com a sua conta, abrir "Suas integrações", criar a aplicação da sua loja e abrir "Credenciais de produção". Nessa tela, toque em "Ativar credenciais de produção" — aceite os termos e conclua o reCAPTCHA; sem esse passo, as chaves não recebem dinheiro de verdade.',
   },
   {
-    titulo: "Volte aqui: cole as chaves, salve, teste e LIGUE o PIX",
+    titulo:
+      "Volte aqui: cole as três chaves, salve e teste antes de ligar o PIX",
     descricao:
-      'Copie a Public Key e o Access Token de produção e cole nos campos abaixo. Toque em "Salvar chaves" e depois em "Testar conexão" — a resposta aparece aqui mesmo, na hora. O campo "Chave de notificações (opcional)" é OPCIONAL: pode deixar vazio e colar depois, quando quiser — o pagamento por Pix já funciona sem ela. Com o teste dando certo, LIGUE o interruptor "Receber PIX no app": é ele que abre o Pix para o seu cliente no fim da compra — com as chaves salvas e o interruptor desligado, ninguém paga por Pix no seu app. Depois de ligar (ou desligar), a sua vitrine passa a refletir em até 1 minuto. Importante: para o dinheiro do Pix cair na sua conta, ela precisa ter uma CHAVE PIX registrada — veja isso na sua conta do Mercado Pago (área do Pix), não aqui no app.',
+      'Copie a Public Key e o Access Token de produção. Na mesma aplicação do Mercado Pago, configure Webhooks de produção com o endereço de notificações da sua loja e copie a Assinatura secreta para o campo "Chave de notificações (obrigatória para Pix)". Salve as três chaves e toque em "Testar conexão": esse teste confirma o Access Token, não a assinatura do webhook. Sem a assinatura da sua loja, o servidor recusa a cobrança por Pix, mesmo com o interruptor ligado; a chave global do app não substitui a sua. Depois de configurar as notificações e validar um aviso assinado, LIGUE "Receber PIX no app". A vitrine reflete a mudança em até 1 minuto. Para o dinheiro cair na sua conta, confira também sua CHAVE PIX na área do Pix do Mercado Pago.',
   },
 ];
 
@@ -102,16 +103,14 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
  * de pagamento (Payment Brick) embutido na nossa tela. Os endpoints ficam no
  * código, não no prompt — provas no relatório o-que-nosso-app-usa.md na mesa.
  *
- * Peça 27 (15/09, pedido do dono depois do teste REAL dele): o prompt não
- * mencionava a CHAVE DE NOTIFICAÇÕES (webhook secret) — terceira chave do
- * painel do MP, OPCIONAL nesta integração (o campo existe na tela; o Pix
- * funciona sem ela — o teste do dono foi feito sem ela). O prompt agora
- * pede ao agente o passo a passo leigo de onde copiar essa chave (área de
- * Webhooks da aplicação, se for lá), e o guia diz que ela é opcional.
+ * A política atual do Pix exige a CHAVE DE NOTIFICAÇÕES da própria loja.
+ * Um teste antigo sem ela não prova que o fluxo atual confirma pagamentos.
+ * O prompt guia o lojista até Webhooks e explica que o teste do Access Token
+ * não valida a assinatura.
  *
  * Peça 28 (17/09/2026, depois do teste real do dono): o prompt virou um
  * roteiro em blocos (quem fala, o que o app usa, o que precisa sair da
- * conversa, como guiar, a chave opcional no final, segurança) e passou a
+ * conversa, como guiar, a assinatura no final das chaves, segurança) e passou a
  * ser MONTADO com o endereço de notificações desta loja — ver
  * `montarPromptParaAgenteMp` e `urlDeNotificacoesDoWebhook` abaixo.
  */
@@ -144,7 +143,7 @@ export type OpcoesDoPromptParaAgenteMp = {
  * (um lojista leigo, não um programador), o que exatamente tem de sair da
  * conversa, como tirar dúvidas no meio, nem como tratar a chave de
  * notificações. Agora é um roteiro em blocos: quem fala, o que o app usa, o
- * que precisa sair, como guiar, a chave opcional no final (com o endereço
+ * que precisa sair, como guiar, a assinatura obrigatória no final (com o endereço
  * real de notificações desta loja, quando conhecido) e a segurança.
  *
  * Texto corrido em blocos, e não JSON, de propósito: o agente do Mercado Pago
@@ -168,7 +167,7 @@ O QUE EU PRECISO TER EM MÃOS NO FIM DESTA CONVERSA
 1) A PUBLIC KEY de PRODUÇÃO.
 2) O ACCESS TOKEN de PRODUÇÃO.
 As duas da MESMA conta que eu uso no app do Mercado Pago do meu celular, e as duas de PRODUÇÃO (as que recebem dinheiro de verdade). As credenciais de TESTE não me servem agora.
-3) Só no final, e só se eu quiser: a CHAVE DE NOTIFICAÇÕES (no painel aparece como "Assinatura secreta", na área de Webhooks). Ela é OPCIONAL: o Pix já funciona sem ela.
+3) A CHAVE DE NOTIFICAÇÕES da MINHA aplicação (no painel aparece como "Assinatura secreta", na área de Webhooks). Ela é obrigatória para o Pix: sem a assinatura da minha loja, o Pix não pode ser cobrado. A chave global do aplicativo não substitui a minha.
 
 COMO EU QUERO QUE VOCÊ ME GUIE
 - UM passo por vez, bem curto, dizendo exatamente ONDE eu toco: o nome do menu, do ícone ou do botão, do jeito que aparece na tela. Espere eu dizer que consegui antes de passar ao próximo.
@@ -176,13 +175,11 @@ COMO EU QUERO QUE VOCÊ ME GUIE
 - Se eu fizer uma pergunta no meio, responda e depois volte para o passo em que paramos.
 - Se algo não aparecer no app do celular, me leve pelo site: entrar em developers.mercadopago.com com a minha conta, abrir "Suas integrações", criar a aplicação da minha loja (se ainda não existir) e abrir "Credenciais de produção".
 - Se aparecer o botão "Ativar credenciais de produção", me ajude a concluir esse passo (aceitar os termos e o reCAPTCHA). Sem isso as chaves não recebem dinheiro de verdade.
-- Quando eu chegar nas credenciais, me mostre o botão de copiar de cada uma: primeiro a Public Key, depois o Access Token. Me lembre de colar as duas no aplicativo da minha loja, em Ajustes, Pagamentos, Mercado Pago, na parte "Suas chaves", e depois tocar em "Salvar chaves" e em "Testar conexão".
+- Quando eu chegar nas credenciais, me mostre o botão de copiar de cada uma: primeiro a Public Key, depois o Access Token. Depois me guie para configurar a assinatura de Webhooks. Me lembre de colar as três no aplicativo da minha loja, em Ajustes, Pagamentos, Mercado Pago, na parte "Suas chaves", e depois tocar em "Salvar chaves" e em "Testar conexão". Testar conexão não valida a assinatura do webhook.
 - Me lembre de conferir se a minha conta do Mercado Pago tem uma CHAVE PIX cadastrada (na área do Pix do app). Sem ela, o dinheiro do Pix não tem onde cair.
 
-NO FINAL: A CHAVE DE NOTIFICAÇÕES, SE EU QUISER
-Depois que eu tiver as duas chaves, me pergunte se quero configurar a chave de notificações agora ou deixar para depois. As duas respostas estão certas.
-- Se eu quiser: explique em uma frase para que ela serve (é uma assinatura que permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago, e não de outra pessoa). Depois me leve até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar, e então copiar a "Assinatura secreta" que o painel mostra. Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Chave de notificações (opcional)".
-- Se eu não quiser agora: tudo bem, o Pix já funciona sem ela e eu posso voltar a isso outro dia.
+NO FINAL: CONFIGURE A CHAVE DE NOTIFICAÇÕES ANTES DE LIGAR O PIX
+Depois que eu tiver a Public Key e o Access Token, explique em uma frase para que serve a assinatura: ela permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago. Leve-me até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar e copiar a "Assinatura secreta". Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Chave de notificações (obrigatória para Pix)". Sem ela, não me diga que o Pix está pronto. Um aviso assinado e a atualização do pedido ainda precisam ser validados.
 
 SEGURANÇA
 Essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e dentro do aplicativo da minha loja. Não vou enviá-las para ninguém, nem colar em outro site, nem colar aqui nesta conversa. Se eu tentar colar uma chave aqui, me avise para não fazer isso.`;
