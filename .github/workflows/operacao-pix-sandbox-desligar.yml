@@ -1,0 +1,22 @@
+# Temporário (29/09/2026): desliga o modo sandbox do Pix na loja IKCOUS.
+name: Operação — desligar sandbox do Pix (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/pix-sandbox-desligar.mjs
+      - .github/workflows/operacao-pix-sandbox-desligar.yml
+permissions:
+  contents: read
+jobs:
+  desligar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/pix-sandbox-desligar.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
