@@ -1217,8 +1217,11 @@ export function CheckoutView({
       .then(({ data }) => {
         if (!vivo || !data) return;
         // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
-        // "verificando:..." com metodo_online null é um CARTÃO ambíguo
-        // aguardando reconciliação no servidor. Montar pagamento aqui
+        // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
+        // no servidor (metodo_online costuma vir null nesse estado, mas o
+        // gate depende SÓ do gateway_payment_id — bloqueia também método
+        // preenchido com sentinela na vaga, estado igualmente ambíguo; PIX
+        // legítimo nunca carrega sentinela). Montar pagamento aqui
         // dispararia criar-pagamento PIX que a edge leria como troca de
         // método — cancelando cobrança de cartão que pode estar viva.
         // Nada monta até o estado resolver (o cliente volta aos pedidos e
@@ -2931,8 +2934,8 @@ export function CheckoutView({
         </h1>
         <p className="text-sm text-zinc-600">
           O pagamento deste pedido está em análise com o banco. Nada precisa ser
-          feito agora: esta tela muda sozinha quando o banco decidir — tente
-          retomar daqui a alguns minutos.
+          feito agora: daqui a alguns minutos, abra "Ver meus pedidos" e retome
+          o pagamento — ele continua de onde parou quando o banco decidir.
         </p>
         <Button
           onClick={() => onNavigate("orders")}
