@@ -1,26 +1,17 @@
 # Diagnóstico SOMENTE LEITURA das pré-condições de pagamento (29/09/2026).
 #
-# Contexto: acesso de leitura à Management API do projeto ativo já provado
-# (run da "Prova de acesso": GET 200 no projeto e nas 11 functions, todas
-# ACTIVE, implantadas em massa em 28/09 ~06:00Z). Este workflow fecha as
-# perguntas que faltam ANTES de qualquer publicação, sem efeito colateral:
+# Revisão independente do PR #716 (4 achados bloqueantes) CORRIGIDA:
+#   (1) FALSE-GREEN: toda falha de consulta/download encerra o run com exit 1.
+#   (2) LOG SEM CORPO: erros só method+caminho+status; return_message do cron
+#       NÃO é impresso — respostas podem carregar dado sensível.
+#   (3) COFRE: marcador pela CHAVE EXATA (`pagamentos_mercado_pago`,
+#       constante do repositório); presença NÃO comprova validade.
+#   (4) GERAÇÃO: sem binário — matriz por migration do PR #666 + prova de
+#       SCHEMA independente do ledger (devolucoes/config_pagamento_cartao),
+#       porque aplicar-migrations.yml NÃO grava o ledger.
 #
-#   (1) GERAÇÃO do banco: últimas migrations aplicadas (a linha nova exige
-#       20261175-20261180 do PR #666; a antiga não as tem).
-#   (2) RECONCILIADOR: pg_cron tem o job? cron.job_run_details mostra
-#       execução recente e com que status.
-#   (3) COFRE MP: app_settings tem linha (presença — NUNCA valores; só nomes
-#       de colunas e contagem).
-#   (4) GERAÇÃO/CORREÇÕES nas functions: baixa o CORPO de
-#       criar-pagamento/webhook-mercadopago/estornar-pagamento (GET
-#       /functions/{slug}/body — código do repositório, sem segredo) e testa
-#       MARCADORES por booleano: linha nova vs antiga, e se alguma das dez
-#       correções da PR #711 já está no ar por acaso.
-#
-# Garantias: SELECTs apenas (mesmo mecanismo do banco.mjs do incidente,
-# autorizado pelo dono); nenhum valor de segredo é lido ou impresso; corpos
-# de function só geram booleans de marcadores; nada de deploy/DDL/compra.
-# Ciclo de vida: arquivo de incidente — apagar com o fim do runbook.
+# Garantias: SELECTs apenas; token só como env, nunca impresso; corpos de
+# function → só booleans; sem deploy/DDL/compra. Arquivo de incidente.
 name: Diagnóstico de pagamentos (somente leitura)
 on:
   workflow_dispatch: {}
@@ -42,46 +33,52 @@ jobs:
             const REF = "dekxabvqdsuukijblazl";
             const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
             if (token === "") { console.log("::error::Falta o secret SUPABASE_ACCESS_TOKEN"); process.exit(1); }
-            const falhas = [];
-            const api = async (metodo, caminho, corpo) => {
+            let falhas = 0;
+            // (2) Log sem corpo: erros carregam SÓ metodo+caminho+status.
+            const apiJson = async (caminho, corpo) => {
               const resposta = await fetch(`https://api.supabase.com/v1${caminho}`, {
-                method: metodo,
+                method: "POST",
                 headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                body: corpo === undefined ? undefined : JSON.stringify(corpo),
+                body: JSON.stringify(corpo),
               });
-              const texto = await resposta.text();
-              if (!resposta.ok) throw new Error(`${metodo} ${caminho} → ${resposta.status}: ${texto.slice(0, 150)}`);
-              return texto === "" ? null : JSON.parse(texto);
+              if (!resposta.ok) throw new Error(`POST ${caminho} → ${resposta.status}`);
+              return JSON.parse(await resposta.text());
             };
             const sql = async (query) => {
-              try { return await api("POST", `/projects/${REF}/database/query`, { query }); }
-              catch (e) { falhas.push(String(e).slice(0, 120)); return null; }
+              try { return await apiJson(`/projects/${REF}/database/query`, { query }); }
+              catch (e) { falhas++; console.log(`::error::consulta falhou: ${String(e.message).slice(0, 80)}`); return null; }
             };
 
-            // (1) Geração do banco — últimas migrations.
-            const migs = await sql("SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 12");
+            // (4) Matriz de migrations do PR #666 (sem binário).
+            const DO_PR_666 = ["20261175000000", "20261176000000", "20261177000000", "20261178000000", "20261180000000"];
+            const migs = await sql("SELECT version FROM supabase_migrations.schema_migrations ORDER BY version DESC LIMIT 40");
             if (migs) {
-              console.log("== Migrations (últimas 12, mais nova primeiro) ==");
-              for (const m of migs) console.log("-", m.version);
-              const temNova = migs.some((m) => String(m.version).startsWith("20261175") || String(m.version).startsWith("20261178") || String(m.version).startsWith("20261180"));
-              console.log(`Banco com migrations do PR #666 (2026117x): ${temNova ? "SIM (linha nova)" : "NÃO visto nas 12 últimas (conferir lista acima)"}`);
-            } else console.log("== Migrations: consulta falhou (ver falhas no fim) ==");
+              const vistas = new Set(migs.map((m) => String(m.version)));
+              console.log("== Migrations do PR #666 no ledger (aplicar-migrations NÃO grava ledger) ==");
+              let n = 0;
+              for (const v of DO_PR_666) { const tem = vistas.has(v); if (tem) n++; console.log(`- ${v}: ${tem ? "no ledger" : "ausente no ledger"}`); }
+              console.log(`ledger: ${n}/${DO_PR_666.length}`);
+            }
+            // Prova de SCHEMA (independe do ledger): tabelas que só existem no PR #666.
+            const tabelas = await sql("SELECT table_name FROM information_schema.tables WHERE table_schema=$$public$$ AND table_name IN ($$devolucoes$$, $$config_pagamento_cartao$$)");
+            const existem = new Set((tabelas ?? []).map((t) => t.table_name));
+            console.log(`== Schema (independente do ledger): devolucoes=${existem.has("devolucoes") ? "EXISTE" : "não existe"} | config_pagamento_cartao=${existem.has("config_pagamento_cartao") ? "EXISTE" : "não existe"} ==`);
 
             // (2) Reconciliador — job e execuções recentes.
             const jobs = await sql("SELECT jobid, jobname, schedule, active FROM cron.job ORDER BY jobname");
             console.log("== pg_cron jobs ==");
             if (jobs && jobs.length) for (const j of jobs) console.log(`- ${j.jobname} | ${j.schedule} | ativo: ${j.active}`);
             else console.log("(nenhum job — RECONCILIADOR NÃO AGENDADO)");
-            const runs = await sql("SELECT jobid, status, return_message, start_time FROM cron.job_run_details WHERE start_time > now() - make_interval(days => 3) ORDER BY start_time DESC LIMIT 8");
-            console.log("== Runs do cron (últimos 3 dias) ==");
-            if (runs && runs.length) for (const r of runs) console.log(`- job ${r.jobid} | ${r.status} | ${String(r.start_time).slice(0, 19)} | ${String(r.return_message ?? "").slice(0, 60)}`);
+            const runs = await sql("SELECT jobid, status, start_time FROM cron.job_run_details WHERE start_time > now() - make_interval(days => 3) ORDER BY start_time DESC LIMIT 8");
+            console.log("== Runs do cron (últimos 3 dias; sem return_message) ==");
+            if (runs && runs.length) for (const r of runs) console.log(`- job ${r.jobid} | ${r.status} | ${String(r.start_time).slice(0, 19)}`);
             else console.log("(nenhuma execução nos últimos 3 dias — reconciliador SEM prova de vida)");
 
-            // (3) Cofre MP — presença (nomes de colunas + contagem; NUNCA valores).
-            const cols = await sql("SELECT column_name FROM information_schema.columns WHERE table_schema=$$public$$ AND table_name=$$app_settings$$ ORDER BY ordinal_position");
-            if (cols) console.log("== app_settings colunas ==", cols.map((c) => c.column_name).join(", "));
-            const conta = await sql("SELECT count(*)::int AS n FROM app_settings");
-            if (conta) console.log(`app_settings linhas: ${conta[0].n} ${conta[0].n > 0 ? "(cofre PRESENTE — valores nunca lidos)" : "(VAZIA — cofre MP ausente)"}`);
+            // (3) Cofre — chave EXATA do registro do lojista; presença ≠ validade.
+            const chaves = await sql("SELECT key FROM app_settings");
+            const temMp = (chaves ?? []).some((c) => String(c.key) === "pagamentos_mercado_pago");
+            console.log(`== Registro MP do lojista (chave pagamentos_mercado_pago): ${temMp ? "PRESENTE (presença NÃO comprova validade)" : "AUSENTE"} ==`);
+            console.log(`app_settings: ${(chaves ?? []).length} linha(s); chaves não-MP não são impressas`);
 
             // (4) Marcadores nos corpos das functions (booleans, sem despejar código).
             const MARCADORES = [
@@ -102,16 +99,19 @@ jobs:
                   headers: { Authorization: `Bearer ${token}` },
                 });
                 const texto = await resposta.text();
-                if (!resposta.ok) throw new Error(`body ${slug} → ${resposta.status}`);
+                if (!resposta.ok) { falhas++; console.log(`::error::body ${slug} → ${resposta.status}`); continue; }
                 console.log(`== ${slug} (${texto.length} bytes) ==`);
                 for (const [nome, marcador] of marcas) console.log(`- ${nome}: ${texto.includes(marcador) ? "PRESENTE" : "ausente"}`);
               } catch (e) {
-                console.log(`== ${slug}: download falhou (${String(e).slice(0, 100)}) ==`);
+                falhas++;
+                console.log(`::error::body ${slug} falhou: ${String(e.message).slice(0, 80)}`);
               }
             }
 
-            if (falhas.length) {
-              console.log("== Falhas de consulta ==");
-              for (const f of falhas) console.log("-", f);
+            // (1) Diagnóstico incompleto NÃO é verde.
+            if (falhas > 0) {
+              console.log(`::error::${falhas} chamada(s) falharam — run VERMELHO por honestidade.`);
+              process.exit(1);
             }
+            console.log("Diagnóstico completo: todas as consultas responderam.");
           '
