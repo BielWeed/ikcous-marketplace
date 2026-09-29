@@ -1,3 +1,4 @@
+import type { RespostaCriarPagamento } from "@/hooks/useOrders";
 // @vitest-environment jsdom
 //
 // Os dois "loadings" da tela de pagamento dependiam de promessas SEM tempo
@@ -15,7 +16,6 @@
 // igualdade, para o teste prender o COMPORTAMENTO sem soldar o valor exato
 // que a implementação escolher.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RespostaCriarPagamento } from "@/hooks/useOrders";
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {

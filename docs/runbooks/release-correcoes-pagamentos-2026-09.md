@@ -80,18 +80,34 @@ Não há passo de banco nesta release.
 **Quem é afetado (frente 8)**: loja cujo painel do Mercado Pago foi configurado
 com o **segredo da plataforma** (o setup que a reserva antiga autenticava).
 **Efeito no deploy**: as notificações dela passam a receber 500 nomeado — o
-pedido **não se perde**: o reconciliador confirma em ≤10 min
-(`pago_apos_expirar` honrado pela mesma RPC) e o MP reenvia a notificação;
-assim que a loja cadastrar a chave PRÓPRIA em Ajustes, a confirmação volta a
-ser imediata (o reenvio processa sozinho).
+pedido **não se perde por design** (o reconciliador consulta com o TOKEN do
+lojista e chama a mesma RPC `confirmar_pagamento`; o MP reenvia a notificação,
+que processa sozinha quando a chave própria é cadastrada).
+
+**⚠️ AVISO HONESTO (correção de 29/09 a pedido do dono): a confirmação
+"≤10 minutos pelo reconciliador" NÃO é garantia — é desenho.** A checagem
+anterior do ambiente ativo NÃO confirmou logs nem execução recente do
+`reconciliar-pagamentos` (pg_cron), nem a saúde das credenciais dele. Sem essa
+prova, o prazo é **risco residual não verificado**. Consequência prática:
+**a loja NÃO fica liberada para receber PIX/cartão até ter a chave própria
+cadastrada e o painel MP conferido** (regra explícita do dono — e o gate da
+frente 3 já bloqueia a criação de PIX sem chave própria; o cartão é ligado só
+pelo dono após o pedido de teste do runbook de publicação). Verificar antes do
+rollout, nesta ordem: (1) `pg_cron` ativo e o job da reconciliação executando
+(tabela `cron.job_run_details` do projeto da loja); (2) logs da function
+`reconciliar-pagamentos` com execuções recentes; (3) `RECONCILIACAO_SECRET`
+presente no ambiente. **Sem essas três provas, tratar a loja como "sem
+backstop" e exigir a chave própria ANTES de habilitar qualquer meio online.**
 
 **Ordem de mitigação recomendada (antes do deploy):**
 1. Listar lojas ativas com pagamento online (app_settings/registro do lojista).
-2. Para cada uma: orientar o cadastro da chave própria (texto pronto no §4.1)
-   e a conferência do painel MP.
-3. Só considerar a loja "pronta" com o pedido de teste do passo 3 aprovado.
-4. Comunicar à loja o sintoma pós-deploy (pagamento confirma em até 10 min em
-   vez de imediato) para evitar pânico durante a janela de transição.
+2. Para cada uma: cadastrar a chave PRÓPRIA (Ajustes) e conferir o painel MP
+   (URL, eventos, assinatura com a MESMA chave) — **obrigatório antes de
+   habilitar PIX**, não opcional.
+3. Só considerar a loja "pronta" com o pedido de teste aprovado (QR gerado,
+   confirmação observada NO LOG da function — não presumida).
+4. Provar os três sinais do reconciliador (acima) OU registrar formalmente a
+   loja como "sem backstop confirmado" na decisão de liberação.
 
 ## 6. Plano de publicação (ordem fixa) e REVERSIBILIDADE
 

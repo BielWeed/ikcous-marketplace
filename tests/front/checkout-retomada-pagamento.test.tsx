@@ -99,6 +99,7 @@ vi.mock("@/lib/supabase", () => ({
       select: (_colunas: string) => ({
         eq: (_coluna: string, valor: string) => ({
           maybeSingle: () =>
+            // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê ("ped-999"), definida neste arquivo — nunca entrada do "cliente".
             Promise.resolve(respostasMaybeSingle[valor] ?? { data: null }),
           single: () =>
             Promise.resolve({
@@ -182,9 +183,7 @@ describe("CheckoutView — retomada do pagamento (frente 10)", () => {
   it("com retomarPedidoId: nasce na tela de pagamento com o pedido certo, mesmo com carrinho vazio", async () => {
     await renderizar("ped-999");
 
-    expect(
-      hospedeiro.textContent?.includes("Finalize o pagamento"),
-    ).toBe(true);
+    expect(hospedeiro.textContent?.includes("Finalize o pagamento")).toBe(true);
     expect(propsCapturadasDoPagamento).not.toBeNull();
     expect(propsCapturadasDoPagamento?.orderId).toBe("ped-999");
     // O valor vem do PEDIDO (149.9), não do carrinho (zerado).
@@ -194,9 +193,9 @@ describe("CheckoutView — retomada do pagamento (frente 10)", () => {
   it("sem retomarPedidoId: fluxo normal — nada de tela de pagamento nem consulta de retomada", async () => {
     await renderizar(undefined);
 
-    expect(
-      hospedeiro.textContent?.includes("Finalize o pagamento"),
-    ).toBe(false);
+    expect(hospedeiro.textContent?.includes("Finalize o pagamento")).toBe(
+      false,
+    );
     expect(propsCapturadasDoPagamento).toBeNull();
   });
 });

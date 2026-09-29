@@ -128,7 +128,11 @@ describe("OrderDetailsView — retomada do pagamento pelo card do pedido pendent
   }
 
   it("pending + aguardando + logado: botão existe e chama onRetomarPagamento com o id do pedido", async () => {
-    pedidoAtual = { ...pedidoBase, status: "pending", paymentStatus: "aguardando" as PaymentStatus };
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "pending",
+      paymentStatus: "aguardando" as PaymentStatus,
+    };
     await renderizar();
 
     const botao = botaoRetomar(hospedeiro);
@@ -142,7 +146,11 @@ describe("OrderDetailsView — retomada do pagamento pelo card do pedido pendent
   });
 
   it("pending + recusado: botão EXISTE (cobrança morta — a edge cria outra com segurança; revisão da frente 10)", async () => {
-    pedidoAtual = { ...pedidoBase, status: "pending", paymentStatus: "recusado" as PaymentStatus };
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "pending",
+      paymentStatus: "recusado" as PaymentStatus,
+    };
     await renderizar();
 
     const botao = botaoRetomar(hospedeiro);
@@ -155,26 +163,42 @@ describe("OrderDetailsView — retomada do pagamento pelo card do pedido pendent
   });
 
   it("pending + pago: SEM botão (não há o que retomar)", async () => {
-    pedidoAtual = { ...pedidoBase, status: "pending", paymentStatus: "pago" as PaymentStatus };
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "pending",
+      paymentStatus: "pago" as PaymentStatus,
+    };
     await renderizar();
     expect(botaoRetomar(hospedeiro)).toBeUndefined();
   });
 
   it("pending + expirado: SEM botão (o prazo morreu — o texto da tela já manda falar com a loja)", async () => {
-    pedidoAtual = { ...pedidoBase, status: "pending", paymentStatus: "expirado" as PaymentStatus };
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "pending",
+      paymentStatus: "expirado" as PaymentStatus,
+    };
     await renderizar();
     expect(botaoRetomar(hospedeiro)).toBeUndefined();
   });
 
   it("cancelled + aguardando: SEM botão (pedido morto — pagar não entregaria)", async () => {
-    pedidoAtual = { ...pedidoBase, status: "cancelled", paymentStatus: "aguardando" as PaymentStatus };
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "cancelled",
+      paymentStatus: "aguardando" as PaymentStatus,
+    };
     await renderizar();
     expect(botaoRetomar(hospedeiro)).toBeUndefined();
   });
 
   it("pending + aguardando + SEM usuário (rastreio de convidado): SEM botão (P6 — online exige conta)", async () => {
     usuarioAtual = null;
-    pedidoAtual = { ...pedidoBase, status: "pending", paymentStatus: "aguardando" as PaymentStatus };
+    pedidoAtual = {
+      ...pedidoBase,
+      status: "pending",
+      paymentStatus: "aguardando" as PaymentStatus,
+    };
     await renderizar();
     expect(botaoRetomar(hospedeiro)).toBeUndefined();
   });
