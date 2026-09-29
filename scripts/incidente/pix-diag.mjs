@@ -52,6 +52,14 @@ mostra("Pix presos: 'aguardando' com prazo vencido há mais de 10 min (esperado:
   FROM public.marketplace_orders
   WHERE payment_status = 'aguardando' AND expires_at < now() - interval '10 minutes'`));
 
+mostra("Os presos: situação do pedido (sem dado pessoal)", await sql(`SELECT left(id::text, 8) AS pedido, status,
+    payment_status, created_at, expires_at, gateway_payment_id IS NOT NULL AS tem_cobranca
+  FROM public.marketplace_orders
+  WHERE payment_status = 'aguardando' AND expires_at < now() - interval '10 minutes'
+  ORDER BY created_at`));
+mostra("Regra do job de expiração (corpo do comando)", await sql(`SELECT jobname, left(command, 400) AS comando
+  FROM cron.job WHERE jobname = 'expirar-pedidos-vencidos'`));
+
 const nomes = await api("GET", `/projects/${REF}/secrets`);
 const sandbox = Array.isArray(nomes) && nomes.some((s) => s.name === "MP_SANDBOX_PAYER_EMAIL");
 mostra("Modo sandbox do Pix", Array.isArray(nomes)
