@@ -127,6 +127,46 @@ no preview por loja antes de promover.
   loja com checklist aprovado (§4) → reverter a function correspondente e
   investigar com o log em mãos.
 
+## 6.1 GATE MATERIAL: conclusão da migração do banco (partes f/h/i/j) — PRÉ-REQUISITO de qualquer publicação financeira na loja viva
+
+Auditoria de 29/09 (somente leitura, evidências no comentário da PR): o front de
+produção JÁ aponta para o projeto novo (`dekxabvqdsuukijblazl` — bundle público);
+o projeto antigo (`cafkrminfnokvgjqtkle`) está **INACTIVE**; o token Supabase da
+conta antiga (máquina do dono e, presumivelmente, `SUPABASE_ACCESS_TOKEN` do
+GitHub) recebe **403** no projeto novo (org IKCOUS); as 3 functions financeiras
+EXISTEM no novo projeto (sondas 401/400), mas o runbook da própria migração
+(PR #671, `docs/runbooks/migrar-banco-da-loja.md`, §"E agora?") declara
+PENDENTES: **(f)** publicar functions **com os segredos** — incl. RECOLETAR as
+credenciais do Mercado Pago do lojista (o cofre cifrado não sobreviveu à troca
+de projeto), **(h)** Auth (Site/Redirect URL, SMTP), **(i)** webhook do Mercado
+Pago apontando para o projeto novo, **(j)** segredos do GitHub Actions
+(`SUPABASE_ACCESS_TOKEN` da org nova, `DATABASE_URL`).
+
+**Checklist-gate (cada item com prova esperada; sem TODOS verdes, nenhuma
+publicação financeira):**
+1. **(j) `SUPABASE_ACCESS_TOKEN` novo no GitHub** — prova: `publicar-functions`
+   (projeto=loja) executa `supabase functions list` sem 403.
+2. **(f) Cofre MP do lojista RECRIADO no projeto novo** — lojista cadastra
+   token/chave em Ajustes contra o app apontando o novo projeto; prova: teste de
+   credencial do painel verde + log da function.
+3. **(f) Segredos das functions presentes** (`MP_*`, `RECONCILIACAO_SECRET`,
+   `MP_CHAVES_ENCRYPTION_KEY`) — prova: pedido de teste PIX gera QR (resposta
+   200 da `criar-pagamento`), sem 500 de credencial.
+4. **(i) Webhook MP registrado para `dekxabvqdsuukijblazl`** — prova:
+   notificação de teste chega (log da `webhook-mercadopago`) e assinatura valida.
+5. **Reconciliador provado** (pg_cron ativo + job executando + logs recentes +
+   `RECONCILIACAO_SECRET` válido) — sem isso, loja não habilita PIX (§5).
+6. **`DATABASE_URL` novo no GitHub** — o check "Código x banco" verde.
+7. Só então: `publicar-functions` com ESTA release (as 5 de cobrança) →
+   checklist por loja (§4) → front → monitoração 24 h.
+
+**Correção estreita examinada e REJEITADA como suficiente**: trocar só o ref do
+workflow (`loja` → `dekxabvqdsuukijblazl`) falharia no 403 do token (j) e
+mascararia as pendências f/i — publicação ilusória. O PR #671 permanece decisão
+do dono (DRAFT amplo: ~32 arquivos, incl. AGENTS.md/scripts); NÃO é pré-requisito
+rotineiro nem merge cego — o que ele resolve de verdade (ref do workflow,
+`DATABASE_URL`) também depende de (j)/(f) para valer.
+
 ## 7. Riscos residuais declarados
 
 1. Busca da Orders API UNVERIFIED em produção (nome de campo/param já
