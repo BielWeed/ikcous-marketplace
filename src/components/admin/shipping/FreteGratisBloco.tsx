@@ -3,10 +3,18 @@ import type { PresetFreteGratis } from "@/lib/presets-de-frete-gratis";
 import { memo } from "react";
 
 /**
- * Seção "Frete grátis" da tela de Frete v2 — direção D aprovada pelo dono
- * (03/09): presets em PILLS com marca de seleção (o desenho novo; os cards
- * grandes da rodada anterior morreram com ele) e painel de edição do valor
- * abaixo, com o aviso do mockup.
+ * Seção "Estratégias do frete local" da tela de Frete — direção D aprovada
+ * pelo dono (03/09): presets em PILLS com marca de seleção (o desenho novo;
+ * os cards grandes da rodada anterior morreram com ele) e painel de edição
+ * do valor abaixo, com o aviso do mockup.
+ *
+ * ESCOPO (T4, 23/09/2026 — plano de estratégias de frete local e nacional):
+ * esta seção se chamava "Frete grátis" e a regra valia, sem querer, para
+ * QUALQUER modalidade (inclusive transportadora — bug corrigido pela T3). A
+ * partir desta frente a regra aqui vale SÓ para `local-delivery` e
+ * `store-pickup` (entrega própria na cidade e retirada na loja); o frete
+ * nacional (transportadora) tem a estratégia PRÓPRIA na tela "Estratégias
+ * do frete nacional" (botão dentro de "Fora da cidade").
  *
  * SEMÂNTICA EXCLUSIVA (decisão do dono via orquestradora): a estratégia
  * escolhida é a ÚNICA que vale — escolher uma pill desliga as outras. A
@@ -30,22 +38,22 @@ const PRESETS: readonly {
   {
     id: "desligado",
     nome: "Desligado",
-    desc: "nenhuma regra de grátis — a entrega é cobrada como está acima",
+    desc: "nenhuma regra de grátis — a entrega na cidade é cobrada como está acima",
   },
   {
     id: "acima_de_valor",
     nome: "Grátis acima de um valor",
-    desc: "a compra que passa do mínimo não paga entrega",
+    desc: "a compra que passa do mínimo não paga entrega na cidade nem retirada",
   },
   {
     id: "sempre",
     nome: "Sempre grátis",
-    desc: "todo pedido sai com entrega grátis, sem mínimo",
+    desc: "toda entrega na cidade sai grátis, sem mínimo",
   },
   {
     id: "por_produto",
     nome: "Por produto marcado",
-    desc: 'só o que você marcar como "frete grátis" no cadastro do produto',
+    desc: 'só o que você marcar como "frete grátis" no cadastro do produto, na entrega da cidade',
   },
 ];
 
@@ -66,6 +74,7 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
   onEscolher,
   onAcimaDe,
   desabilitado,
+  mostrarCabecalho = true,
 }: {
   readonly preset: PresetFreteGratis;
   /** Valor do preset "acima de" (só faz sentido com o preset ativo dele). */
@@ -73,28 +82,38 @@ export const FreteGratisBloco = memo(function FreteGratisBloco({
   readonly onEscolher: (preset: PresetFreteGratis) => void;
   readonly onAcimaDe: (valor: number) => void;
   readonly desabilitado?: boolean;
+  /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
+   * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
+   * dobro. Default `true` preserva o uso isolado (e os testes). */
+  readonly mostrarCabecalho?: boolean;
 }) {
   return (
     <section
-      id="bloco-frete-gratis"
-      aria-label="Frete grátis"
+      id="bloco-frete-local-estrategias"
+      aria-label="Estratégias do frete local"
       className="scroll-mt-24"
     >
-      <CabecaDeSecao
-        titulo="Frete grátis"
-        estado={
-          <>
-            estratégia:{" "}
-            <b className="font-semibold text-zinc-200">
-              {ESTRATEGIA.get(preset)}
-            </b>
-          </>
-        }
-      />
+      {mostrarCabecalho && (
+        <CabecaDeSecao
+          titulo="Estratégias do frete local"
+          estado={
+            <>
+              estratégia:{" "}
+              <b className="font-semibold text-zinc-200">
+                {ESTRATEGIA.get(preset)}
+              </b>
+            </>
+          }
+        />
+      )}
+      <p className="pt-3.5 text-[12.5px] leading-snug text-zinc-500">
+        Vale só para a entrega própria na cidade e a retirada na loja — o frete
+        cotado por transportadora tem a estratégia própria em "Fora da cidade".
+      </p>
 
       <div
         role="radiogroup"
-        aria-label="Estratégia de frete grátis"
+        aria-label="Estratégia de frete local"
         className="flex flex-col gap-2.5 py-5 md:flex-row md:flex-wrap md:pb-2"
       >
         {PRESETS.map((p) => {

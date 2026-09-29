@@ -161,6 +161,8 @@ async function syncOfflineUpdates(): Promise<boolean> {
         if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
         if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
         if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
+        if (updates.codigoBarras !== undefined)
+          dbUpdates.codigo_barras = updates.codigoBarras || null;
 
         const { error } = await supabase
           .from("produtos")
@@ -215,36 +217,115 @@ async function syncOfflineUpdates(): Promise<boolean> {
 // Regex do prefixo que `issueReceipt` (src/utils/truth_gate.ts) grava em
 // TODA exceção que `TruthGate.verifyProductAxiom`/`verifyVariantAxiom`
 // lançam — "Validação de Produto Falhou: ..." ou "Validação de Variante
-// Falhou: ...". É o ÚNICO texto que os três pontos abaixo podem gerar sem
-// nenhuma chamada de rede ter acontecido ainda (addProduct e updateProduct
-// chamam o TruthGate ANTES do `.insert()`/`.update()`, e o ramo offline de
-// updateProduct só chama o TruthGate, nada mais) — por isso é seguro passar
-// direto: nasceu no próprio app, em português, e diz qual regra falhou.
+// Falhou: ...". Nasce no próprio app, ANTES de qualquer chamada de rede
+// (addProduct, updateProduct e os cinco caminhos de variante chamam o
+// TruthGate antes do `.insert()`/`.update()`/`.upsert()`), então é a única
+// recusa que sabemos traduzir regra por regra: o prefixo fica, e cada
+// "Axiom violation: <código>" vira a frase em português da tabela abaixo
+// (revisão de useProducts-1608: o código em inglês não dizia à lojista que
+// o limite era 10.000 nem que o problema era o estoque).
 const PREFIXO_ERRO_TRUTHGATE = /^Validação de (Produto|Variante) Falhou:/;
 
+// Map em vez de objeto indexado: mesmo padrão de CustomerPaymentBadge, para
+// a busca por chave dinâmica não acender o security/detect-object-injection.
+const FRASE_DO_AXIOMA: ReadonlyMap<string, string> = new Map([
+  ["identity_required", "informe o nome do produto"],
+  ["price_required", "informe o preço"],
+  ["stock_required", "informe o estoque"],
+  ["price_not_numeric", "o preço precisa ser um número"],
+  ["stock_not_numeric", "o estoque precisa ser um número"],
+  ["cost_price_not_numeric", "o preço de custo precisa ser um número"],
+  ["original_price_not_numeric", "o preço original precisa ser um número"],
+  ["price_non_negative", "o preço não pode ser negativo"],
+  ["stock_limit_exceeded", "o estoque não pode passar de 10.000 unidades"],
+  ["stock_negative", "o estoque não pode ser negativo"],
+  ["identity_null_error", "o nome do produto não pode ficar vazio"],
+  ["cost_price_negative", "o preço de custo não pode ser negativo"],
+  [
+    "original_price_must_be_greater_than_promo_price",
+    "o preço original (De:) precisa ser maior que o preço de venda (Por:)",
+  ],
+  [
+    "variant_price_override_negative",
+    "o preço da variação não pode ser negativo",
+  ],
+  [
+    "variant_stock_limit_exceeded",
+    "o estoque da variação não pode passar de 10.000 unidades",
+  ],
+  ["variant_stock_negative", "o estoque da variação não pode ser negativo"],
+  ["variant_identity_null_error", "a variação precisa de um nome"],
+  ["variant_value_null_error", "a variação precisa de um valor"],
+]);
+
+/** "Validação de X Falhou: Axiom violation: a, Axiom violation: b" →
+ * "Validação de X Falhou: frase de a; frase de b." Código desconhecido
+ * fica como veio (melhor o código do que esconder a regra). */
+function traduzirRecusaDoTruthGate(texto: string): string {
+  const prefixo = texto.match(PREFIXO_ERRO_TRUTHGATE)?.[0] ?? "";
+  const violacoes = texto
+    .slice(prefixo.length)
+    .split(",")
+    .map((parte) => parte.trim())
+    .filter(Boolean)
+    .map((parte) => {
+      const codigo = parte.replace(/^Axiom violation:\s*/, "");
+      return FRASE_DO_AXIOMA.get(codigo) ?? parte;
+    });
+  return `${prefixo} ${violacoes.join("; ")}.`;
+}
+
 /**
- * Traduz a recusa crua de cadastrar/atualizar produto (INSERT/UPDATE em
- * `vw_produtos_admin`, ou a validação do TruthGate que roda antes deles nos
- * três pontos que chamam esta função) para o que a lojista lê na tela.
+ * Os dois índices únicos parciais que a migration 20261160000000 criou para
+ * `codigo_barras` (um em `produtos`, outro em `product_variants` — a
+ * unicidade não cruza entre as duas tabelas, mas o 23505 de qualquer um dos
+ * dois chega aqui pela mesma mensagem amigável). Checar pelo nome E pela
+ * substring "codigo_barras" (redundante de propósito: o nome do índice já
+ * contém a substring, mas se o Postgres um dia devolver só o detail sem o
+ * nome da constraint, a substring ainda pega).
+ */
+const INDICE_CODIGO_DE_BARRAS =
+  /produtos_codigo_barras_unico|product_variants_codigo_barras_unico|codigo_barras/;
+
+/**
+ * Traduz a recusa crua de cadastrar/atualizar produto ou variação
+ * (INSERT/UPDATE/UPSERT em `vw_produtos_admin`/`product_variants`, ou a
+ * validação do TruthGate que roda antes deles nos oito pontos que chamam
+ * esta função) para o que a lojista lê na tela.
  *
- * Qualquer coisa que NÃO seja a mensagem do TruthGate — erro do PostgREST
- * (nome de coluna, restrição, código Postgres), falha de rede, ou causa
- * nunca vista — não tem tradução específica conhecida aqui: sem uma
- * definição viva das colunas/constraints de `vw_produtos_admin` para mapear
- * causa por causa (ao contrário de `mensagemAmigavelErroPedido`, que tem o
- * `RAISE EXCEPTION` da própria RPC em português como fonte), o único jeito
- * de não presumir é cair no genérico de acordo com a ação em curso.
+ * Qualquer coisa que NÃO seja a mensagem do TruthGate ou o 23505 do índice de
+ * código de barras — erro do PostgREST (nome de coluna, restrição, código
+ * Postgres), falha de rede, ou causa nunca vista — não tem tradução
+ * específica conhecida aqui: sem uma definição viva das colunas/constraints
+ * de `vw_produtos_admin` para mapear causa por causa (ao contrário de
+ * `mensagemAmigavelErroPedido`, que tem o `RAISE EXCEPTION` da própria RPC em
+ * português como fonte), o único jeito de não presumir é cair no genérico de
+ * acordo com a ação em curso.
  */
 export function mensagemAmigavelErroProduto(
   error: unknown,
   acao: "cadastrar" | "atualizar",
 ): string {
-  const detalhes = (error ?? {}) as { message?: unknown };
+  const detalhes = (error ?? {}) as {
+    message?: unknown;
+    details?: unknown;
+    code?: unknown;
+  };
   const textoOriginal =
     typeof detalhes.message === "string" ? detalhes.message : "";
 
   if (PREFIXO_ERRO_TRUTHGATE.test(textoOriginal)) {
-    return textoOriginal;
+    return traduzirRecusaDoTruthGate(textoOriginal);
+  }
+
+  const textoDetalhe =
+    typeof detalhes.details === "string" ? detalhes.details : "";
+  const ehUnicoViolado = detalhes.code === "23505";
+  if (
+    ehUnicoViolado &&
+    INDICE_CODIGO_DE_BARRAS.test(`${textoOriginal} ${textoDetalhe}`)
+  ) {
+    return "Este código de barras já está em outro produto ou variação.";
   }
 
   return acao === "cadastrar"
@@ -633,6 +714,7 @@ export function useProducts({ autoFetch = true } = {}) {
             meta_description: productData.metaDescription,
             tags: productData.tags || [],
             codigo: productData.sku || null,
+            codigo_barras: productData.codigoBarras || null,
             sold: 0,
             peso_kg: productData.weightKg,
             largura_cm: productData.widthCm,
@@ -657,6 +739,7 @@ export function useProducts({ autoFetch = true } = {}) {
               name: v.name,
               value: v.value,
               sku: v.sku || null,
+              codigo_barras: v.codigoBarras || null,
               stock_increment: v.stockIncrement,
               // Mesmo `?? null` do upsertVariants (laudo 0109, A1).
               price_override: v.priceOverride ?? null,
@@ -687,6 +770,7 @@ export function useProducts({ autoFetch = true } = {}) {
                 name: v.name,
                 value: v.value,
                 sku: v.sku || undefined,
+                codigoBarras: v.codigo_barras || undefined,
                 stockIncrement: v.stock_increment,
                 priceOverride: v.price_override,
                 active: v.active,
@@ -835,6 +919,8 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
         if (updates.sold !== undefined) dbUpdates.sold = updates.sold;
         if (updates.sku !== undefined) dbUpdates.codigo = updates.sku || null;
+        if (updates.codigoBarras !== undefined)
+          dbUpdates.codigo_barras = updates.codigoBarras || null;
         if (updates.weightKg !== undefined)
           dbUpdates.peso_kg = updates.weightKg;
         if (updates.widthCm !== undefined)
@@ -1370,6 +1456,7 @@ export function useProducts({ autoFetch = true } = {}) {
             name: variantData.name,
             value: variantData.value,
             sku: variantData.sku || null,
+            codigo_barras: variantData.codigoBarras || null,
             stock_increment: variantData.stockIncrement,
             price_override: variantData.priceOverride,
             active: variantData.active,
@@ -1390,6 +1477,7 @@ export function useProducts({ autoFetch = true } = {}) {
             priceOverride: data.price_override,
             active: data.active,
             sku: data.sku,
+            codigoBarras: data.codigo_barras || undefined,
             imageUrl: (data as any).image_url,
           } as ProductVariant;
 
@@ -1401,7 +1489,11 @@ export function useProducts({ autoFetch = true } = {}) {
         }
       } catch (err) {
         console.error("Error adding variant:", err);
-        toast.error("Erro ao adicionar variante");
+        // useProducts-1608: antes disto o toast era uma frase fixa que
+        // engolia a mensagem do TruthGate ("Validação de Variante Falhou:
+        // ..."), lançada ANTES de qualquer rede em verifyVariantAxiom acima —
+        // a lojista via "erro ao adicionar" sem saber qual regra violou.
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
         throw err;
       }
     },
@@ -1440,6 +1532,8 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.value !== undefined) dbUpdates.value = updates.value;
         if (updates.sku !== undefined) dbUpdates.sku = updates.sku || null;
+        if (updates.codigoBarras !== undefined)
+          dbUpdates.codigo_barras = updates.codigoBarras || null;
         if (updates.stockIncrement !== undefined)
           dbUpdates.stock_increment = updates.stockIncrement;
         // Chave presente grava — e vazio vira NULL de verdade (laudo 0109,
@@ -1476,7 +1570,10 @@ export function useProducts({ autoFetch = true } = {}) {
         }
       } catch (err) {
         console.error("Error updating variant:", err);
-        toast.error("Erro ao atualizar variante");
+        // useProducts-1608: mesma troca — deixa passar a frase do TruthGate
+        // (verifyVariantAxiom roda acima, antes do UPDATE) em vez de um
+        // "erro ao atualizar" fixo que não diz qual regra falhou.
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
         throw err;
       }
     },
@@ -1511,7 +1608,11 @@ export function useProducts({ autoFetch = true } = {}) {
         toast.success("Variante removida");
       } catch (err) {
         console.error("Error deleting variant:", err);
-        toast.error("Erro ao remover variante");
+        // useProducts-1608: os cinco catches de variante usam a mesma
+        // tradutora — se algum dia uma guarda passar a rodar antes deste
+        // delete (hoje não roda nenhuma), a frase do TruthGate já sai certa
+        // em vez de ficar escondida atrás de um texto fixo.
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
         throw err;
       }
     },
@@ -1550,7 +1651,8 @@ export function useProducts({ autoFetch = true } = {}) {
         return true;
       } catch (err) {
         console.error("Error deleting variants:", err);
-        toast.error("Erro ao remover variantes");
+        // useProducts-1608: mesma tradutora dos outros quatro pontos.
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
         throw err;
       }
     },
@@ -1577,6 +1679,10 @@ export function useProducts({ autoFetch = true } = {}) {
             name: v.name,
             value: v.value,
             sku: v.sku || null,
+            // Mesma regra do `sku` acima, não a de `price_override` logo
+            // abaixo: `codigoBarras` é texto (como o sku), não número — não
+            // existe "zero legítimo" a proteger, então vazio vira NULL direto.
+            codigo_barras: v.codigoBarras || null,
             stock_increment: v.stockIncrement,
             // `?? null` (laudo 0109, A1): `undefined` some na serialização do
             // supabase-js, o UPDATE da variante existente saía SEM a coluna e
@@ -1594,18 +1700,49 @@ export function useProducts({ autoFetch = true } = {}) {
           return item;
         });
 
-        const { error } = await supabase
-          .from("product_variants")
-          .upsert(dbVariants);
+        // useProducts-1591: um `.upsert()` só com o lote misto (linhas com e
+        // sem `id`) quebrava TUDO. O postgrest-js monta `columns` com a UNIÃO
+        // das chaves de todas as linhas e só manda `Prefer: missing=default`
+        // quando `defaultToNull: false` é passado (não era) — sem isso, a
+        // linha nova (sem `id`) ia com `id` NULL contra a PK NOT NULL de
+        // `product_variants`, e o lote inteiro abortava com 23502. Separar
+        // por operação: INSERT para quem não tem `id` (o banco gera via
+        // `uuid_generate_v4()`) e UPSERT com `onConflict: "id"` só para quem
+        // já tem — cada linha só carrega as colunas que faz sentido carregar.
+        const variantesNovas = dbVariants.filter((item) => !item.id);
+        const variantesExistentes = dbVariants.filter((item) => item.id);
 
-        if (error) throw error;
+        // Ordem importa (revisão de useProducts-1591): as duas requisições não
+        // são uma transação. A fase IDEMPOTENTE (upsert por id das que já
+        // existem) vai primeiro; se ela falhar, nada novo foi gravado e o
+        // "Salvar" de novo repete tudo sem efeito colateral. A fase que NÃO é
+        // idempotente (INSERT das novas, com id temp- no formulário) fica por
+        // último — se falhar, o banco continua como antes dela.
+        if (variantesExistentes.length > 0) {
+          const { error } = await supabase
+            .from("product_variants")
+            .upsert(variantesExistentes, { onConflict: "id" });
+          if (error) throw error;
+        }
+
+        if (variantesNovas.length > 0) {
+          const { error } = await supabase
+            .from("product_variants")
+            .insert(variantesNovas);
+          if (error) throw error;
+        }
 
         await refreshContext();
         toast.success("Variantes salvas");
         return true;
       } catch (err) {
         console.error("Error upserting variants:", err);
-        toast.error("Erro ao salvar as variantes");
+        // useProducts-1608: `verifyVariantAxiom` roda em loop, ANTES de
+        // qualquer INSERT/UPSERT (linha ~1571) — o "Erro ao salvar as
+        // variantes" fixo escondia exatamente a frase que diz qual axioma
+        // violou (ex.: estoque acima de 10.000), obrigando a lojista a
+        // adivinhar em vez de ler a regra.
+        toast.error(mensagemAmigavelErroProduto(err, "atualizar"));
         throw err;
       }
     },

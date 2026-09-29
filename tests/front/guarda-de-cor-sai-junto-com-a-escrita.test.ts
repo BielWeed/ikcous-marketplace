@@ -98,10 +98,6 @@ const LEITURAS_CONHECIDAS: Record<string, { n: number; porque: string }> = {
     porque:
       "declaração do schema do banco (tipos gerados) — regen 04/09: +_retrato_primary_color_20260980 (tabela do retrato, migration 20260980 já aplicada no banco vivo), 3× Row/Insert/Update",
   },
-  "src/types/supabase.ts": {
-    n: 6,
-    porque: "declaração do schema do banco (tipos gerados)",
-  },
   "src/lib/realtimeSyncEngine.ts": {
     n: 2,
     porque: "destrutura primaryColor para LEITURA do cache offline",

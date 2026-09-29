@@ -24,9 +24,17 @@ const reviewSchema = z.object({
 interface ReviewFormProps {
   productId: string;
   onSuccess?: () => void;
+  // Redesenho 25/09/2026 (cartão "O que achou da compra?" em
+  // OrderDetailsView): quem toca numa estrela do cartão já chega aqui com a
+  // nota escolhida — só preenche `defaultValues.rating`, nada mais muda.
+  initialRating?: number;
 }
 
-export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
+export function ReviewForm({
+  productId,
+  onSuccess,
+  initialRating,
+}: ReviewFormProps) {
   const { addReview } = useReviews();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hoverRating, setHoverRating] = useState(0);
@@ -34,7 +42,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
   const form = useForm<z.infer<typeof reviewSchema>>({
     resolver: zodResolver(reviewSchema),
     defaultValues: {
-      rating: 0,
+      rating: initialRating ?? 0,
       comment: "",
     },
   });

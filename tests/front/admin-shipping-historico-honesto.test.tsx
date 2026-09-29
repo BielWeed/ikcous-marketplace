@@ -6,46 +6,32 @@
 // situações bem diferentes:
 //
 //   1. a consulta FALHOU (catch silencioso, `logs` fica como estava);
-//   2. o provedor salvo é `flat_fee`, que nunca grava log — vazio para
-//      sempre, por desenho, não por falta de uso;
-//   3. o provedor salvo é `melhor_envio`/`frenet` e realmente não há
-//      cotação ainda — aí "Nenhuma cotação registrada recentemente" É
-//      verdade.
+//   2. NENHUM provedor está ligado — nunca grava log — vazio para sempre,
+//      por desenho, não por falta de uso;
+//   3. algum provedor está ligado e realmente não há cotação ainda — aí
+//      "Nenhuma cotação registrada recentemente" É verdade.
 //
-// MUDOU DE TELA (frente glm-visual-admin-0209, pedido do Gabriel 02/09): o
-// histórico saiu da tela de Frete e agora é a seção "Histórico de cotações
-// de frete" da tela de Ajustes (`HistoricoCotacoesSection`), ao lado da
-// seção de Transportadoras. Os três estados continuam distinguíveis, e a
-// regra mais fácil de reintroduzir continua presa: o motivo do vazio lê o
-// provedor SALVO (`config.shippingProvider`) — nunca uma escolha não salva
-// da seção vizinha, que só vale depois de gravar.
+// RELEASE 1.5.7 v2 (EMENDA R2, R2-5): o motivo do vazio deixou de ler o
+// espelho `config.shippingProvider` — no modo multi ele não decide mais
+// nada (R1-3/R2-1). A fonte agora é a MESMA edge que a seção de
+// Transportadoras usa (`ler_configuracao_frete`), pela contagem de
+// `ligados`. Este arquivo foi reescrito para o modelo novo: a versão
+// anterior comparava com `config.shippingProvider === 'flat_fee'` e testava
+// a seção de Transportadoras pelo radiogroup único, que não existe mais.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockConfig, logsState } = vi.hoisted(() => ({
-  mockConfig: {
-    shippingProvider: "flat_fee" as "flat_fee" | "melhor_envio" | "frenet",
-  },
+const { invoke, logsState } = vi.hoisted(() => ({
+  invoke: vi.fn(),
   logsState: {
     data: [] as any[] | null,
     error: null as { message: string } | null,
   },
 }));
 
-vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: mockConfig,
-    isLoaded: true,
-    updateConfig: vi.fn(),
-  }),
-}));
-
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
-
 // `shipping_calculation_logs` responde o que o teste armou em `logsState`;
-// qualquer outra tabela (ex.: `store_shipping_credentials`, que a seção de
-// Transportadoras busca no carregamento) devolve vazio sem erro.
+// qualquer outra tabela devolve vazio sem erro.
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (table: string) => {
@@ -66,7 +52,9 @@ vi.mock("@/lib/supabase", () => ({
         select: () => Promise.resolve({ data: [], error: null }),
       };
     },
-    functions: { invoke: vi.fn() },
+    functions: {
+      invoke: (...args: unknown[]) => invoke(...(args as [any, any])),
+    },
   },
 }));
 
@@ -79,15 +67,40 @@ function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function respostaConfig(ligados: string[]) {
+  return {
+    success: true,
+    modo: ligados.length > 0 ? "multi" : "legado",
+    ligados,
+    provedores: {
+      melhor_envio: {
+        tem_chave: ligados.includes("melhor_envio"),
+        sandbox: false,
+        servicos: null,
+      },
+      superfrete: {
+        tem_chave: ligados.includes("superfrete"),
+        sandbox: false,
+        servicos: null,
+      },
+      frenet: {
+        tem_chave: ligados.includes("frenet"),
+        sandbox: false,
+        servicos: null,
+      },
+    },
+  };
+}
+
 describe("HistoricoCotacoesSection — o histórico de cotações para de mentir sobre o motivo de estar vazio", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockConfig.shippingProvider = "flat_fee";
     logsState.data = [];
     logsState.error = null;
+    invoke.mockResolvedValue({ data: respostaConfig([]), error: null });
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -109,7 +122,8 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
       raiz.render(<HistoricoCotacoesSection />);
     });
     // A seção busca no mount (em Ajustes ela só monta quando o lojista a
-    // expande): dois ciclos de microtarefas para o fetch resolver.
+    // expande): dois ciclos de microtarefas para os dois fetches (logs +
+    // ler_configuracao_frete) resolverem.
     await act(async () => {
       await esperarMicrotarefas();
     });
@@ -118,36 +132,53 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     });
   }
 
-  // Escopar ao container da seção: o card vizinho de Transportadoras fala de
-  // "Melhor Envio" e "Taxa única fixa" por natureza própria — a checagem de
-  // ausência no texto INTEIRO daria falso positivo por causa de texto
-  // vizinho, sem relação com o histórico.
   const textoDoHistorico = () =>
     hospedeiro.querySelector("#historico-cotacoes-section")?.textContent ?? "";
 
-  it("provedor salvo flat_fee + 0 linhas: explica o motivo, e NÃO diz 'nenhuma cotação registrada'", async () => {
-    mockConfig.shippingProvider = "flat_fee";
+  it("nenhum provedor ligado + 0 linhas: explica o motivo, e NÃO diz 'nenhuma cotação registrada'", async () => {
+    invoke.mockResolvedValue({ data: respostaConfig([]), error: null });
     logsState.data = [];
     await abrirSecao();
 
-    expect(textoDoHistorico()).toMatch(/Taxa Única Fixa/i);
+    expect(textoDoHistorico()).toMatch(/Sem transportadora conectada/i);
     expect(textoDoHistorico()).not.toMatch(
       /Nenhuma cotação registrada recentemente/i,
     );
   });
 
-  it("provedor salvo melhor_envio + 0 linhas: diz 'nenhuma cotação registrada', e NÃO mostra a explicação do flat_fee", async () => {
-    mockConfig.shippingProvider = "melhor_envio";
+  it("nenhum provedor ligado: o texto conta a verdade do frete v2 (erro a cada tentativa de fora, não 'silêncio por desenho')", async () => {
+    invoke.mockResolvedValue({ data: respostaConfig([]), error: null });
+    logsState.data = [];
+    await abrirSecao();
+
+    expect(textoDoHistorico()).not.toMatch(
+      /já responde o frete direto, sem consultar transportadora/i,
+    );
+    expect(textoDoHistorico()).not.toMatch(
+      /não existe cotação para registrar aqui/i,
+    );
+    // A verdade medida no index.ts: sem transportadora conectada, é erro a
+    // cada tentativa de fora da cidade — e o caminho para sair disso.
+    expect(textoDoHistorico()).toMatch(/erro/i);
+    expect(textoDoHistorico()).toMatch(/fora da cidade/i);
+    expect(textoDoHistorico()).toMatch(/Melhor Envio, Frenet ou SuperFrete/i);
+  });
+
+  it("provedor ligado (Melhor Envio) + 0 linhas: diz 'nenhuma cotação registrada', sem a explicação de vazio-por-desenho", async () => {
+    invoke.mockResolvedValue({
+      data: respostaConfig(["melhor_envio"]),
+      error: null,
+    });
     logsState.data = [];
     await abrirSecao();
 
     expect(textoDoHistorico()).toMatch(
       /Nenhuma cotação registrada recentemente/i,
     );
-    expect(textoDoHistorico()).not.toMatch(/Taxa Única Fixa/i);
+    expect(textoDoHistorico()).not.toMatch(/Sem transportadora conectada/i);
   });
 
-  it("a consulta falha: mostra o aviso de falha, e NÃO diz 'nenhuma cotação registrada'", async () => {
+  it("a consulta de logs falha: mostra o aviso de falha, e NÃO diz 'nenhuma cotação registrada'", async () => {
     logsState.data = null;
     logsState.error = { message: "conexão perdida" };
     await abrirSecao();
@@ -156,82 +187,21 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     expect(textoDoHistorico()).not.toMatch(
       /Nenhuma cotação registrada recentemente/i,
     );
-    // A ausência ACIMA sozinha não decide nada neste caso: o `mockConfig`
-    // aqui fica no `flat_fee` do `beforeEach`, e o texto do ramo flat_fee é
-    // "Nenhuma cotação PARA MOSTRAR...", que não casa com o regex anterior.
-    // Sem a linha abaixo, uma falha de consulta caindo no ramo flat_fee
-    // passaria pela asserção de ausência por acidente.
-    expect(textoDoHistorico()).not.toMatch(
-      /não existe cotação para registrar/i,
-    );
   });
 
-  it("escolha não salva na seção vizinha NÃO muda o motivo do vazio (o histórico lê o SALVO)", async () => {
-    // A armadilha original, na nova casa: em Ajustes, Transportadoras e
-    // Histórico convivem na mesma tela. O lojista escolhe Melhor Envio na
-    // seção de Transportadoras e NÃO salva — a edge function segue na
-    // transportadora SALVA (flat_fee), e o histórico tem de continuar
-    // explicando o flat_fee, não virar a frase do melhor_envio.
-    mockConfig.shippingProvider = "flat_fee";
+  it("a leitura de ler_configuracao_frete falhou: o vazio cai no genérico (nunca afirma 'sem provedor' sem confirmar)", async () => {
+    invoke.mockResolvedValue({ data: { success: false }, error: null });
     logsState.data = [];
+    await abrirSecao();
 
-    const { TransportadorasSection } = await import(
-      "@/components/admin/settings/TransportadorasCard"
-    );
-    const { HistoricoCotacoesSection } = await import(
-      "@/components/admin/settings/HistoricoCotacoesCard"
-    );
-    await act(async () => {
-      raiz.render(
-        <>
-          <TransportadorasSection />
-          <HistoricoCotacoesSection />
-        </>,
-      );
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    // CONTROLE POSITIVO — o arranjo é premissa deste teste, e premissa se
-    // asserta antes do veredito. Sem isto, um clique que não registrasse
-    // deixaria o teste passar VAZIO: o config já é flat_fee, então o ramo
-    // certo renderiza de qualquer jeito.
-    const opcaoMelhorEnvio = [
-      ...hospedeiro.querySelectorAll('[role="radio"]'),
-    ].find((b) => b.textContent?.includes("Melhor Envio")) as
-      | HTMLButtonElement
-      | undefined;
-    expect(opcaoMelhorEnvio).toBeTruthy();
-    expect(opcaoMelhorEnvio?.getAttribute("aria-checked")).toBe("false");
-
-    await act(async () => {
-      opcaoMelhorEnvio?.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    // A escolha de verdade mudou no formulário da seção vizinha...
-    expect(
-      [...hospedeiro.querySelectorAll('[role="radio"]')]
-        .find((b) => b.textContent?.includes("Melhor Envio"))
-        ?.getAttribute("aria-checked"),
-    ).toBe("true");
-
-    // ...mas a edge function continua em flat_fee até alguém SALVAR — o
-    // motivo do vazio tem de continuar lendo o provedor SALVO.
-    expect(textoDoHistorico()).toMatch(/Taxa Única Fixa/i);
-    expect(textoDoHistorico()).not.toMatch(
-      /Nenhuma cotação registrada recentemente/i,
-    );
+    // `algumLigado` fica `null` (desconhecido) — a seção não finge saber, e
+    // não afirma "sem transportadora conectada" sem confirmar.
+    expect(textoDoHistorico()).not.toMatch(/Sem transportadora conectada/i);
+    expect(textoDoHistorico()).toMatch(/Nenhuma cotação registrada/i);
   });
 
   it("com linhas: a tabela aparece, e nenhum dos textos de vazio/erro aparece", async () => {
-    mockConfig.shippingProvider = "flat_fee";
+    invoke.mockResolvedValue({ data: respostaConfig([]), error: null });
     logsState.data = [
       {
         id: "1",
@@ -248,13 +218,16 @@ describe("HistoricoCotacoesSection — o histórico de cotações para de mentir
     expect(textoDoHistorico()).not.toMatch(
       /Nenhuma cotação registrada recentemente/i,
     );
-    expect(textoDoHistorico()).not.toMatch(/Taxa Única Fixa/i);
+    expect(textoDoHistorico()).not.toMatch(/Sem transportadora conectada/i);
     expect(textoDoHistorico()).not.toMatch(/Não foi possível/i);
     expect(textoDoHistorico()).toMatch(/Exibindo a 1 consulta mais recente/i);
   });
 
   it("lote E: a seção veste o idioma visual do novo Ajustes (o card é da casca, não do conteúdo)", async () => {
-    mockConfig.shippingProvider = "melhor_envio";
+    invoke.mockResolvedValue({
+      data: respostaConfig(["melhor_envio"]),
+      error: null,
+    });
     logsState.data = [
       {
         id: "1",

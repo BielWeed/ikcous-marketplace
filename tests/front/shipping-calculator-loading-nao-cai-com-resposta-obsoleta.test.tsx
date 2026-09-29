@@ -29,6 +29,16 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/contexts/CartContext", () => ({
   useCartState: () => ({ freteGratis: false }),
 }));
+// FRETE V3 (T3, 23/09/2026): ShippingCalculator deixou de ler `freteGratis`
+// do CartContext (a cópia global morreu — cada cartão calcula o preço
+// FINAL da própria modalidade) e passou a ler `config` de `useStore()`
+// diretamente, mesmo padrão de CartReminder/FreeShippingBlock.
+// `freeShippingMin: 0` = preset "desligado" -- os ids destes cenários não
+// dependem da regra local (nacional nunca a usa; local, quando aparece,
+// não é o alvo do teste).
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { freeShippingMin: 0 }, isLoaded: true }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
@@ -87,7 +97,7 @@ describe("ShippingCalculator — resposta obsoleta não derruba o loading de uma
     vi.useRealTimers();
   });
 
-  it("o botão continua 'Cotando...' quando a resposta VELHA chega e a NOVA ainda não", async () => {
+  it("o 'Calculando frete' (e o status 'cotando' que trava o checkout) continua quando a resposta VELHA chega e a NOVA ainda não", async () => {
     // 1ª chamada (a cotação inicial, ao montar): resolve na hora.
     invoke.mockResolvedValueOnce({
       data: {
@@ -101,44 +111,32 @@ describe("ShippingCalculator — resposta obsoleta não derruba o loading de uma
     const { ShippingCalculator } = await import(
       "@/components/ui/custom/ShippingCalculator"
     );
-    await act(async () => {
-      raiz.render(
-        <ShippingCalculator
-          cart={carrinho}
-          selectedOption={null}
-          onSelectOption={() => {}}
-        />,
-      );
-    });
-
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "69000000");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    async function enviar() {
+    // Frete automático (22/09/2026): sem campo de CEP nem botão
+    // "Calcular", a cotação imediata sai da TROCA do endereço de entrega
+    // (`cepDestino`); o estado de espera é o aviso "Calculando frete e
+    // prazo..." e o status reportado ao checkout.
+    const status: string[] = [];
+    async function entregarEm(cep: string) {
       await act(async () => {
-        formulario.dispatchEvent(
-          new Event("submit", { bubbles: true, cancelable: true }),
+        raiz.render(
+          <ShippingCalculator
+            cart={carrinho}
+            selectedOption={null}
+            onSelectOption={() => {}}
+            cepDestino={cep}
+            onStatusChange={(s) => status.push(s)}
+          />,
         );
         await Promise.resolve();
         await Promise.resolve();
       });
     }
-    await enviar();
-    expect(invoke).toHaveBeenCalledTimes(1);
+    const calculando = () =>
+      hospedeiro.querySelector('[role="status"]')?.textContent ?? null;
 
-    // O envio âncora acabou de gravar o cache local do CEP — sem invalidá-lo,
-    // os dois envios seguintes (mesmo CEP) seriam cache HIT e nem chegariam a
-    // chamar a transportadora. Nos testes de mudança de carrinho isso é feito
-    // pelo próprio efeito de recotação; aqui, sem mudar o carrinho, a
-    // invalidação precisa ser explícita.
-    localStorage.removeItem("ikcous_shipping_cache_69000000");
+    await entregarEm("69000000");
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(status.at(-1)).toBe("pronto");
 
     // A partir daqui, a 1ª chamada (obsoleta, "A") demora 500ms; a 2ª
     // chamada (a mais nova, "B") demora 3000ms — A responde bem antes de B.
@@ -170,23 +168,22 @@ describe("ShippingCalculator — resposta obsoleta não derruba o loading de uma
     // Duas cotações disparadas em sequência, sem esperar a primeira acabar —
     // o mesmo tipo de sobreposição que o debounce e um envio manual podem
     // produzir juntos.
-    await enviar(); // A: meuId=2, responde em +500ms.
-    await enviar(); // B: meuId=3, responde em +3000ms — é a MAIS NOVA.
+    await entregarEm("70000000"); // A: meuId=2, responde em +500ms.
+    await entregarEm("71000000"); // B: meuId=3, responde em +3000ms — é a MAIS NOVA.
     expect(invoke).toHaveBeenCalledTimes(3);
 
     // t=500: A (obsoleta) responde. B ainda está em voo.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    const botao = hospedeiro.querySelector("button") as HTMLButtonElement;
-    expect(botao.textContent).toBe("Cotando...");
-    expect(botao.disabled).toBe(true);
+    expect(calculando()).toContain("Calculando frete");
+    expect(status.at(-1)).toBe("cotando");
 
     // t=3000: B (a mais nova) responde — só agora o loading pode cair.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2500);
     });
-    expect(botao.textContent).toBe("Calcular");
-    expect(botao.disabled).toBe(false);
+    expect(calculando()).toBeNull();
+    expect(status.at(-1)).toBe("pronto");
   });
 });

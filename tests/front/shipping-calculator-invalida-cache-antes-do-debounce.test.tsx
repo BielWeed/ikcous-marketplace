@@ -30,6 +30,16 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: null }) }));
 vi.mock("@/contexts/CartContext", () => ({
   useCartState: () => ({ freteGratis: false }),
 }));
+// FRETE V3 (T3, 23/09/2026): ShippingCalculator deixou de ler `freteGratis`
+// do CartContext (a cópia global morreu — cada cartão calcula o preço
+// FINAL da própria modalidade) e passou a ler `config` de `useStore()`
+// diretamente, mesmo padrão de CartReminder/FreeShippingBlock.
+// `freeShippingMin: 0` = preset "desligado" -- os ids destes cenários não
+// dependem da regra local (nacional nunca a usa; local, quando aparece,
+// não é o alvo do teste).
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({ config: { freeShippingMin: 0 }, isLoaded: true }),
+}));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/utils/haptic", () => ({
   haptic: { light: vi.fn(), medium: vi.fn(), success: vi.fn() },
@@ -119,34 +129,35 @@ describe("ShippingCalculator — invalida o cache do CEP assim que o carrinho mu
           cart={cart}
           selectedOption={null}
           onSelectOption={(opt) => selecionadas.push(opt)}
+          cepDestino="69000000"
         />,
       );
     });
   }
 
-  it("clicar Calcular DENTRO da janela de debounce cota a quantidade NOVA, não a do cache antigo", async () => {
-    await pintar(carrinhoComQuantidade(1));
-
-    const campo = hospedeiro.querySelector("input") as HTMLInputElement;
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "69000000");
-      campo.dispatchEvent(new Event("input", { bubbles: true }));
+  // Frete automático (22/09/2026): não há mais "Calcular". A cotação
+  // imediata DENTRO da janela de debounce, hoje, é a calculadora montar de
+  // novo no mesmo destino — a cliente muda a quantidade e toca em "Finalizar
+  // Compra" logo em seguida (o checkout monta a própria calculadora, que cota
+  // na montagem e consulta o cache ANTES da transportadora).
+  async function remontarDentroDaJanela(cart: CartItem[]) {
+    act(() => {
+      raiz.unmount();
     });
-    const formulario = hospedeiro.querySelector("form") as HTMLFormElement;
-    async function enviar() {
-      await act(async () => {
-        formulario.dispatchEvent(
-          new Event("submit", { bubbles: true, cancelable: true }),
-        );
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-    }
-    await enviar();
+    raiz = createRoot(hospedeiro);
+    await pintar(cart);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it("cotar DENTRO da janela de debounce cota a quantidade NOVA, não a do cache antigo", async () => {
+    await pintar(carrinhoComQuantidade(1));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     expect(invoke).toHaveBeenCalledTimes(1);
     expect(hospedeiro.textContent).toContain("10,00");
 
@@ -154,11 +165,11 @@ describe("ShippingCalculator — invalida o cache do CEP assim que o carrinho mu
     // invalidação for síncrona, já apaga o cache do CEP 69000-000.
     await pintar(carrinhoComQuantidade(3));
 
-    // Dentro da janela (200ms < 700ms), a cliente clica "Calcular" de novo.
+    // Dentro da janela (200ms < 700ms), a calculadora monta de novo e cota.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(200);
     });
-    await enviar();
+    await remontarDentroDaJanela(carrinhoComQuantidade(3));
 
     // Cache já estava invalidado: cache MISS, chamada real com quantity=3.
     expect(invoke).toHaveBeenCalledTimes(2);

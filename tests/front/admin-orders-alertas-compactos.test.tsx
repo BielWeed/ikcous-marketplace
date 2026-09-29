@@ -55,6 +55,11 @@ let mockTotalOrders = 0;
 // `let` porque cada teste controla o que a consulta de cancelados devolve.
 let mockPedidosCancelados: Order[] = [];
 
+// pedidos-4 (20261164000000): o contador de cancelados fora da janela de 90
+// dias e o botão que pede a varredura completa.
+let mockCanceladosForaDaJanela = 0;
+let mockBuscarTambemAntigos = vi.fn(async () => []);
+
 vi.mock("@/hooks/useOrders", () => ({
   useOrders: () => ({
     orders: mockOrders,
@@ -66,9 +71,10 @@ vi.mock("@/hooks/useOrders", () => ({
     pedidosCancelados: mockPedidosCancelados,
     fetchPedidosCancelados: vi.fn(async () => mockPedidosCancelados),
     pedidosCanceladosIncompleto: mockPedidosCanceladosIncompleto,
+    canceladosForaDaJanela: mockCanceladosForaDaJanela,
+    buscarTambemCanceladosAntigos: () => mockBuscarTambemAntigos(),
   }),
 }));
-
 let mockAnalyticsStats: any = null;
 // R3 da revisão do PR #400: o aviso de lista incompleta é caminho próprio —
 // ganha variável de controle aqui.
@@ -223,6 +229,8 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     mockTotalOrders = 0;
     mockPedidosCancelados = [];
     mockPedidosCanceladosIncompleto = false;
+    mockCanceladosForaDaJanela = 0;
+    mockBuscarTambemAntigos = vi.fn(async () => []);
     mockAnalyticsStats = null;
   });
 
@@ -364,6 +372,40 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     expect(botaoAlerta()).toBeNull();
     expect(hospedeiro.textContent).not.toContain("produto a voltar");
     expect(hospedeiro.textContent).not.toContain("estorno devido");
+  });
+
+  it("pedidos-4: cancelados fora da janela viram aviso no dropdown e o botão pede a varredura completa", async () => {
+    // A honestidade do recorte (frente pedidos-4): pendência antiga que
+    // ficou fora da janela de 90 dias NÃO pode sumir em silêncio. Sem
+    // pendência visível nenhuma, o botão NASCE só pelo contador — e o
+    // dropdown explica e oferece a busca completa.
+    mockAnalyticsStats = statsFake(0);
+    mockCanceladosForaDaJanela = 3;
+
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await act(async () => {
+      raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+    });
+
+    expect(botaoAlerta()).toBeTruthy();
+    expect(
+      hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
+        ?.textContent,
+    ).toBe("3");
+
+    await expandir();
+    expect(hospedeiro.textContent).toContain(
+      "cancelamentos anteriores à janela de 90 dias",
+    );
+
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Buscar também os antigos",
+    );
+    expect(botao).toBeTruthy();
+    await act(async () => {
+      botao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(mockBuscarTambemAntigos).toHaveBeenCalledTimes(1);
   });
 
   it("cancelado que nunca foi pago, com mercadoria fora: badge conta o pedido e o resumo fala de PRODUTO, não de estorno", async () => {

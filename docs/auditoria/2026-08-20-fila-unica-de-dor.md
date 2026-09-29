@@ -15,6 +15,49 @@ O efeito já aconteceu, e é medido: o commit `6e406b4` consertou um achado de d
 enquanto dois **Médio-alto** da outra lista continuavam abertos. Ninguém errou — não existia uma
 lista só.
 
+## Nota de 15/09/2026 — os 20 itens estão fechados; o documento vira histórico
+
+Medido no código de hoje: **os 20 itens (A a T) estão fechados.** Evidência de cada um:
+
+- **A** — `src/components/admin/users/ficha-resumo.ts:80-84` (`DINHEIRO_RECONHECIDO` filtra por
+  status de pagamento) + migration `20260823000000_ltv_do_cliente_conta_so_dinheiro_reconhecido.sql`.
+- **B/C** — zero ocorrências de `"ENVIADA"` em `src/` (`grep -rn "ENVIADA" src/`); coberto por
+  `tests/front/admin-push-envio-honesto.test.tsx`.
+- **D** — migration `20261024000000_custo_zero_deixa_de_ser_ausencia.sql` +
+  `tests/front/admin-products-margem-sem-custo.test.tsx`.
+- **E** — já estava `✅` na tabela de origem (`docs/auditoria/2026-08-20-painel-pedidos-produtos.md:64`,
+  item 13).
+- **F** — `src/utils/status-do-cupom.ts`: vencimento passa a ser derivado da data, nunca um
+  terceiro estado gravado à parte de `active`.
+- **G** — `tests/front/admin-customers-view-congelar-acesso-removido.test.tsx`.
+- **H** — `src/views/admin/AdminProductsView.tsx:1450-1463` (`statusDoProdutoNoPainel`,
+  precedência inativo > esgotado > em operação).
+- **I** — `tests/front/admin-shipping-historico-honesto.test.tsx`.
+- **J** — `src/views/admin/AdminOrdersView.tsx:317-325`: o padrão do filtro virou `"open"`.
+- **K** — migration `20261028000000_filtro_de_pagamento_filtra_o_banco.sql`.
+- **L** — `src/views/admin/AdminProductsView.tsx:404-424` (`refreshFinancialStats` rebusca os
+  KPIs depois de excluir/duplicar/ativar produto).
+- **M** — `src/views/admin/AdminOrdersView.tsx:85-99` (`ACOES_PENDENTES_SUBTITULO` deriva da
+  mesma lista que o crachá de navegação usa).
+- **N** — `src/views/admin/AdminProductsView.tsx:886` (`!effectiveLoading && !loadError` antes
+  de mostrar o estado vazio).
+- **O** — `src/views/admin/AdminProductsView.tsx:466-472`: o aviso de sucesso duplicado foi
+  removido, só o hook avisa.
+- **P** — `src/views/admin/AdminProductsView.tsx:1362-1369`: `toLocaleString` com
+  `minimumFractionDigits: 2`, sempre duas casas.
+- **Q** — `src/components/admin/orders/OrderDetail.tsx:244-251`: usa `productId.slice(-6)`,
+  nunca "ID: #" vazio.
+- **R** — `statusConfig.pending.label` é `"Novo"` (traduzido) — ver
+  `src/components/admin/orders/OrderDetail.tsx:382`.
+- **S** — `tests/front/admin-coupon-form-view-minimo-com-centavos.test.tsx`.
+- **T** — `src/views/admin/AdminCouponsView.tsx:370-374`: o texto agora diz "cupons no
+  checkout", sem menção a "carrinho" nem a "discounts".
+
+Este documento sempre carregou a ORDEM, nunca o estado — e a ordem de uma fila 20/20 fechada não
+tem mais função de trabalho. **A partir desta nota, ele é histórico.** Não use como lista de
+tarefas: quem chegar aqui vindo de um link antigo deve conferir o código de novo antes de agir,
+pela mesma regra que o documento sempre defendeu.
+
 ## 🔴 Este documento carrega a ORDEM, nunca o estado
 
 **Não existe "aberto" ou "fechado" aqui, e a ausência de marca não significa nada.** Duas horas

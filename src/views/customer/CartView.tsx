@@ -1,8 +1,16 @@
 import { useStore } from "@/contexts/StoreContext";
+import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import {
+  enderecoDeEntregaEfetivo,
+  resumoDoEndereco,
+} from "@/lib/endereco-de-entrega";
+import type { PromessaDeCanal } from "@/lib/estrategias-de-frete";
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { ehModalidadeDaLoja, ehRetiradaNaLoja } from "@/lib/guarda-de-frete";
 import { precoVendido } from "@/lib/preco-vendido";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { CartItem, Order, Product, View } from "@/types";
@@ -16,16 +24,26 @@ import {
   Sparkles,
   Truck,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 // Sub-components
+import { AddressList } from "@/components/ui/custom/AddressList";
+import { CartFooterSummary } from "@/components/ui/custom/CartFooterSummary";
 import { CartItemsList } from "@/components/ui/custom/CartItemsList";
 import { EmptyCart } from "@/components/ui/custom/EmptyCart";
 import { OrderList } from "@/components/ui/custom/OrderList";
 import { OrderSearch } from "@/components/ui/custom/OrderSearch";
 import { ShippingCalculator } from "@/components/ui/custom/ShippingCalculator";
+import type { EstadoDaBarraDeFrete } from "@/components/ui/custom/ShippingProgress";
 import { ShippingProgress } from "@/components/ui/custom/ShippingProgress";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 
 interface CartViewProps {
@@ -75,6 +93,113 @@ export const mesclarListaAposRecarga = <T,>(
   return lista.length > 0 || atual.length === 0 ? lista : atual;
 };
 
+/**
+ * Achado CartView-328: com o preset "desligado" (ou "por_produto" sem item
+ * marcado) o carrinho renderizava `ShippingProgress` do mesmo jeito,
+ * passando progressPercent=0 e amountToFree=0 — e o componente, que não
+ * distingue "zero porque falta tudo" de "zero porque não existe meta",
+ * imprimia "META FRETE GRÁTIS ... Faltam R$ 0,00". Só existe meta de VALOR
+ * na estratégia "acima_de_valor"; "desligado" e "por_produto" sem marcação
+ * não têm limiar nenhum para anunciar. Quando o frete já está garantido
+ * (`freteGratis` — inclui "sempre" e "por_produto" com item marcado) o
+ * bloco também deve aparecer, só que para comemorar "Liberado", não para
+ * uma meta.
+ *
+ * FRETE V3 (T3, 23/09/2026): o segundo parâmetro deixou de ser
+ * `freeShippingMin` (só o canal local) — vira `temMetaPorValor`, já
+ * decidido pelo chamador para o canal da MODALIDADE ESCOLHIDA (local ou
+ * nacional, via `promessasDeFrete`): a meta que faz sentido mostrar depende
+ * de qual delas está na mesa, nunca mais só da local.
+ *
+ * Função pura exportada pelo mesmo motivo de `mesclarListaAposRecarga`
+ * acima: montar a `CartView` inteira no teste arrasta o mundo (useOrders,
+ * useProducts, realtime...) só para exercitar uma decisão de booleano.
+ */
+export function deveExibirMetaDeFreteGratis(
+  freteGratis: boolean,
+  temMetaPorValor: boolean,
+): boolean {
+  return freteGratis || temMetaPorValor;
+}
+
+/**
+ * O ESTADO da barra de progresso (`ShippingProgress`) — os dois defeitos que
+ * esta função fecha (T3-2, 23/09/2026, revisão pós-T3):
+ *
+ * CASO A (retirada): `store-pickup` chega SEMPRE com preço 0 da edge — o
+ * preço zero dela é a NATUREZA da retirada, não a meta de valor tendo sido
+ * batida (ver `precoFinalDaOpcao`, estrategias-de-frete.ts: a regra local
+ * aplicada num preço já 0 continua 0, com QUALQUER preset). Com retirada
+ * escolhida e a meta de valor do canal LOCAL ainda não alcançada, o estado
+ * certo é "meta" (progresso real) — nunca "liberado". Se a meta de valor JÁ
+ * foi alcançada, "liberado" continua valendo: a promessa é real, a
+ * retirada só a antecipa.
+ *
+ * CORREÇÃO (revisão Opus, 23/09/2026): retirada + "sempre"/"por_produto"
+ * marcado (canal SEM meta de valor) NÃO chega a esta função na tela — o
+ * PRÓPRIO CARTÃO fica ESCONDIDO nesse caso, não "liberado". O portão de
+ * exibição (`deveExibirMetaDeFreteGratis`, chamado pelo `CartView` antes de
+ * montar `ShippingProgress`) recebe `freteGratis && !ehRetirada` (falso,
+ * porque é retirada) e `temMetaPorValor` (falso, porque "sempre"/
+ * "por_produto" não são "acima_de_valor") — os dois falsos escondem o
+ * cartão. Se esta função FOR chamada com esses parâmetros (ela aceita
+ * qualquer `estrategiaDoCanal`, sem essa guarda), devolve "liberado" — a
+ * promessa daquele preset é real —, mas isso é comportamento de função
+ * pura sem chamador hoje, não o que a tela mostra.
+ *
+ * CASO B (nacional "mais_barata"): a meta de valor pode estar batida
+ * (`subtotal >= minimoDoCanal`) sem que a OPÇÃO ESCOLHIDA seja a
+ * beneficiada — o alcance "mais_barata" só zera a mais barata; as demais
+ * mantêm o preço cheio (contrato §3: front nunca recalcula, só lê o preço
+ * final que a edge já mandou). Meta batida + opção escolhida cobrando
+ * (`precoDaOpcaoEscolhida > 0`) NUNCA pode virar "liberado" nem "meta" (que
+ * mostraria "Faltam R$ 0,00", mentira): "gratis_so_na_mais_barata" avisa que
+ * o grátis é só na mais barata; "meta_atingida_sem_gratis" cobre o alcance
+ * "todas" residual (cotação nacional desatualizada — caso raro, texto
+ * neutro sem prometer o grátis para a opção escolhida).
+ *
+ * Função pura pelo mesmo motivo de `deveExibirMetaDeFreteGratis` logo
+ * acima: decisão de dinheiro se prova em unit test que discrimina, não
+ * colada na árvore de JSX.
+ */
+export function estadoDaBarraDeFrete(args: {
+  /** Veredito único do CartContext: preço final da opção escolhida é 0. */
+  freteGratis: boolean;
+  /** `ehRetiradaNaLoja(selectedShippingOption?.id)`. */
+  ehRetirada: boolean;
+  estrategiaDoCanal: PromessaDeCanal["estrategia"];
+  /** Só significa algo quando `estrategiaDoCanal === "acima_de_valor"`. */
+  minimoDoCanal: number;
+  nationalBenefitScope: "mais_barata" | "todas";
+  subtotal: number;
+  /** Preço final da opção escolhida (`null` = sem opção/indefinido). */
+  precoDaOpcaoEscolhida: number | null;
+}): EstadoDaBarraDeFrete {
+  const temMetaPorValor = args.estrategiaDoCanal === "acima_de_valor";
+  const metaBatida = temMetaPorValor && args.subtotal >= args.minimoDoCanal;
+
+  // CASO A: retirada com meta de valor em jogo e ainda não batida — o preço
+  // 0 da retirada não conta.
+  if (args.ehRetirada && temMetaPorValor && !metaBatida) {
+    return "meta";
+  }
+
+  const opcaoCobra =
+    args.precoDaOpcaoEscolhida != null && args.precoDaOpcaoEscolhida > 0;
+
+  // CASO B: meta batida, mas a opção escolhida ainda cobra — o alcance
+  // decide a frase, nunca "liberado" nem "Faltam R$ 0,00".
+  if (metaBatida && opcaoCobra) {
+    return args.nationalBenefitScope === "mais_barata"
+      ? "gratis_so_na_mais_barata"
+      : "meta_atingida_sem_gratis";
+  }
+
+  if (args.freteGratis) return "liberado";
+
+  return "meta";
+}
+
 export function CartView({
   cart: propCart,
   onUpdateQuantity: propOnUpdateQuantity,
@@ -97,20 +222,88 @@ export function CartView({
     removeFromCart,
     clearCart,
     selectedShippingOption,
+    freteEscolhidoPelaCliente,
     setSelectedShippingOption,
+    shippingCep,
     setShippingCep,
+    enderecoSelecionadoId,
+    setEnderecoSelecionadoId,
   } = useCart();
+
+  const { user } = useAuth();
 
   const cart = propCart ?? ctxCart;
   const onUpdateQuantity = propOnUpdateQuantity ?? updateQuantity;
   const onRemove = propOnRemove ?? removeFromCart;
+
+  // O DESTINO DO FRETE É O ENDEREÇO DE ENTREGA: o escolhido
+  // (`enderecoSelecionadoId`, compartilhado com o checkout) ou, na falta, o
+  // principal do cadastro — a MESMA função que o CheckoutView usa. Não há
+  // campo de CEP no carrinho: sem endereço, a calculadora pede o cadastro e
+  // o "Finalizar Compra" continua livre (o endereço também pode ser
+  // informado na finalização). O convidado não tem cadastro: o destino dele
+  // é o CEP da última cotação feita no checkout, se houver.
+  const { addresses, fetchAddresses } = useAddresses();
+  const enderecoDestino = user
+    ? enderecoDeEntregaEfetivo(addresses, enderecoSelecionadoId)
+    : undefined;
+  const cepDoDestino = user
+    ? (enderecoDestino?.cep ?? null)
+    : (shippingCep ?? null);
+  const [escolhendoEndereco, setEscolhendoEndereco] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      fetchAddresses();
+    }
+  }, [user, fetchAddresses]);
+
+  // "Cadastrar endereço" leva à tela de endereço; o que for criado lá chega
+  // aqui pela lista compartilhada do `useAddresses`. O endereço NOVO passa a
+  // ser o de entrega — foi para entregar nele que a pessoa o cadastrou a
+  // partir do carrinho. `null` = não há cadastro iniciado daqui.
+  const idsAntesDoCadastroRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const antes = idsAntesDoCadastroRef.current;
+    if (!antes) return;
+    const novo = addresses.find((a) => !antes.has(a.id));
+    if (!novo) return;
+    idsAntesDoCadastroRef.current = null;
+    setEnderecoSelecionadoId(novo.id);
+  }, [addresses, setEnderecoSelecionadoId]);
+  // Voltou ao carrinho: o cadastro iniciado daqui já terminou (salvo — e aí
+  // o efeito acima, que roda antes, já escolheu o novo) ou foi abandonado.
+  // Sem apagar a marca, um endereço cadastrado DEPOIS pelo Perfil viraria o
+  // de entrega sem a cliente escolher.
+  useEffect(() => {
+    if (isActive) idsAntesDoCadastroRef.current = null;
+  }, [isActive]);
+  // Foco de quem fecha a folha pelo teclado (Esc/X/escolha): volta ao
+  // "Trocar". Desligado quando a saída é o formulário ou a aba sai de foco.
+  const botaoTrocarRef = useRef<HTMLButtonElement>(null);
+  const devolverFocoAoTrocarRef = useRef(true);
+  // Aba fora de foco (checkout ou formulário por cima): o seletor de
+  // endereço não fica aberto por trás nem reabre sozinho na volta.
+  useEffect(() => {
+    if (!isActive) {
+      devolverFocoAoTrocarRef.current = false;
+      setEscolhendoEndereco(false);
+    }
+  }, [isActive]);
+
+  const cadastrarEndereco = () => {
+    haptic.light();
+    idsAntesDoCadastroRef.current = new Set(addresses.map((a) => a.id));
+    devolverFocoAoTrocarRef.current = false;
+    setEscolhendoEndereco(false);
+    onNavigate("address-form");
+  };
   // Onda 2, laudo 02/09 #3: a aba "Meus Pedidos" deriva da lista VIVA do
   // hook — o mesmo estado que o realtime alimenta (handleRealtimeUpdate/
   // Insert/Delete em useOrders.ts:1247-1279). Antes a view copiava a lista
   // para um estado local na entrada da aba e ficava congelada até sair e
   // voltar. Prendado por tests/front/cart-aba-pedidos-viva.test.tsx.
   const { fetchUserOrders, orders: pedidosVivos } = useOrders(true, false);
-  const { user } = useAuth();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(80);
   const isSummaryReady = useDeferredRender(380);
@@ -274,6 +467,18 @@ export function CartView({
     [cart],
   );
 
+  // T3 (23/09): a promessa que vale para a barra de progresso é a do CANAL
+  // da modalidade ESCOLHIDA (local ou nacional) — nunca mais só a local.
+  // Sem escolha, o resultado não é exibido (a `ShippingProgress` só monta
+  // com `!freteIndefinido`, mais abaixo), então o default "nacional" aqui é
+  // inofensivo.
+  const promessaDoCanalEscolhido = useMemo(() => {
+    const promessas = promessasDeFrete(config);
+    return ehModalidadeDaLoja(selectedShippingOption?.id)
+      ? promessas.local
+      : promessas.nacional;
+  }, [config, selectedShippingOption?.id]);
+
   const {
     progressPercent,
     amountToFree,
@@ -310,7 +515,30 @@ export function CartView({
     // que de fato deixaria de ser cobrado é a cotação/entrega local — e, com
     // o grátis ativo, não há cotação em mãos para citar número nenhum. Sem
     // número honesto, sem número: o selo diz "Frete grátis aplicado".
-    if (freteGratis) {
+    //
+    // Barra de progresso segue o limiar da MODALIDADE ESCOLHIDA (T3, 23/09
+    // — antes só existia a regra local; agora local e nacional têm
+    // estratégias independentes, e o limiar certo é o do canal que está de
+    // fato na mesa). SEM trava de login (mesmo padrão do CartReminder na
+    // frente B). "desligado" e "por_produto" não têm barra de valor — quem
+    // comunica o grátis por produto é a marcação no produto.
+    const isRuleActive =
+      promessaDoCanalEscolhido.estrategia === "acima_de_valor";
+    const meta = promessaDoCanalEscolhido.minimo;
+
+    // CASO A (revisão Opus, pós-T3, 23/09): `store-pickup` chega SEMPRE com
+    // preço 0 da edge — isso não é a meta de VALOR batida (a retirada é
+    // grátis por natureza, com QUALQUER preset). Sem esta guarda, o atalho
+    // `freteGratis` abaixo mostrava 100%/"Faltam R$ 0,00" para uma loja cuja
+    // meta local a cliente ainda não alcançou. Só pula o atalho quando a
+    // retirada está em jogo E existe meta de valor E ela AINDA não foi
+    // batida — meta já batida (ou canal sem meta de valor, "sempre"/
+    // "por_produto") continua no atalho: a promessa ali é real.
+    const ehRetiradaEscolhida = ehRetiradaNaLoja(selectedShippingOption?.id);
+    const retiradaComMetaNaoBatida =
+      ehRetiradaEscolhida && isRuleActive && subtotal < meta;
+
+    if (freteGratis && !retiradaComMetaNaoBatida) {
       return {
         progressPercent: 100,
         amountToFree: 0,
@@ -321,17 +549,8 @@ export function CartView({
       };
     }
 
-    // Barra de progresso segue o limiar do preset de valor, SEM trava de
-    // login (mesmo padrão do CartReminder na frente B). "desligado" (0) e
-    // "por_produto" (sentinela -1) não têm barra de valor — quem comunica o
-    // grátis é a marcação no produto dentro do próprio preset.
-    const isRuleActive = (config.freeShippingMin || 0) > 0;
-    const progress = isRuleActive
-      ? Math.min((subtotal / config.freeShippingMin) * 100, 100)
-      : 0;
-    const diff = isRuleActive
-      ? Math.max(0, config.freeShippingMin - subtotal)
-      : 0;
+    const progress = isRuleActive ? Math.min((subtotal / meta) * 100, 100) : 0;
+    const diff = isRuleActive ? Math.max(0, meta - subtotal) : 0;
     // FRETE INDEFINIDO (laudo caça-bugs 30/08, achado 7): com provedor de
     // cotação real e nenhuma cotação escolhida, `ctxShippingFee` é o chute de
     // fábrica — exibir `null` ("A calcular") e NÃO somar frete ao total.
@@ -352,11 +571,12 @@ export function CartView({
     };
   }, [
     subtotal,
-    config.freeShippingMin,
+    promessaDoCanalEscolhido,
     freteGratis,
     cart.length,
     ctxShippingFee,
     freteIndefinido,
+    selectedShippingOption?.id,
   ]);
 
   const freeShippingProducts = useMemo(() => {
@@ -491,15 +711,172 @@ export function CartView({
                     {/* FRETE V2 (onda D-1): o grátis agora é o veredito
                         único do CartContext (`freteGratis` — a cópia antiga
                         `hasFreeShippingItem` lia a marcação incondicional e
-                        escondia a calculadora mesmo com o preset desligado). */}
-                    {cart.length > 0 && !freteGratis && (
-                      <div className="mt-3">
+                        escondia a calculadora mesmo com o preset desligado).
+                        CORREÇÃO CartView-495 (15/09): a calculadora NÃO
+                        soma mais `&& !freteGratis` na condição. No preset
+                        "por_produto" o `freteGratis` do CartContext lê a
+                        marcação `product.freeShipping` do SNAPSHOT do
+                        carrinho (localStorage) — a RPC do pedido lê
+                        `produtos.frete_gratis` FRESCO do banco na hora de
+                        fechar (20261081000000:294-318) e recusa o pedido
+                        pedindo uma opção de entrega (:324-326) quando os
+                        dois discordam. Esconder a calculadora enquanto o
+                        cliente ACHA que é grátis tirava dele a única chance
+                        de deixar um `shipping_option_id` pronto para esse
+                        caso. A própria `ShippingCalculator` já lê o mesmo
+                        `freteGratis` (via `useCartState`) e se rotula
+                        sozinha como "GRÁTIS" nesse estado — ver
+                        shipping-calculator-frete-gratis-fonte-unica.test.tsx —,
+                        então nada muda visualmente quando os dois lados
+                        concordam; só passa a existir uma saída quando
+                        discordam. */}
+                    {/* Uma calculadora cotando por vez: o carrinho continua
+                        montado atrás do checkout (aba mantida viva), e o
+                        checkout tem a própria. Fora da aba, esta desmonta —
+                        o lacre do desmonte descarta a resposta em voo. */}
+                    {cart.length > 0 && isActive && (
+                      <div className="mt-3 space-y-3">
                         <ShippingCalculator
+                          key={user?.id ?? "convidado"}
                           cart={cart}
                           selectedOption={selectedShippingOption}
+                          selecaoEscolhidaPelaCliente={
+                            freteEscolhidoPelaCliente
+                          }
                           onSelectOption={setSelectedShippingOption}
                           onCepValidated={setShippingCep}
+                          cepDestino={cepDoDestino}
+                          cepDaSelecao={shippingCep}
+                          destino={
+                            enderecoDestino
+                              ? {
+                                  apelido: enderecoDestino.name,
+                                  resumo: resumoDoEndereco(enderecoDestino),
+                                }
+                              : null
+                          }
+                          mensagemSemDestino={
+                            user
+                              ? "Cadastre um endereço para ver o frete e o prazo — ou continue e informe o endereço na finalização."
+                              : "O frete é calculado pelo endereço de entrega, que você informa na finalização da compra."
+                          }
+                          acaoDoEndereco={
+                            !user ? null : addresses.length > 0 ? (
+                              <button
+                                ref={botaoTrocarRef}
+                                type="button"
+                                aria-haspopup="dialog"
+                                aria-expanded={escolhendoEndereco}
+                                onClick={() => {
+                                  haptic.light();
+                                  devolverFocoAoTrocarRef.current = true;
+                                  setEscolhendoEndereco(true);
+                                }}
+                                className="select-none rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-300"
+                              >
+                                Trocar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={cadastrarEndereco}
+                                className="select-none rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-white hover:bg-primary/90"
+                              >
+                                Cadastrar endereço
+                              </button>
+                            )
+                          }
                         />
+                        {/* SELETOR DE ENDEREÇO EM FOLHA (22/09, relato da
+                            cliente no celular): o painel antigo nascia NO
+                            FLUXO, logo abaixo do card de frete — com o
+                            carrinho rolado até o fim, ele caía atrás do
+                            rodapé fixo Total/Finalizar e da navegação, e
+                            nada rolava até ele (medido: só o endereço já
+                            escolhido ficava à vista; os outros e o "Novo
+                            endereço" ficavam cobertos). A folha modal é
+                            portalada no body em z-[130], ACIMA dos dois
+                            rodapés; a lista rola DENTRO dela e o
+                            "Cadastrar novo endereço" fica no rodapé da
+                            folha, sempre à vista. Prova geométrica em
+                            tests/e2e/jornada-trocar-endereco-carrinho.spec.ts. */}
+                        <Sheet
+                          open={
+                            Boolean(user) &&
+                            escolhendoEndereco &&
+                            addresses.length > 0
+                          }
+                          onOpenChange={setEscolhendoEndereco}
+                        >
+                          <SheetContent
+                            side="bottom"
+                            data-testid="seletor-endereco-entrega"
+                            className="mx-auto max-h-[85dvh] gap-0 rounded-t-3xl sm:max-w-md"
+                            // A folha abre por ESTADO (sem SheetTrigger): o
+                            // Radix não tem gatilho para devolver o foco e
+                            // ele cairia no body. Volta ao "Trocar" — exceto
+                            // quando a saída é o formulário de endereço ou
+                            // a aba saiu de foco (botão desmontado).
+                            onCloseAutoFocus={(evento) => {
+                              evento.preventDefault();
+                              const botao = botaoTrocarRef.current;
+                              if (
+                                devolverFocoAoTrocarRef.current &&
+                                botao?.isConnected
+                              ) {
+                                botao.focus();
+                              }
+                            }}
+                          >
+                            <SheetHeader className="shrink-0 px-5 pb-3 pr-12 pt-5">
+                              <SheetTitle className="text-base font-black tracking-tight text-zinc-950">
+                                Entregar em
+                              </SheetTitle>
+                              <SheetDescription className="text-xs text-zinc-500">
+                                Escolha onde receber o pedido. O frete é
+                                recalculado para o endereço escolhido.
+                              </SheetDescription>
+                            </SheetHeader>
+                            <div
+                              data-testid="seletor-endereco-lista"
+                              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-3"
+                            >
+                              <AddressList
+                                addresses={addresses}
+                                selectable
+                                compact
+                                selectedId={enderecoDestino?.id}
+                                onSelect={(endereco) => {
+                                  haptic.light();
+                                  // Compara com o id GUARDADO, não com o
+                                  // efetivo: se o guardado aponta para um
+                                  // endereço que sumiu da lista, o carrinho
+                                  // mostra o principal como "Selecionado" —
+                                  // tocá-lo tem de trocar o id morto pelo
+                                  // dele, ou o checkout envia um addressId
+                                  // que não existe. Mesmo id guardado: só
+                                  // fecha.
+                                  if (endereco.id !== enderecoSelecionadoId) {
+                                    setEnderecoSelecionadoId(endereco.id);
+                                  }
+                                  setEscolhendoEndereco(false);
+                                }}
+                              />
+                            </div>
+                            {/* Rodapé FIXO da folha: fora da área que rola,
+                                com a área segura do aparelho (mesma
+                                variável dos rodapés da casa). */}
+                            <SheetFooter className="mt-0 shrink-0 border-t border-zinc-100 bg-background px-5 pb-[calc(0.75rem+var(--safe-area-bottom,env(safe-area-inset-bottom,0px)))] pt-3">
+                              <button
+                                type="button"
+                                onClick={cadastrarEndereco}
+                                className="flex h-12 w-full select-none items-center justify-center rounded-2xl border border-dashed border-zinc-300 text-[11px] font-black uppercase tracking-wider text-zinc-700 hover:border-zinc-400"
+                              >
+                                + Cadastrar novo endereço
+                              </button>
+                            </SheetFooter>
+                          </SheetContent>
+                        </Sheet>
                       </div>
                     )}
 
@@ -508,19 +885,46 @@ export function CartView({
                         verde enquanto o rodapé dizia "A calcular" — duas
                         frases opostas na mesma tela (revisão da frente
                         horário-e-convidado, achado baixa). */}
-                    {user && cart.length > 0 && !freteIndefinido && (
-                      <ShippingProgress
-                        shipping={shipping ?? 0}
-                        savings={savings}
-                        progressPercent={progressPercent}
-                        amountToFree={amountToFree}
-                        isNearlyThere={isNearlyThere}
-                        freeShippingProducts={freeShippingProducts}
-                        onAddToCart={onAddToCart}
-                        deferred={!isReady}
-                        onNavigate={onNavigate}
-                      />
-                    )}
+                    {user &&
+                      cart.length > 0 &&
+                      !freteIndefinido &&
+                      deveExibirMetaDeFreteGratis(
+                        // MENOR (revisão Opus, pós-T3): retirada na loja
+                        // (`store-pickup`) SEMPRE chega a R$ 0 da edge — o
+                        // preço zero dela não é a promessa da loja tendo
+                        // batido. Sem esta guarda, uma loja com o grátis
+                        // DESLIGADO ainda comemorava "Frete Grátis Liberado"
+                        // assim que a cliente escolhia retirar. A barra de
+                        // meta por valor (`temMetaPorValor`, abaixo) continua
+                        // igual — ela não depende de retirada.
+                        freteGratis &&
+                          !ehRetiradaNaLoja(selectedShippingOption?.id),
+                        promessaDoCanalEscolhido.estrategia ===
+                          "acima_de_valor",
+                      ) && (
+                        <ShippingProgress
+                          estado={estadoDaBarraDeFrete({
+                            freteGratis,
+                            ehRetirada: ehRetiradaNaLoja(
+                              selectedShippingOption?.id,
+                            ),
+                            estrategiaDoCanal:
+                              promessaDoCanalEscolhido.estrategia,
+                            minimoDoCanal: promessaDoCanalEscolhido.minimo,
+                            nationalBenefitScope: config.nationalBenefitScope,
+                            subtotal,
+                            precoDaOpcaoEscolhida: shipping,
+                          })}
+                          savings={savings}
+                          progressPercent={progressPercent}
+                          amountToFree={amountToFree}
+                          isNearlyThere={isNearlyThere}
+                          freeShippingProducts={freeShippingProducts}
+                          onAddToCart={onAddToCart}
+                          deferred={!isReady}
+                          onNavigate={onNavigate}
+                        />
+                      )}
 
                     {!user && cart.length > 0 && (
                       <div className="group relative overflow-hidden rounded-[2.5rem] border border-zinc-100 bg-zinc-50 p-6 shadow-lg shadow-black/10 sm:p-8">

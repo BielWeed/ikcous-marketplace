@@ -52,7 +52,17 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
-      select: () => Promise.resolve({ data: [], error: null }),
+      // AdminShippingView-126: a tela filtra credenciais com .not()/.neq()
+      // em credentials->>token; o dublê tem de aceitar a cadeia, senão o
+      // TypeError cai no catch e liga credsErro em silêncio.
+      select: () => {
+        const consulta = (): any =>
+          Object.assign(Promise.resolve({ data: [], error: null }), {
+            not: () => consulta(),
+            neq: () => consulta(),
+          });
+        return consulta();
+      },
     }),
     functions: { invoke: vi.fn() },
   },

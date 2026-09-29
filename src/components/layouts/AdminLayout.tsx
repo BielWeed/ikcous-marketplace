@@ -6,6 +6,7 @@ import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { useConnectionDiagnostics } from "@/hooks/useOnlineStatus";
 import { useOrders } from "@/hooks/useOrders";
+import { prefetchPainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import {
@@ -26,7 +27,6 @@ import { haptic } from "@/utils/haptic";
 import { paiDaTelaDoAdmin } from "@/utils/pai-da-tela-do-admin";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
   ArrowLeft,
   Bell,
   Layers,
@@ -34,8 +34,10 @@ import {
   Megaphone,
   Package,
   Plus,
+  ScanBarcode,
   Settings,
   ShoppingBag,
+  Store,
   Users,
 } from "lucide-react";
 import React from "react";
@@ -413,6 +415,10 @@ export function AdminLayout({
       }
       prefetchView(view);
       if (view === "admin-dashboard" || view === "admin") {
+        // O Início lê `painel_inicio` (+ assinatura); o dashboard de
+        // métricas que ele era foi para a Visão geral do CRM (26/09/2026).
+        prefetchPainelInicio();
+      } else if (view === "admin-crm") {
         fetchExecutiveSummary(false).catch(() => {});
         fetchCategoryAnalytics(
           "2020-01-01T00:00:00.000Z",
@@ -516,7 +522,7 @@ export function AdminLayout({
   }, [currentView]);
 
   const navItems = [
-    { icon: Activity, label: "Geral", view: "admin-dashboard" },
+    { icon: Store, label: "Início", view: "admin-dashboard" },
     { icon: Package, label: "Pedidos", view: "admin-orders" },
     { icon: ShoppingBag, label: "Produtos", view: "admin-products" },
     { icon: Users, label: "Clientes", view: "admin-customers" },
@@ -802,13 +808,37 @@ export function AdminLayout({
           </div>
 
           <nav className="flex flex-col gap-1.5">
+            {/* "Vender" NÃO é uma 6ª aba (navItems continua com 5 — plano
+                §5.3): é um botão DESTACADO, irmão do `.map`, para não
+                arrastar os 8 lugares que tratam `navItems` como as tabs
+                principais (ADMIN_TABS_SET, isMainTabNav, o atalho
+                Ctrl+Alt e os TabWrapper de AdminArea.tsx). */}
+            <button
+              type="button"
+              onClick={() => {
+                haptic.light();
+                onNavigate("admin-pdv" as View);
+              }}
+              onMouseEnter={() => handleMouseEnter("admin-pdv")}
+              onMouseLeave={handleMouseLeave}
+              onTouchStart={() => handleMouseEnter("admin-pdv", true)}
+              className="mb-1 flex w-full items-center gap-3.5 rounded-2xl bg-admin-gold px-4 py-3.5 text-left text-[10px] font-black uppercase tracking-widest text-black transition-transform active:scale-95"
+            >
+              <ScanBarcode className="size-4.5" />
+              <span className="flex-grow">Vender</span>
+            </button>
             {navItems.map((item, idx) => {
               const Icon = item.icon;
               const parentView = getParentView(currentView);
+              // Relato do dono em teste real (19/09, print): no PDV a barra
+              // marcava GERAL como ativa. O pai do admin-pdv (dashboard)
+              // existe para o botão VOLTAR, não para herdar destaque —
+              // "Vender" é AÇÃO com botão próprio (o redondo, que se marca
+              // com anel). Na tela dele, nenhuma aba acende.
               const isActive =
                 currentView === item.view ||
                 (item.view === "admin-dashboard" && currentView === "admin") ||
-                parentView === item.view;
+                (parentView === item.view && currentView !== "admin-pdv");
 
               return (
                 <button
@@ -1183,11 +1213,14 @@ export function AdminLayout({
               {navItems.map((item, idx) => {
                 const Icon = item.icon;
                 const parentView = getParentView(currentView);
+                // Mesma regra da sidebar acima (relato do dono, 19/09): o pai
+                // do admin-pdv não herda destaque na barra do celular — na
+                // tela de venda o único marcado é o botão redondo Vender.
                 const isActive =
                   currentView === item.view ||
                   (item.view === "admin-dashboard" &&
                     currentView === "admin") ||
-                  parentView === item.view;
+                  (parentView === item.view && currentView !== "admin-pdv");
 
                 return (
                   <button
@@ -1267,6 +1300,28 @@ export function AdminLayout({
                   </button>
                 );
               })}
+              {/* "Vender" fica FORA do `.map` como sexto elemento, redondo e
+                  destacado (mesmo raciocínio da barra lateral: não é uma 6ª
+                  aba). `shrink-0` em vez de `flex-1` — os cinco rótulos das
+                  abas principais não podem ser espremidos por ele numa tela
+                  de 360px (é o que este arquivo tem de provar no teste). */}
+              <button
+                type="button"
+                onClick={() => {
+                  haptic.light();
+                  onNavigate("admin-pdv" as View);
+                }}
+                onMouseEnter={() => handleMouseEnter("admin-pdv")}
+                onMouseLeave={handleMouseLeave}
+                onTouchStart={() => handleMouseEnter("admin-pdv", true)}
+                aria-label="Vender"
+                className={cn(
+                  "flex size-11 shrink-0 items-center justify-center rounded-full bg-admin-gold text-black transition-transform active:scale-95",
+                  currentView === "admin-pdv" && "ring-2 ring-white/70",
+                )}
+              >
+                <ScanBarcode className="size-5" />
+              </button>
             </motion.nav>
           )}
         </AnimatePresence>

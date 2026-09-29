@@ -148,8 +148,10 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     );
 
     // Pin balão da CASA: gota PRETA sólida (contorno e corpo #18181b, sem
-    // "buraco" branco), a LOGO da loja ocupando o círculo (image href) e o
-    // aviso honesto de localização aproximada enquanto o dado é o CEP.
+    // "buraco" branco) e o ÍCONE DO APP (icon_192 — o mesmo do manifest do
+    // PWA), NUNCA a logo larga do cabeçalho (evita o borrão preto reportado
+    // pelo dono, 28/09/2026), e o aviso honesto de localização aproximada
+    // enquanto o dado é o CEP.
     const corpoDoPin = hospedeiro.querySelector(
       "svg path[d^='M28,64']",
     ) as SVGPathElement | null;
@@ -157,9 +159,15 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(corpoDoPin!.getAttribute("fill")).toBe("#18181b");
     expect(
       hospedeiro.querySelector(
-        "svg image[href='https://cdn.example/atelie/logo.png']",
+        "svg image[href='/identity/aurora/icon-192.png']",
       ),
     ).not.toBeNull();
+    // Regressão do borrão: o pin NUNCA usa a logo larga do cabeçalho.
+    expect(
+      hospedeiro.querySelector(
+        "svg image[href='https://cdn.example/atelie/logo.png']",
+      ),
+    ).toBeNull();
     expect(texto).toContain("Localização aproximada");
 
     const logo = hospedeiro.querySelector<HTMLImageElement>(
@@ -173,6 +181,25 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     // Título da aba vem do useDocumentMeta com o nome da fonte única.
     expect(document.title).toContain("Sobre a loja");
     expect(document.title).toContain("Ateliê da Serra");
+  });
+
+  it("pin: recorte é QUADRADO de cantos arredondados (não círculo) e tem moldura branca de contraste", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    // O ícone do app já nasce quadrado — o recorte deixa de ser um círculo
+    // (que cortava os cantos) e vira um retângulo arredondado (`rx`).
+    const recorte = hospedeiro.querySelector("clipPath rect");
+    expect(recorte).not.toBeNull();
+    expect(recorte!.getAttribute("rx")).toBe("7");
+    expect(hospedeiro.querySelector("clipPath circle")).toBeNull();
+
+    // Moldura branca ao redor do ícone: destaca o pin sobre a gota escura e
+    // sobre qualquer fundo de mapa (pedido do dono, 28/09/2026).
+    const moldura = hospedeiro.querySelector("svg rect[fill='#ffffff']");
+    expect(moldura).not.toBeNull();
+    expect(moldura!.getAttribute("rx")).toBe("9");
   });
 
   it("loja sem nada: blocos somem, nome cai na marca do build, zero 'undefined'", async () => {
@@ -205,7 +232,7 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(texto).not.toContain("null");
   });
 
-  it("logo do banco quebrada cai na LOGO DO BUILD; só quando ela também falha vem a inicial", async () => {
+  it("logo do banco quebrada cai na LOGO DO BUILD; só quando ela também falha vem a inicial — o pin (ícone do app) não se move", async () => {
     configAtual = {
       ...LOJA_COMPLETA,
       logoUrl: "https://cdn.example/quebrado.png",
@@ -219,8 +246,16 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(logo).not.toBeNull();
     expect(logo!.getAttribute("src")).toBe("https://cdn.example/quebrado.png");
 
+    // O pin usa o ÍCONE DO APP (icon_192), não a logo do cabeçalho — a
+    // cascata banco→build→inicial da logo grande não afeta o pin.
+    const iconeDoPin = () =>
+      hospedeiro.querySelector(
+        "svg image[href='/identity/aurora/icon-192.png']",
+      );
+    expect(iconeDoPin()).not.toBeNull();
+
     // 1ª falha (logo do banco): avança para a logo do build (fixture Aurora),
-    // NÃO para a inicial — o pin do mapa acompanha a mesma candidata.
+    // NÃO para a inicial — o pin continua com o MESMO ícone do app.
     await act(async () => {
       logo!.dispatchEvent(new globalThis.Event("error"));
     });
@@ -231,19 +266,52 @@ describe("AboutStoreView — a página mostra o que a loja tem e omite o resto",
     expect(logoDoBuild!.getAttribute("src")).toBe(
       "/identity/aurora/header.webp",
     );
-    expect(
-      hospedeiro.querySelector(
-        "svg image[href='/identity/aurora/header.webp']",
-      ),
-    ).not.toBeNull();
+    expect(iconeDoPin()).not.toBeNull();
 
-    // 2ª falha (logo do build também quebrada): aí sim a inicial entra —
-    // sem "undefined" e sem erro de render.
+    // 2ª falha (logo do build também quebrada): aí sim a inicial entra no
+    // CARTÃO — sem "undefined" e sem erro de render. O pin, de novo, não é
+    // afetado: continua com o ícone do app.
     await act(async () => {
       logoDoBuild!.dispatchEvent(new globalThis.Event("error"));
     });
     expect(hospedeiro.querySelector("img[alt^='Logo da loja']")).toBeNull();
     expect(hospedeiro.textContent).toContain("Ateliê da Serra");
+    expect(iconeDoPin()).not.toBeNull();
+  });
+
+  it("ícone do pin: falha de rede cai na inicial, sem borrão — independente da logo do cabeçalho", async () => {
+    configAtual = LOJA_COMPLETA;
+
+    await renderizarPagina();
+
+    const iconeDoPin = hospedeiro.querySelector(
+      "svg image[href='/identity/aurora/icon-192.png']",
+    );
+    expect(iconeDoPin).not.toBeNull();
+
+    await act(async () => {
+      iconeDoPin!.dispatchEvent(new globalThis.Event("error"));
+    });
+
+    // O <image> some do pin e a inicial aparece no lugar dele, DENTRO do
+    // balão — sem quebrar o resto da página (a logo grande do cartão segue
+    // intacta, ela não muda nesta tarefa).
+    expect(
+      hospedeiro.querySelector(
+        "svg image[href='/identity/aurora/icon-192.png']",
+      ),
+    ).toBeNull();
+    const balaoDoPin = hospedeiro.querySelector("svg path[d^='M28,64']");
+    expect(balaoDoPin).not.toBeNull();
+    expect(
+      [...hospedeiro.querySelectorAll("svg text")].some(
+        (t) => t.textContent === "A",
+      ),
+    ).toBe(true);
+    expect(
+      hospedeiro.querySelector<HTMLImageElement>("img[alt^='Logo da loja']")
+        ?.src,
+    ).toContain("atelie/logo.png");
   });
 
   it("a fonte da logo mudando no ar reinicia a cascata do começo", async () => {

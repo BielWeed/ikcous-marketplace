@@ -16,70 +16,54 @@
 // (`TransportadorasSection`). As travas vieram junto, e ESTE arquivo continua
 // sendo a prova — agora contra o componente novo.
 //
-// Contra o HEAD (843ca0a) os dois primeiros testes reprovam: não existe
-// mensagem de erro nenhuma no DOM, e não existe botão de tentar de novo.
+// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a leitura deixou de ser
+// `store_shipping_credentials` por PostgREST — é UMA ação da edge
+// (`ler_configuracao_frete`). O mecanismo provado aqui é o MESMO (falha vira
+// mensagem, nunca fica preso em "Recarregando…", "Tentar de novo" refaz a
+// busca e destrava a tela), só a fonte da falha mudou de tabela para edge.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const updateConfig = vi.fn();
+const { invoke, estadoDoBanco } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  // `credenciaisFalham` é lido a CADA chamada de `ler_configuracao_frete`,
+  // não no import: é isso que permite o terceiro teste falhar primeiro e ter
+  // sucesso na retentativa.
+  estadoDoBanco: { credenciaisFalham: true, chamadasDeConfig: 0 },
+}));
 
-// A loja usa Melhor Envio — é o que faz a caixa de credenciais renderizar.
-const { estadoDaLoja, estadoDoBanco } = vi.hoisted(() => ({
-  estadoDaLoja: {
-    atual: {
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac"] as string[],
-    },
+const RESPOSTA_OK = {
+  success: true,
+  modo: "legado",
+  ligados: ["melhor_envio"],
+  provedores: {
+    melhor_envio: { tem_chave: true, sandbox: false, servicos: null },
+    superfrete: { tem_chave: false, sandbox: false, servicos: null },
+    frenet: { tem_chave: false, sandbox: false, servicos: null },
   },
-  // `credenciaisFalham` é lido a CADA chamada de fetch, não no import: é isso
-  // que permite o terceiro teste falhar primeiro e ter sucesso na retentativa.
-  estadoDoBanco: { credenciaisFalham: true, chamadasDeCredenciais: 0 },
-}));
-
-vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: estadoDaLoja.atual,
-    isLoaded: true,
-    updateConfig,
-  }),
-}));
-
-vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+};
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    from: (tabela: string) => {
-      if (tabela === "store_shipping_credentials") {
-        estadoDoBanco.chamadasDeCredenciais++;
-        const falha = estadoDoBanco.credenciaisFalham;
-        return {
-          select: () =>
-            Promise.resolve(
-              falha
-                ? { data: null, error: { message: "network error" } }
-                : {
-                    data: [
-                      {
-                        provider: "melhor_envio",
-                        credentials: { token: "tok-salvo", sandbox: false },
-                      },
-                    ],
-                    error: null,
-                  },
-            ),
-        };
-      }
-      // shipping_calculation_logs e o resto
-      return {
-        select: () => ({
-          order: () => ({
-            limit: () => Promise.resolve({ data: [], error: null }),
-          }),
-        }),
-      };
+    from: () => ({
+      select: () => Promise.resolve({ data: [], error: null }),
+    }),
+    functions: {
+      invoke: (nome: string, opcoes: any) => {
+        if (opcoes?.body?.action === "ler_configuracao_frete") {
+          estadoDoBanco.chamadasDeConfig++;
+          if (estadoDoBanco.credenciaisFalham) {
+            return Promise.resolve({
+              data: null,
+              error: { message: "network error" },
+            });
+          }
+          return Promise.resolve({ data: RESPOSTA_OK, error: null });
+        }
+        return invoke(nome, opcoes);
+      },
     },
-    functions: { invoke: vi.fn() },
   },
 }));
 
@@ -100,12 +84,8 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
 
   beforeEach(() => {
     vi.clearAllMocks();
-    estadoDaLoja.atual = {
-      shippingProvider: "melhor_envio",
-      enabledShippingMethods: ["sedex", "pac"],
-    };
     estadoDoBanco.credenciaisFalham = true;
-    estadoDoBanco.chamadasDeCredenciais = 0;
+    estadoDoBanco.chamadasDeConfig = 0;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -125,6 +105,9 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
     );
     await act(async () => {
       raiz.render(<TransportadorasSection />);
+    });
+    await act(async () => {
+      await esperarMicrotarefas();
     });
     await act(async () => {
       await esperarMicrotarefas();
@@ -150,19 +133,17 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
 
     // A palavra prometia um movimento que não existia: nada tenta de novo
     // sozinho. Ela só pode aparecer enquanto a busca está mesmo em curso.
-    // ("Carregando…" não casa com /recarregando/i — o rótulo só aparece
-    // enquanto o fetch de verdade está em curso, nunca depois de falhar.)
     expect(hospedeiro.textContent).not.toMatch(/recarregando/i);
   });
 
   it("o botão de tentar de novo existe e realmente refaz a busca", async () => {
     await abrirSecao();
-    const chamadasDepoisDaAbertura = estadoDoBanco.chamadasDeCredenciais;
+    const chamadasDepoisDaAbertura = estadoDoBanco.chamadasDeConfig;
 
     const botao = botaoDeTentarDeNovo();
     expect(botao).toBeDefined();
 
-    // Agora o banco responde. O clique tem de nos tirar do estado morto.
+    // Agora a edge responde. O clique tem de nos tirar do estado morto.
     estadoDoBanco.credenciaisFalham = false;
     await act(async () => {
       botao?.click();
@@ -170,22 +151,27 @@ describe("TransportadorasSection — chaves que não carregam dizem, e deixam te
     await act(async () => {
       await esperarMicrotarefas();
     });
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
 
-    expect(estadoDoBanco.chamadasDeCredenciais).toBeGreaterThan(
+    expect(estadoDoBanco.chamadasDeConfig).toBeGreaterThan(
       chamadasDepoisDaAbertura,
     );
     expect(hospedeiro.textContent).not.toMatch(
       /não foi possível carregar as chaves/i,
     );
 
-    // E a seção volta a funcionar de verdade: o campo do token destrava e traz
-    // o valor salvo. Sem esta asserção, o teste aceitaria uma tela que só
-    // esconde a mensagem de erro e continua morta.
+    // E a seção volta a funcionar de verdade: o campo do token destrava e a
+    // tela diz que há chave salva (a chave em si não volta ao campo — só
+    // escrita). Sem esta asserção, o teste aceitaria uma tela que só esconde
+    // a mensagem de erro e continua morta.
     const campoToken = [...hospedeiro.querySelectorAll("input")].find(
       (i) => i.type === "password",
     ) as HTMLInputElement | undefined;
     expect(campoToken).toBeDefined();
     expect(campoToken?.disabled).toBe(false);
-    expect(campoToken?.value).toBe("tok-salvo");
+    expect(campoToken?.value).toBe("");
+    expect(hospedeiro.textContent).toMatch(/chave salva/i);
   });
 });

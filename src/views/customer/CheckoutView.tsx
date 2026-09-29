@@ -1,31 +1,69 @@
 import {
   type CategoriaErroPagamento,
+  type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import {
+  IconeCartao,
+  IconeDinheiro,
+  IconePix,
+} from "@/components/icons/IconesDePagamento";
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
 import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
+import {
+  ShippingCalculator,
+  type StatusDaCotacao,
+  chaveDoCacheDeFrete,
+} from "@/components/ui/custom/ShippingCalculator";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
+import { useConfigDoCartao } from "@/hooks/useConfigDoCartao";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { mensagemAmigavelErroPedido, useOrders } from "@/hooks/useOrders";
+import {
+  mensagemAmigavelErroAtualizacaoStatus,
+  mensagemAmigavelErroPedido,
+  useOrders,
+} from "@/hooks/useOrders";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   criarGerenciadorDeChave,
   impressaoDaCompra,
 } from "@/lib/chave-do-pedido";
+import { rotuloDaOpcaoDeCartao } from "@/lib/config-do-cartao";
+import {
+  cpfValido,
+  formatarCpf,
+  mascararCpfParaExibicao,
+  somenteDigitosDoCpf,
+} from "@/lib/cpf";
+import { gravarCpfDaConta, lerCpfDaConta } from "@/lib/cpf-da-conta";
+import {
+  enderecoDeEntregaEfetivo,
+  resumoDoEndereco,
+} from "@/lib/endereco-de-entrega";
 import { pagamentoOnlineLigado } from "@/lib/flags";
-import { finalizarBloqueadoPorFrete } from "@/lib/guarda-de-frete";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  conferirFreteEscolhidoComACotacao,
+  ehModalidadeDaLoja,
+  ehRetiradaNaLoja,
+  finalizarBloqueadoPorFrete,
+  formaDePagamentoDesligadaNaLoja,
+  pagamentoIncompativelComFrete,
+  primeiraFormaDePagamentoDisponivel,
+} from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
   lerRascunhoDoCheckout,
@@ -39,10 +77,18 @@ import {
   type RecusaDoPedido,
   classificarRecusaDoPedido,
 } from "@/lib/recusaDoPedido";
+import { buscarRevisaoConfigFrete } from "@/lib/revisao-do-frete";
 import { supabase } from "@/lib/supabase";
 import { criarTravaDeEnvio } from "@/lib/travaDeEnvio";
 import { cn } from "@/lib/utils";
-import type { Address, CartItem, Customer, PaymentMethod, View } from "@/types";
+import type {
+  Address,
+  CartItem,
+  Customer,
+  PaymentMethod,
+  ShippingOption,
+  View,
+} from "@/types";
 import { haptic } from "@/utils/haptic";
 import { zodResolver } from "@hookform/resolvers/zod";
 import confetti from "canvas-confetti";
@@ -50,24 +96,29 @@ import { AnimatePresence, motion, usePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowLeft,
-  Banknote,
   Check,
   ChevronDown,
+  Clock,
   CreditCard,
   FileText,
   Loader2,
   Lock,
-  type LucideIcon,
   MapPin,
   Phone,
   Plus,
-  Smartphone,
   Sparkles,
   Tag,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import {
+  type ComponentType,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal, flushSync } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -107,6 +158,30 @@ const INTERVALO_VERIFICACAO_PAGAMENTO_MS = 10_000;
 const TETO_TICKS_VERIFICACAO_PAGAMENTO =
   (60 * 60 * 1000) / INTERVALO_VERIFICACAO_PAGAMENTO_MS; // 60 min / 10s = 360 ticks
 
+// B3 da revisão de risco pré-publicação (26/09/2026, PR #666): texto EXATO do
+// 409 que `criar-pagamento/index.ts` devolve quando o cartão ainda está em
+// análise/3DS e o cliente pede PIX por cima (grep pela mesma frase no arquivo
+// da edge). Serve de RESERVA para quando o corpo não traz o campo
+// `cartaoEmAnalise` (edge antiga, ou versão ainda sem a marca) — a detecção
+// principal é pelo campo (useOrders.ts propaga `.cartaoEmAnalise` do 409),
+// nunca o contrário: a mensagem pode mudar, o campo não.
+const MENSAGEM_CARTAO_EM_ANALISE_409 =
+  "Há um pagamento com cartão em análise para este pedido.";
+
+// B1/B3, rodada 2 da revisão de risco pré-publicação (26/09/2026): texto
+// EXATO do achado N7 (`criar-pagamento/index.ts`) — a corrida do "cartão
+// órfão" perdida contra o webhook. Cobre `processing` (pode nem ter
+// capturado ainda) e `processed` (capturado); nos dois casos "pode ter sido
+// cobrado" é verdade, então NUNCA oferece PIX nem "Cancelar pedido" aqui —
+// os dois arriscam dinheiro sobre uma cobrança que pode já existir. Mesma
+// função de RESERVA que `MENSAGEM_CARTAO_EM_ANALISE_409`, acima: a edge JÁ
+// manda `cartaoEmAnalise` para este caso (a partir do commit `bf15876f` da
+// edge — corrigido no addendum da rodada 6, o comentário aqui dizia o
+// contrário) — esta constante só entra em jogo como reserva para uma loja
+// ainda rodando uma edge anterior a esse commit.
+const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
+  "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
+
 interface CheckoutFormValues {
   name: string;
   whatsapp: string;
@@ -117,6 +192,14 @@ interface CheckoutFormValues {
   city?: string;
   state?: string;
   complement?: string;
+  /**
+   * CPF do destinatário (checkout compacto + CPF, 23/09/2026) — só exigido
+   * quando a entrega escolhida é por TRANSPORTADORA (o Melhor Envio exige
+   * `to.document` para emitir a etiqueta). NUNCA persistido no rascunho da
+   * sessão (ver o comentário grande em rascunho-do-checkout.ts) — vive só
+   * aqui, no estado do próprio formulário.
+   */
+  cpf?: string;
 }
 
 // Ordem de tabulação do formulário. Usada para levar o foco ao PRIMEIRO campo
@@ -127,6 +210,7 @@ interface CheckoutFormValues {
 const ORDEM_CAMPOS_FOCO = [
   "name",
   "whatsapp",
+  "cpf",
   "cep",
   "number",
   "street",
@@ -145,13 +229,136 @@ const ORDEM_CAMPOS_FOCO = [
  * (`tests/front/checkout-oferece-saida-na-recusa.test.tsx`) exercita esta função,
  * não a view.
  *
- * Hoje ela apenas delega — o valor de existir é o ponto de costura ficar
- * nomeado e testável. Se um dia a tela precisar de uma regra que só ela conhece
- * (por exemplo: sem cupom aplicado, `remover_cupom` não faz sentido), é aqui que
- * ela entra, e o teste já está montado.
+ * Hoje ela só acrescenta UMA regra própria antes de delegar — o valor de
+ * existir continua sendo o ponto de costura ficar nomeado e testável. Se um
+ * dia a tela precisar de mais uma regra que só ela conhece (por exemplo: sem
+ * cupom aplicado, `remover_cupom` não faz sentido), é aqui que ela entra, e
+ * o teste já está montado.
  */
-export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido =>
-  classificarRecusaDoPedido(error);
+export const decidirSaidaDoCheckout = (error: unknown): RecusaDoPedido => {
+  if ((error as { code?: string } | null)?.code === "PEDIDO_SEM_RESPOSTA") {
+    return {
+      acao: "conferir_antes",
+      mensagem:
+        "O servidor demorou para responder. O pedido pode ter sido criado: confira seus pedidos ou fale com a loja antes de tentar novamente.",
+    };
+  }
+  if (ehFalhaDeRedeAntesDoEnvio(error)) {
+    // Sem rede o POST não chega ao servidor (ou a resposta não volta), e
+    // `classificarRecusaDoPedido` mandaria esse `code` vazio para o caso
+    // genérico `conferir_antes` (achado offline, 15/09/2026), que TRAVA o
+    // botão e manda "confira se ele já apareceu" — o conselho errado para o
+    // convidado, que não tem lista de pedidos para conferir. Tentar de novo é
+    // SEGURO desde 08/09/2026: a chave de idempotência (chave-do-pedido.ts) é
+    // a mesma para a mesma compra, e a RPC devolve o pedido já nascido em vez
+    // de criar outro. `tentar_de_novo` já existe e já NÃO trava o botão
+    // (aguardandoConferenciaDaRecusa só olha `conferir_antes`, mais abaixo);
+    // a mensagem é PRÓPRIA, não uma das `REGRAS` de recusaDoPedido.ts, porque
+    // o banco nunca escreveu esta frase — ela fala do cliente, não do pedido.
+    // O toast do catch usa ESTA mesma frase (ver handleSubmitEvent): toast e
+    // painel nunca podem dizer coisas opostas sobre a mesma falha.
+    return {
+      acao: "tentar_de_novo",
+      mensagem:
+        "Sem conexão — o pedido não foi confirmado. Tente de novo quando a internet voltar: ele não sai em dobro.",
+    };
+  }
+  return classificarRecusaDoPedido(error);
+};
+
+/**
+ * Prova de que a falha é de REDE — o fetch nunca chegou a existir ou o
+ * navegador sabe que está sem internet —, nunca uma resposta do servidor.
+ *
+ * `code === "P0001"` COM `message` prova o oposto: a chamada chegou ao
+ * Postgres e ele respondeu com `RAISE EXCEPTION` (que reverte a transação
+ * inteira) — aí o pedido definitivamente não nasceu por um motivo que o
+ * banco já escreveu, e isso vale mesmo que `navigator.onLine` esteja
+ * mentindo pela corrida entre a resposta chegar e o evento `offline`
+ * disparar. Por isso este caso sai cedo, ANTES de olhar `navigator.onLine`.
+ *
+ * As duas provas de rede, qualquer uma basta:
+ *   - `navigator.onLine === false` no instante da recusa;
+ *   - a assinatura exata que o postgrest-js devolve quando o PRÓPRIO fetch
+ *     lança (confirmado em node_modules/@supabase/postgrest-js/dist/
+ *     index.cjs:356-364, o mesmo trecho citado por `mensagemAmigavelErroPedido`
+ *     em useOrders.ts): `code` vazio E `message` começando pelo NOME da
+ *     exceção do fetch (`TypeError: Failed to fetch`, `AbortError: ...`).
+ *     Um corpo de resposta HTTP sem `code` (502/504 de gateway, por exemplo)
+ *     nunca chega com esse prefixo — só um texto cru, então não casa aqui.
+ */
+const PREFIXO_DE_EXCECAO_DE_FETCH =
+  /^(TypeError|FetchError|AbortError|NetworkError):/;
+
+const ehFalhaDeRedeAntesDoEnvio = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
+  const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+
+  if (codigo === "P0001" && mensagem) return false;
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return true;
+  }
+
+  return codigo === "" && PREFIXO_DE_EXCECAO_DE_FETCH.test(mensagem);
+};
+
+/**
+ * A nota do pedido para a opção de frete escolhida (release 1.5.7,
+ * CONTRATO-1.5.7.md R1-4): prazo 0 é "no mesmo dia" — o valor CANÔNICO do
+ * servidor —, nunca "0 dias" (um prazo que não existe para quem lê a nota
+ * depois, lojista ou cliente). Pura e exportada pelo mesmo motivo de
+ * `decidirSaidaDoCheckout`: testável sem montar a tela inteira.
+ */
+export const notaDoFreteEscolhido = (
+  option: Pick<
+    ShippingOption,
+    "id" | "name" | "deliveryDays" | "pickupAddress"
+  > | null,
+): string | undefined => {
+  if (!option) return undefined;
+  if (ehRetiradaNaLoja(option.id)) {
+    return `Retirada na loja${option.pickupAddress ? `: ${option.pickupAddress}` : ""}`;
+  }
+  const prazo =
+    option.deliveryDays === 0 ? "no mesmo dia" : `${option.deliveryDays} dias`;
+  return `Frete Escolhido: ${option.name} (Prazo: ${prazo})`;
+};
+
+/**
+ * EMENDA R3-4 (CONTRATO-1.5.7.md §9): a RPC recusa com este marcador exato
+ * na mensagem quando a lojista mudou a configuração de frete DEPOIS que a
+ * cotação escolhida foi gravada — o cache do servidor foi apagado (R2-2) e
+ * o id/preço escolhido não bate mais com nada válido. Por TEXTO, não por
+ * SQLSTATE: a RPC usa `RAISE EXCEPTION` sem `USING ERRCODE` (mesma razão de
+ * `recusaDoPedido.ts`). `includes`, não igualdade exata: o banco pode
+ * prefixar/sufixar a frase com contexto sem que o sinal deixe de valer.
+ */
+const MARCADOR_DE_FRETE_DESATUALIZADO = "FRETE_COTACAO_DESATUALIZADA";
+
+const ehErroDeFreteDesatualizado = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_FRETE_DESATUALIZADO);
+};
+
+/**
+ * FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration 20261174000000): mesma
+ * corrida rara do frete acima, do lado do pagamento — a lojista desliga uma
+ * forma ENTRE a checagem local e o clique chegar à RPC. Por TEXTO, não por
+ * SQLSTATE (mesma razão do marcador de frete acima e de `recusaDoPedido.ts`):
+ * `includes`, não igualdade exata, pelo mesmo motivo — o banco pode
+ * prefixar/sufixar a frase sem que o sinal deixe de valer.
+ */
+const MARCADOR_DE_FORMA_DE_PAGAMENTO_DESLIGADA =
+  "Esta forma de pagamento não está disponível nesta loja";
+
+const ehErroDeFormaDePagamentoDesligada = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_FORMA_DE_PAGAMENTO_DESLIGADA);
+};
 
 /**
  * Para ONDE cada ação leva. Tabela, e não cadeia de `if`, pelo mesmo motivo do
@@ -179,6 +386,15 @@ const DESTINO_DA_ACAO: Record<AcaoDeRecusa, DestinoDaRecusa> = {
   remover_item: "carrinho",
   escolher_variacao: "carrinho",
   trocar_entrega: "carrinho",
+  // Re-review do commit 3c90059d: `trocar_pagamento` é o mapeamento CERTO
+  // para a recusa de forma de pagamento desligada — não `trocar_entrega`
+  // (vai ao carrinho, botão que fala de entrega) nem `tentar_de_novo`
+  // (fingiria que o banco não escreveu texto nomeado). O destino é o mesmo
+  // `so_fechar` de `tentar_de_novo`: fecha o painel, mantém a pessoa NO
+  // checkout, onde `refresh({ onlyConfig: true })` já recarregou a config e
+  // o fallback `primeiraFormaDePagamentoDisponivel` já trocou o método
+  // sozinho. Ver o comentário completo em `recusaDoPedido.ts`.
+  trocar_pagamento: "so_fechar",
   remover_cupom: "cupom",
   trocar_endereco: "endereco",
   // Item 3c (12/09/2026): mesmo destino do aviso "Entrega fora da cidade é
@@ -355,7 +571,11 @@ export function CheckoutView({
   onNavigate,
   onSetBackOverride,
 }: CheckoutViewProps) {
-  const { config, isLoaded: storeConfigLoaded } = useStore();
+  const {
+    config,
+    isLoaded: storeConfigLoaded,
+    refresh: refreshStoreConfig,
+  } = useStore();
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
   const {
@@ -365,9 +585,14 @@ export function CheckoutView({
     clearCart: ctxClearCart,
     addToCart,
     selectedShippingOption,
+    freteEscolhidoPelaCliente,
     shippingCep,
     setSelectedShippingOption,
     setShippingCep,
+    // D1: o endereço ESCOLHIDO mora no CartContext — fonte compartilhada
+    // com o carrinho, cuja calculadora aponta para o CEP deste endereço.
+    enderecoSelecionadoId: selectedAddressId,
+    setEnderecoSelecionadoId: setSelectedAddressId,
     freteIndefinido: ctxFreteIndefinido,
     freteGratis,
   } = useCart();
@@ -382,6 +607,36 @@ export function CheckoutView({
   const total =
     propTotal ?? ctxSubtotal + (ctxFreteIndefinido ? 0 : ctxShipping);
   const onClearCart = propOnClearCart ?? ctxClearCart;
+
+  // A MODALIDADE DO FRETE (regra do dono, 21/09/2026): envio por
+  // TRANSPORTADORA (Melhor Envio/Frenet — qualquer id que não seja
+  // "local-delivery") exige pagamento ANTECIPADO; entrega local preserva as
+  // modalidades que a loja permite na entrega. O contrato é o ID, nunca o
+  // preço nem o texto: frete grátis de transportadora (price 0) continua
+  // transportadora, e entrega local grátis continua local — mesma
+  // classificação da RPC viva (create_marketplace_order_v23/v24, que só
+  // reconhece "local-delivery" e cotação resolvida no servidor).
+  // `selectedShippingOption` pode ser null (frete ainda não escolhido):
+  // modalidade DESCONHECIDA — `ehEntregaLocal` vira false e a regra nova não
+  // esconde o grupo "Na entrega" (escondê-lo com frete grátis legítimo
+  // permitiria submit com meio oculto); nesse estado quem decide a
+  // disponibilidade é a `finalizarBloqueadoPorFrete`, e a RPC recusa pedido
+  // com opção ausente.
+  // RETIRADA NA LOJA (release 1.5.3): "store-pickup" também é modalidade da
+  // LOJA (a cliente busca no endereço dela) — pagamento segue as regras da
+  // entrega local, igual à RPC v23/v24 (ramo 2-ter, sem restrição de meio).
+  const ehEntregaLocal = ehModalidadeDaLoja(selectedShippingOption?.id);
+  const ehRetirada = ehRetiradaNaLoja(selectedShippingOption?.id);
+  // CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026): o Melhor
+  // Envio exige `to.document` (CPF, pessoa física) para inserir o frete no
+  // carrinho e emitir a etiqueta de envio nacional
+  // (docs.melhorenvio.com.br/reference/inserir-fretes-no-carrinho) — só
+  // entra na conta quando a modalidade é TRANSPORTADORA. Sem opção
+  // escolhida ainda, a modalidade é DESCONHECIDA — mesma régua de
+  // `ehEntregaLocal`/`ehRetirada` acima — e o campo não é exigido: quem
+  // trava o Finalizar nesse estado é `semFreteSelecionado`, mais abaixo.
+  const exigeCpfDoDestinatario =
+    !!selectedShippingOption && !ehEntregaLocal && !ehRetirada;
   // CHECKOUT-090: realtime ligado (antes `useOrders(false, true)` desligava
   // o efeito inteiro na primeira linha de useOrders.ts — nenhuma assinatura
   // era criada, e a tela do PIX nunca soube que o pedido tinha sido pago) e
@@ -443,6 +698,17 @@ export function CheckoutView({
     return whatsapp ? formatWhatsApp(whatsapp) : "";
   };
 
+  // CHECKOUT COMPACTO (23/09/2026): resumo do WhatsApp para o cartão
+  // recolhido — mantém DDD e os 4 últimos dígitos (o que a pessoa
+  // reconhece de relance), esconde o miolo.
+  const abreviarWhatsapp = (formatado: string) => {
+    const numbers = formatado.replaceAll(/\D/g, "");
+    if (numbers.length < 10) return formatado || "—";
+    const ddd = numbers.slice(0, 2);
+    const ultimos4 = numbers.slice(-4);
+    return `(${ddd}) *****-${ultimos4}`;
+  };
+
   const dynamicSchema = useMemo(() => {
     return z
       .object({
@@ -455,8 +721,21 @@ export function CheckoutView({
         city: z.string().optional(),
         state: z.string().optional(),
         complement: z.string().optional(),
+        cpf: z.string().optional(),
       })
       .superRefine((data, ctx) => {
+        // CPF só é exigido com transportadora (ver o comentário grande de
+        // `exigeCpfDoDestinatario`, acima) — `cpfValido` já cobre "vazio",
+        // "menos de 11 dígitos" e "dígito verificador errado" na MESMA
+        // função que o campo usa para colorir a borda e que o submit usa
+        // para travar: nunca duas réguas para o mesmo campo.
+        if (exigeCpfDoDestinatario && !cpfValido(data.cpf ?? "")) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Informe um CPF válido para a entrega por transportadora",
+            path: ["cpf"],
+          });
+        }
         if (!user) {
           // 8 DÍGITOS, não 8 caracteres: "1234-678" tem 8 caracteres e 7
           // dígitos — passava na régua antiga e virava endereço não
@@ -505,11 +784,12 @@ export function CheckoutView({
           }
         }
       });
-  }, [user]);
+  }, [user, exigeCpfDoDestinatario]);
 
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(dynamicSchema),
     defaultValues: {
+      cpf: "",
       name: profile?.full_name || user?.user_metadata?.name || "",
       whatsapp: getDefaultWhatsApp(),
       cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
@@ -518,6 +798,80 @@ export function CheckoutView({
     },
     mode: "onChange",
   });
+
+  // CHECKOUT COMPACTO + CPF (23/09/2026): `exigeCpfDoDestinatario` entra na
+  // conta do `dynamicSchema` (superRefine), mas react-hook-form só REVALIDA
+  // um campo quando ELE muda (digitação, blur, submit) — trocar a opção de
+  // frete (transportadora ⇄ local/retirada) não toca o campo `cpf` nem
+  // nenhum outro, então `formState.isValid` ficava PARADO no valor de antes
+  // da troca. Sentido que mais dói: sair de transportadora sem CPF de volta
+  // para entrega local prendia o Finalizar desabilitado por uma exigência
+  // que TINHA acabado de deixar de existir — provado por
+  // `checkout-compacto-e-cpf.test.tsx` ("CPF inválido BLOQUEIA o Finalizar
+  // com transportadora, e NÃO bloqueia com entrega local"). `form.trigger`
+  // sem argumento revalida o formulário INTEIRO contra o schema atual; os
+  // campos ainda vazios passam a carregar erro no estado do formulário (o
+  // mesmo que o `mode: "onChange"` já faria ao primeiro toque).
+  const exigeCpfMontadoRef = useRef(false);
+  useEffect(() => {
+    // SÓ depois do primeiro paint: no MOUNT, `form.trigger()` validaria o
+    // formulário inteiro contra um schema que ele ainda não tocou —
+    // acenderia erro vermelho (nome/WhatsApp/endereço vazios) numa tela que
+    // a pessoa acabou de abrir, sem digitar nada. O gatilho real é só a
+    // MUDANÇA de exigência depois de montado (troca de opção de frete).
+    if (!exigeCpfMontadoRef.current) {
+      exigeCpfMontadoRef.current = true;
+      return;
+    }
+    form.trigger();
+  }, [exigeCpfDoDestinatario, form]);
+
+  // O CPF MORA NA CONTA (23/09/2026): logado, ao montar, se o campo ainda
+  // está vazio, tenta preencher com o CPF já gravado na conta —
+  // `lerCpfDaConta` é best-effort (nunca lança; falha vira "campo continua
+  // vazio", nunca um erro na tela). NUNCA abre a seção sozinho: só
+  // `form.setValue`, sem tocar `identificacaoAbertaManual` — a seção
+  // nasce recolhida de qualquer forma (ver comentário grande de
+  // `identificacaoExpandida`, acima). `contaTemCpf` guarda o resultado
+  // da leitura para a gravação pós-pedido, mais abaixo: só persiste se a
+  // conta ESTAVA sem CPF (nunca sobrescreve um CPF que já existia por um
+  // motivo qualquer — essa decisão é só do Perfil).
+  //
+  // Revisão de segurança + dono (23/09/2026): o campo é o CPF do
+  // DESTINATÁRIO, que pode ser um terceiro (presente). Por isso a gravação
+  // na conta só acontece com a confirmação explícita
+  // `salvarCpfNaConta` ("Este CPF é meu…"), desmarcada por padrão; o CPF
+  // do pedido continua indo no pedido de qualquer forma. `contaTemCpf` é
+  // estado (a caixa só aparece quando a conta está sem CPF) e volta a
+  // `null` na troca de usuário, junto com a confirmação — o resultado de
+  // uma conta nunca vale para a outra.
+  const [contaTemCpf, setContaTemCpf] = useState<boolean | null>(null);
+  const [salvarCpfNaConta, setSalvarCpfNaConta] = useState(false);
+  useEffect(() => {
+    setContaTemCpf(null);
+    setSalvarCpfNaConta(false);
+    if (!user) return;
+    let cancelado = false;
+    void (async () => {
+      const resultado = await lerCpfDaConta();
+      if (cancelado || !resultado.ok) return;
+      const digitos = resultado.cpf ?? "";
+      setContaTemCpf(digitos.length > 0);
+      if (digitos && !form.getValues("cpf")) {
+        // A leitura da conta pode terminar depois da seleção do frete.
+        // Sem revalidar, o CPF aparece preenchido mas isValid continua falso.
+        form.setValue("cpf", formatarCpf(digitos).formatado, {
+          shouldValidate: true,
+        });
+      }
+    })();
+    return () => {
+      cancelado = true;
+    };
+    // `form` de propósito fora do array: só ao montar por usuário — refazer
+    // a cada digitação sobrescreveria o que a pessoa acabou de apagar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const hasInitializedRef = useRef(false);
   useEffect(() => {
@@ -532,6 +886,11 @@ export function CheckoutView({
       // transitória dos resets é substituída, logo depois, pela gravação dos
       // valores restaurados.
       const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+      // Revisão de segurança (23/09/2026): quando a config da loja chega
+      // DEPOIS de `get_my_cpf`, os resets abaixo apagavam o CPF que a conta
+      // acabou de preencher. O valor atual do campo (nunca o rascunho — CPF
+      // não entra no rascunho) atravessa os resets.
+      const cpfJaCarregado = form.getValues("cpf") || "";
       hasInitializedRef.current = true;
       if (!form.formState.isDirty) {
         // Cidade e estado nascem vazios em QUALQUER cobertura de entrega —
@@ -539,6 +898,7 @@ export function CheckoutView({
         // mora. O ternário de `isNational` que existia aqui preenchia os
         // dois com "Monte Carmelo"/"MG" na cobertura local.
         form.reset({
+          cpf: cpfJaCarregado,
           name: profile?.full_name || user?.user_metadata?.name || "",
           whatsapp: getDefaultWhatsApp(),
           cep: localStorage.getItem("ikcous_last_shipping_cep") || "",
@@ -554,6 +914,12 @@ export function CheckoutView({
         // deixou de valer não volta mentindo.
         if (rascunho && rascunhoTemConteudo(rascunho)) {
           form.reset({
+            // CPF NUNCA vem do rascunho (ver o comentário grande em
+            // rascunho-do-checkout.ts) — este reset restaura endereço/nome/
+            // WhatsApp/cupom da sessão anterior; o CPF só mantém o que já
+            // estava no campo (o da conta, se chegou antes), nunca o
+            // rascunho.
+            cpf: cpfJaCarregado,
             name:
               rascunho.nome ||
               profile?.full_name ||
@@ -651,6 +1017,22 @@ export function CheckoutView({
   );
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
+  // CARTÃO PELO APP (Fase 3.5, 26/09/2026): PIX e cartão pelo app são o
+  // MESMO `payment_method: "online"` para o pedido (mesma RPC, mesma reserva
+  // de 30 min, mesma chave de idempotência) — o que muda é só a tela depois
+  // que o pedido nasce. Por isso o submétodo mora num estado à parte e só
+  // vale enquanto `paymentMethod === "online"` (ver `metodoOnlineEfetivo`).
+  // Toda seleção AUTOMÁTICA de "online" (transportadora, fallback da loja)
+  // volta para PIX — cartão só por escolha explícita do cliente.
+  const [metodoOnline, setMetodoOnline] = useState<MetodoOnline>("pix");
+  // `null` = cartão NÃO oferecido (carregando, desligado, leitura falhou ou
+  // loja sem Public Key) — falha fechada, ver useConfigDoCartao.
+  const configDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  const cartaoDisponivel = pagamentoOnlineLigado() && configDoCartao !== null;
+  const metodoOnlineEfetivo: MetodoOnline =
+    paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
+      ? "cartao"
+      : "pix";
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   // A recusa que o banco deu no último clique, quando deu. `null` é o estado
@@ -714,10 +1096,57 @@ export function CheckoutView({
   // novo" (ver CategoriaErroPagamento em PagamentoOnline.tsx): nunca
   // reclassificada aqui por texto de mensagem, só repassada como o
   // PagamentoOnline mandou.
+  //
+  // `cartaoEmAnalise` (achado B3, reforçado na rodada 2, 26/09/2026):
+  // detectado pelo `sinal` que a tela manda (SinalDeErroPagamento) OU, como
+  // reserva, pela MESMA mensagem exata (MENSAGEM_CARTAO_EM_ANALISE_409 ou
+  // MENSAGEM_CARTAO_TALVEZ_COBRADO_409) — funciona antes e depois da edge
+  // mandar o sinal. Cancelar o pedido ou pagar de novo por PIX enquanto o
+  // banco ainda pode ter cobrado o cartão é dinheiro em risco.
+  //
+  // `semCobranca` (achado B1, rodada 2): só `true` quando o `sinal` diz que
+  // NENHUM POST de cartão pode ter chegado à edge (ou que a edge cancela a
+  // vaga sozinha ao pedir PIX) — é a ÚNICA situação em que "Pagar com PIX" é
+  // seguro na caixa de erro. Falha FECHADA: sem sinal, `semCobranca` fica
+  // `false` (nunca inferido do texto — ao contrário do `cartaoEmAnalise`,
+  // não há frase curada que garanta "não houve cobrança").
   const [erroPagamento, setErroPagamento] = useState<{
     mensagem: string;
     categoria: CategoriaErroPagamento;
+    cartaoEmAnalise: boolean;
+    semCobranca: boolean;
   } | null>(null);
+  // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
+  // 26/09/2026): `cartaoEmAnalise` acima é julgado POR ERRO — a sequência que
+  // quebra isso: (1) um 502 ambíguo do POST de cartão (o Mercado Pago pode
+  // ter aprovado, a resposta se perdeu); (2) o cliente toca "Tentar de novo";
+  // (3) a segunda tentativa falha numa validação LOCAL, marcada
+  // `semCobranca` corretamente — mas SÓ para ESTE erro; (4) "Pagar com PIX"
+  // reaparece, e a edge antiga cria o PIX na vaga vazia: duas cobranças
+  // vivas. Este marcador é POR PEDIDO: uma vez `true`, nenhum erro seguinte —
+  // nem um `semCobranca` legítimo — desmarca.
+  //
+  // Achado 6 (menor, rodada 4): este comentário chegou a prometer que o
+  // efeito abaixo "reseta num pedido novo" — mas `orderId` só é atribuído
+  // UMA vez por pedido nesta função (`grep setOrderId`: uma chamada só), e
+  // não há caminho de UI para reaproveitar o MESMO `<CheckoutView>` montado
+  // num segundo pedido depois deste marcador travar "Cancelar pedido" (essa
+  // é justamente a intenção: sem saída fácil de volta ao formulário). O
+  // efeito é escrito por completude/defesa (se algum dia existir um caminho
+  // de `orderId` mudar sem desmontar, ele já reseta certo) — mas hoje é
+  // MORTO: nenhum teste alcança a transição de `orderId` dentro de UM mount
+  // só, e um teste que remova este efeito continua passando (prova: mutação
+  // "sem reset" na rodada 4 — os mesmos 10 testes, incluindo o de isolamento
+  // entre pedidos, seguem verdes). Mantido mesmo assim (custo zero, nunca
+  // erra) — ver `tests/front/checkout-view-cartao-erro-oferece-pix-e-em-
+  // analise.test.tsx`, teste "(d)", que prova ISOLAMENTO ENTRE SESSÕES de
+  // checkout (dois `<CheckoutView>` distintos), não a transição de `orderId`
+  // dentro de um mount só.
+  const [pedidoTemCobrancaIncerta, setPedidoTemCobrancaIncerta] =
+    useState(false);
+  useEffect(() => {
+    setPedidoTemCobrancaIncerta(false);
+  }, [orderId]);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
   // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
@@ -726,11 +1155,33 @@ export function CheckoutView({
   const [isCancelandoPedido, setIsCancelandoPedido] = useState(false);
   const isCancelandoPedidoRef = useRef(false);
   const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
+  // Achado 1, rodada 6 da revisão de risco pré-publicação (26/09/2026,
+  // migration 80 — outra frente): a própria RPC já recusou este pedido com
+  // P0001 dizendo que o cartão pode estar em confirmação — isso É a prova de
+  // que "Cancelar pedido" bateria na mesma recusa de novo. DIFERENTE de
+  // `pedidoTemCobrancaIncerta` (acima): aquele também esconde "Pagar com
+  // PIX", que o servidor ACEITA mesmo com essa guarda ligada (o caso da URL
+  // de desafio 3DS inválida, achado 3 opcional da rodada 5). Este marcador
+  // só esconde o botão de cancelar — nada mais. Sem `useEffect` de reset por
+  // `orderId`: mesmo raciocínio já registrado no comentário de
+  // `pedidoTemCobrancaIncerta` (a mutação da rodada 4 provou que esse
+  // caminho nunca é alcançado nesta função) — `useState(false)` já nasce
+  // limpo a cada mount/pedido novo, sem precisar de um efeito para provar o
+  // óbvio uma segunda vez.
+  const [
+    cancelamentoBloqueadoPelaGuardaDoCartao,
+    setCancelamentoBloqueadoPelaGuardaDoCartao,
+  ] = useState(false);
   // Congelado no momento do submit, como orderId — sem isso, o onClearCart()
   // duas linhas abaixo zera o carrinho, cartTotal/shippingFee caem para 0
   // (ou ficam negativos com cupom aplicado) e o Brick nasce cobrando um
   // valor que não bate com o total já gravado no pedido.
   const [valorDoPedido, setValorDoPedido] = useState(0);
+  // Mesmo motivo: o submétodo (PIX ou cartão) do pedido que JÁ nasceu. Sem
+  // o congelamento, um efeito que mexe em `paymentMethod` depois do submit
+  // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
+  // cartão por uma cobrança PIX criada sozinha.
+  const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -740,9 +1191,6 @@ export function CheckoutView({
     discount: number;
   } | null>(null);
   const [couponError, setCouponError] = useState<string>("");
-  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
-    null,
-  );
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
   const hasPushedAddressModalState = useRef(false);
@@ -763,9 +1211,67 @@ export function CheckoutView({
   // certo. Cotação ausente não decide (frete grátis/taxa fixa sem
   // cotação): o portão do SERVIDOR é quem policia esses caminhos.
   const cepDigitadoNoFormulario = form.watch("cep");
+  // Destino efetivo derivado EM RENDER (não espera efeito): o endereço
+  // escolhido ou, na falta, o principal/primeiro do cadastro — o mesmo que
+  // o auto-select grava no CartContext para o carrinho seguir.
+  const enderecoEfetivo = user
+    ? enderecoDeEntregaEfetivo(addresses, selectedAddressId)
+    : undefined;
   const cepDeEntrega = user
-    ? (addresses.find((a) => a.id === selectedAddressId)?.cep ?? null)
+    ? (enderecoEfetivo?.cep ?? null)
     : cepDigitadoNoFormulario || null;
+
+  // CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
+  // Endereços" viraram UMA seção só ("Seus dados e entrega"), com resumo
+  // compacto — pedido do dono, tela de "Finalizar" longa demais no celular.
+  // REVISÃO DO DONO (23/09/2026, tarefa "o CPF mora na conta"): a seção
+  // nasce SEMPRE recolhida, mesmo faltando nome/WhatsApp/endereço/CPF — não
+  // existe mais heurística de "abre se estiver incompleto" (a versão
+  // anterior deste código tinha isso; foi substituída porque o resumo
+  // recolhido agora aponta CADA pendência, então não precisa mais forçar a
+  // tela aberta para avisar). `falta*` NUNCA decide o que pode ser
+  // enviado — quem trava o Finalizar continua sendo `dynamicSchema` +
+  // `handleSubmitEvent`, sem relação nenhuma com estes cálculos.
+  const nomeAtual = form.watch("name");
+  const whatsappAtual = form.watch("whatsapp");
+  const cpfAtual = form.watch("cpf");
+  const ruaAtual = form.watch("street");
+  const numeroAtual = form.watch("number");
+  const bairroAtual = form.watch("neighborhood");
+  const cidadeAtual = form.watch("city");
+  const estadoAtual = form.watch("state");
+  const faltaNome = !nomeAtual?.trim();
+  const faltaWhatsapp = (whatsappAtual?.length ?? 0) < 14;
+  const enderecoConvidadoCompleto =
+    soDigitos(cepDigitadoNoFormulario ?? "").length === 8 &&
+    !!ruaAtual?.trim() &&
+    !!numeroAtual?.trim() &&
+    !!bairroAtual?.trim() &&
+    !!cidadeAtual?.trim() &&
+    !!estadoAtual?.trim();
+  const faltaCpf = exigeCpfDoDestinatario && !cpfValido(cpfAtual ?? "");
+  // Só uma ação EXPLÍCITA abre a seção: cabeçalho, "Editar"/"Trocar"/
+  // "Cadastre um endereço" do resumo, ou o submit inválido (que também foca
+  // o primeiro campo com erro). Nada reabre nem refecha sozinho a cada
+  // tecla — fechar embaixo do dedo de quem está no meio de uma correção é o
+  // defeito que a versão anterior deste código tinha (ver o `git log` da
+  // tarefa).
+  const [identificacaoAbertaManual, setIdentificacaoAbertaManual] =
+    useState(false);
+  const identificacaoExpandida = identificacaoAbertaManual;
+  // Último CEP que a calculadora DESTA tela gravou como cotado. Ao voltar
+  // para um endereço já cotado, a calculadora serve do cache NO MESMO commit
+  // da troca (síncrono) — e este efeito, que roda depois do dela, ainda vê o
+  // `shippingCep` do render anterior (o do outro endereço). Sem o ref, ele
+  // apagava a opção fresca que acabou de ser gravada para o destino certo.
+  const cepCotadoAgoraRef = useRef<string | null>(null);
+  const registrarCepCotado = useCallback(
+    (cep: string) => {
+      cepCotadoAgoraRef.current = cep;
+      setShippingCep(cep);
+    },
+    [setShippingCep],
+  );
   useEffect(() => {
     if (!shippingCep || !cepDeEntrega) return;
     // Ressalva R4 da revisão: CEP parcial é digitação em curso — decidir
@@ -774,11 +1280,45 @@ export function CheckoutView({
     // a recusa fail-closed de um CEP incompleto é do SERVIDOR
     // (20261039000000), que chega no clique.
     if (soDigitos(cepDeEntrega).length < 8) return;
-    if (!cotacaoValeParaDestino(shippingCep, cepDeEntrega)) {
-      setSelectedShippingOption(null);
-      setShippingCep(null);
+    if (cotacaoValeParaDestino(shippingCep, cepDeEntrega)) return;
+    const cotadoAgora = cepCotadoAgoraRef.current;
+    if (cotadoAgora && soDigitos(cotadoAgora) === soDigitos(cepDeEntrega)) {
+      return;
     }
+    setSelectedShippingOption(null);
+    setShippingCep(null);
   }, [shippingCep, cepDeEntrega, setSelectedShippingOption, setShippingCep]);
+
+  // A invalidação acima é um EFEITO — roda DEPOIS do pintar. No intervalo
+  // entre o destino ficar conhecido e o efeito executar, o total do frete
+  // de OUTRO CEP ficava na tela, com o Finalizar livre. Esta guarda é de
+  // RENDER: preço cotado para CEP divergente do destino efetivo é "a
+  // calcular" no primeiro pintar e trava o Finalizar (abaixo, somada à
+  // `finalizarBloqueadoPorFrete`).
+  const freteIncoerenteComDestino =
+    !!shippingCep &&
+    !!cepDeEntrega &&
+    soDigitos(cepDeEntrega).length === 8 &&
+    !cotacaoValeParaDestino(shippingCep, cepDeEntrega);
+
+  // FRETE AUTOMÁTICO (22/09/2026): o checkout cota sozinho pelo destino de
+  // entrega (a calculadora é montada logo abaixo dos endereços). Enquanto a
+  // cotação do destino/carrinho de AGORA não voltou — trocou de endereço,
+  // editou o CEP, carrinho mudou —, o preço na mesa é de outra rodada: o
+  // Finalizar trava e o total fica "a calcular". Nasce neutro: no primeiro
+  // pintar, a escolha de OUTRO destino já é barrada pela guarda síncrona
+  // acima (`freteIncoerenteComDestino`); a do mesmo destino é a do carrinho,
+  // e a recotação que a calculadora dispara na montagem reporta "cotando".
+  const [statusDoFrete, setStatusDoFrete] = useState<StatusDaCotacao>("ocioso");
+  const freteEmCotacao = cart.length > 0 && statusDoFrete === "cotando";
+  // REVISÃO DO FRETE (release 1.5.7, CONTRATO-1.5.7.md R1-2/R2-2/EMENDA
+  // R3-4): incrementado quando o ENVIO do pedido descobre que a
+  // configuração de frete mudou desde que a opção escolhida foi cotada —
+  // força a `ShippingCalculator` a recotar de rede, ignorando o cache do
+  // navegador (que já não é confiável para este destino).
+  const [forcarNovaCotacaoEm, setForcarNovaCotacaoEm] = useState(0);
+  const cepDoDestinoDaCotacao =
+    cepDeEntrega && soDigitos(cepDeEntrega).length === 8 ? cepDeEntrega : null;
 
   // ECONOMIA DO FRETE (pedido do Gabriel, 12/09/2026, tabela corrigida pelo
   // crítico de desenho): SÓ EXIBIÇÃO — nunca escreve `selectedShippingOption`
@@ -786,7 +1326,7 @@ export function CheckoutView({
   // cotar mora em `modoDeEconomiaDoFrete` (src/lib/economia-do-frete.ts); o
   // hook cuida do efeito (debounce, cache por CEP, guarda de sequência) —
   // ver src/hooks/useEconomiaDoFreteExibida.ts.
-  const economiaDoFrete = useEconomiaDoFreteExibida({
+  const economiaDoFreteDaEntrega = useEconomiaDoFreteExibida({
     freteGratis,
     cepDeEntrega,
     temUsuario: !!user,
@@ -796,7 +1336,14 @@ export function CheckoutView({
     freeShippingMin: config.freeShippingMin,
     cart,
     isOffline,
+    // T3 (23/09): opção NACIONAL já escolhida responde pela própria
+    // economia (precoCheio − price) sem cotar de novo — ver linha 0 de
+    // `modoDeEconomiaDoFrete`.
+    opcaoSelecionada: selectedShippingOption,
   });
+  // Retirada na loja é grátis por natureza: não existe frete "economizado"
+  // para mostrar (a economia que o hook conhece é a da ENTREGA local).
+  const economiaDoFrete = ehRetirada ? 0 : economiaDoFreteDaEntrega;
 
   // O CUPOM VALE PARA O CARRINHO DE AGORA (laudo 31/08, menor E): o cupom
   // era conferido SÓ no momento de aplicar. O carrinho encolhia depois —
@@ -1150,8 +1697,94 @@ export function CheckoutView({
   useEffect(() => {
     if (!authLoading && !user && paymentMethod === "online") {
       setPaymentMethod("pix");
+      setMetodoOnline("pix");
     }
   }, [authLoading, user, paymentMethod]);
+
+  // TRANSPORTADORA EXIGE PAGAMENTO ANTECIPADO (regra do dono, 21/09/2026).
+  // O defeito: quem escolhia "Pix na Entrega" com entrega local, voltava ao
+  // carrinho e trocava o frete para uma transportadora, voltava para cá com
+  // o método de entrega AINDA selecionado — e o pedido nascia prometendo
+  // dinheiro na entrega para um correio de outra cidade. Este efeito cobre
+  // exatamente essa transição (o estado `paymentMethod` fica STALE depois
+  // de trocar a opção lá no carrinho — inclusive na ida e volta entre os
+  // passos de frete e pagamento):
+  //   - entrega local -> NÃO MEXE (modalidades da loja intactas);
+  //   - transportadora + pagamento online ligado + conta -> AUTO-SELECIONA
+  //     "online" com orientação visível (toast + nota no grupo de pagamento);
+  //   - transportadora SEM pagamento online (ou sem conta, que o online
+  //     exige — P6) -> NÃO cai em fallback "na entrega": o método fica como
+  //     está e quem bloqueia é a guarda `pagamentoIncompativelComFrete` no
+  //     botão e no submit, com a explicação na tela.
+  // O `!authLoading && user` evita o ping-pong com o efeito de cima: sem
+  // conta o efeito irmão rebaixa "online" para "pix", e este aqui não pode
+  // re-selecionar "online" de volta em loop — convidado com transportadora
+  // fica bloqueado (com a saída de entrar na conta ou escolher entrega
+  // local), que é o que a regra manda.
+  useEffect(() => {
+    if (!selectedShippingOption) return;
+    if (ehEntregaLocal) return;
+    if (paymentMethod === "online") return;
+    if (!pagamentoOnlineLigado()) return;
+    if (authLoading || !user) return;
+    setPaymentMethod("online");
+    // Auto-seleção é sempre o PIX (o texto do toast promete isso).
+    setMetodoOnline("pix");
+    toast.info(
+      "Envio por transportadora exige pagamento antecipado: selecionamos o PIX no app para você.",
+    );
+  }, [
+    selectedShippingOption,
+    ehEntregaLocal,
+    paymentMethod,
+    authLoading,
+    user,
+  ]);
+
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja pode desligar a forma
+  // "na entrega" que estava selecionada (pix/card/cash) entre uma tela e
+  // outra — o painel do lojista, uma corrida com outra aba. Cai na PRIMEIRA
+  // disponível, na ordem do contrato: "online" se logada e ligado, senão a
+  // primeira forma na entrega ainda ligada. Sem NENHUMA disponível, o efeito
+  // não mexe — a UI mostra o aviso de login (convidado) ou trava o
+  // Finalizar (`formaDePagamentoDesligadaNaLoja`, abaixo).
+  //
+  // NUNCA disputa com o efeito de transportadora (de cima): guarda por
+  // `!ehEntregaLocal && selectedShippingOption`, o mesmo caso que o efeito
+  // irmão já possui inteiro. E NUNCA seleciona "online" para quem não tem
+  // conta (`user` no cálculo de `primeiraFormaDePagamentoDisponivel`) — é
+  // essa condição que impede o ping-pong com o efeito de cima (guest-forças-
+  // pix): um convidado nunca chega a "online" por aqui.
+  useEffect(() => {
+    if (!ehEntregaLocal && selectedShippingOption) return;
+    if (authLoading) return;
+    if (paymentMethod === "online") return;
+    if (
+      formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).includes(
+        paymentMethod as "pix" | "card" | "cash",
+      )
+    ) {
+      return;
+    }
+    const proxima = primeiraFormaDePagamentoDisponivel({
+      formasNaEntrega: formasPagamentoNaEntregaValidas(
+        config.formasPagamentoEntrega,
+      ),
+      pagamentoOnlineLigado: pagamentoOnlineLigado(),
+      logado: !!user,
+    });
+    if (proxima) {
+      setPaymentMethod(proxima);
+      if (proxima === "online") setMetodoOnline("pix");
+    }
+  }, [
+    config.formasPagamentoEntrega,
+    ehEntregaLocal,
+    selectedShippingOption,
+    paymentMethod,
+    authLoading,
+    user,
+  ]);
 
   useEffect(() => {
     if (profile) {
@@ -1173,9 +1806,12 @@ export function CheckoutView({
     }
   }, [user, fetchAddresses]);
 
-  const handleSelectAddress = useCallback((address: Address) => {
-    setSelectedAddressId(address.id);
-  }, []);
+  const handleSelectAddress = useCallback(
+    (address: Address) => {
+      setSelectedAddressId(address.id);
+    },
+    [setSelectedAddressId],
+  );
 
   useEffect(() => {
     if (addresses.length > 0 && !selectedAddressId) {
@@ -1378,10 +2014,17 @@ export function CheckoutView({
   // a regra fica silenciosa — sem origem o próprio `semFreteSelecionado`
   // já trava o pedido, e o aviso aqui diria a mentira errada.
   const cepDoConvidado = form.watch("cep");
+  // Achado CheckoutView-1381: a mesma ressalva do efeito irmão
+  // (CheckoutView.tsx:832 — "CEP parcial é digitação em curso, decidir com
+  // ele inventaria 'local' ou 'fora da cidade' no primeiro dígito") faltava
+  // aqui. Sem ela, `cepEhLocal` comparava os 5 primeiros dígitos contra um
+  // CEP de 1 dígito ("3"), batia falso, e o convidado da PRÓPRIA cidade via
+  // o aviso "fora da cidade" antes de terminar de digitar.
   const convidadoForaDaCidade =
     !user &&
     !!config.originCep &&
     !!cepDoConvidado &&
+    soDigitos(cepDoConvidado).length === 8 &&
     !cepEhLocal(config.originCep, cepDoConvidado, config.localCepRange);
 
   // Achado da revisão (18/08/2026): a Tarefa 7 deste bloco fez a
@@ -1409,11 +2052,41 @@ export function CheckoutView({
   // configurada deixava `shipping === 0`, a guarda antiga não disparava, e
   // o pedido fechava com frete R$ 0 sem cotação nenhuma, depois do
   // carrinho ter dito "A calcular".
-  const semFreteSelecionado = finalizarBloqueadoPorFrete({
-    carrinhoVazio: cart.length === 0,
-    freteIndefinido: ctxFreteIndefinido,
-    shipping,
+  const semFreteSelecionado =
+    freteIncoerenteComDestino ||
+    freteEmCotacao ||
+    finalizarBloqueadoPorFrete({
+      carrinhoVazio: cart.length === 0,
+      freteIndefinido: ctxFreteIndefinido,
+      shipping,
+      temOpcaoSelecionada: !!selectedShippingOption,
+    });
+
+  // A outra guarda de frete (regra do dono, 21/09/2026): a modalidade do
+  // frete tem de combinar com o meio de pagamento — transportadora exige
+  // "online". Função pura em `src/lib/guarda-de-frete.ts` pelo mesmo motivo
+  // da `finalizarBloqueadoPorFrete`: regra de dinheiro se discrimina em unit
+  // test. Vale no BOTÃO (abaixo) e no submit (`handleSubmitEvent`), porque o
+  // `disabled` do DOM não protege quem chama o handler por outro caminho.
+  const pagamentoIncompativel = pagamentoIncompativelComFrete({
     temOpcaoSelecionada: !!selectedShippingOption,
+    ehEntregaLocal,
+    paymentMethod,
+    pagamentoOnlineLigado: pagamentoOnlineLigado(),
+  });
+
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o segundo eixo — a loja
+  // desligou pix/card/cash na entrega DEPOIS de a tela ter selecionado essa
+  // forma (o efeito de fallback, acima, corrige na maioria dos casos, mas
+  // não troca se não houver PARA ONDE ir — convidado numa loja só "online").
+  // Função pura em `src/lib/guarda-de-frete.ts`, mesmo motivo de
+  // `pagamentoIncompativelComFrete`: regra de dinheiro se discrimina em unit
+  // test, não colada num componente inteiro.
+  const formaDePagamentoDesligada = formaDePagamentoDesligadaNaLoja({
+    paymentMethod,
+    formasNaEntrega: formasPagamentoNaEntregaValidas(
+      config.formasPagamentoEntrega,
+    ),
   });
 
   // Achado 1 do BLOQUEANTE (12/09/2026): `finalTotal` sempre soma `shipping`
@@ -1452,8 +2125,24 @@ export function CheckoutView({
     !isValid ||
     isSubmitting ||
     semFreteSelecionado ||
+    isOffline ||
     aguardandoConferenciaDaRecusa ||
-    convidadoForaDaCidade;
+    convidadoForaDaCidade ||
+    pagamentoIncompativel ||
+    formaDePagamentoDesligada;
+  // Com a identificação recolhida, o botão cinza precisa apontar o campo
+  // pendente na própria barra, sem afrouxar a validação do pedido.
+  const pendenciaDeIdentificacao = !isValid
+    ? faltaNome
+      ? "Informe seu nome para finalizar"
+      : faltaWhatsapp
+        ? "Informe seu WhatsApp para finalizar"
+        : faltaCpf
+          ? "Informe o CPF de quem recebe para finalizar"
+          : !user && !enderecoConvidadoCompleto
+            ? "Complete o endereço de entrega para finalizar"
+            : "Confira seus dados e entrega para finalizar"
+    : null;
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
@@ -1583,6 +2272,14 @@ export function CheckoutView({
         (campo) => form.getFieldState(campo).invalid,
       );
       if (primeiroErro) {
+        // CHECKOUT COMPACTO (23/09/2026): TODOS os campos de
+        // `ORDEM_CAMPOS_FOCO` moram dentro da seção "Seus dados e
+        // entrega", que agora pode estar RECOLHIDA (resumo). Focar um
+        // campo escondido (`hidden`) falha em silêncio — o `flushSync`
+        // força a seção a abrir NO MESMO tique, antes do `setFocus`, que
+        // senão rodaria contra o DOM ainda oculto do render anterior
+        // (mesmo padrão de `useViewTransition.ts`/`AdminOrdersView.tsx`).
+        flushSync(() => setIdentificacaoAbertaManual(true));
         form.setFocus(primeiroErro);
       }
       toast.error(
@@ -1594,6 +2291,23 @@ export function CheckoutView({
     const data = form.getValues();
 
     setIsSubmitting(true);
+
+    // Trava de rede, mesmo espírito da trava de frete logo abaixo: o
+    // `disabled` do botão já impede o clique de mouse/toque quando
+    // `isOffline` (via `botaoFinalizarDesabilitado`), mas não protege quem
+    // chama `handleSubmitEvent` por outro caminho (Enter no formulário, por
+    // exemplo). Achado offline (15/09/2026): sem rede o POST nem sai do
+    // aparelho — tentar mesmo assim só gastaria o tempo do próprio `await`
+    // até cair no catch, com o mesmo aviso que já dava para escrever aqui,
+    // antes de tentar.
+    if (isOffline) {
+      toast.error(
+        "Sem conexão — nada foi enviado. Tente de novo quando a internet voltar.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
 
     if (user && !selectedAddressId) {
       toast.error("Por favor, adicione ou selecione um endereço de entrega.");
@@ -1616,23 +2330,178 @@ export function CheckoutView({
       toast.error(
         ctxFreteIndefinido && !config.originCep?.trim()
           ? "A loja ainda está configurando o frete. Fale com a loja para combinar a entrega."
-          : "Escolha uma opção de frete no carrinho antes de finalizar o pedido.",
+          : freteEmCotacao
+            ? "Aguarde: o frete do endereço de entrega ainda está sendo calculado."
+            : "Escolha uma opção de frete antes de finalizar o pedido.",
       );
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
       return;
     }
 
-    const customerInfo = data as unknown as Customer;
+    // Terceira trava, irmã da de frete: modalidade × pagamento (regra do
+    // dono, 21/09/2026). O `disabled` do botão e o efeito que auto-seleciona
+    // "online" cobrem o caminho feliz; esta guarda cobre o resto — estado
+    // stale (trocou o frete no carrinho e voltou por Enter), convidado (o
+    // efeito não auto-seleciona sem conta) e loja sem pagamento online
+    // (mesma frase do aviso que já está na tela). O estado stale de
+    // "online" (flag desligada no meio da sessão) tem frase PRÓPRIA: a
+    // orientação depende da modalidade, e nenhuma delas manda cliente de
+    // outra cidade "escolher entrega local" — impossível para ele.
+    if (pagamentoIncompativel) {
+      const onlineStale =
+        paymentMethod === "online" && !pagamentoOnlineLigado();
+      toast.error(
+        onlineStale
+          ? ehEntregaLocal
+            ? "O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na entrega para finalizar."
+            : "O pagamento pelo app saiu do ar nesta loja, e o envio por transportadora exige pagamento antecipado. Fale com a loja para combinar a entrega."
+          : pagamentoOnlineLigado()
+            ? cartaoDisponivel
+              ? "Envio por transportadora exige pagamento antecipado. Escolha um pagamento pelo app para finalizar."
+              : "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
+            : "Esta loja não recebe pagamento pelo app, então o envio por transportadora não está disponível. Fale com a loja para combinar a entrega.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // QUARTA TRAVA, irmã da de cima: a loja desligou pix/card/cash na
+    // entrega (formas de pagamento por loja, 25/09/2026). O efeito de
+    // fallback já corrige a maioria dos casos; esta guarda cobre o resto —
+    // corrida entre a tela e o clique, ou convidado numa loja só "online"
+    // (sem para onde cair).
+    if (formaDePagamentoDesligada) {
+      toast.error(
+        "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+      );
+      setIsSubmitting(false);
+      travaDeEnvioRef.current.liberar();
+      return;
+    }
+
+    // REVISÃO DO FRETE (release 1.5.7, CONTRATO-1.5.7.md R1-2): a lojista
+    // pode ter mudado a configuração de frete (ligado/desligado provedor,
+    // trocado serviço, mudado seguro) DEPOIS que esta cotação foi gravada
+    // — até 2h atrás, prazo do cache do navegador — e o preço mudaria.
+    // Confirma a revisão ANTES de criar o pedido; se não bater, recota e
+    // NUNCA cobra o frete antigo. Retirada e entrega local não vêm de
+    // cotação de provedor — não passam por aqui.
+    //
+    // SÓ investiga quando há EVIDÊNCIA de que a cotação escolhida carregava
+    // uma revisão (envelope 1.5.7 em diante, escrito por `ShippingCalculator`).
+    // Sem essa evidência (nenhum envelope, formato anterior à 1.5.7) não há o
+    // que comparar — bloquear aqui faria ESTE checkpoint, e não a lojista,
+    // decidir se todo pedido nasce ou não, e os pedidos de hoje (sem
+    // envelope 1.5.7 ainda) parariam de fechar. A RPC (EMENDA R3-4,
+    // `FRETE_COTACAO_DESATUALIZADA`) é backstop, mas NÃO é uma trava que
+    // sempre vale: a migration que a reforça ainda não foi aplicada e ela
+    // não cobre mudança em `store_config` — por isso, HAVENDO evidência de
+    // revisão, uma confirmação que não bate OU que não carrega é tratada
+    // como "não confirmado", e o pedido não nasce.
+    if (
+      selectedShippingOption &&
+      !ehModalidadeDaLoja(selectedShippingOption.id) &&
+      shippingCep
+    ) {
+      let revisaoDaCotacaoEscolhida: string | null = null;
+      let opcoesDaCotacaoNaTela: unknown = null;
+      try {
+        const bruto = localStorage.getItem(
+          chaveDoCacheDeFrete(soDigitos(shippingCep)),
+        );
+        if (bruto) {
+          const envelope = JSON.parse(bruto) as {
+            revisaoConfig?: unknown;
+            opcoes?: unknown;
+          };
+          revisaoDaCotacaoEscolhida =
+            typeof envelope.revisaoConfig === "string"
+              ? envelope.revisaoConfig
+              : null;
+          opcoesDaCotacaoNaTela = envelope.opcoes;
+        }
+      } catch {
+        // Envelope ilegível: sem evidência — segue sem bloquear.
+      }
+      // A OPÇÃO MARCADA × A COTAÇÃO NA TELA (captura do dono, 23/09/2026):
+      // o pedido só nasce com a opção marcada sendo, com o MESMO preço, uma
+      // opção da cotação que a calculadora mostrou. Preço mudou: marca o
+      // objeto fresco (mesma origem da escolha) e para — a cliente vê o
+      // total novo antes de finalizar. Sumiu: limpa e recota.
+      const conferencia = conferirFreteEscolhidoComACotacao(
+        selectedShippingOption,
+        opcoesDaCotacaoNaTela,
+      );
+      if (conferencia.tipo === "preco-mudou" || conferencia.tipo === "sumiu") {
+        toast.error("O frete foi atualizado. Confira o total e finalize.");
+        if (conferencia.tipo === "preco-mudou") {
+          setSelectedShippingOption(
+            conferencia.fresca,
+            freteEscolhidoPelaCliente ? "cliente" : "automatica",
+          );
+        } else {
+          setSelectedShippingOption(null);
+          setForcarNovaCotacaoEm((n) => n + 1);
+        }
+        setIsSubmitting(false);
+        travaDeEnvioRef.current.liberar();
+        return;
+      }
+      if (revisaoDaCotacaoEscolhida) {
+        const revisaoAtual = await aguardarComPrazo(
+          buscarRevisaoConfigFrete(),
+          12_000,
+          () => new Error("A confirmação do frete demorou demais."),
+        ).catch(() => null);
+        if (revisaoAtual !== revisaoDaCotacaoEscolhida) {
+          toast.error(
+            revisaoAtual
+              ? "O frete mudou, calcule de novo."
+              : "Não deu para confirmar o frete agora. Calculamos de novo — confira e finalize.",
+          );
+          setSelectedShippingOption(null);
+          setForcarNovaCotacaoEm((n) => n + 1);
+          setIsSubmitting(false);
+          travaDeEnvioRef.current.liberar();
+          return;
+        }
+      }
+    }
+
+    const customerInfo = {
+      ...(data as unknown as Customer),
+      // CPF sai do CheckoutView JÁ só em dígitos — o formulário guarda a
+      // máscara (para a pessoa ler enquanto digita), mas o que atravessa
+      // para `createOrder` é o dado cru.
+      cpf: data.cpf ? somenteDigitosDoCpf(data.cpf) : undefined,
+    };
+    // CPF DO DESTINATÁRIO NA RPC (23/09/2026, migration 20261172, rebaseada
+    // sobre a 20261171): viaja dentro do jsonb `p_address_data.cpf` — SÓ
+    // quando `exigeCpfDoDestinatario` (transportadora; nunca em
+    // local-delivery/store-pickup, mesma régua do formulário e da RPC) —
+    // NUNCA manda a chave fora desse caso, para não fazer a RPC gravar CPF
+    // de um pedido que não precisa dele. `customerInfo.cpf` pode ser
+    // `undefined` mesmo com `exigeCpfDoDestinatario` true (formulário ainda
+    // sendo preenchido); o `&&` cobre isso — sem CPF, sem a chave.
+    //
+    // 🔴 GATILHO DE PUBLICAÇÃO: esta chave só pode ir para produção DEPOIS
+    // que a migration 20261172 estiver aplicada em TODAS as lojas — banco
+    // sem ela recebe `p_address_data` como HOJE (objeto de endereço puro) e
+    // gravaria `{cpf}` sozinho (usuário logado) como `customer_data.address`,
+    // apagando o endereço de entrega da ficha do pedido (ver o comentário
+    // "MAPPER" no cabeçalho da migration). Commit deliberadamente separado
+    // do banco — ver o relatório da tarefa que introduziu este bloco.
+    const cpfParaRpc =
+      exigeCpfDoDestinatario && customerInfo.cpf ? customerInfo.cpf : undefined;
     const observations = notes || undefined;
 
     const variantNotes = cart
       .filter((item) => item.variantNames)
       .map((item) => `${item.product.name}: ${item.variantNames}`)
       .join("\n");
-    const shippingNotes = selectedShippingOption
-      ? `Frete Escolhido: ${selectedShippingOption.name} (Prazo: ${selectedShippingOption.deliveryDays} dias)`
-      : undefined;
+    const shippingNotes = notaDoFreteEscolhido(selectedShippingOption);
     const noteParts = [observations, variantNotes, shippingNotes].filter(
       Boolean,
     );
@@ -1655,7 +2524,9 @@ export function CheckoutView({
       paymentMethod,
       addressId: user ? selectedAddressId : null,
       addressData: user
-        ? null
+        ? cpfParaRpc
+          ? { cpf: cpfParaRpc }
+          : null
         : {
             cep: data.cep,
             street: data.street,
@@ -1664,6 +2535,7 @@ export function CheckoutView({
             city: data.city,
             state: data.state,
             complement: data.complement,
+            ...(cpfParaRpc ? { cpf: cpfParaRpc } : {}),
           },
 
       couponCode: appliedCoupon?.code,
@@ -1675,6 +2547,9 @@ export function CheckoutView({
     // mesmo F5) devolve a MESMA chave — é o que faz o servidor devolver o
     // pedido original em vez de criar um gêmeo. Impressão nova (mudou
     // carrinho, frete, cupom ou endereço) gira chave nova.
+    // O eixo online x entrega é decidido UMA vez e serve à impressão da
+    // chave e à escolha da RPC (ressalva da revisão de CheckoutView-1756).
+    const ehOnline = paymentMethod === "online";
     gerenteDaChaveRef.current ??= criarGerenciadorDeChave(
       globalThis.sessionStorage,
     );
@@ -1688,14 +2563,25 @@ export function CheckoutView({
         couponCode: orderData.couponCode,
         addressId: orderData.addressId,
         cepDoEndereco: orderData.addressData?.cep ?? null,
+        // Achado chave-do-pedido-25 (15/09/2026): só o EIXO que muda a RPC
+        // (online x entrega) entra na impressão — nunca o método fino
+        // (pix/card/cash), que gravam todos na MESMA RPC de entrega e
+        // continuam sendo a mesma retentativa aos olhos do servidor. Sem
+        // isto, trocar de meio no mesmo carrinho repetia a impressão e a
+        // MESMA chave devolvia o pedido gravado pelo OUTRO meio.
+        paymentMethod: ehOnline ? "online" : "entrega",
       }),
     );
 
     try {
-      const ehOnline = paymentMethod === "online";
-      const order = await createOrder(orderData, {
-        comPagamentoOnline: ehOnline,
-      });
+      const order = await aguardarComPrazo(
+        createOrder(orderData, { comPagamentoOnline: ehOnline }),
+        30_000,
+        () =>
+          Object.assign(new Error("O pedido ficou sem resposta do servidor."), {
+            code: "PEDIDO_SEM_RESPOSTA",
+          }),
+      );
       // O pedido entrou. A chave cumpriu seu papel: a PRÓXIMA compra — mesmo
       // com carrinho idêntico — tem de nascer com chave nova, não herdar a
       // resposta desta.
@@ -1704,6 +2590,21 @@ export function CheckoutView({
       // rascunho — vale para sucesso E para aguardando pagamento (o pedido
       // nasceu nos dois; o que segue é pagamento, não digitação).
       limparRascunhoDoCheckout(globalThis.sessionStorage);
+
+      // O CPF MORA NA CONTA (23/09/2026): pedido JÁ criado com sucesso —
+      // isto é conveniência para a PRÓXIMA compra, nunca condição deste
+      // pedido. Só grava se: logado, o CPF desta entrega é válido
+      // (`cpfParaRpc` — undefined em local/retirada) E a conta NÃO tinha
+      // CPF antes (`contaTemCpf === false`, da leitura no
+      // mount — `null` é "não sei, leitura falhou ou ainda não terminou",
+      // e por segurança NÃO sobrescreve nesse caso). Em segundo plano: não
+      // bloqueia a navegação pós-pedido; `gravarCpfDaConta` nunca lança e
+      // nunca loga o CPF. E só com a confirmação explícita "Este CPF é
+      // meu…" (`salvarCpfNaConta`, desmarcada por padrão): o CPF do
+      // destinatário pode ser de um terceiro e continua só no pedido.
+      if (user && cpfParaRpc && contaTemCpf === false && salvarCpfNaConta) {
+        void gravarCpfDaConta(cpfParaRpc);
+      }
       setOrderId(order.id);
       setValorDoPedido(finalTotal);
       // Snapshot ANTES do onClearCart() da linha seguinte — depois dele
@@ -1725,6 +2626,7 @@ export function CheckoutView({
         // NÃO mostra sucesso e NÃO solta confete: o pedido só está reservado,
         // e quem confirma pagamento é o webhook (Fase 3). Chamar isso de
         // sucesso aqui é a mentira que a tela de hoje conta.
+        setMetodoDoPedido(metodoOnlineEfetivo);
         setAguardandoPagamento(true);
         return;
       }
@@ -1740,6 +2642,34 @@ export function CheckoutView({
       });
     } catch (error: any) {
       console.error("Error creating order:", error);
+      // EMENDA R3-4 (CONTRATO-1.5.7.md §9): a config pode ter mudado numa
+      // corrida rara ENTRE a checagem acima e o clique chegar ao banco — a
+      // RPC recusa com o marcador FRETE_COTACAO_DESATUALIZADA. Mesma saída
+      // da checagem prévia: avisa, limpa a seleção, força recotação e sai
+      // ANTES do painel genérico — isto não é "tente de novo" nem "confira
+      // o pedido" (nenhum pedido nasceu), é "escolha de novo".
+      if (ehErroDeFreteDesatualizado(error)) {
+        toast.error("O frete mudou, calcule de novo.");
+        setSelectedShippingOption(null);
+        setForcarNovaCotacaoEm((n) => n + 1);
+        // `setIsSubmitting`/`liberar` ficam para o `finally` logo abaixo —
+        // convenção de `travaDeEnvio.ts`: "vai no finally, nunca antes".
+        return;
+      }
+      // FORMAS DE PAGAMENTO POR LOJA (25/09/2026, corrigido no re-review do
+      // commit 3c90059d): a MESMA corrida rara do frete acima, agora do lado
+      // da forma de pagamento — a RPC recusa com o texto "Esta forma de
+      // pagamento não está disponível...". Ao contrário do frete, não
+      // precisa de um ramo PRÓPRIO com retorno antecipado: o painel genérico
+      // (recusaDoPedido.ts, acao "trocar_pagamento") já fecha o painel e
+      // mantém a pessoa NO checkout, onde a seleção some da lista assim que
+      // a config atualizar. Só falta pedir a config NOVA — sem isto a opção
+      // desligada continuaria aparecendo disponível até um refresh manual da
+      // página. Fogo-e-esquece: a tela já segue o caminho normal (toast +
+      // painel) abaixo, com ou sem essa atualização ter terminado.
+      if (ehErroDeFormaDePagamentoDesligada(error)) {
+        refreshStoreConfig({ onlyConfig: true }).catch(() => {});
+      }
       // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
       // relança depois do próprio toast interno — mesma tradução aqui, para
       // não haver dois textos diferentes para a mesma falha.
@@ -1750,12 +2680,26 @@ export function CheckoutView({
       // comprador recebia. Agora mensagemAmigavelErroPedido NUNCA devolve
       // vazio, então o toast sempre carrega uma frase utilizável e o alerta
       // deixou de ter um gatilho útil.
-      toast.error(`Falha no Pedido: ${mensagemAmigavelErroPedido(error)}`);
+      //
+      // A saída é decidida UMA vez e alimenta o toast e o painel: na falha de
+      // rede a regra é própria desta tela (decidirSaidaDoCheckout), e o toast
+      // tem de dizer a mesma coisa que o painel — "confira se ele já apareceu"
+      // num e "tente de novo" no outro, para a mesma falha, é a divergência que
+      // recusa-e-toast-nao-divergem.test.ts proíbe entre as regras do banco.
+      const saida = decidirSaidaDoCheckout(error);
+      toast.error(
+        `Falha no Pedido: ${
+          ehFalhaDeRedeAntesDoEnvio(error) ||
+          error?.code === "PEDIDO_SEM_RESPOSTA"
+            ? saida.mensagem
+            : mensagemAmigavelErroPedido(error)
+        }`,
+      );
       // O toast é o AVISO — ele alcança quem não está olhando esta parte da
       // tela. O painel abaixo é a AÇÃO. Os dois convivem de propósito: até
       // 28/08/2026 só existia o toast, ele sumia sozinho e não levava a lugar
       // nenhum, e a pessoa ficava parada no último clique com o dinheiro na mão.
-      setRecusaDoUltimoClique(decidirSaidaDoCheckout(error));
+      setRecusaDoUltimoClique(saida);
     } finally {
       setIsSubmitting(false);
       travaDeEnvioRef.current.liberar();
@@ -1792,14 +2736,26 @@ export function CheckoutView({
     setErroCancelamento(null);
     try {
       if (isOffline) {
-        // Sem rede o ramo offline de useOrders só empilha e resolve — não
-        // vale nem tentar a RPC. Mensagem específica em vez do genérico.
+        // Sem rede, `updateOrderStatus` (useOrders.ts) já rejeita sozinho
+        // para o cliente (achado 1, rodada 5) — mas checar aqui evita até a
+        // viagem até lá. Mesma frase de `ErroCancelamentoOfflineRecusado`
+        // (achado 3, rodada 6): mesma causa, mesmo texto, os dois lugares.
         setErroCancelamento(
-          "Sem conexão com a internet. Conecte-se e tente cancelar de novo — o pedido continua reservado.",
+          "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
         );
         return;
       }
 
+      // Achado 2, rodada 5 da revisão de risco pré-publicação (26/09/2026):
+      // a migration 80 (outra frente) ensina `update_order_status_atomic` a
+      // recusar, com P0001, o cancelamento de um pedido cujo cartão ainda
+      // pode estar em confirmação com o banco — texto específico e honesto
+      // ("Aguarde a confirmação ou fale com a loja antes de cancelar").
+      // Sem guardar este erro, o `console.error` abaixo o jogava fora e a
+      // releitura (que confirma `pending`, porque a guarda barrou a
+      // gravação) caía direto no genérico "Tente novamente" — escondendo do
+      // cliente exatamente a explicação que a guarda deu.
+      let erroRpc: unknown;
       try {
         // MESMA rpc que a reconciliação da #180 (PR #198) já ensinou a
         // gravar payment_status — não existe, e não deve existir, outro
@@ -1807,11 +2763,14 @@ export function CheckoutView({
         // 2500ms do useOrders someria antes do cliente ler; o erro fica no
         // banner fixo abaixo, como erroCancelamento.
         await updateOrderStatus(orderId, "cancelled", undefined, true);
-      } catch (erroRpc) {
+      } catch (erro) {
         // Não decide aqui: a RPC pode recusar com a MESMA mensagem P0001
         // por dois motivos opostos (pg_cron já cancelou vs. lojista
-        // adiantou). Quem decide é a releitura logo abaixo.
-        console.error("Erro ao chamar RPC de cancelamento:", erroRpc);
+        // adiantou), ou pela nova guarda do cartão. Quem decide é a
+        // releitura logo abaixo — `erroRpc` só alimenta a MENSAGEM do caso
+        // em que a releitura confirma que nada mudou (segue `pending`).
+        console.error("Erro ao chamar RPC de cancelamento:", erro);
+        erroRpc = erro;
       }
 
       const { data, error: erroLeitura } = await supabase
@@ -1823,13 +2782,34 @@ export function CheckoutView({
       const statusFinal = data?.status;
       if (erroLeitura || statusFinal !== "cancelled") {
         console.error("Cancelamento não confirmado:", erroLeitura);
+        // A releitura confirmando `pending` (nem cancelado, nem adiantado)
+        // é o retrato exato de uma guarda P0001 que recusou a gravação —
+        // `mensagemAmigavelErroAtualizacaoStatus` já sabe repassar o texto
+        // da RPC nesse caso (e cai no genérico sozinha se não for P0001).
+        const guardaBarrouComMensagemPropria =
+          !erroLeitura &&
+          statusFinal === "pending" &&
+          erroRpc !== null &&
+          typeof erroRpc === "object" &&
+          (erroRpc as { code?: unknown }).code === "P0001";
+        // Achado 1, rodada 6: a própria recusa da guarda já É a prova de que
+        // o cartão pode estar vivo — "Cancelar pedido" bateria na mesma
+        // recusa de novo. Ver o comentário grande em
+        // `cancelamentoBloqueadoPelaGuardaDoCartao`, acima: NUNCA
+        // `pedidoTemCobrancaIncerta` aqui, que também esconderia "Pagar com
+        // PIX".
+        if (guardaBarrouComMensagemPropria) {
+          setCancelamentoBloqueadoPelaGuardaDoCartao(true);
+        }
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
         // gravação não é confirmada — nunca leva o cliente ao carrinho como
         // se o cancelamento tivesse dado certo.
         setErroCancelamento(
           statusFinal && statusFinal !== "pending"
             ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
-            : "Não foi possível confirmar o cancelamento. Tente novamente.",
+            : guardaBarrouComMensagemPropria
+              ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
+              : "Não foi possível confirmar o cancelamento. Tente novamente.",
         );
         return;
       }
@@ -1847,6 +2827,35 @@ export function CheckoutView({
       isCancelandoPedidoRef.current = false;
       setIsCancelandoPedido(false);
     }
+  };
+
+  // Achado 4, rodada 4 da revisão de risco pré-publicação (26/09/2026): a
+  // caixa âmbar terminal (N7 — "pode ter sido cobrado") e a caixa vermelha
+  // terminal DEPOIS de um erro ambíguo (achado 1) não tinham NENHUM botão —
+  // um beco sem saída de verdade. Mesmo mecanismo já usado em
+  // `SuccessView`/`PagamentoForaDoPrazoView` (wa.me com DDI 55 prefixado
+  // para número de 10 ou 11 dígitos), não um novo. Ainda NÃO oferece "Ver
+  // meus pedidos": aquela tela ainda deixa cancelar um pedido com cartão
+  // incerto até a correção do lado dela (outra frente, `OrderDetailsView`).
+  const numeroLimpoDoCheckout = (config.whatsappNumber || "").replace(
+    /\D/g,
+    "",
+  );
+  const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
+  const handleFalarComALojaSobreCartao = () => {
+    if (!lojaTemWhatsappNoCheckout) return;
+    let phone = numeroLimpoDoCheckout;
+    if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
+    const mensagem = `Olá! Meu pedido #${orderId.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   if (aguardandoPagamento && orderId) {
@@ -1886,7 +2895,116 @@ export function CheckoutView({
           Seu pedido está reservado. Se o pagamento não sair em 30 minutos, os
           itens voltam para o estoque e o pedido é cancelado.
         </p>
-        {erroPagamento ? (
+        {erroPagamento?.cartaoEmAnalise ? (
+          // B3 da revisão de risco pré-publicação (26/09/2026, reforçado na
+          // rodada 2): NUNCA "Cancelar pedido" nem "Pagar com PIX" aqui — o
+          // cartão pode ter sido cobrado ou ainda ser aprovado pelo banco, e
+          // os dois botões arriscam dinheiro (cancelar cobraria por um
+          // pedido morto; PIX duplicaria a cobrança se o cartão for aprovado
+          // depois).
+          //
+          // "Tentar de novo" (rodada 2) SÓ quando `categoria` é recuperável:
+          // ele limpa o erro e remonta `<PagamentoOnline>`, que repete o
+          // MESMO pedido — a edge responde o MESMO 409 enquanto o cartão
+          // segue vivo, 'pago' se foi aprovado, ou cria o PIX quando o
+          // cartão finalmente morreu (recusado/expirado). Isso é o que
+          // resolve o cenário "o webhook soltou a vaga mas a tela nunca
+          // reconsulta" do achado B2.
+          //
+          // Terminal com o sinal (achado N7 — "pode ter sido cobrado"):
+          // NENHUM botão, nem "Tentar de novo" — a loja já vai conferir na
+          // mão, e tentar de novo bateria na MESMA resposta terminal.
+          //
+          // Sem botão de "continuar acompanhando" nos dois casos: a
+          // verificação periódica do pagamento (useEffect logo abaixo desta
+          // função) já roda sozinha enquanto esta tela está montada e troca
+          // para `<PagamentoConfirmadoView>` assim que o banco decidir.
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <Clock
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-amber-600"
+              />
+              <p className="text-sm font-medium text-amber-800">
+                {erroPagamento.categoria === "terminal"
+                  ? erroPagamento.mensagem
+                  : "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui."}
+              </p>
+            </div>
+            {erroPagamento.categoria === "terminal" ? (
+              // Achado 4, rodada 4 da revisão de risco pré-publicação
+              // (26/09/2026): o N7 ficava sem NENHUM botão — um beco sem
+              // saída de verdade, mesmo sabendo que a loja "vai conferir e
+              // confirmar em breve". "Falar com a loja" dá um jeito honesto
+              // de acelerar isso, quando a loja tem WhatsApp configurado.
+              //
+              // Achado 1, rodada 8: SEM WhatsApp configurado, o beco
+              // continuava de pé — "Ver meus pedidos" fecha o último caso.
+              // Seguro com a migration 80 no ar (condição para ligar o
+              // cartão): a tela de pedidos não oferece nada que cobra, e
+              // cancelar por lá esbarra na MESMA guarda P0001 com a mesma
+              // mensagem.
+              lojaTemWhatsappNoCheckout ? (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                >
+                  Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl border-amber-300 text-amber-900 hover:bg-amber-100"
+                >
+                  Ver meus pedidos
+                </Button>
+              )
+            ) : (
+              <>
+                {/* Achado 2, rodada 3 da revisão de risco pré-publicação: um
+                    POST de cartão sem corpo de resposta (rede caiu, 502)
+                    cai aqui — não sabemos se o Mercado Pago aprovou. O
+                    aviso deixa claro que "Tentar de novo" é a única ação
+                    que resolve, sem prometer um prazo que não existe. */}
+                <p className="text-xs text-amber-700">
+                  Se nada mudar em alguns minutos, toque em Tentar de novo.
+                </p>
+                {/* Achado 4, rodada 4: em modo cartão, "Tentar de novo" pede
+                    o cartão de NOVO (o Brick remonta do zero) — sem isto, a
+                    caixa parecia exigir digitar o cartão outra vez só para
+                    "conferir", quando a verificação periódica e o tempo
+                    real já cobrem isso sozinhos.
+                    Achado 1, rodada 5 (addendum): a frase antiga dizia "use
+                    só se quiser tentar outro cartão" — mas enquanto o
+                    PRIMEIRO cartão ainda está vivo (em análise, branch (d) da
+                    edge), um cartão DIFERENTE cai na mesma branch e recebe o
+                    MESMO status "em análise". Prometer que trocar de cartão
+                    muda o resultado é falso nesse caso — a frase agora não
+                    promete nada sobre o resultado, só explica o que o botão
+                    faz. */}
+                {metodoDoPedido === "cartao" && (
+                  <p className="text-xs text-amber-700">
+                    Você não precisa fazer nada agora: esta tela muda sozinha
+                    quando o banco decidir. "Tentar de novo" confere com o banco
+                    de novo; se o cartão ainda estiver em análise, a resposta
+                    será a mesma.
+                  </p>
+                )}
+                <Button
+                  onClick={() => {
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+                >
+                  Tentar de novo
+                </Button>
+              </>
+            )}
+          </div>
+        ) : erroPagamento ? (
           <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
@@ -1910,11 +3028,109 @@ export function CheckoutView({
                 Tentar de novo
               </Button>
             )}
+            {/* B1 da revisão de risco pré-publicação (26/09/2026), corrigido
+                na rodada 2 e na rodada 3: "Pagar com PIX" só quando
+                `semCobranca` vier marcado (Brick que não montou, validação
+                local, ou a URL de desafio fora do Mercado Pago) — nunca em
+                erro terminal, nunca com `cartaoEmAnalise`, e nunca se
+                `pedidoTemCobrancaIncerta` (achado 1, rodada 3) já estiver
+                marcado por um erro ANTERIOR deste mesmo pedido: um 502
+                ambíguo seguido de uma falha local segura não pode reabrir o
+                botão — a vaga da cobrança ambígua pode virar aprovada
+                depois. A rodada 1 oferecia o botão para QUALQUER erro em
+                modo cartão, inclusive um 502 ambíguo — reproduzido: duas
+                cobranças vivas. */}
+            {metodoDoPedido === "cartao" &&
+              erroPagamento.categoria !== "terminal" &&
+              erroPagamento.semCobranca &&
+              !erroPagamento.cartaoEmAnalise &&
+              !pedidoTemCobrancaIncerta && (
+                <Button
+                  onClick={() => {
+                    setMetodoDoPedido("pix");
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Pagar com PIX
+                </Button>
+              )}
             {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
                 única ação; no recuperável fica em segundo plano (variant
                 "outline"), sem roubar o destaque de "Tentar de novo". Só
-                para sessão autenticada (ver comentário do handler acima). */}
-            {user ? (
+                para sessão autenticada (ver comentário do handler acima).
+                Achado 1, rodada 3: NUNCA com `pedidoTemCobrancaIncerta` —
+                pelo mesmo motivo do "Pagar com PIX" acima, cancelar um
+                pedido cuja cobrança pode ter ido para o Mercado Pago é
+                dinheiro cobrado por um pedido morto (`pago_apos_expirar`).
+                Achado 4, rodada 4: quando o erro atual é TERMINAL (a
+                sequência do achado 1 — um erro ambíguo seguido de um erro
+                terminal comum), nem "Tentar de novo" aparece (categoria
+                terminal) nem "Cancelar pedido" (marcador ligado): a caixa
+                ficava sem NENHUM botão. "Falar com a loja" evita o beco sem
+                saída.
+                Achado 1, rodada 6: `cancelamentoBloqueadoPelaGuardaDoCartao`
+                (acima) esconde SÓ este botão — "Tentar de novo"/"Pagar com
+                PIX" do bloco de `erroPagamento` continuam do jeito que já
+                estavam, sem depender deste marcador.
+                Achado 1, rodada 7 (revisão de risco, cenário real medido: o
+                relógio do prazo vence — 409 TERMINAL "O prazo para pagar
+                este pedido acabou." — ANTES do pg_cron rodar, então
+                `payment_status` ainda é `aguardando` quando o cliente clica
+                em cancelar): terminal esconde "Tentar de novo", não é
+                `semCobranca` então não esconde "Pagar com PIX" por si só,
+                MAS este marcador também está ligado — as três saídas juntas
+                deixavam a caixa SEM NENHUM BOTÃO. A mensagem de
+                `erroCancelamento`, logo abaixo, já diz "fale com a loja
+                antes de cancelar" — "Falar com a loja" cumpre a própria
+                promessa do texto, em vez de deixar a pessoa lendo uma
+                instrução sem como agir.
+                Achado 1, rodada 8: SEM WhatsApp configurado, os dois becos
+                acima (este e o de `cancelamentoBloqueadoPelaGuardaDoCartao`,
+                abaixo) continuavam de pé. "Ver meus pedidos" fecha os dois —
+                seguro com a migration 80 no ar (condição para ligar o
+                cartão): a tela de pedidos não oferece nada que cobra, e
+                cancelar por lá esbarra na MESMA guarda P0001. */}
+            {pedidoTemCobrancaIncerta ? (
+              erroPagamento.categoria === "terminal" &&
+              (lojaTemWhatsappNoCheckout ? (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              ))
+            ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
+              lojaTemWhatsappNoCheckout ? (
+                <Button
+                  onClick={handleFalarComALojaSobreCartao}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Falar com a loja
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              )
+            ) : user ? (
               <Button
                 onClick={handleCancelarPedidoESairDoPagamento}
                 disabled={isCancelandoPedido}
@@ -1955,7 +3171,51 @@ export function CheckoutView({
           <PagamentoOnline
             orderId={orderId}
             valor={valorDoPedido}
-            onErro={(msg, categoria) =>
+            metodo={metodoDoPedido}
+            configDoCartao={configDoCartao}
+            emailDoPagador={user?.email ?? null}
+            // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
+            // novo" posterior remonta já no PIX, não de volta no cartão.
+            //
+            // Achado 2, rodada 4 da revisão de risco pré-publicação
+            // (26/09/2026): a troca acontece ANTES de qualquer erro — se o
+            // cartão ainda podia estar vivo (desafio 3DS, "confirmando com o
+            // banco", "em análise"), o pedido já nasce incerto NA HORA da
+            // troca. Sem isto, o primeiro erro do PIX (rede caiu, sem sinal)
+            // chegava com `metodoDoPedido` já em "pix" — fora do alcance da
+            // regra "sem sinal em modo cartão é incerto" — e "Cancelar
+            // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
+            onTrocarParaPix={(cartaoAindaVivo) => {
+              if (cartaoAindaVivo) setPedidoTemCobrancaIncerta(true);
+              setMetodoDoPedido("pix");
+            }}
+            onErro={(msg, categoria, sinal) => {
+              // Achados 1 e 2, rodada 3 da revisão de risco pré-publicação
+              // (26/09/2026): um erro do POST de cartão SEM sinal nenhum
+              // (502 ambíguo, rede caindo antes do corpo chegar — o catch
+              // genérico de `enviarPagamentoComCartao`) é tão incerto quanto
+              // `cartaoEmAnalise` explícito: o Mercado Pago pode ter
+              // aprovado sem o front saber. `categoria !== "terminal"` separa
+              // isso dos terminais DEFINITIVOS do cartão (recusado sem nova
+              // tentativa, expirado, estornado) — esses vêm de uma resposta
+              // que a edge realmente enviou (`classificarRespostaCartao`),
+              // sem ambiguidade nenhuma; cancelar um pedido expirado/
+              // estornado continua seguro e não deve virar a caixa âmbar.
+              const cartaoTalvezEmCurso =
+                sinal === "cartaoEmAnalise" ||
+                (sinal === undefined &&
+                  (msg === MENSAGEM_CARTAO_EM_ANALISE_409 ||
+                    msg === MENSAGEM_CARTAO_TALVEZ_COBRADO_409)) ||
+                (metodoDoPedido === "cartao" &&
+                  sinal === undefined &&
+                  categoria !== "terminal");
+              // Achado 1 (BLOQUEANTE): o marcador é POR PEDIDO — uma vez
+              // `true`, fica `true` para sempre neste pedido (ver o
+              // comentário grande de `pedidoTemCobrancaIncerta`, acima).
+              // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
+              // seja incerto.
+              if (cartaoTalvezEmCurso) setPedidoTemCobrancaIncerta(true);
+
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
                 // Mercado Pago não é clara sobre a ordem entre `onSubmit`
@@ -1966,9 +3226,14 @@ export function CheckoutView({
                 // muda com nova tentativa.
                 atual?.categoria === "terminal"
                   ? atual
-                  : { mensagem: msg, categoria },
-              )
-            }
+                  : {
+                      mensagem: msg,
+                      categoria,
+                      cartaoEmAnalise: cartaoTalvezEmCurso,
+                      semCobranca: sinal === "semCobranca",
+                    },
+              );
+            }}
           />
         )}
       </div>
@@ -2007,8 +3272,11 @@ export function CheckoutView({
   // dentro.
   interface OpcaoDePagamento {
     value: PaymentMethod;
+    // Só nas opções "no app": PIX e cartão dividem `value: "online"` e se
+    // distinguem aqui (ver `metodoOnline`).
+    metodoOnline?: MetodoOnline;
     label: string;
-    icon: LucideIcon;
+    icon: ComponentType<{ className?: string }>;
     color: string;
     requerConta: boolean;
   }
@@ -2017,54 +3285,87 @@ export function CheckoutView({
     ? [
         {
           value: "online",
-          // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa cartão em
-          // DOIS lugares — o Brick só oferece `bankTransfer`
-          // (PagamentoOnline.tsx) e a criar-pagamento devolve 400 "No
-          // momento aceitamos apenas PIX". O rótulo antigo dizia "(PIX ou
-          // cartão)" e sobreviveu à Fase 3: prometia ao cliente o que o
-          // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
-          // junto.
+          metodoOnline: "pix",
+          // SÓ PIX, e o rótulo tem de dizer isso — o cartão pelo app (Fase
+          // 3.5) é uma opção PRÓPRIA, logo abaixo, que só aparece quando a
+          // loja ligou crédito ou débito. O rótulo antigo "(PIX ou cartão)"
+          // prometia ao cliente o que o código negava.
           label: "Pagar agora com PIX",
-          icon: CreditCard,
-          color: "text-violet-500 bg-violet-50",
+          icon: IconePix,
+          color: "text-[#32BCAD] bg-[#32BCAD]/10",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
-          // só esta opção carrega a exigência; as outras (entrega)
+          // só as opções "no app" carregam a exigência; as outras (entrega)
           // continuam abertas a convidado.
           requerConta: true,
         },
+        ...(configDoCartao
+          ? [
+              {
+                value: "online",
+                metodoOnline: "cartao",
+                // O rótulo diz só o que a loja ligou: "Cartão de crédito",
+                // "Cartão de débito" ou os dois.
+                label: rotuloDaOpcaoDeCartao(configDoCartao),
+                icon: IconeCartao,
+                color: "text-blue-500 bg-blue-50",
+                requerConta: true,
+              } satisfies OpcaoDePagamento,
+            ]
+          : []),
       ]
     : [];
 
-  const opcoesNaEntrega: OpcaoDePagamento[] = [
-    {
-      value: "pix",
-      label: "Pix na Entrega",
-      icon: Smartphone,
-      color: "text-emerald-500 bg-emerald-50",
-      requerConta: false,
-    },
-    {
-      value: "card",
-      label: "Cartão na Entrega",
-      icon: CreditCard,
-      color: "text-blue-500 bg-blue-50",
-      requerConta: false,
-    },
-    {
-      value: "cash",
-      label: "Dinheiro na Entrega",
-      icon: Banknote,
-      color: "text-amber-500 bg-amber-50",
-      requerConta: false,
-    },
-  ];
+  // Retirada na loja: o pagamento acontece NA RETIRADA — só o TEXTO muda;
+  // `value` (pix/card/cash) e as regras de cobrança são os mesmos da entrega
+  // local (a RPC não distingue as duas modalidades no meio de pagamento).
+  const quandoPaga = ehRetirada ? "na Retirada" : "na Entrega";
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a lista fixa vira filtrada
+  // pela config — a loja liga/desliga cada uma no painel (AdminSettingsView,
+  // grupo "Pagamentos" > "Formas de pagamento"). Ausente/inválido no dado
+  // lido é tratado como as três (`formasPagamentoNaEntregaValidas`) — loja
+  // velha, sem a coluna ainda, não muda de comportamento sozinha.
+  const formasNaEntregaDisponiveis = formasPagamentoNaEntregaValidas(
+    config.formasPagamentoEntrega,
+  );
+  const opcoesNaEntrega: OpcaoDePagamento[] = (
+    [
+      {
+        value: "pix",
+        label: `Pix ${quandoPaga}`,
+        icon: IconePix,
+        color: "text-[#32BCAD] bg-[#32BCAD]/10",
+        requerConta: false,
+      },
+      {
+        value: "card",
+        label: `Cartão ${quandoPaga}`,
+        icon: IconeCartao,
+        color: "text-blue-500 bg-blue-50",
+        requerConta: false,
+      },
+      {
+        value: "cash",
+        label: `Dinheiro ${quandoPaga}`,
+        icon: IconeDinheiro,
+        color: "text-amber-600 bg-amber-50",
+        requerConta: false,
+      },
+    ] satisfies OpcaoDePagamento[]
+  ).filter((opcao) =>
+    formasNaEntregaDisponiveis.includes(opcao.value as "pix" | "card" | "cash"),
+  );
 
   // Extraído do `.map()` que existia antes da separação em grupos — o
   // corpo do botão não mudou UMA linha, só passou a ser chamado duas vezes
   // (uma por grupo) em vez de uma.
   const renderOpcaoDePagamento = (option: OpcaoDePagamento) => {
     const Icon = option.icon;
-    const isSelected = paymentMethod === option.value;
+    // PIX e cartão pelo app dividem `value: "online"`: a opção marcada é a
+    // do submétodo EFETIVO (cartão que a loja desligou volta a ser PIX).
+    const isSelected =
+      paymentMethod === option.value &&
+      (option.metodoOnline === undefined ||
+        option.metodoOnline === metodoOnlineEfetivo);
     // Bloqueada só pela FALTA DE CONTA, nunca só por `requerConta` — um
     // cliente logado escolhe "Pagar agora com PIX" normalmente. NÃO
     // esconde a opção: some sem explicação faria o convidado achar que a
@@ -2074,7 +3375,7 @@ export function CheckoutView({
     const bloqueadaPorFaltaDeConta = option.requerConta && !user;
     return (
       <button
-        key={option.value}
+        key={`${option.value}-${option.metodoOnline ?? ""}`}
         type="button"
         role="radio"
         // Fiel ao que se VÊ: opção bloqueada por falta de conta não mostra
@@ -2088,6 +3389,7 @@ export function CheckoutView({
             return;
           }
           setPaymentMethod(option.value);
+          if (option.metodoOnline) setMetodoOnline(option.metodoOnline);
         }}
         // Sem `opacity-70` na opção bloqueada: ela multiplicava cores JÁ
         // claras e derrubava o texto para ~1,9:1 de contraste (medido em
@@ -2212,17 +3514,153 @@ export function CheckoutView({
           }
         }}
       >
-        {/* Customer Info */}
+        {/* CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
+            Endereços" viraram UMA seção — "Seus dados e entrega" — com
+            cabeçalho clicável (`aria-expanded`/`aria-controls`) e resumo
+            compacto quando os dados estão completos. Nunca dois cartões
+            altos independentes (pedido do dono: tela de Finalizar comprida
+            demais no celular). */}
         <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-              <User className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-              Dados de Identificação
+          <button
+            type="button"
+            id="cabecalho-dados-e-entrega"
+            aria-expanded={identificacaoExpandida}
+            aria-controls="secao-dados-e-entrega"
+            onClick={() =>
+              setIdentificacaoAbertaManual(!identificacaoExpandida)
+            }
+            // `min-h-11` = 44px, o piso de alvo de toque do laudo de
+            // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não só
+            // o texto.
+            className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+          >
+            <span className="flex items-center gap-2">
+              <span className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+                <User className="size-4" />
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                Seus dados e entrega
+              </span>
             </span>
-          </div>
-          <div className="space-y-4 p-4">
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-4 shrink-0 text-zinc-400 transition-transform",
+                identificacaoExpandida && "rotate-180",
+              )}
+            />
+          </button>
+
+          {/* RESUMO COMPACTO: só aparece com a seção recolhida — nunca ao
+              mesmo tempo que o formulário aberto, que traz os mesmos dados
+              editáveis logo abaixo. */}
+          {!identificacaoExpandida && (
+            <div className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  {faltaNome ? (
+                    <p
+                      className="text-xs font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-nome"
+                    >
+                      Informe seu nome
+                    </p>
+                  ) : (
+                    <p className="truncate text-sm font-bold text-zinc-800">
+                      {nomeAtual}
+                    </p>
+                  )}
+                  {faltaWhatsapp ? (
+                    <p
+                      className="text-xs font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-whatsapp"
+                    >
+                      Informe seu WhatsApp
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-zinc-500">
+                      {abreviarWhatsapp(whatsappAtual ?? "")}
+                    </p>
+                  )}
+                  {exigeCpfDoDestinatario &&
+                    (faltaCpf ? (
+                      <p
+                        className="text-xs font-bold text-red-600"
+                        data-testid="checkout-resumo-falta-cpf"
+                      >
+                        Informe o CPF de quem recebe
+                      </p>
+                    ) : (
+                      <p className="text-xs font-medium text-zinc-500">
+                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                      </p>
+                    ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIdentificacaoAbertaManual(true)}
+                  className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+                >
+                  Editar
+                </button>
+              </div>
+              <div className="border-t border-zinc-100/70 pt-3">
+                {user && enderecoEfetivo ? (
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="truncate text-xs font-bold uppercase tracking-wide text-zinc-500">
+                        {enderecoEfetivo.name}
+                      </p>
+                      <p className="text-xs font-medium text-zinc-500">
+                        {resumoDoEndereco(enderecoEfetivo)}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIdentificacaoAbertaManual(true)}
+                      className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+                    >
+                      Trocar
+                    </button>
+                  </div>
+                ) : user ? (
+                  <button
+                    type="button"
+                    onClick={() => setIdentificacaoAbertaManual(true)}
+                    className="text-xs font-bold text-red-600 underline"
+                    data-testid="checkout-resumo-falta-endereco"
+                  >
+                    Cadastre um endereço de entrega
+                  </button>
+                ) : enderecoConvidadoCompleto ? (
+                  <p className="text-xs font-medium text-zinc-500">
+                    {resumoDoEndereco({
+                      street: ruaAtual ?? "",
+                      number: numeroAtual ?? "",
+                      neighborhood: bairroAtual ?? "",
+                      city: cidadeAtual ?? "",
+                      state: estadoAtual ?? "",
+                      cep: cepDigitadoNoFormulario ?? "",
+                    })}
+                  </p>
+                ) : (
+                  <p
+                    className="text-xs font-bold text-red-600"
+                    data-testid="checkout-resumo-falta-endereco"
+                  >
+                    Informe o endereço de entrega
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            id="secao-dados-e-entrega"
+            aria-labelledby="cabecalho-dados-e-entrega"
+            hidden={!identificacaoExpandida}
+            className="space-y-4 p-4"
+          >
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
                 <label
@@ -2309,6 +3747,84 @@ export function CheckoutView({
                 )}
               </div>
             </div>
+
+            {/* CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026):
+                só aparece quando a modalidade escolhida É transportadora —
+                o Melhor Envio exige `to.document` para emitir a etiqueta
+                nacional; retirada/entrega local nunca pedem CPF. Sem HTML
+                token dedicado para CPF (não existe no padrão WHATWG de
+                `autocomplete`); `autoComplete="off"` evita o navegador
+                sugerir um valor de outro campo numérico (telefone, CEP) por
+                heurística errada — pior que não sugerir nada num campo de
+                documento. */}
+            {exigeCpfDoDestinatario && (
+              <div className="border-t border-zinc-100/50 pt-4">
+                <label
+                  htmlFor="checkout-cpf"
+                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                >
+                  CPF do Destinatário
+                </label>
+                <Controller
+                  control={form.control}
+                  name="cpf"
+                  render={({ field }) => (
+                    <input
+                      id="checkout-cpf"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={field.value ?? ""}
+                      onChange={(e) =>
+                        field.onChange(formatarCpf(e.target.value).formatado)
+                      }
+                      ref={field.ref}
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                      aria-invalid={
+                        form.formState.errors.cpf ? true : undefined
+                      }
+                      aria-describedby={
+                        form.formState.errors.cpf
+                          ? "erro-checkout-cpf"
+                          : "ajuda-checkout-cpf"
+                      }
+                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                    />
+                  )}
+                />
+                {form.formState.errors.cpf ? (
+                  <p
+                    id="erro-checkout-cpf"
+                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                  >
+                    {form.formState.errors.cpf.message}
+                  </p>
+                ) : (
+                  <p
+                    id="ajuda-checkout-cpf"
+                    className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-400"
+                  >
+                    Exigido pela transportadora para emitir a etiqueta de envio.
+                  </p>
+                )}
+                {user && contaTemCpf === false && (
+                  <label
+                    htmlFor="checkout-salvar-cpf-na-conta"
+                    className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                  >
+                    <input
+                      id="checkout-salvar-cpf-na-conta"
+                      type="checkbox"
+                      checked={salvarCpfNaConta}
+                      onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
+                      className="mt-0.5 size-4 shrink-0 accent-zinc-900"
+                    />
+                    <span>Este CPF é meu e quero salvá-lo na minha conta</span>
+                  </label>
+                )}
+              </div>
+            )}
 
             {/* Guest Address Fields */}
             {!user && (
@@ -2563,59 +4079,108 @@ export function CheckoutView({
                 </div>
               </div>
             )}
+
+            {/* Saved Addresses (Logged In Only) — mesma seção "Seus dados e
+                entrega" (23/09/2026): era um segundo cartão alto e
+                independente; agora vive dentro do MESMO corpo, atrás do
+                mesmo resumo/cabeçalho. */}
+            {user && (
+              <div className="space-y-3 border-t border-zinc-100/50 pt-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="size-4 text-zinc-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      Endereço de Entrega
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingAddressId(null);
+                      setIsAddressModalOpen(true);
+                    }}
+                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
+                  >
+                    <Plus className="size-3" /> Novo
+                  </Button>
+                </div>
+                {addressesLoading ? (
+                  // Laudo de acessibilidade 03/09, achado 12: o carregamento
+                  // dos endereços era silêncio para leitor de tela —
+                  // role="status" + sr-only anunciam sem mudar o visual.
+                  <div
+                    role="status"
+                    className="flex min-h-[112px] flex-col items-center justify-center py-8"
+                  >
+                    <span className="sr-only">Carregando endereços</span>
+                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      Sincronizando endereços...
+                    </p>
+                  </div>
+                ) : (
+                  <AddressList
+                    addresses={addresses}
+                    selectable
+                    selectedId={selectedAddressId || undefined}
+                    onSelect={(endereco) => {
+                      handleSelectAddress(endereco);
+                      // Escolheu um endereço da lista: recolhe de volta ao
+                      // resumo, já com o novo endereço — mesmo gesto de
+                      // "Trocar" da ShippingCalculator em `modoResumo`, logo
+                      // abaixo (consistência entre as duas seções que
+                      // aprenderam a resumir). REVISÃO DO DONO (23/09/2026):
+                      // recolhe SEMPRE, mesmo se o endereço novo for de
+                      // transportadora e o CPF ainda faltar — o resumo
+                      // recolhido avisa a pendência (data-testid
+                      // `checkout-resumo-falta-cpf`) em vez de forçar a
+                      // seção aberta; quem quer corrigir toca em "Editar".
+                      setIdentificacaoAbertaManual(false);
+                    }}
+                    onEdit={handleEditAddress}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Saved Addresses (Logged In Only) */}
-        {user && (
-          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                  <MapPin className="size-4" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                  Seus Endereços
-                </span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditingAddressId(null);
-                  setIsAddressModalOpen(true);
-                }}
-                className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
-              >
-                <Plus className="size-3" /> Novo
-              </Button>
-            </div>
-            <div className="p-4">
-              {addressesLoading ? (
-                // Laudo de acessibilidade 03/09, achado 12: o carregamento
-                // dos endereços era silêncio para leitor de tela —
-                // role="status" + sr-only anunciam sem mudar o visual.
-                <div
-                  role="status"
-                  className="flex min-h-[112px] flex-col items-center justify-center py-8"
-                >
-                  <span className="sr-only">Carregando endereços</span>
-                  <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    Sincronizando endereços...
-                  </p>
-                </div>
-              ) : (
-                <AddressList
-                  addresses={addresses}
-                  selectable
-                  selectedId={selectedAddressId || undefined}
-                  onSelect={handleSelectAddress}
-                  onEdit={handleEditAddress}
-                />
-              )}
-            </div>
-          </div>
+        {/* Frete do destino de entrega: cota sozinho pelo endereço
+            escolhido (logado) ou pelo CEP completo do formulário
+            (convidado). Trocar/adicionar/editar endereço acima troca o
+            destino — a cotação anterior cai na hora e a nova sai sozinha. */}
+        {cart.length > 0 && (
+          <ShippingCalculator
+            key={user?.id ?? "convidado"}
+            cart={cart}
+            selectedOption={selectedShippingOption}
+            selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
+            onSelectOption={setSelectedShippingOption}
+            onCepValidated={registrarCepCotado}
+            cepDestino={cepDoDestinoDaCotacao}
+            cepDaSelecao={shippingCep}
+            destino={
+              enderecoEfetivo
+                ? {
+                    apelido: enderecoEfetivo.name,
+                    resumo: resumoDoEndereco(enderecoEfetivo),
+                  }
+                : null
+            }
+            mensagemSemDestino={
+              user
+                ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
+                : "Preencha o CEP de entrega acima para calcular o frete."
+            }
+            onStatusChange={setStatusDoFrete}
+            forcarNovaCotacaoEm={forcarNovaCotacaoEm}
+            // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
+            // escolhida atrás de "Trocar" — o carrinho (outro consumidor
+            // deste MESMO componente) não passa a prop e continua mostrando
+            // a lista inteira, sem nenhuma mudança de comportamento.
+            modoResumo
+          />
         )}
 
         {/* Coupon */}
@@ -2673,14 +4238,65 @@ export function CheckoutView({
                 </div>
               </div>
             )}
-            <div className="space-y-2.5">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                Na entrega
-              </span>
-              <div className="grid grid-cols-1 gap-2.5">
-                {opcoesNaEntrega.map(renderOpcaoDePagamento)}
-              </div>
-            </div>
+            {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
+                transportadora exige pagamento antecipado — o grupo "Na
+                entrega" só some quando o frete escolhido É transportadora
+                (qualquer id ≠ "local-delivery"). Sem opção NENHUMA
+                selecionada ele CONTINUA na tela: a regra do dono é sobre
+                transportadora ESCOLHIDA, não sobre a ausência de escolha
+                (o Finalizar nesse estado já está travado pela
+                `finalizarBloqueadoPorFrete`, e sumir com todos os meios
+                deixaria um radiogroup vazio sem explicação nenhuma). Com
+                transportadora, a orientação fica escrita aqui: com
+                pagamento online ligado é o PIX no app (auto-selecionado
+                pelo efeito da transição); sem ele, NÃO existe fallback "na
+                entrega" — o bloqueio é a regra e o texto diz por quê. */}
+            {selectedShippingOption && !ehEntregaLocal && (
+              <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
+                {pagamentoOnlineLigado()
+                  ? cartaoDisponivel
+                    ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
+                    : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                  : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
+              </p>
+            )}
+            {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o grupo "Na
+                entrega/retirada" some INTEIRO quando a loja desligou as
+                três — nunca um radiogroup vazio sem explicação. Convidado
+                (pagamento pelo app EXIGE conta, P6) vê o aviso de login no
+                lugar; cliente logado com o PIX ligado já vê o grupo "No
+                app" acima e não precisa de aviso extra. */}
+            {(!selectedShippingOption || ehEntregaLocal) &&
+              opcoesNaEntrega.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    {ehRetirada ? "Na retirada" : "Na entrega"}
+                  </span>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+                  </div>
+                </div>
+              )}
+            {(!selectedShippingOption || ehEntregaLocal) &&
+              opcoesNaEntrega.length === 0 &&
+              !user && (
+                <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                  <p className="text-[11px] font-bold leading-snug text-amber-700">
+                    Para comprar nesta loja, entre na sua conta — o pagamento é
+                    feito pelo app
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptic.light();
+                      onNavigate("auth");
+                    }}
+                    className="flex min-h-[40px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                  >
+                    Entrar ou criar conta
+                  </button>
+                </div>
+              )}
           </div>
         </div>
 
@@ -2948,6 +4564,22 @@ export function CheckoutView({
                               cotação/recotação em si não muda aqui. */}
                           {semFreteSelecionado ? (
                             "a calcular"
+                          ) : shipping > 0 && economiaDoFrete > 0 ? (
+                            // T3 (23/09): opção NACIONAL com desconto da loja
+                            // mas NÃO grátis (`precoCheio > price`, e o preço
+                            // final continua positivo) — mesmo padrão visual
+                            // do card do ShippingCalculator: cheio riscado
+                            // (= shipping + economiaDoFrete, a fonte é a
+                            // PRÓPRIA opção, nunca recalculada aqui) + final.
+                            <>
+                              <span className="mr-1 text-zinc-300 line-through">
+                                R${" "}
+                                {(shipping + economiaDoFrete)
+                                  .toFixed(2)
+                                  .replace(".", ",")}
+                              </span>
+                              R$ {shipping.toFixed(2).replace(".", ",")}
+                            </>
                           ) : shipping > 0 ? (
                             `R$ ${shipping.toFixed(2).replace(".", ",")}`
                           ) : economiaDoFrete > 0 ? (
@@ -3091,7 +4723,19 @@ export function CheckoutView({
                         type="button"
                         onClick={() => {
                           haptic.medium();
-                          handleSubmitEvent();
+                          void handleSubmitEvent().catch((error: unknown) => {
+                            // Protege também as exceções ANTES do try da RPC
+                            // (ex.: Web Crypto ou sessionStorage indisponível).
+                            setIsSubmitting(false);
+                            travaDeEnvioRef.current.liberar();
+                            console.error(
+                              "Falha inesperada no checkout:",
+                              error,
+                            );
+                            const saida = decidirSaidaDoCheckout(error);
+                            setRecusaDoUltimoClique(saida);
+                            toast.error(`Falha no Pedido: ${saida.mensagem}`);
+                          });
                         }}
                         disabled={botaoFinalizarDesabilitado}
                         // Texto visível compacto ("Finalizar", não "Finalizar
@@ -3121,6 +4765,39 @@ export function CheckoutView({
                         )}
                       </button>
                     </div>
+                    {!semFreteSelecionado &&
+                      !isOffline &&
+                      !pagamentoIncompativel &&
+                      !isSubmitting &&
+                      pendenciaDeIdentificacao && (
+                        <button
+                          type="button"
+                          data-testid="checkout-pendencia-identificacao"
+                          onClick={() => {
+                            flushSync(() => setIdentificacaoAbertaManual(true));
+                            const campoPendente = faltaNome
+                              ? "checkout-name"
+                              : faltaWhatsapp
+                                ? "checkout-tel"
+                                : faltaCpf
+                                  ? "checkout-cpf"
+                                  : null;
+                            if (campoPendente)
+                              document.getElementById(campoPendente)?.focus();
+                            else
+                              document
+                                .getElementById("cabecalho-dados-e-entrega")
+                                ?.scrollIntoView?.({
+                                  behavior: "smooth",
+                                  block: "start",
+                                });
+                          }}
+                          className="mx-auto mt-1.5 flex max-w-md items-center gap-1.5 text-left text-[11px] font-bold text-red-600 underline underline-offset-2"
+                        >
+                          <AlertCircle className="size-3.5 shrink-0" />
+                          {pendenciaDeIdentificacao}
+                        </button>
+                      )}
                     {semFreteSelecionado && (
                       // Motivo visível: botão apagado sem explicação faz a
                       // pessoa desistir sem saber por quê. Cenário real: a
@@ -3140,7 +4817,84 @@ export function CheckoutView({
                         ctxFreteIndefinido &&
                         !config.originCep?.trim()
                           ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
-                          : "Volte ao carrinho e calcule o frete para continuar"}
+                          : freteEmCotacao
+                            ? "Calculando o frete do endereço de entrega..."
+                            : cepDoDestinoDaCotacao
+                              ? "Escolha uma opção de frete para continuar"
+                              : "Informe o endereço de entrega para calcular o frete"}
+                      </p>
+                    )}
+                    {!semFreteSelecionado &&
+                      pagamentoIncompativel &&
+                      paymentMethod === "online" &&
+                      ehEntregaLocal && (
+                        // O quarto motivo visível de botão apagado
+                        // (regra do dono, 21/09/2026): "online" ficou
+                        // selecionado e a loja derrubou a flag no meio da
+                        // sessão — estado STALE que a guarda
+                        // `pagamentoIncompativelComFrete` tranca. Sem esta
+                        // linha, entrega local + stale era botão cinza sem
+                        // explicação nenhuma (o aviso do grupo de pagamento
+                        // só existe para transportadora). Mesmo padrão dos
+                        // avisos acima: role="alert" fala na hora.
+                        <p
+                          role="alert"
+                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        >
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          Pagamento pelo app indisponível — escolha um meio de
+                          pagamento na entrega
+                        </p>
+                      )}
+                    {!semFreteSelecionado &&
+                      !isOffline &&
+                      !pagamentoIncompativel &&
+                      formaDePagamentoDesligada &&
+                      // 🔴 CORRIGIDO na revisão Opus do commit 085282c3
+                      // (anotação 2): sem esta guarda, um convidado numa
+                      // loja só-pelo-app (nenhuma forma na entrega) via
+                      // ESTE aviso ("escolha outra na lista acima") AO
+                      // MESMO TEMPO do aviso de login — mas não existe
+                      // lista nenhuma para escolher (o grupo "Na
+                      // entrega/retirada" some inteiro nesse estado, ver
+                      // `opcoesNaEntrega.length === 0` abaixo), e os dois
+                      // avisos mandavam a pessoa em direções opostas.
+                      !(opcoesNaEntrega.length === 0 && !user) && (
+                        // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o
+                        // efeito de fallback (mais acima) já resolve o
+                        // caminho feliz sozinho — este aviso só aparece na
+                        // corrida residual (a loja desligou a forma ENTRE a
+                        // tela filtrar e o clique chegar) ou quando não
+                        // sobra para onde cair (mesmo espírito dos avisos
+                        // acima: botão apagado sem explicação faz a pessoa
+                        // desistir sem saber por quê).
+                        <p
+                          role="alert"
+                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                        >
+                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                          Esta forma de pagamento não está disponível — escolha
+                          outra na lista acima
+                        </p>
+                      )}
+                    {!semFreteSelecionado && isOffline && (
+                      // Mesmo padrão do aviso de frete acima: botão apagado
+                      // sem explicação faz a pessoa achar que travou de
+                      // verdade, em vez de só estar esperando a rede voltar.
+                      // Achado offline (15/09/2026): cliente no metrô perde
+                      // a conexão e via só um botão cinza, sem nenhuma pista
+                      // de que o motivo era a própria rede — e não o pedido.
+                      // `!semFreteSelecionado` evita empilhar dois avisos de
+                      // motivos diferentes ao mesmo tempo; o de frete já é
+                      // acionável primeiro (escolher frete não depende de
+                      // rede) e o texto seria confuso lado a lado.
+                      <p
+                        role="alert"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                      >
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                        Sem conexão — nada foi enviado. Aguarde a internet
+                        voltar para finalizar
                       </p>
                     )}
                     {convidadoForaDaCidade && (
@@ -3251,6 +5005,41 @@ function SuccessView({
   discount,
   onNavigate,
 }: Readonly<SuccessViewProps>) {
+  // CheckoutView-3301 (16/09/2026): "Ver Meus Pedidos" leva ao OrderSearch,
+  // que EXIGE e-mail válido (OrderSearch.tsx:63-66) para mandar o OTP — mas
+  // o formulário de convidado nunca coletou e-mail, e `customer_data.email`
+  // nasce vazio. O botão nunca poderia achar o pedido do convidado; era um
+  // beco com cara de recurso. A correção de fundo (pedir e-mail e gravá-lo
+  // em customer_data.email) exige mudar o payload de useOrders.createOrder
+  // para create_marketplace_order_v23/v24 — nenhuma das duas RPCs aceita
+  // `p_customer_email` hoje (conferido em 20261081000000, a versão mais
+  // recente das duas), e useOrders.ts é arquivo de outra frente nesta
+  // árvore agora. Enquanto isso não existe, quem não tem conta ganha o
+  // mesmo mecanismo já usado em PagamentoForaDoPrazoView (linha ~3508
+  // abaixo): WhatsApp da loja com o número do pedido na mensagem — nunca um
+  // botão que promete um recurso que não funciona para ele.
+  const { user } = useAuth();
+  const { config } = useStore();
+  const lojaTemWhatsappAgora = lojaTemWhatsapp(config.whatsappNumber);
+
+  const handleFalarComALoja = () => {
+    if (!lojaTemWhatsappAgora) return;
+    let numeroLimpo = (config.whatsappNumber || "").replace(/\D/g, "");
+    if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
+      numeroLimpo = `55${numeroLimpo}`;
+    }
+    const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
+    const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
       <div className="group relative mb-12">
@@ -3294,12 +5083,26 @@ function SuccessView({
           Retornar à Vitrine
           <ArrowLeft className="size-5 rotate-180" />
         </button>
-        <button
-          onClick={() => onNavigate("orders")}
-          className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
-        >
-          Ver Meus Pedidos
-        </button>
+        {user ? (
+          <button
+            onClick={() => onNavigate("orders")}
+            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          >
+            Ver Meus Pedidos
+          </button>
+        ) : lojaTemWhatsappAgora ? (
+          <button
+            onClick={handleFalarComALoja}
+            className="flex h-16 items-center justify-center gap-3 rounded-2xl border-2 border-zinc-100 bg-white text-[11px] font-black uppercase tracking-[0.3em] text-primary transition-all hover:border-primary active:scale-95"
+          >
+            Acompanhar pelo WhatsApp
+          </button>
+        ) : (
+          <p className="text-xs leading-relaxed text-zinc-500">
+            Guarde o identificador acima — é por ele que a loja localiza o seu
+            pedido.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -3419,7 +5222,14 @@ function PagamentoForaDoPrazoView({
     }
     const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
-    globalThis.open(url, "_blank");
+    // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
+    // ganha `window.opener` apontando para esta tela — o destino (nem
+    // sempre sob nosso controle: é o wa.me/WhatsApp Web) poderia navegar
+    // esta aba por baixo (reverse tabnabbing). "noreferrer" some com o
+    // cabeçalho Referer para o wa.me. Só os 3 pontos deste arquivo (achado
+    // do revisor); outros `globalThis.open` de WhatsApp no app (grep
+    // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
+    globalThis.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (

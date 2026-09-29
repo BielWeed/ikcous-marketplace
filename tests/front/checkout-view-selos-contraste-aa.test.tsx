@@ -96,21 +96,35 @@ const produtoCarrinho = {
   createdAt: new Date().toISOString(),
 };
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: [{ product: produtoCarrinho, quantity: 1 }],
-    cartTotal: 100,
-    shippingFee: 0,
-    clearCart,
-    addToCart,
-    selectedShippingOption: null,
-    shippingCep: "38500-000",
-    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
-    // laudo 3108); a limpeza dele não afeta o que estes testes afirmam.
-    setSelectedShippingOption: vi.fn(),
-    setShippingCep: vi.fn(),
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: [{ product: produtoCarrinho, quantity: 1 }],
+      cartTotal: 100,
+      shippingFee: 0,
+      clearCart,
+      addToCart,
+      // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+      // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
+      // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
+      // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
+      // sem a opção, o botão travaria por um motivo que ele não prova.
+      selectedShippingOption: {
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 0,
+        deliveryDays: 1,
+        provider: "local",
+      },
+      shippingCep: mockUser ? "38500-000" : "01310-100",
+      // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+      // laudo 3108); a limpeza dele não afeta o que estes testes afirmam.
+      setSelectedShippingOption: vi.fn(),
+      setShippingCep: vi.fn(),
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => {
   // O validateCoupon REAL é `useCallback([])` — estável entre renders. O

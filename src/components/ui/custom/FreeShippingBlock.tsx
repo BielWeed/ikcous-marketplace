@@ -1,5 +1,13 @@
 import { useCartContext } from "@/contexts/CartContext";
 import { useStore } from "@/contexts/StoreContext";
+// T3 (23/09/2026, fim das cópias — lição #53): este banner só conhecia a
+// regra LOCAL, mas dizia "toda a loja"/"Grátis" sem qualificar — e agora
+// LOCAL e NACIONAL podem divergir de verdade (ex.: frete grátis só na
+// cidade, transportadora sempre paga). Sem CEP da visitante (é a Home), a
+// única promessa segura de anunciar é a LOCAL — mas com o QUALIFICADOR "na
+// cidade" sempre que ela não empatar com a nacional (`!promessas.iguais`),
+// para nunca prometer grátis nacional que a loja não dá.
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 // FRETE V2 (frente B, 03/09): o que a Home anuncia passa a ser derivado do
 // PRESET escolhido pelo lojista — fonte única em presets-de-frete-gratis.ts.
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
@@ -27,6 +35,8 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
   }
 
   const preset = presetDoConfig(config.freeShippingMin);
+  const promessas = promessasDeFrete(config);
+  const soLocal = !promessas.iguais;
 
   // FRETE V2: a sentinela 0,01 = "sempre grátis". Sem este ramo, a Home
   // mostrava a meta real de R$ 0,01: "Ganhe frete grátis em compras acima de
@@ -44,16 +54,20 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
             <div className="min-w-0 flex-1">
               <div className="mb-0.5 flex items-center gap-1.5 overflow-hidden">
                 <span className="truncate text-[9px] font-semibold text-zinc-400">
-                  Toda a loja
+                  {soLocal ? "Entrega na cidade" : "Toda a loja"}
                 </span>
               </div>
               <h3 className="truncate text-xs font-bold leading-tight text-white sm:text-sm">
                 <span className="text-emerald-400 font-extrabold">
-                  Frete grátis em toda a loja
+                  {soLocal
+                    ? "Frete grátis na cidade"
+                    : "Frete grátis em toda a loja"}
                 </span>
               </h3>
               <p className="truncate text-[10px] font-medium text-zinc-400">
-                Qualquer pedido sai com entrega grátis.
+                {soLocal
+                  ? "Pedido com entrega local sai grátis."
+                  : "Qualquer pedido sai com entrega grátis."}
               </p>
             </div>
           </div>
@@ -87,13 +101,17 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
 
   const progressPercent = Math.min((totalCartValue / minShipping) * 100, 100);
 
+  // T3 (23/09): quando local e nacional divergem (`soLocal`), o headline
+  // ganha o qualificador "na cidade" -- essa meta só vale para entrega
+  // local, e sem ele a visitante lia "Frete Grátis" pensando em qualquer
+  // destino (o mesmo bug que a Home tinha antes desta frente).
   const renderHeadline = () => {
     if (isGoalReached) {
       return (
         <>
           Oba!{" "}
           <span className="text-emerald-400 font-extrabold">
-            Frete Grátis Liberado!
+            Frete Grátis {soLocal ? "na Cidade " : ""}Liberado!
           </span>{" "}
           🎉
         </>
@@ -103,7 +121,9 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
       return (
         <>
           Falta pouquinho pro{" "}
-          <span className="text-emerald-400 font-extrabold">Frete Grátis!</span>{" "}
+          <span className="text-emerald-400 font-extrabold">
+            Frete Grátis{soLocal ? " na Cidade" : ""}!
+          </span>{" "}
           ✨
         </>
       );
@@ -111,14 +131,18 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
     return (
       <>
         Frete{" "}
-        <span className="text-emerald-400 font-extrabold italic">Grátis</span>
+        <span className="text-emerald-400 font-extrabold italic">
+          Grátis{soLocal ? " na Cidade" : ""}
+        </span>
       </>
     );
   };
 
   const renderSubtext = () => {
     if (isGoalReached) {
-      return "Seu carrinho já ganhou entrega grátis!";
+      return soLocal
+        ? "Seu carrinho já ganhou entrega local grátis!"
+        : "Seu carrinho já ganhou entrega grátis!";
     }
     if (totalCartValue > 0) {
       return (
@@ -127,7 +151,7 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
           <span className="font-bold text-white underline decoration-emerald-500">
             {formatCurrency(remaining)}
           </span>{" "}
-          para garantir o frete grátis!
+          para garantir o frete grátis{soLocal ? " na cidade" : ""}!
         </>
       );
     }
@@ -137,8 +161,12 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
     // ("Ganhe frete grátis em compras acima de R$ X") cortava com reticências
     // numa tela estreita, sobretudo com meta alta. Esta cabe mesmo com
     // R$ 1.999,90 e continua dizendo a mesma coisa útil: a partir de quanto
-    // o frete é grátis.
-    return `A partir de ${formatCurrency(minShipping)} em compras.`;
+    // o frete é grátis. `soLocal`: o valor é só da entrega LOCAL (a
+    // transportadora tem outra regra/nenhuma) — dizer isso evita prometer
+    // grátis nacional que a loja não dá.
+    return soLocal
+      ? `A partir de ${formatCurrency(minShipping)} em compras, na entrega local.`
+      : `A partir de ${formatCurrency(minShipping)} em compras.`;
   };
 
   // FRETE V2: um único render — convidado e logado têm a mesma regra de
@@ -177,7 +205,13 @@ export function FreeShippingBlock(_props: FreeShippingBlockProps) {
                 </>
               )}
               <span className="truncate text-[9px] font-semibold text-zinc-400">
-                {isGoalReached ? "Meta Atingida" : "Entrega Grátis"}
+                {isGoalReached
+                  ? soLocal
+                    ? "Meta Atingida na Cidade"
+                    : "Meta Atingida"
+                  : soLocal
+                    ? "Entrega Grátis na Cidade"
+                    : "Entrega Grátis"}
               </span>
             </div>
 

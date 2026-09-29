@@ -46,9 +46,10 @@ customer`) — **lojista = staff** (`admin` manda: `is_admin()`, SECURITY DEFINE
 do painel; o front espelha via RPC com cache). `public_profiles` é a projeção pública.
 RLS de pedidos: `auth.uid() = user_id` — **convidado não vê pedido nenhum sem OTP**.
 
-**Entidades (35 tabelas vivas).** Catálogo: categorias → produtos → product_variants;
-banners; perguntas/respostas; reviews (com voto útil **revertido** — a tabela
-`review_votes` NÃO existe no schema vivo); favoritos. Compra: carrinho →
+**Entidades (36 tabelas vivas).** Catálogo: categorias → produtos → product_variants;
+banners; perguntas/respostas; reviews (voto útil com memória no servidor — tabela
+`review_votes`, `UNIQUE (review_id, user_id)`: a deduplicação mora na constraint,
+não no cliente; `increment_helpful` foi reescrita em cima dela); favoritos. Compra: carrinho →
 `marketplace_orders` (status: pending|processing|shipping|delivered|cancelled|new) →
 itens (snapshot de preço) + histórico de status + payment_history (registro **manual**
 do lojista: recebido|desfeito). Pessoas: profiles, public_profiles, user_addresses.
@@ -57,31 +58,107 @@ cache/logs de cotação, analytics_events, push_subscriptions(+log), otp_verific
 Auditoria: `vor_receipts` (recibos de operação com hash SHA-256 encadeado:
 `proof_hash`/`previous_hash` — consumida por `src/hooks/useVOR.ts`);
 `marketplace_ai_state` é órfã (estado genérico por componente, sem uso vivo no front).
+Painel, cartão e devoluções (26/09/2026, PR #666 — **+10 tabelas quando as migrations
+`20261175`–`20261178` forem aplicadas**):
+- Devoluções: `devolucoes`, `devolucao_itens`, `devolucao_eventos`, `politica_devolucao` e o
+  bucket PRIVADO `devolucoes` (foto só na pasta `<uid>/` do cliente; lê o dono e o admin).
+  Ninguém escreve por PostgREST — só pelas RPCs de devolução.
+- Financeiro: `fin_contas`, `fin_categorias`, `fin_lancamentos`, `fin_caixa_sessoes`. **Venda,
+  estorno e reembolso de devolução são DERIVADOS das fontes** (`marketplace_orders`,
+  `order_refunds`, `devolucoes`, em `fin__movimentos`), nunca copiados; em `fin_lancamentos`
+  mora só o que não tem fonte (`origem` manual, sangria, suprimento, ajuste de caixa). Escrita
+  só pelas RPCs `fin_*` (gate `is_admin()` dentro).
+- `assinatura_da_loja`: **só leitura no app** (sem grant de escrita; quem grava é o projeto de
+  cobrança — [runbook](docs/runbooks/assinatura-da-loja.md)).
+- Cartão: `config_pagamento_cartao` e, em `marketplace_orders`, `tentativas_de_pagamento`,
+  `metodo_online` (pix|credito|debito), `parcelas` e `estorno_manual_registrado_em`.
 
 **Dinheiro (BRL, numeric 10,2).** `payment_status` CHECK: `aguardando | pago | recusado |
-expirado | estornado | pago_apos_expirar`. Reserva de estoque de **30 minutos** (pg_cron
-expira e devolve estoque).
+expirado | estornado | pago_apos_expirar | recebido_na_entrega`. O sétimo valor (venda
+paga na mão, ex.: PDV) só é gravado pela RPC `registrar_pagamento_recebido`
+(SECURITY DEFINER, só admin) — nunca por UPDATE direto. Reserva de estoque de
+**30 minutos** (pg_cron expira e devolve estoque); o desafio 3DS do cartão estende
+`expires_at` uma vez, até 40 min a partir da cobrança que voltou com desafio (só estende,
+nunca encolhe — `expiracaoParaDesafio3ds`, `criar-pagamento/index.ts`).
 
-**Fluxo do dinheiro (PIX é o único método ligado; cartão é código morto "Fase 3.5"):**
+**Fluxo do dinheiro (PIX e, desde 26/09/2026, cartão de crédito/débito pelo app — o cartão nasce
+DESLIGADO em `config_pagamento_cartao` (crédito e débito `false`) e só é ligado no painel depois
+do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md)):**
 1. Checkout **exige conta** para pagar online (política P6).
 2. `criar-pagamento`: decide criar / reconsultar / recusar; **Orders API** do Mercado Pago
    (`external_reference` = id do pedido, idempotência, PIX PT30M alinhado à reserva,
    realinhamento de `expires_at` com a data do MP); grava o id da cobrança e devolve o QR.
+   Cartão: token do Card Payment Brick (o dado do cartão nunca passa pelo app); forma ligada e
+   teto de parcelas conferidos em `config_pagamento_cartao` antes de tocar a vaga; 3DS pela
+   Orders API (o desafio abre em iframe; quem confirma continua sendo o webhook).
+   **Idempotência POR TENTATIVA** (`chaveDeIdempotencia`): PIX `<pedido>` na tentativa 0
+   (byte a byte a chave de antes) e `<pedido>:<n>` depois; cartão `<pedido>:c<n>`, **sem o
+   token** — no MP real, duas abas ou o retry de resposta perdida batem no MESMO 409
+   `idempotency_key_already_used` (chave repetida, corpo diferente a cada token novo), e a vaga
+   recebe o SENTINELA `verificando:<pedido>:c<n>:<limiteInferiorMs>` — o sufixo (epoch ms,
+   `montarSentinela`) é o limite inferior gravado uma única vez, no nascimento do sentinela;
+   achado da 6ª rodada de risco: a PRÓPRIA criação terminando em rede/timeout/5xx TAMBÉM ocupa a
+   vaga assim, não só o 409 — até o webhook ADOTAR a cobrança (só pelo PAR `status:status_detail`
+   reconsultado por id decide aprovação; `resolverSentinela` nunca decide "pago" sozinho, nem por
+   `status` isolado) ou `resolverVagaEmVerificacao`/`resolverSentinela` (`_shared/mercadopago.ts`)
+   liberarem. Liberar exige DOIS fatos, não um: (B2, 5ª revisão) a busca de orders de cartão do
+   pedido é refiltrada por `external_reference` NO CLIENTE — o filtro do lado do MP não é
+   confiável, e uma order de OUTRO pedido nunca é adotada; (B1, corrigido na 7ª rodada — a margem
+   da 6ª apontava para trás e quase sempre liberava errado) TODAS as orders encontradas mortas **e**
+   pelo menos uma criada DEPOIS do limite inferior do sentinela por uma margem PARA A FRENTE
+   (`MARGEM_LIBERAR_APOS_LIMITE_MS`, 15s): a order da tentativa ANTERIOR nasce SEGUNDOS ANTES desse
+   limite (é a própria liberação dela que o grava), então uma margem para trás sempre a incluiria;
+   a order AMBÍGUA nasce DEPOIS, quando o cliente redigita outro cartão — **ressalva da 8ª rodada
+   (achado #2, documentação)**: essa frase não vale quando a LIBERAÇÃO e a criação do cartão NOVO
+   acontecem na MESMA chamada (troca PIX→cartão, cartão morto→cartão novo, sentinela liberado→
+   cartão novo) — a order nova nasce só milissegundos DEPOIS do limite (a mesma chamada que acabou
+   de gravá-lo), dentro da margem de 15s, e uma order ambígua NESSA chamada nunca libera sozinha
+   (fica presa até `expires_at`). Resíduo aceito pelo revisor: sem dinheiro em jogo (a vaga só
+   afeta o PRÓPRIO cliente que acabou de tentar); **correção da 9ª rodada (achado #3, texto)**: NÃO
+   exige duas falhas seguidas — UMA única criação ambígua na troca já basta, DESDE QUE essa MESMA
+   order ambígua acabe MORTA (recusada/cancelada/expirada) depois. Enquanto ela segue viva (ou
+   desconhecida para o MP), `resolverSentinela` a encontra e adota normalmente — só quando ela
+   morre é que a lista fica sem nenhuma order fora da margem, e a vaga fica presa até `expires_at`.
+   Uma lista PARCIALMENTE indexada, que só mostra a order
+   morta de uma tentativa ANTERIOR (sempre antes do limite), nunca libera. Nunca por um teto fixo
+   de relógio; o único prazo que ainda libera por tempo é a
+   própria reserva (`expires_at`), e uma aprovação tardia sobre isso vira `pago_apos_expirar`
+   (P1), nunca uma segunda cobrança; **ressalva honesta**: a busca contra a Orders API está
+   UNVERIFIED em produção (nome do campo da lista, nomes de parâmetro, formato de data, atraso de
+   indexação — ver o comentário de `buscarOrdersDoPedido` e o checklist de medição no
+   [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md) §6), então a
+   garantia "nunca duas cobranças vivas" depende de essa busca não relatar como morta uma order
+   que ainda está viva — divergindo, o cartão fica desligado.
+   **Cartão recusado não cancela o pedido**: `liberar_cobranca_do_pedido` (só
+   service role; não toca `payment_status` nem estoque) solta a vaga (`gateway_payment_id`) se ela ainda for daquela cobrança e o
+   pedido seguir `aguardando`, soma `tentativas_de_pagamento`, e o cliente tenta outro cartão
+   ou PIX na mesma reserva — `confirmar_pagamento('recusado')` só vale para PIX. Cartão em
+   `action_required`/`created` é cancelado no MP antes de virar PIX; em `processing`, 409.
 3. `webhook-mercadopago` (sem JWT; autentica por **HMAC x-signature**): nunca confia no
    corpo — reconsulta o MP e **confere o valor (±R$ 0,05)**; chama a RPC
    **`confirmar_pagamento`**, a ÚNICA escrita de pagamento (FOR UPDATE, idempotente).
    Em pago/pago_apos_expirar: push aos admins; só em pago: comprovante por e-mail.
-4. `reconciliar-pagamentos` (pg_cron 10 min, segredo próprio): fila de 24h → MESMA RPC.
+   Recusa/expiração de order de CARTÃO e order cancelada vão para `liberar_cobranca_do_pedido`,
+   nunca para `confirmar_pagamento` (sem `payment_method.type` legível, decide o `metodo_online`
+   gravado). Notificação da rota `payment` sobre id diferente do gravado só aplica
+   pago/estornado se a order GRAVADA confirmar o mesmo desfecho (cobrança órfã não vira pago).
+   Na virada para `estornado`, o gatilho `tr_marca_estorno_direto_do_pedido`
+   (`marca_estorno_direto_do_pedido`, migration `20261176`) **só carimba
+   `estorno_manual_registrado_em`** (BEFORE UPDATE OF payment_status, COALESCE — não toca
+   status, valor nem estoque): é a data do estorno que o Financeiro usa.
+4. `reconciliar-pagamentos` (pg_cron 10 min, segredo próprio): fila de 24h → MESMA RPC (e a
+   mesma liberação da vaga para cartão recusado).
 5. Finais: pago segue entrega · pago_apos_expirar é dinheiro fora do fluxo (P1) ·
-   expirado teve estoque devolvido · recusado · estornado (o app não estorna; parcial
-   fica deliberadamente não mapeado).
+   expirado teve estoque devolvido · recusado (só PIX; cartão recusado não é final) ·
+   estornado (o app não estorna; parcial fica deliberadamente não mapeado).
 
 **Convidado:** OTP por e-mail amarrado a **UM pedido** (e-mail + whatsapp + fragmento do
 id; 15 min; 1 envio por pedido a cada 60s — protege a cota ~100/dia do SMTP da loja).
 
-**Integrações:** Mercado Pago (Orders + Payments API) · ViaCEP · Melhor Envio e Frenet
-(frete em `calculate-shipping`) · SMTP da loja (OTP e comprovante) · Web Push (VAPID) ·
-wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
+**Integrações:** Mercado Pago (Orders + Payments API; Card Payment Brick do SDK JS v2 no
+checkout) · ViaCEP · Melhor Envio e Frenet (frete em `calculate-shipping`; etiqueta de ida e
+código de postagem reverso da devolução em `melhor-envio-etiqueta`) · SMTP da loja (OTP e
+comprovante) · Web Push (VAPID) · wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
 
 ### Políticas declaradas pelo dono (Gabriel)
 
@@ -89,8 +166,12 @@ wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
   o pedido. Evolução futura: botão no pedido para reanálise pelo usuário.
 - **P2 — Valor divergente** (além da tolerância de ±R$ 0,05): devolver e solicitar novo
   pagamento.
-- **P3 — Reembolso:** política de CADA lojista (o assinante configura a sua). Futuro:
-  painel de configuração no admin — hoje não existe.
+- **P3 — Reembolso:** política de CADA lojista (o assinante configura a sua) — desde 26/09/2026
+  em `politica_devolucao` (Ajustes → Trocas e devoluções), com os mínimos da lei por CHECK
+  (arrependimento ≥ 7 dias, vício ≥ 30). Devolução de produto entregue: `devolucoes` (local ou
+  nacional, etiqueta reversa do Melhor Envio); reembolso pelo ledger `order_refunds` + edge
+  `estornar-pagamento` quando o pedido foi pago pelo app (até 180 dias), senão reembolso manual
+  registrado na devolução — os dois descontam o que outra devolução do mesmo pedido já devolveu.
 - **P4 — Cupons:** regras definidas na criação/edição pelo lojista; ao tocar no código de
   cupom, **eliminar os contadores duplicados** (`usage_count`/`used_count`).
 - **P5 — Frete:** hoje flat_fee + cotação (Melhor Envio/Frenet). Direção: presets de
@@ -145,6 +226,16 @@ escrita serial; quem escreveu não revisa; decisão de produto sobe ao Gabriel c
 - **Nunca `supabase db push`.** A fila está zerada (105 migrations, todas casadas no
   ledger; um push hoje é no-op) — mas **nenhum cliente pode ter o schema reproduzido a
   partir do repositório** (baseline + 98 históricas colidem num banco zerado; ADR 0002).
+  Migration nova chega à loja pelo workflow `aplicar-migrations.yml` (`workflow_dispatch`:
+  prova `BEGIN/ROLLBACK` + apply, arquivo por arquivo) — que **não** grava o ledger
+  `supabase_migrations.schema_migrations` (quem grava é o `scripts/db-apply.cjs`) e cuja
+  verificação final não confere migration nova. As `20261175`–`20261178` (PR #666), a `20261179`
+  (correção pós-revisão de `cancelar_devolucao` e a RPC
+  `admin_devolucao_liberar_vinculo_reverso`, achados A1/R1/R2 da etiqueta reversa de devolução) e
+  a `20261180` (achado de risco do cliente não cancelar com cartão vivo) sobem por ele, cada uma
+  no seu run — a 79 e a 80 sempre como passo À PARTE, só depois de 75–78 estarem no ar e
+  conferidas —, com ordem, conferência e rollback no
+  [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md) (seção 7 cobre a 79).
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada.
 - **Backup é diário e não há PITR.** Nunca `--no-verify` no commit — o `secretlint` do
@@ -167,6 +258,17 @@ npm run size
 `npm test` são três suítes com runners diferentes: `test:edge` (Deno,
 `supabase/functions/`), `test:unit` (Deno, `tests/`) e `test:front` (Vitest,
 `tests/front/`).
+
+**`npm run size` é portão DIVIDIDO** (decisão do dono, 26/09/2026): JS que a cliente pode
+baixar **≤ 550 kB** e JS só do painel **≤ 450 kB** (brotli por arquivo), CSS ≤ 100 kB, leitor
+zxing ≤ 400 kB (`.size-limit.cjs`). Quem classifica cada chunk é o **grafo real do Rollup**,
+nunca o nome do arquivo: o plugin `scripts/portaoDividido.ts` (`generateBundle`, só no build)
+faz a busca a partir das entradas sem atravessar a fronteira (entrada dinâmica que contém
+`AdminArea.tsx` ou tela de `src/views/admin/**`, exceto `AdminLoginView`, que é pública): o
+alcançado é cliente, o resto é painel. Grava `.portao-tamanho/<dist|dist-test>.json`; o
+`.size-limit.cjs` falha fechado se o JSON faltar ou não bater com os `assets/*.js` do disco
+(`scripts/validarPortaoDeTamanho.cjs`) — rode `npm run build` antes. Subir teto ou mexer na
+fronteira é decisão do dono, não ajuste de CI.
 
 Duas leituras que enganam:
 
@@ -209,10 +311,22 @@ entram no prompt de TODO subagente:
 **Revisão cara obrigatória, independente do tamanho do diff, se o diff toca:**
 `supabase/migrations/` · RLS ou `SECURITY DEFINER` · `supabase/functions/` · auth/OTP ·
 checkout/pagamento · service worker · qualquer assinatura consumida por outro módulo.
+Desde 26/09/2026 (PR #666) entram também: RPCs de devolução/reembolso e `fin_*` (dinheiro),
+todo gatilho em `marketplace_orders` (o `tr_marca_estorno_direto_do_pedido` roda dentro de
+todo UPDATE que vira `estornado`, inclusive o de `confirmar_pagamento`), `vercel.json`
+(CSP — o Brick e o desafio 3DS são iframes do Mercado Pago; o COEP
+`credentialless` que ficou aqui foi removido em 26/09/2026, decisão do dono, por travar o
+Brick sem prova de que o Mercado Pago serve os iframes de Secure Fields com COEP +
+`Cross-Origin-Resource-Policy: cross-origin`) e `scripts/portaoDividido.ts` (a fronteira
+decide o que a cliente baixa).
+**Ligar crédito/débito em `config_pagamento_cartao` é decisão de dinheiro do Gabriel**, depois
+do teste do runbook — nunca efeito colateral de deploy.
 Os erros mais caros daqui foram triviais de escrever (`BEGIN`/`COMMIT` numa migration
 gravou em produção; deploy sem `--no-verify-jwt` derrubou o OTP; remetente em sandbox não
-entregou e-mail). Quem escreveu não revisa o próprio trabalho; o revisor pode recusar a
-classificação de baixo risco (devolve `ESCALAR`). Na dúvida, revisão cara.
+entregou e-mail). Ordem de publicação também é risco: function antes da migration derruba
+todo PIX (503 — `criar-pagamento` lê `tentativas_de_pagamento`). Quem escreveu não revisa o
+próprio trabalho; o revisor pode recusar a classificação de baixo risco (devolve `ESCALAR`).
+Na dúvida, revisão cara.
 
 ## Deploy e logs
 
@@ -221,6 +335,19 @@ logs pelo painel da Vercel ou pela CLI. Depois de deploy: aviso de compilação,
 duplicado, erro de geração de página; em falha de usuário, os logs de Edge Function.
 `version.json` e o service worker são regenerados no build — a atualização do PWA é com
 consentimento do usuário (`registerType: "prompt"`).
+
+**Publicação que cruza banco e edge (26/09/2026).** Ordem fixa: migrations pelo
+`aplicar-migrations.yml` → functions pelo `publicar-functions.yml` → front. O preview da
+Vercel fala com o banco da loja (ADR 0001), então tela nova que chama RPC nova só funciona no
+preview depois das migrations. Passo a passo, conferência e rollback do PR #666:
+[`docs/runbooks/publicar-painel-cartao-devolucoes.md`](docs/runbooks/publicar-painel-cartao-devolucoes.md).
+
+**Versão por release (22/09/2026).** Cada release pública nova recebe incremento de
+patch no `package.json` e nas duas raízes do `package-lock.json` (`1.5.1`, depois
+`1.5.2`, `1.5.3`…), com conferência de que o `codeVersion`/`version.json` do build
+carrega o número novo. NÃO incrementar por build/preview: o `deliveryVersion` completo
+(sha + identity) continua distinguindo builds; o núcleo semver só avança em release —
+é ele que o aviso de atualização mostra.
 
 `robots.txt` e `sitemap.xml` (SEO, issue #117) também nascem no build, por loja: o
 `scripts/sitemap.mjs` consulta a `vw_produtos_public` e sobrescreve as sementes versionadas

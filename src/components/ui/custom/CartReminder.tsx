@@ -1,5 +1,10 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useCart } from "@/hooks/useCart";
+// T3 (23/09/2026, fim das cópias — lição #53): mesmo raciocínio do
+// FreeShippingBlock — o lembrete só conhecia a regra LOCAL e dizia "toda a
+// loja" sem qualificar; agora usa `promessasDeFrete` para saber se precisa
+// do qualificador "na cidade" (quando local e nacional divergem).
+import { promessasDeFrete } from "@/lib/estrategias-de-frete";
 import { presetDoConfig } from "@/lib/presets-de-frete-gratis";
 import { formatCurrency } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -35,6 +40,10 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
   const preset = presetDoConfig(config.freeShippingMin);
   const hasFreeShippingGoal = config.freeShippingMin > 0;
   const isSempreGratis = preset === "sempre";
+  // T3: qualificador "na cidade" quando a regra nacional diverge da local —
+  // sem CEP da cliente aqui (é o carrinho flutuante), a única promessa
+  // segura de anunciar é a local, com escopo declarado.
+  const soLocal = !promessasDeFrete(config).iguais;
   const isFree =
     isSempreGratis ||
     (hasFreeShippingGoal && totalAmount >= config.freeShippingMin);
@@ -133,12 +142,18 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
               ) : isSempreGratis ? (
                 <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
                   <Truck className="size-3" />
-                  <span>Frete grátis em toda a loja</span>
+                  <span>
+                    {soLocal
+                      ? "Frete grátis na cidade"
+                      : "Frete grátis em toda a loja"}
+                  </span>
                 </div>
               ) : isFree ? (
                 <div className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-tight text-emerald-500">
                   <Truck className="size-3" />
-                  <span>Frete Grátis Liberado</span>
+                  <span>
+                    Frete Grátis{soLocal ? " na Cidade" : ""} Liberado
+                  </span>
                 </div>
               ) : (
                 <p className="text-[10px] font-semibold leading-tight text-slate-600">
@@ -147,7 +162,9 @@ export function CartReminder({ onAction, docked }: CartReminderProps) {
                     {formatCurrency(amountToFree)}
                   </span>{" "}
                   para o{" "}
-                  <span className="italic text-emerald-500">Frete Grátis</span>
+                  <span className="italic text-emerald-500">
+                    Frete Grátis{soLocal ? " na Cidade" : ""}
+                  </span>
                 </p>
               )}
             </div>

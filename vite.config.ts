@@ -6,6 +6,7 @@ import { defineConfig, loadEnv } from "vite";
 import type { UserConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import type { VitePWAOptions } from "vite-plugin-pwa";
+import { portaoDividido } from "./scripts/portaoDividido";
 import { MANIFESTO_BASE } from "./src/config/manifestoBase";
 // Endereço público de CADA loja — MESMO corpo de `resolverEnderecoPublico`
 // em middleware.ts (docstring completa lá). Duplicado, não importado: um
@@ -62,7 +63,9 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       icons: [],
     },
     injectManifest: {
-      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2}"],
+      // wasm: o binário do leitor de código de barras do balcão (C2) —
+      // precisa estar disponível offline, senão o balcão para de ler.
+      globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff2,wasm}"],
       // Identity resources are added explicitly by role, including JPEG.
       // Originals and OG stay available but are not downloaded at installation.
       globIgnores: [
@@ -109,6 +112,12 @@ export default defineConfig(async (context): Promise<UserConfig> => {
         "AdminIdentityTus",
       ],
       ["node_modules/image-dimensions/index.js", "AdminIdentityDimensions"],
+      // A tela do balcão precisa estar no precache (vender offline é o
+      // ponto): com o nome padrão ela nasceria `assets/AdminPdvView-<hash>.js`
+      // e cairia na exclusão `assets/Admin*.js` do globIgnores do
+      // injectManifest. Se o lote C3 mudar o caminho do arquivo, mude aqui
+      // junto — o Map casa por caminho absoluto.
+      ["src/views/admin/AdminPdvView.tsx", "PdvBalcao"],
     ].map(([file, name]) => [
       path.resolve(root, file).replace(/\\/g, "/"),
       name,
@@ -139,16 +148,53 @@ export default defineConfig(async (context): Promise<UserConfig> => {
       ...(isDev ? [inspectAttr()] : []),
       react(),
       VitePWA(pwaOptions),
+      // Portão de tamanho DIVIDIDO (decisão do dono, 26/09/2026): classifica
+      // cliente x painel a partir do grafo real do Rollup e grava fora da
+      // entrega, para `.size-limit.cjs` medir os dois orçamentos separados.
+      // Só em build (o hook `generateBundle` não dispara em `vite dev`, mas
+      // `apply: "build"` deixa a intenção explícita, no mesmo espírito do
+      // `isDev`/`ANALYZE` acima).
+      ...(command === "build"
+        ? [portaoDividido({ root, outDir: identity.outDir })]
+        : []),
     ],
     resolve: {
-      alias: {
-        "@": path.resolve(__dirname, "./src"),
-      },
+      alias: [
+        { find: "@", replacement: path.resolve(__dirname, "./src") },
+        // O recharts importa 29 funções `lodash/<nome>` na versão CommonJS:
+        // 263 módulos, cada um embrulhado pelo plugin commonjs. A MESMA versão
+        // em ES module (lodash-es, mesma 4.18.1 do lodash que o recharts
+        // resolve) sai sem os embrulhos: vendor-charts -3,2 kB brotli no build
+        // fixture de 23/09/2026 (entrega 804,34 -> 801,16 kB, teto D8 de 800).
+        // Só o recharts importa `lodash/` (e o lodash-es cai no vendor-charts,
+        // fora do boot); o `lodash` raiz não casa com a regex.
+        { find: /^lodash\/(.*)$/, replacement: "lodash-es/$1" },
+      ],
     },
     build: {
       outDir: identity.outDir,
+      // Terser em vez do esbuild default: a entrega brotli somada caiu de
+      // 803,52 kB para 780,72 kB no build fixture (20/09/2026, teto de 800
+      // do size-limit). Presets seguros — sem drop_console, sem pure_funcs,
+      // sem unsafe; target e divisão de chunks preservados.
+      minify: "terser",
+      // Segunda passada do compress (opção segura, sem `unsafe`): -1,1 kB
+      // brotli na entrega somada (23/09/2026).
+      terserOptions: { compress: { passes: 2 } },
       rollupOptions: {
         output: {
+          // Chunks menores que 1 kB (antes de comprimir) são fundidos num
+          // vizinho — o Rollup só funde quando não muda o que executa ao
+          // carregar cada entrada. 117 -> 103 arquivos, -2,7 kB na entrega
+          // somada (fixture de 23/09/2026). Medido POR TELA (fecho estático
+          // brotli além do boot), não só no boot: Home 64,8 -> 64,7 kB,
+          // Busca 45,9 -> 46,1, Produto 67,0 -> 67,0, Carrinho 69,6 -> 69,1,
+          // Checkout 82,5 -> 81,9. NÃO subir para 2000: a entrega cai mais
+          // 1,1 kB, mas Home/Busca/Favoritos passam a baixar ~10 kB a mais
+          // (vendor-date e telas vizinhas penduradas nelas). De brinde, o
+          // PdvBalcao deixou de importar estaticamente um `Admin*.js`, que o
+          // globIgnores `assets/Admin*.js` tira do precache (balcão offline).
+          experimentalMinChunkSize: 1000,
           chunkFileNames(chunk) {
             const id = chunk.facadeModuleId?.replace(/\\/g, "/");
             const name =
@@ -163,6 +209,14 @@ export default defineConfig(async (context): Promise<UserConfig> => {
               return "vendor-react";
             }
             if (id.includes("node_modules")) {
+              if (normalizedId.includes("zxing-wasm")) {
+                // O leitor do balcão: chunk com nome PRÓPRIO para (1) entrar
+                // no precache (a exclusão de vite.config.ts é
+                // `assets/Admin*.js`) e (2) ser um arquivo previsível no
+                // `npm run size`. Continua preguiçoso: só o import() do
+                // fallback (C2.5) o referencia.
+                return "leitor-zxing";
+              }
               if (
                 normalizedId.includes("react-router-dom") ||
                 normalizedId.includes("@remix-run/router")
@@ -182,11 +236,21 @@ export default defineConfig(async (context): Promise<UserConfig> => {
                 return "vendor-date";
               }
               if (
+                normalizedId.includes("clsx") ||
+                normalizedId.includes("tailwind-merge") ||
+                normalizedId.includes("class-variance-authority") ||
                 normalizedId.includes("vaul") ||
                 normalizedId.includes("cmdk") ||
                 normalizedId.includes("sonner") ||
                 normalizedId.includes("canvas-confetti")
               ) {
+                // vite-214 (A12.3): clsx/tailwind-merge/cva classificados
+                // AQUI de propósito. Sem regra, o Rollup funde o clsx no
+                // chunk do primeiro importador pesado — o recharts (vendor-
+                // charts) — e o `cn()` de src/lib/utils.ts arrastava 92 kB
+                // brotli de biblioteca de gráfico para o boot de todo
+                // cliente da vitrine (modulepreload no index.html). Este
+                // vendor já é estático na entrada: zero requisição nova.
                 return "vendor-ui-helpers";
               }
               if (normalizedId.includes("react-resizable-panels")) {

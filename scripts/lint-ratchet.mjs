@@ -24,7 +24,7 @@
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASE = JSON.parse(
@@ -100,14 +100,101 @@ function contarEslint() {
   return { errors, warnings };
 }
 
-function contarBiome() {
-  const saida = rodar("npx biome check .");
-  const erros = saida.match(/Found (\d+) errors?\./);
-  const avisos = saida.match(/Found (\d+) warnings?\./);
-  return {
-    errors: erros ? Number(erros[1]) : 0,
-    warnings: avisos ? Number(avisos[1]) : 0,
-  };
+/**
+ * Acha o primeiro objeto JSON top-level dentro de `saida` e devolve o seu
+ * `JSON.parse`, ou `null` se não achar chave casada.
+ *
+ * Por que não dá pra fazer como o `contarEslint` faz com `[` — pegar do
+ * primeiro caractere até o fim e mandar direto pro `JSON.parse`: o
+ * `--reporter=json` do Biome escreve o resumo JSON e DEPOIS ainda imprime,
+ * na MESMA saída, o rodapé decorativo ("check ━━━...", "× Some errors...");
+ * texto sobrando depois do `}` que quebra o parser. E não dá pra contar
+ * chave por caractere sem saber se está dentro de string: o campo
+ * `dictionary` de um diff de formatação carrega código-fonte inteiro, com
+ * `{`/`}` de verdade dentro do valor.
+ */
+function primeiroJsonBalanceado(saida) {
+  const inicio = saida.indexOf("{");
+  if (inicio === -1) return null;
+  let profundidade = 0;
+  let dentroDeString = false;
+  let escapando = false;
+  for (let i = inicio; i < saida.length; i++) {
+    // `.charAt`, não `saida[i]`: indexação por variável dispara
+    // security/detect-object-injection (a regra não distingue string de
+    // objeto), e este script não pode ser o primeiro a furar a própria
+    // catraca que instala — mesmo motivo do comentário sobre `comparacoes`
+    // mais abaixo, já existente antes desta correção.
+    const c = saida.charAt(i);
+    if (dentroDeString) {
+      if (escapando) escapando = false;
+      else if (c === "\\") escapando = true;
+      else if (c === '"') dentroDeString = false;
+      continue;
+    }
+    if (c === '"') dentroDeString = true;
+    else if (c === "{") profundidade++;
+    else if (c === "}") {
+      profundidade--;
+      if (profundidade === 0) {
+        try {
+          return JSON.parse(saida.slice(inicio, i + 1));
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * lint-ratchet-103 — antes desta correção, `contarBiome` só extraía o número
+ * por regex (`/Found (\d+) errors?\./`) em cima de `npx biome check .` (saída
+ * decorativa, não pensada pra máquina ler) e, quando a regex não casava,
+ * devolvia `{errors: 0, warnings: 0}` sem distinguir "zero achados" de
+ * "o Biome não rodou". Isso é diferente do teto (`.lint-baseline.json`,
+ * hoje 19 erros): {errors:0} SEMPRE lê como "a dívida caiu pra zero" —
+ * delta negativo, `baixou`, a catraca nunca chama `process.exit`.
+ * `contarEslint` já tinha o guarda certo (lança se a saída não tiver `[`);
+ * a assimetria era o defeito.
+ *
+ * Reproduzido (ver relatório da tarefa): `npx biome check --reporter=json
+ * /caminho/inexistente` sai com exit 1 e a saída JSON tem
+ * `summary.errors: 0, summary.warnings: 0` — igual ao caso de zero achados
+ * de verdade — mesmo com um diagnóstico `internalError/io` no array, porque
+ * `summary.errors` só conta achado de lint/formatação, nunca falha de
+ * execução. Por isso o guarda abaixo NÃO confia só em `summary.errors`: ele
+ * exige que o Biome tenha de fato PROCESSADO arquivo (`changed + unchanged +
+ * matches > 0`). Rodando `npx biome check .` na raiz do repo, esse total é
+ * sempre > 0 quando o Biome roda de verdade — se vier zero, ou a saída não
+ * tem `summary` nenhum, é falha de execução, e falha de execução REPROVA
+ * (lança), nunca vira "zero achados". Isso vale em qualquer ambiente: o
+ * `cobra: NO_CI` mais abaixo (Windows/CRLF) só decide se a CONTAGEM cobra o
+ * PR; aqui a pergunta é "o Biome respondeu alguma coisa", que é anterior a
+ * isso e não tem exceção de sistema operacional.
+ *
+ * `executar` tem valor padrão (`rodar`) só pra o teste poder injetar uma
+ * saída falsa sem precisar mexer em PATH nem em processo de verdade.
+ */
+export function contarBiome(executar = rodar) {
+  const saida = executar("npx biome check --reporter=json .");
+  const resumo = primeiroJsonBalanceado(saida)?.summary;
+  const arquivosProcessados =
+    resumo && resumo.changed + resumo.unchanged + resumo.matches;
+  // As contagens têm de ser NÚMEROS: um resumo com as chaves renomeadas
+  // devolveria undefined, o delta contra o teto viraria NaN (nem > 0 nem
+  // < 0) e a catraca aprovaria em silêncio (ressalva da revisão).
+  const contagensSaoNumeros =
+    resumo &&
+    typeof resumo.errors === "number" &&
+    typeof resumo.warnings === "number";
+  if (!resumo || !arquivosProcessados || !contagensSaoNumeros) {
+    throw new Error(
+      `biome não rodou (nenhum arquivo processado) ou o resumo veio sem contagens numéricas — trate como falha de execução, nunca como "zero achados":\n${saida.slice(0, 800)}`,
+    );
+  }
+  return { errors: resumo.errors, warnings: resumo.warnings };
 }
 
 /**
@@ -138,132 +225,160 @@ function pastasIgnoradasPeloBiome() {
   }
 }
 
-const medido = { eslint: contarEslint(), biome: contarBiome() };
-
 /**
- * O Biome só é COBRADO no CI.
- *
- * Motivo medido: no Linux do CI ele acha 31 erros; na máquina Windows do
- * Gabriel, 100. A diferença não é código, é fim de linha — o repositório está
- * em CRLF no disco e o Biome formata em LF por padrão, então no Windows ele
- * reclama de arquivos que no CI passam. Cobrar isso localmente reprovaria
- * qualquer commit feito no Windows, o que é pior do que não cobrar.
- *
- * A correção de verdade é normalizar fim de linha (`.gitattributes` com
- * `eol=lf`), que é uma mudança grande e vai junto com a INFRA-220.
+ * Todo o corpo executável do script mora aqui dentro, e não solto no topo do
+ * módulo, por causa do teste desta correção (lint-ratchet-103): o teste
+ * importa este arquivo para chamar `contarBiome` isolado, e um `import` de
+ * módulo ESM roda o topo do arquivo inteiro. Sem este `main()` e o guarda no
+ * fim do arquivo, IMPORTAR o script pra testar já dispararia eslint e biome
+ * de verdade (lento e ruidoso dentro da suíte) e, pior, o `process.exit(1)`
+ * de baixo terminaria o processo do test runner no meio — mesmo padrão já
+ * usado em scripts/guarda-de-branch.mjs pelo mesmo motivo.
  */
-// Acesso estático de propriedade, não `objeto[variavel]`: indexação dinâmica
-// dispara security/detect-object-injection, e este script não pode ser o
-// primeiro a furar a própria catraca que instala.
-const comparacoes = [
-  {
-    ferramenta: "eslint",
-    tipo: "errors",
-    agora: medido.eslint.errors,
-    teto: BASE.eslint.errors,
-    cobra: true,
-  },
-  {
-    ferramenta: "eslint",
-    tipo: "warnings",
-    agora: medido.eslint.warnings,
-    teto: BASE.eslint.warnings,
-    cobra: true,
-  },
-  {
-    ferramenta: "biome",
-    tipo: "errors",
-    agora: medido.biome.errors,
-    teto: BASE.biome.errors,
-    cobra: NO_CI,
-  },
-  {
-    ferramenta: "biome",
-    tipo: "warnings",
-    agora: medido.biome.warnings,
-    teto: BASE.biome.warnings,
-    cobra: NO_CI,
-  },
-];
+function main() {
+  const medido = { eslint: contarEslint(), biome: contarBiome() };
 
-const linhas = [];
-let subiu = false;
-let baixou = false;
+  /**
+   * O Biome só é COBRADO no CI.
+   *
+   * Motivo medido: no Linux do CI ele acha 31 erros; na máquina Windows do
+   * Gabriel, 100. A diferença não é código, é fim de linha — o repositório
+   * está em CRLF no disco e o Biome formata em LF por padrão, então no
+   * Windows ele reclama de arquivos que no CI passam. Cobrar isso localmente
+   * reprovaria qualquer commit feito no Windows, o que é pior do que não
+   * cobrar.
+   *
+   * A correção de verdade é normalizar fim de linha (`.gitattributes` com
+   * `eol=lf`), que é uma mudança grande e vai junto com a INFRA-220.
+   *
+   * (Isto é sobre a CONTAGEM ser diferente por causa de CRLF, não sobre o
+   * Biome deixar de rodar — a falha de execução do lint-ratchet-103, acima,
+   * reprova em qualquer sistema, sem exceção de Windows.)
+   */
+  // Acesso estático de propriedade, não `objeto[variavel]`: indexação
+  // dinâmica dispara security/detect-object-injection, e este script não
+  // pode ser o primeiro a furar a própria catraca que instala.
+  const comparacoes = [
+    {
+      ferramenta: "eslint",
+      tipo: "errors",
+      agora: medido.eslint.errors,
+      teto: BASE.eslint.errors,
+      cobra: true,
+    },
+    {
+      ferramenta: "eslint",
+      tipo: "warnings",
+      agora: medido.eslint.warnings,
+      teto: BASE.eslint.warnings,
+      cobra: true,
+    },
+    {
+      ferramenta: "biome",
+      tipo: "errors",
+      agora: medido.biome.errors,
+      teto: BASE.biome.errors,
+      cobra: NO_CI,
+    },
+    {
+      ferramenta: "biome",
+      tipo: "warnings",
+      agora: medido.biome.warnings,
+      teto: BASE.biome.warnings,
+      cobra: NO_CI,
+    },
+  ];
 
-for (const { ferramenta, tipo, agora, teto, cobra } of comparacoes) {
-  const delta = agora - teto;
+  const linhas = [];
+  let subiu = false;
+  let baixou = false;
 
-  let situacao = "ok";
-  if (delta > 0) {
-    situacao = cobra
-      ? `SUBIU +${delta}`
-      : `subiu +${delta} (não cobrado fora do CI)`;
-    if (cobra) subiu = true;
-  } else if (delta < 0) {
-    situacao = `baixou ${delta} — abaixe o teto`;
-    if (cobra) baixou = true;
+  for (const { ferramenta, tipo, agora, teto, cobra } of comparacoes) {
+    const delta = agora - teto;
+
+    let situacao = "ok";
+    if (delta > 0) {
+      situacao = cobra
+        ? `SUBIU +${delta}`
+        : `subiu +${delta} (não cobrado fora do CI)`;
+      if (cobra) subiu = true;
+    } else if (delta < 0) {
+      situacao = `baixou ${delta} — abaixe o teto`;
+      if (cobra) baixou = true;
+    }
+
+    linhas.push({ ferramenta, tipo, agora, teto, situacao });
   }
 
-  linhas.push({ ferramenta, tipo, agora, teto, situacao });
-}
-
-const col = (s) => String(s).padEnd(11);
-console.log(
-  [
-    `${col("ferramenta")}${col("tipo")}${col("agora")}${col("teto")}situação`,
-    "".padEnd(72, "-"),
-    ...linhas.map(
-      (l) =>
-        `${col(l.ferramenta)}${col(l.tipo)}${col(l.agora)}${col(l.teto)}${l.situacao}`,
-    ),
-  ].join("\n"),
-);
-
-if (!NO_CI) {
-  const ignoradas = pastasIgnoradasPeloBiome();
-  const linhaIgnoradas = ignoradas.length
-    ? `O Biome não olha estas pastas (biome.json → files.ignore): ${ignoradas.join(", ")}.\nSe o seu diff só tocou uma delas, o número de Biome acima não pode falar dele.\n`
-    : "";
+  const col = (s) => String(s).padEnd(11);
   console.log(
-    `\nFora do CI o Biome não é cobrado — quem cobra é o CI (Linux). Este script não mede\nquanto do excesso local é fim de linha (CRLF); não trate isso como a causa sem medir.\n${linhaIgnoradas}Para medir Biome nesta máquina sem esse ruído, siga a receita em ~/.claude/mural/core_app_mkt/_REGRAS.md.`,
+    [
+      `${col("ferramenta")}${col("tipo")}${col("agora")}${col("teto")}situação`,
+      "".padEnd(72, "-"),
+      ...linhas.map(
+        (l) =>
+          `${col(l.ferramenta)}${col(l.tipo)}${col(l.agora)}${col(l.teto)}${l.situacao}`,
+      ),
+    ].join("\n"),
   );
+
+  if (!NO_CI) {
+    const ignoradas = pastasIgnoradasPeloBiome();
+    const linhaIgnoradas = ignoradas.length
+      ? `O Biome não olha estas pastas (biome.json → files.ignore): ${ignoradas.join(", ")}.\nSe o seu diff só tocou uma delas, o número de Biome acima não pode falar dele.\n`
+      : "";
+    console.log(
+      `\nFora do CI o Biome não é cobrado — quem cobra é o CI (Linux). Este script não mede\nquanto do excesso local é fim de linha (CRLF); não trate isso como a causa sem medir.\n${linhaIgnoradas}Para medir Biome nesta máquina sem esse ruído, siga a receita em ~/.claude/mural/core_app_mkt/_REGRAS.md.`,
+    );
+  }
+
+  const resumo = process.env.GITHUB_STEP_SUMMARY;
+  if (resumo) {
+    const md = [
+      "## Catraca de lint",
+      "",
+      "| ferramenta | tipo | agora | teto | situação |",
+      "| --- | --- | --- | --- | --- |",
+      ...linhas.map(
+        (l) =>
+          `| ${l.ferramenta} | ${l.tipo} | ${l.agora} | ${l.teto} | ${l.situacao} |`,
+      ),
+      "",
+      subiu
+        ? "**Reprovado.** Alguma contagem subiu. Corrija o que este PR introduziu, ou justifique e suba o teto em `.lint-baseline.json` explicitamente."
+        : baixou
+          ? "Aprovado — e alguma contagem **caiu**. Abaixe o teto em `.lint-baseline.json` neste mesmo PR, senão a dívida volta sem ninguém perceber."
+          : "Aprovado. Nada subiu.",
+      "",
+    ].join("\n");
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho vem do runner do GitHub Actions, não de entrada de usuário
+    fs.appendFileSync(resumo, md);
+  }
+
+  if (subiu) {
+    console.error(
+      "\nReprovado: a dívida de lint aumentou.\n" +
+        "Rode `npx eslint .` e corrija o que o seu PR introduziu.\n" +
+        "Se o aumento for intencional, suba o teto em .lint-baseline.json e explique no PR.",
+    );
+    process.exit(1);
+  }
+
+  if (baixou) {
+    console.log(
+      "\nAlguma contagem caiu. Abaixe o teto em .lint-baseline.json neste PR,\n" +
+        "senão a dívida pode voltar sem o CI reclamar.",
+    );
+  }
 }
 
-const resumo = process.env.GITHUB_STEP_SUMMARY;
-if (resumo) {
-  const md = [
-    "## Catraca de lint",
-    "",
-    "| ferramenta | tipo | agora | teto | situação |",
-    "| --- | --- | --- | --- | --- |",
-    ...linhas.map(
-      (l) =>
-        `| ${l.ferramenta} | ${l.tipo} | ${l.agora} | ${l.teto} | ${l.situacao} |`,
-    ),
-    "",
-    subiu
-      ? "**Reprovado.** Alguma contagem subiu. Corrija o que este PR introduziu, ou justifique e suba o teto em `.lint-baseline.json` explicitamente."
-      : baixou
-        ? "Aprovado — e alguma contagem **caiu**. Abaixe o teto em `.lint-baseline.json` neste mesmo PR, senão a dívida volta sem ninguém perceber."
-        : "Aprovado. Nada subiu.",
-    "",
-  ].join("\n");
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho vem do runner do GitHub Actions, não de entrada de usuário
-  fs.appendFileSync(resumo, md);
-}
-
-if (subiu) {
-  console.error(
-    "\nReprovado: a dívida de lint aumentou.\n" +
-      "Rode `npx eslint .` e corrija o que o seu PR introduziu.\n" +
-      "Se o aumento for intencional, suba o teto em .lint-baseline.json e explique no PR.",
-  );
-  process.exit(1);
-}
-
-if (baixou) {
-  console.log(
-    "\nAlguma contagem caiu. Abaixe o teto em .lint-baseline.json neste PR,\n" +
-      "senão a dívida pode voltar sem o CI reclamar.",
-  );
+// Só executa quando chamado como programa (`node scripts/lint-ratchet.mjs`).
+// Mesmo guarda de scripts/guarda-de-branch.mjs: sem ele, o teste que importa
+// este módulo para chamar `contarBiome` isolado dispararia o script inteiro
+// de passagem.
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main();
 }

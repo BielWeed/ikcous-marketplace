@@ -18,6 +18,7 @@ type OrderRow = Database["public"]["Tables"]["marketplace_orders"]["Row"];
 /** Base copiada de tests/front/mappers.test.ts (PEDIDO_BASE) — não inventar o formato. */
 const PEDIDO_BASE: OrderRow = {
   address_id: null,
+  canal: "online",
   cancelled_after_shipping: false,
   confirmation_email_sent_at: null,
   coupon_code: null,
@@ -41,18 +42,23 @@ const PEDIDO_BASE: OrderRow = {
   payment_status: null,
   returned_to_seller_at: null,
   valor_estornado: 0,
+  tentativas_de_pagamento: 0,
+  metodo_online: null,
+  parcelas: null,
   shipping: null,
   shipping_cost: null,
   shipping_label_id: null,
   shipping_label_url: null,
   status: "pending",
   stock_returned_at: null,
+  estorno_manual_registrado_em: null,
   subtotal: 100,
   total: 120,
   total_amount: null,
   tracking_code: null,
   updated_at: "2026-08-01T11:00:00.000Z",
   user_id: null,
+  vendedor_id: null,
 };
 
 describe("mapper do pedido — o estado do retorno do produto", () => {

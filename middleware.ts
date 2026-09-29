@@ -23,7 +23,8 @@ import { atenderPorteiro, obterFichaValidada } from "./src/hospedagem/porteiro";
 // do disco e confere igualdade byte a byte com essa cópia). Rodada B
 // (11/09/2026, brief T3b item 6): o primeiro padrão trocou a exclusão por
 // EXTENSÃO por uma LISTA NOMEADA de prefixos (`assets/`, `store-identity/`,
-// `icons/`, `images/`, `fonts/`) e arquivos de raiz que o build sempre
+// `icons/`, `images/`, `fonts/`; `logos/` e `branding/` desde 23/09/2026 —
+// toda pasta de `public/`) e arquivos de raiz que o build sempre
 // produz (`sw.js`, `version.json`, `favicon.ico`/`.svg`, `logo.svg`,
 // `apple-touch-icon.png`, `robots.txt`, `sitemap.xml`, `og-image.png`,
 // `silent-guardian.js`, `loading.css`, `404.html`, `index.html`,
@@ -46,7 +47,7 @@ import { atenderPorteiro, obterFichaValidada } from "./src/hospedagem/porteiro";
 // matcher.
 export const config = {
   matcher: [
-    "/((?!assets/|store-identity/|icons/|images/|fonts/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
+    "/((?!assets/|store-identity/|icons/|images/|fonts/|logos/|branding/|sw\\.js$|workbox-[^/]*\\.js$|version\\.json$|favicon\\.ico$|favicon\\.svg$|logo\\.svg$|apple-touch-icon\\.png$|robots\\.txt$|sitemap\\.xml$|og-image\\.png$|silent-guardian\\.js$|loading\\.css$|404\\.html$|index\\.html$|registerSW\\.js$|offline\\.html$|google[A-Za-z0-9]*\\.html$).*)",
     "/identidade.json",
     "/manifest.webmanifest",
   ],

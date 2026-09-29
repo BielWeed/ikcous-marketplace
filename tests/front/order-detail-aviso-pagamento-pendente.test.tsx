@@ -31,7 +31,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: vi.fn(),
-    from: vi.fn(),
+    // `from` cobre também a busca PRÓPRIA do card de etiqueta
+    // (EtiquetaDoPedidoCard, dentro de OrderDetail) — `.select().eq("id",
+    // ...).maybeSingle()` sem esse builder cairia em "Cannot read properties
+    // of undefined" e o card só logaria a exceção (achado da revisão Opus:
+    // ruído silencioso nestes testes, sem mudar nenhuma asserção deles).
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(() =>
+            Promise.resolve({ data: null, error: null }),
+          ),
+        })),
+      })),
+    })),
     functions: { invoke: vi.fn() },
     channel: vi.fn(),
     removeChannel: vi.fn(),

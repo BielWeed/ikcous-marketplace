@@ -39,7 +39,7 @@ on:
       - "scripts/ci/banco/**"
       - ".github/workflows/db-ci.yml"
   push:
-    branches: [develop]
+    branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
       - "supabase/migrations/**"
       - "scripts/ci/banco/**"

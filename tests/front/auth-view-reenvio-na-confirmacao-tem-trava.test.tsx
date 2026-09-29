@@ -98,6 +98,8 @@ describe("AuthView — reenvio na confirmação tem trava (issue #208)", () => {
       "senha12345",
       "Pessoa Teste",
       "(11) 99999-9999",
+      // CPF opcional (23/09/2026): cadastro sem CPF digitado passa undefined.
+      undefined,
     );
     expect(hospedeiro.textContent).toContain("Verifique seu e-mail");
     return localizarBotaoPorTexto("Reenviar link");

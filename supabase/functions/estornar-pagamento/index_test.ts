@@ -24,6 +24,16 @@
 //       CONDICIONAL (só 'em_processamento') — e 0 linhas no desfecho
 //       responde 409 estorno_ja_tratado (M1/M2 do laudo do PR #439)
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts"
+// Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
+// do lojista nos testes M1/M2 do fim deste arquivo. Desde a tarefa mp-6 o
+// fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a mesma
+// montagem copiada em cinco suítes, e cópia de fixture envelhece calada
+// quando a forma do registro em app_settings muda.
+import {
+    CHAVE_CIFRA_TESTE,
+    registroMpDeTeste,
+    TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts"
 
 // ── Costura de REDE para a porta de admin (verifyIsAdmin monta os PRÓPRIOS
 // clients do supabase-js — a costura deps não os cobre). Mesma estratégia do
@@ -155,9 +165,15 @@ function clienteSupaFalso(opts: {
     // esta opção preservam o comportamento de antes (nenhum id excluído).
     idsJaReivindicados?: string[]
     erroIdsJaReivindicados?: any
+    // Tarefa mp-2: o registro CIFRADO do lojista, como ele dorme em
+    // app_settings (_shared/credenciais-mp.ts). Default ausente — a loja que
+    // ainda roda pelas chaves da plataforma, que é o que todos os testes
+    // anteriores a esta tarefa exercitam.
+    registroMp?: any
 } = {}) {
     const registro = {
         leiturasLinha: 0,
+        leiturasRegistroMp: 0,
         leiturasPedido: 0,
         leiturasIdsReivindicados: 0,
         filtrosIdsReivindicados: [] as any[],
@@ -218,6 +234,18 @@ function clienteSupaFalso(opts: {
         },
     }
     function resolver(no: any) {
+        // Tarefa mp-2: a leitura das credenciais do lojista passa pelo MESMO
+        // client. Ramo PRÓPRIO — sem ele a leitura cairia no ramo da "leitura
+        // simples da linha" abaixo, somando em `leiturasLinha` e disparando o
+        // `linhaFinal` da 2a leitura: todos os testes de estado da linha
+        // passariam a medir outra coisa em silêncio.
+        if (no.tabela === "app_settings") {
+            registro.leiturasRegistroMp++
+            return promessa({
+                data: opts.registroMp ? { value: JSON.stringify(opts.registroMp) } : null,
+                error: null,
+            })
+        }
         if (no.tabela === "marketplace_orders") {
             registro.leiturasPedido++
             return promessa({ data: opts.pedido ?? null, error: null })
@@ -896,4 +924,78 @@ Deno.test("T-1b - SEM outra linha reivindicando o refund (idsJaReivindicados vaz
     assertEquals(resposta.status, 200)
     const corpo = await resposta.json()
     assertEquals(corpo.status, "concluido")
+})
+
+// ── Tarefa mp-2 (15/09/2026): de QUEM é o token que devolve o dinheiro ─────
+//
+// A chave do lojista (Ajustes > Pagamentos > Mercado Pago) passou a valer:
+// `resolverCredenciaisMp` (_shared/credenciais-mp.ts) escolhe entre a chave
+// do LOJISTA (registro cifrado em app_settings) e a da PLATAFORMA
+// (MP_ACCESS_TOKEN), e FECHA quando existe cadastro que não dá para decifrar.
+// Aqui isso decide de qual conta o dinheiro volta — estornar pela conta
+// errada é dinheiro que sai de quem não vendeu.
+//
+// M1 prova o token decifrado chegando ao executor E ao Bearer do MP (o
+// ambiente tem o token da plataforma, DIFERENTE de propósito: sem isso a
+// asserção passaria por coincidência). M2 prova a falha fechada — e que a
+// linha NÃO é marcada em_processamento, a mesma razão do passo 4 da edge:
+// nada fica preso na fila por falta de configuração.
+
+// O fixture compartilhado recebe o cofre por parâmetro (`envFalso` lá
+// dentro), então montar o registro NÃO precisa mais de `comEnv` em volta —
+// só a chamada do handler precisa, que é quem lê o Deno.env de verdade.
+
+Deno.test("M1 - com chave do LOJISTA cadastrada, o token do executor e o Bearer do MP sao o DECIFRADO dele, nunca o MP_ACCESS_TOKEN da plataforma", async () => {
+    const { cliente } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        registroMp: await registroMpDeTeste(),
+    })
+    const executor = executorFalso(
+        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+        { chamarMp: true },
+    )
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({ MP_CHAVES_ENCRYPTION_KEY: CHAVE_CIFRA_TESTE }, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(executor.registro.chamadas[0].token, TOKEN_LOJISTA_FALSO)
+    assertEquals(mp.registro.headers[0].Authorization, `Bearer ${TOKEN_LOJISTA_FALSO}`)
+})
+
+Deno.test("M2 - chave do lojista cadastrada + cofre ausente: falha FECHADA (500), executor nao chamado e linha NAO marcada", async () => {
+    const registroCifrado = await registroMpDeTeste()
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+        registroMp: registroCifrado,
+    })
+    const executor = executorFalso({ tipo: "concluido" }, { chamarMp: true })
+    const mp = fetchMpFalso()
+    // Sem MP_CHAVES_ENCRYPTION_KEY no ambiente, e COM o MP_ACCESS_TOKEN da
+    // plataforma (o `prepararEnv` sempre o define) — é essa combinação que
+    // distingue "falhou fechado" de "caiu na chave da plataforma".
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY")
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 500)
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(mp.registro.chamadas, 0)
+    // Passo 4 da edge: sem token não há execução — e uma linha marcada
+    // em_processamento sem chamada é fila parada à toa.
+    assertEquals(registro.marcas.length, 0)
 })

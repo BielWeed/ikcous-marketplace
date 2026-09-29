@@ -126,6 +126,44 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
+  // C3.3 (plano §5.3): "Vender" é sub-view do painel PRINCIPAL, não uma
+  // sensível à origem como admin-push/admin-notifications/admin-whatsapp-
+  // config — sem este `case` o `default` devolveria "profile" e o botão
+  // Voltar do AdminLayout sairia do painel inteiro (nova-tela.md:45).
+  it("admin-pdv sempre volta para admin-dashboard, com ou sem origem do admin conhecida", () => {
+    expect(paiDaTelaDoAdmin("admin-pdv", null, false)).toBe("admin-dashboard");
+    expect(paiDaTelaDoAdmin("admin-pdv", "home", false)).toBe(
+      "admin-dashboard",
+    );
+    expect(paiDaTelaDoAdmin("admin-pdv", "admin-orders", false)).toBe(
+      "admin-dashboard",
+    );
+  });
+
+  // 26/09: Dashboard CRM e Financeiro abrem pelos botões do Início e voltam a
+  // ele; Devoluções mora ao lado dos pedidos (nasce de pedido entregue).
+  it("admin-crm e admin-financeiro voltam ao Início; admin-devolucoes volta aos pedidos", () => {
+    expect(paiDaTelaDoAdmin("admin-crm", null, false)).toBe("admin-dashboard");
+    expect(paiDaTelaDoAdmin("admin-financeiro", "home", false)).toBe(
+      "admin-dashboard",
+    );
+    expect(paiDaTelaDoAdmin("admin-devolucoes", null, false)).toBe(
+      "admin-orders",
+    );
+    expect(paiDaTelaDoAdmin("admin-devolucoes", "admin-dashboard", false)).toBe(
+      "admin-orders",
+    );
+  });
+
+  it("admin-shipping-national sempre volta para admin-shipping — tela filha do botão 'Estratégias do frete nacional'", () => {
+    expect(paiDaTelaDoAdmin("admin-shipping-national", null, false)).toBe(
+      "admin-shipping",
+    );
+    expect(
+      paiDaTelaDoAdmin("admin-shipping-national", "admin-dashboard", false),
+    ).toBe("admin-shipping");
+  });
+
   it("admin-notifications com origem admin-orders volta para admin-orders (a tela anterior real)", () => {
     // Decisão do Gabriel (30/08/2026), na prévia da cliente-01: o botão que
     // dizia "Perfil" na tela de notificações do painel estava errado — o

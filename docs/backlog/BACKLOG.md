@@ -13,6 +13,13 @@
 > [`../auditoria/2026-08-22-reauditoria-de-julho.md`](../auditoria/2026-08-22-reauditoria-de-julho.md).**
 > O mesmo vale para o [`backlog.csv`](backlog.csv), que sai da mesma fonte.
 
+> **Nota de 15/09/2026:** os `✅` que aparecem agora na coluna **Entrada** do índice abaixo foram
+> conferidos no código de hoje, um a um (migration, arquivo ou teste citado ao lado de cada
+> tarefa, mais abaixo neste documento). **Ausência de `✅` não significa "aberto"** — só significa
+> que não foi reconferido nesta rodada; continua valendo a orientação acima de checar o estado
+> real antes de puxar qualquer cartão. O [`backlog.csv`](backlog.csv) **não foi tocado** e segue
+> sem nenhuma marca — os dois arquivos, que nasceram da mesma fonte, agora divergem.
+
 Gerado em 30/07/2026, a partir da reauditoria dos 85 achados de 29/07, do estado medido do
 banco de produção e do levantamento de lacuna de produto. O retrato que originou este backlog
 está em [`06-ESTADO-ATUAL.md`](../onboarding/06-ESTADO-ATUAL.md); a ordem sugerida de ataque,
@@ -64,42 +71,42 @@ Candidatas que **não** entraram, e por quê:
 
 | ID | Título | Tipo | Prio | Tam | Entrada |
 | --- | --- | --- | --- | --- | --- |
-| `AUTH-010` | Exigir e-mail e WhatsApp juntos e amarrar o OTP de convidado a um pedido específico | bug | P0 | G | — |
-| `CHECKOUT-010` | Decidir: a loja vai cobrar dentro do site ou a cobrança continua acontecendo fora? | decisao | P0 | P | — |
-| `PEDIDO-010` | Trocar != por IS DISTINCT FROM na checagem de dono de update_order_status_atomic | bug | P0 | M | — |
-| `PEDIDO-020` | Avisar o lojista quando entra um pedido novo | feature | P0 | M | — |
-| `ADMIN-010` | Fazer updateConfig sinalizar falha em vez de engolir o erro e mostrar sucesso | bug | P1 | M | — |
-| `ADMIN-020` | Decidir se as colunas de vitrines e de banner completo entram no banco ou saem do código | decisao | P1 | P | — |
-| `ADMIN-030` | Parar de apagar do storage a imagem de banner que o admin não enviou nesta sessão | bug | P1 | M | — |
+| `AUTH-010` | Exigir e-mail e WhatsApp juntos e amarrar o OTP de convidado a um pedido específico | bug | P0 | G | ✅ |
+| `CHECKOUT-010` | Decidir: a loja vai cobrar dentro do site ou a cobrança continua acontecendo fora? | decisao | P0 | P | ✅ |
+| `PEDIDO-010` | Trocar != por IS DISTINCT FROM na checagem de dono de update_order_status_atomic | bug | P0 | M | ✅ |
+| `PEDIDO-020` | Avisar o lojista quando entra um pedido novo | feature | P0 | M | ✅ |
+| `ADMIN-010` | Fazer updateConfig sinalizar falha em vez de engolir o erro e mostrar sucesso | bug | P1 | M | ✅ |
+| `ADMIN-020` | Decidir se as colunas de vitrines e de banner completo entram no banco ou saem do código | decisao | P1 | P | ✅ |
+| `ADMIN-030` | Parar de apagar do storage a imagem de banner que o admin não enviou nesta sessão | bug | P1 | M | ✅ |
 | `AUTH-020` | Por que o envio do OTP depende de um SEGUNDO projeto Supabase e quem tem acesso a ele? | decisao | P1 | P | — |
-| `BANCO-010` | Parar de expor a coluna custo para qualquer usuário autenticado | bug | P1 | M | — |
+| `BANCO-010` | Parar de expor a coluna custo para qualquer usuário autenticado | bug | P1 | M | ✅ |
 | `BANCO-020` | Adicionar guarda de is_admin em get_category_analytics | bug | P1 | P | ✅ |
 | `BANCO-030` | Decidir a estratégia de reconciliação do ledger de migrations | decisao | P1 | M | — |
 | `BANCO-040` | Qual política de backup e PITR está ativa no plano Supabase? | decisao | P1 | P | — |
 | `BANCO-050` | O que fazer com as 42 migrations pendentes e as 28 versões do ledger sem arquivo? | decisao | P1 | P | — |
-| `CARRINHO-010` | Preservar variantNames na reidratação do localStorage e na sincronia entre dispositivos | bug | P1 | M | — |
+| `CARRINHO-010` | Preservar variantNames na reidratação do localStorage e na sincronia entre dispositivos | bug | P1 | M | ✅ |
 | `CARRINHO-020` | Reidratar o snapshot de produto guardado no carrinho antes do checkout | bug | P1 | G | — |
-| `CATALOGO-010` | Parar de esvaziar o catálogo quando a consulta pública de produtos falha | bug | P1 | M | — |
+| `CATALOGO-010` | Parar de esvaziar o catálogo quando a consulta pública de produtos falha | bug | P1 | M | ✅ |
 | `CATALOGO-020` | Por que o catálogo está travado em 200 produtos? | decisao | P1 | P | — |
 | `CHECKOUT-020` | Bloquear checkout com carrinho vazio no front e no RPC | bug | P1 | M | — |
-| `CHECKOUT-030` | Criar chave de idempotência do pedido e lock síncrono no botão de finalizar | bug | P1 | G | — |
-| `CHECKOUT-040` | Registrar status de pagamento do pedido (pendente/pago/estornado) no admin | feature | P1 | M | — |
+| `CHECKOUT-030` | Criar chave de idempotência do pedido e lock síncrono no botão de finalizar | bug | P1 | G | ✅ |
+| `CHECKOUT-040` | Registrar status de pagamento do pedido (pendente/pago/estornado) no admin | feature | P1 | M | ✅ |
 | `FRETE-010` | Qual provedor de frete está realmente ativo em produção: flat_fee, Melhor Envio ou Frenet? | decisao | P1 | P | — |
 | `INFRA-010` | Eliminar as requisições duplicadas do boot causadas por callbacks instáveis | divida tecnica | P1 | G | — |
 | `INFRA-020` | Fazer `npm run typecheck` checar de verdade | infra | P1 | P | ✅ |
 | `INFRA-030` | Remover `*.yml` do .gitignore para permitir arquivos de CI | infra | P1 | P | — |
-| `INFRA-040` | Criar o primeiro workflow de CI rodando lint, typecheck e build | infra | P1 | M | — |
+| `INFRA-040` | Criar o primeiro workflow de CI rodando lint, typecheck e build | infra | P1 | M | ✅ |
 | `INFRA-050` | Proteger o `.env.bak` no .gitignore | infra | P1 | P | — |
 | `INFRA-060` | Qual é a fonte de verdade das variáveis de produção, e qual DATABASE_URL ficou viva depois da troca de 30/07? | decisao | P1 | P | — |
 | `PEDIDO-030` | Impedir que a reconexão do realtime zere a lista de pedidos do admin | bug | P1 | P | ✅ |
-| `PEDIDO-040` | Quebrar o loop de requisições do OrderDetailsView para usuário sem pedidos | bug | P1 | P | — |
+| `PEDIDO-040` | Quebrar o loop de requisições do OrderDetailsView para usuário sem pedidos | bug | P1 | P | ✅ |
 | `PEDIDO-050` | Decidir o destino do segundo projeto Supabase que envia o OTP de convidado | decisao | P1 | P | — |
 | `PEDIDO-060` | Mostrar o código de rastreio para o cliente | feature | P1 | P | ✅ |
-| `PEDIDO-070` | Enviar e-mail de confirmação de pedido para o cliente | feature | P1 | M | — |
-| `PUSH-010` | Fazer send-push reportar quantos envios falharam em vez de sempre success:true | bug | P1 | M | — |
+| `PEDIDO-070` | Enviar e-mail de confirmação de pedido para o cliente | feature | P1 | M | ✅ |
+| `PUSH-010` | Fazer send-push reportar quantos envios falharam em vez de sempre success:true | bug | P1 | M | ✅ |
 | `PUSH-020` | Checar a sessão antes de criar a assinatura push no navegador | bug | P1 | P | ✅ |
 | `PUSH-030` | As chaves VAPID estão configuradas no ambiente da edge function send-push? | decisao | P1 | P | — |
-| `PWA-010` | Unificar a recuperação de erro de chunk e dar saída para o usuário | bug | P1 | G | — |
+| `PWA-010` | Unificar a recuperação de erro de chunk e dar saída para o usuário | bug | P1 | G | ✅ |
 | `ADMIN-040` | Sincronizar o cache de módulo de banners e parar de mutar o state no reorder | bug | P2 | M | — |
 | `ADMIN-050` | Usar null em vez de undefined nos campos que o admin precisa poder zerar | bug | P2 | M | — |
 | `ADMIN-060` | Corrigir o ciclo de vida do formulário de produto: duplo clique e rascunho perdido | bug | P2 | M | — |

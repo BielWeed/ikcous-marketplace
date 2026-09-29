@@ -23,6 +23,14 @@ const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
 const toastError = vi.fn();
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
@@ -49,38 +57,52 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: null, profile: null, loading: false }),
 }));
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: [
-      {
-        product: {
-          id: "prod-1",
-          name: "Produto Teste",
-          description: "",
-          price: 100,
-          images: [],
-          category: "geral",
-          stock: 10,
-          sold: 0,
-          isActive: true,
-          isBestseller: false,
-          freeShipping: false,
-          createdAt: new Date().toISOString(),
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: [
+        {
+          product: {
+            id: "prod-1",
+            name: "Produto Teste",
+            description: "",
+            price: 100,
+            images: [],
+            category: "geral",
+            stock: 10,
+            sold: 0,
+            isActive: true,
+            isBestseller: false,
+            freeShipping: false,
+            createdAt: new Date().toISOString(),
+          },
+          quantity: 1,
         },
-        quantity: 1,
+      ],
+      cartTotal: 100,
+      shippingFee: 0,
+      clearCart,
+      // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+      // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
+      // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
+      // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
+      // sem a opção, o botão travaria por um motivo que ele não prova.
+      selectedShippingOption: {
+        id: "local-delivery",
+        name: "Entrega Local",
+        price: 0,
+        deliveryDays: 1,
+        provider: "local",
       },
-    ],
-    cartTotal: 100,
-    shippingFee: 0,
-    clearCart,
-    selectedShippingOption: null,
-    shippingCep: "38500-000",
-    // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
-    // laudo 3108); a limpeza dele não afeta o que estes testes afirmam.
-    setSelectedShippingOption: vi.fn(),
-    setShippingCep: vi.fn(),
-  }),
-}));
+      shippingCep: "01310-100",
+      // Setters consumidos pelo efeito da reconciliação de CEP (onda 4 do
+      // laudo 3108); a limpeza dele não afeta o que estes testes afirmam.
+      setSelectedShippingOption: vi.fn(),
+      setShippingCep: vi.fn(),
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
@@ -149,7 +171,7 @@ function localizarAvisoDeComoDestravar() {
   );
 }
 
-async function preencherEClicarFinalizar() {
+async function preencherEClicarFinalizar(antesDoClique?: () => void) {
   await act(async () => {
     digitar("checkout-name", "Cliente Teste");
     digitar("checkout-tel", "34999999999");
@@ -176,6 +198,7 @@ async function preencherEClicarFinalizar() {
   });
 
   const botao = localizarBotaoFinalizar()!;
+  antesDoClique?.();
   await act(async () => {
     botao.click();
     await esperarMicrotarefas();
@@ -263,6 +286,91 @@ describe("CheckoutView — o botão Finalizar Pedido obedece o painel de conferi
       await esperarMicrotarefas();
     });
     expect(createOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it("RPC sem resposta: para o spinner, preserva a chave e bloqueia novo clique até conferir o pedido", async () => {
+    createOrder.mockImplementationOnce(() => new Promise(() => {}));
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    const agendar = globalThis.setTimeout;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation(
+      (callback, prazo, ...args) =>
+        agendar(callback, prazo === 30_000 ? 1 : prazo, ...args),
+    );
+    await preencherEClicarFinalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain(
+      "O pedido pode ter sido criado",
+    );
+    expect(
+      document.querySelector('button[data-acao="conferir_antes"]'),
+    ).not.toBeNull();
+    const botao = localizarBotaoFinalizar()!;
+    expect(botao.disabled).toBe(true);
+    botao.click();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(clearCart).not.toHaveBeenCalled();
+    const chaveDoPrimeiroEnvio = createOrder.mock.calls[0][0].idempotencyKey;
+    expect(
+      JSON.parse(sessionStorage.getItem("ikcous-chave-do-pedido")!).chave,
+    ).toBe(chaveDoPrimeiroEnvio);
+  });
+
+  it("no HTTP local sem randomUUID, gera chave e envia apenas um pedido", async () => {
+    createOrder.mockResolvedValueOnce({ id: "pedido-http" });
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await preencherEClicarFinalizar(() => {
+      sessionStorage.removeItem("ikcous-chave-do-pedido");
+      vi.stubGlobal("crypto", {
+        getRandomValues: (bytes: Uint8Array) => bytes.fill(7),
+      });
+    });
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(createOrder.mock.calls[0][0].idempotencyKey).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(clearCart).toHaveBeenCalledTimes(1);
+  });
+
+  it("erro inesperado antes da RPC encerra o spinner e mostra conferência", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await preencherEClicarFinalizar(() => {
+      sessionStorage.removeItem("ikcous-chave-do-pedido");
+      vi.stubGlobal("crypto", {
+        getRandomValues: () => {
+          throw new Error("Web Crypto indisponível");
+        },
+      });
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(localizarBotaoFinalizar()?.textContent).toContain("Finalizar");
+    expect(
+      document.querySelector('button[data-acao="conferir_antes"]'),
+    ).not.toBeNull();
+    expect(clearCart).not.toHaveBeenCalled();
   });
 
   it("recusa com SQLSTATE (ex.: falha transitória do Postgres): o painel de tentar_de_novo aparece e o Finalizar Pedido continua HABILITADO", async () => {

@@ -21,6 +21,17 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+// Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
+// do lojista nos testes MP-1/MP-2 do fim deste arquivo. Desde a tarefa mp-6
+// o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
+// mesma montagem copiada em cinco suítes, e cópia de fixture envelhece
+// calada quando a forma do registro em app_settings muda.
+import {
+  CHAVE_CIFRA_TESTE,
+  contandoFrom,
+  registroMpDeTeste,
+  TOKEN_LOJISTA_FALSO,
+} from "../_shared/credenciais-mp_fixtures.ts";
 
 const SEGREDO = "segredo-reconciliacao-teste";
 const UUID_PEDIDO_1 = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -68,8 +79,13 @@ function clienteFalso(opts: {
   // conferência deles nem roda). `erroFrom` injeta falha de leitura.
   pedidoTotal?: number | null;
   erroFrom?: unknown;
+  // Fase 3.5 (cartão): `rpc("liberar_cobranca_do_pedido")` — o boolean
+  // devolvido (default true) e a falha de banco simulada.
+  liberarResultado?: boolean;
+  liberarErro?: unknown;
   registro: {
     chamadasConfirmar: Array<{ args: Record<string, unknown> }>;
+    chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
     atualizacoesOrderRefunds?: Array<
@@ -108,6 +124,11 @@ function clienteFalso(opts: {
   // antes (nenhum id excluído).
   idsJaReivindicadosPorPedido?: (orderId: string, idAtual: string) => string[];
   erroIdsJaReivindicados?: unknown;
+  // --- Tarefa mp-2: o registro CIFRADO do lojista, como ele dorme em
+  // app_settings (_shared/credenciais-mp.ts). Default ausente — a loja que
+  // ainda roda pelas chaves da plataforma, que é o que todos os testes
+  // anteriores a esta tarefa exercitam.
+  registroMp?: Record<string, unknown> | null;
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -120,6 +141,16 @@ function clienteFalso(opts: {
         opts.registro.chamadasConfirmar.push({ args: args ?? {} });
         if (opts.rpcConfirmarError) return { data: null, error: opts.rpcConfirmarError };
         return { data: opts.rpcConfirmarResultado ?? "pago", error: null };
+      }
+      if (nome === "liberar_cobranca_do_pedido") {
+        if (!opts.registro.chamadasLiberar) {
+          // Teste que não esperava liberação nenhuma: estoura, em vez de a
+          // liberação passar despercebida.
+          throw new Error("rpc liberar_cobranca_do_pedido inesperada neste teste");
+        }
+        opts.registro.chamadasLiberar.push({ args: args ?? {} });
+        if (opts.liberarErro) return { data: null, error: opts.liberarErro };
+        return { data: opts.liberarResultado ?? true, error: null };
       }
       if (nome === "concluir_estorno") {
         opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
@@ -297,6 +328,29 @@ function clienteFalso(opts: {
                         error: null,
                       };
                   },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      // Tarefa mp-2: a leitura das credenciais do lojista
+      // (_shared/credenciais-mp.ts) passa pelo MESMO client de service role
+      // que o cron já usa — ramo próprio, porque `from` desconhecido aqui
+      // LANÇA de propósito.
+      if (tabela === "app_settings") {
+        return {
+          select(_colunas: string) {
+            return {
+              eq(_coluna: string, _valor: string) {
+                return {
+                  maybeSingle: async () => ({
+                    data: opts.registroMp
+                      ? { value: JSON.stringify(opts.registroMp) }
+                      : null,
+                    error: null,
+                  }),
                 };
               },
             };
@@ -589,6 +643,40 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
   assertEquals(corpo.confirmados, 1);
   assertEquals(urlsChamadas.length, 1);
   assertEquals(urlsChamadas.every((u) => !u.includes("/v1/payments/")), true);
+});
+
+// Achado S5/N3 (3ª revisão de risco, 26/09/2026): um candidato cuja vaga
+// guarda o SENTINELA (`verificando:...`, Achado B2) nunca é um id de order
+// de verdade — `idEhClassico` também não reconhece — e cada ciclo (a cada
+// 10 min) gastava uma chamada ao MP que SEMPRE falhava (400
+// `invalid_path_param`), sem o candidato nunca sair da fila.
+//
+// Também fecha a 2ª metade do cenário Q4b (B2, 5ª revisão de risco,
+// 26/09/2026, `criar-pagamento/index_test.ts`, teste "B2, Q4"): o filtro por
+// `external_reference` em `buscarOrdersDoPedido` já impede a order APROVADA
+// de OUTRO pedido de ser gravada na vaga — a vaga fica um SENTINELA, nunca o
+// id órfão. Este teste prova que, MESMO se algo escapasse essa 1ª barreira,
+// `reconciliar-pagamentos` ainda IGNORA qualquer vaga em sentinela — nunca
+// chama `confirmar_pagamento` para ela, então nunca confirmaria este pedido
+// com a cobrança de outro.
+Deno.test("candidato com o SENTINELA na vaga ('verificando:...') -> ignorado, NUNCA chama o MP (Achado S5/N3)", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const sentinela = `verificando:${UUID_PEDIDO_1}:c0`;
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: sentinela }];
+  const supabase = clienteFalso({ candidatos, registro });
+  const fetchImpl = async (url: string) => {
+    throw new Error(`fetch inesperado nos testes — o sentinela NUNCA deveria chegar ao MP: ${url}`);
+  };
+  const req = requisicaoComSegredo(SEGREDO);
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.verificados, 1);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.falhas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
 });
 
 Deno.test("candidato legado pago (approved) é confirmado como pago_apos_expirar, sem tocar a Orders API", async () => {
@@ -1923,6 +2011,20 @@ function supabaseRealMinimo(opts: {
           },
         };
       }
+      // Tarefa mp-2: a resolução das credenciais (_shared/credenciais-mp.ts)
+      // lê app_settings pelo MESMO client. Sem registro — estes testes são
+      // os do caminho de sempre, com a chave da plataforma (MP_ACCESS_TOKEN).
+      if (tabela === "app_settings") {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return { maybeSingle: async () => ({ data: null, error: null }) };
+              },
+            };
+          },
+        };
+      }
       if (tabela === "order_refunds") {
         return {
           select(_cols: string) {
@@ -2100,6 +2202,19 @@ Deno.test("aviso de pagamento atrasado (reconciliação): reserva NÃO concedida
             },
           };
         }
+        // Tarefa mp-2: sem registro do lojista — este teste é o do caminho de
+        // sempre, com a chave da plataforma (MP_ACCESS_TOKEN).
+        if (tabela === "app_settings") {
+          return {
+            select(_cols: string) {
+              return {
+                eq(_col: string, _val: unknown) {
+                  return { maybeSingle: async () => ({ data: null, error: null }) };
+                },
+              };
+            },
+          };
+        }
         throw new Error(`from inesperado no dublê mínimo: ${tabela}`);
       },
     };
@@ -2165,4 +2280,360 @@ Deno.test("PEÇA 5 - AUSÊNCIA DE DUPLICATA: dois candidatos do MESMO pedido no 
     Deno.env.delete("SMTP_USER");
     Deno.env.delete("SMTP_PASSWORD");
   }
+});
+
+// --- Tarefa mp-2 (15/09/2026): de QUEM é o token que o cron consulta -------
+//
+// `resolverCredenciaisMp` (_shared/credenciais-mp.ts) decide entre a chave do
+// LOJISTA (registro cifrado em app_settings) e a da PLATAFORMA
+// (MP_ACCESS_TOKEN), e FECHA quando existe cadastro que não dá para decifrar.
+// Aqui o efeito é diferente das outras três functions: consultar o MP com a
+// chave da plataforma quando o lojista tem a dele devolveria 404 para toda
+// order dele — a rede de segurança do dinheiro calada, que é exatamente o
+// buraco que esta reconciliação existe para tapar.
+
+/** Como `fetchConsulta`, mas guardando os headers: é no `Authorization` que
+ * mora a resposta de "com a chave de quem este cron está perguntando". */
+function fetchConsultaComHeaders(
+  capturado: { autorizacoes: string[]; chamadas: number },
+  status: number,
+  corpo: Record<string, unknown>,
+) {
+  return async (_url: string, init?: RequestInit) => {
+    capturado.chamadas++;
+    capturado.autorizacoes.push(
+      (init?.headers as Record<string, string> | undefined)?.Authorization ?? "",
+    );
+    return new Response(JSON.stringify(corpo), { status });
+  };
+}
+
+Deno.test("MP-1 — com chave do LOJISTA cadastrada, o Bearer da consulta ao MP é o token DECIFRADO dele, nunca o MP_ACCESS_TOKEN da plataforma", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder = "ORDTST09LOJISTA4WC79335A68CZ5NZ7X";
+    const supabase = clienteFalso({
+      candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+      rpcConfirmarResultado: "pago",
+      registro,
+      registroMp: await registroMpDeTeste(),
+    });
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: idOrder,
+      status: "processed",
+      status_detail: "accredited",
+    });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(corpo.confirmados, 1);
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+Deno.test("MP-2 — chave do lojista cadastrada + cofre ausente: o candidato é PULADO (falhas:1) e o MP não é consultado com a chave da plataforma", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  const registroCifrado = await registroMpDeTeste();
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const idOrder = "ORDTST10COFREAUSENTE4WC79335A68C";
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    rpcConfirmarResultado: "pago",
+    registro,
+    registroMp: registroCifrado,
+  });
+  const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+  const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+    id: idOrder,
+    status: "processed",
+    status_detail: "accredited",
+  });
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.verificados, 1);
+  assertEquals(corpo.confirmados, 0);
+  assertEquals(corpo.falhas, 1);
+  // Nem uma consulta: o candidato some do lote sem o token da plataforma
+  // encostar na conta do lojista.
+  assertEquals(capturado.chamadas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("MP-3 — cofre ausente: a fila de ESTORNOS também para fechada (falhos:1), sem POST de Bearer vazio e sem gastar `tentativas` da linha", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  const registroCifrado = await registroMpDeTeste();
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+
+  const registro = {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+  const pedido = pedidoFrescoPara({ total: 50 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    registroMp: registroCifrado,
+    refundsPendentes: [
+      { id: "r1", order_id: pedido.id, amount: 50, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+  const fetchImpl = fetchConsultaComHeaders(capturado, 201, {
+    id: 999,
+    status: "approved",
+    amount: 50,
+  });
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  // `falhos` e não `adiados`: "não deu para tentar" é falha honesta, do mesmo
+  // jeito que o candidato de pagamento pulado lá em cima.
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  // Nenhum POST com Bearer vazio: o MP recusaria, e o preço dessa recusa é
+  // uma `tentativas` queimada por ciclo até o teto de 5 — depois do teto a
+  // linha entra no regime "só consulta" e o cron NUNCA mais repete o POST,
+  // mesmo depois de alguém devolver o cofre ao lugar. Cofre fora do ar é
+  // conserto de operador; não pode consumir o orçamento de tentativas de uma
+  // devolução de dinheiro.
+  assertEquals(capturado.chamadas, 0);
+  assertEquals(registro.atualizacoesOrderRefunds.length, 0);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+});
+
+// --- Tarefa mp-6: UMA resolução de credenciais por invocação ---------------
+//
+// Ressalva da revisão de mp-1. Aqui o risco é de escala: este cron roda de
+// 10 em 10 minutos sobre um LOTE de candidatos. Resolver a credencial
+// dentro do laço multiplicaria por N o SELECT em app_settings e o AES-GCM —
+// e, pior, o lote passaria a rodar com credenciais DIFERENTES entre um
+// candidato e outro se o lojista salvasse a chave nova no meio da execução:
+// metade dos pedidos consultada na conta velha, metade na nova, e o relatório
+// de `falhas` sem como explicar. A resolução mora ANTES do laço; MP-4 prende
+// isso contando as leituras de app_settings com DOIS candidatos.
+
+// `contandoFrom` vem de `_shared/credenciais-mp_fixtures.ts` (mp-10) — era
+// copiado igual no `webhook-mercadopago/index_test.ts`.
+
+Deno.test("MP-4 — lote com DOIS candidatos resolve as credenciais UMA vez (um só SELECT em app_settings, não um por candidato)", async () => {
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder1 = "ORDTST11LOTEUM4WC79335A68CZ5NZ7X";
+    const idOrder2 = "ORDTST12LOTEDOIS4WC79335A68CZ5NZ";
+    const tabelas: string[] = [];
+    const supabase = contandoFrom(
+      clienteFalso({
+        candidatos: [
+          { order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder1 },
+          { order_id: UUID_PEDIDO_2, gateway_payment_id: idOrder2 },
+        ],
+        rpcConfirmarResultado: "pago",
+        registro,
+        registroMp: await registroMpDeTeste(),
+      }),
+      tabelas,
+    );
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: idOrder1,
+      status: "processed",
+      status_detail: "accredited",
+    });
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    // Os DOIS candidatos passaram pelo laço com o token do lojista.
+    assertEquals(corpo.verificados, 2);
+    assertEquals(capturado.chamadas, 2);
+    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+    assertEquals(capturado.autorizacoes[1], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+    // E UMA leitura de app_settings para o lote inteiro.
+    assertEquals(
+      tabelas.filter((tabela) => tabela === "app_settings").length,
+      1,
+      "a credencial tem de ser resolvida antes do laço, não uma vez por candidato",
+    );
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+// ═══ Fase 3.5 (26/09/2026): recusa de CARTÃO libera a vaga, nunca cancela ════
+//
+// Mesma regra do webhook, no caminho que recupera o que ele perdeu: o
+// candidato cuja order de cartão foi recusada/cancelada/expirada chama
+// `liberar_cobranca_do_pedido`, NUNCA `confirmar_pagamento('recusado')` (que
+// cancelaria o pedido e devolveria o estoque). PIX segue como era.
+
+function orderDoCandidato(id: string, status: string, statusDetail: string, tipo: string) {
+  return {
+    id,
+    status,
+    status_detail: statusDetail,
+    transactions: { payments: [{ id: "PAY1", status, status_detail: statusDetail, payment_method: { type: tipo } }] },
+  };
+}
+
+for (
+  const caso of [
+    { nome: "crédito recusado (failed:high_risk)", status: "failed", detalhe: "high_risk", tipo: "credit_card" },
+    { nome: "débito cancelado", status: "canceled", detalhe: "canceled", tipo: "debit_card" },
+    { nome: "crédito expirado (3DS abandonado)", status: "expired", detalhe: "expired", tipo: "credit_card" },
+  ]
+) {
+  Deno.test(`cartão — candidato com order ${caso.nome} -> liberar_cobranca_do_pedido(candidato), NUNCA confirmar_pagamento; ignorados:1, cobrancasLiberadas:1`, async () => {
+    const idOrder = "ORDTST01CARTAORECUSADO";
+    const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({ candidatos, registro });
+    const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, caso.status, caso.detalhe, caso.tipo));
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasConfirmar.length, 0, "confirmar_pagamento('recusado') cancelaria o pedido");
+    assertEquals(registro.chamadasLiberar, [
+      { args: { p_order_id: UUID_PEDIDO_1, p_gateway_payment_id: idOrder } },
+    ]);
+    assertEquals(corpo.verificados, 1);
+    assertEquals(corpo.confirmados, 0);
+    assertEquals(corpo.ignorados, 1);
+    assertEquals(corpo.falhas, 0);
+    assertEquals(corpo.cobrancasLiberadas, 1);
+  });
+}
+
+Deno.test("cartão — liberar devolve false (vaga já solta pelo webhook, ou pedido já expirado) -> ignorados:1, cobrancasLiberadas:0", async () => {
+  const idOrder = "ORDTST01CARTAOJASOLTO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    liberarResultado: false,
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "failed", "failed", "credit_card"));
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.cobrancasLiberadas, 0);
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("cartão — liberar com erro de banco -> falhas:1 (o candidato volta no próximo ciclo), sem confirmar_pagamento", async () => {
+  const idOrder = "ORDTST01CARTAOERRO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    liberarErro: { message: "deadlock" },
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "failed", "failed", "credit_card"));
+  const erroReal = console.error;
+  console.error = () => {};
+  let corpo: Record<string, unknown>;
+  try {
+    corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+  } finally {
+    console.error = erroReal;
+  }
+
+  assertEquals(corpo.falhas, 1);
+  assertEquals(corpo.ignorados, 0);
+  assertEquals(corpo.cobrancasLiberadas, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+Deno.test("cartão — aprovado (processed:accredited) continua em confirmar_pagamento('pago') — a regra nova é só da recusa", async () => {
+  const idOrder = "ORDTST01CARTAOPAGO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    rpcConfirmarResultado: "ja_pago",
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "processed", "accredited", "credit_card"));
+
+  await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+
+  assertEquals(registro.chamadasLiberar.length, 0);
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+});
+
+Deno.test("PIX — candidato com order recusada (failed, bank_transfer) continua em confirmar_pagamento('recusado') — comportamento de antes", async () => {
+  const idOrder = "ORDTST01PIXRECUSADO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    rpcConfirmarResultado: "recusado",
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "failed", "failed", "bank_transfer"));
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(registro.chamadasLiberar.length, 0);
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(registro.chamadasConfirmar[0].args.p_status, "recusado");
+  assertEquals(corpo.cobrancasLiberadas, 0);
+});
+
+Deno.test("PIX — candidato com order CANCELADA (troca PIX -> cartão) só libera a vaga, nunca cancela o pedido", async () => {
+  const idOrder = "ORDTST01PIXCANCELADO";
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const supabase = clienteFalso({
+    candidatos: [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }],
+    registro,
+  });
+  const fetchImpl = fetchConsulta(200, orderDoCandidato(idOrder, "canceled", "canceled", "bank_transfer"));
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(registro.chamadasConfirmar.length, 0);
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(corpo.ignorados, 1);
+});
+
+Deno.test("invariante confirmados + ignorados + falhas === verificados continua valendo com liberações de cartão no lote", async () => {
+  const registro = { chamadasConfirmar: [], chamadasLiberar: [], chamouCandidatos: false };
+  const candidatos = [
+    { order_id: UUID_PEDIDO_1, gateway_payment_id: "ORDTST01A" },
+    { order_id: UUID_PEDIDO_2, gateway_payment_id: "ORDTST01B" },
+  ];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+  const fetchImpl = async (url: string) => {
+    const corpo = url.endsWith("ORDTST01A")
+      ? orderDoCandidato("ORDTST01A", "failed", "rejected_by_issuer", "credit_card")
+      : orderDoCandidato("ORDTST01B", "processed", "accredited", "credit_card");
+    return new Response(JSON.stringify(corpo), { status: 200 });
+  };
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl })).json();
+
+  assertEquals(corpo.verificados, 2);
+  assertEquals(corpo.confirmados + corpo.ignorados + corpo.falhas, corpo.verificados);
+  assertEquals(corpo.confirmados, 1);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(corpo.cobrancasLiberadas, 1);
 });

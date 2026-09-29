@@ -1,0 +1,39 @@
+-- ============================================================================
+-- ROLLBACK MANUAL — 20261164000000_a_varredura_de_cancelados_enxerga_o_cancelamento
+-- (frente pedidos-4, tarefa useOrders-cancelados-janela-e-colunas)
+-- ============================================================================
+--
+-- O que esta migration criou: UMA função de catálogo,
+-- public.get_admin_orders_cancelados_recentes(integer, integer, integer),
+-- com os grants do passo 5 do cabeçalho dela. Ela não existia antes — não
+-- há definição a restaurar — e o DROP leva o ACL junto (REVOKE/GRANT não
+-- sobrevivem ao DROP da função).
+--
+-- Nenhuma tabela, coluna, índice, view, policy ou linha de dado foi criada,
+-- alterada ou apagada pela migration de ida: o rollback é UMA linha.
+--
+-- O front: enquanto a RPC não existir, a varredura de cancelados que a usa
+-- falha (o hook engole o erro e acende o aviso "lista incompleta" —
+-- comportamento de falha já coberto por teste, achado B da revisão de
+-- 26/08). A chamada antiga à get_admin_orders_paged continua viva no banco:
+-- reverting o commit do front restabelece o caminho de antes sem tocar no
+-- banco de novo.
+--
+-- Rode o arquivo INTEIRO no SQL Editor (ou psql), como admin:
+--
+--   1. DROP FUNCTION IF EXISTS
+--        public.get_admin_orders_cancelados_recentes(integer, integer, integer);
+--
+-- PROVA pós-rollback:
+--
+--   SELECT count(*) FROM pg_proc p
+--     JOIN pg_namespace n ON n.oid = p.pronamespace
+--    WHERE n.nspname = 'public'
+--      AND p.proname = 'get_admin_orders_cancelados_recentes';
+--   -- esperado: 0.
+--
+-- Sem BEGIN/COMMIT de nível superior (regra da casa): quem executa decide
+-- a transação, como em qualquer rollback manual daqui.
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS public.get_admin_orders_cancelados_recentes(integer, integer, integer);

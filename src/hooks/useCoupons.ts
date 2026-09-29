@@ -2,7 +2,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
 import { supabase } from "@/lib/supabase";
 import type { Coupon } from "@/types";
-import type { Database } from "@/types/supabase";
+import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

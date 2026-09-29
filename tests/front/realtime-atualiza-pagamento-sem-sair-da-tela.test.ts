@@ -86,6 +86,7 @@ function linhaRealtimeDePagamentoConfirmado(
     // correção do achado de lint da revisão, o próprio parâmetro tipado de
     // `mesclarAtualizacaoRealtime` — exigem presentes na linha real.
     address_id: null,
+    canal: "online",
     confirmation_email_sent_at: null,
     coupon_id: null,
     coupon_usage_returned: false,
@@ -101,8 +102,10 @@ function linhaRealtimeDePagamentoConfirmado(
     shipping_label_id: null,
     shipping_label_url: null,
     stock_returned_at: null,
+    estorno_manual_registrado_em: null,
     total_amount: null,
     user_id: "user-1",
+    vendedor_id: null,
     customer_name: "Cliente Teste",
     customer_data: {
       whatsapp: "34999999999",
@@ -124,6 +127,9 @@ function linhaRealtimeDePagamentoConfirmado(
     cancelled_after_shipping: false,
     returned_to_seller_at: null,
     valor_estornado: 0,
+    tentativas_de_pagamento: 0,
+    metodo_online: null,
+    parcelas: null,
     created_at: "2026-08-26T10:00:00.000Z",
     updated_at: "2026-08-26T10:05:00.000Z",
     ...overrides,

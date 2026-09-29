@@ -73,6 +73,23 @@ export function setCachedQuestionsData(data: any[] | null) {
   cachedQuestionsData = data;
 }
 
+// admin_cache-17 — as quatro variáveis de módulo acima sobrevivem à troca de
+// sessão na mesma aba/PWA: são cache em memória, sem chave de usuário, e
+// nenhum caminho de logout as tocava (clearLocalUserData, em
+// AuthContext.tsx, só varria localStorage). Num tablet de balcão
+// compartilhado, o próximo login via `onAuthStateChange` reaproveitava o
+// cache de nome/telefone/LTV do lojista anterior (ver os `if (cached... &&
+// ...length > 0) return;` acima). Função ÚNICA de limpeza, chamada por
+// `clearLocalUserData()` (cobre os dois caminhos de saída: SIGNED_OUT e o
+// fallback de erro do `logout`) e também quando o `onAuthStateChange` detecta
+// troca de uid sem SIGNED_OUT explícito entre as duas sessões.
+export function limparCachesDeAdmin() {
+  cachedCustomersData = null;
+  cachedCouponsData = null;
+  cachedReviewsData = null;
+  cachedQuestionsData = null;
+}
+
 // Prefetch for coupons
 export async function prefetchCouponsData() {
   if (cachedCouponsData && cachedCouponsData.length > 0) {

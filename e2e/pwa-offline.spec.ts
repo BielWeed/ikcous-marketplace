@@ -37,6 +37,25 @@ test("a página visitada carrega sem rede, servida pelo cache do service worker"
     )
     .toBe(1);
 
+  // O precache pronto (acima) NÃO prova que o SW já é o CONTROLADOR desta
+  // página: `caches.open` do `install` termina antes de `activate` rodar
+  // `clients.claim()` — mesma ressalva já documentada em
+  // pwa-boota-com-sw-ativo.spec.ts ("o controller chega um instante depois
+  // do activate — espera com prazo, não leitura única"), mas que faltava
+  // aqui. Sem esperar o controller, o reload abaixo corre à frente da
+  // ativação, cai direto na rede (sem passar pelo fetch handler) e NUNCA
+  // grava a entrada exata da rota no cache — a navegação offline então vem
+  // de um cache vazio (503) ou sem SW nenhum no controle
+  // (net::ERR_INTERNET_DISCONNECTED). Corrida pré-existente (reproduzida
+  // igualmente nos dois lados de #666 — sw.ts e este spec intocados no
+  // diff), não regressão do PR.
+  await expect
+    .poll(
+      () => page.evaluate(() => navigator.serviceWorker.controller !== null),
+      { timeout: 30_000, message: "o clients.claim() assumiu a página" },
+    )
+    .toBe(true);
+
   // 2º carregamento: já controlado pelo SW — grava a navegação no cache.
   await page.reload();
   await esperarBootLimpo(page);

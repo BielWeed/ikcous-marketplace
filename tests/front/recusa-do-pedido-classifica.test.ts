@@ -276,6 +276,48 @@ describe("classificarRecusaDoPedido", () => {
     expect(r.acao).toBe("recotar_frete");
   });
 
+  // REGRA FRETE × PAGAMENTO (dono, 21/09/2026 — migration 20261168000000):
+  // a MESMA frase sai da v23 (transportadora recusada sempre) e da v24
+  // (pix/card/cash com transportadora). Frase da revisão da supervisão —
+  // manda pagar o PIX no app, nunca "escolher entrega local" (impossível
+  // para quem recebe em outra cidade). Sem regra, caía em conferir_antes
+  // ("Ver meus pedidos") sem pedido nenhum ter nascido.
+  it("transportadora exige pagamento antecipado -> trocar a entrega", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Envio por transportadora exige pagamento antecipado. Pague com PIX no app para finalizar este envio.",
+      ),
+    );
+    expect(r.acao).toBe("trocar_entrega");
+    expect(r.mensagem).toContain("transportadora exige pagamento antecipado");
+  });
+
+  // FORMAS DE PAGAMENTO POR LOJA (25/09/2026 — migration 20261174000000): a
+  // loja desligou pix/card/cash na entrega ou o PIX pelo app ENTRE a tela
+  // filtrar e o clique chegar ao banco. CORRIGIDO DUAS VEZES: a revisão Opus
+  // do commit 085282c3 (anotação 1) trocou `trocar_entrega` (manda para o
+  // CARRINHO, botão que nem fala de pagamento) por `tentar_de_novo` — e o
+  // RE-review do commit 3c90059d bloqueou ESSA troca, porque o cabeçalho
+  // deste arquivo proíbe TEXTO DO BANCO (P0001 com `message`) virar
+  // `tentar_de_novo`, sem exceção nova sem passar pelas DUAS já escritas e
+  // pelo portão `recusa-e-toast-nao-divergem.test.ts`. A ação correta é a
+  // terceira: `trocar_pagamento`, um destino PRÓPRIO que também fecha o
+  // painel e mantém a pessoa no checkout (mesmo `so_fechar` de
+  // `tentar_de_novo`), mas sem fingir para o resto do código que o banco não
+  // escreveu um texto — o rótulo do botão diz "Escolher outra forma de
+  // pagamento", não "Tentar de novo".
+  it("forma de pagamento desligada pela loja -> trocar de forma de pagamento (o checkout já recarregou a config sozinho)", () => {
+    const r = classificarRecusaDoPedido(
+      p0001(
+        "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+      ),
+    );
+    expect(r.acao).toBe("trocar_pagamento");
+    expect(r.mensagem).toBe(
+      "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+    );
+  });
+
   it("o nome guloso continua resolvendo parenteses dentro do nome", () => {
     // Provado pela revisao: o `.+` guloso ja acertava isto, e trocar para
     // `[\s\S]*` nao pode ter quebrado. Nome do produto contendo o proprio

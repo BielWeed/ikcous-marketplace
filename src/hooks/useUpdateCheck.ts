@@ -2,6 +2,7 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { useStore } from "@/contexts/StoreContext";
 import { chaveSobreviveAPurga } from "@/lib/localStoragePurgeWhitelist";
 import { gravaMotivoDeRecarga } from "@/lib/motivo-de-recarga";
+import { gravaOrigemDeAtualizacao } from "@/lib/motivo-de-recarga";
 import {
   PRAZO_APLICACAO_UPDATE_MS,
   apagarCachesDoApp,
@@ -202,6 +203,10 @@ export function useUpdateCheck() {
       }
 
       // 4. Set reload reason for next boot
+      // Peça 22/09: a origem do build permite o boot PROVAR que a recarga
+      // trouxe outro build antes de anunciar "Sistema Atualizado" — no
+      // purge que não curou (a guarda anti-loop), o boot mostra o neutro.
+      gravaOrigemDeAtualizacao(SAFE_APP_VERSION);
       gravaMotivoDeRecarga("atualizacao-aplicada");
 
       // 5. Navegação honesta (aceite 6): location.replace não empilha

@@ -68,9 +68,15 @@ import {
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  recusaLiberaAVaga,
   TOLERANCIA_DE_VALOR,
+  vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
+// Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
+// (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
+// fecha a porta quando não dá para decidir com segurança, é este módulo.
+import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
@@ -471,6 +477,25 @@ async function handler(
       readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
     );
 
+  // Tarefa mp-2 (15/09/2026): de QUEM é a chave que este cron usa para
+  // perguntar ao MP — a do LOJISTA (cadastrada na tela de Ajustes, guardada
+  // cifrada em app_settings) ou, só quando não existe cadastro nenhum, o
+  // MP_ACCESS_TOKEN da plataforma. UMA resolução por ciclo, aqui fora do
+  // laço: é a mesma loja para todos os candidatos (app único, banco por
+  // cliente), e resolver por candidato seria uma leitura de app_settings por
+  // pedido sem mudar resposta nenhuma.
+  const credenciaisMp = await resolverCredenciaisMp(supabase);
+  if (!credenciaisMp.token) {
+    // Log só com origem e motivo — token nenhum, de ninguém, entra aqui. O
+    // ciclo NÃO aborta, e a resposta continua contando tudo: cada candidato
+    // de pagamento vira `falhas++` e cada linha da fila de estornos (mais
+    // abaixo) vira `estornos.falhos++` — o rótulo honesto de "não deu para
+    // verificar", nunca `ignorados`, e nunca uma chamada ao MP sem chave.
+    console.error(
+      `reconciliar-pagamentos: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
+    );
+  }
+
   // Em try: uma REJEIÇÃO (rede, cliente mal configurado) não pode escapar do
   // handler inteiro — o `webhook-mercadopago` envolve a chamada equivalente
   // pelo mesmo motivo.
@@ -488,6 +513,10 @@ async function handler(
   let confirmados = 0;
   let ignorados = 0;
   let falhas = 0;
+  // Fase 3.5 (cartão): quantos dos `ignorados` foram recusas de cartão cuja
+  // vaga a reconciliação LIBEROU (a RPC devolveu true) — SUBCONJUNTO de
+  // `ignorados`, informativo: a invariante lá embaixo não muda.
+  let cobrancasLiberadas = 0;
 
   // Cada candidato dentro do seu próprio try: a reconciliação existe
   // exatamente para pegar o que já falhou uma vez (o webhook não confirmou),
@@ -496,7 +525,16 @@ async function handler(
   for (const candidato of candidatos ?? []) {
     verificados++;
     try {
-      const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+      const mpToken = credenciaisMp.token;
+      if (!mpToken) {
+        // Falha FECHADA (tarefa mp-2): com chave do lojista cadastrada e
+        // ilegível, consultar o MP com a chave da PLATAFORMA devolveria 404
+        // para toda order dele — a rede de segurança calada, e um pedido
+        // pago virando `expirado`. Pular contando falha deixa o candidato na
+        // fila para o próximo ciclo, depois de alguém consertar o cofre.
+        falhas++;
+        continue;
+      }
 
       // Tarefa 4 (CHECKOUT-070), correção pós-revisão: discrimina pela FORMA
       // do id (`idEhClassico`, `_shared/mercadopago.ts`), não pelo código de
@@ -522,6 +560,32 @@ async function handler(
       // undefined quando o corpo não trouxe número. A conferência contra o
       // total do pedido fica logo abaixo do filtro de 'expirado'.
       let valorAprovado: number | undefined;
+      // Fase 3.5: recusa/expiração de order de CARTÃO (ou order cancelada —
+      // a troca PIX -> cartão da criar-pagamento) só LIBERA a vaga, nunca
+      // chega a `confirmar_pagamento('recusado')`, que cancelaria o pedido.
+      // Mesma regra do webhook (`recusaLiberaAVaga`, _shared/mercadopago.ts).
+      // Só a Orders API liga isto: o candidato clássico é PIX legado.
+      let liberarAVaga = false;
+
+      // Achado S5/N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar
+      // com o SENTINELA (`verificando:...`, Achado B2) em vez de um id de
+      // order de verdade — nem `idEhClassico` nem `consultarOrder`
+      // reconhecem isso, e cada ciclo (a cada 10 min) gastava uma chamada ao
+      // MP que SEMPRE falha (400 `invalid_path_param`), sem nunca sair da
+      // fila. Quem resolve o sentinela é a ADOÇÃO do `webhook-mercadopago`
+      // (quando a cobrança aparece aprovada) ou `resolverVagaEmVerificacao`
+      // em `criar-pagamento` (busca as orders de cartão na Orders API, Ponto
+      // 1 da 4ª revisão de risco, 26/09/2026 — quando o próprio cliente
+      // volta a mexer no pedido) — nenhum dos dois passa por aqui. Sem push
+      // (ver "SEM PUSH AQUI" no cabeçalho deste arquivo): o aviso ao admin já
+      // sai uma única vez, na ESCRITA do sentinela (`criar-pagamento/
+      // index.ts`), que é o ponto mais barato e mais confiável — avisar de
+      // novo aqui a cada ciclo duplicaria o mesmo aviso sem trava de
+      // duplicidade.
+      if (vagaEmVerificacao(candidato.gateway_payment_id)) {
+        ignorados++;
+        continue;
+      }
 
       if (idEhClassico(candidato.gateway_payment_id)) {
         // Candidato LEGADO, criado antes da migração para a Orders API — vai
@@ -549,10 +613,18 @@ async function handler(
       } else {
         // Candidato NOVO — `gateway_payment_id` é um id de ORDER (prefixo
         // ORD/ORDTST) desde a Tarefa 2.
+        //
+        // N1 (3ª/4ª revisão de risco, 26/09/2026): este candidato PODE ser
+        // de CARTÃO (payer com e-mail e CPF do titular, ver `_shared/
+        // mercadopago.ts`) — `corpoNoLog: false` troca o corpo cru por um
+        // resumo sem dado pessoal no log de erro, mesma proteção que
+        // `criar-pagamento`/`webhook-mercadopago` já aplicam nos pontos que
+        // podem reconsultar uma order de cartão.
         const consultaOrder = await consultarOrder({
           token: mpToken,
           orderId: candidato.gateway_payment_id,
           fetchImpl: deps.fetchImpl,
+          corpoNoLog: false,
         });
 
         if (!consultaOrder.ok) {
@@ -578,6 +650,7 @@ async function handler(
         statusMapeado = mapearStatusOrder(statusRaiz, statusDetailRaiz);
         statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
         valorAprovado = extrairValorDaOrder(order);
+        liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
       }
 
       // Usa o status que o MP DEVOLVEU, nunca inventa um. Status
@@ -590,6 +663,33 @@ async function handler(
           "reconciliar-pagamentos: status desconhecido do MP",
           candidato.order_id,
           statusBrutoParaLog,
+        );
+        ignorados++;
+        continue;
+      }
+
+      // CARTÃO RECUSADO NÃO MATA O PEDIDO (Fase 3.5) — o webhook que perdeu
+      // a recusa é recuperado aqui do MESMO jeito: libera a vaga desta
+      // cobrança (a RPC só solta se ela ainda for a gravada e o pedido ainda
+      // estiver 'aguardando'; pedido já expirado devolve false). Conta em
+      // `ignorados` (não confirmou, não falhou) — a invariante continua
+      // fechando. Erro da RPC sobe para o catch e vira `falhas`, e o
+      // candidato volta no próximo ciclo.
+      if (liberarAVaga) {
+        const { data: liberou, error: erroLiberar } = await supabase.rpc(
+          "liberar_cobranca_do_pedido",
+          {
+            p_order_id: candidato.order_id,
+            p_gateway_payment_id: candidato.gateway_payment_id,
+          },
+        );
+        if (erroLiberar) throw erroLiberar;
+        if (liberou === true) cobrancasLiberadas++;
+        console.log(
+          "reconciliar-pagamentos: recusa de cartão (ou order cancelada) — vaga liberada, não confirma 'recusado'",
+          candidato.order_id,
+          statusBrutoParaLog,
+          liberou === true,
         );
         ignorados++;
         continue;
@@ -753,7 +853,10 @@ async function handler(
       .limit(20);
     if (erroRefunds) throw erroRefunds;
 
-    const mpToken = Deno.env.get("MP_ACCESS_TOKEN") ?? "";
+    // MESMA credencial resolvida lá em cima (tarefa mp-2): o estorno sai da
+    // conta que recebeu — devolver dinheiro pela conta da plataforma tiraria
+    // de quem NÃO vendeu, e por isso aqui também não há reserva de token.
+    const mpToken = credenciaisMp.token ?? "";
     // Mesmo timeout de 15s de toda chamada ao MP (Restrições globais) — o
     // `buscar` injetado pelos testes (`deps.fetchImpl`) nunca vê o `fetch`
     // cru por fora deste envelope, igual à edge do clique (T3).
@@ -780,6 +883,19 @@ async function handler(
 
     for (const refund of refundsPendentes ?? []) {
       refundsVistos++;
+      // Falha FECHADA também na fila de estornos (tarefa mp-2), pelo MESMO
+      // motivo do laço de pagamentos — e com um preço a mais aqui: sair com
+      // Bearer vazio faria o MP recusar e a linha voltaria para a fila
+      // GASTANDO uma `tentativas` por ciclo, até o teto de 5. Passado o teto
+      // a linha entra no regime "só consulta" e o cron nunca mais repete o
+      // POST, mesmo depois de alguém devolver o cofre ao lugar: uma
+      // indisponibilidade de configuração teria consumido, sozinha, o
+      // orçamento de tentativas de uma devolução de dinheiro. Pular contando
+      // falha deixa a linha intacta para o próximo ciclo.
+      if (!mpToken) {
+        refundsFalhos++;
+        continue;
+      }
       // Cada linha no seu próprio try: a reconciliação de estornos existe
       // para pegar o que já falhou uma vez — um item não pode custar a vez
       // do seguinte (mesma defesa do laço de pagamentos acima).
@@ -1007,8 +1123,10 @@ async function handler(
   // INVARIANTE (não quebrar): confirmados + ignorados + falhas === verificados.
   // Todo `continue` e todo fim de iteração do loop acima incrementa
   // exatamente um dos três — inclusive o status que o MP devolve fora do
-  // mapa (ignorados), o 404 nos dois endpoints (falhas) e a order 'expirado'
-  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la).
+  // mapa (ignorados), o 404 nos dois endpoints (falhas), a order 'expirado'
+  // que a Tarefa 4 passou a filtrar ANTES da RPC (ignorados, sem chamá-la) e
+  // a recusa de cartão cuja vaga foi liberada (ignorados — `cobrancasLiberadas`
+  // é só o subconjunto que a RPC de fato soltou, fora da soma).
   // Sem essa invariante o corpo não é auditável sem abrir o log: um
   // candidato "sumiria" do total.
   return json(
@@ -1018,6 +1136,7 @@ async function handler(
       confirmados,
       ignorados,
       falhas,
+      cobrancasLiberadas,
       estornos: {
         vistos: refundsVistos,
         concluidos: refundsConcluidos,

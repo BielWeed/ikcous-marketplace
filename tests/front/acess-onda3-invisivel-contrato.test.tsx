@@ -149,8 +149,8 @@ describe("item 3 — B2: abas semânticas do carrinho e do produto", () => {
 
   it("classes visuais dos botões de aba do produto preservadas byte a byte", () => {
     const src = fonte(PRODUCT);
-    expect(src).toContain(
-      'className="relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900/50"',
+    expect(src).toMatch(
+      /className=\{cn\(\s*"relative flex-1 rounded-full p-1 text-\[9px\] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900\/50"/,
     );
   });
 });

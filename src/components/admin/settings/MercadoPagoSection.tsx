@@ -1,4 +1,6 @@
+import { Switch } from "@/components/ui/switch";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -19,8 +21,9 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   PASSOS_DO_GUIA,
-  PROMPT_PARA_AGENTE_MP,
   RECADO_DE_SEGURANCA,
+  montarPromptParaAgenteMp,
+  urlDeNotificacoesDoWebhook,
 } from "./mercado-pago-conteudo";
 
 /**
@@ -36,8 +39,30 @@ import {
  *   chave já salva.
  * - O teste de conexão roda NO SERVIDOR (edge credenciais-mercado-pago) —
  *   a chave real nunca chega ao navegador, nem no teste.
- * - O Pix de hoje (checkout) não passa por aqui: esta seção só guarda,
- *   esconde e testa. Plugar no checkout é frente futura.
+ *
+ * O PIX DO CLIENTE PASSA POR AQUI (tarefa mp-4, 16/09/2026 — deixou de ser
+ * "frente futura"): abaixo do teste de conexão mora o interruptor "Receber
+ * PIX no app", que acende e apaga `store_config.pagamento_online` pelas
+ * ações `ligar_pix`/`desligar_pix` da mesma edge. Regras de HONESTIDADE
+ * desta tela, porque aqui se abre (ou se fecha) a porta do dinheiro:
+ * - Ligar só depois de um teste BEM-SUCEDIDO — vitrine com PIX que o
+ *   Mercado Pago recusa é cliente travado no fim da compra. Enquanto não
+ *   houver teste conectado, o interruptor fica desabilitado COM a
+ *   explicação à vista (bloqueio mudo é a tela mentindo por omissão).
+ * - Desligar é o lado seguro e nunca fica bloqueado.
+ * - O estado do interruptor é o que o SERVIDOR devolveu (`pix_ligado` da
+ *   ficha da loja), nunca um palpite otimista do clique.
+ * - Chave de sandbox conecta igual à de produção: o aviso amarelo de
+ *   ambiente "teste" vem PRONTO da edge e é mostrado como veio.
+ * - (mp-9) Salvar credencial NOVA zera o teste guardado no servidor — e a
+ *   edge desliga o PIX nesse mesmo salvar (`pix_desligado`). Enquanto o
+ *   estado gravado for "ligado sem teste", a tela DIZ isso em âmbar com o
+ *   "Testar conexão" ao alcance: a loja estaria cobrando por uma chave que
+ *   ninguém provou, e calar seria a tela mentindo por omissão de novo.
+ * - (mp-9) O resultado do interruptor sobe pelo `onPixAlternado` para quem
+ *   hospeda a seção (a tela de Ajustes), porque o painel "Minha loja está
+ *   no ar?" lê o retrato do BOOT da ficha e ficaria contando o estado
+ *   antigo até um recarregamento completo.
  *
  * Fluxo do dono, ditado por voz: a lojista cola as chaves, ELA SALVA e ELA
  * TESTA. Por isso "Testar conexão" fica bloqueado enquanto houver coisa
@@ -58,6 +83,10 @@ type ConfiguracaoMp = {
     conta: string | null;
   } | null;
   atualizado_em: string | null;
+  /** `store_config.pagamento_online` — o PIX está aceso para o cliente? */
+  pix_ligado: boolean;
+  /** A ficha da loja já carrega ESTA Public Key (e não outra, nem nenhuma). */
+  public_key_na_loja: boolean;
 };
 
 const VAZIA: ConfiguracaoMp = {
@@ -67,7 +96,26 @@ const VAZIA: ConfiguracaoMp = {
   mascara_webhook: null,
   ultimo_teste: null,
   atualizado_em: null,
+  pix_ligado: false,
+  public_key_na_loja: false,
 };
+
+/**
+ * A resposta da edge vira estado com os dois campos da FICHA coercidos a
+ * booleano: instalação com a edge antiga (que ainda não devolve `pix_ligado`
+ * / `public_key_na_loja`) tem que virar "desligado" e "chave não publicada".
+ * `undefined` no interruptor o tornaria não controlado — e a tela passaria a
+ * inventar sozinha o estado do dinheiro, que é justamente o que esta peça
+ * veio proibir.
+ */
+function comoConfig(data: unknown): ConfiguracaoMp {
+  const lida = (data ?? {}) as ConfiguracaoMp;
+  return {
+    ...lida,
+    pix_ligado: lida.pix_ligado === true,
+    public_key_na_loja: lida.public_key_na_loja === true,
+  };
+}
 
 /**
  * Recado amigável do erro de invoke: o corpo `{ erro }` vem da NOSSA edge
@@ -171,10 +219,26 @@ function Expansor({
 
 export const MercadoPagoSection = memo(function MercadoPagoSection({
   onDirtyMudou,
+  onPixAlternado,
 }: {
   /** Mesma trava das demais seções: avisa o pai para BLOQUEAR o fecho da
    * seção colapsável enquanto houver chave digitada e não salva. */
   readonly onDirtyMudou?: (dirty: boolean) => void;
+  /** Eco do estado do PIX que o SERVIDOR devolveu (mp-9), para a tela que
+   * hospeda esta seção não seguir mostrando o retrato do boot. Dispara em
+   * liga/desliga, no salvar que a edge usou para desligar o PIX, e no `ler`
+   * do mount (mp-10).
+   *
+   * O segundo argumento (`chaveNaLoja`) só vem preenchido no eco do `ler`:
+   * é a ÚNICA das quatro chamadas em que "ligado" não garante Public Key
+   * publicada — `ligar_pix`/`salvar` só devolvem `pix_ligado: true` quando a
+   * edge PUBLICOU a chave junto (mp-8), mas `ler` devolve o retrato cru da
+   * ficha (`pagamento_online`), que pode estar `true` com a Public Key
+   * ausente (o mesmo estado do teste X6 deste arquivo). Sem este segundo
+   * argumento, quem hospeda a seção teria de adivinhar "ligado = chave OK",
+   * o que é falso justamente para o `ler` — e o painel de Ajustes acenderia
+   * "Funcionando" com o PIX quebrado (achado da revisão de mp-10). */
+  readonly onPixAlternado?: (ligado: boolean, chaveNaLoja?: boolean) => void;
 }) {
   const isOffline = useOnlineStatus();
 
@@ -192,6 +256,14 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   const [testando, setTestando] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
+  // Interruptor do PIX (mp-4): `alternandoPix` segura o clique duplo;
+  // `avisoPix` é o recado AMARELO que a edge devolve (chave de sandbox) e
+  // `ecoDaVitrine` só aparece depois de um liga/desliga que deu certo — é a
+  // frase que explica por que a loja ainda mostra o estado antigo.
+  const [alternandoPix, setAlternandoPix] = useState(false);
+  const [avisoPix, setAvisoPix] = useState<string | null>(null);
+  const [ecoDaVitrine, setEcoDaVitrine] = useState(false);
+
   // Segunda camada (pedido do dono, 14/09 à noite): guia e chaves em
   // expandidores próprios, ambos FECHADOS por padrão — o grupo abre
   // mostrando só o resumo do status.
@@ -208,6 +280,18 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     [],
   );
 
+  // Ref para o callback mais recente (mesmo padrão de useRealtimeUpdate /
+  // useDataVault): `ler` só PRECISA rodar uma vez no mount — colocar
+  // `onPixAlternado` nas deps do useCallback abaixo faria a identidade de
+  // `ler` mudar a cada render do pai (o prop chega como arrow function
+  // inline em AdminSettingsView), e o `useEffect(() => ler(), [ler])`
+  // re-executaria a leitura inteira a cada render alheio. O ref sempre
+  // aponta para o callback mais atual sem participar da identidade de `ler`.
+  const onPixAlternadoRef = useRef(onPixAlternado);
+  useEffect(() => {
+    onPixAlternadoRef.current = onPixAlternado;
+  }, [onPixAlternado]);
+
   const ler = useCallback(async () => {
     setCarregando(true);
     setErroCarga(null);
@@ -217,9 +301,21 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         { body: { acao: "ler" } },
       );
       if (error) throw error;
-      const lida = (data ?? {}) as ConfiguracaoMp;
+      const lida = comoConfig(data);
       setConfig(lida);
       setPublicKey(lida.public_key ?? "");
+      // Eco do `ler` (mp-10): sem isto, o painel que hospeda esta seção
+      // (AdminSettingsView) ficava preso no retrato do BOOT até o lojista
+      // ligar/desligar ou salvar por aqui — a mesma tela contando dois
+      // estados do dinheiro quando o boot já estava desatualizado (ex.:
+      // alguém mudou a ficha por fora entre o boot e abrir esta seção).
+      //
+      // O SEGUNDO argumento (`lida.public_key_na_loja`) vai JUNTO: `ler`
+      // não garante chave publicada como `ligar_pix`/`salvar` garantem — sem
+      // ele, quem recebe o eco teria de inferir "ligado = chave OK", que é
+      // falso bem aqui (achado BLOQUEIA da revisão de mp-10; ver o
+      // comentário do prop `onPixAlternado`, acima).
+      onPixAlternadoRef.current?.(lida.pix_ligado, lida.public_key_na_loja);
     } catch (err) {
       setErroCarga(
         await erroAmigavel(
@@ -284,11 +380,24 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       );
       if (error) throw error;
 
-      const salva = (data ?? {}) as ConfiguracaoMp;
+      const salva = comoConfig(data);
       setConfig(salva);
       setPublicKey(salva.public_key ?? "");
       setAccessToken("");
       setWebhookSecret("");
+
+      // Credencial nova derruba o PIX no servidor (mp-8). Quem descobre
+      // isso pelo cliente sem receber descobre tarde: a mensagem vem
+      // PRONTA da edge e sobe também para o painel da tela de Ajustes.
+      const desligouNoSalvar = (data ?? {}) as {
+        pix_desligado?: boolean;
+        aviso?: string;
+      };
+      if (desligouNoSalvar.pix_desligado === true) {
+        setAvisoPix(desligouNoSalvar.aviso ?? null);
+        setEcoDaVitrine(false);
+        onPixAlternado?.(salva.pix_ligado);
+      }
       haptic.success();
       toast.success("Chaves do Mercado Pago salvas!", {
         description: 'Agora toque em "Testar conexão" para conferir.',
@@ -324,6 +433,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       const resultado = (data ?? {}) as {
         conectado: boolean;
         mensagem: string;
+        ambiente?: "producao" | "teste" | null;
+        conta?: string | null;
       };
       setConfig((antes) => ({
         ...antes,
@@ -331,8 +442,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           quando: new Date().toISOString(),
           conectado: resultado.conectado,
           mensagem: resultado.mensagem,
-          ambiente: null,
-          conta: null,
+          // Ambiente e conta VÊM da resposta do teste (a edge devolve os
+          // dois): zerá-los aqui apagava da tela o que o servidor acabou de
+          // apurar — e é o ambiente que explica o aviso de chave de sandbox.
+          ambiente: resultado.ambiente ?? null,
+          conta: resultado.conta ?? null,
         },
       }));
       if (resultado.conectado) haptic.success();
@@ -350,9 +464,65 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     }
   };
 
+  /**
+   * Liga/desliga o PIX do cliente na ficha da loja. O estado do interruptor
+   * é sempre o que o SERVIDOR devolveu — nada de acender a tela no clique e
+   * descobrir depois que a ficha recusou.
+   */
+  const alternarPix = async (ligar: boolean) => {
+    if (isOffline) {
+      toast.error("Sem conexão com a internet", {
+        description: "Você precisa estar online para mudar o PIX da loja.",
+      });
+      return;
+    }
+    if (alternandoPix || carregando) return;
+
+    setAlternandoPix(true);
+    setAvisoPix(null);
+    setEcoDaVitrine(false);
+    haptic.medium();
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        "credenciais-mercado-pago",
+        { body: { acao: ligar ? "ligar_pix" : "desligar_pix" } },
+      );
+      if (error) throw error;
+      const resposta = (data ?? {}) as {
+        pix_ligado?: boolean;
+        aviso?: string;
+      };
+      const ligadoNaFicha = resposta.pix_ligado === true;
+      setConfig((antes) => ({ ...antes, pix_ligado: ligadoNaFicha }));
+      setAvisoPix(resposta.aviso ?? null);
+      setEcoDaVitrine(true);
+      onPixAlternado?.(ligadoNaFicha);
+      haptic.success();
+    } catch (err) {
+      haptic.error();
+      toast.error(
+        await erroAmigavel(
+          err,
+          ligar
+            ? "Não consegui ligar o PIX agora. Tente de novo."
+            : "Não consegui desligar o PIX agora. Tente de novo.",
+        ),
+      );
+    } finally {
+      setAlternandoPix(false);
+    }
+  };
+
+  // O prompt leva o endereço de notificações DESTA loja (peça 28): é o que
+  // o lojista cola no painel do MP para o painel gerar a "Assinatura
+  // secreta". Sem URL conhecida, o prompt pede o endereço em vez de inventar.
+  const promptDoAgente = montarPromptParaAgenteMp({
+    urlDeNotificacoes: urlDeNotificacoesDoWebhook(lerSupabaseUrl()),
+  });
+
   const copiarPrompt = async () => {
     try {
-      await navigator.clipboard.writeText(PROMPT_PARA_AGENTE_MP);
+      await navigator.clipboard.writeText(promptDoAgente);
       setCopiado(true);
       haptic.light();
       if (copiadoTimer.current !== null)
@@ -366,6 +536,26 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   };
 
   const teste = config.ultimo_teste;
+
+  // LIGAR exige teste conectado (a edge recusa com 409 de qualquer jeito —
+  // a tela só não deixa o lojista descobrir isso por um erro). DESLIGAR
+  // nunca é bloqueado: é o lado seguro, e trancar a saída seria pior.
+  const faltaTestarParaLigar = !config.pix_ligado && !teste?.conectado;
+
+  // LIGADO SEM TESTE (mp-9): a edge zera `ultimo_teste` quando o lojista
+  // salva uma credencial nova, então "sem teste guardado" é justamente o
+  // caso em que a chave que está cobrando nunca passou pelo Mercado Pago.
+  // Não dá para saber de QUAL credencial é um teste antigo — o servidor
+  // apaga o registro no lugar de carimbar a chave —, então a ausência é o
+  // único sinal que existe, e ele basta para avisar.
+  // Um teste que FALHOU (`conectado: false`) é notícia pior, não melhor: o
+  // aviso continua até um teste CONECTADO (ressalva da revisão de mp-9).
+  const ligadoSemTeste = config.pix_ligado && !teste?.conectado;
+
+  // Mesma trava do fluxo do dono nos DOIS botões de testar (o do formulário
+  // e o do aviso âmbar): testar coisa diferente do que está salvo enganaria.
+  const testeBloqueado =
+    testando || carregando || isOffline || dirty || !config.configurado;
 
   return (
     <div className="space-y-4">
@@ -464,7 +654,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             Pedido pronto para colar no agente
           </span>
           <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
-            {PROMPT_PARA_AGENTE_MP}
+            {promptDoAgente}
           </pre>
           <button
             type="button"
@@ -587,13 +777,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
 
             <button
               type="button"
-              disabled={
-                testando ||
-                carregando ||
-                isOffline ||
-                dirty ||
-                !config.configurado
-              }
+              disabled={testeBloqueado}
               onClick={testarConexao}
               title={
                 dirty
@@ -614,6 +798,109 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
                 Salve para testar
               </span>
+            )}
+          </div>
+
+          {/* ── PIX no app: o interruptor que o CLIENTE sente (mp-4) ────
+              Fica logo abaixo do teste porque é o passo seguinte dele:
+              testou, deu certo, agora abre a porta do pagamento. ──────── */}
+          <div className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="min-w-0">
+                <span className="block text-xs font-bold text-white">
+                  Receber PIX no app
+                </span>
+                <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-400">
+                  Ligado, o cliente escolhe PIX no fim da compra e paga dentro
+                  do seu app, com as suas chaves.
+                </span>
+              </span>
+              <Switch
+                checked={config.pix_ligado}
+                disabled={
+                  carregando ||
+                  isOffline ||
+                  alternandoPix ||
+                  faltaTestarParaLigar
+                }
+                aria-label="Receber PIX no app"
+                onCheckedChange={alternarPix}
+                className="shrink-0 scale-90 data-[state=checked]:bg-admin-gold"
+              />
+            </div>
+
+            {/* Bloqueio MUDO é a tela mentindo por omissão: enquanto faltar
+                teste conectado, o motivo fica à vista ao lado do botão. */}
+            {faltaTestarParaLigar && !carregando && (
+              <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-zinc-400">
+                <AlertCircle className="mt-0.5 size-3 shrink-0 text-amber-400" />
+                <span>
+                  Faça o teste de conexão dar certo antes de ligar — o app não
+                  abre o PIX com uma chave que o Mercado Pago não aceitou.
+                </span>
+              </p>
+            )}
+
+            {/* LIGADO SEM TESTE: a loja está cobrando por uma credencial
+                que nunca falou com o Mercado Pago (o servidor zera o teste
+                ao salvar chave nova). O conserto — testar — fica no próprio
+                aviso: mandar o lojista procurar o botão lá em cima era
+                contar o problema e esconder a saída. */}
+            {ligadoSemTeste && !carregando && (
+              <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    O PIX está ligado, mas a chave salva ainda não passou pelo
+                    teste de conexão. Teste agora ou desligue até testar.
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  disabled={testeBloqueado}
+                  onClick={testarConexao}
+                  className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                >
+                  {testando ? (
+                    <RefreshCw className="size-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="size-3.5" />
+                  )}
+                  <span>Testar conexão</span>
+                </button>
+              </div>
+            )}
+
+            {/* O aviso de chave de sandbox vem PRONTO da edge (ela é quem
+                sabe o `live_mode` da conta) e aparece como veio. */}
+            {avisoPix && (
+              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                <span>{avisoPix}</span>
+              </p>
+            )}
+
+            {/* Por que "até 1 minuto": a vitrine lê a ficha da loja pelo
+                porteiro, que guarda a ficha fresca por CACHE_FRESCO_MS =
+                60_000 (src/hospedagem/porteiro.ts). Prometer "na hora" faria
+                o lojista abrir a loja, não ver mudança e achar que falhou. */}
+            {ecoDaVitrine && (
+              <p className="text-[11px] leading-relaxed text-zinc-400">
+                Pronto. A vitrine passa a refletir em até 1 minuto.
+              </p>
+            )}
+
+            {/* Ligado sem a Public Key publicada na ficha é exatamente o caso
+                em que o cliente NÃO vê PIX — a tela conta em vez de deixar o
+                lojista descobrir na venda perdida. */}
+            {config.pix_ligado && !config.public_key_na_loja && (
+              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  A ficha da loja ainda não carrega esta Public Key — salve as
+                  chaves de novo para o cliente conseguir pagar.
+                </span>
+              </p>
             )}
           </div>
 

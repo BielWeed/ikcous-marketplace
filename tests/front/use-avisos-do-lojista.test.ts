@@ -25,6 +25,12 @@ import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayo
 // uma fonte por uma que falha sem remontar o dible inteiro.
 let RESPOSTA_PEDIDOS: unknown = { data: [], error: null };
 let RESPOSTA_PERGUNTAS: unknown = { data: { total_count: 0 }, error: null };
+// Quinta fonte (plano 2026-09-26): `admin_devolucoes_listar` com a contagem
+// por status — so `solicitada` acende o sino.
+let RESPOSTA_DEVOLUCOES: unknown = {
+  data: { total: 0, contagem: { solicitada: 0 }, itens: [] },
+  error: null,
+};
 let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
 
 // `loadProducts` do useProducts engole o erro e devolve `null`. `null` aqui
@@ -60,7 +66,13 @@ vi.mock("@/lib/supabase", () => ({
       tabelasConsultadas.push(tabela);
       return criarBuilder(tabela);
     }),
-    rpc: vi.fn(() => Promise.resolve(RESPOSTA_PERGUNTAS)),
+    rpc: vi.fn((nome: string) =>
+      Promise.resolve(
+        nome === "admin_devolucoes_listar"
+          ? RESPOSTA_DEVOLUCOES
+          : RESPOSTA_PERGUNTAS,
+      ),
+    ),
   },
 }));
 
@@ -156,6 +168,10 @@ beforeEach(() => {
   RESPOSTA_PERGUNTAS = { data: { total_count: 3 }, error: null };
   RESPOSTA_AVALIACOES = { data: [avaliacaoDeExemplo()], error: null };
   RESPOSTA_PRODUTOS = { products: [produtoDeExemplo()], total: 1 };
+  RESPOSTA_DEVOLUCOES = {
+    data: { total: 0, contagem: { solicitada: 0 }, itens: [] },
+    error: null,
+  };
   loadProductsFalso.mockImplementation(() =>
     Promise.resolve(RESPOSTA_PRODUTOS),
   );
@@ -221,11 +237,12 @@ describe("useAvisosDoLojista", () => {
     );
   });
 
-  it("com as quatro caindo, a tela fica vazia e honesta — e nao presa carregando", async () => {
+  it("com todas caindo, a tela fica vazia e honesta — e nao presa carregando", async () => {
     RESPOSTA_PEDIDOS = { data: null, error: { message: "caiu" } };
     RESPOSTA_PERGUNTAS = { data: null, error: { message: "caiu" } };
     RESPOSTA_AVALIACOES = { data: null, error: { message: "caiu" } };
     RESPOSTA_PRODUTOS = null;
+    RESPOSTA_DEVOLUCOES = { data: null, error: { message: "caiu" } };
 
     const { atual } = await montarSonda();
 
@@ -233,8 +250,40 @@ describe("useAvisosDoLojista", () => {
     expect(atual().quantidadeNoCracha).toBe(0);
     expect(atual().carregando).toBe(false);
     expect(new Set(atual().fontesComFalha)).toEqual(
-      new Set(["pedido", "pergunta", "avaliacao", "estoque"]),
+      new Set(["pedido", "pergunta", "avaliacao", "estoque", "devolucao"]),
     );
+  });
+
+  it("devolucao solicitada vira aviso que conta no cracha e abre a tela de Devolucoes", async () => {
+    RESPOSTA_DEVOLUCOES = {
+      data: {
+        total: 2,
+        contagem: { solicitada: 2, aprovada: 5 },
+        itens: [],
+      },
+      error: null,
+    };
+
+    const { atual } = await montarSonda();
+
+    const aviso = atual().avisos.find((a) => a.tipo === "devolucao") as
+      | (AvisoLido & { destino?: { view: string } })
+      | undefined;
+    expect(aviso?.titulo).toBe("2 devoluções esperando sua resposta");
+    expect(aviso?.contaNoCracha).toBe(true);
+    expect(aviso?.destino?.view).toBe("admin-devolucoes");
+    // Aprovada nao acende o sino: a bola esta com o cliente.
+    expect(atual().quantidadeNoCracha).toBe(4);
+    expect(atual().fontesComFalha).toEqual([]);
+  });
+
+  it("forma inesperada da RPC de devolucoes e falha da fonte, nao 'zero'", async () => {
+    RESPOSTA_DEVOLUCOES = { data: { total_count: 3 }, error: null };
+
+    const { atual } = await montarSonda();
+
+    expect(atual().fontesComFalha).toEqual(["devolucao"]);
+    expect(atual().avisos.map((a) => a.tipo)).not.toContain("devolucao");
   });
 
   it("produto desativado nao vira aviso de estoque", async () => {

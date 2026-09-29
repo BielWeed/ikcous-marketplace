@@ -1,383 +1,406 @@
-import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
+import type {
+  ArgsCriarPagamento,
+  RespostaCriarPagamento,
+} from "@/hooks/useOrders";
 import { useOrders } from "@/hooks/useOrders";
+import { type ConfigDoCartao, cartaoLigado } from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
-import { useEffect, useRef, useState } from "react";
+import { cn, formatCurrency } from "@/lib/utils";
+import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { PagamentoComCartao } from "./PagamentoComCartao";
 
-const SDK_URL = "https://sdk.mercadopago.com/js/v2";
-
-let promessaSdk: Promise<void> | null = null;
-
-/**
- * Carrega o SDK do Mercado Pago uma vez por sessão.
- *
- * O `promessaSdk` em módulo evita a corrida do StrictMode do React 18, que
- * monta o componente duas vezes em desenvolvimento: sem ele, duas tags de
- * script entram na página e o Brick tenta renderizar duas vezes no mesmo
- * container.
- */
-export function carregarSdkMercadoPago(): Promise<void> {
-  if (promessaSdk) return promessaSdk;
-
-  promessaSdk = new Promise<void>((resolve, reject) => {
-    const existente = document.querySelector<HTMLScriptElement>(
-      "script[data-mp-sdk]",
-    );
-    const tag = existente ?? document.createElement("script");
-
-    if (!existente) {
-      tag.src = SDK_URL;
-      tag.async = true;
-      tag.dataset.mpSdk = "1";
-    }
-
-    tag.addEventListener("load", () => resolve());
-    tag.addEventListener("error", () => {
-      // Zera para uma tentativa futura poder recomeçar — e REMOVE a tag morta.
-      // Sem o remove(), a próxima chamada acha esta tag via querySelector, cai
-      // no ramo `if (!existente)` e nunca reanexa `src`/listeners a um script
-      // que já falhou: nem resolve, nem rejeita, a Promise nova fica pendurada
-      // para sempre.
-      promessaSdk = null;
-      tag.remove();
-      reject(new Error("Não foi possível carregar o pagamento."));
-    });
-
-    if (!existente) document.head.appendChild(tag);
-  });
-
-  return promessaSdk;
-}
+// O carregador do SDK mora em módulo próprio desde o cartão (26/09/2026) —
+// ver o comentário lá. Reexportado para quem já o importava daqui.
+export { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
  * De que tipo é a falha que `onErro` está reportando — ver CHECKOUT-050.
  *
  * "recuperavel": tentar de novo pode dar um resultado diferente. Cobre dois
  * casos bem distintos: a cobrança pode não ter chegado a existir (rede caiu,
- * SDK não carregou, Brick não montou) — aí `criar-pagamento` cria do zero,
- * sem `gateway_payment_id` gravado; OU o PIX voltou sem QR code num 200 que
- * JÁ CRIOU a cobrança (o UPDATE grava `gateway_payment_id` antes de
+ * SDK não carregou, Brick do cartão não montou) — aí `criar-pagamento` cria
+ * do zero, sem `gateway_payment_id` gravado; OU o PIX voltou sem QR code num
+ * 200 que JÁ CRIOU a cobrança (o UPDATE grava `gateway_payment_id` antes de
  * responder) — aí a próxima tentativa cai em `reconsultar`, que pode trazer
  * o QR que a criação não trouxe. Nos dois casos insistir é seguro; muda só o
  * caminho que `criar-pagamento` escolhe.
  *
- * "terminal": a cobrança já existe e está morta para este pedido (recusada,
- * cancelada, com status que o banco não reconhece) OU a reserva do pedido já
- * venceu. Tentar de novo bate na MESMA recusa — `podeCobrar` manda para
- * `reconsultar` sempre que já existe `gateway_payment_id`, devolvendo o
- * status da mesma cobrança (ver o comentário grande dentro de `onSubmit`
- * abaixo).
+ * "terminal": a cobrança já existe e está morta para este pedido (vencida,
+ * estornada, com status que o banco não reconhece, cartão recusado sem nova
+ * tentativa possível) OU a reserva do pedido já venceu. Tentar de novo bate
+ * na MESMA resposta.
+ *
+ * Cartão recusado COM nova tentativa possível não é erro para esta tela: o
+ * `PagamentoComCartao` mostra o motivo com "Tentar outro cartão" e "Pagar
+ * com PIX" (spec do cartão, decisão 3).
  */
 export type CategoriaErroPagamento = "recuperavel" | "terminal";
 
 /**
- * Marca um erro como TERMINAL para quem captura no catch de `onSubmit` —
- * usado só nos dois pontos abaixo onde SABEMOS que reconsultar devolve a
- * mesma recusa. Qualquer outro erro (rede, `criarPagamento` rejeitando por
- * outro motivo) é tratado como recuperável por padrão.
+ * B1/B3 (revisão de risco pré-publicação, rodada 2, 26/09/2026): sinal
+ * opcional que o erro carrega para o CheckoutView escolher a caixa certa —
+ * nunca os dois ao mesmo tempo.
+ *
+ * "cartaoEmAnalise": pode existir uma cobrança de cartão em curso — em
+ * análise, ou um 502/corrida ambígua que a própria edge não sabe resolver
+ * sem conferir. NUNCA oferece PIX nem "Cancelar pedido": os dois arriscam
+ * dinheiro (PIX duplicaria a cobrança se o cartão for aprovado depois;
+ * cancelar cobraria por um pedido morto pelo mesmo motivo).
+ *
+ * "semCobranca": o erro aconteceu ANTES de qualquer POST de cartão chegar à
+ * edge (Brick que não montou, validação local do Brick — `montarCorpoDoCartao`)
+ * OU num caso em que a PRÓPRIA edge cancela a vaga do cartão ao receber o
+ * pedido de PIX (a URL do desafio 3DS fora do Mercado Pago: a vaga fica em
+ * `action_required`/`created`, que `criar-pagamento` cancela antes de criar
+ * o PIX). Só aqui é seguro oferecer "Pagar com PIX" na caixa de erro.
+ *
+ * Ausente (`undefined`): erro comum, sem informação sobre o estado da
+ * cobrança — falha FECHADA (nem PIX, nem esconde "Cancelar pedido"). É o
+ * caso do 502 ambíguo do achado B1 (rodada 2): a criação do cartão pode ter
+ * chegado ao Mercado Pago e ainda assim a edge responder com falha de
+ * infraestrutura — sem confirmação de que "não há cobrança", a rede de
+ * segurança é não oferecer PIX (evita a corrida provada: duas cobranças
+ * vivas para o mesmo pedido).
  */
-class ErroPagamentoTerminal extends Error {}
+export type SinalDeErroPagamento = "cartaoEmAnalise" | "semCobranca";
+
+type CriarPagamento = (
+  args: ArgsCriarPagamento,
+) => Promise<RespostaCriarPagamento>;
+
+type DadosDoPix = {
+  qrCodeBase64?: string;
+  qrCode?: string;
+  expiraEm: string;
+  ticketUrl?: string;
+};
+
+type ResultadoClassificacaoPagamento =
+  | { tipo: "erro"; mensagem: string; categoria: CategoriaErroPagamento }
+  | { tipo: "pix"; pix: DadosDoPix }
+  | { tipo: "confirmado" };
 
 /**
- * Monta o Payment Brick e devolve a função de desmontagem do efeito.
- *
- * Extraída do `useEffect` do componente por dois motivos:
- *
- * 1. A guarda contra o StrictMode e o cancelamento do efeito precisam falar a
- *    MESMA língua. `cancelado` é checado nos dois únicos pontos em que dá
- *    para abortar sem deixar rastro: antes do `create()` (a IIFE cancelada
- *    nunca chega a criar nada — é o que faz o StrictMode montar/desmontar/
- *    remontar sem duplicar o Brick, sem precisar de um `jaMontou` que bloqueia
- *    a segunda montagem de verdade também) e depois dele (a criação já
- *    aconteceu; só dá para desfazer desmontando — sem isso, uma criação em
- *    voo cujo efeito já foi cancelado ficava abandonada, e o bundle do Brick
- *    reclama "Brick already initialized" na próxima tentativa, porque só o
- *    `unmount()` dele limpa o estado interno).
- * 2. Isola a corrida do StrictMode e o ciclo de vida do Brick de qualquer
- *    aparato de teste de React — o teste chama esta função diretamente,
- *    simula mount → cleanup → mount e confere o que o SDK real (mockado)
- *    fez, sem precisar renderizar componente nenhum.
- *
- * Exportada para teste — não é API pública do componente.
+ * Traduz a resposta de `criarPagamento` do PIX para o que a tela deve fazer —
+ * erro (com categoria) ou QR. Até 26/09/2026 servia também ao `onSubmit` do
+ * Payment Brick (`montarBrick`, CHECKOUT-080, #213); o Payment Brick saiu de
+ * cena (PIX direto desde 25/09, cartão pelo Card Payment Brick desde 26/09,
+ * com classificação própria em `classificarRespostaCartao`), e sobrou o PIX.
  */
-export function montarBrick({
-  orderId,
-  valor,
-  criarPagamento,
-  onErro,
-  onPix,
-}: {
-  orderId: string;
-  valor: number;
-  criarPagamento: ReturnType<typeof useOrders>["criarPagamento"];
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
-  onPix: (pix: {
-    qrCodeBase64?: string;
-    qrCode?: string;
-    expiraEm: string;
-    ticketUrl?: string;
-  }) => void;
-}): () => void {
-  let cancelado = false;
-  let controlador: { unmount: () => void } | null = null;
-
-  (async () => {
-    try {
-      await carregarSdkMercadoPago();
-      if (cancelado) return;
-
-      const publicKey = chavePublicaMercadoPago();
-      if (!publicKey) throw new Error("Pagamento indisponível.");
-
-      // @ts-expect-error o SDK entra pelo global
-      const mp = new globalThis.MercadoPago(publicKey, { locale: "pt-BR" });
-
-      const criado = await mp.bricks().create("payment", "mp-container", {
-        initialization: { amount: valor },
-        customization: {
-          // So PIX na Fase 3. O caminho de cartao existe no codigo mas tem
-          // defeito conhecido: depois da primeira recusa o pedido fica
-          // impagavel ate expirar, e a mensagem atual pede "tente outro
-          // cartao", o que e' impossivel. Religar cartao e' a Fase 3.5, e
-          // depende de chave de idempotencia versionada.
-          paymentMethods: { bankTransfer: "all" },
-        },
-        callbacks: {
-          onReady: () => {},
-          onError: (erro: unknown) => {
-            console.error("brick:", erro);
-            // O Brick nem chegou a montar — nenhuma cobrança foi criada.
-            onErro("Não foi possível carregar o pagamento.", "recuperavel");
-          },
-          onSubmit: async ({ formData }: { formData: Record<string, any> }) => {
-            try {
-              // PIX volta sem token; cartão volta tokenizado NO NAVEGADOR — o
-              // número do cartão não passa pelo nosso servidor.
-              const ehPix = !formData.token;
-              const r = await criarPagamento({
-                orderId,
-                metodo: ehPix ? "pix" : "cartao",
-                token: formData.token,
-                parcelas: formData.installments,
-                paymentMethodId: formData.payment_method_id,
-                issuerId: formData.issuer_id,
-                email: formData.payer?.email,
-                documento: formData.payer?.identification,
-              });
-
-              // A-1 da revisão final, vocabulário atualizado na CHECKOUT-080
-              // (#213): recusa é resultado normal de um pagamento CRIADO (o
-              // MP responde 201), não erro HTTP — criarPagamento devolve
-              // `ok`. Sem olhar `r.statusPagamento`, um cartão recusado não
-              // avisava nada, e a troca para PIX reconsultava a MESMA
-              // cobrança recusada sem QR. `statusPagamento` agora vem no
-              // vocabulário FECHADO do banco ('aguardando'/'pago'/
-              // 'recusado'/'expirado'/'estornado' — useOrders.ts,
-              // `StatusPagamentoConhecido`), não mais no vocabulário cru do
-              // MP: a edge function já traduziu.
-              if (r.statusPagamento === "recusado") {
-                // Nem "outro cartão" nem "pague com PIX" cabem aqui: cartão
-                // está desligado no Brick (só PIX, ver comentário acima), e
-                // `podeCobrar` (criar-pagamento/index.ts) manda para
-                // `reconsultar` sempre que o pedido já tem
-                // gateway_payment_id — o que devolve o status da MESMA
-                // cobrança recusada, sem criar outra. Qualquer nova
-                // tentativa neste pedido bate na mesma recusa até expirar.
-                // 'recusado' cobre os dois desfechos que o vocabulário
-                // clássico separava em "rejected"/"cancelled" — este banco
-                // não tem um valor 'cancelado' distinto de 'recusado'
-                // (ver o comentário de MAPA_STATUS_ORDER em
-                // supabase/functions/_shared/mercadopago.ts).
-                throw new ErroPagamentoTerminal(
-                  "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
-                );
-              }
-              if (r.statusPagamento === "expirado") {
-                // CHECKOUT-080 (#213): antes desta tarefa o vocabulário
-                // clássico não tinha como representar 'expired' — caía no
-                // default genérico abaixo. Com nome próprio, dá para dizer
-                // ao cliente o que aconteceu de fato: o QR deste PIX venceu
-                // no Mercado Pago (não necessariamente porque a reserva de
-                // 30 min do PEDIDO também venceu — os dois prazos podem
-                // divergir, ver expiracaoRealinhavel em
-                // criar-pagamento/index.ts). `reconsultar` devolve a MESMA
-                // order vencida para sempre: só um pedido novo gera um QR
-                // novo.
-                throw new ErroPagamentoTerminal(
-                  "O prazo deste PIX venceu antes do pagamento ser confirmado. Faça um pedido novo para gerar um QR code novo.",
-                );
-              }
-              if (r.statusPagamento === "estornado") {
-                // CHECKOUT-080 (#213): também sem representação no
-                // vocabulário clássico antes desta tarefa. Um estorno
-                // desfaz um pagamento que chegou a ser aprovado — não há
-                // "tentar de novo" que reverta isso para o MESMO pedido.
-                throw new ErroPagamentoTerminal(
-                  "Este pagamento foi estornado e não pode ser confirmado neste pedido. Faça um pedido novo ou fale com a loja.",
-                );
-              }
-              const statusConhecido =
-                r.statusPagamento === "aguardando" ||
-                r.statusPagamento === "pago";
-              if (!statusConhecido) {
-                // Rede de segurança OBRIGATÓRIA (item 4 da CHECKOUT-080,
-                // #213): status novo/desconhecido do MP não pode virar
-                // sucesso silencioso — e, como os três ramos terminais
-                // acima, reconsultar não muda o que o MP já respondeu. É
-                // esta checagem que pegou a classe inteira de defeito desta
-                // tarefa (o backend falando um vocabulário que o front não
-                // conhecia) — não pode ser afrouxada.
-                throw new ErroPagamentoTerminal(
-                  "Não foi possível confirmar o pagamento.",
-                );
-              }
-
-              if (ehPix) {
-                if (!r.qrCode && !r.qrCodeBase64) {
-                  // Nunca desmonta o Brick sem QR de verdade — sem QR o
-                  // cliente ficaria preso numa tela vazia, sem volta, com
-                  // o pedido morrendo em 30 min de reserva.
-                  throw new Error("Não foi possível gerar o QR code do PIX.");
-                }
-                // O Brick some do DOM quando o JSX troca para o QR — desmonta
-                // ANTES de trocar, senão a próxima montagem (voltar ao
-                // checkout sem recarregar a página) esbarra em "Brick
-                // already initialized".
-                controlador?.unmount();
-                controlador = null;
-                onPix({
-                  qrCodeBase64: r.qrCodeBase64,
-                  qrCode: r.qrCode,
-                  expiraEm: r.expiraEm,
-                  ticketUrl: r.ticketUrl,
-                });
-              }
-            } catch (err: any) {
-              // As quatro mensagens de criarPagamento (`useOrders.ts`, na
-              // função `criarPagamento` — âncora por NOME, não por linha: a
-              // citação anterior apontava para :974-980 e o arquivo já
-              // andou 178 linhas desde então)
-              // só chegam ao cliente se saírem por aqui — sem este catch, a
-              // rejeição desaparece dentro do próprio SDK e a tela fica muda.
-              //
-              // Categoria: terminal para os dois `throw new
-              // ErroPagamentoTerminal` acima, e para qualquer erro de
-              // `criarPagamento` (useOrders.ts) que traga `.terminal ===
-              // true` — DADO que a edge function manda no corpo do 409,
-              // não texto. CHECKOUT-050 (#194), achado da revisão: a
-              // versão anterior comparava a MENSAGEM por igualdade exata
-              // com o texto de prazo vencido; assim que o pg_cron marca o
-              // pedido 'expirado' (a cada 5 min), a mesma reserva morta
-              // passa a cair no ramo 1 de podeCobrar (payment_status !==
-              // 'aguardando'), com uma mensagem que a comparação de texto
-              // nunca reconhecia — o cliente ganhava "Tentar de novo" para
-              // uma recusa que nunca muda. Sem compatibilidade com a
-              // versão antiga da criar-pagamento (que não manda o campo):
-              // a loja em produção não cobra online hoje (VITE_
-              // PAGAMENTO_ONLINE falha fechada), e o deploy da function é
-              // pré-requisito conhecido de ligar a flag — um fallback por
-              // texto "só durante a transição" reintroduziria exatamente
-              // este defeito. Qualquer outro erro — rede, gateway fora do
-              // ar, corpo de erro genérico — é recuperável por padrão.
-              const terminal =
-                err instanceof ErroPagamentoTerminal || err?.terminal === true;
-              // Ponto fechado (censo do lote, item 8): esta linha estava
-              // marcada "a verificar — o vizinho é deliberado". Verificação
-              // feita: DIFERENTE do catch de `montarBrick` (o que envolve
-              // `carregarSdkMercadoPago()` e `mp.bricks().create()`, e cujo
-              // comentário proíbe `err?.message` por causa do texto do
-              // bundle do MP), este envolve só o `onSubmit` — que o SDK só
-              // chama DEPOIS de `create()` ter resolvido, então são caminhos
-              // que não se cruzam.
-              //
-              // As fontes que chegam aqui são texto curado em português,
-              // nunca o SDK/rede/navegador crus. A regra que sustenta isso é
-              // mais forte que a lista: só um corpo JSON com a chave exata
-              // `error` sobrepõe o literal padrão, e a única coisa que emite
-              // essa chave neste caminho é a nossa própria edge function.
-              // Enumeração:
-              // 1) os quatro `throw new ErroPagamentoTerminal(...)` acima
-              //    (recusado/expirado/estornado/status desconhecido) e o
-              //    `throw new Error("Não foi possível gerar o QR code do
-              //    PIX.")` — literais fixos deste arquivo;
-              // 2) `criarPagamento` (useOrders.ts) só lança
-              //    `Object.assign(new Error(mensagem), { terminal })`, onde
-              //    `mensagem` é OU o literal "Não foi possível gerar a
-              //    cobrança." OU `corpo.error` lido do 409/502/etc. da edge
-              //    function — e todo `error:` que
-              //    supabase/functions/criar-pagamento/index.ts devolve é uma
-              //    string curada; o corpo cru do Mercado Pago fica preso no
-              //    console do servidor (_shared/mercadopago.ts, comentário
-              //    "NUNCA para o cliente"), nunca no corpo da resposta;
-              // 3) falha de rede pura (`FunctionsFetchError` do
-              //    supabase-js) também não vaza: seu `.context` é o `Error`
-              //    de fetch, sem método `.json`, então `corpo` fica
-              //    `undefined` e a mensagem cai no literal padrão acima —
-              //    `criarPagamento` nunca lê `error.message` diretamente.
-              // 4) `controlador?.unmount()` é a única chamada a código de
-              //    terceiro dentro deste `try`. Fica de fora da conta porque
-              //    o cenário que a faria lançar (desmontagem dupla) está
-              //    fechado pelo `controlador = null` da limpeza somado ao
-              //    `?.`. Não foi possível sustentar NEM refutar que o SDK
-              //    lance ali — ele vem de CDN e não está em node_modules —
-              //    então isto fica declarado, não varrido para debaixo de um
-              //    "todas as fontes".
-              // Por isso, ao contrário do catch de `montarBrick`, aqui NÃO dá para
-              // trocar por uma frase fixa única: cada `throw` já é
-              // específico e verdadeiro para o caso, e um genérico jogaria
-              // fora informação que o cliente precisa (ex.: PIX vencido vs.
-              // pagamento recusado pedem ações diferentes).
-              onErro(
-                err?.message ?? "Não foi possível gerar a cobrança.",
-                terminal ? "terminal" : "recuperavel",
-              );
-              // Relança para o Brick saber que o envio falhou e sair do
-              // estado "processando" — engolir aqui prende o botão.
-              throw err;
-            }
-          },
-        },
-      });
-
-      if (cancelado) {
-        // O efeito já foi cancelado (StrictMode remontando, ou desmontagem de
-        // verdade) enquanto o create() estava em voo: desmonta em vez de
-        // abandonar.
-        criado.unmount();
-        return;
-      }
-      controlador = criado;
-    } catch (err: any) {
-      // SDK que não carregou, chave pública ausente ou create() que falhou —
-      // em qualquer um destes, nenhuma cobrança chegou a ser criada.
-      //
-      // Achado 2 da revisão (CHECKOUT-050, #194): NUNCA usar `err?.message`
-      // aqui. Quando quem rejeita é o próprio create() do SDK do Mercado
-      // Pago, essa mensagem é texto do BUNDLE deles — em inglês, com
-      // jargão de configuração. Um toast escondia isso em 2500ms; agora a
-      // caixa de erro fica NA TELA até o cliente sair, então uma mensagem
-      // de terceiro travada ali é pior que antes. `err` continua indo para
-      // o console, que é onde ela serve.
-      console.error("montarBrick:", err);
-      if (!cancelado)
-        onErro("Não foi possível carregar o pagamento.", "recuperavel");
-    }
-  })();
-
-  return () => {
-    cancelado = true;
-    controlador?.unmount();
-    controlador = null;
+function classificarRespostaPagamento(
+  r: RespostaCriarPagamento,
+): ResultadoClassificacaoPagamento {
+  // A-1 da revisão final, vocabulário atualizado na CHECKOUT-080 (#213):
+  // recusa é resultado normal de um pagamento CRIADO (o MP responde 201), não
+  // erro HTTP — criarPagamento devolve `ok`. `statusPagamento` vem no
+  // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/'expirado'/
+  // 'estornado' — useOrders.ts, `StatusPagamentoConhecido`), não mais no
+  // vocabulário cru do MP: a edge function já traduziu.
+  if (r.statusPagamento === "recusado") {
+    // `podeCobrar` (criar-pagamento/index.ts) manda para `reconsultar`
+    // sempre que o pedido já tem gateway_payment_id — o que devolve o
+    // status da MESMA cobrança recusada, sem criar outra. 'recusado' cobre
+    // os dois desfechos que o vocabulário clássico separava em
+    // "rejected"/"cancelled" — este banco não tem um valor 'cancelado'
+    // distinto de 'recusado' (ver o comentário de MAPA_STATUS_ORDER em
+    // supabase/functions/_shared/mercadopago.ts).
+    return {
+      tipo: "erro",
+      mensagem:
+        "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
+      categoria: "terminal",
+    };
+  }
+  if (r.statusPagamento === "expirado") {
+    // CHECKOUT-080 (#213): o QR deste PIX venceu no Mercado Pago (não
+    // necessariamente porque a reserva de 30 min do PEDIDO também venceu —
+    // os dois prazos podem divergir, ver expiracaoRealinhavel em
+    // criar-pagamento/index.ts). `reconsultar` devolve a MESMA order vencida
+    // para sempre: só um pedido novo gera um QR novo.
+    return {
+      tipo: "erro",
+      mensagem:
+        "O prazo deste PIX venceu antes do pagamento ser confirmado. Faça um pedido novo para gerar um QR code novo.",
+      categoria: "terminal",
+    };
+  }
+  if (r.statusPagamento === "estornado") {
+    // Um estorno desfaz um pagamento que chegou a ser aprovado — não há
+    // "tentar de novo" que reverta isso para o MESMO pedido.
+    return {
+      tipo: "erro",
+      mensagem:
+        "Este pagamento foi estornado e não pode ser confirmado neste pedido. Faça um pedido novo ou fale com a loja.",
+      categoria: "terminal",
+    };
+  }
+  const statusConhecido =
+    r.statusPagamento === "aguardando" || r.statusPagamento === "pago";
+  if (!statusConhecido) {
+    // Rede de segurança OBRIGATÓRIA (item 4 da CHECKOUT-080, #213): status
+    // novo/desconhecido do MP (ou AUSENTE — function antiga ainda no ar, ver
+    // teste dedicado) não pode virar sucesso silencioso, e reconsultar não
+    // muda o que o MP já respondeu.
+    return {
+      tipo: "erro",
+      mensagem: "Não foi possível confirmar o pagamento.",
+      categoria: "terminal",
+    };
+  }
+  if (!r.qrCode && !r.qrCodeBase64) {
+    // B4 da revisão de risco pré-publicação (26/09/2026): 'pago' SEM QR não
+    // é falha nenhuma — é o cliente pedindo PIX com um cartão que a edge já
+    // aprovou (ex.: saiu do desafio 3DS e tocou "Pagar com PIX" antes do
+    // webhook confirmar). Não existe cobrança PIX para desenhar porque o
+    // dinheiro já entrou; dizer "Não foi possível gerar o QR code" seria um
+    // erro falso sobre um pagamento que deu certo. Quem confirma de vez
+    // continua sendo o webhook/CheckoutView — aqui só se evita o susto.
+    if (r.statusPagamento === "pago") return { tipo: "confirmado" };
+    // Sem isso: nunca sinaliza sucesso sem QR de verdade — sem QR o cliente
+    // ficaria preso numa tela vazia, sem volta, com o pedido morrendo em 30
+    // min de reserva. Recuperável: a cobrança em si não existe de forma
+    // útil, e uma nova tentativa cria/reconsulta do zero sem risco de
+    // duplicar cobrança.
+    return {
+      tipo: "erro",
+      mensagem: "Não foi possível gerar o QR code do PIX.",
+      categoria: "recuperavel",
+    };
+  }
+  return {
+    tipo: "pix",
+    pix: {
+      qrCodeBase64: r.qrCodeBase64,
+      qrCode: r.qrCode,
+      expiraEm: r.expiraEm,
+      ticketUrl: r.ticketUrl,
+    },
   };
 }
 
+/**
+ * Promessas de `criarPagamento` em voo (ou já resolvidas, até o `finally`
+ * limpar), por `orderId` — mesmo padrão de `promessaSdk` acima, aplicado a um
+ * problema análogo: o StrictMode do React 18 monta → desmonta → remonta o
+ * efeito de forma SÍNCRONA, tudo antes de qualquer microtarefa rodar. Sem
+ * este cache, a segunda montagem chamaria `criarPagamento` de novo ANTES da
+ * primeira resposta voltar — duas cobranças para o mesmo pedido.
+ *
+ * A entrada some do mapa assim que a promessa assenta (sucesso OU falha): é
+ * isso que faz "Tentar de novo" (CheckoutView troca a tela de erro por um
+ * `<PagamentoOnline>` NOVO, remontando o componente do zero) disparar uma
+ * chamada de verdade — pelo momento em que o cliente consegue clicar, a
+ * tentativa anterior já assentou e já saiu do mapa.
+ */
+const promessasPagamentoPix = new Map<
+  string,
+  Promise<RespostaCriarPagamento>
+>();
+
+/**
+ * Dispara a cobrança PIX direto — sem Brick, sem pedir e-mail de novo.
+ *
+ * Pedido do dono (25/09/2026): depois de escolher "Pagar agora com PIX", o
+ * cliente caía na tela do Payment Brick do Mercado Pago pedindo para
+ * escolher Pix DE NOVO e digitar um e-mail que a conta já tem. Como o Brick
+ * de então só oferecia PIX (o cartão, Fase 3.5, voltou em 26/09/2026 pelo
+ * Card Payment Brick — `PagamentoComCartao.tsx`), a Brick inteira era uma
+ * etapa a mais sem função: `email` e
+ * `documento` são OPCIONAIS em `criarPagamento` (useOrders.ts) — o servidor
+ * já resolve o e-mail por `body.email ?? pedido.customer_data.email ?? emailDoToken(...) ?? "sem-email@ikcous.com.br"`
+ * (criar-pagamento/index.ts) — então não há nada que só o Brick soubesse
+ * coletar.
+ *
+ * A classificação da resposta (recusado/expirado/estornado/desconhecido/QR
+ * ausente) mora em `classificarRespostaPagamento`, acima.
+ *
+ * Exportada para teste — não é API pública do componente.
+ */
+export function dispararPagamentoPix({
+  orderId,
+  criarPagamento,
+  onErro,
+  onPix,
+  onConfirmado,
+}: {
+  orderId: string;
+  criarPagamento: CriarPagamento;
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`. Opcional para
+  // não quebrar quem ainda chama `onErro` com dois argumentos.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    sinal?: SinalDeErroPagamento,
+  ) => void;
+  onPix: (pix: DadosDoPix) => void;
+  // B4: 'pago' sem QR (cartão já aprovado, PIX pedido por cima) — opcional
+  // porque só quem sabe mostrar essa tela (PagamentoComPix) o usa; sem ele,
+  // nenhum chamador quebra, só perde o aviso extra.
+  onConfirmado?: () => void;
+}): () => void {
+  let cancelado = false;
+
+  let promessa = promessasPagamentoPix.get(orderId);
+  if (!promessa) {
+    promessa = criarPagamento({ orderId, metodo: "pix" });
+    promessasPagamentoPix.set(orderId, promessa);
+    const removerDoCache = () => {
+      // Só remove se ninguém trocou a entrada por uma promessa mais nova
+      // enquanto esta estava em voo (corta a corrida com uma chamada futura
+      // que já tenha substituído o valor do mapa).
+      if (promessasPagamentoPix.get(orderId) === promessa) {
+        promessasPagamentoPix.delete(orderId);
+      }
+    };
+    // `.then(f, f)` e não `.finally(f)`: `.finally` devolve uma promessa
+    // DERIVADA que continua rejeitando quando a original rejeita — sem
+    // ninguém para dar `.catch` nela, vira rejeição não tratada. Os dois
+    // branches de `.then` CONSOMEM a rejeição, e o resultado (usado ou não)
+    // nunca sobra pendurado.
+    promessa.then(removerDoCache, removerDoCache);
+  }
+
+  promessa
+    .then((r) => {
+      if (cancelado) return;
+      const resultado = classificarRespostaPagamento(r);
+      if (resultado.tipo === "erro") {
+        onErro(resultado.mensagem, resultado.categoria);
+        return;
+      }
+      if (resultado.tipo === "confirmado") {
+        onConfirmado?.();
+        return;
+      }
+      onPix(resultado.pix);
+    })
+    .catch((err: any) => {
+      if (cancelado) return;
+      // Contrato do CHECKOUT-050: `.terminal` (e, desde o B3, `.cartaoEmAnalise`)
+      // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
+      // 409/etc. da edge function, nunca reconstruído a partir do texto da
+      // mensagem — texto que muda quebraria uma comparação por igualdade.
+      const terminal = err?.terminal === true;
+      const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
+      const categoria = terminal ? "terminal" : "recuperavel";
+      // Terceiro argumento OMITIDO quando não há sinal (não `undefined`
+      // explícito): testes existentes fixam `onErro` com dois argumentos
+      // exatos (`toHaveBeenCalledWith(msg, categoria)`), e um argumento
+      // extra quebraria essa igualdade estrita sem mudar nada de real — quem
+      // lê o callback (CheckoutView) já trata "ausente" como "sem sinal"
+      // (achado B3, revisão de risco pré-publicação).
+      if (err?.cartaoEmAnalise === true) {
+        onErro(mensagem, categoria, "cartaoEmAnalise");
+      } else {
+        onErro(mensagem, categoria);
+      }
+    });
+
+  return () => {
+    cancelado = true;
+  };
+}
+
+function formatarHora(ms: number): string {
+  return new Date(ms).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** Por onde o cliente paga pelo app: PIX (padrão) ou cartão (Fase 3.5). */
+export type MetodoOnline = "pix" | "cartao";
+
+/**
+ * A tela de pagamento pelo app, depois de o pedido nascer.
+ *
+ * `metodo="pix"` (padrão): gera a cobrança PIX sozinho, ao montar.
+ * `metodo="cartao"`: mostra o Card Payment Brick e NUNCA cria PIX sozinho —
+ * o PIX só nasce se o cliente tocar em "Pagar com PIX" (depois de uma
+ * recusa, por exemplo), na mesma tela e na mesma reserva de 30 minutos.
+ * `onTrocarParaPix` avisa o pai dessa troca, para um "Tentar de novo" do
+ * CheckoutView remontar já no PIX.
+ */
 export function PagamentoOnline({
   orderId,
   valor,
   onErro,
+  metodo = "pix",
+  configDoCartao = null,
+  emailDoPagador,
+  onTrocarParaPix,
 }: {
   orderId: string;
   valor: number;
-  onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    sinal?: SinalDeErroPagamento,
+  ) => void;
+  metodo?: MetodoOnline;
+  configDoCartao?: ConfigDoCartao | null;
+  emailDoPagador?: string | null;
+  // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
+  // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
+  // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
+  onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
+}) {
+  const [trocouParaPix, setTrocouParaPix] = useState(false);
+  const pagarComPix = (cartaoAindaVivo: boolean) => {
+    setTrocouParaPix(true);
+    onTrocarParaPix?.(cartaoAindaVivo);
+  };
+
+  if (metodo === "cartao" && !trocouParaPix) {
+    if (configDoCartao && cartaoLigado(configDoCartao)) {
+      return (
+        <PagamentoComCartao
+          orderId={orderId}
+          valor={valor}
+          config={configDoCartao}
+          emailDoPagador={emailDoPagador}
+          onErro={onErro}
+          onPagarComPix={pagarComPix}
+        />
+      );
+    }
+    // A loja desligou o cartão entre a escolha e a tela de pagamento (ou a
+    // config sumiu) — nenhum cartão chegou a ser submetido, então nunca há
+    // cobrança em curso.
+    return (
+      <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 text-center sm:p-6">
+        <p className="text-sm text-zinc-700">
+          O pagamento com cartão não está disponível nesta loja agora.
+        </p>
+        <button
+          type="button"
+          onClick={() => pagarComPix(false)}
+          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+        >
+          Pagar com PIX
+        </button>
+      </div>
+    );
+  }
+
+  return <PagamentoComPix orderId={orderId} valor={valor} onErro={onErro} />;
+}
+
+function PagamentoComPix({
+  orderId,
+  valor,
+  onErro,
+}: {
+  orderId: string;
+  valor: number;
+  // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
+  onErro: (
+    msg: string,
+    categoria: CategoriaErroPagamento,
+    sinal?: SinalDeErroPagamento,
+  ) => void;
 }) {
   // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
   // `true` — este componente é do CLIENTE. Era inofensivo porque
@@ -389,44 +412,93 @@ export function PagamentoOnline({
   const { criarPagamento } = useOrders(false, false);
   // `expiraEm` vem junto do PIX, da resposta da edge function — é o prazo que
   // está gravado na linha do pedido, o mesmo que o pg_cron vai ler.
-  const [pix, setPix] = useState<{
-    qrCodeBase64?: string;
-    qrCode?: string;
-    expiraEm: string;
-    ticketUrl?: string;
-  } | null>(null);
+  const [pix, setPix] = useState<DadosDoPix | null>(null);
+  // B4: PIX pedido com o cartão já aprovado — a edge devolve 'pago' sem QR
+  // (ver `classificarRespostaPagamento`, acima). Estado final e exclusivo
+  // com `pix`: quem confirma de vez continua sendo o webhook/CheckoutView,
+  // esta tela só troca o erro falso de QR por um aviso honesto.
+  const [confirmado, setConfirmado] = useState(false);
 
   // Padrão de ref para callback em recurso imperativo. `onErro` é tipicamente
   // um closure inline de quem consome o componente (`onErro={(m) =>
   // setErro(m)}`), e MUDA de identidade a cada re-render do pai — um toast,
-  // um evento realtime do useOrders, o contador regressivo do prazo. Se
+  // um evento realtime do useOrders, o aviso estimado de prazo. Se
   // `onErro` estivesse nas deps do efeito abaixo, cada re-render do pai
-  // desmontaria o Brick vivo (perdendo o formulário e o que o cliente já
-  // digitou) e recriaria do zero, silenciosamente — sem estourar
-  // ALREADY_INITIALIZED, porque o unmount roda antes do create seguinte.
+  // dispararia `criarPagamento` de novo, silenciosamente (na época do
+  // Payment Brick, desmontava o Brick vivo com o formulário digitado — o
+  // cartão, `PagamentoComCartao.tsx`, usa o mesmo padrão pelo mesmo motivo).
   //
   // A atualização do `.current` vai num `useEffect` sem deps (roda depois de
   // TODO render), não direto no corpo do componente: mutar ref durante o
   // render é erro do `eslint-plugin-react-hooks` ("Cannot access refs during
   // render") — o valor só precisa estar atualizado antes da PRÓXIMA vez que
-  // um callback assíncrono do Brick o ler, nunca durante a renderização.
+  // um callback assíncrono o ler, nunca durante a renderização.
   const onErroRef = useRef(onErro);
   useEffect(() => {
     onErroRef.current = onErro;
   });
 
+  // Relógio do prazo — AVISO ESTIMADO, nunca decisão. `agora` é o relógio
+  // DESTE aparelho, e relógio de celular erra (o mesmo risco que o
+  // CheckoutView documenta no comentário de TETO_TICKS_VERIFICACAO_PAGAMENTO):
+  // um aparelho 40 min adiantado veria o horário "passar" com o Pix ainda
+  // valendo no servidor. Por isso, passado o horário previsto, a tela só
+  // AVISA com prudência — QR, código, botão de copiar e link continuam
+  // funcionando até o servidor decidir; o CheckoutView acompanha a confirmação
+  // do pagamento. Nada aqui muda status de pagamento, reserva nem
+  // cria cobrança.
+  const [agora, setAgora] = useState(() => Date.now());
+  // Postgres pode devolver frações com 1 a 6 dígitos, enquanto o formato
+  // interoperável de Date.parse usa milissegundos (3). Completar/truncar a
+  // fração preserva o instante e o fuso sem depender de parsers permissivos.
+  const expiraEmMs = pix
+    ? Date.parse(
+        pix.expiraEm.replace(
+          /\.(\d+)(?=Z$|[+-]\d{2}:\d{2}$)/i,
+          (_, fracao: string) => `.${fracao.padEnd(3, "0").slice(0, 3)}`,
+        ),
+      )
+    : Number.NaN;
+  const prazoConhecido = Number.isFinite(expiraEmMs);
+  const horarioPrevistoPassou = prazoConhecido && agora >= expiraEmMs;
+
   useEffect(() => {
-    return montarBrick({
+    if (!prazoConhecido) return;
+    const atualizar = () => setAgora(Date.now());
+    // Sem contagem regressiva: a resposta não traz a hora do servidor, então
+    // um aparelho atrasado inventaria minutos de validade. A checagem local
+    // serve só para mostrar ou retirar o aviso prudente. Continua ativa
+    // depois do horário para reagir se o próprio relógio for corrigido.
+    const id = setInterval(atualizar, 10_000);
+    document.addEventListener("visibilitychange", atualizar);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", atualizar);
+    };
+  }, [prazoConhecido]);
+
+  useEffect(() => {
+    return dispararPagamentoPix({
       orderId,
-      valor,
       criarPagamento,
-      onErro: (msg, categoria) => onErroRef.current(msg, categoria),
-      onPix: setPix,
+      onErro: (msg, categoria, sinal) => {
+        if (sinal) onErroRef.current(msg, categoria, sinal);
+        else onErroRef.current(msg, categoria);
+      },
+      // `agora` nasce na montagem, que pode ter sido minutos antes do QR
+      // chegar: sincroniza junto do Pix para o aviso começar correto.
+      onPix: (dados) => {
+        setAgora(Date.now());
+        setPix(dados);
+      },
+      onConfirmado: () => setConfirmado(true),
     });
     // `onErro` de propósito fora das deps — ver o comentário do onErroRef
-    // acima. O Brick fica vivo enquanto `orderId`/`valor` (primitivos) e
-    // `criarPagamento` (useCallback(..., []) em useOrders.ts) não mudarem.
-  }, [orderId, valor, criarPagamento]);
+    // acima. O disparo só repete se `orderId` (primitivo) ou `criarPagamento`
+    // (useCallback(..., []) em useOrders.ts) mudarem de identidade — na
+    // prática, só remontando o componente inteiro (CheckoutView troca a
+    // tela de erro por um `<PagamentoOnline>` novo em "Tentar de novo").
+  }, [orderId, criarPagamento]);
 
   // Brief "o app não mente quando copia" (08/09/2026): o botão chamava
   // `navigator.clipboard.writeText(...)` sem await, sem catch e sem NENHUM
@@ -437,51 +509,204 @@ export function PagamentoOnline({
   // porque sem cópia automática o cliente ainda precisa conseguir pagar.
   const [pixCopiado, setPixCopiado] = useState(false);
   const [pixFalhouCopia, setPixFalhouCopia] = useState(false);
+  // Um timer só por vez: dois toques seguidos em "Copiar" deixavam o timer do
+  // PRIMEIRO apagar o "Copiado!" do segundo antes dos 2s, e o timer
+  // sobrevivia à desmontagem da tela.
+  // `montadoRef` fecha a janela do `await` da cópia: se a tela desmontar com
+  // o clipboard ainda respondendo, o timer não chega a ser armado depois da
+  // limpeza (achado 3 da revisão independente, 24/09/2026).
+  const timerCopiadoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const montadoRef = useRef(false);
+  useEffect(() => {
+    montadoRef.current = true;
+    return () => {
+      montadoRef.current = false;
+      if (timerCopiadoRef.current) clearTimeout(timerCopiadoRef.current);
+      timerCopiadoRef.current = null;
+    };
+  }, []);
 
   const handleCopiarPix = async (codigo: string) => {
-    // Laudo Opus A-1 (08/09/2026): `montarBrick` só recusa o PIX quando
-    // faltam OS DOIS campos (linha ~234) — a edge extrai `qr_code` e
+    // Laudo Opus A-1 (08/09/2026): `classificarRespostaPagamento` só recusa
+    // o PIX quando faltam OS DOIS campos — a edge extrai `qr_code` e
     // `qr_code_base64` em separado, então o estado `{qrCodeBase64,
     // qrCode: undefined}` é alcançável. Sem esta guarda,
     // `copiarParaClipboard("")` resolveria `true` e o botão diria "Copiado!"
     // sem ter copiado nada. O botão já não renderiza quando `!pix.qrCode`
     // (abaixo); esta é a segunda trava, para uma refatoração futura que volte
     // a renderizar o botão sem QR não reabrir o mesmo defeito.
+    //
+    // SEM trava de horário aqui, de propósito: o relógio do aparelho não é
+    // prova de vencimento (ver o comentário do relógio do prazo, acima).
     const ok = codigo !== "" && (await copiarParaClipboard(codigo));
+    if (!montadoRef.current) return;
     if (!ok) {
       setPixFalhouCopia(true);
       return;
     }
     setPixFalhouCopia(false);
     setPixCopiado(true);
-    setTimeout(() => setPixCopiado(false), 2000);
+    if (timerCopiadoRef.current) clearTimeout(timerCopiadoRef.current);
+    timerCopiadoRef.current = setTimeout(() => {
+      timerCopiadoRef.current = null;
+      setPixCopiado(false);
+    }, 2000);
   };
 
-  if (pix) {
+  const idTitulo = useId();
+  const idAvisoHorario = useId();
+
+  // B4: cartão já aprovado, PIX pedido por cima — não existe QR para
+  // desenhar, e não é falha nenhuma. Mesmo tom do "Pagamento aprovado!
+  // Confirmando seu pedido…" do cartão (`PagamentoComCartao.tsx`).
+  if (confirmado) {
     return (
-      <div className="space-y-4 rounded-2xl border border-zinc-100 bg-white p-4">
-        {pix.qrCodeBase64 && (
-          <img
-            src={`data:image/png;base64,${pix.qrCodeBase64}`}
-            alt="QR code do PIX"
-            className="mx-auto size-56"
-          />
+      <div className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6">
+        <p className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+          <Check aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+          Pagamento confirmado! Finalizando seu pedido…
+        </p>
+      </div>
+    );
+  }
+
+  if (pix) {
+    const valorConhecido = Number.isFinite(valor) && valor > 0;
+    const descritoPeloAviso = horarioPrevistoPassou
+      ? idAvisoHorario
+      : undefined;
+
+    // Ordem pensada para o CELULAR (24/09/2026): quem paga no mesmo aparelho
+    // não consegue escanear a própria tela — o caminho dele é copiar e colar
+    // no app do banco. Por isso valor → prazo → botão de copiar vêm antes do
+    // QR; o QR fica logo abaixo para quem paga lendo com outro aparelho.
+    return (
+      <section
+        aria-labelledby={idTitulo}
+        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+      >
+        <header className="space-y-1 text-center">
+          <h2
+            id={idTitulo}
+            className="text-xs font-bold uppercase tracking-wider text-zinc-500"
+          >
+            Pagamento via Pix
+          </h2>
+          {valorConhecido && (
+            <p className="text-3xl font-black tabular-nums text-zinc-900">
+              {formatCurrency(valor)}
+            </p>
+          )}
+          {orderId && (
+            <p className="text-xs text-zinc-500">
+              Pedido #{orderId.slice(0, 8)}
+            </p>
+          )}
+        </header>
+
+        {/* Prazo. Só o horário INFORMADO, sem contagem regressiva: a
+            resposta não traz a hora do servidor, e um aparelho atrasado
+            inventaria minutos de validade (ver o efeito do relógio acima).
+            Passado o horário previsto, esta caixa sai e fica só o aviso
+            abaixo, que já traz o horário — duas caixas âmbar empilhadas
+            diziam a mesma coisa duas vezes na tela pequena. */}
+        {!horarioPrevistoPassou && (
+          <p className="flex items-start gap-2 rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-sm text-zinc-700">
+            <Clock aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            {prazoConhecido ? (
+              <span>
+                Prazo informado: até{" "}
+                <strong className="tabular-nums">
+                  {formatarHora(expiraEmMs)}
+                </strong>
+                . Confira a validade no app do seu banco.
+              </span>
+            ) : (
+              // Prazo ilegível: não inventar horário nem declarar vencido —
+              // o botão continua valendo e o banco do cliente mostra a
+              // validade.
+              <span>
+                Não conseguimos ler o prazo deste Pix. Confira a validade no app
+                do seu banco antes de pagar.
+              </span>
+            )}
+          </p>
         )}
+
+        {/* Região viva SEMPRE montada (mesmo motivo do Laudo Opus A-2,
+            abaixo): o aviso do horário previsto aparece DENTRO dela, e o
+            leitor de tela só anuncia mudança em região que já existia. Sem
+            `role="status"` de propósito — esse papel é da região de falha de
+            cópia, e há teste que a acha pelo papel.
+
+            O texto é PRUDENTE de propósito: quem sabe se o Pix venceu é o
+            servidor, não o relógio deste aparelho. Nada de "expirou". */}
+        <div aria-live="polite">
+          {horarioPrevistoPassou && (
+            <div
+              id={idAvisoHorario}
+              className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+            >
+              <AlertCircle
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-amber-600"
+              />
+              <div className="space-y-1 text-sm text-amber-800">
+                <p className="font-semibold">
+                  O horário previsto para pagar já passou.
+                </p>
+                <p>
+                  O prazo informado era até {formatarHora(expiraEmMs)}, e pelo
+                  relógio deste aparelho esse horário já passou. Se você já
+                  pagou, continue nesta tela: a confirmação aparece aqui. Se
+                  ainda não pagou, o banco pode recusar este código — nesse
+                  caso, faça um pedido novo.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Laudo Opus A-1 (08/09/2026): sem `qrCode` não existe código para
             copiar — não oferecer o botão nem o campo de falha. O cliente
-            segue pelo QR acima e pelo link "Pagar pelo Mercado Pago" abaixo,
-            que já são condicionais ao próprio campo existir. */}
+            segue pelo QR abaixo e pelo link "Pagar pelo Mercado Pago", que
+            já são condicionais ao próprio campo existir. */}
         {pix.qrCode && (
-          <>
+          <div className="space-y-2">
+            {/* Alvo de toque de 48px (min-h-12) e texto de 14px: é a ação
+                principal no celular. */}
             <button
               type="button"
+              aria-describedby={descritoPeloAviso}
               onClick={() => handleCopiarPix(pix.qrCode ?? "")}
-              className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white"
+              className={cn(
+                "flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white transition-colors",
+                pixCopiado
+                  ? "bg-emerald-700"
+                  : "bg-zinc-900 active:bg-zinc-700",
+              )}
             >
+              {pixCopiado ? (
+                <Check aria-hidden="true" className="size-5" />
+              ) : (
+                <Copy aria-hidden="true" className="size-5" />
+              )}
               <span aria-live="polite">
-                {pixCopiado ? "Copiado!" : "Copiar código PIX"}
+                {pixCopiado
+                  ? "Copiado! Cole no app do seu banco"
+                  : "Copiar código PIX"}
               </span>
             </button>
+            <div className="space-y-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Código copia e cola
+              </p>
+              {/* O clamp mora no <span>: no <p> com padding, a sobra da
+                  3ª linha aparecia cortada ao meio dentro do padding. */}
+              <p className="select-all break-all rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-xs text-zinc-800">
+                <span className="line-clamp-2">{pix.qrCode}</span>
+              </p>
+            </div>
             {/* Laudo Opus A-2 (08/09/2026): container SEMPRE montado (vazio
                 por padrão) com `role="status"`/`aria-live="polite"` — antes
                 o <div> só entrava no DOM quando `pixFalhouCopia` virava true,
@@ -491,42 +716,83 @@ export function PagamentoOnline({
             <div role="status" aria-live="polite" className="space-y-1.5">
               {pixFalhouCopia && (
                 <>
-                  <p className="text-center text-xs text-zinc-500">
+                  <p className="text-center text-sm text-zinc-600">
                     Não consegui copiar sozinho. Toque no código abaixo, segure
                     e copie.
                   </p>
                   <textarea
                     readOnly
+                    aria-label="Código Pix para copiar manualmente"
                     value={pix.qrCode ?? ""}
                     onFocus={(e) => e.currentTarget.select()}
-                    rows={3}
-                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-[10px] text-zinc-900"
+                    rows={4}
+                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-2 font-mono text-sm text-zinc-900"
                   />
                 </>
               )}
             </div>
-          </>
+          </div>
         )}
+
+        {pix.qrCodeBase64 ? (
+          <figure className="space-y-2">
+            {pix.qrCode && (
+              <figcaption className="text-center text-xs text-zinc-500">
+                Pagando por outro aparelho? Escaneie o QR code.
+              </figcaption>
+            )}
+            <img
+              src={`data:image/png;base64,${pix.qrCodeBase64}`}
+              alt="QR code do PIX"
+              aria-describedby={descritoPeloAviso}
+              className="mx-auto size-60 max-w-full rounded-xl border border-zinc-100 bg-white p-2"
+            />
+          </figure>
+        ) : (
+          // Degrada com honestidade: a edge extrai a imagem e o código em
+          // separado, então pode faltar um dos dois — dizer o que existe em
+          // vez de deixar um buraco na tela.
+          <p className="rounded-xl bg-zinc-50 p-3 text-center text-sm text-zinc-600">
+            A imagem do QR code não veio nesta cobrança.
+            {pix.qrCode
+              ? " Use o código copia e cola acima."
+              : pix.ticketUrl
+                ? " Use o link do Mercado Pago abaixo."
+                : ""}
+          </p>
+        )}
+
+        <ol className="list-inside list-decimal space-y-1 text-sm text-zinc-600">
+          <li>Abra o app do seu banco e escolha pagar com Pix.</li>
+          <li>Cole o código copia e cola ou escaneie o QR code.</li>
+          <li>Confira o valor e confirme. A confirmação aparece nesta tela.</li>
+        </ol>
+
         {pix.ticketUrl && (
           <a
             href={pix.ticketUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="block text-center text-xs font-medium text-zinc-500 underline"
+            aria-describedby={descritoPeloAviso}
+            className="flex min-h-11 items-center justify-center text-center text-sm font-medium text-zinc-600 underline"
           >
             Pagar pelo Mercado Pago
           </a>
         )}
-        <p className="text-center text-xs text-zinc-500">
-          Vence às{" "}
-          {new Date(pix.expiraEm).toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </p>
-      </div>
+      </section>
     );
   }
 
-  return <div id="mp-container" />;
+  // Pedido do dono (25/09/2026): sem Brick, este espaço nunca é preenchido
+  // por um script de terceiro — precisa da própria tela dizer que está
+  // gerando a cobrança, ou fica em branco até o QR chegar.
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center justify-center gap-3 rounded-2xl border border-zinc-100 bg-white p-8">
+      <Loader2
+        aria-hidden="true"
+        className="size-6 animate-spin text-zinc-400"
+      />
+      <p className="text-sm text-zinc-500">Gerando o QR code do Pix...</p>
+    </div>
+  );
 }

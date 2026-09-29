@@ -62,6 +62,20 @@ const ORDENACOES_CLIENTES = [
   { campo: "full_name", direcao: "asc", rotulo: "Alfabética" },
 ] as const;
 
+/** Mesmo par campo/direção de ORDENACOES_CLIENTES, como `Map` — pra
+ * `handleSort` (abaixo) usar a direção-padrão de CADA campo no primeiro
+ * clique do cabeçalho da coluna, igual ao chip equivalente (achado
+ * AdminCustomersView-636: o cabeçalho "LTV (Gasto)" começava em "asc",
+ * ao contrário do chip "Maior LTV", que é "desc"). `Map.get` em vez de
+ * indexar um objeto por campo dinâmico: o eslint-plugin-security acusa
+ * `detect-object-injection` em `objeto[variável]` mesmo quando a chave
+ * vem de uma união fechada — mesmo padrão de CustomerPaymentBadge.tsx
+ * (`customerPaymentConfigByKey`). "role" não tem chip próprio e cai no
+ * fallback "asc" de `handleSort`. */
+const DIRECAO_PADRAO_POR_CAMPO = new Map<keyof Customer, "asc" | "desc">(
+  ORDENACOES_CLIENTES.map((o) => [o.campo, o.direcao]),
+);
+
 interface AdminCustomersViewProps {
   onNavigate: (view: View, id?: string) => void;
   active?: boolean;
@@ -356,15 +370,28 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   const totalPages = Math.ceil(totalCustomers / PAGE_SIZE);
   const paginatedCustomers = customers; // Already paginated from server
 
+  // `sortField`/`sortDirection` já NASCEM como "total_spent"/"desc" (linhas
+  // 111-112, pra bater com o chip "Maior LTV" antes de qualquer clique). O
+  // defeito 636 era comparar `sortField === field` contra esse estado
+  // pré-populado: no primeiro clique em "LTV (Gasto)" isso parecia "o
+  // lojista já tinha escolhido total_spent" e caía direto no ramo de
+  // alternância, invertendo pra "asc" — menor gasto no topo, ao contrário
+  // do chip. Este ref guarda "o lojista já clicou em ALGUM cabeçalho
+  // alguma vez", que é a pergunta certa: só alterna depois de um clique
+  // de verdade no mesmo campo; o primeiro clique em qualquer campo sempre
+  // aplica a direção-padrão daquele campo (igual ao chip).
+  const jaClicouEmAlgumCabecalhoRef = useRef(false);
+
   const handleSort = (field: keyof Customer) => {
     setPage(0);
     shouldScrollToTop.current = true;
-    if (sortField === field) {
+    if (jaClicouEmAlgumCabecalhoRef.current && sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortDirection("asc");
+      setSortDirection(DIRECAO_PADRAO_POR_CAMPO.get(field) ?? "asc");
     }
+    jaClicouEmAlgumCabecalhoRef.current = true;
   };
   const renderDetailedSkeletons = () => {
     return (
@@ -759,8 +786,15 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                   Pedidos Totais
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Volume acumulado de compras que o usuário efetuou,
-                  independentemente do status atual do pagamento.
+                  {/* Achado 636: o texto antigo prometia "independentemente
+                  do status atual do pagamento", mas o card lê
+                  `analyticsStats.executive.totalOrders` (get_admin_analytics_v2),
+                  que só conta pedido com pagamento reconhecido — o oposto do
+                  que estava escrito. Mesmo vocabulário do card "Volume
+                  Total" do Dashboard (AdminDashboardView.tsx). */}
+                  Quantidade de pedidos com pagamento reconhecido (PIX
+                  confirmado, gateway ou recebido na entrega); pedido cancelado
+                  ou com pagamento pendente não entra na conta.
                 </p>
               </div>
 

@@ -31,10 +31,18 @@ const { mockConfig } = vi.hoisted(() => ({
   mockConfig: {
     shippingCoverage: "local" as "national" | "local",
     originCep: "38500-000" as string | undefined,
-      localCepRange: "01310-100",
+    localCepRange: "01310-100",
     storeCity: "Uberlândia" as string | undefined,
     storeState: "MG" as string | undefined,
   },
+}));
+
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
 }));
 
 vi.mock("@/contexts/StoreContext", () => ({
@@ -84,7 +92,18 @@ vi.mock("@/hooks/useCart", () => ({
     cartTotal: 100,
     shippingFee: 0,
     clearCart: vi.fn(),
-    selectedShippingOption: null,
+    // ENTREGA LOCAL selecionada (regra frete × pagamento do dono,
+    // 21/09/2026): a guarda do Finalizar (`finalizarBloqueadoPorFrete`)
+    // passou a exigir a ESCOLHA de entrega — o servidor recusa id ausente
+    // (FRETE V2 EMENDA, ELSIF do bloco 4). O assunto deste arquivo é outro;
+    // sem a opção, o botão travaria por um motivo que ele não prova.
+    selectedShippingOption: {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    },
     shippingCep: "",
   }),
 }));

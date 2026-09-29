@@ -169,6 +169,19 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     erro: p0001("Estoque insuficiente para o produto Caneca"),
   },
 
+  // FORMAS DE PAGAMENTO POR LOJA (migration 20261174000000, fora da lista
+  // original de 11 acima — entrou depois, no re-review do commit
+  // 3c90059d). Estava AUSENTE deste corpus, e é exatamente por estar
+  // ausente que o portão nunca reprovou a versão que mapeava esta frase
+  // para `tentar_de_novo`: um `it.each` só cobra o que está na lista.
+  {
+    rotulo:
+      "12. forma de pagamento desligada pela loja entre a tela filtrar e o clique chegar ao banco",
+    erro: p0001(
+      "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+    ),
+  },
+
   // SQLSTATE genérico: aborto de transação dentro do Postgres, sem ser P0001.
   {
     rotulo: "SQLSTATE genérico (deadlock 40P01)",

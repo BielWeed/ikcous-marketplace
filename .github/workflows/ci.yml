@@ -20,6 +20,18 @@
 #                                    + vitest front 498 arquivos 278,35 s =
 #                                    88% do job — o número que motivou o
 #                                    shard; repita esta medição se mexer)
+# Medido em 26/09/2026, depois do portão de tamanho DIVIDIDO (decisão do dono,
+# respondendo "o portão soma TODO o JS num teto só — como resolver?"): o "515 kB
+# de 800 kB" da linha de 30/07 acima somava cliente E painel juntos. Hoje
+# `npm run size` mede QUATRO budgets independentes (`.size-limit.cjs`,
+# `scripts/portaoDividido.ts` classifica pelo grafo real do Rollup):
+#   cliente (o que qualquer visitante baixa)         <= 550 kB (era 800 somado)
+#   painel (só depois do `is_admin` do servidor)     <= 450 kB (novo)
+#   CSS                                              <= 100 kB (sem mudança)
+#   leitor de código de barras (glue + wasm, C2.5)   <= 400 kB (sem mudança)
+# Medido no fixture build desta mudança: cliente 474,97 kB, painel 402,44 kB
+# (dentro dos tetos que o dono fixou depois da medida: "Painel 450 · cliente
+# 550"), CSS 29,48 kB, leitor 331,65 kB.
 #
 # `npm run lint` cru sai com 1 e sempre sairá enquanto houver dívida antiga.
 # Quem entra no CI é a catraca, que compara com `.lint-baseline.json`.
@@ -31,9 +43,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
   push:
-    branches: [develop, main]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
 
 # NOTA (14/09/2026): o raciocínio abaixo nasceu quando o repositório era
 # privado e a API de branch protection devolvia 403 no plano Free. Essa
@@ -300,6 +312,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
+      # A12.4 (package-34): o lint:lockfile existia no package.json e nenhum
+      # workflow o chamava — dependência nova entrava sem NENHUMA checagem de
+      # origem. Valida que todo `resolved` do package-lock aponta para o
+      # registry npm por HTTPS. O gatilho real é a primeira dependência nova
+      # (o leitor de código de barras do PDV, C2.5); o histórico deste repo já
+      # teve service_role commitada — cadeia de suprimento aqui custa caro.
+      - name: Origem do lockfile (registry npm por HTTPS)
+        run: npm run lint:lockfile
       - name: Compara com o teto de dívida
         run: npm run lint:ratchet
 
@@ -346,12 +366,30 @@ jobs:
     # Distingue AUSENTE (o banco não tem) de INALCANÇÁVEL (tem, mas nenhum
     # papel da origem alcança) — defeitos de correção diferente.
     #
-    # PRECONDIÇÃO: o secret DATABASE_URL do repo (leitura de catálogo; mesmo
-    # valor do .env da máquina). Enquanto não existir, o script sai 0 com um
-    # ::warning:: visível no log — detector inerte é dívida declarada, não
-    # vermelho que o time aprende a ignorar (regra deste arquivo). A lógica
-    # em si já é coberta sem banco por tests/db_check_objetos_do_codigo_test.ts
-    # (caso da view sumida semeado), que roda no job Testes.
+    # PRECONDIÇÃO: o secret DATABASE_URL do repo tem de apontar para a LOJA
+    # (dekxabvqdsuukijblazl), de preferência com um role só de leitura — o
+    # ref é extraído tanto do host direto quanto do usuário do pooler
+    # (Supavisor aceita QUALQUER role como usuário, no formato <role>.<ref>;
+    # não precisa ser postgres.<ref>). Este job agora RECUSA um banco de
+    # outro projeto (PROJETO_REF_ESPERADO abaixo): em 19/09/2026 o secret
+    # apontava para o SANDBOX e o script não notava — imprimia "TODAS as
+    # referências existem" enquanto a loja estava sem as migrations 72-74. Se
+    # o log virar vermelho com "::error::...BANCO ERRADO...", o dono precisa
+    # corrigir o secret, não o código.
+    #
+    # Depois de o secret apontar para a loja, este job AINDA PODE ficar
+    # vermelho de verdade: se o código já referenciar objeto de QUALQUER
+    # migration que existe no repo mas ainda não foi aplicada na loja, o
+    # detector vai reportar AUSENTE até o workflow "Aplicar migrations" rodar
+    # essa migration — esse vermelho é o job funcionando, não um defeito dele.
+    #
+    # Enquanto não existir DATABASE_URL, o script sai 0 com um ::warning::
+    # visível no log — detector inerte é dívida declarada, não vermelho que o
+    # time aprende a ignorar (regra deste arquivo). A lógica em si já é
+    # coberta sem banco por tests/db_check_objetos_do_codigo_test.ts (caso da
+    # view sumida semeado) e tests/ci_objetos_do_codigo_test.ts (fiação do
+    # PROJETO_REF_ESPERADO e o processo real recusando antes de conectar),
+    # que rodam no job Testes.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -363,4 +401,5 @@ jobs:
       - name: Confere objetos usados pelo código contra o catálogo do banco
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PROJETO_REF_ESPERADO: dekxabvqdsuukijblazl
         run: node scripts/db-check-objetos-do-codigo.mjs

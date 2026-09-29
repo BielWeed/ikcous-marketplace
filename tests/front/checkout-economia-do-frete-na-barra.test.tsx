@@ -1,4 +1,4 @@
-import type { CartItem, Product } from "@/types";
+import type { CartItem, Product, ShippingOption } from "@/types";
 // @vitest-environment jsdom
 //
 // Peça 1 do pedido do Gabriel (12/09/2026): a barra de baixo do checkout
@@ -35,13 +35,33 @@ const { mockConfig } = vi.hoisted(() => ({
 const { mockUseCartOverrides } = vi.hoisted(() => ({
   mockUseCartOverrides: {
     freteGratis: true,
-    selectedShippingOption: null as { id: string; name: string } | null,
+    // ENTREGA LOCAL GRÁTIS selecionada por padrão (regra frete × pagamento
+    // do dono, 21/09/2026): `finalizarBloqueadoPorFrete` passou a exigir a
+    // ESCOLHA de entrega (o servidor recusa id ausente — FRETE V2 EMENDA,
+    // ELSIF do bloco 4), e sem ela a barra mostra "a calcular" em vez dos
+    // totais que ESTE arquivo audita. A opção de price 0 preserva o cenário
+    // de frete grátis que a pílula existe para explicar.
+    selectedShippingOption: {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    } as ShippingOption | null,
     freteIndefinido: false,
   },
 }));
 
 const setSelectedShippingOption = vi.fn();
 const setShippingCep = vi.fn();
+
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({ config: mockConfig, isLoaded: true }),
@@ -87,19 +107,22 @@ vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({ user: mockUser, profile: null, loading: false }),
 }));
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: [],
-    cartTotal: 0,
-    shippingFee: 0,
-    clearCart: vi.fn(),
-    addToCart: vi.fn(),
-    shippingCep: null,
-    setSelectedShippingOption,
-    setShippingCep,
-    ...mockUseCartOverrides,
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: [],
+      cartTotal: 0,
+      shippingFee: 0,
+      clearCart: vi.fn(),
+      addToCart: vi.fn(),
+      shippingCep: null,
+      setSelectedShippingOption,
+      setShippingCep,
+      ...mockUseCartOverrides,
+    })),
+  };
+});
 
 const { mockValidateCoupon } = vi.hoisted(() => ({
   mockValidateCoupon: vi.fn(),
@@ -206,7 +229,13 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     mockConfig.localDeliveryFee = 12.9;
     mockConfig.freeShippingMin = 0.01;
     mockUseCartOverrides.freteGratis = true;
-    mockUseCartOverrides.selectedShippingOption = null;
+    mockUseCartOverrides.selectedShippingOption = {
+      id: "local-delivery",
+      name: "Entrega Local",
+      price: 0,
+      deliveryDays: 1,
+      provider: "local",
+    };
     mockUseCartOverrides.freteIndefinido = false;
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -372,6 +401,78 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
+  // T3 (23/09/2026): a opção NACIONAL já ESCOLHIDA carrega a própria
+  // economia (`precoCheio − price`) -- linha 0 de `modoDeEconomiaDoFrete`.
+  // Cenário de DESCONTO (não grátis): `freteGratis` é falso (o preço final
+  // é positivo), mas a pílula e a linha "Entrega" ainda precisam explicar
+  // o desconto -- SEM cotar a edge de novo (a fonte é a própria opção).
+  it("opção NACIONAL com desconto da loja (não grátis): pílula mostra a diferença e a linha Entrega risca o cheio, sem chamar a edge de novo", async () => {
+    mockUseCartOverrides.freteGratis = false;
+    mockUseCartOverrides.selectedShippingOption = {
+      id: "melhorenvio-pac",
+      name: "PAC com desconto da loja",
+      price: 20,
+      precoCheio: 35,
+      deliveryDays: 8,
+      provider: "melhor_envio",
+    };
+    const cart: CartItem[] = [
+      { product: produto({ name: "Camiseta", price: 80 }), quantity: 1 },
+    ];
+
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          cart={cart}
+          subtotal={80}
+          shipping={20}
+          total={100}
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+    await esperarBarraMontar();
+    await esperarCotacao();
+
+    // Fonte é a PRÓPRIA opção (precoCheio já veio da cotação real) — nunca
+    // cota a edge de novo só para mostrar a pílula.
+    expect(mockInvoke).not.toHaveBeenCalled();
+
+    const botaoFinalizar = localizarBotaoFinalizar()!;
+    const linhaTotal = botaoFinalizar.closest(
+      "div.flex.items-center.justify-between",
+    )!;
+    const pilula = linhaTotal.querySelector(
+      '[aria-label^="Desconto de R$"]',
+    ) as HTMLElement | null;
+    expect(pilula).not.toBeNull();
+    expect(pilula!.getAttribute("aria-label")).toBe("Desconto de R$ 15,00");
+
+    const gatilho = [...document.body.querySelectorAll("button")].find((b) =>
+      b.hasAttribute("aria-expanded"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      gatilho.click();
+    });
+    const painel = document.body.querySelector(
+      '[role="dialog"][aria-label="Resumo do pedido"]',
+    )!;
+    const linhaEntrega = Array.from(painel.querySelectorAll("div")).find(
+      (d) =>
+        d.children.length === 2 &&
+        d.children[0].textContent?.trim() === "Entrega",
+    )!;
+    // NÃO grátis: mostra o preço FINAL (R$ 20,00), riscando o CHEIO
+    // (R$ 35,00) — nunca "Grátis" (o desconto não é grátis).
+    expect(linhaEntrega.textContent).not.toContain("Grátis");
+    expect(linhaEntrega.textContent).toContain("20,00");
+    expect(linhaEntrega.querySelector(".line-through")?.textContent).toContain(
+      "35,00",
+    );
+  });
+
   it("🔴 TRAVA DE DINHEIRO: cotação de exibição fora da cidade NUNCA chama setSelectedShippingOption/setShippingCep, e o pedido criado mantém shippingOptionId/destinationCep de antes", async () => {
     mockInvoke.mockResolvedValue({
       data: {
@@ -426,12 +527,14 @@ describe("CheckoutView — pílula de economia (cupom + frete grátis) na barra 
 
     expect(createOrder).toHaveBeenCalledTimes(1);
     const [pedidoEnviado] = createOrder.mock.calls[0];
-    // Mesmo comportamento de ANTES desta peça: sem opção de frete real
-    // escolhida (frete grátis não passa pela ShippingCalculator), o pedido
-    // sai com `shippingOptionId: null` e `destinationCep` igual ao
-    // `shippingCep` do carrinho (aqui, `null`) — nunca o CEP da cotação de
-    // EXIBIÇÃO nem uma opção que a exibição "escolheu".
-    expect(pedidoEnviado.shippingOptionId).toBeNull();
+    // Comportamento pós-regra 21/09/2026: a ESCOLHA de entrega é exigida
+    // pelo Finalizar (o servidor recusa id ausente), então o pedido sai
+    // com a opção que o CLIENTE escolheu ("local-delivery" grátis) —
+    // NUNCA com a opção que a cotação de EXIBIÇÃO "achou" ("pac"/"sedex"
+    // não aparecem aqui) — e `destinationCep` continua o `shippingCep` do
+    // carrinho (aqui, `null`): a cotação de exibição não escreve em
+    // estado nenhum do frete REAL.
+    expect(pedidoEnviado.shippingOptionId).toBe("local-delivery");
     expect(pedidoEnviado.destinationCep).toBeNull();
     expect(setSelectedShippingOption).not.toHaveBeenCalled();
     expect(setShippingCep).not.toHaveBeenCalled();

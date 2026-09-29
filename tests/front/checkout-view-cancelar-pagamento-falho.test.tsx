@@ -27,12 +27,25 @@ type TelaCheckout = typeof import("@/views/customer/CheckoutView").CheckoutView;
 // recusa chamador sem auth.uid() desde o PEDIDO-010, #115).
 let mockUser: { id: string } | null = { id: "user-1" };
 
+// A calculadora de frete do checkout (cotação automática pelo endereço)
+// tem suíte própria (shipping-calculator-*.test.tsx e
+// checkout-frete-automatico-*.test.tsx). Aqui ela é neutra: não cota, não
+// mexe na opção de frete que o teste preparou e não reporta status.
+vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
+  ShippingCalculator: () => null,
+}));
+
+// Achado 1, rodada 7: mutável — `undefined` por padrão (a maioria dos
+// testes deste arquivo não depende de WhatsApp), sobrescrito só no teste do
+// beco sem saída.
+let mockWhatsappNumber: string | undefined;
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: {
       shippingCoverage: "local",
       originCep: "38500-000",
       enableCoupons: false,
+      whatsappNumber: mockWhatsappNumber,
     },
     isLoaded: true,
   }),
@@ -120,36 +133,44 @@ let mockSelectedShippingOption: {
   provider: "flat_fee",
 };
 
-vi.mock("@/hooks/useCart", () => ({
-  useCart: () => ({
-    cart: mockCart,
-    cartTotal: mockCartTotal,
-    shippingFee: mockShippingFee,
-    clearCart: () => {
-      clearCart();
-      mockCart = [];
-      mockCartTotal = 0;
-      mockShippingFee = 0;
-      mockSelectedShippingOption = null;
-    },
-    addToCart: (
-      product: unknown,
-      quantity: number,
-      variantId?: string,
-      variantNames?: string,
-    ) => addToCart(product, quantity, variantId, variantNames),
-    selectedShippingOption: mockSelectedShippingOption,
-    shippingCep: "38500-000",
-  }),
-}));
+vi.mock("@/hooks/useCart", async () => {
+  const { criarUseCartDeTeste } = await import("./duble-use-cart");
+  return {
+    useCart: criarUseCartDeTeste(() => ({
+      cart: mockCart,
+      cartTotal: mockCartTotal,
+      shippingFee: mockShippingFee,
+      clearCart: () => {
+        clearCart();
+        mockCart = [];
+        mockCartTotal = 0;
+        mockShippingFee = 0;
+        mockSelectedShippingOption = null;
+      },
+      addToCart: (
+        product: unknown,
+        quantity: number,
+        variantId?: string,
+        variantNames?: string,
+      ) => addToCart(product, quantity, variantId, variantNames),
+      selectedShippingOption: mockSelectedShippingOption,
+      shippingCep: "38500-000",
+    })),
+  };
+});
 
 vi.mock("@/hooks/useCoupons", () => ({
   useCoupons: () => ({ validateCoupon: vi.fn() }),
 }));
 
-vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder, updateOrderStatus }),
-}));
+// Achado 2, rodada 5: `mensagemAmigavelErroAtualizacaoStatus` fica com a
+// implementação REAL (via `importOriginal`) — só `useOrders` é trocado pelo
+// dublê. É ela quem decide se o texto cru da guarda P0001 (migration 80)
+// passa direto para a tela ou vira o genérico.
+vi.mock("@/hooks/useOrders", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/hooks/useOrders")>();
+  return { ...real, useOrders: () => ({ createOrder, updateOrderStatus }) };
+});
 
 // BLOQUEIO 1 da revisão do #197: o sinal de rede que já existe no
 // repositório (mesmo hook usado por ShippingCalculator) — mutável para
@@ -244,6 +265,7 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     mockIsOffline = false;
     mockStatusAposCancelar = "cancelled";
     mockErroLeituraStatus = null;
+    mockWhatsappNumber = undefined;
     mockCart = [
       {
         product: {
@@ -319,6 +341,11 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
       botaoOnline.click();
       digitar("checkout-name", "Cliente Teste");
       digitar("checkout-tel", "34999999999");
+      // TRANSPORTADORA EXIGE CPF (checkout compacto + CPF, 23/09/2026): o
+      // caminho "Pagar agora com PIX" só existe com transportadora — sem
+      // CPF válido o formulário fica inválido e o Finalizar nunca chega à
+      // tela de aguardar pagamento que este teste precisa.
+      digitar("checkout-cpf", "11144477735");
       // Campos de endereço de convidado só existem no DOM quando `!user` —
       // com sessão, o endereço vem do mock de useAddresses (auto-selecionado
       // pelo efeito de CheckoutView).
@@ -525,6 +552,146 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
     );
   });
 
+  it("achado 2, rodada 5 da revisão de risco pré-publicação (migration 80): a guarda P0001 do cartão em confirmação repassa o TEXTO DELA, não o genérico", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    const mensagemDaGuarda =
+      "Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.";
+    const erroDaGuarda = new Error(mensagemDaGuarda) as Error & {
+      code: string;
+    };
+    erroDaGuarda.code = "P0001";
+    updateOrderStatus.mockRejectedValueOnce(erroDaGuarda);
+    // A guarda nova barra a gravação — o pedido segue 'pending' na
+    // releitura, igual à "falha genérica" acima. A diferença é o CÓDIGO
+    // (P0001) e o TEXTO (a frase da guarda, não uma falha de rede muda).
+    mockStatusAposCancelar = "pending";
+
+    await act(async () => {
+      pagamentoOnlineOnErro[0](
+        "Este pagamento foi recusado e não pode ser tentado novamente.",
+        "terminal",
+      );
+    });
+
+    const botaoCancelar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Cancelar pedido e voltar ao carrinho",
+    )!;
+
+    await act(async () => {
+      botaoCancelar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(onNavigate).not.toHaveBeenCalledWith("cart");
+    expect(addToCart).not.toHaveBeenCalled();
+    // A frase da guarda chega à tela — não o genérico "Tente novamente".
+    expect(hospedeiro.textContent).toContain(mensagemDaGuarda);
+    expect(hospedeiro.textContent).not.toContain(
+      "Não foi possível confirmar o cancelamento",
+    );
+    // Achado 1, rodada 6: a PRÓPRIA recusa da guarda já prova que o cartão
+    // pode estar vivo — bater "Cancelar pedido" de novo só repete a mesma
+    // recusa. O botão some (mas o texto da guarda, acima, já diz "fale com
+    // a loja" — o cliente não fica sem informação).
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
+    ).toBeUndefined();
+    // Achado 1, rodada 7: SEM WhatsApp configurado (`mockWhatsappNumber`
+    // não foi setado neste teste), "Falar com a loja" não aparece — ver o
+    // teste seguinte, que prova a mesma sequência COM WhatsApp configurado.
+    expect(
+      localizarBotaoPorTexto(hospedeiro, "Falar com a loja"),
+    ).toBeUndefined();
+    // Achado 1, rodada 8: SEM WhatsApp, "Ver meus pedidos" fecha o beco —
+    // seguro com a migration 80 no ar (a tela de pedidos não oferece nada
+    // que cobra, e cancelar por lá esbarra na MESMA guarda).
+    const verMeusPedidos = localizarBotaoPorTexto(
+      hospedeiro,
+      "Ver meus pedidos",
+    );
+    expect(verMeusPedidos).toBeDefined();
+    await act(async () => {
+      verMeusPedidos!.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("orders");
+  });
+
+  it("achado 1, rodada 7 da revisão de risco pré-publicação: terminal (prazo acabou) + guarda P0001 -> 'Falar com a loja' aparece, nunca 'Cancelar pedido' — cenário real medido (o relógio vence antes do pg_cron rodar)", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    mockWhatsappNumber = "34999998888";
+
+    await act(async () => {
+      pagamentoOnlineOnErro[0](
+        "O prazo para pagar este pedido acabou. Faça um pedido novo para tentar de novo.",
+        "terminal",
+      );
+    });
+
+    // Antes de cancelar: terminal sem sinal de cobrança incerta ainda
+    // oferece "Cancelar pedido" como única ação.
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
+    ).toBeDefined();
+
+    const mensagemDaGuarda =
+      "Este pedido tem uma cobrança no cartão em confirmação com o banco. Aguarde a confirmação ou fale com a loja antes de cancelar.";
+    const erroDaGuarda = new Error(mensagemDaGuarda) as Error & {
+      code: string;
+    };
+    erroDaGuarda.code = "P0001";
+    updateOrderStatus.mockRejectedValueOnce(erroDaGuarda);
+    // O relógio venceu (409 terminal), mas o pg_cron ainda não passou —
+    // `payment_status` continua `aguardando`, e é isso que faz a guarda
+    // nova recusar o cancelamento com P0001.
+    mockStatusAposCancelar = "pending";
+
+    const botaoCancelar = localizarBotaoPorTexto(
+      hospedeiro,
+      "Cancelar pedido e voltar ao carrinho",
+    )!;
+
+    await act(async () => {
+      botaoCancelar.click();
+      await esperarMicrotarefas();
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.textContent).toContain(mensagemDaGuarda);
+    expect(
+      localizarBotaoPorTexto(
+        hospedeiro,
+        "Cancelar pedido e voltar ao carrinho",
+      ),
+    ).toBeUndefined();
+    const falarComALoja = localizarBotaoPorTexto(
+      hospedeiro,
+      "Falar com a loja",
+    );
+    expect(falarComALoja).toBeDefined();
+
+    const openSpy = vi.fn();
+    vi.stubGlobal("open", openSpy);
+    await act(async () => {
+      falarComALoja!.click();
+    });
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const url = openSpy.mock.calls[0][0] as string;
+    expect(url).toContain("https://wa.me/5534999998888");
+    expect(openSpy).toHaveBeenCalledWith(url, "_blank", "noopener,noreferrer");
+  });
+
   it("pedido já não-pendente, mas a releitura confirma 'cancelled' (expirado pelo pg_cron antes do clique): não tenta creditar estoque de novo — só devolve ao carrinho", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
@@ -607,13 +774,20 @@ describe("CheckoutView — saída do pagamento online falho (CHECKOUT-070, #197)
   });
 
   it("BLOQUEIO 1 (#197): sem conexão, o clique NÃO chama a RPC, NÃO navega e avisa que é preciso se reconectar", async () => {
-    // Ligado ANTES do render — a leitura de `isOffline` acontece no render
-    // do componente (hook `useOnlineStatus`), não no clique. O caminho mais
-    // provável descrito na revisão (perder sinal no meio do pagamento) já
-    // deixa o app offline bem antes deste clique.
-    mockIsOffline = true;
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNaTelaDeAguardarPagamento(CheckoutView);
+
+    // Ligado DEPOIS de chegar à tela de aguardar pagamento (CheckoutView-1451,
+    // 15/09/2026): o "Finalizar Pedido" que chega até aqui agora também lê
+    // `isOffline` (achado offline — o botão passou a travar preventivamente
+    // sem rede), então ligar a bandeira antes do clique inicial impediria o
+    // pedido de nascer e este teste nunca chegaria à tela que ele quer
+    // examinar. O caminho mais provável descrito na revisão (perder sinal no
+    // meio do pagamento, já com o pedido criado) é justamente ficar offline
+    // DEPOIS de chegar aqui — a leitura de `isOffline` acontece no próximo
+    // render do componente (hook `useOnlineStatus`), e o `act` do clique de
+    // "Cancelar pedido" abaixo já provoca esse render.
+    mockIsOffline = true;
 
     await act(async () => {
       pagamentoOnlineOnErro[0](

@@ -514,21 +514,23 @@ function linhaCanceladaFake(id: string) {
 }
 
 describe("updateOrderStatus (admin) recarrega pedidosCancelados sozinho — achado A da revisão de 26/08/2026 (rodada 4)", () => {
-  let chamadasGetAdminOrdersPaged: any[];
+  // pedidos-4: a varredura de cancelados fala com a RPC enxuta própria
+  // (20261164000000), não mais com get_admin_orders_paged.
+  let chamadasCanceladosRecentes: any[];
 
   beforeEach(() => {
     rpc.mockReset();
-    chamadasGetAdminOrdersPaged = [];
+    chamadasCanceladosRecentes = [];
     rpc.mockImplementation((nome: string, args: any) => {
       if (nome === "update_order_status_atomic") {
         return Promise.resolve({ error: null });
       }
-      if (nome === "get_admin_orders_paged") {
-        chamadasGetAdminOrdersPaged.push(args);
+      if (nome === "get_admin_orders_cancelados_recentes") {
+        chamadasCanceladosRecentes.push(args);
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [], total_count: 0 },
+              data: { data: [], total_count: 0, fora_da_janela: 0 },
               error: null,
             }),
         };
@@ -565,9 +567,7 @@ describe("updateOrderStatus (admin) recarrega pedidosCancelados sozinho — acha
       await chamarUpdateOrderStatus("pedido-x", "cancelled");
     });
 
-    const chamadaDeCancelados = chamadasGetAdminOrdersPaged.find(
-      (args) => args.p_status === "cancelled",
-    );
+    const chamadaDeCancelados = chamadasCanceladosRecentes[0];
     expect(chamadaDeCancelados).toBeTruthy();
   });
 
@@ -593,27 +593,25 @@ describe("updateOrderStatus (admin) recarrega pedidosCancelados sozinho — acha
       );
     });
 
-    expect(
-      chamadasGetAdminOrdersPaged.some((args) => args.p_status === "cancelled"),
-    ).toBe(false);
+    expect(chamadasCanceladosRecentes).toHaveLength(0);
   });
 });
 
 describe("realtime UPDATE (admin) também recarrega pedidosCancelados — achado A, 'cuide do caminho do realtime também'", () => {
-  let chamadasGetAdminOrdersPaged: any[];
+  let chamadasCanceladosRecentes: any[];
 
   beforeEach(() => {
     mockIsLeader = true;
     mockRealtimeOnHandler = null;
     rpc.mockReset();
-    chamadasGetAdminOrdersPaged = [];
+    chamadasCanceladosRecentes = [];
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "get_admin_orders_paged") {
-        chamadasGetAdminOrdersPaged.push(args);
+      if (nome === "get_admin_orders_cancelados_recentes") {
+        chamadasCanceladosRecentes.push(args);
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [], total_count: 0 },
+              data: { data: [], total_count: 0, fora_da_janela: 0 },
               error: null,
             }),
         };
@@ -658,9 +656,7 @@ describe("realtime UPDATE (admin) também recarrega pedidosCancelados — achado
       });
     });
 
-    expect(
-      chamadasGetAdminOrdersPaged.some((args) => args.p_status === "cancelled"),
-    ).toBe(true);
+    expect(chamadasCanceladosRecentes.length).toBeGreaterThan(0);
   });
 });
 
@@ -691,15 +687,19 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
     vi.unstubAllGlobals();
   });
 
-  it("os seis argumentos da primeira página são exatamente os fixos — p_status='cancelled', busca/período vazios", async () => {
+  it("pedidos-4: a varredura chama a RPC enxuta com a janela de 90 dias e a paginação fixa", async () => {
     const chamadas: any[] = [];
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         chamadas.push(args);
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [linhaCanceladaFake("p1")], total_count: 1 },
+              data: {
+                data: [linhaCanceladaFake("p1")],
+                total_count: 1,
+                fora_da_janela: 0,
+              },
               error: null,
             }),
         };
@@ -714,10 +714,7 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
 
     expect(chamadas).toHaveLength(1);
     expect(chamadas[0]).toEqual({
-      p_search: "",
-      p_status: "cancelled",
-      p_start_date: "",
-      p_end_date: "",
+      p_dias: 90,
       p_page: 0,
       p_page_size: 200,
     });
@@ -726,7 +723,7 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
   it("total_count maior que uma página busca a segunda e acumula tudo — o laço de paginação é real", async () => {
     const chamadas: any[] = [];
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         chamadas.push(args);
         const linhas =
           args.p_page === 0
@@ -739,7 +736,7 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
         return {
           abortSignal: () =>
             Promise.resolve({
-              data: { data: linhas, total_count: 350 },
+              data: { data: linhas, total_count: 350, fora_da_janela: 0 },
               error: null,
             }),
         };
@@ -766,7 +763,7 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
 
   it("teto de páginas (MAX_PAGES) truncando: marca pedidosCanceladosIncompleto — achado D", async () => {
     rpc.mockImplementation((nome: string) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         return {
           // total_count muito maior do que 25 páginas (MAX_PAGES) dão conta
           // de cobrir — o teto tem que interromper o laço. Página vazia
@@ -774,7 +771,7 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
           // volume de linhas.
           abortSignal: () =>
             Promise.resolve({
-              data: { data: [], total_count: 999999 },
+              data: { data: [], total_count: 999999, fora_da_janela: 0 },
               error: null,
             }),
         };
@@ -793,7 +790,7 @@ describe("fetchPedidosCancelados (hook real) — a propriedade que esta rodada e
 
   it("erro na RPC (não-abort): continua engolido em silêncio (sem toast), mas liga o aviso — achado B", async () => {
     rpc.mockImplementation((nome: string) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         return {
           abortSignal: () => Promise.reject(new Error("PGRST301: JWT expired")),
         };
@@ -845,22 +842,27 @@ describe("fetchPedidosCancelados NÃO compartilha o AbortController da lista pri
   });
 
   it("chamar fetchPedidosCancelados enquanto loadOrders (lista principal) está em voo NÃO aborta o loadOrders", async () => {
-    const sinaisCapturados: { status: string; signal: AbortSignal }[] = [];
-    rpc.mockImplementation((nome: string, args: any) => {
+    const sinaisCapturados: { rpcNome: string; signal: AbortSignal }[] = [];
+    rpc.mockImplementation((nome: string) => {
       if (nome === "get_admin_orders_paged") {
+        // Lista principal: fica em voo de propósito — o que este
+        // teste mede é justamente que o sinal DELA não é abortado por
+        // quem busca os cancelados.
         return {
           abortSignal: (signal: AbortSignal) => {
-            sinaisCapturados.push({ status: args.p_status, signal });
-            if (args.p_status === "cancelled") {
-              return Promise.resolve({
-                data: { data: [], total_count: 0 },
-                error: null,
-              });
-            }
-            // Lista principal: fica em voo de propósito — o que este
-            // teste mede é justamente que o sinal DELA não é abortado por
-            // quem busca os cancelados.
+            sinaisCapturados.push({ rpcNome: nome, signal });
             return new Promise<never>(() => {});
+          },
+        };
+      }
+      if (nome === "get_admin_orders_cancelados_recentes") {
+        return {
+          abortSignal: (signal: AbortSignal) => {
+            sinaisCapturados.push({ rpcNome: nome, signal });
+            return Promise.resolve({
+              data: { data: [], total_count: 0, fora_da_janela: 0 },
+              error: null,
+            });
           },
         };
       }
@@ -880,7 +882,7 @@ describe("fetchPedidosCancelados NÃO compartilha o AbortController da lista pri
     });
 
     const sinalListaPrincipal = sinaisCapturados.find(
-      (s) => s.status === "open",
+      (s) => s.rpcNome === "get_admin_orders_paged",
     )?.signal;
     expect(sinalListaPrincipal).toBeTruthy();
     expect(sinalListaPrincipal?.aborted).toBe(false);
@@ -920,7 +922,7 @@ describe("confirmarRetornoDoProduto — o rollback morto foi removido, achado E"
     });
 
     rpc.mockImplementation((nome: string, args: any) => {
-      if (nome === "get_admin_orders_paged") {
+      if (nome === "get_admin_orders_cancelados_recentes") {
         return {
           abortSignal: () =>
             Promise.resolve({
@@ -930,6 +932,7 @@ describe("confirmarRetornoDoProduto — o rollback morto foi removido, achado E"
                   linhaCanceladaFake("pedido-B"),
                 ],
                 total_count: 2,
+                fora_da_janela: 0,
               },
               error: null,
             }),
