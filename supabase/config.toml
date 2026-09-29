@@ -21,11 +21,12 @@
 
 # project_id e' identificador LOCAL — distingue projetos no mesmo host, e
 # NAO escolhe o destino do deploy. O alvo e' o projeto linkado ou o
-# --project-ref. Isso importa aqui: o DEPLOYMENT.md:28 avisa que o seletor
-# interativo lista o sandbox ANTES do projeto certo, e que dar Enter direto
-# publica no lugar errado sem erro nenhum. Ver este campo como "alvo fixado"
-# e largar o --project-ref e' exatamente como se publica no sandbox.
-project_id = "cafkrminfnokvgjqtkle"
+# --project-ref. Isso importa aqui: o seletor interativo do CLI lista mais de
+# um projeto (o DEPLOYMENT.md, seção do deploy, manda conferir o projeto antes
+# de confirmar), e dar Enter direto pode publicar no lugar errado sem erro
+# nenhum. Ver este campo como "alvo fixado" e largar o --project-ref e'
+# exatamente como se publica no projeto errado.
+project_id = "dekxabvqdsuukijblazl"
 
 # COM JWT desde a inversao de 19/08/2026 (#161 + #86) — e este bloco dizia o
 # CONTRARIO ate entao, com razao para a epoca. Guardo o porque da virada aqui,

@@ -65,7 +65,7 @@ jobs:
             // habilitava '<ref>/restart#' (POST para outro endpoint) e
             // 'x/../outroref.../database/query#' (a query indo para OUTRO
             // projeto), com um token válido para toda a conta.
-            const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg' };
+            const REFS = { loja: 'dekxabvqdsuukijblazl', sandbox: 'lofznuxcvezrhxsgjqyg' };
             const projeto = process.env.PROJETO;
             if (!Object.hasOwn(REFS, projeto)) {
               console.error('RECUSADO (projeto desconhecido): ' + projeto); process.exit(1);

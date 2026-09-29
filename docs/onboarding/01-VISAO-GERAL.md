@@ -59,7 +59,7 @@ flowchart TB
         R <--> SW
     end
 
-    subgraph sb["Supabase — cafkrminfnokvgjqtkle"]
+    subgraph sb["Supabase — dekxabvqdsuukijblazl"]
         PG[("Postgres<br/>29 tabelas · 66 funções<br/>RLS em todas")]
         RT["Realtime<br/>canal datavault-sync"]
         ST["Storage<br/>imagens"]

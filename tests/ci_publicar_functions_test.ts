@@ -31,7 +31,7 @@ const WORKFLOW = fromFileUrl(
   new URL("../.github/workflows/publicar-functions.yml", import.meta.url),
 );
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
-const REF_LOJA = "cafkrminfnokvgjqtkle";
+const REF_LOJA = "dekxabvqdsuukijblazl";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
 const AS_CINCO_DA_COBRANCA =
   "criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago";

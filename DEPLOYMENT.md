@@ -27,13 +27,13 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    supabase functions deploy send-push
    ```
 
-   **O comando pergunta em qual projeto, e vem com o cursor no errado.** Desde
-   05/08/2026 a org tem **dois** projetos — o `jvgyjlbjhbfrncwbytls` foi
-   excluído (#85). O que hospeda a loja é o `cafkrminfnokvgjqtkle`, o mesmo que
-   está em `VITE_SUPABASE_URL`; o outro é o `lofznuxcvezrhxsgjqyg`
-   (`ikcous-mkt-priemira-cliente`), que aparece **antes** dele na lista. Dar
-   Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
-   `--project-ref cafkrminfnokvgjqtkle`.
+   **O comando pergunta em qual projeto, e o cursor pode não estar no certo —
+   confira antes de confirmar.** O `jvgyjlbjhbfrncwbytls` foi excluído em
+   05/08/2026 (#85). O que hospeda a loja é o `dekxabvqdsuukijblazl` (org
+   IKCOUS), o mesmo que está em `VITE_SUPABASE_URL`; o `lofznuxcvezrhxsgjqyg`
+   é outro projeto, na org antiga — não é a loja. Dar Enter direto pode
+   publicar no lugar errado sem erro nenhum. Para pular a escolha:
+   `--project-ref dekxabvqdsuukijblazl`.
 
    Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
    `publicar-functions` (GitHub → Actions → "Publicar edge functions
@@ -77,7 +77,7 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    **A `notify-new-order` também exige `--no-verify-jwt`** (PEDIDO-020, #89):
 
    ```bash
-   supabase functions deploy notify-new-order --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+   supabase functions deploy notify-new-order --no-verify-jwt --project-ref dekxabvqdsuukijblazl
    ```
 
    Ela é chamada pelo navegador do CLIENTE logo depois do pedido — muitas vezes
@@ -90,10 +90,11 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    ter sido criado nos últimos 15 minutos. O pior caso de um id vazado é
    duplicar o aviso de um pedido que acabou de entrar.
 
-   **O que está publicado hoje** — medido em 11/08/2026, depois da
+   **O que estava publicado em 11/08/2026** — no projeto ANTIGO
+   (`cafkrminfnokvgjqtkle`, pausado, não volta), medido depois da
    despublicação da `send-order-whatsapp`, com
-   `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela
-   envelhece; rode o comando em vez de confiar nela:
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela é
+   histórico daquele projeto:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
@@ -107,8 +108,14 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 
    São sete — as quatro antigas mais as três do checkout então publicadas (a
    folha da §5.3 tem cinco desde 15/09/2026; esta tabela é a foto de
-   agosto/2026). A `send-order-whatsapp`, despublicada em 11/08/2026, não
-   aparece mais.
+   agosto/2026, do projeto antigo). A `send-order-whatsapp`, despublicada em
+   11/08/2026, não aparece mais.
+
+   **No projeto novo (`dekxabvqdsuukijblazl`), as onze functions foram
+   publicadas em 28/09/2026 às 06:05 UTC** — a numeração de versão recomeçou
+   ali (hoje na v5, por causa de republicações) e a tabela acima não vale para
+   ele. Rode `supabase functions list --project-ref dekxabvqdsuukijblazl` para
+   ver o estado atual.
 
    Ressalvas desta tabela, cada uma com sua própria data:
 
@@ -228,7 +235,7 @@ sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia 
 A URL a cadastrar é:
 
 ```
-https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago
+https://dekxabvqdsuukijblazl.supabase.co/functions/v1/webhook-mercadopago
 ```
 
 **Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
@@ -332,15 +339,15 @@ O `verify_jwt` de cada uma está versionado em `supabase/config.toml`, mas **a f
 comando ganha do arquivo**. Então os comandos abaixo não são intercambiáveis:
 
 ```bash
-supabase functions deploy criar-pagamento --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy criar-pagamento --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref dekxabvqdsuukijblazl
 ```
 
 - `criar-pagamento` vai **sem** `--no-verify-jwt`: quem chama é o cliente com sessão.
@@ -355,11 +362,11 @@ valer de verdade (§5.2.1) e trouxe duas functions para esta mesma folha. As dua
 **sem** `--no-verify-jwt`:
 
 ```bash
-supabase functions deploy estornar-pagamento --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy estornar-pagamento --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy credenciais-mercado-pago --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy credenciais-mercado-pago --project-ref dekxabvqdsuukijblazl
 ```
 
 - `estornar-pagamento` já existia e passou a resolver a credencial como as outras três;
@@ -446,7 +453,7 @@ escolher a **branch** (o que sobe é o código daquele commit) e preencher:
 
 - `functions`: os nomes, separados por vírgula ou espaço (`credenciais-mercado-pago`), ou o
   apelido `cobranca`, que vira as cinco da §5.3 na ordem certa;
-- `projeto`: `loja` (`cafkrminfnokvgjqtkle`, o padrão) ou `sandbox` (`lofznuxcvezrhxsgjqyg`).
+- `projeto`: `loja` (`dekxabvqdsuukijblazl`, o padrão) ou `sandbox` (`lofznuxcvezrhxsgjqyg`).
 
 O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do
 projeto, que também vai para o resumo do job — é a prova de que a versão subiu (a tabela da §2

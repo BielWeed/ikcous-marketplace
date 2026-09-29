@@ -238,8 +238,12 @@ escrita serial; quem escreveu não revisa; decisão de produto sobe ao Gabriel c
   [runbook de publicação](docs/runbooks/publicar-painel-cartao-devolucoes.md) (seção 7 cobre a 79).
 - **Migration não leva `BEGIN`/`COMMIT`.** Com eles, o `ROLLBACK` do script de prova vira
   no-op e a mudança fica gravada.
-- **Backup é diário e não há PITR.** Nunca `--no-verify` no commit — o `secretlint` do
-  pre-commit é a única trava contra credencial vazada (o histórico já teve chave commitada).
+- **Sem backup automático (plano Free, desde 28/09/2026) e sem PITR.** O único ponto de
+  restauração é um `pg_dump` COM DADOS pelo session pooler antes de CADA migration (o
+  `supabase db dump` padrão não leva dados nem triggers) — comando, conferência e restauração em
+  `docs/onboarding/03-SETUP-AMBIENTE.md` §9. Nunca `--no-verify` no
+  commit — o `secretlint` do pre-commit é a única trava contra credencial vazada (o histórico já
+  teve chave commitada).
 
 ## Verificação — o que realmente cobra
 

@@ -14,7 +14,8 @@
 --    incidente.
 --
 -- O corpo de handle_new_otp_verification e' copia literal do baseline
--- 20260806000000_baseline_do_schema_vivo.sql, linhas 2907-2942.
+-- 20260806000000_baseline_do_schema_vivo.sql, linhas 2907-2942, exceto o ref
+-- do projeto, trocado para dekxabvqdsuukijblazl em 28/09/2026.
 
 CREATE OR REPLACE FUNCTION public.handle_new_otp_verification() RETURNS "trigger"
     LANGUAGE plpgsql SECURITY DEFINER
@@ -37,7 +38,7 @@ BEGIN
     END IF;
 
     PERFORM net.http_post(
-        url := 'https://cafkrminfnokvgjqtkle.functions.supabase.co/send-otp-email',
+        url := 'https://dekxabvqdsuukijblazl.functions.supabase.co/send-otp-email',
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
             'Authorization', 'Bearer ' || v_chave

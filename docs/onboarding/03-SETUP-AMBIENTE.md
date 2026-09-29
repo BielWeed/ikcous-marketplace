@@ -157,7 +157,7 @@ nunca escreva no `.env.production.local`; no `.env.local` só encoste se a `DATA
 
 ## 4. Quais variáveis pedir e quais pegar sozinho
 
-Antes de tudo: **peça ao Gabriel convite de membro no projeto Supabase `cafkrminfnokvgjqtkle`
+Antes de tudo: **peça ao Gabriel convite de membro no projeto Supabase `dekxabvqdsuukijblazl`
 e no projeto Vercel `ickous-marketplace`.** Sem isso, nada abaixo existe para você.
 
 | Variável | De onde vem |
@@ -390,13 +390,15 @@ Replique à mão.
 
 ### Antes das regras: quais projetos existem, e qual é qual
 
-A org `vtwznprwuptaquiysenb` tem **dois** projetos. Confirme com
-`supabase projects list` antes de confiar nesta tabela — ela envelhece.
+Não são mais dois projetos na mesma org: a loja mudou de org em 28/09/2026.
+Confirme com `supabase projects list` antes de confiar nesta tabela — ela
+envelhece.
 
-| Ref | Nome | Região | O que é |
-| --- | --- | --- | --- |
-| `cafkrminfnokvgjqtkle` | BielWeed's Project | West US (Oregon) | **A loja no ar.** É o que está em `VITE_SUPABASE_URL` e na `DATABASE_URL` do `.env`. |
-| `lofznuxcvezrhxsgjqyg` | ikcous-mkt-priemira-cliente | South America (São Paulo) | **Sandbox do MCP.** Apesar do nome, não é loja de cliente nenhum. |
+| Ref | Nome | Região | Org | O que é |
+| --- | --- | --- | --- | --- |
+| `dekxabvqdsuukijblazl` | ikcous-loja | South America (São Paulo) | IKCOUS | **A loja no ar.** É o que está em `VITE_SUPABASE_URL` e na `DATABASE_URL` do `.env`. |
+| `lofznuxcvezrhxsgjqyg` | ikcous-mkt-priemira-cliente | South America (São Paulo) | `vtwznprwuptaquiysenb` (org antiga) | **Sandbox do MCP.** Apesar do nome, não é loja de cliente nenhum. |
+| `cafkrminfnokvgjqtkle` | BielWeed's Project | West US (Oregon) | `vtwznprwuptaquiysenb` (org antiga) | **Pausado desde 28/09/2026**, por fatura em aberto. Não volta — só aparece como histórico. |
 
 Existiu um terceiro, `jvgyjlbjhbfrncwbytls` (`ikcous-marketplace-br`), **excluído em 05/08/2026**.
 Se você encontrar esse ref em documento, script ou comentário, é resíduo — ver #85.
@@ -417,11 +419,6 @@ minuto (02:14 UTC), espelhando o ambiente de produção.
 
 Esses três arquivos estão no `.gitignore` — cada um já guardou credencial. Se o seu não existir,
 peça o modelo; não copie de produção.
-
-> **Armadilha:** `.agents_inactive/mcp_config.json` aponta para **produção**
-> (`cafkrminfnokvgjqtkle`). Se alguém reativar aquelas skills copiando o config de volta, o MCP
-> passa a falar com a loja no ar — e ferramenta de IA escrevendo em produção não avisa antes.
-> Ao reativar qualquer coisa de `.agents_inactive/`, **conferir o `project_ref` primeiro.**
 
 O que o sandbox **não** é: não é o staging do INFRA-270 (#131). Aquele cartão precisa de um projeto
 cujo schema seja reprodutível a partir do repositório, e o schema deste nunca foi conferido contra
@@ -499,7 +496,8 @@ Leia o resultado do `SELECT`. Só se ele for exatamente o esperado você repete 
 (`pg_get_functiondef` em `scripts/db-apply.cjs:97`, coletado pelo laço em `:145-152`) — e só isso,
 **não é backup de dado**. Antes de `UPDATE`/`DELETE` em massa, tire o snapshot você mesmo com
 `CREATE TABLE bkp_produtos_20260730 AS SELECT * FROM produtos WHERE <o recorte que vai mudar>` — isso
-é DDL, cai na regra 5: avise antes. Sem escrever nada, use o painel Supabase → Database → Backups.
+é DDL, cai na regra 5: avise antes. Sem escrever nada, o ponto de restauração é o `pg_dump` com dados
+do §9 (plano Free: o painel não tem backup automático).
 
 Para migration, o `db-apply.cjs` faz o equivalente do ritual acima e salva o rollback de função:
 
@@ -617,11 +615,18 @@ justifica, e não antes.
 
 ## 9. Backup e ponto de restauração
 
-Medido em 05/08/2026 com `supabase backups list --project-ref cafkrminfnokvgjqtkle`
-(`BANCO-040`, #40). Rode o comando em vez de confiar nesta seção — ela envelhece
-como qualquer outra.
+**O projeto novo (`dekxabvqdsuukijblazl`) está no plano Free desde 28/09/2026:
+sem backup automático, sem PITR.** O único ponto de restauração é o dump
+manual do procedimento abaixo, feito antes de CADA migration.
 
-| pergunta | resposta medida |
+A tabela seguinte é a medição de 05/08/2026 no projeto ANTIGO
+(`cafkrminfnokvgjqtkle`, pausado, não volta) — registro histórico daquele
+projeto, não vale para o atual.
+
+Medido com `supabase backups list --project-ref cafkrminfnokvgjqtkle`
+(`BANCO-040`, #40).
+
+| pergunta | resposta medida (projeto antigo) |
 | --- | --- |
 | Existe backup automático? | **Sim.** `walg_enabled: true` |
 | Frequência | **Diária**, por volta de 11:37 UTC (≈08:37 em Brasília) |
@@ -648,6 +653,10 @@ zero e cobre quase o mesmo risco.
 
 ### A consequência real — e por que ela é menor do que parece
 
+> **Histórico (projeto antigo, com backup diário).** Esta seção e a anterior valiam
+> para o `cafkrminfnokvgjqtkle`. No projeto novo (plano Free, desde 28/09/2026) não há
+> backup automático: a janela de perda é o tempo desde o último dump do passo 3 abaixo.
+
 A frase "sem PITR você perde até 24 h de pedidos" está certa no pior caso e
 **errada na prática**, porque a janela de perda não é fixa em 24 h: ela é *o
 tempo decorrido desde o último backup*. E esse tempo você escolhe.
@@ -665,20 +674,13 @@ compraria por US$ 1.200 ao ano.
 
 ### O procedimento — obrigatório antes de qualquer migration
 
-Quatro passos. Nenhum custa dinheiro.
+O plano Free não tem backup automático — não existe "backup de hoje" para
+conferir. O `pg_dump` do passo 3 é o ÚNICO ponto de restauração, e por isso
+roda antes de CADA migration, não só da primeira de uma série.
 
-**1. Confirme que o backup de HOJE já saiu.** Não confie no horário: os backups
-variam ~8 minutos e um dia pode atrasar.
+Três passos. Nenhum custa dinheiro.
 
-```bash
-npx supabase backups list --project-ref cafkrminfnokvgjqtkle
-```
-
-Olhe o `inserted_at` mais recente. **Se não for de hoje, pare e espere.** Rodar
-migration antes do backup do dia é o que transforma 25 minutos de exposição em
-23 horas.
-
-**2. Fotografe as policies.**
+**1. Fotografe as policies.**
 
 ```bash
 node scripts/db-snapshot-politicas.cjs
@@ -691,16 +693,37 @@ policies vivas**. O snapshot grava as 71 como `CREATE POLICY` executável, entã
 policy apagada por engano se recria por diff — **sem restaurar nada**, sem
 perder pedido nenhum.
 
-**3. Ensaie numa cópia antes de tocar produção.** O projeto
+**2. Ensaie numa cópia antes de tocar produção.** O projeto
 `lofznuxcvezrhxsgjqyg` já existe e já tem as três edge functions publicadas.
 Usá-lo como banco de ensaio não cria custo novo. É a `INFRA-270` (#131).
 
-**4. `pg_dump` completo antes da PRIMEIRA migration da série.** Com Docker no ar
-— ver a armadilha abaixo.
+**3. `pg_dump` COM DADOS antes de CADA migration.** Direto pelo session pooler, com o
+`pg_dump` 17 instalado junto do `psql` (no Windows, `C:\Program Files\PostgreSQL\17\bin\`).
+Não use o `supabase db dump` para isto: o padrão dele não leva dados (e omite triggers,
+armadilha 2 abaixo).
 
-Os quatro somados cobrem o risco real. O que o PITR daria a mais é reverter erro
-percebido **tarde** — e para isso o backup de 7 dias já serve, com granularidade
-pior.
+`$PGURL` é a URI do **session pooler** do projeto (painel → Connect → Session pooler: host
+`aws-0-sa-east-1.pooler.supabase.com`, porta 5432, usuário `postgres.dekxabvqdsuukijblazl`,
+`sslmode=require`), com a senha do banco, só no seu terminal.
+
+No PowerShell (a senha fica só no seu terminal, nunca no chat nem no repositório):
+
+```powershell
+$bin = "C:\Program Files\PostgreSQL\17\bin"
+& "$bin\pg_dump.exe" $PGURL --schema=public --schema=auth -Fc -f backups\antes-<migration>.dump
+& "$bin\pg_restore.exe" -f NUL backups\antes-<migration>.dump; "arquivo inteiro: $($LASTEXITCODE -eq 0)"
+(& "$bin\pg_restore.exe" -l backups\antes-<migration>.dump | Select-String "TABLE DATA").Count
+```
+
+Sempre em `backups\` (a pasta que o `.gitignore` reserva para dumps): o dump leva usuários,
+e-mails, CPFs e endereços, e fora dela um `git add .` o manda para o histórico público.
+Duas conferências: a segunda linha lê o arquivo inteiro (dump cortado dá erro), e a
+terceira tem de ser maior que zero (sem `TABLE DATA`, o dump é só estrutura e não serve
+para voltar dado nenhum).
+
+Sem backup automático por trás, estes três passos são o que cobre o risco
+real — pular o dump de qualquer migration deixa a loja sem ponto de
+restauração nenhum até o próximo.
 
 ### Onde o snapshot vai parar
 
@@ -738,7 +761,8 @@ Entre os 9 que sumiriam estão `tr_prevent_role_change`,
 privilégio**. Um baseline gerado por ali derrubaria as três sem avisar, e o dump
 não reclama de nada.
 
-**Use `pg_dump` direto, dentro do container:**
+**Para gerar BASELINE de schema** (não é backup — o backup é o passo 3 do procedimento),
+use `pg_dump` direto, dentro do container:
 
 ```bash
 docker run --rm -e PGURL public.ecr.aws/supabase/postgres:17.6.1.143 \
@@ -750,15 +774,37 @@ assim que a omissão apareceu: o dump "funcionou", e os números não bateram.
 
 ### Restauração
 
-Restaurar é pelo **painel do Supabase**, e só o dono da org (o Gabriel) tem
-acesso. O `supabase backups restore` existe no CLI mas serve ao PITR, que está
-desligado — com backup diário, o caminho é a interface.
+No plano Free não há restauração pelo painel, e só o dono (o Gabriel) tem a senha do
+banco. **Nunca restaure com `pg_restore --clean`**: ele apaga e recria as tabelas, views e
+funções de `public`, que nascem com os privilégios padrão do Supabase. Isso reabre para
+o `anon` o que as migrations fecharam com `REVOKE` (a margem em `produtos.custo`, a escrita
+em `vw_produtos_public`, `confirmar_pagamento`), tira tabelas da publication do Realtime e
+termina com erros em `is_admin()`. Provado num Postgres de teste em 28/09/2026.
+
+O caminho depende do que quebrou:
+
+- **Estrutura** (função, policy, trigger, grant): o rollback da própria migration, mais o
+  snapshot de policies do passo 1. Nem toda migration antiga tem `rollback-manual-*.sql`:
+  se a que você vai aplicar não tem, escreva o rollback ANTES de aplicar. Não se restaura
+  dump para isso.
+- **Dados** (linhas estragadas por uma migration): tire do dump **só os dados** da tabela
+  afetada, confira o arquivo e aplique numa transação, sem tocar em estrutura nem grant:
+
+```powershell
+& "$bin\pg_restore.exe" --data-only --table=<tabela> -f backups\dados-<tabela>.sql backups\antes-<migration>.dump
+```
+
+  O arquivo é só `COPY` para a tabela original. Como reinserir depende da tabela: chave
+  primária colide com as linhas que ficaram, e gatilhos (estoque, financeiro, histórico)
+  disparam em `INSERT`/`DELETE`. Por isso, faça sempre dentro de `BEGIN`, confira as
+  contagens antes do `COMMIT` e **com revisão de outra pessoa**, nunca sozinho. Restauração
+  do banco inteiro é incidente.
 
 **Quanto tempo leva uma restauração continua não medido, e vai continuar.**
 Medir exigiria restaurar produção de verdade. É um desconhecido **aceito**: a
 mitigação foi desenhada justamente para não depender de restauração — o
-snapshot de policies resolve o caso provável sem restaurar nada, e o passo 1 do
-procedimento limita o caso improvável a minutos.
+snapshot de policies resolve o caso provável sem restaurar nada, e o dump do passo 3
+limita a perda do caso improvável ao que entrou entre o dump e a restauração.
 
 ---
 

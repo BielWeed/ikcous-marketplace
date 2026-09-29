@@ -195,7 +195,7 @@ const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
  * que fecha a injeção de `projeto_ref` da rodada 2 da revisão. */
 const REFS_POR_PROJETO = {
-  loja: "cafkrminfnokvgjqtkle",
+  loja: "dekxabvqdsuukijblazl",
   sandbox: "lofznuxcvezrhxsgjqyg",
 };
 

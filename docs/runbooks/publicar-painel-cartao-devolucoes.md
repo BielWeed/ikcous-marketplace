@@ -67,7 +67,8 @@ Correspondência com os passos deste runbook:
   rodar a migration, se o preflight dela (`DO $preflight_20261180$`) vai passar (mesmos hashes,
   mesma checagem de `metodo_online`/`devolucoes`) — ver o parágrafo próprio abaixo.
 - **Backup** (checklist do §0) — `consulta = backups`: imprime a hora do último backup, o
-  status, se o PITR está ligado e o total — nada que pareça segredo.
+  status, se o PITR está ligado e o total. No plano Free (desde 28/09/2026) ela devolve
+  "(nenhum)": o ponto de restauração passa a ser o `pg_dump` com dados do §0, não esta consulta.
 
 O `consulta = 3a-cpf-no-endereco` também está na lista: é a contagem de pedidos com CPF gravado
 dentro de `customer_data.address` (janela 23/09–26/09/2026) que decide se uma limpeza é
@@ -151,8 +152,9 @@ antes de abrir o estorno automático do cancelamento. As functions novas continu
   escolher em *Run workflow*, e esse branch tem de estar exatamente nesse SHA.
 - [ ] **Anote o alvo do rollback das functions**: o commit do último run verde do
   `publicar-functions.yml` na aba Actions. Na falta dele, use a base do PR.
-- [ ] **Confira o backup.** O backup é diário e não há PITR. Olhe a hora do último backup em
-  Supabase → Database → Backups.
+- [ ] **Faça o dump com dados.** Plano Free desde 28/09/2026: não há backup automático nem PITR.
+  O `pg_dump` do [§9 do setup](../onboarding/03-SETUP-AMBIENTE.md) antes de CADA migration, e
+  confira que ele tem `TABLE DATA`.
 - [ ] **Escolha um horário de pouco movimento** e faça os passos 1 e 2 na mesma sessão.
 - [ ] **Rode no SQL Editor do projeto da loja** e confira os valores esperados. É uma consulta
   só, porque o SQL Editor mostra apenas o último resultado:
