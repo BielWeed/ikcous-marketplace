@@ -127,6 +127,16 @@ describe("F3 — produto no computador e celular preservado", () => {
 
   it("F3.1 mantém a ordem e a cadeia das seções, com wrappers neutros no celular", async () => {
     await montar();
+    // Raiz da view: no desktop recusa o encolhimento do wrapper da cliente
+    // (App.tsx) -- sem isso, com o rodapé da loja montado como irmão dentro
+    // do container de rolagem, ele caía no MEIO da página (prévia 29/09) e a
+    // descrição rolava por baixo do bloco preto.
+    const raiz = host.firstElementChild!;
+    expect(classesDoCelular(raiz.className)).toBe(
+      "pb-customer relative min-h-full bg-white",
+    );
+    expect(raiz.classList.contains("lg:shrink-0")).toBe(true);
+    expect(raiz.classList.contains("lg:pb-0")).toBe(true);
     const titulo = elemento("h1");
     const compra = titulo.parentElement!.parentElement!;
     expect(classesDoCelular(compra.className)).toBe("");
@@ -210,6 +220,15 @@ describe("F3 — produto no computador e celular preservado", () => {
       )!;
       expect(comprar.classList.contains("lg:h-12")).toBe(true);
       expect(comprar.classList.contains("lg:text-xs")).toBe(true);
+      // O CTA ocupa a linha inteira no desktop: dividindo a linha com
+      // quantidade e WhatsApp, o rótulo transbordava e era cortado pela
+      // borda do cartão (prévia 29/09, 1440px).
+      expect(comprar.classList.contains("lg:basis-full")).toBe(true);
+      const linhaDeAcao = comprar.parentElement!;
+      expect(classesDoCelular(linhaDeAcao.className)).toBe(
+        "mb-5 flex items-center gap-2",
+      );
+      expect(linhaDeAcao.classList.contains("lg:flex-wrap")).toBe(true);
     },
   );
 
@@ -225,11 +244,23 @@ describe("F3 — produto no computador e celular preservado", () => {
 
   it("F3.6 alinha as abas e dá escala de leitura à descrição e perguntas", async () => {
     await montar();
-    classe(
+    const abas = classe(
       "nav[aria-label='Seções do produto']",
       "mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5",
       "lg:mx-0",
     );
+    // Desktop: abas de site -- linha inteira com separador embaixo, não a
+    // pílula flutuante de 360px (prévia 29/09).
+    expect(abas.classList.contains("lg:max-w-none")).toBe(true);
+    expect(abas.classList.contains("lg:bg-transparent")).toBe(true);
+    // A barra sticky não sangra a coluna com as margens negativas do celular.
+    expect(abas.parentElement!.classList.contains("lg:mx-0")).toBe(true);
+    // O indicador ativo vira um traço preto rente ao separador: o pill
+    // (motion.div) é o primeiro filho do botão com aria-current.
+    const pill = abas.querySelector("button[aria-current='true'] > div");
+    expect(pill).not.toBeNull();
+    expect(pill!.classList.contains("lg:bg-zinc-950")).toBe(true);
+    expect(pill!.classList.contains("lg:h-[2.5px]")).toBe(true);
     classe(
       "#details-section p",
       "text-sm leading-relaxed text-gray-600",
