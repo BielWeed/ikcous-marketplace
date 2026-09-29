@@ -1,0 +1,23 @@
+# Temporário (29/09/2026): conta de cliente de teste na loja IKCOUS (dev).
+name: Operação — conta de teste na loja IKCOUS (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/conta-teste-ikcous.mjs
+      - .github/workflows/operacao-conta-teste-ikcous.yml
+permissions:
+  contents: read
+jobs:
+  conta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/conta-teste-ikcous.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          LOJAS_ADMIN_SENHA: ${{ secrets.LOJAS_ADMIN_SENHA }}
