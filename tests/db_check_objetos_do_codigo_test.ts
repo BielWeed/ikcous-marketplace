@@ -29,6 +29,11 @@ import {
   extrairDeConteudo,
   formatar,
   refDoProjeto,
+  lerCatalogoPelaApi,
+  montarCatalogo,
+  SQL_BUCKETS,
+  SQL_FUNCOES,
+  SQL_RELACOES,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
 
 const CATÁLOGO = () => ({
@@ -310,4 +315,174 @@ Deno.test("conferirProjeto — ref não identificado (null): reprova com ::error
   assertEquals(r.ok, false);
   assertStringIncludes(r.mensagem, "::error::");
   assertStringIncludes(r.mensagem, "não identificado");
+});
+
+// ─── Leitura do catálogo pela API somente leitura (29/09/2026) ──────────────
+// O CI deixou de depender de DATABASE_URL (projeto pausado). O que estes casos
+// travam: só o TRANSPORTE mudou — SQL e montagem do catálogo são os mesmos, e a
+// falha de consulta NUNCA vira verde.
+
+const REF_FALSO = "abcdefghijklmnopqrst";
+const TOKEN_FALSO = "token-de-teste-que-nao-pode-vazar";
+
+const LINHAS_REL = [
+  { nome: "produtos", anon: false, authenticated: false, service_role: true },
+  { nome: "vw_pub", anon: true, authenticated: true, service_role: true },
+];
+const LINHAS_FN = [
+  { nome: "f", anon: false, authenticated: false, service_role: true },
+  { nome: "f", anon: false, authenticated: true, service_role: false },
+  { nome: "g", anon: false, authenticated: false, service_role: false },
+];
+
+/** fetch falso que responde por SQL e registra o que recebeu. */
+function fetchFalso(respostas: Record<string, { status: number; corpo: string }>) {
+  const chamadas: { url: string; init: RequestInit }[] = [];
+  const impl = (url: string, init: RequestInit) => {
+    chamadas.push({ url, init });
+    const query = JSON.parse(String(init.body)).query as string;
+    const r = respostas[query] ?? { status: 500, corpo: "sem resposta semeada" };
+    return Promise.resolve(
+      new Response(r.corpo, { status: r.status }),
+    );
+  };
+  return { impl: impl as unknown as typeof fetch, chamadas };
+}
+
+const RESPOSTAS_OK = () => ({
+  [SQL_RELACOES]: { status: 200, corpo: JSON.stringify(LINHAS_REL) },
+  [SQL_FUNCOES]: { status: 200, corpo: JSON.stringify(LINHAS_FN) },
+  [SQL_BUCKETS]: { status: 200, corpo: JSON.stringify([{ id: "products" }]) },
+});
+
+Deno.test("API: usa SÓ o endpoint somente leitura, com bearer, e as 3 consultas idênticas às constantes", async () => {
+  const { impl, chamadas } = fetchFalso(RESPOSTAS_OK());
+  await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref: REF_FALSO, fetchImpl: impl });
+  assertEquals(chamadas.length, 3);
+  for (const c of chamadas) {
+    assertEquals(
+      c.url,
+      `https://api.supabase.com/v1/projects/${REF_FALSO}/database/query/read-only`,
+    );
+    assertEquals(c.init.method, "POST");
+    assertEquals(
+      (c.init.headers as Record<string, string>).Authorization,
+      `Bearer ${TOKEN_FALSO}`,
+    );
+  }
+  assertEquals(
+    chamadas.map((c) => JSON.parse(String(c.init.body)).query),
+    [SQL_RELACOES, SQL_FUNCOES, SQL_BUCKETS],
+  );
+});
+
+Deno.test("API e pg produzem o MESMO catálogo para as mesmas linhas (montagem única)", async () => {
+  const { impl } = fetchFalso(RESPOSTAS_OK());
+  const viaApi = await lerCatalogoPelaApi({
+    token: TOKEN_FALSO,
+    ref: REF_FALSO,
+    fetchImpl: impl,
+  });
+  const viaPg = montarCatalogo(LINHAS_REL, LINHAS_FN, [{ id: "products" }]);
+  assertEquals(viaApi, viaPg);
+  // grants por sobrecarga agregados: f alcançável por authenticated E service_role
+  assertEquals([...viaApi.funcoes.get("f")!].sort(), ["authenticated", "service_role"]);
+  assertEquals(viaApi.funcoes.get("g")!.size, 0);
+  assertEquals(viaApi.bucketsAcessivel, true);
+});
+
+Deno.test("API: o veredito estrito não afrouxa — objeto ausente e inalcançável continuam reprovando", async () => {
+  const { impl } = fetchFalso(RESPOSTAS_OK());
+  const catalogo = await lerCatalogoPelaApi({
+    token: TOKEN_FALSO,
+    ref: REF_FALSO,
+    fetchImpl: impl,
+  });
+  const r = avaliar(
+    [
+      { tipo: "from", nome: "vw_sumida", onde: "src/a.ts:1", papeis: ["anon", "authenticated"] },
+      { tipo: "from", nome: "produtos", onde: "src/b.ts:2", papeis: ["anon", "authenticated"] },
+      { tipo: "rpc", nome: "g", onde: "src/c.ts:3", papeis: ["anon", "authenticated"] },
+    ],
+    catalogo,
+  );
+  assertEquals(r.ausentes.map((a) => a.nome), ["vw_sumida"]);
+  assertEquals(r.inalcançaveis.map((a) => a.nome).sort(), ["g", "produtos"]);
+});
+
+Deno.test("API: falha em relações ou funções é FATAL e o erro não carrega corpo nem token", async () => {
+  for (const [qual, sql] of [["relações", SQL_RELACOES], ["funções", SQL_FUNCOES]] as const) {
+    const respostas = RESPOSTAS_OK();
+    respostas[sql] = { status: 401, corpo: `{"message":"Bearer ${TOKEN_FALSO} inválido","dado":"segredo"}` };
+    const { impl } = fetchFalso(respostas);
+    let erro = "";
+    try {
+      await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref: REF_FALSO, fetchImpl: impl });
+    } catch (e) {
+      erro = (e as Error).message;
+    }
+    assertStringIncludes(erro, qual);
+    assertStringIncludes(erro, "HTTP 401");
+    assertEquals(erro.includes(TOKEN_FALSO), false);
+    assertEquals(erro.includes("segredo"), false);
+  }
+});
+
+Deno.test("API: resposta 200 que não é lista de linhas também é FATAL (nunca vira verde)", async () => {
+  const respostas = RESPOSTAS_OK();
+  respostas[SQL_RELACOES] = { status: 200, corpo: '{"message":"ok"}' };
+  const { impl } = fetchFalso(respostas);
+  let erro = "";
+  try {
+    await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref: REF_FALSO, fetchImpl: impl });
+  } catch (e) {
+    erro = (e as Error).message;
+  }
+  assertStringIncludes(erro, "sem lista de linhas");
+});
+
+Deno.test("API: storage inacessível deixa o bucket CEGO (mesma tolerância da conexão pg), sem derrubar tabelas e funções", async () => {
+  const respostas = RESPOSTAS_OK();
+  respostas[SQL_BUCKETS] = { status: 400, corpo: "permission denied for schema storage" };
+  const { impl } = fetchFalso(respostas);
+  const catalogo = await lerCatalogoPelaApi({
+    token: TOKEN_FALSO,
+    ref: REF_FALSO,
+    fetchImpl: impl,
+  });
+  assertEquals(catalogo.bucketsAcessivel, false);
+  assertEquals(catalogo.relacoes.size, 2);
+});
+
+Deno.test("API: ref fora do formato e token vazio são recusados antes de qualquer chamada", async () => {
+  const { impl, chamadas } = fetchFalso(RESPOSTAS_OK());
+  for (const ref of ["x/../outro", "ABCDEFGHIJKLMNOPQRST", "curto", ""]) {
+    let recusou = false;
+    try {
+      await lerCatalogoPelaApi({ token: TOKEN_FALSO, ref, fetchImpl: impl });
+    } catch {
+      recusou = true;
+    }
+    assert(recusou, `ref ${JSON.stringify(ref)} deveria ser recusado`);
+  }
+  let semToken = false;
+  try {
+    await lerCatalogoPelaApi({ token: "", ref: REF_FALSO, fetchImpl: impl });
+  } catch {
+    semToken = true;
+  }
+  assert(semToken);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("o SQL de catálogo do detector e o do wrapper do banco efêmero são IDÊNTICOS", () => {
+  const efemero = Deno.readTextFileSync(
+    new URL("../scripts/ci/banco/objetos-do-codigo-efemero.cjs", import.meta.url),
+  ).replace(/\r\n/g, "\n");
+  for (const sql of [SQL_RELACOES, SQL_FUNCOES]) {
+    assert(
+      efemero.includes(sql.replace(/\r\n/g, "\n")),
+      "o SQL do detector divergiu do wrapper do banco efêmero",
+    );
+  }
 });

@@ -26,7 +26,11 @@
  *   4. Sai com exit 1 se houver qualquer AUSENTE ou INALCANÇAVEL — no CI,
  *      reprova o PR ANTES de virar defeito em produção.
  *
- * SEM DATABASE_URL (ex.: CI antes de o secret existir): imprime aviso
+ * FONTE DO CATÁLOGO: com SUPABASE_PROJECT_REF definido, lê pela API de gestão
+ * (endpoint somente leitura, SUPABASE_ACCESS_TOKEN — o caminho do CI); sem ele,
+ * conexão direta por DATABASE_URL. O veredito é o MESMO nos dois.
+ *
+ * SEM fonte (ex.: CI antes de o secret existir): imprime aviso
  * destacado e sai 0 — detector inerte é dívida VISÍVEL, não vermelho que o
  * time aprende a ignorar. O teste em tests/db_check_objetos_do_codigo_test.ts
  * prova a lógica com casos semeados (inclusive o da view sumida) sem banco.
@@ -254,17 +258,11 @@ export function conferirProjeto(ref, esperado) {
   };
 }
 
-/** Consulta o catálogo real + privilégios por papel. */
-export async function lerCatalogo(connectionString) {
-  const { Client } = require("pg");
-  const client = new Client({
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-  });
-  await client.connect();
-  const todosPapeis = [...PAPEIS_SRC, ...PAPEIS_EDGE];
-
-  const rel = await client.query(`
+// SQL do catálogo. Exportado porque DOIS transportes o executam (conexão `pg`
+// e API de gestão somente leitura) e o outro leitor de catálogo do repo
+// (scripts/ci/banco/objetos-do-codigo-efemero.cjs) o copia VERBATIM — o teste
+// tests/db_check_objetos_do_codigo_test.ts trava as três cópias iguais.
+export const SQL_RELACOES = `
     SELECT c.relname AS nome,
            (has_table_privilege('anon',     quote_ident(n.nspname)||'.'||quote_ident(c.relname), 'SELECT')
             OR has_any_column_privilege('anon',     quote_ident(n.nspname)||'.'||quote_ident(c.relname), 'SELECT')) AS anon,
@@ -275,19 +273,8 @@ export async function lerCatalogo(connectionString) {
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND c.relkind IN ('r','v','m','f')
-  `);
-  const relacoes = new Map();
-  for (const r of rel.rows) {
-    // SELECT conta se vem da TABELA ou de QUALQUER coluna (a 20261070 deu
-    // SELECT por coluna a authenticated de propósito; has_table_privilege
-    // sozinho é cego para grant de coluna — falso positivo medido).
-    const papeis = new Set(todosPapeis.filter((p) => r[p]));
-    relacoes.set(r.nome, papeis);
-  }
-
-  // Funções: agrega sobrecargas por nome — o .rpc("nome") não elege
-  // assinatura; alcançável = QUALQUER sobrecarga alcançável.
-  const fn = await client.query(`
+  `;
+export const SQL_FUNCOES = `
     SELECT p.proname AS nome,
            has_function_privilege('anon', p.oid::regprocedure::text, 'EXECUTE') AS anon,
            has_function_privilege('authenticated', p.oid::regprocedure::text, 'EXECUTE') AS authenticated,
@@ -295,30 +282,131 @@ export async function lerCatalogo(connectionString) {
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE n.nspname = 'public'
-  `);
+  `;
+export const SQL_BUCKETS = "SELECT id FROM storage.buckets";
+
+/**
+ * Converte as linhas das três consultas no catálogo que `avaliar` espera.
+ * PURA e única: os dois transportes passam por aqui, então a leitura dos
+ * grants não pode divergir entre eles. `linhasBuckets === null` = storage
+ * inacessível (a checagem de bucket fica CEGA e o main AVISA).
+ */
+export function montarCatalogo(linhasRelacoes, linhasFuncoes, linhasBuckets) {
+  const todosPapeis = [...PAPEIS_SRC, ...PAPEIS_EDGE];
+  const relacoes = new Map();
+  for (const r of linhasRelacoes) {
+    // SELECT conta se vem da TABELA ou de QUALQUER coluna (a 20261070 deu
+    // SELECT por coluna a authenticated de propósito; has_table_privilege
+    // sozinho é cego para grant de coluna — falso positivo medido).
+    relacoes.set(r.nome, new Set(todosPapeis.filter((p) => r[p])));
+  }
+  // Funções: agrega sobrecargas por nome — o .rpc("nome") não elege
+  // assinatura; alcançável = QUALQUER sobrecarga alcançável.
   const funcoes = new Map();
-  for (const r of fn.rows) {
+  for (const r of linhasFuncoes) {
     if (!funcoes.has(r.nome)) funcoes.set(r.nome, new Set());
     for (const p of todosPapeis) {
       if (r[p]) funcoes.get(r.nome).add(p);
     }
   }
-
-  // Buckets do storage (só existência; acesso a objeto é policy de
-  // storage.objects, fora do escopo).
+  // Buckets do storage: só existência; acesso a objeto é policy de
+  // storage.objects, fora do escopo.
   const buckets = new Set();
-  const bucketsAcessivel = true;
+  if (linhasBuckets === null) {
+    return { relacoes, funcoes, buckets, bucketsAcessivel: false };
+  }
+  for (const r of linhasBuckets) buckets.add(r.id);
+  return { relacoes, funcoes, buckets, bucketsAcessivel: true };
+}
+
+/** Consulta o catálogo real + privilégios por papel (conexão direta `pg`). */
+export async function lerCatalogo(connectionString) {
+  const { Client } = require("pg");
+  const client = new Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+  const rel = await client.query(SQL_RELACOES);
+  const fn = await client.query(SQL_FUNCOES);
+  let linhasBuckets = null;
   try {
-    const bk = await client.query("SELECT id FROM storage.buckets");
-    for (const r of bk.rows) buckets.add(r.id);
+    linhasBuckets = (await client.query(SQL_BUCKETS)).rows;
   } catch {
     // Sem acesso ao schema storage: a checagem de bucket fica CEGA — e o
     // main AVISA (silêncio aqui escondia a cegueira).
-    return { relacoes, funcoes, buckets, bucketsAcessivel: false };
   }
-
   await client.end();
-  return { relacoes, funcoes, buckets, bucketsAcessivel };
+  return montarCatalogo(rel.rows, fn.rows, linhasBuckets);
+}
+
+/**
+ * MESMA leitura de catálogo, pelo endpoint OFICIAL somente leitura da API de
+ * gestão do Supabase (`POST /v1/projects/{ref}/database/query/read-only`, o
+ * mesmo já provado em diagnostico-pagamentos.yml). Existe para o CI não
+ * depender de uma URL de banco guardada em segredo: a URL apontava para um
+ * projeto que deixou de existir (28/09/2026) e o token da API vale para
+ * qualquer projeto da conta.
+ *
+ * Só o TRANSPORTE muda: SQL e montagem do catálogo são as mesmas constantes
+ * e funções acima. O relatório de erro carrega só a operação e o status HTTP
+ * — nunca o corpo (a resposta pode trazer dado) nem o token. Falha em
+ * relações ou funções é FATAL (nunca vira verde por falta de resposta); só o
+ * storage mantém a tolerância que a conexão `pg` já tinha (cego + aviso).
+ */
+export async function lerCatalogoPelaApi({
+  token,
+  ref,
+  fetchImpl = globalThis.fetch,
+}) {
+  if (!/^[a-z]{20}$/.test(ref ?? "")) {
+    throw new Error("SUPABASE_PROJECT_REF inválido (esperado: 20 letras minúsculas).");
+  }
+  if (!token) throw new Error("SUPABASE_ACCESS_TOKEN vazio.");
+  const consultar = async (query, operacao) => {
+    let resposta;
+    try {
+      resposta = await fetchImpl(
+        `https://api.supabase.com/v1/projects/${ref}/database/query/read-only`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ query }),
+        },
+      );
+    } catch {
+      throw new Error(`consulta somente leitura falhou (${operacao}): rede.`);
+    }
+    if (!resposta.ok) {
+      throw new Error(
+        `consulta somente leitura falhou (${operacao}): HTTP ${resposta.status}.`,
+      );
+    }
+    let linhas;
+    try {
+      linhas = JSON.parse(await resposta.text());
+    } catch {
+      linhas = null;
+    }
+    if (!Array.isArray(linhas)) {
+      throw new Error(
+        `consulta somente leitura falhou (${operacao}): resposta sem lista de linhas.`,
+      );
+    }
+    return linhas;
+  };
+  const relacoes = await consultar(SQL_RELACOES, "relações");
+  const funcoes = await consultar(SQL_FUNCOES, "funções");
+  let buckets = null;
+  try {
+    buckets = await consultar(SQL_BUCKETS, "buckets");
+  } catch {
+    // Mesma tolerância da conexão pg: storage inacessível = cego + aviso.
+  }
+  return montarCatalogo(relacoes, funcoes, buckets);
 }
 
 function lerDatabaseUrlDeArquivo() {
@@ -369,35 +457,41 @@ export function formatarDinamicas(dinamicas) {
 }
 
 async function main() {
+  // Fonte do catálogo. API de gestão (token + ref do projeto) tem prioridade:
+  // é o caminho do CI. Sem ela, a conexão direta por DATABASE_URL de sempre.
+  const ref = (process.env.SUPABASE_PROJECT_REF ?? "").trim();
+  const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
   const url = process.env.DATABASE_URL ?? lerDatabaseUrlDeArquivo();
-  if (!url) {
+  const viaApi = ref !== "";
+  if (viaApi ? token === "" : !url) {
     console.warn(
-      "::warning::Detector de objetos INERTE: sem DATABASE_URL (local: .env.local/.env; CI: secret DATABASE_URL do repo). Enquanto não configurar, este passo não vigia nada — a lógica segue provada por tests/db_check_objetos_do_codigo_test.ts.",
+      viaApi
+        ? "::warning::Detector de objetos INERTE: sem SUPABASE_ACCESS_TOKEN (CI: secret do repo; indisponível em PR de fork e do Dependabot). Este passo não vigia nada nesta rodada."
+        : "::warning::Detector de objetos INERTE: sem DATABASE_URL (local: .env.local/.env; CI: secret DATABASE_URL do repo). Enquanto não configurar, este passo não vigia nada — a lógica segue provada por tests/db_check_objetos_do_codigo_test.ts.",
     );
     process.exit(0);
   }
-  const host = new URL(url).hostname;
-  const ref = refDoProjeto(url);
-  // "Alvo", não "Conectado": nenhuma conexão foi aberta ainda — no caminho de
-  // recusa (abaixo) NENHUMA será.
-  console.log(`Alvo: ${host} (projeto ${ref ?? "não identificado"})`);
-
-  // Guard-rail: só roda quando PROJETO_REF_ESPERADO está setado (CI da loja),
-  // para não quebrar o uso local nem o efêmero (objetos-do-codigo-efemero.cjs
-  // importa as funções puras deste arquivo, mas NUNCA chama este main()).
-  // Reprova ANTES de qualquer query — comparar código com o BANCO ERRADO é
-  // pior que não comparar (o caso real: secret apontando para o sandbox).
-  const esperado = process.env.PROJETO_REF_ESPERADO;
-  if (esperado) {
-    const conferencia = conferirProjeto(ref, esperado);
-    if (!conferencia.ok) {
-      console.error(conferencia.mensagem);
-      process.exit(1);
+  if (viaApi) {
+    console.log("Catálogo lido pela API de gestão do Supabase, endpoint somente leitura.");
+  } else {
+    const host = new URL(url).hostname;
+    const refDaUrl = refDoProjeto(url);
+    // No uso local por DATABASE_URL, a guarda opcional continua recusando
+    // um projeto diferente ANTES de abrir conexão ou executar query.
+    console.log(`Alvo: ${host} (projeto ${refDaUrl ?? "não identificado"})`);
+    const esperado = process.env.PROJETO_REF_ESPERADO;
+    if (esperado) {
+      const conferencia = conferirProjeto(refDaUrl, esperado);
+      if (!conferencia.ok) {
+        console.error(conferencia.mensagem);
+        process.exit(1);
+      }
     }
   }
-
   const { referencias, dinamicas } = extrairDoRepo();
-  const catalogo = await lerCatalogo(url);
+  const catalogo = viaApi
+    ? await lerCatalogoPelaApi({ token, ref })
+    : await lerCatalogo(url);
   if (!catalogo.bucketsAcessivel) {
     console.warn(
       "::warning::Sem acesso a storage.buckets — a checagem de BUCKET está cega nesta rodada (tabelas e funções seguem conferidas).",

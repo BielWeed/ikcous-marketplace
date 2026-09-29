@@ -1,16 +1,12 @@
 import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
 // @ts-nocheck
 /**
- * A FIAÇÃO do guard-rail de scripts/db-check-objetos-do-codigo.mjs
- * (BANCO-080 seguinte) — o que tests/db_check_objetos_do_codigo_test.ts NÃO
- * prova, porque só testa `refDoProjeto`/`conferirProjeto` ISOLADAS, nunca
- * através de `main()` nem do `ci.yml`:
+ * A FIAÇÃO de scripts/db-check-objetos-do-codigo.mjs — o que os testes das
+ * funções puras não provam sobre `main()` e o `ci.yml`:
  *
- *   (a) o `ci.yml` de fato passa PROJETO_REF_ESPERADO=dekxabvqdsuukijblazl
- *       (o ref REAL da loja) no step que roda o detector — sem essa linha o
- *       guard nunca liga em produção, mesmo com refDoProjeto/conferirProjeto
- *       corretos;
- *   (b) o script, RODADO DE VERDADE como processo (`node scripts/...`),
+ *   (a) o CI usa SUPABASE_ACCESS_TOKEN e o ref da loja no endpoint somente
+ *       leitura; não depende do DATABASE_URL antigo;
+ *   (b) no uso LOCAL por DATABASE_URL, o script RODADO DE VERDADE
  *       recusa um projeto errado ANTES de abrir conexão — prova de que
  *       `main()` de fato chama `conferirProjeto()` e sai 1 sem passar por
  *       `lerCatalogo()` — E também DEIXA PASSAR o projeto certo, para que o
@@ -28,7 +24,7 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * é isso que os dois casos abaixo verificam, e não a mensagem de erro de
  * conexão do driver `pg`.
  *
- * Prova ao vivo de que este arquivo pega mutações do guard: comentei o bloco
+ * Prova ao vivo de que os testes locais pegam mutações do guard: comentei o bloco
  * do `if (esperado)` de `main()` — os 18 casos de
  * tests/db_check_objetos_do_codigo_test.ts continuaram 18/18 verdes (eles
  * nunca chamam main()), e o caso (b) do projeto errado falhou (achou
@@ -56,9 +52,7 @@ const SCRIPT = fromFileUrl(
   new URL("../scripts/db-check-objetos-do-codigo.mjs", import.meta.url),
 );
 
-// Único lugar deste arquivo (e do irmão db_check_objetos_do_codigo_test.ts)
-// em que o ref REAL da loja é necessário: provar que o guard está de fato
-// ligado no ci.yml, não só implementado no script.
+// O ref real só verifica a fiação do CI; os testes de conexão usam refs fictícios.
 const REF_LOJA = "dekxabvqdsuukijblazl";
 // Refs fictícios para o processo real — nunca o da loja.
 const REF_FICTICIO_CONECTADO = "aaaaaaaaaaaaaaaaaaaa";
@@ -66,11 +60,11 @@ const REF_FICTICIO_ESPERADO = "bbbbbbbbbbbbbbbbbbbb";
 // Para o caso "aceita o banco certo": o MESMO ref dos dois lados.
 const REF_FICTICIO_IGUAL = "cccccccccccccccccccc";
 
-Deno.test("ci.yml passa PROJETO_REF_ESPERADO=<ref da loja> para o step que roda o detector", async () => {
+Deno.test("ci.yml passa token existente e ref da loja ao detector pela API", async () => {
   const yaml = await Deno.readTextFile(CI_YML);
   assertStringIncludes(
     yaml,
-    `DATABASE_URL: \${{ secrets.DATABASE_URL }}\n          PROJETO_REF_ESPERADO: ${REF_LOJA}\n        run: node scripts/db-check-objetos-do-codigo.mjs`,
+    `SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}\n          SUPABASE_PROJECT_REF: ${REF_LOJA}\n        run: node scripts/db-check-objetos-do-codigo.mjs`,
   );
 });
 
