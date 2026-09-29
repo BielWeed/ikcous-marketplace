@@ -560,6 +560,9 @@ interface CheckoutViewProps {
   readonly onClearCart?: () => void;
   readonly onNavigate: (view: View, productId?: string) => void;
   readonly onSetBackOverride: (override: (() => void) | null) => void;
+  // Frente 10 (29/09/2026): id do pedido cujo pagamento está sendo retomado
+  // do card do pedido — liga a tela de pagamento DIRETO, sem carrinho.
+  readonly retomarPedidoId?: string;
 }
 
 export function CheckoutView({
@@ -570,6 +573,7 @@ export function CheckoutView({
   onClearCart: propOnClearCart,
   onNavigate,
   onSetBackOverride,
+  retomarPedidoId,
 }: CheckoutViewProps) {
   const {
     config,
@@ -1182,6 +1186,42 @@ export function CheckoutView({
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
   // cartão por uma cobrança PIX criada sozinha.
   const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
+  // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
+  // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
+  // (OrderDetailsView → "Retomar pagamento") e caía num checkout de CARRINHO
+  // (vazio — o pedido já nasceu). Com `retomarPedidoId`, este componente
+  // nasce DIRETO na tela de pagamento do pedido existente: `orderId` +
+  // `aguardandoPagamento` ligam o early-return de sempre (`Finalize o
+  // pagamento`), e o PagamentoOnline chama a MESMA edge — o servidor é quem
+  // decide o que é seguro: reconsulta e devolve o MESMO QR se a cobrança
+  // vive, cria outra com chave de tentativa nova se a anterior morreu, e
+  // 409 terminal se o pedido não é mais cobrável (a tela já trata o
+  // terminal). Nunca cobrança duplicada, nunca pedido perdido.
+  useEffect(() => {
+    if (!retomarPedidoId) return;
+    let vivo = true;
+    setOrderId(retomarPedidoId);
+    setAguardandoPagamento(true);
+    // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
+    // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`);
+    // o método retoma o da última tentativa quando legível.
+    supabase
+      .from("marketplace_orders")
+      .select("total, metodo_online")
+      .eq("id", retomarPedidoId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!vivo || !data) return;
+        setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
+        const metodo = (data as { metodo_online?: unknown }).metodo_online;
+        if (metodo === "credito" || metodo === "debito") {
+          setMetodoDoPedido("cartao");
+        }
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [retomarPedidoId]);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.

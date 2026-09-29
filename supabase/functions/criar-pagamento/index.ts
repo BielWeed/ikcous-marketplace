@@ -130,7 +130,7 @@ import * as webpush from "jsr:@negrel/webpush@0.3.0";
 // Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
 // (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
-import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
+import { type CredenciaisMp, resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -418,6 +418,94 @@ function emailValido(email: unknown): email is string {
  * `payment_status`/`expires_at`/`gateway_payment_id`, e um pedido cancelado
  * com PIX aberto continuava "cobrável": a troca para cartão cancelava o PIX
  * e criava a cobrança nova numa reserva que o estoque já esqueceu. */
+/**
+ * Frente 7 (29/09/2026) — recuperação da order PIX num 409 de idempotência.
+ *
+ * O 409 `idempotency_key_already_used` no PIX significa: a PRIMEIRA chamada
+ * com esta chave CHEGOU ao MP e criou a order (a resposta é que se perdeu, ou
+ * o retry veio com corpo divergente — cliente editou o documento entre
+ * tentativas); a order PIX está VIVA (action_required, PT30M) e o MP não vai
+ * devolvê-la enquanto o corpo divergir. Antes deste helper o ramo PIX não
+ * tratava o 409: 502 genérico em loop até `expires_at`, cliente sem QR e uma
+ * cobrança viva órfã (o cartão já tratava o 409 pela sentinela, outro
+ * mecanismo — lá a order é ambígua por natureza; aqui ela é um PIX esperando
+ * pagamento).
+ *
+ * A saída certa NÃO é liberar a tentativa (`liberar_cobranca` avançaria a
+ * chave e a próxima chamada criaria uma SEGUNDA order viva — duas cobranças
+ * para um pedido é exatamente o que a vaga existe para impedir): é
+ * RECUPERAR a order que o MP já tem, pela busca por `external_reference`
+ * (funcional desde o fix do campo `data` da resposta, frente 2), e devolvê-la
+ * como se fosse a resposta da criação — o MESMO QR, a vaga gravada com o id
+ * dela, UMA order viva no total. Sem order PIX viva na busca: falha honesta
+ * (502 de sempre) — nada inventado, nada liberado; um retry com o corpo
+ * ORIGINAL da 1ª chamada ainda acha o replay em cache do MP pela mesma chave.
+ */
+async function recuperarOrderPixDoIdempotencia(args: {
+  token: string;
+  pedidoId: string;
+  desde: string;
+  fetchImpl?: typeof fetch;
+}): Promise<
+  { ok: true; order: Record<string, unknown> } | { ok: false; erro: string; status: number }
+> {
+  const busca = await buscarOrdersDoPedido({
+    token: args.token,
+    pedidoId: args.pedidoId,
+    desde: args.desde,
+    fetchImpl: args.fetchImpl,
+  });
+  if (!busca.ok) {
+    return { ok: false, erro: "Não foi possível gerar a cobrança.", status: 0 };
+  }
+  const viva = busca.orders.find((order) => {
+    if (String((order as Record<string, unknown>).status ?? "") !== "action_required") {
+      return false;
+    }
+    const transacoes = (order as { transactions?: unknown }).transactions;
+    const pagamentos = Array.isArray((transacoes as { payments?: unknown })?.payments)
+      ? ((transacoes as { payments: unknown[] }).payments)
+      : [];
+    const tipo = String(
+      (pagamentos[0] as { payment_method?: { type?: unknown } } | undefined)
+        ?.payment_method?.type ?? "",
+    );
+    return tipo === "bank_transfer";
+  });
+  if (!viva) {
+    return { ok: false, erro: "Não foi possível gerar a cobrança.", status: 0 };
+  }
+  // Garantia de QR (achado MÉDIO da revisão de 29/09): o nível de detalhe da
+  // BUSCA é UNVERIFIED (`_shared/mercadopago.ts` marca que ela pode não
+  // devolver o mesmo corpo do GET por id) — a order pode vir com o
+  // payment_method incompleto, sem o qr_code. Devolver 200 SEM QR prende o
+  // cliente com nada a pagar (a única guarda do fluxo é o orderId). Se a
+  // order recuperada não trouxer QR legível, reconsulta POR ID
+  // (`consultarOrder` — GET que devolve o corpo completo, medido 14/08/2026)
+  // e usa ESSA; se nem a reconsulta trouxer QR, não recupera: 502 honesto.
+  const comQr = (o: Record<string, unknown>) =>
+    typeof extrairQrCode(o)?.qrCode === "string" ? o : null;
+  let order = comQr(viva);
+  if (!order) {
+    const consulta = await consultarOrder({
+      token: args.token,
+      orderId: String((viva as Record<string, unknown>).id ?? ""),
+      fetchImpl: args.fetchImpl,
+    });
+    if (consulta.ok) {
+      order = comQr(consulta.order);
+    }
+  }
+  if (!order) {
+    return { ok: false, erro: "Não foi possível gerar a cobrança.", status: 0 };
+  }
+  console.log(
+    "criar-pagamento: 409 de idempotência no PIX — order anterior recuperada pela busca e devolvida com o mesmo QR",
+    { pedidoId: args.pedidoId, orderId: String((order as Record<string, unknown>).id ?? "") },
+  );
+  return { ok: true, order };
+}
+
 const COLUNAS_DO_PEDIDO =
   "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at, updated_at, metodo_online, status";
 
@@ -867,6 +955,16 @@ async function handler(
     // passam o próprio (fresco a cada teste), para não vazar estado entre
     // eles (o mesmo `UUID` de pedido é reusado por toda a suíte).
     statusesCartaoDesconhecidosAvisados?: Set<string>;
+    // POLÍTICA DO PIX (29/09/2026): costura de credenciais para TESTES DE
+    // CORRIDA. O resolver de verdade faz esperas reais de crypto.subtle por
+    // chamada quando a origem é lojista, e a ORDEM dessas tarefas entre dois
+    // handlers paralelos não é determinística — nenhum truque de stub congela
+    // código de produção, e as corridas da vaga ficavam flaky. Injetando as
+    // credenciais PRONTAS (mesma semântica lojista-com-chave, sem a cripto no
+    // caminho), as corridas testam a VAGA/idempotência de forma
+    // determinística. Em produção nunca é passado — cai no
+    // `resolverCredenciaisMp` de verdade.
+    credenciaisMp?: CredenciaisMp;
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -969,7 +1067,7 @@ async function handler(
   // terminal). Nenhuma das duas depende do pedido, as duas continuam
   // acontecendo antes de qualquer chamada ao MP, e um servidor sem chave de
   // service role não tem como saber de quem é o token do Mercado Pago.
-  const credenciaisMp = await resolverCredenciaisMp(supabase);
+  const credenciaisMp = deps.credenciaisMp ?? await resolverCredenciaisMp(supabase);
   const mpToken = credenciaisMp.token;
   if (!mpToken) {
     // Só origem e motivo — token nenhum, de ninguém, entra em log.
@@ -982,6 +1080,43 @@ async function handler(
     // CHECKOUT-050 (a categoria viaja no corpo, NUNCA por comparação de
     // mensagem no front).
     return json({ error: "Pagamento indisponível.", terminal: true }, 503);
+  }
+
+  // POLÍTICA DO PIX (Gabriel, 29/09/2026 — app de assinatura, uma loja por
+  // banco): o PIX só existe para loja com a CHAVE DE ASSINATURA DO WEBHOOK
+  // DO MERCADO PAGO CADASTRADA PELA PRÓPRIA LOJA (registro cifrado em
+  // app_settings). A chave global do ambiente (MP_WEBHOOK_SECRET da
+  // plataforma) NÃO substitui o cadastro da loja. CARTÃO e demais meios
+  // NÃO são afetados por esta regra — é deliberação do dono, não generalização.
+  //
+  // O PORQUÊ: sem a chave própria, as notificações de pagamento da loja não
+  // têm como ser validadas com o segredo DELA — a confirmação cairia no
+  // reconciliador (atraso de até 10 min) ou numa chave que não é da loja.
+  // Bloquear a OFERTA/criação do PIX na origem é mais honesto do que vender
+  // um PIX que confirma tarde.
+  //
+  // `terminal: true`: cadastrar a chave é conserto de DIAS (painel do MP →
+  // cadastro na tela Ajustes), não de minutos — o cliente não fica em loop
+  // de "Tentar de novo" num PIX que não vai nascer. A flag
+  // `pixSemChaveDeAssinatura` é um MARCADOR para o front (tela do Gabriel):
+  // HOJE nenhum código em src/ a lê — o comprador vê o texto de operador
+  // acima na caixa terminal genérica do CHECKOUT-050 (sem loop, sem oferta
+  // de trocar para cartão). Quando a tela do lojista orientar o comprador,
+  // ela decide consumir a flag — nunca comparação de texto (mesmo contrato
+  // de sempre).
+  if (!dadosCartao) {
+    if (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook) {
+      // Só origem e motivo em log — nenhum segredo, jamais.
+      console.error(
+        `criar-pagamento: PIX recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
+      );
+      return json({
+        error:
+          "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+        terminal: true,
+        pixSemChaveDeAssinatura: true,
+      }, 409);
+    }
   }
 
   // `let`, não `const` (Fase 3.5): quando a vaga ocupada é liberada, o
@@ -1774,7 +1909,7 @@ async function handler(
       return json({ error: "Não foi possível gerar a cobrança." }, 502);
     }
 
-    const r = await criarOrder({
+    let r = await criarOrder({
       token: mpToken,
       corpo,
       // Chave POR TENTATIVA (Fase 3.5, `chaveDeIdempotencia`): na tentativa
@@ -1788,9 +1923,29 @@ async function handler(
     if (!r.ok) {
       // 401/403: credencial da loja (`respostaCredencialRecusada`, acima).
       // Qualquer outro status (0 = rede, 5xx, 4xx de corpo) segue 502
-      // recuperável, como sempre foi.
+      // recuperável, como sempre foi — MENOS o 409 de idempotência, tratado
+      // logo abaixo (o `let` acima existe para isto).
       if (r.status === 401 || r.status === 403) return respostaCredencialRecusada(r.status);
-      return json({ error: r.erro }, 502);
+      // Frente 7 (29/09/2026): 409 `idempotency_key_already_used` — a
+      // PRIMEIRA chamada com esta chave criou a order PIX e a resposta se
+      // perdeu (ou o retry veio com corpo divergente: cliente editou o
+      // documento). A order está VIVA no MP; este retry não pode criar
+      // outra, e devolver 502 em loop deixava o cliente sem QR até
+      // `expires_at` (era o comportamento). Recupera a order pela busca e a
+      // devolve como resposta — MESMO QR, UMA order viva (o `let` permite
+      // trocar o `r` falho pelo recuperado e seguir o fluxo normal de
+      // gravar a vaga com o id dela). Sem order PIX viva na busca: cai no
+      // 502 de sempre, sem liberar a tentativa — ver o comentário do helper
+      // `recuperarOrderPixDoIdempotencia`.
+      if (r.status === 409 && idempotencyKeyJaUsado(r.corpoDoErro)) {
+        r = await recuperarOrderPixDoIdempotencia({
+          token: mpToken,
+          pedidoId: String(pedido.id),
+          desde: String(pedido.created_at ?? ""),
+          fetchImpl: deps.fetchImpl,
+        });
+      }
+      if (!r.ok) return json({ error: r.erro }, 502);
     }
 
     const extraido = extrairQrCode(r.order);

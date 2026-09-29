@@ -40,10 +40,14 @@ import { limiteInferiorDoSentinela, resolverSentinela } from "../_shared/mercado
 // copiada em cinco suítes, e cópia de fixture envelhece calada.
 import {
   CHAVE_CIFRA_TESTE,
+  PUBLIC_KEY_LOJISTA_FALSA,
   registroMpDeTeste,
   TOKEN_AMBIENTE_FALSO as TOKEN_PLATAFORMA_FALSO,
   TOKEN_LOJISTA_FALSO,
+  WEBHOOK_AMBIENTE_FALSO,
+  WEBHOOK_LOJISTA_FALSO,
 } from "../_shared/credenciais-mp_fixtures.ts";
+import type { CredenciaisMp } from "../_shared/credenciais-mp.ts";
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const AGORA = new Date("2026-08-06T12:00:00.000Z");
@@ -169,18 +173,44 @@ function clienteFalso(opts: {
       // abaixo: a leitura das credenciais gastaria a PRIMEIRA `select()`
       // (a que carrega `erroLeitura` e o fixture do pedido), e todo teste
       // de leitura de pedido passaria a medir outra coisa em silêncio.
+      //
+      // ⚠️ POLÍTICA DO PIX (Gabriel, 29/09/2026): `registroMp` AUSENTE agora
+      // significa o registro do lojista COM chave de assinatura do webhook —
+      // a única configuração em que o PIX é criado desde a política. Para os
+      // casos da plataforma passe `registroMp: null` EXPLICITAMENTE (cartão
+      // segue funcionando; PIX recusado 409 `pixSemChaveDeAssinatura`); para
+      // lojista sem a chave, `registroMp: await registroMpDeTeste({
+      // webhookSecret: null })`. Os quatro casos da matriz estão provados em
+      // testes próprios no fim deste arquivo.
       if (tabela === "app_settings") {
         return {
           select(_cols: string) {
             return {
               eq(_col: string, _val: unknown) {
                 return {
-                  maybeSingle: async () => ({
-                    data: opts.registroMp
-                      ? { value: JSON.stringify(opts.registroMp) }
-                      : null,
-                    error: null,
-                  }),
+                  maybeSingle: async () => {
+                    // O cofre precisa existir NO MOMENTO DA LEITURA: testes de
+                    // credencial mais antigos apagam MP_CHAVES_ENCRYPTION_KEY
+                    // no `finally` deles (a baseline antiga era "sem cofre").
+                    // Só para o caminho default: quem passa `registroMp`
+                    // explícito gerencia o próprio ambiente (ex.: o teste do
+                    // cofre ausente continua dono do delete dele). A string é
+                    // PRÉ-SERIALIZADA (top-level await no fim do arquivo) —
+                    // zero await interno, para não mudar o interleaving das
+                    // corridas reais (bancoComEstado).
+                    if (opts.registroMp === undefined) {
+                      Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+                    }
+                    const registro = opts.registroMp === undefined
+                      ? REGISTRO_LOJISTA_JSON
+                      : opts.registroMp === null
+                      ? null
+                      : JSON.stringify(opts.registroMp);
+                    return {
+                      data: registro ? { value: registro } : null,
+                      error: null,
+                    };
+                  },
                 };
               },
             };
@@ -820,7 +850,11 @@ Deno.test("handler: MP_ACCESS_TOKEN ausente vira 503 TERMINAL (laudo 0109, D1) �
   Deno.env.delete("MP_ACCESS_TOKEN");
   Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
   const pedido = pedidoBase({ user_id: DONO_LOGADO });
-  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
+  // POLÍTICA DO PIX (29/09/2026): `registroMp: null` EXPLÍCITO — este teste
+  // prova o caminho da PLATAFORMA sem MP_ACCESS_TOKEN no ambiente. O default
+  // do dublê agora é o registro do lojista COM chave (que tem token próprio,
+  // e deixaria de provar o 503 terminal do laudo 0109/D1).
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registroMp: null });
 
   const resposta = await handler(
     requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
@@ -2542,7 +2576,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // de entrada em `recuperaveisConhecidas`); "O prazo para pagar este pedido
   // acabou." continua a mesma ocorrência de sempre para a expiração pelo
   // relógio. 47 + 1 = 48.
-  assertEquals(achados, 48);
+  //
+  // 49, não mais 48: POLÍTICA DO PIX (Gabriel, 29/09/2026). O gate da chave
+  // de assinatura do webhook DA LOJA acrescentou um ponto de retorno NOVO —
+  // o 409 "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura
+  // do webhook do Mercado Pago." (leva `terminal: true` e a flag
+  // `pixSemChaveDeAssinatura`: cadastrar a chave é conserto de DIAS no painel
+  // do MP/tela Ajustes, e o retry do cliente não muda nada enquanto isso —
+  // mesmo contrato do "Pagamento indisponível." terminal do laudo 0109/D1).
+  // 48 + 1 = 49.
+  assertEquals(achados, 49);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -3430,8 +3473,14 @@ function cenarioCartao(opts: {
   erroConfigCartao?: Record<string, unknown> | null;
   resultadoLiberar?: boolean;
   erroLiberar?: Record<string, unknown> | null;
+  // POLÍTICA DO PIX (29/09/2026): repasse do registro do lojista para provar
+  // a delimitação — o gate da chave de assinatura NÃO pode tocar o cartão.
+  registroMp?: Record<string, unknown> | null;
 } = {}) {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  // Baseline do cofre para o registro default/repassado desta política —
+  // testes de credencial antigos apagam a chave no finally deles.
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
   Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
   const registro: {
     chamadasUpdate: number;
@@ -3443,6 +3492,7 @@ function cenarioCartao(opts: {
   const supabase = clienteFalso({
     pedido: opts.pedido ?? pedidoBase({ user_id: DONO_LOGADO }),
     releitura: opts.releitura,
+    registroMp: opts.registroMp,
     // `payment_status: "aguardando"` no default (Achado R1, 2ª revisão de
     // risco): a gravação da vaga passou a SELECIONAR essa coluna também
     // (para decidir se um desafio 3DS reversível pousou num pedido já
@@ -4871,7 +4921,26 @@ function bancoComEstado(
     },
     from(tabela: string) {
       if (tabela === "app_settings") {
-        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) }) };
+        // POLÍTICA DO PIX (Gabriel, 29/09/2026): o banco COM ESTADO também
+        // serve o registro do lojista COM chave de assinatura do webhook —
+        // sem ele, todo PIX destas corridas morreria no gate da política (ou
+        // no 503 de credencial de ambiente sem token). String PRÉ-SERIALIZADA
+        // e SEM await interno: qualquer await extra aqui muda o interleaving
+        // das corridas (o perdedor leria a vaga já ocupada e cairia numa
+        // reconsulta que este stub não serve — artefato, não comportamento).
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => {
+                Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+                return {
+                  data: { value: REGISTRO_LOJISTA_JSON },
+                  error: null,
+                };
+              },
+            }),
+          }),
+        };
       }
       if (tabela === "config_pagamento_cartao") {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: configCartao, error: null }) }) }) };
@@ -5027,8 +5096,8 @@ Deno.test("CARTÃO (corrida real, Achado A1a): duas abas com TOKENS DIFERENTES n
   const mp = mpComEstado();
 
   const [r1, r2] = await Promise.all([
-    handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
-    handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
+    handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn, credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS }),
+    handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn, credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS }),
   ]);
   const corpos = await Promise.all([r1, r2].map((r) => r.json()));
 
@@ -5762,7 +5831,7 @@ Deno.test("handler cartão (Achado S3, R3-H6): a cobrança aprovada foi crédito
   // e parcelas:1 — a forma do RETRY, não da cobrança aprovada (crédito 6x).
   const r2 = await handler(
     requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO, paymentTypeId: "debit_card", paymentMethodId: "debelo" }), montarToken(DONO_LOGADO)),
-    { supabase: db, fetchImpl: mp.fn },
+    { supabase: db, fetchImpl: mp.fn, credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS },
   );
   const c2 = await r2.json();
   assertEquals(r2.status, 200);
@@ -5818,10 +5887,378 @@ Deno.test("PIX (corrida real, controle): duas abas no mesmo pedido -> UMA única
   const corpoPix = { orderId: UUID, metodo: "pix" };
 
   const [r1, r2] = await Promise.all([
-    handler(requisicao(corpoPix, montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
-    handler(requisicao(corpoPix, montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn }),
+    handler(requisicao(corpoPix, montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn, credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS }),
+    handler(requisicao(corpoPix, montarToken(DONO_LOGADO)), { supabase: db, fetchImpl: mp.fn, credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS }),
   ]);
 
   assertEquals(mp.orders.length, 1);
   assertEquals([r1.status, r2.status].sort(), [200, 409]);
+});
+
+// =============================================================================
+// MATRIZ DA POLÍTICA DO PIX (Gabriel, 29/09/2026) — o PIX só existe para a
+// loja com a CHAVE DE ASSINATURA DO WEBHOOK do Mercado Pago cadastrada POR
+// ELA (registro cifrado em app_settings); a chave global do ambiente NÃO
+// substitui (app de assinatura, uma loja por banco); o CARTÃO não é afetado
+// — deliberação explícita do dono. Reprodução com fixtures (nenhum segredo
+// real: os dublês vêm de _shared/credenciais-mp_fixtures.ts), exigida pela
+// supervisão antes de a política valer.
+// =============================================================================
+
+// Registro padrão do dublê de app_settings: lojista COM chave de assinatura.
+// Resolvido com TOP-LEVEL AWAIT e pré-serializado: os dublês servem a string
+// PRONTA, sem `await` interno no `maybeSingle` — qualquer await extra no
+// caminho das credenciais muda o interleaving das corridas reais
+// (bancoComEstado) e o perdedor passa a ler a vaga já ocupada (artefato de
+// timing, não comportamento). O cofre de teste precisa estar no Deno.env
+// REAL (é de lá que `chaveDeCifra` lê): sem isto, a resolução fecha com
+// `cofre_ausente` e todo teste com o registro padrão viraria 503.
+Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+const REGISTRO_LOJISTA_PADRAO = await registroMpDeTeste();
+const REGISTRO_LOJISTA_JSON = JSON.stringify(REGISTRO_LOJISTA_PADRAO);
+
+// Credenciais lojista-com-chave PRONTAS (mesma semântica do registro padrão,
+// SEM a crypto do resolver no caminho) — para os TESTES DE CORRIDA: a ordem
+// das tarefas de crypto.subtle ENTRE dois handlers paralelos não é
+// determinística e nenhum dublê congela código de produção (achado da
+// revisão independente da política do PIX, 29/09/2026). Injetadas via
+// `deps.credenciaisMp`, as corridas da vaga ficam determinísticas.
+const CREDENCIAIS_LOJISTA_FIXAS: CredenciaisMp = {
+  origem: "lojista",
+  token: TOKEN_LOJISTA_FALSO,
+  segredoWebhook: WEBHOOK_LOJISTA_FALSO,
+  publicKey: PUBLIC_KEY_LOJISTA_FALSA,
+};
+
+Deno.test("POLÍTICA PIX — loja nas chaves da PLATAFORMA (sem registro): PIX recusado 409 terminal pixSemChaveDeAssinatura, ZERO chamadas ao MP", async () => {
+  const { supabase } = cenarioCartao({ registroMp: null });
+  const mp = fetchMP({}); // qualquer chamada ao MP lança e derruba o teste
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.pixSemChaveDeAssinatura, true);
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("POLÍTICA PIX — lojista com token mas SEM chave de assinatura: PIX recusado 409, ZERO chamadas ao MP", async () => {
+  const { supabase } = cenarioCartao({
+    registroMp: await registroMpDeTeste({ webhookSecret: null }),
+  });
+  const mp = fetchMP({});
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.pixSemChaveDeAssinatura, true);
+  assertEquals(corpo.terminal, true);
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("POLÍTICA PIX — o CORAÇÃO da regra: MP_WEBHOOK_SECRET GLOBAL setado no ambiente NÃO substitui a chave da loja (lojista sem chave própria continua RECUSADO)", async () => {
+  // Lacuna apontada pela revisão independente: o caso "a chave global do
+  // ambiente não conta como configurada" precisa ser provado COM a env
+  // global PRESENTE — senão o teste anterior prova só "sem segredo nenhum".
+  // Só o SEGREDO DE WEBHOOK global importa aqui: o MP_ACCESS_TOKEN é
+  // irrelevante para o gate (e o cenarioCartao o re-seta em seguida — nota
+  // BAIXA da re-revisão: não vamos setar o que não está em jogo).
+  Deno.env.set("MP_WEBHOOK_SECRET", WEBHOOK_AMBIENTE_FALSO);
+  try {
+    const { supabase } = cenarioCartao({
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({});
+
+    const resposta = await handler(
+      requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: mp.fn },
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.pixSemChaveDeAssinatura, true);
+    assertEquals(corpo.terminal, true);
+    assertEquals(mp.chamadas.length, 0);
+  } finally {
+    Deno.env.delete("MP_WEBHOOK_SECRET");
+    Deno.env.delete("MP_ACCESS_TOKEN");
+  }
+});
+
+Deno.test("POLÍTICA PIX — lojista COM chave de assinatura: PIX criado normalmente (200, UMA order no MP)", async () => {
+  const { supabase } = cenarioCartao(); // registro default: lojista COM chave
+  const mp = fetchMP({
+    criar: {
+      status: 201,
+      corpo: {
+        id: "ORD777",
+        status: "action_required",
+        status_detail: "waiting_transfer",
+        transactions: {
+          payments: [
+            {
+              id: "PAY777",
+              payment_method: {
+                qr_code: "QRCODE-777",
+                qr_code_base64: "QR777",
+                ticket_url: "https://www.mercadopago.com.br/sandbox/payments/777/ticket",
+              },
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("POLÍTICA PIX — delimitação: CARTÃO com lojista SEM chave de assinatura NÃO é tocado pelo gate do PIX (atravessa para o portão PRÓPRIO do cartão)", async () => {
+  // Prova pela diferença: sem a chave, o pedido de CARTÃO não pode morrer no
+  // 409 do PIX — ele atravessa o gate novo e bate no portão do CARTÃO (config
+  // ausente -> a mensagem PRÓPRIA do cartão, sem flag do PIX). Se um dia o
+  // gate do PIX engolir o cartão, este teste cai na mensagem errada.
+  const { supabase } = cenarioCartao({
+    configCartao: null,
+    registroMp: await registroMpDeTeste({ webhookSecret: null }),
+  });
+  const mp = fetchMP({});
+
+  const resposta = await handler(
+    requisicao(corpoCartao(), montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Esta forma de pagamento não está disponível nesta loja.");
+  assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+  assertEquals(corpo.terminal, undefined);
+  assertEquals(mp.chamadas.length, 0);
+});
+
+// =============================================================================
+// PIX 409 idempotency_key_already_used (frente 7, 29/09/2026) — o retry com
+// corpo DIVERGENTE em 1 byte (cliente edita o CPF/documento entre tentativas,
+// ou a resposta da 1ª criação se perdeu e o front reenvia outro corpo) bate
+// na MESMA chave `<pedido>` e o MP devolve 409: a order PIX da 1ª chamada
+// EXISTE e está viva, mas o ramo PIX não tratava o 409 — 502 genérico em
+// loop até expires_at, cliente sem QR (o cartão já tratava via sentinela).
+// A correção certa NÃO é liberar a tentativa (criaria SEGUNDA order viva):
+// é RECUPERAR a order existente pela busca (funcional desde o fix do campo
+// `data`) e devolver o MESMO QR.
+// =============================================================================
+Deno.test("PIX 409 idempotency (retry com corpo divergente) -> busca recupera a ORDER PIX viva, devolve o MESMO QR e grava a vaga (UMA order no MP, zero criação nova)", async () => {
+  const { supabase, registro } = cenarioCartao();
+  const orderPixViva = {
+    id: "ORD777",
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    external_reference: UUID,
+    transactions: {
+      payments: [
+        {
+          id: "PAY777",
+          payment_method: {
+            type: "bank_transfer",
+            qr_code: "QRCODE-777",
+            qr_code_base64: "QR777",
+            ticket_url: "https://www.mercadopago.com.br/sandbox/payments/777/ticket",
+          },
+        },
+      ],
+    },
+  };
+  const mp = fetchMP({
+    criar: {
+      status: 409,
+      corpo: { errors: [{ code: "idempotency_key_already_used" }] },
+    },
+    consultar: { status: 200, corpo: { data: [orderPixViva] } },
+  });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpo = await resposta.json();
+
+  // A order da 1ª chamada (que o MP já tem) volta como resposta — com o QR dela.
+  assertEquals(resposta.status, 200);
+  assertEquals(JSON.stringify(corpo).includes("QRCODE-777"), true);
+  assertEquals(JSON.stringify(corpo).includes("ORD777"), true);
+  // Tentou criar UMA vez (o 409), recuperou pela busca, não criou segunda.
+  assertEquals(mp.criacoes().length, 1);
+  // A vaga foi gravada com a order recuperada — o pedido não fica órfão da cobrança.
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, "ORD777");
+});
+
+Deno.test("PIX 409 idempotency com busca que NÃO acha order PIX viva -> 502 recuperável de sempre (nunca inventa QR, nunca libera a tentativa)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao();
+  const mp = fetchMP({
+    criar: {
+      status: 409,
+      corpo: { errors: [{ code: "idempotency_key_already_used" }] },
+    },
+    // Busca vazia (ou com order de outro pedido — o refiltro derruba): nada
+    // de onde recuperar.
+    consultar: { status: 200, corpo: { data: [] } },
+  });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 502);
+  // Nada gravado, nada liberado — a chave permanece <pedido> e um retry com o
+  // corpo ORIGINAL da 1ª chamada ainda devolve o replay em cache do MP.
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, undefined);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+Deno.test("PIX 409 idempotency — order recuperada SEM QR legível (busca com detalhe incompleto): reconsulta POR ID entrega o QR antes de responder (achado MÉDIO da revisão)", async () => {
+  // O nível de detalhe da BUSCA é UNVERIFIED (ver comentário do helper): a
+  // order pode vir sem o qr_code do payment_method. Sem a reconsulta, a
+  // resposta seria 200 SEM QR — cliente com nada a pagar. Com ela, o GET por
+  // id (corpo completo) entrega o QR da MESMA order.
+  const { supabase, registro } = cenarioCartao();
+  const orderSemQr = {
+    id: "ORD777",
+    status: "action_required",
+    status_detail: "waiting_transfer",
+    external_reference: UUID,
+    transactions: {
+      payments: [{ id: "PAY777", payment_method: { type: "bank_transfer" } }],
+    },
+  };
+  const orderCompleta = {
+    ...orderSemQr,
+    transactions: {
+      payments: [
+        {
+          id: "PAY777",
+          payment_method: {
+            type: "bank_transfer",
+            qr_code: "QRCODE-DA-RECONSULTA",
+            qr_code_base64: "QR-RECONSULTA",
+          },
+        },
+      ],
+    },
+  };
+  const gets: string[] = [];
+  let posts = 0;
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") {
+      posts++;
+      return new Response(
+        JSON.stringify({ errors: [{ code: "idempotency_key_already_used" }] }),
+        { status: 409 },
+      );
+    }
+    gets.push(url);
+    // GET com query = BUSCA (devolve a order magra); GET /orders/{id} =
+    // reconsulta (devolve o corpo completo).
+    return new Response(
+      JSON.stringify(url.includes("?") ? { data: [orderSemQr] } : orderCompleta),
+      { status: 200 },
+    );
+  };
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: fn },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(JSON.stringify(corpo).includes("QRCODE-DA-RECONSULTA"), true);
+  assertEquals(posts, 1);
+  // A busca ACHOU a order (1º GET) e a reconsulta por id entregou o QR (2º GET).
+  assertEquals(gets.length, 2);
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, "ORD777");
+});
+
+Deno.test("PIX 409 idempotency — busca devolve order de CARTÃO viva (3DS em action_required): NÃO recupera, 502 (nunca adota cobrança de outro meio)", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 409, corpo: { errors: [{ code: "idempotency_key_already_used" }] } },
+    consultar: {
+      status: 200,
+      corpo: {
+        data: [
+          {
+            id: "ORD-CARTAO-3DS",
+            status: "action_required",
+            status_detail: "tag_3ds_challenge",
+            external_reference: UUID,
+            transactions: {
+              payments: [{ id: "PAY3DS", payment_method: { type: "credit_card" } }],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 502);
+});
+
+Deno.test("PIX 409 idempotency — busca devolve order PIX MORTA (expired): NÃO recupera, 502 (order morta não tem QR a entregar)", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({
+    criar: { status: 409, corpo: { errors: [{ code: "idempotency_key_already_used" }] } },
+    consultar: {
+      status: 200,
+      corpo: {
+        data: [
+          {
+            id: "ORD777-MORTA",
+            status: "expired",
+            status_detail: "expired",
+            external_reference: UUID,
+            transactions: {
+              payments: [
+                {
+                  id: "PAY777-MORTA",
+                  payment_method: {
+                    type: "bank_transfer",
+                    qr_code: "QRCODE-MORTO",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+  });
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 502);
 });

@@ -252,6 +252,52 @@ function idComoString(valor: unknown): string {
 }
 
 /**
+ * Id do REFUND na resposta do POST de refund da Orders API — NUNCA o id do
+ * topo, que é o da ORDER. Contrato confirmado na doc primária (reference
+ * orders online-payments refund/post, 29/09/2026): o id do refund mora em
+ * `transactions.refunds[].id`; a coluna `order_refunds.mp_refund_id` exige
+ * exatamente isso ("id do refund ... gravado só quando existe de verdade",
+ * migration 2026110000000), e a travessia P0 (um refund credita UMA linha,
+ * via `idsJaReivindicados`) só casa com o id DE VERDADE.
+ *
+ * SELEÇÃO (achado MÉDIO da revisão de 29/09): só são candidatos refunds com
+ * id E com o VALOR desta linha (`emCentavos(amount)`), quando o valor é
+ * legível — a resposta do parcial acumula os refunds ANTIGOS da order, e
+ * reivindicar o id de um refund alheio degrada o P0 do mesmo jeito que o id
+ * da order. Entre candidatos, o MAIS RECENTE por `date_created` (o
+ * recém-criado); sem data, perde o desempate (mesma regra de
+ * `refundQueCobreALinha`). Nenhum candidato do valor certo: string vazia —
+ * quem esclarece é a CONSULTA (GET), como sempre; o id da order nunca.
+ */
+function idDoRefundNaResposta(
+  c: Record<string, unknown>,
+  linha: LinhaEstorno,
+): string {
+    const centavosDaLinha = emCentavos(linha.amount);
+    const comId = refundsDaOrder(c).filter((r) =>
+        (typeof r.id === "string" && r.id !== "") || typeof r.id === "number"
+    );
+    const doValorDaLinha = comId.filter((r) => {
+        const valor = Number(r.amount);
+        return Number.isFinite(valor) &&
+            emCentavos(valor) === centavosDaLinha;
+    });
+    const candidatos = doValorDaLinha.length > 0 ? doValorDaLinha : [];
+    if (candidatos.length === 0) return "";
+    if (candidatos.length === 1) return idComoString(candidatos[0].id);
+    let melhor = candidatos[0];
+    let melhorData = dataCreatedMs(melhor);
+    for (const refund of candidatos.slice(1)) {
+        const data = dataCreatedMs(refund);
+        if (data > melhorData) {
+            melhor = refund;
+            melhorData = data;
+        }
+    }
+    return idComoString(melhor.id);
+}
+
+/**
  * Tabela fechada da Payments clássica (id numérico). Cada linha tem teste
  * correspondente (E5–E13).
  *
@@ -297,6 +343,20 @@ function interpretarPayments(
     return {
       tipo: "tentar_depois",
       motivo: "o Mercado Pago está ocupado ou instável agora",
+    };
+  }
+
+  // 423 resource_locked (doc primária da idempotência, conferida 29/09): lock
+  // TRANSITÓRIO da order — webhook, cron e edge disputam a mesma cobrança, e
+  // o MP pede 'retry after some time'. Matar a linha aqui seria executar de
+  // novo um POST que é IDEMPOTENTE pela chave da própria linha — repetir é
+  // seguro por contrato (achado MÉDIO da revisão de 29/09; antes caía no
+  // default e virava 'falhou' definitivo sem retry em lugar nenhum).
+  if (status === 423) {
+    return {
+      tipo: "tentar_depois",
+      motivo: "a cobrança está temporariamente em outra operação no Mercado Pago",
+      retryAfterS: 30,
     };
   }
 
@@ -445,7 +505,9 @@ function interpretarOrders(
     if (mpStatus === "refunded" || detail === "partially_refunded") {
       return {
         tipo: "concluido",
-        mp_refund_id: idComoString(c.id),
+        // Id do REFUND (transactions.refunds[].id), nunca o id do topo da
+        // order — ver idDoRefundNaResposta acima (E14b/E14c, 29/09/2026).
+        mp_refund_id: idDoRefundNaResposta(c, linha),
         mp_status: mpStatus,
         mp_status_detail: detail,
         valor: linha.amount,
@@ -461,6 +523,17 @@ function interpretarOrders(
     return {
       tipo: "tentar_depois",
       motivo: "o Mercado Pago está ocupado ou instável agora",
+    };
+  }
+
+  // 423 resource_locked — mesmo tratamento do interpretarPayments: lock
+  // transitório, POST idempotente pela chave da linha, repetir é seguro
+  // (achado MÉDIO da revisão de 29/09; antes virava 'falhou' definitivo).
+  if (status === 423) {
+    return {
+      tipo: "tentar_depois",
+      motivo: "a cobrança está temporariamente em outra operação no Mercado Pago",
+      retryAfterS: 30,
     };
   }
 

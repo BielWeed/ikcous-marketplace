@@ -17,6 +17,7 @@ import type {
   CategoriaErroPagamento,
   SinalDeErroPagamento,
 } from "./PagamentoOnline";
+import { comTempoLimite } from "./PagamentoOnline";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -95,6 +96,19 @@ const MOTIVO_PADRAO_DA_RECUSA =
  * nunca cria uma segunda cobrança.
  */
 export const MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE = 3;
+
+/**
+ * Diagnóstico do checkout (29/09/2026): "Carregando o formulário do
+ * cartão..." dependia do script do Mercado Pago carregar, SEM prazo — rede
+ * presa deixava o spinner para sempre. O prazo é SÓ para a CARGA do SDK
+ * (`Promise.race` local, mesmo helper do PIX): estourou, entra pelo MESMO
+ * caminho de SDK que não carrega — `onFalhaDeMontagem` → `semCobranca`
+ * (nenhum POST de cartão existiu; o CheckoutView oferece "Pagar com PIX").
+ * A fase seguinte (create()/onReady do Brick) continua sem prazo — o Brick
+ * tem `onError` próprio para falha crítica; um `create()` que pendura sem
+ * nem errar continua sendo a limitação documentada deste arquivo.
+ */
+export const TEMPO_LIMITE_CARREGAMENTO_SDK_MS = 15_000;
 
 /**
  * Domínios do Mercado Pago que podem hospedar o desafio 3-D Secure e mandar
@@ -472,7 +486,16 @@ export function montarBrickDeCartao({
 
   (async () => {
     try {
-      await carregarSdkMercadoPago();
+      // Com prazo: a carga do SDK é a fase do "Carregando o formulário do
+      // cartão..." — estourou, a falha de montagem de abaixo é o caminho que
+      // o componente já tem para SDK que não carrega (ver
+      // TEMPO_LIMITE_CARREGAMENTO_SDK_MS, acima). A promessa memoizada do
+      // loader continua valendo: um "Tentar de novo" reusa o script se ele
+      // terminou de carregar entre o estouro e o toque.
+      await comTempoLimite(
+        carregarSdkMercadoPago(),
+        TEMPO_LIMITE_CARREGAMENTO_SDK_MS,
+      );
       if (cancelado) return;
 
       const publicKey = chavePublicaMercadoPago();

@@ -533,6 +533,15 @@ const AppContent = () => {
     newScroll: 0,
   });
   const [transitionSpacerHeight, setTransitionSpacerHeight] = useState(0);
+  // Frente 10 (missão de pagamentos, 29/09/2026): id do pedido cujo pagamento
+  // está sendo RETOMADO a partir do card do pedido (OrderDetailsView). Sem
+  // isto, o `orderId` do checkout morria com o `useState` da view desmontada
+  // e o cliente que saiu antes de pagar não tinha volta. Limpo em TODA
+  // navegação (handleNavigate, 4º param) exceto quando a própria retomada
+  // o define — carrinho→checkout nunca herda uma retomada velha.
+  const [checkoutRetomadaId, setCheckoutRetomadaId] = useState<string | null>(
+    null,
+  );
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -751,7 +760,16 @@ const AppContent = () => {
   }, []);
 
   const handleNavigate = useCallback(
-    async (view: View, id?: string, bypassDirtyCheck = false) => {
+    async (
+      view: View,
+      id?: string,
+      bypassDirtyCheck = false,
+      // Frente 10 (29/09/2026): retomada de pagamento — o 4º param define
+      // (ou limpa) o pedido retomado; qualquer navegação SEM ele limpa, então
+      // carrinho→checkout nunca herda a retomada anterior.
+      opts?: { retomarPedidoId?: string },
+    ) => {
+      setCheckoutRetomadaId(opts?.retomarPedidoId ?? null);
       // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
       // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
       // isso precisa vencer o gate de formulário sujo, nunca abrir o
@@ -2286,6 +2304,9 @@ const AppContent = () => {
               key: user?.id ? `checkout-${user.id}` : "checkout-guest",
               onNavigate: handleNavigate,
               onSetBackOverride: setBackOverride,
+              // Frente 10: pedido retomado do card (OrderDetailsView) — o
+              // CheckoutView pula direto para a tela de pagamento dele.
+              retomarPedidoId: checkoutRetomadaId ?? undefined,
             }}
           />
         );
@@ -2365,6 +2386,11 @@ const AppContent = () => {
               orderId: selectedProductId || "",
               onBack: handleOrderDetailsBack,
               onNavigate: handleNavigate,
+              // Frente 10: a porta de volta ao pagamento do pedido pendente.
+              onRetomarPagamento: (pedidoId: string) =>
+                handleNavigate("checkout", undefined, false, {
+                  retomarPedidoId: pedidoId,
+                }),
             }}
           />
         );

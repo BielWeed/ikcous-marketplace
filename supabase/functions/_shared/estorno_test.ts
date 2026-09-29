@@ -465,7 +465,11 @@ Deno.test("E14 - Orders 201 refunded (ou processed+partially_refunded) -> conclu
     ),
     {
       tipo: "concluido",
-      mp_refund_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+      // Desde 29/09 (E14b/E14c, doc primária do refund da Orders API): este
+      // corpo MINIMIZADO não traz transactions.refunds — o id do refund não
+      // é legível e o campo fica VAZIO (nunca o id da order do topo). A
+      // resposta real do MP traz os refunds; o E14b prova o caso completo.
+      mp_refund_id: "",
       mp_status: "refunded",
       mp_status_detail: "refunded",
       valor: 100,
@@ -480,6 +484,137 @@ Deno.test("E14 - Orders 201 refunded (ou processed+partially_refunded) -> conclu
     ).tipo,
     "concluido",
   );
+});
+
+// ── E14b/E14c (missão pagamentos, 29/09/2026): mp_refund_id na Orders API ──
+//
+// CONTRATO REAL (doc primária, reference orders online-payments refund/post,
+// conferida em espelhos oficiais MP): a resposta do POST /v1/orders/{id}/refund
+// traz o id da ORDER no TOPO e o id do REFUND em transactions.refunds[].id —
+//   { "id": "ORD0000...", "status": "refunded", "status_detail": "refunded",
+//     "transactions": { "refunds": [ { "id": "REF01...", "transaction_id":
+//     "PAY01...", "amount": "24.50", "status": "processing" } ] } }
+// O docstring do tipo e o contrato da COLUNA (migration 2026110000000: "id do
+// refund ... gravado só quando existe de verdade") mandam gravar o id do
+// REFUND. A versão anterior gravava o id do TOPO (= id da ORDER): a
+// travessia P0 (um refund credita UMA linha, via idsJaReivindicados) nunca
+// casava com refund real — a proteção de duplo crédito ficava numa camada só.
+
+Deno.test("E14b - Orders 201 refunded com refunds na resposta -> mp_refund_id é o id do REFUND (REF01...), NUNCA o id da order do topo", () => {
+  assertEquals(
+    interpretarResposta(
+      201,
+      {
+        id: "ORD0000ABCD222233334444555566",
+        status: "refunded",
+        status_detail: "refunded",
+        transactions: {
+          refunds: [
+            {
+              id: "REF01J67CQQH5904WDBVZEM1234D",
+              transaction_id: "PAY01J67CQQH5904WDBVZEM4JMEP3",
+              reference_id: "12345678",
+              amount: "100.00",
+              // A doc mostra o refund nascendo "processing" mesmo no refund
+              // TOTAL — o status da ORDER é que decide 'concluido'; o id é
+              // legível de qualquer forma.
+              status: "processing",
+            },
+          ],
+        },
+      },
+      linhaCom(),
+      pedidoOrder(),
+    ),
+    {
+      tipo: "concluido",
+      mp_refund_id: "REF01J67CQQH5904WDBVZEM1234D",
+      mp_status: "refunded",
+      mp_status_detail: "refunded",
+      valor: 100,
+    },
+  );
+});
+
+Deno.test("E14c - Orders 201 com VÁRIOS refunds na resposta -> o id do MAIS RECENTE (date_created); sem refunds legíveis -> string vazia, NUNCA o id da order", () => {
+  const comVarios = interpretarResposta(
+    201,
+    {
+      id: "ORD0000ABCD222233334444555566",
+      status: "processed",
+      status_detail: "partially_refunded",
+      transactions: {
+        refunds: [
+          { id: "REF_ANTIGO", amount: "30.00", status: "processed", date_created: "2026-09-01T10:00:00.000Z" },
+          { id: "REF_NOVO", amount: "70.00", status: "processing", date_created: "2026-09-29T02:00:00.000Z" },
+        ],
+      },
+    },
+    linhaCom({ amount: 70 }),
+    pedidoOrder(),
+  );
+  assertEquals(comVarios.tipo, "concluido");
+  assertEquals((comVarios as { mp_refund_id: string }).mp_refund_id, "REF_NOVO");
+
+  // Sem refunds na resposta (o corpo mínimo do E14 original): NADA de id da
+  // order — string vazia; quem decidir depois é a CONSULTA (GET), como sempre.
+  const semRefunds = interpretarResposta(
+    201,
+    { id: "ORD01ABCDEFOLUIMWQKDXYZ01", status: "refunded", status_detail: "refunded" },
+    linhaCom(),
+    pedidoOrder(),
+  );
+  assertEquals(semRefunds.tipo, "concluido");
+  assertEquals((semRefunds as { mp_refund_id: string }).mp_refund_id, "");
+});
+
+Deno.test("E14d - Orders 201 com refunds de OUTROS valores -> NENHUM é reivindicado: string vazia, nunca o id de refund alheio (achado MÉDIO da revisão 29/09)", () => {
+  const r = interpretarResposta(
+    201,
+    {
+      id: "ORD0000ABCD222233334444555566",
+      status: "processed",
+      status_detail: "partially_refunded",
+      transactions: {
+        refunds: [
+          { id: "REF_DE_30", amount: "30.00", status: "processed", date_created: "2026-09-29T02:00:00.000Z" },
+        ],
+      },
+    },
+    linhaCom({ amount: 70 }),
+    pedidoOrder(),
+  );
+  assertEquals(r.tipo, "concluido");
+  // A linha é de 70; o único refund da resposta é de 30 (de OUTRA linha do
+  // mesmo pedido) — reivindicá-lo degradaria o P0. Sem candidato do valor
+  // certo: vazio; a CONSULTA esclarece.
+  assertEquals((r as { mp_refund_id: string }).mp_refund_id, "");
+});
+
+// ── 423 resource_locked (achado MÉDIO da revisão de 29/09): transitório ────
+// O POST de refund é idempotente pela chave da PRÓPRIA linha — repetir é
+// seguro por contrato. Antes caía no default e virava 'falhou' definitivo.
+
+Deno.test("E23-lock - Orders 423 resource_locked -> tentar_depois (retryAfterS), NUNCA falhou definitivo", () => {
+  const r = interpretarResposta(
+    423,
+    { errors: [{ code: "resource_locked", message: "retry after some time" }] },
+    linhaCom(),
+    pedidoOrder(),
+  );
+  assertEquals(r.tipo, "tentar_depois");
+  assertEquals((r as { retryAfterS?: number }).retryAfterS, 30);
+});
+
+Deno.test("E23-lock-payments - Payments 423 -> tentar_depois (retryAfterS), NUNCA falhou definitivo", () => {
+  const r = interpretarResposta(
+    423,
+    { message: "resource locked" },
+    linhaCom(),
+    pedidoPagoCom(),
+  );
+  assertEquals(r.tipo, "tentar_depois");
+  assertEquals((r as { retryAfterS?: number }).retryAfterS, 30);
 });
 
 Deno.test("E15 - Orders order_refund_already_in_process -> em_processamento", () => {
