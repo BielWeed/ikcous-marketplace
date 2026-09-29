@@ -46,7 +46,7 @@ Deno.test("remetenteConfigurado: falso quando falta segredo", () => {
 Deno.test("remetenteConfigurado: verdadeiro com os dois presentes", () => {
   const user = Deno.env.get("SMTP_USER");
   const pass = Deno.env.get("SMTP_PASSWORD");
-  Deno.env.set("SMTP_USER", "conta@gmail.com");
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
   Deno.env.set("SMTP_PASSWORD", "senha-de-app");
   try {
     assertEquals(remetenteConfigurado(), true);
@@ -59,7 +59,7 @@ Deno.test("remetenteConfigurado: verdadeiro com os dois presentes", () => {
 Deno.test("remetenteConfigurado: falso com so' UM dos dois", () => {
   const user = Deno.env.get("SMTP_USER");
   const pass = Deno.env.get("SMTP_PASSWORD");
-  Deno.env.set("SMTP_USER", "conta@gmail.com");
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
   Deno.env.delete("SMTP_PASSWORD");
   try {
     // Meio configurado e' o pior caso: passaria a guarda e falharia so' na hora
@@ -91,7 +91,7 @@ Deno.test("enviarEmail: recusa ANTES de abrir conexao quando falta segredo", asy
 Deno.test("enviarEmail: destinatario vazio recusa sem tocar a rede", async () => {
   const user = Deno.env.get("SMTP_USER");
   const pass = Deno.env.get("SMTP_PASSWORD");
-  Deno.env.set("SMTP_USER", "conta@gmail.com");
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
   Deno.env.set("SMTP_PASSWORD", "senha-de-app");
   try {
     await assertRejects(
@@ -109,7 +109,7 @@ Deno.test("enviarEmail: a mensagem de erro nunca contem a senha", async () => {
   const user = Deno.env.get("SMTP_USER");
   const pass = Deno.env.get("SMTP_PASSWORD");
   const SENHA = "senhasecretissima1234";
-  Deno.env.set("SMTP_USER", "conta@gmail.com");
+  Deno.env.set("SMTP_USER", "loja@exemplo.com");
   Deno.env.set("SMTP_PASSWORD", SENHA);
   try {
     await enviarEmail({ para: "", assunto: "x", html: "<p>x</p>" });
