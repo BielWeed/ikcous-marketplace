@@ -15,24 +15,46 @@
 }
 
 /* Pin: mesma cara do pin da frente de endereço (gota escura com furo),
-   ancorado pela PONTA no ponto do geocode. */
+   ancorado pela PONTA no ponto do geocode.
+
+   O elemento `.address-map__pin` é o do Marker do MapLibre — o MapLibre
+   REESCREVE o `transform` inline dele (translate/rotateZ) a cada
+   projeção, então qualquer `rotate` aqui na própria caixa é descartado
+   (medido em Chromium real: a gota saía sem rotação, com a ponta fora do
+   ponto). Por isso a caixa é só 32×42 (anchor "bottom" = ponta no ponto)
+   e a gota rotacionada mora em pseudo-elementos, que o MapLibre não toca.
+   Cabeça: quadrado de 28 px girado -45° com o canto inferior-esquerdo
+   vivo; o canto vivo fica a 28·√2/2 ≈ 19,8 px do centro, então centro em
+   y = 42 − 19,8 ≈ 22 e a ponta cai exatamente na base da caixa. */
 .address-map__pin {
+  position: relative;
   display: block;
   width: 32px;
-  height: 32px;
+  height: 42px;
+  filter: drop-shadow(0 2px 3px #18181b55);
+}
+
+.address-map__pin::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
   border: 3px solid #fff;
   border-radius: 50% 50% 50% 0;
   background: #25282b;
-  box-shadow: -3px 3px 0 5px #fff5, -4px 4px 12px #18181b33;
   transform: rotate(-45deg);
 }
 
 .address-map__pin::after {
   content: "";
-  display: block;
+  position: absolute;
+  top: 18px;
+  left: 12px;
   width: 8px;
   height: 8px;
-  margin: 9px;
   border-radius: 50%;
   background: #fff;
 }
