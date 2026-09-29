@@ -1,0 +1,26 @@
+# Temporário (29/09/2026), autorizado pelo dono: destrava o pg_cron da loja
+# principal (setval do cron.runid_seq) e acompanha a reconciliação do Pix.
+name: Operação — destravar o pg_cron da loja principal (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/pix-destravar.mjs
+      - .github/workflows/operacao-pix-destravar.yml
+permissions:
+  contents: read
+concurrency:
+  group: pix-destravar
+  cancel-in-progress: false
+jobs:
+  destravar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/pix-destravar.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
