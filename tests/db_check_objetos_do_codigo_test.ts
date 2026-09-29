@@ -336,14 +336,12 @@ const LINHAS_FN = [
 ];
 
 /** fetch falso que responde por SQL e registra o que recebeu. */
-function fetchFalso(
-  respostas: Record<string, { status: number; corpo: string }>,
-) {
+function fetchFalso(respostas: Map<string, { status: number; corpo: string }>) {
   const chamadas: { url: string; init: RequestInit }[] = [];
   const impl = (url: string, init: RequestInit) => {
     chamadas.push({ url, init });
     const query = JSON.parse(String(init.body)).query as string;
-    const r = respostas[query] ?? {
+    const r = respostas.get(query) ?? {
       status: 500,
       corpo: "sem resposta semeada",
     };
@@ -352,11 +350,12 @@ function fetchFalso(
   return { impl: impl as unknown as typeof fetch, chamadas };
 }
 
-const RESPOSTAS_OK = () => ({
-  [SQL_RELACOES]: { status: 200, corpo: JSON.stringify(LINHAS_REL) },
-  [SQL_FUNCOES]: { status: 200, corpo: JSON.stringify(LINHAS_FN) },
-  [SQL_BUCKETS]: { status: 200, corpo: JSON.stringify([{ id: "products" }]) },
-});
+const RESPOSTAS_OK = () =>
+  new Map<string, { status: number; corpo: string }>([
+    [SQL_RELACOES, { status: 200, corpo: JSON.stringify(LINHAS_REL) }],
+    [SQL_FUNCOES, { status: 200, corpo: JSON.stringify(LINHAS_FN) }],
+    [SQL_BUCKETS, { status: 200, corpo: JSON.stringify([{ id: "products" }]) }],
+  ]);
 
 Deno.test("API: usa SÓ o endpoint somente leitura, com bearer, e as 3 consultas idênticas às constantes", async () => {
   const { impl, chamadas } = fetchFalso(RESPOSTAS_OK());
@@ -444,10 +443,10 @@ Deno.test("API: falha em relações ou funções é FATAL e o erro não carrega 
     ["funções", SQL_FUNCOES],
   ] as const) {
     const respostas = RESPOSTAS_OK();
-    respostas[sql] = {
+    respostas.set(sql, {
       status: 401,
       corpo: `{"message":"Bearer ${TOKEN_FALSO} inválido","dado":"segredo"}`,
-    };
+    });
     const { impl } = fetchFalso(respostas);
     let erro = "";
     try {
@@ -468,7 +467,7 @@ Deno.test("API: falha em relações ou funções é FATAL e o erro não carrega 
 
 Deno.test("API: resposta 200 que não é lista de linhas também é FATAL (nunca vira verde)", async () => {
   const respostas = RESPOSTAS_OK();
-  respostas[SQL_RELACOES] = { status: 200, corpo: '{"message":"ok"}' };
+  respostas.set(SQL_RELACOES, { status: 200, corpo: '{"message":"ok"}' });
   const { impl } = fetchFalso(respostas);
   let erro = "";
   try {
@@ -485,10 +484,10 @@ Deno.test("API: resposta 200 que não é lista de linhas também é FATAL (nunca
 
 Deno.test("API: storage inacessível deixa o bucket CEGO (mesma tolerância da conexão pg), sem derrubar tabelas e funções", async () => {
   const respostas = RESPOSTAS_OK();
-  respostas[SQL_BUCKETS] = {
+  respostas.set(SQL_BUCKETS, {
     status: 400,
     corpo: "permission denied for schema storage",
-  };
+  });
   const { impl } = fetchFalso(respostas);
   const catalogo = await lerCatalogoPelaApi({
     token: TOKEN_FALSO,
