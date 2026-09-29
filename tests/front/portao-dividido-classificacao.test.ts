@@ -10,6 +10,12 @@
 //   2. `validarClassificacaoContraDisco` (`scripts/validarPortaoDeTamanho.cjs`)
 //      — a conferência fail-closed que `.size-limit.cjs` roda antes de medir.
 //
+// 29/09/2026 — decisão do dono (em voz): terceiro grupo `opcional` (chunks
+// sob demanda com allowlist restrita a `assets/maplibre-gl-*`, o renderer do
+// mapa vetorial dos cartões de endereço) e esquema versao 2. Os tetos de
+// cliente (550) e painel (450) NÃO mudaram — este arquivo continuaria
+// derrubando qualquer tentativa de mudá-los sem decisão.
+//
 // Os casos de `classificarBundle` reproduzem dois achados REAIS do fixture
 // build de 26/09/2026 (documentados na docstring de portaoDividido.ts): um
 // boundary de UM chunk só (AdminArea.tsx) não basta, porque
@@ -153,7 +159,16 @@ describe("classificarBundle", () => {
       dynamicImports: [
         "assets/vendor-compartilhado-h1.js",
         "assets/leitor-zxing-h1.js",
+        // 29/09/2026: o mapa vetorial do cartão de endereço importa o
+        // maplibre-gl DINAMICAMENTE — só quando um mapa monta. A allowlist
+        // `CHUNKS_OPCIONAIS` o tira de `cliente` e dá teto próprio.
+        "assets/maplibre-gl-h1.js",
       ],
+    }),
+    chunk({
+      fileName: "assets/maplibre-gl-h1.js",
+      isDynamicEntry: true,
+      moduleIds: ["/repo/node_modules/maplibre-gl/dist/maplibre-gl.js"],
     }),
     chunk({
       fileName: "assets/vendor-compartilhado-h1.js",
@@ -239,14 +254,22 @@ describe("classificarBundle", () => {
     expect(resultado.painel).not.toContain("assets/leitor-zxing-h1.js");
   });
 
+  it("põe o chunk do mapa vetorial em `opcional` — fora de cliente e painel (allowlist)", () => {
+    // Decisão do dono 29/09/2026: `maplibre-gl` só é baixado quando um mapa
+    // monta; teto próprio (250 kB) em vez de inflar o de cliente.
+    expect(resultado.opcional).toContain("assets/maplibre-gl-h1.js");
+    expect(resultado.cliente).not.toContain("assets/maplibre-gl-h1.js");
+    expect(resultado.painel).not.toContain("assets/maplibre-gl-h1.js");
+  });
+
   it("marca a versão do esquema e não deixa nenhum chunk de fora ou duplicado", () => {
-    expect(resultado.versao).toBe(1);
+    expect(resultado.versao).toBe(2);
     const semZxing = bundle
       .map((c) => c.fileName)
       .filter((nome) => !nome.startsWith("assets/leitor-zxing-"));
-    expect([...resultado.cliente, ...resultado.painel].sort()).toEqual(
-      [...semZxing].sort(),
-    );
+    expect(
+      [...resultado.cliente, ...resultado.painel, ...resultado.opcional].sort(),
+    ).toEqual([...semZxing].sort());
   });
 
   it("aceita um predicado de fronteira customizado (função pura, injetável)", () => {
@@ -278,22 +301,25 @@ describe("classificarBundle", () => {
 
 describe("validarClassificacaoContraDisco", () => {
   const classificacaoValida = {
-    versao: 1,
+    versao: 2,
     cliente: ["assets/index-h1.js", "assets/Home-h1.js"],
     painel: ["assets/AdminArea-h1.js"],
+    opcional: ["assets/maplibre-gl-h1.js"],
   };
   const discoBatendo = [
     "assets/index-h1.js",
     "assets/Home-h1.js",
     "assets/AdminArea-h1.js",
+    "assets/maplibre-gl-h1.js",
   ];
 
-  it("aceita quando cliente ∪ painel é exatamente o disco (sem zxing)", () => {
+  it("aceita quando cliente ∪ painel ∪ opcional é exatamente o disco (sem zxing)", () => {
     expect(
       validarClassificacaoContraDisco(classificacaoValida, discoBatendo),
     ).toEqual({
       cliente: classificacaoValida.cliente,
       painel: classificacaoValida.painel,
+      opcional: classificacaoValida.opcional,
     });
   });
 
@@ -303,20 +329,46 @@ describe("validarClassificacaoContraDisco", () => {
     ).toThrow(/PORTAO_TAMANHO/);
   });
 
-  it("recusa versão de esquema diferente de 1", () => {
+  it("recusa versão de esquema diferente de 2 (inclusive a 1 antiga, sem opcional)", () => {
     expect(() =>
       validarClassificacaoContraDisco(
-        { ...classificacaoValida, versao: 2 },
+        { ...classificacaoValida, versao: 1 },
         discoBatendo,
       ),
+    ).toThrow(/PORTAO_TAMANHO/);
+  });
+
+  it("recusa classificação versão 2 sem o grupo opcional", () => {
+    const { opcional: _opcional, ...semOpcional } = classificacaoValida;
+    expect(() =>
+      validarClassificacaoContraDisco(semOpcional, discoBatendo),
     ).toThrow(/PORTAO_TAMANHO/);
   });
 
   it("recusa cliente e painel não disjuntos", () => {
     expect(() =>
       validarClassificacaoContraDisco(
-        { versao: 1, cliente: ["assets/x.js"], painel: ["assets/x.js"] },
+        {
+          versao: 2,
+          cliente: ["assets/x.js"],
+          painel: ["assets/x.js"],
+          opcional: [],
+        },
         ["assets/x.js"],
+      ),
+    ).toThrow(/disjuntos/);
+  });
+
+  it("recusa cliente e opcional não disjuntos (chunk contado em dois tetos)", () => {
+    expect(() =>
+      validarClassificacaoContraDisco(
+        {
+          versao: 2,
+          cliente: ["assets/maplibre-gl-h1.js"],
+          painel: [],
+          opcional: ["assets/maplibre-gl-h1.js"],
+        },
+        ["assets/maplibre-gl-h1.js"],
       ),
     ).toThrow(/disjuntos/);
   });
@@ -335,6 +387,7 @@ describe("validarClassificacaoContraDisco", () => {
       validarClassificacaoContraDisco(classificacaoValida, [
         "assets/index-h1.js",
         "assets/AdminArea-h1.js",
+        "assets/maplibre-gl-h1.js",
       ]),
     ).toThrow(/desatualizada/);
   });

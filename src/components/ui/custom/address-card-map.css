@@ -1,0 +1,78 @@
+/* ── Mapa do cartão de endereço do Perfil (AddressCardMap, 29/09/2026) ──
+   Vetor OpenFreeMap "positron": sem controles, sem POI; a atribuição
+   exigida vive em LINHA PRÓPRIA abaixo da área cartográfica.
+
+   Arquivo AUTÔNOMO de propósito: os estilos gerais da área de endereço
+   (`address-layout.css`, da frente de cadastro de endereço) ainda não
+   estão nesta branch — apenas o que o mapa do cartão precisa vive aqui
+   (incluído o pin, espelhado do padrão visual da frente de endereço para
+   manter a mesma identidade quando os dois trabalhos se encontrarem). */
+
+/* Base do hospedeiro do mapa (a tela de fundo antes dos tiles). */
+.address-map {
+  overflow: hidden;
+  background: #fff;
+}
+
+/* Pin: mesma cara do pin da frente de endereço (gota escura com furo),
+   ancorado pela PONTA no ponto do geocode. */
+.address-map__pin {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  background: #25282b;
+  box-shadow: -3px 3px 0 5px #fff5, -4px 4px 12px #18181b33;
+  transform: rotate(-45deg);
+}
+
+.address-map__pin::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 9px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* Cartão: canvas flexível + estados + linha de créditos ABAIXO do mapa. */
+.address-card-map {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.address-card-map__canvas {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.address-card-map__status {
+  margin: 0;
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: #71717a;
+  background: #f4f4f5;
+}
+
+.address-card-map__creditos {
+  margin: 0;
+  padding: 3px 6px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: #71717a;
+  background: #fafafa;
+  border-top: 1px solid #f4f4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.address-card-map__creditos a {
+  color: #71717a;
+  text-decoration: underline;
+}

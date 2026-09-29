@@ -53,6 +53,24 @@ const CAMINHO_DAS_TELAS_DO_PAINEL = /\/src\/views\/admin\//;
 const TELA_PUBLICA_DO_LOGIN = /\/AdminLoginView\.tsx$/;
 const ARQUIVO_DO_LEITOR_ZXING = /^assets\/leitor-zxing-/;
 
+/**
+ * ALLOWLIST de CHUNKS OPCIONAIS SOB DEMANDA (decisão do dono Gabriel,
+ * 29/09/2026, em voz): chunks que a cliente só baixa quando um recurso
+ * específico é explicitamente usado — hoje, apenas o renderer de mapa
+ * vetorial (`maplibre-gl`), importado dinamicamente SÓ quando um mapa do
+ * cartão de endereço monta (Perfil › "Ver mais detalhes"). Têm orçamento
+ * PRÓPRIO em `.size-limit.cjs` (250 kB), o mesmo precedente do leitor
+ * zxing (400 kB) — e por isso saem da conta de `cliente`.
+ *
+ * A allowlist é de propósito RESTRITIVA (regex por nome de chunk, só o mapa):
+ * qualquer outro dinâmico continua contando como cliente. É FAIL-CLOSED —
+ * se o Rollup renomear o chunk (a estabilidade do nome vem do
+ * `dynamicImport("maplibre-gl")` de `AddressCardMap.tsx`), ele deixa de
+ * casar aqui, volta para `cliente`, e o teto de 550 kB reprova alto em vez
+ * de deixar bytes sem dono.
+ */
+const CHUNKS_OPCIONAIS: readonly RegExp[] = [/^assets\/maplibre-gl-/];
+
 /** Forma mínima que a classificação usa — não é `Rollup.OutputChunk` inteiro,
  * só o que o grafo de alcançabilidade lê. Mantém `classificarBundle` pura e
  * testável com um bundle falso, sem montar um chunk de verdade. */
@@ -66,9 +84,13 @@ export interface ChunkParaClassificar {
 }
 
 export interface ClassificacaoDoBundle {
-  readonly versao: 1;
+  /** Versão 2 (29/09/2026): acrescenta `opcional` — chunks sob demanda com
+   * teto próprio (allowlist `CHUNKS_OPCIONAIS`). Versão 1 não tem `opcional`
+   * e é recusada pelo validador — fail-closed de ponta a ponta. */
+  readonly versao: 2;
   readonly cliente: readonly string[];
   readonly painel: readonly string[];
+  readonly opcional: readonly string[];
 }
 
 function ehModuloDoPainel(moduleId: string): boolean {
@@ -100,7 +122,10 @@ export function ehFronteiraDoPainel(
  * em si também não entra em `cliente` (só é alcançado depois do `is_admin`
  * responder, nenhum visitante o baixa por conta própria). Tudo alcançado vira
  * `cliente`; o resto vira `painel`. `leitor-zxing-*` fica de fora dos dois —
- * tem orçamento próprio em `.size-limit.cjs` (C2.5).
+ * tem orçamento próprio em `.size-limit.cjs` (C2.5). O mesmo vale, desde
+ * 29/09/2026, para os chunks da allowlist `CHUNKS_OPCIONAIS` (só o
+ * `maplibre-gl-*` hoje): saem de `cliente`/`painel` e vão para `opcional`,
+ * com teto próprio — quem decide a allowlist é este arquivo, auditável.
  */
 export function classificarBundle(
   chunks: readonly ChunkParaClassificar[],
@@ -131,13 +156,19 @@ export function classificarBundle(
   }
   const cliente: string[] = [];
   const painel: string[] = [];
+  const opcional: string[] = [];
   for (const chunk of chunks) {
     if (ARQUIVO_DO_LEITOR_ZXING.test(chunk.fileName)) continue;
+    if (CHUNKS_OPCIONAIS.some((padrao) => padrao.test(chunk.fileName))) {
+      opcional.push(chunk.fileName);
+      continue;
+    }
     (alcancado.has(chunk.fileName) ? cliente : painel).push(chunk.fileName);
   }
   cliente.sort();
   painel.sort();
-  return { versao: 1, cliente, painel };
+  opcional.sort();
+  return { versao: 2, cliente, painel, opcional };
 }
 
 /**

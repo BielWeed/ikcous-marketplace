@@ -25,8 +25,8 @@ const ARQUIVO_DO_LEITOR_ZXING = /^leitor-zxing-.*\.js$/;
 // nunca por nome de arquivo) e grava `${output}` fora da entrega; aqui a
 // leitura é FAIL-CLOSED: falta o arquivo, versão de esquema errada, ou o
 // conjunto de `assets/*.js` do disco (sem o leitor zxing) diferente da união
-// cliente∪painel — qualquer um desses aborta `npm run size` em vez de deixar
-// um chunk sem contar em teto nenhum.
+// cliente∪painel∪opcional — qualquer um desses aborta `npm run size` em vez
+// de deixar um chunk sem contar em teto nenhum.
 const classificacaoPath = path.join(
   __dirname,
   ".portao-tamanho",
@@ -50,7 +50,7 @@ const arquivosJs = fs
   .filter((nome) => nome.endsWith(".js") && !ARQUIVO_DO_LEITOR_ZXING.test(nome))
   .map((nome) => `assets/${nome}`);
 
-const { cliente, painel } = validarClassificacaoContraDisco(
+const { cliente, painel, opcional } = validarClassificacaoContraDisco(
   classificacao,
   arquivosJs,
 );
@@ -89,6 +89,25 @@ module.exports = [
     // CRM e Devoluções do PR #666 ~78 kB) — teto de 450 kB, folga de ~48 kB.
     path: painel.map((arquivo) => `${output}/${arquivo}`),
     limit: "450 kB",
+    webpack: false,
+    running: false,
+  },
+  {
+    // Chunk OPCIONAL SOB DEMANDA (decisão do dono Gabriel, 29/09/2026, em
+    // voz): JS que a cliente só baixa quando explicitamente usa o recurso —
+    // hoje, o renderer de mapa vetorial (`maplibre-gl`), importado
+    // dinamicamente apenas quando um mapa do cartão de endereço monta
+    // (Perfil › "Ver mais detalhes"). Precedente do leitor zxing (C2.5):
+    // orçamento PRÓPRIO em vez de inflar o teto de `cliente`. Quem entra
+    // aqui é a allowlist `CHUNKS_OPCIONAIS` de `scripts/portaoDividido.ts`
+    // (regex restrita a `assets/maplibre-gl-*`) — se o chunk for renomeado,
+    // volta para `cliente` e o teto de 550 kB reprova alto (fail-closed).
+    // Medido no fixture de 29/09/2026: 228,80 kB — teto de 250 kB com
+    // folga de ~9% para reposição de versão que não mude o contrato;
+    // subir além é decisão consciente, como qualquer teto daqui. Nenhum
+    // teto existente subiu: cliente 550 e painel 450 continuam os mesmos.
+    path: opcional.map((arquivo) => `${output}/${arquivo}`),
+    limit: "250 kB",
     webpack: false,
     running: false,
   },

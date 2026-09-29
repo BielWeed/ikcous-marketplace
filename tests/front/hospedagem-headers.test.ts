@@ -104,7 +104,10 @@ describe("_headers traduzido do vercel.json", () => {
   });
 
   it("hosts de imagem vêm do img-src do CSP", () => {
+    // tile.openstreetmap.org entrou no img-src com a frente de busca de
+    // endereço (28-29/09/2026, mapa Leaflet no formulário de endereço).
     expect(hospedagem.hostsDeImagem(vercel)).toEqual([
+      "tile.openstreetmap.org",
       "*.supabase.co",
       "images.unsplash.com",
       "placehold.co",

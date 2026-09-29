@@ -23,6 +23,11 @@
 // pode baixar (cliente, 550 kB) e o JS que só existe atrás do `is_admin`
 // (painel, 450 kB). A forma da medida continua a mesma: por arquivo, sem
 // webpack, sem medida de tempo.
+//
+// 29/09/2026 — decisão do dono (em voz): acrescentado o terceiro orçamento
+// `opcional` (250 kB) para chunks SOB DEMANDA (allowlist restrita ao
+// `assets/maplibre-gl-*`, o renderer do mapa vetorial). Os tetos de cliente
+// e painel NÃO mudaram — este teste continua derrubando mudança neles.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -43,8 +48,8 @@ function entrada(ancora: string): string {
 }
 
 describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
-  it("as entradas de JS (cliente e painel) medem por arquivo e sem medida de tempo", () => {
-    for (const ancora of ["cliente.map(", "painel.map("]) {
+  it("as entradas de JS (cliente, painel e opcional) medem por arquivo e sem medida de tempo", () => {
+    for (const ancora of ["cliente.map(", "painel.map(", "opcional.map("]) {
       const trechoJs = entrada(ancora);
       expect(trechoJs, ancora).toContain("webpack: false");
       // A medida de tempo roda o bundle em Chrome headless — quebra em runner
@@ -59,11 +64,14 @@ describe(".size-limit.cjs — o portão mede o que o servidor entrega", () => {
     expect(trechoCss).toContain("webpack: false");
   });
 
-  it("os tetos de JS são os que o dono fixou: cliente 550 kB, painel 450 kB", () => {
+  it("os tetos de JS são os que o dono fixou: cliente 550 kB, painel 450 kB, opcional 250 kB", () => {
     // Se algum PR precisar mexer num teto, que seja explícito AQUI: mudar o
-    // número quebra este teste de propósito.
+    // número quebra este teste de propósito. (29/09/2026: o 250 kB do
+    // `opcional` é o orçamento novo do chunk de mapa sob demanda — os
+    // números de cliente e painel são os mesmos de 26/09.)
     expect(entrada("cliente.map(")).toContain('limit: "550 kB"');
     expect(entrada("painel.map(")).toContain('limit: "450 kB"');
+    expect(entrada("opcional.map(")).toContain('limit: "250 kB"');
     expect(configTexto).not.toContain('limit: "800 kB"');
   });
 });
