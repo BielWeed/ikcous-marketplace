@@ -58,11 +58,15 @@ jobs:
             console.log(`projeto: ${corpo.name} | status: ${corpo.status} | região: ${corpo.region} | org: ${corpo.organization_id}`);
             const funcoes = await api(`/projects/${REF}/functions`);
             console.log(`GET /projects/${REF}/functions → ${funcoes.status}`);
-            if (funcoes.status === 200) {
-              const lista = JSON.parse(funcoes.texto);
-              if (!Array.isArray(lista) || lista.length === 0) console.log("(nenhuma function)");
-              for (const f of lista) console.log(`- ${f.slug} | ${f.status} | atualizada: ${f.updated_at}`);
-            } else {
+            if (funcoes.status !== 200) {
+              // Bloqueante de verdade (revisão do PR #715): um 403/4xx/5xx
+              // aqui significaria token SEM acesso a functions — deixar o
+              // run verde seria falso sinal de "acesso ao deploy OK".
               console.log(funcoes.texto.slice(0, 200));
+              console.log("::error::Token sem acesso à lista de functions do projeto ativo (deploy NÃO liberado).");
+              process.exit(1);
             }
+            const lista = JSON.parse(funcoes.texto);
+            if (!Array.isArray(lista) || lista.length === 0) console.log("(nenhuma function)");
+            for (const f of lista) console.log(`- ${f.slug} | ${f.status} | atualizada: ${f.updated_at}`);
           '
