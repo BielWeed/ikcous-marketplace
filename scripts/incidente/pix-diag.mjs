@@ -31,12 +31,15 @@ async function api(metodo, caminho, corpo) {
 const sql = (query) => api("POST", `/projects/${REF}/database/query`, { query });
 const mostra = (titulo, v) => console.log(`\n== ${titulo} ==\n${typeof v === "string" ? v : JSON.stringify(v, null, 1)}`);
 
-mostra("Pedidos Pix online das últimas 8 h (hora UTC; Brasília = UTC-3)", await sql(`SELECT left(id::text, 8) AS id, status, payment_status,
-  total, created_at, expires_at, paid_at, updated_at,
-  CASE WHEN gateway_payment_id IS NULL THEN null ELSE left(gateway_payment_id, 12) || '…' || right(gateway_payment_id, 4) END AS gateway
-  FROM public.marketplace_orders WHERE payment_method = 'online' AND created_at > now() - interval '8 hours' ORDER BY created_at`));
-mostra("Execuções recentes do pg_cron", await sql(`SELECT j.jobname, d.status, d.start_time FROM cron.job_run_details d
-  JOIN cron.job j USING (jobid) ORDER BY d.start_time DESC LIMIT 6`));
-mostra("Últimas respostas da reconciliação", await sql(`SELECT status_code, created,
-  left(regexp_replace(coalesce(content::text, error_msg, ''), '\\s+', ' ', 'g'), 220) AS resumo
-  FROM net._http_response ORDER BY created DESC LIMIT 4`));
+mostra("Os dois pedidos de R$ 1: mesmo cliente? como nasceram?", await sql(`WITH p AS (
+    SELECT * FROM public.marketplace_orders WHERE left(id::text, 8) IN ('1bba1c18', 'c3dc3350'))
+  SELECT left(id::text, 8) AS id, created_at, status, payment_status, paid_at,
+    (SELECT count(DISTINCT user_id) FROM p) AS clientes_distintos,
+    (SELECT count(*) FROM public.marketplace_order_items i WHERE i.order_id = p.id) AS itens,
+    left(gateway_payment_id, 12) || '…' || right(gateway_payment_id, 4) AS gateway
+  FROM p ORDER BY created_at`));
+mostra("Colunas de marketplace_orders (para achar vínculo entre pedidos)", (await sql(`SELECT string_agg(column_name, ', ' ORDER BY ordinal_position) AS colunas
+  FROM information_schema.columns WHERE table_schema='public' AND table_name='marketplace_orders'`)));
+mostra("Histórico dos dois pedidos", await sql(`SELECT left(order_id::text, 8) AS pedido, created_at,
+  (SELECT string_agg(column_name, ',') FROM information_schema.columns WHERE table_name='marketplace_order_history') AS cols
+  FROM public.marketplace_order_history WHERE left(order_id::text, 8) IN ('1bba1c18', 'c3dc3350') ORDER BY created_at LIMIT 1`));
