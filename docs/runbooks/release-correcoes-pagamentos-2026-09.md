@@ -293,15 +293,21 @@ POSTERIOR, não condição. Checklist do gate (ordem):
    criar-pagamento **189/0** (incl. `SANDBOX-OFICIAL`), estorno 56/0,
    estornar-pagamento 23/0, reconciliar 57/0, webhook 123/0, retomada
    12/12.
-2. **[OK] Prova de contrato sandbox OFICIAL, local e gratuita**: teste
-   `SANDBOX-OFICIAL` alimenta o handler com o payload BYTE A BYTE da doc
-   oficial do sandbox PIX (APRO → `action_required`/`waiting_transfer`,
-   QR EMV completo, `qr_code_base64` vazio, ticket_url sandbox) e prende:
-   200 ao cliente, id ORD adotado como `gateway_payment_id`, QR EMV
-   íntegro ao cliente. **PROVA**: mapeamento/contrato contra o shape
-   oficial. **NÃO PROVA**: API viva, trilha bancária, produção.
-   (Opcional e grátis, se o dono quiser um dia: chamada ao sandbox vivo
-   com token APP_USR de teste via secret — não é gate.)
+2. **Prova PIX sandbox oficial — duas camadas, rótulos distintos**:
+   - **2a [FEITO, LOCAL]**: teste `SANDBOX-OFICIAL` usa **FIXTURE copiada
+     byte a byte da doc oficial** (APRO → `action_required`/
+     `waiting_transfer`, QR EMV, `qr_code_base64` vazio). **É fixture —
+     NÃO é chamada à API do MP, não é E2E, não valida MP vivo/edge/
+     webhook.** Prova: contrato de mapeamento local. Suíte 189/0.
+   - **2b [NÃO EXECUTADO — falta exata]**: chamada REAL à API sandbox do
+     MP com credencial de TESTE, sem charge, resposta não exposta em log.
+     **Falta**: token de teste `APP_USR` (painel do MP do dono — grátis;
+     eu não tenho nenhum e nunca peço valor em chat; entrega seria por
+     secret isolado). **Como rodaria sem novo ambiente**: o harness já
+     aceita `fetchImpl` REAL — chamada oficial atravessaria o handler com
+     banco FALSO (isolamento total, zero charge, sem deploy; sandbox
+     Supabase removido NÃO é necessário). **Nunca** token produtivo com
+     order de teste.
 3. **[OK] Travas de publicação inerte**: `pagamento_online` DEFAULT false
    (migration 20261150000000); `ligar_pix` RECUSA sem teste de conexão
    bem-sucedido + Public Key válida (UI Ajustes — ativação autônoma do

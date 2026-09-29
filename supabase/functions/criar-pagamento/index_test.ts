@@ -1430,16 +1430,15 @@ Deno.test("handler: PIX devolve QR, imagem e ticket_url no formato que o front j
   assertEquals(corpo.ticketUrl, "https://www.mercadopago.com.br/sandbox/payments/999/ticket");
 });
 
-Deno.test("SANDBOX-OFICIAL: payload BYTE A BYTE da doc oficial do sandbox PIX (APRO/auto-aprovação) atravessa o handler inteiro — prova de CONTRATO local, zero custo", async () => {
-  // Decisão do dono (29/09): confiar após o teste PIX 'fake' OFICIAL do
-  // sandbox do MP. O projeto sandbox Supabase foi REMOVIDO (404), então a
-  // prova executável hoje é o payload EXATO que a doc oficial documenta
-  // para o sandbox de PIX (checkout-api-orders/integration-test/pix):
-  // order criada com valores predefinidos nasce `action_required`/
-  // `waiting_transfer` com QR completo e muda sozinha para approved.
-  // Este teste prende que o handler consome esse shape INTEIRO sem
-  // depender de campo extra. PROVA: mapeamento/contrato. NÃO PROVA:
-  // comportamento da API viva nem trilha bancária real.
+Deno.test("SANDBOX-OFICIAL (FIXTURE LOCAL da doc — NÃO é chamada à API do MP): payload byte a byte da doc oficial atravessa o handler; prova de CONTRATO apenas", async () => {
+  // RÓTULO EXATO (decisão do dono, 29/09): este teste usa uma FIXTURE
+  // copiada da documentação oficial do sandbox PIX — NÃO é chamada à API
+  // sandbox do Mercado Pago, NÃO é ponta a ponta e NÃO valida o MP vivo,
+  // a edge em ambiente real ou o webhook. O que prova: o CONTRATO local
+  // de mapeamento contra o shape oficial documentado (APRO ->
+  // action_required/waiting_transfer com QR completo e auto-aprovação
+  // documentada). Chamada viva = item 2b do gate §6.4: exige token de
+  // TESTE (APP_USR) entregue por secret — que não existe hoje.
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase({ user_id: DONO_LOGADO });
   const registro: { valoresUpdate?: Record<string, unknown> } = {};
