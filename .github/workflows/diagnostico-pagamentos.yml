@@ -16,7 +16,24 @@
 # sem deploy/DDL/compra. Arquivo de incidente.
 name: Diagnóstico de pagamentos (somente leitura)
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "Diagnóstico completo ou somente booleans do cofre (sem valores)"
+        type: choice
+        required: true
+        default: completo
+        options:
+          - completo
+          - booleans
+      projeto:
+        description: "Destino fechado da leitura booleana"
+        type: choice
+        required: true
+        default: loja
+        options:
+          - loja
+          - savy
 permissions:
   contents: read
 concurrency:
@@ -24,9 +41,18 @@ concurrency:
   cancel-in-progress: false
 jobs:
   diagnostico:
+    if: inputs.modo == 'completo'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Recusa diagnóstico completo fora da loja principal
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: |
+          if [ "$PROJETO" != "loja" ]; then
+            echo "::error::modo completo só aceita loja"
+            exit 1
+          fi
       - name: Migrations + cron + cofre + marcadores das functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
@@ -130,4 +156,74 @@ jobs:
               process.exit(1);
             }
             console.log("Diagnóstico completo: todas as consultas responderam.");
+          '
+
+  cofre_booleano:
+    if: inputs.modo == 'booleans'
+    name: Confere flags de pagamento sem valores
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consulta somente leitura com resposta booleana
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJETO: ${{ inputs.projeto }}
+        run: |
+          node --input-type=module -e '
+            const refs = Object.freeze({
+              loja: "dekxabvqdsuukijblazl",
+              savy: "gnjsrucsmjkajijrakzr",
+            });
+            const projeto = process.env.PROJETO ?? "";
+            if (!Object.hasOwn(refs, projeto)) {
+              console.log("::error::destino fora da lista fechada");
+              process.exit(1);
+            }
+            const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
+            if (!token) {
+              console.log("::error::SUPABASE_ACCESS_TOKEN ausente");
+              process.exit(1);
+            }
+            // Só booleans saem do banco. Ciphertext, IV, chave pública,
+            // id, e-mail e conteúdo de erro nunca entram no log.
+            const query = `SELECT
+              EXISTS(SELECT 1 FROM public.store_config WHERE id = 1) AS ficha_existe,
+              COALESCE((SELECT pagamento_online FROM public.store_config WHERE id = 1), false) AS pix_ligado,
+              EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
+                AND NULLIF(btrim(value::jsonb ->> $$token_cifrado$$), $$$$) IS NOT NULL
+                AND NULLIF(btrim(value::jsonb ->> $$token_iv$$), $$$$) IS NOT NULL) AS token_cifrado_presente,
+              EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
+                AND NULLIF(btrim(value::jsonb ->> $$webhook_cifrado$$), $$$$) IS NOT NULL
+                AND NULLIF(btrim(value::jsonb ->> $$webhook_iv$$), $$$$) IS NOT NULL) AS assinatura_cifrada_presente,
+              EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
+                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$conectado$$) = $$true$$
+                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$ambiente$$) = $$producao$$) AS ultimo_teste_prod_conectado`;
+            let resposta;
+            try {
+              resposta = await fetch(`https://api.supabase.com/v1/projects/${refs[projeto]}/database/query/read-only`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ query }),
+              });
+            } catch {
+              console.log("::error::consulta booleana falhou (rede)");
+              process.exit(1);
+            }
+            if (!resposta.ok) {
+              console.log(`::error::consulta booleana recusada (${resposta.status})`);
+              process.exit(1);
+            }
+            let linhas;
+            try { linhas = await resposta.json(); }
+            catch {
+              console.log("::error::resposta booleana ilegível");
+              process.exit(1);
+            }
+            const campos = ["ficha_existe", "pix_ligado", "token_cifrado_presente", "assinatura_cifrada_presente", "ultimo_teste_prod_conectado"];
+            if (!Array.isArray(linhas) || linhas.length !== 1 || campos.some((campo) => typeof linhas[0]?.[campo] !== "boolean")) {
+              console.log("::error::resposta booleana fora do contrato");
+              process.exit(1);
+            }
+            for (const campo of campos) console.log(`${campo}=${linhas[0][campo]}`);
+            console.log("presença de ciphertext/IV NÃO comprova que a Edge consegue decifrar nem que a credencial MP é válida");
           '
