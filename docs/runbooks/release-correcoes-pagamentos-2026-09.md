@@ -299,15 +299,22 @@ POSTERIOR, não condição. Checklist do gate (ordem):
      `waiting_transfer`, QR EMV, `qr_code_base64` vazio). **É fixture —
      NÃO é chamada à API do MP, não é E2E, não valida MP vivo/edge/
      webhook.** Prova: contrato de mapeamento local. Suíte 189/0.
-   - **2b [NÃO EXECUTADO — falta exata]**: chamada REAL à API sandbox do
-     MP com credencial de TESTE, sem charge, resposta não exposta em log.
-     **Falta**: token de teste `APP_USR` (painel do MP do dono — grátis;
-     eu não tenho nenhum e nunca peço valor em chat; entrega seria por
-     secret isolado). **Como rodaria sem novo ambiente**: o harness já
-     aceita `fetchImpl` REAL — chamada oficial atravessaria o handler com
-     banco FALSO (isolamento total, zero charge, sem deploy; sandbox
-     Supabase removido NÃO é necessário). **Nunca** token produtivo com
-     order de teste.
+   - **2b [PARCIAL — criação real sandbox MP comprovada, aprovação NÃO
+     observada]** (evidência autorizada pelo dono, 29/09): UMA chamada real
+     à API oficial `POST /v1/orders` PIX, com token de TESTE apenas em
+     memória, dados fictícios `APRO`, valor simulado e idempotency key —
+     resultado observado: **HTTP 201, order/payment `action_required`,
+     QR presente**. Sem segredo exibido/salvo, sem PIX real, sem Supabase,
+     sem deploy; **não repetir o POST** (ordem do dono). **O que prova**:
+     o contrato de CRIAÇÃO contra a API viva do sandbox (201 +
+     `action_required` + QR — o MESMO shape da fixture 2a e dos
+     interpretadores). **NÃO prova/não observado**: transição automática
+     para `approved` (GET posterior impossível — id da order não
+     preservado), entrega de webhook/assinatura no sandbox, o NOSSO
+     handler contra o MP vivo (a chamada foi direta, não pela edge). **Não
+     é E2E.** Se um dia houver nova ordem (decisão do dono): preservar o
+     id para o GET de aprovação. **Nunca** token produtivo com order de
+     teste.
 3. **[OK] Travas de publicação inerte**: `pagamento_online` DEFAULT false
    (migration 20261150000000); `ligar_pix` RECUSA sem teste de conexão
    bem-sucedido + Public Key válida (UI Ajustes — ativação autônoma do
