@@ -77,25 +77,33 @@ mais conservador) — a publicação da #711 acompanha a promoção da linha cla
 
 ## 3. Sequência de publicação segura (ordem final, sem etapas implícitas)
 
-1. **(j)** `SUPABASE_ACCESS_TOKEN` da org nova no GitHub + `DATABASE_URL` novo.
-   **Estado (29/09)**: token novo JÁ salvo e provado (run #715 SUCCESS).
-   `DATABASE_URL` segue antigo — o check "Código x banco" segue vermelho.
-   **PR #717** (sessão Claude Code, worktree isolada) propõe resolver o
-   check; **em teste/CI, sem veredito** — não presumir se preserva o valor
-   antigo nem se elimina a necessidade de credencial nova. Gate atualiza
-   quando #717 fechar com prova e revisão. (Nota de separação: o **#671**
-   corrige o DESTINO do workflow de deploy; VALOR de secret é operação
-   distinta — merge do #671 por si só não muda segredo nenhum.)
-2. Distinguir geração (§2) e CONFIRMAR migrations 20261175-80 aplicadas no
+1. **(j)** `SUPABASE_ACCESS_TOKEN` da org nova no GitHub + check "Código x banco".
+   **Estado (29/09, coordenação do dono)**: token novo JÁ salvo e provado (run
+   #715 SUCCESS). **PR #717** (draft → develop, sessão Claude Code): usa o
+   token existente + endpoint SQL read-only; **check "Código x banco" REAL
+   passou** com o `DATABASE_URL` antigo INTACTO; lint em correção; revisão
+   independente em andamento — **veredito pendente**.
+2. **Destino ativo do deploy**: **PR MÍNIMA separada** (em criação contra esta
+   mesma branch-base) alterando APENAS `publicar-functions.yml` + teste da ref
+   `loja` → `dekxabvqdsuukijblazl` (2 testes/13 cenários focados já verdes);
+   precisa **alcançar develop** antes de qualquer `workflow_dispatch` nessa
+   ref. **O #671 (draft amplo, 31 arquivos) NÃO será mesclado inteiro — deixou
+   de ser dependência textual.**
+   **Gate reformulado (condicionado aos vereditos ainda pendentes)**:
+   (i) PR mínima de destino ativo **integrada na branch efetiva de deploy**;
+   (ii) **#717 integrado e check real verde na branch efetiva**. Nenhum deploy
+   ao projeto antigo pausado, em nenhuma hipótese.
+3. Distinguir geração (§2) e CONFIRMAR migrations 20261175-80 aplicadas no
    banco novo (senão: `aplicar-migrations.yml` arquivo por arquivo, com os runs
    separados — regra do repo).
-3. **(f)** Lojista recadastra credenciais MP (token + chave de assinatura) em
+4. **(f)** Lojista recadastra credenciais MP (token + chave de assinatura) em
    Ajustes contra o app do projeto novo; segredos `MP_*`/`RECONCILIACAO_SECRET`/
    `MP_CHAVES_ENCRYPTION_KEY` presentes.
-4. **(i)** Webhook do MP apontando para `dekxabvqdsuukijblazl` com a chave da
+5. **(i)** Webhook do MP apontando para `dekxabvqdsuukijblazl` com a chave da
    loja; notificação de teste chega e valida assinatura (log da function).
-5. Reconciliador provado (pg_cron + job + logs + secret) — sem isso, PIX fica
+6. Reconciliador provado (pg_cron + job + logs + secret) — sem isso, PIX fica
    desligado (§5 do runbook).
-6. `publicar-functions.yml` (projeto=loja) com as 5 de cobrança da release →
-   checklist por loja (§4) → front → monitoração 24 h → rollback por function
-   se qualquer confirmação real falhar (§6).
+7. `publicar-functions.yml` — **já apontando ao destino ativo pelo passo 2** —
+   com as 5 de cobrança da release → checklist por loja (§4) → front →
+   monitoração 24 h → rollback por function se qualquer confirmação real
+   falhar (§6).

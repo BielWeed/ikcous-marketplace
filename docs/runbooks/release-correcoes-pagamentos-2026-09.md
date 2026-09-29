@@ -157,16 +157,27 @@ publicação financeira):**
    notificação de teste chega (log da `webhook-mercadopago`) e assinatura valida.
 5. **Reconciliador provado** (pg_cron ativo + job executando + logs recentes +
    `RECONCILIACAO_SECRET` válido) — sem isso, loja não habilita PIX (§5).
-6. **`DATABASE_URL` novo no GitHub** — o check "Código x banco" verde.
-7. Só então: `publicar-functions` com ESTA release (as 5 de cobrança) →
+6. **Check "Código x banco" REAL verde na branch efetiva** — caminho atual:
+   **#717** (draft → develop; token existente + endpoint SQL read-only;
+   `DATABASE_URL` antigo INTACTO; check real já passou no draft; lint em
+   correção e revisão independente pendentes). **Gate = #717 integrado e o
+   check verde NA BRANCH EFETIVA de deploy** — não "trocar o valor do
+   `DATABASE_URL`" como passo manual.
+7. **Destino do deploy corrigido na branch efetiva** — **PR MÍNIMA separada**
+   (apenas `publicar-functions.yml`: ref `loja` → `dekxabvqdsuukijblazl` +
+   teste; 2 testes/13 cenários focados verdes), integrada na branch efetiva e
+   alcançando develop (exigência do `workflow_dispatch`). **O #671 NÃO será
+   mesclado inteiro** (draft amplo, 31 arquivos) — deixou de ser dependência.
+8. Só então: `publicar-functions` com ESTA release (as 5 de cobrança) →
    checklist por loja (§4) → front → monitoração 24 h.
 
-**Correção estreita examinada e REJEITADA como suficiente**: trocar só o ref do
-workflow (`loja` → `dekxabvqdsuukijblazl`) falharia no 403 do token (j) e
-mascararia as pendências f/i — publicação ilusória. O PR #671 permanece decisão
-do dono (DRAFT amplo: ~32 arquivos, incl. AGENTS.md/scripts); NÃO é pré-requisito
-rotineiro nem merge cego — o que ele resolve de verdade (ref do workflow,
-`DATABASE_URL`) também depende de (j)/(f) para valer.
+**Correção estreita examinada e REJEITADA como suficiente (historico)**: trocar
+só o ref do workflow (`loja` → `dekxabvqdsuukijblazl`) falharia no 403 do
+token (j) e mascararia as pendências f/i — publicação ilusória. Atualização da
+coordenação (29/09): a correção do destino vem pela **PR mínima dedicada**
+(acima) e o check pelo **#717** — ambos condicionados aos vereditos de revisão
+pendentes; o #671 amplo fica de fora. **Nenhum deploy ao projeto antigo
+pausado.**
 
 ## 7. Riscos residuais declarados
 
