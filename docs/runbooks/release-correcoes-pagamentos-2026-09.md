@@ -329,6 +329,42 @@ POSTERIOR, não condição. Checklist do gate (ordem):
 
 
 
+## 6.5 PLANO EXATO DE DEPLOY/FRONT/ROLLBACK (29/09, base atualizada)
+
+**Pré (verificado)**: base com destino #718 + `ci.yml` #721 (merge
+`ec930dd3`); PR #711 **0 conflitos** contra a base (merge-tree) e CI verde
+após incorporação — única falha restante é **Vercel rate-limit externo**
+(retry 24 h, não é código). Três vereditos adversariais APROVADOS.
+
+**Sequência exata**:
+1. **Merge da #711 na base** (ato do dono). Anotar o SHA pré-merge da base
+   para rollback: **`ec930dd3`** (= last-known-good pré-release).
+2. **Deploy functions**: dispatch `publicar-functions.yml` DO BRANCH-BASE,
+   `functions=cobranca`, `projeto=loja` (agora = `dekxabvqdsuukijblazl`
+   ATIVO). 5 functions, uma por vez; concurrency do workflow impede
+   cancelamento no meio.
+3. **Verificação pós-functions (read-only)**: `functions list` com
+   `updated_at` novos; diagnóstico read-only mostrando os MARCADORES das
+   frentes PRESENTES nos corpos; checkout "na entrega" normal; PIX segue
+   INERTE (flag false + gate 409 + cartão off).
+4. **Front**: build/deploy Vercel da linha de release — promoção a
+   produção **alinhada com a sessão de produto** (linha do incidente
+   1.35.0/1.5.12 em recuperação); conferir `version.json`.
+5. **Ativação (quando o dono quiser)**: Ajustes → credenciais MP produtivas
+   → **Testar conexão** (precisa dar verde) → chave de assinatura própria →
+   webhook produtivo com a MESMA chave → `ligar_pix` (recusa 409 sem
+   teste verde + Public Key).
+6. **Rollback exato**:
+   - Functions: dispatch `publicar-functions` do ref **`ec930dd3`** com
+     `functions=cobranca` — repõe o bundle anterior function por function.
+   - Front: rollback/promote do deployment anterior na Vercel.
+   - PIX OFF instantâneo (independe de rede/CDN): `desligar_pix`.
+   - Dinheiro em voo: reconciliador (10 min) + P1 honram pagamento tardio;
+     estorno manual pelo painel se necessário.
+7. **Monitoramento do dia 1 (quando ativo)**: logs da webhook;
+   `cron.job_run_details`; pedidos `aguardando` > 15 min com
+   `gateway_payment_id` = alerta imediato + `desligar_pix` se necessário.
+
 ## 7. Riscos residuais declarados
 
 1. Busca da Orders API UNVERIFIED em produção (nome de campo/param já
