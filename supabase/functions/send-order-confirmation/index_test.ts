@@ -61,7 +61,7 @@ Deno.test("pareceUuid recusa o que nao tem forma de UUID", () => {
 });
 
 Deno.test("mascarar nunca deixa o endereco inteiro ir para o log", () => {
-  assertEquals(mascarar("gabriel@gmail.com"), "g*****l@gmail.com".replace("*****", "***"));
+  assertEquals(mascarar("loja@exemplo.com"), "l***a@exemplo.com");
   assertEquals(mascarar("ab@x.com"), "***@x.com");
   assertEquals(mascarar("sem-arroba"), "***");
 });
