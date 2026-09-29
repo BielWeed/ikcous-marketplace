@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuestions } from "@/hooks/useQuestions";
+import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Check, Lock, MessageSquare, Reply, Send } from "lucide-react";
@@ -107,10 +108,15 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
     <div className="mx-auto max-w-2xl space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-1">
-        <h3 className="text-lg font-extrabold tracking-tight text-zinc-900">
+        <h3
+          className={cn(
+            "text-lg font-extrabold tracking-tight text-zinc-900",
+            "lg:text-3xl",
+          )}
+        >
           Perguntas e Respostas
         </h3>
-        <p className="text-xs text-zinc-500">
+        <p className={cn("text-xs text-zinc-500", "lg:text-sm")}>
           Tem alguma dúvida sobre o produto? Pergunte ao vendedor.
         </p>
       </div>
@@ -170,7 +176,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
           <h4 className="text-sm font-bold text-zinc-950">
             Quer tirar uma dúvida?
           </h4>
-          <p className="mb-4 mt-1 max-w-[280px] text-xs leading-relaxed text-zinc-500">
+          <p
+            className={cn(
+              "mb-4 mt-1 max-w-[280px] text-xs leading-relaxed text-zinc-500",
+              "lg:max-w-md lg:text-sm",
+            )}
+          >
             Faça login ou cadastre-se para enviar perguntas sobre este produto e
             receber notificações da nossa equipe.
           </p>
@@ -303,7 +314,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                     </div>
                   </div>
                 </div>
-                <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+                <span
+                  className={cn(
+                    "text-[10px] font-medium uppercase tracking-wider text-zinc-400",
+                    "lg:text-[11px] lg:text-zinc-500",
+                  )}
+                >
                   {formatDistanceToNow(new Date(q.createdAt), {
                     addSuffix: true,
                     locale: ptBR,
@@ -312,7 +328,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
               </div>
 
               {/* Question Text */}
-              <p className="pl-12 text-xs font-medium leading-relaxed text-zinc-800 md:text-sm">
+              <p
+                className={cn(
+                  "pl-12 text-xs font-medium leading-relaxed text-zinc-800 md:text-sm",
+                  "lg:text-sm",
+                )}
+              >
                 {q.question}
               </p>
 
@@ -348,7 +369,12 @@ export function ProductQA({ productId, onNavigate }: ProductQAProps) {
                             })}
                           </span>
                         </div>
-                        <p className="pl-0.5 font-medium italic leading-relaxed text-zinc-700">
+                        <p
+                          className={cn(
+                            "pl-0.5 font-medium italic leading-relaxed text-zinc-700",
+                            "lg:text-sm",
+                          )}
+                        >
                           "{a.answer}"
                         </p>
                       </div>

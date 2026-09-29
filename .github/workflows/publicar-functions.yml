@@ -42,7 +42,7 @@ on:
         required: true
         type: string
       projeto:
-        description: "Projeto de destino: loja (cafkrminfnokvgjqtkle) ou sandbox (lofznuxcvezrhxsgjqyg)"
+        description: "Projeto de destino: loja (dekxabvqdsuukijblazl) ou sandbox (lofznuxcvezrhxsgjqyg)"
         required: true
         type: choice
         default: loja
@@ -76,7 +76,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$PROJETO" in
-            loja) REF=cafkrminfnokvgjqtkle ;;
+            loja) REF=dekxabvqdsuukijblazl ;;
             sandbox) REF=lofznuxcvezrhxsgjqyg ;;
             *) echo "::error::projeto desconhecido: $PROJETO (use loja ou sandbox)"; exit 1 ;;
           esac

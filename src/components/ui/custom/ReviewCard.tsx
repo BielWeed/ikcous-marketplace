@@ -1,5 +1,6 @@
 import { LazyImage } from "@/components/LazyImage";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 import type { Review, View } from "@/types";
 import { Check, ThumbsUp } from "lucide-react";
 import { useState } from "react";
@@ -117,13 +118,23 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
             </div>
           </div>
         </div>
-        <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">
+        <span
+          className={cn(
+            "text-[10px] font-medium uppercase tracking-wider text-zinc-400",
+            "lg:text-[11px] lg:text-zinc-500",
+          )}
+        >
           {formatDate(review.createdAt)}
         </span>
       </div>
 
       {/* Comment */}
-      <p className="mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm">
+      <p
+        className={cn(
+          "mb-4 mt-3 text-xs font-normal leading-relaxed text-zinc-600 md:text-sm",
+          "lg:text-sm",
+        )}
+      >
         {review.comment}
       </p>
 
@@ -174,7 +185,12 @@ export function ReviewCard({ review, onHelpful, onNavigate }: ReviewCardProps) {
                 Resposta da Loja
               </span>
             </div>
-            <p className="font-medium italic leading-relaxed text-zinc-600">
+            <p
+              className={cn(
+                "font-medium italic leading-relaxed text-zinc-600",
+                "lg:text-sm",
+              )}
+            >
               "{review.merchantReply}"
             </p>
           </div>
