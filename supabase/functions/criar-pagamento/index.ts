@@ -216,6 +216,25 @@ export function expiracaoParaDesafio3ds(
 export const MENSAGEM_CREDENCIAL_RECUSADA =
   "O pagamento pelo app está indisponível nesta loja agora. Fale com a loja para concluir o pedido.";
 
+/**
+ * POLÍTICA DO PIX — o ÚNICO lugar que responde "esta loja pode receber PIX?".
+ * Usado nos DOIS pontos que precisam concordar: a recusa 409
+ * `pixSemChaveDeAssinatura` (mais abaixo) e a sonda `{acao:"metodos"}` que o
+ * checkout consulta ANTES de oferecer o PIX. Duas cópias da condição
+ * divergiriam calado: a tela ofereceria um PIX que a criação recusa (o
+ * cliente escolhe PIX e só então descobre, sem QR).
+ *
+ * Verdadeiro só com token E origem "lojista" E a chave de assinatura do
+ * webhook CADASTRADA PELA LOJA (o MP_WEBHOOK_SECRET global do ambiente não
+ * conta). Função pura sobre as credenciais já resolvidas: nunca lê segredo
+ * para fora, nunca fala com o gateway.
+ */
+export function pixPermitido(credenciais: CredenciaisMp): boolean {
+  return Boolean(credenciais.token) &&
+    credenciais.origem === "lojista" &&
+    Boolean(credenciais.segredoWebhook);
+}
+
 export function pareceUuid(v: unknown): boolean {
   return (
     typeof v === "string" &&
@@ -989,11 +1008,93 @@ async function handler(
       403,
     );
 
+  // PEDIDO-07 (auditoria de 26/08/2026): este createClient PRECISA ficar
+  // dentro de um try — readKey nunca lança (devolve "" quando nenhuma das
+  // duas variáveis existe, ver o comentário dela em _shared/webpush.ts), mas
+  // createClient sim: "supabaseKey is required." Antes desta correção essa
+  // chamada ficava fora de qualquer try/catch, e o throw escapava o handler
+  // inteiro — 500 cru, sem JSON nenhum que o front reconheça.
+  //
+  // O QUE ESTA CORREÇÃO NÃO MUDA, DE PROPÓSITO: o laço de "Tentar de novo"
+  // do cliente continua existindo depois dela, igual a antes. useOrders.ts
+  // só para de tentar quando o CORPO da resposta traz `terminal: true`, e
+  // este 503 NÃO traz — DIFERENTE do "sem credencial do Mercado Pago"
+  // (D1, mais abaixo), que virou terminal, porque os dois têm escalas de
+  // conserto diferentes:
+  // chave de service role é ajuste de operador em MINUTOS (dentro da
+  // janela de 30 min do PIX, retentar é o comportamento certo); chaves do
+  // Mercado Pago numa loja nova são cadastro na aplicação MP do lojista —
+  // DIAS, não minutos, e ninguém avisa o cliente de nada enquanto isso.
+  // Falta de env var no servidor nunca é problema DO PEDIDO — a diferença
+  // é só o prazo de quem conserta. O que esta correção resolve é só o
+  // throw cru escapando sem mensagem nenhuma; o cliente sempre continuou
+  // (e deve continuar) tentando de novo depois deste 503 de service role.
+  //
+  // SONDA DE FORMAS DE PAGAMENTO (P1 do PR #711, 29/09/2026): a montagem do
+  // client virou closure para a sonda `{acao:"metodos"}` (logo abaixo) e o
+  // caminho de cobrança usarem O MESMO código e a MESMA resposta 503 — sem
+  // segunda cópia da regra de erro. Para o caminho de cobrança, a ordem é a de
+  // sempre: continua DEPOIS da validação do corpo (pedido inválido segue
+  // devolvendo 400 sem tocar em variável de ambiente nenhuma).
+  const montarSupabase = (): ReturnType<typeof createClient> | null => {
+    if (deps.supabase) return deps.supabase;
+    try {
+      return createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+      );
+    } catch (err) {
+      console.error("criar-pagamento: falha ao criar o client do Supabase", err);
+      return null;
+    }
+  };
+  const respostaPagamentoIndisponivel = () =>
+    json({ error: "Pagamento indisponível." }, 503);
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
     return json({ error: "Corpo inválido." }, 400);
+  }
+
+  // SONDA DE FORMAS DE PAGAMENTO (P1 do PR #711, 29/09/2026): o checkout
+  // pergunta AQUI se o PIX está disponível ANTES de oferecê-lo.
+  // `store_config.pagamento_online` é COMPARTILHADA com o cartão (o cartão
+  // exige ela ligada), então não dá para exigir a chave de assinatura do
+  // webhook para ligar o online em geral — e sem a sonda a loja oferecia PIX
+  // que a criação recusava com 409 `pixSemChaveDeAssinatura`, DEPOIS de o
+  // cliente escolher e SEM QR. A resposta usa o MESMO predicado da recusa
+  // (`pixPermitido`): disponibilidade e recusa nunca divergem.
+  //
+  // TRÊS ESTADOS, não dois (crítico de desenho, 29/09/2026):
+  //   * `{pix: true}`  — a loja tem token do lojista E a chave de assinatura.
+  //   * `{pix: false}` — SÓ quando a chave de assinatura REALMENTE falta:
+  //     registro lido e sem a chave, ou a loja roda pelas chaves da
+  //     plataforma (origem "ambiente", com ou sem token). É estado estável.
+  //   * 503 (o de sempre, sem `pix` no corpo) — quando NÃO DÁ PARA SABER: a
+  //     credencial do lojista está `indisponivel` (leitura do registro
+  //     recusada, cofre ausente, token ilegível, client sem service role).
+  //     Falha transitória de infraestrutura nunca pode virar `{pix:false}`:
+  //     o front trata o erro como "desconhecido" e NÃO esconde o PIX de uma
+  //     loja que o tem, só porque o banco soluçou.
+  //
+  // Fica ANTES da validação de `orderId` e do `metodo` porque não tem pedido.
+  // Não lê pedido nem vaga, não chama o Mercado Pago, não grava nada; só o
+  // booleano sai — nunca segredo, origem, motivo nem máscara. NÃO reaproveita
+  // o `console.error` "PIX recusado" do guard abaixo (é uma consulta por
+  // checkout, e encheria o log): a sonda não loga nada por conta própria — só
+  // o próprio resolvedor de credenciais loga suas falhas reais (origem e
+  // motivo, jamais segredo).
+  if (body.acao === "metodos") {
+    const clienteDaSonda = montarSupabase();
+    if (!clienteDaSonda) return respostaPagamentoIndisponivel();
+    const credenciaisDaSonda = deps.credenciaisMp ??
+      await resolverCredenciaisMp(clienteDaSonda);
+    if (credenciaisDaSonda.origem === "indisponivel") {
+      return respostaPagamentoIndisponivel();
+    }
+    return json({ pix: pixPermitido(credenciaisDaSonda) }, 200);
   }
 
   if (!pareceUuid(body.orderId)) return json({ error: "Pedido inválido." }, 400);
@@ -1016,41 +1117,11 @@ async function handler(
     dadosCartao = validacaoCartao.dados;
   }
 
-  // PEDIDO-07 (auditoria de 26/08/2026): este createClient PRECISA ficar
-  // dentro de um try — readKey nunca lança (devolve "" quando nenhuma das
-  // duas variáveis existe, ver o comentário dela em _shared/webpush.ts), mas
-  // createClient sim: "supabaseKey is required." Antes desta correção essa
-  // chamada ficava fora de qualquer try/catch, e o throw escapava o handler
-  // inteiro — 500 cru, sem JSON nenhum que o front reconheça.
-  //
-  // O QUE ESTA CORREÇÃO NÃO MUDA, DE PROPÓSITO: o laço de "Tentar de novo"
-  // do cliente continua existindo depois dela, igual a antes. useOrders.ts
-  // só para de tentar quando o CORPO da resposta traz `terminal: true`, e
-  // este 503 NÃO traz — DIFERENTE do "sem credencial do Mercado Pago"
-  // (D1, logo abaixo), que virou terminal, porque os dois têm escalas de
-  // conserto diferentes:
-  // chave de service role é ajuste de operador em MINUTOS (dentro da
-  // janela de 30 min do PIX, retentar é o comportamento certo); chaves do
-  // Mercado Pago numa loja nova são cadastro na aplicação MP do lojista —
-  // DIAS, não minutos, e ninguém avisa o cliente de nada enquanto isso.
-  // Falta de env var no servidor nunca é problema DO PEDIDO — a diferença
-  // é só o prazo de quem conserta. O que esta correção resolve é só o
-  // throw cru escapando sem mensagem nenhuma; o cliente sempre continuou
-  // (e deve continuar) tentando de novo depois deste 503 de service role.
-  let supabase: ReturnType<typeof createClient>;
-  if (deps.supabase) {
-    supabase = deps.supabase;
-  } else {
-    try {
-      supabase = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
-      );
-    } catch (err) {
-      console.error("criar-pagamento: falha ao criar o client do Supabase", err);
-      return json({ error: "Pagamento indisponível." }, 503);
-    }
-  }
+  // Client de service role: a montagem (e o porquê do try/catch, PEDIDO-07)
+  // mora em `montarSupabase`, definida no topo do handler — a sonda de formas
+  // de pagamento usa a mesma. O 503 continua o de sempre, sem `terminal`.
+  const supabase = montarSupabase();
+  if (!supabase) return respostaPagamentoIndisponivel();
 
   // Tarefa mp-2 (15/09/2026): QUEM cobra este cliente — a chave do LOJISTA
   // (cadastrada em Ajustes > Pagamentos > Mercado Pago, guardada cifrada em
@@ -1104,8 +1175,13 @@ async function handler(
   // de trocar para cartão). Quando a tela do lojista orientar o comprador,
   // ela decide consumir a flag — nunca comparação de texto (mesmo contrato
   // de sempre).
+  //
+  // O predicado é `pixPermitido` (topo do arquivo), o MESMO que a sonda
+  // `{acao:"metodos"}` usa para o checkout decidir se OFERECE o PIX: a tela e
+  // esta recusa nunca divergem. O token já foi exigido acima, então aqui o
+  // predicado se reduz à condição de sempre (origem lojista + chave da loja).
   if (!dadosCartao) {
-    if (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook) {
+    if (!pixPermitido(credenciaisMp)) {
       // Só origem e motivo em log — nenhum segredo, jamais.
       console.error(
         `criar-pagamento: PIX recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,

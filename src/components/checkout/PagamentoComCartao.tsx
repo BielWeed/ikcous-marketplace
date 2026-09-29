@@ -568,6 +568,7 @@ export function PagamentoComCartao({
   emailDoPagador,
   onErro,
   onPagarComPix,
+  podePagarComPix = true,
 }: {
   orderId: string;
   valor: number;
@@ -592,6 +593,12 @@ export function PagamentoComCartao({
   // cartão vivo). Só a tela "recusado" chama com `false`: o banco já
   // respondeu que o cartão morreu.
   onPagarComPix: (cartaoAindaVivo: boolean) => void;
+  // P1 do PR #711: `false` quando a sonda da edge disse que o PIX não está
+  // pronto nesta loja. Nenhuma das quatro saídas "Pagar com PIX" abaixo
+  // aparece então — o 409 `pixSemChaveDeAssinatura` é terminal e, com o
+  // cartão ainda vivo (3DS, "confirmando", "em análise"), ainda ligaria a
+  // cobrança incerta e deixaria a pessoa sem saída. Só `false` esconde.
+  podePagarComPix?: boolean;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
@@ -785,15 +792,17 @@ export function PagamentoComCartao({
               >
                 Tentar outro cartão
               </button>
-              <button
-                type="button"
-                // O banco já respondeu que este cartão morreu — nunca fica
-                // "vivo" depois de uma recusa definitiva.
-                onClick={() => onPagarComPix(false)}
-                className="flex min-h-12 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 active:bg-zinc-50"
-              >
-                Pagar com PIX
-              </button>
+              {podePagarComPix && (
+                <button
+                  type="button"
+                  // O banco já respondeu que este cartão morreu — nunca fica
+                  // "vivo" depois de uma recusa definitiva.
+                  onClick={() => onPagarComPix(false)}
+                  className="flex min-h-12 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm font-bold text-zinc-900 active:bg-zinc-50"
+                >
+                  Pagar com PIX
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -816,7 +825,7 @@ export function PagamentoComCartao({
                 MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE. Antes disso a
                 maioria das análises já teria decidido, e oferecer PIX cedo
                 demais competiria com uma aprovação normal. */}
-            {pixDisponivelNaAnalise && (
+            {pixDisponivelNaAnalise && podePagarComPix && (
               <button
                 type="button"
                 // Em análise pelo emissor/antifraude: o cartão AINDA pode ser
@@ -840,8 +849,10 @@ export function PagamentoComCartao({
               Confirmando com o banco…
             </p>
             <p className="text-xs text-zinc-500">
-              A confirmação aparece nesta tela. Se o banco não aprovar, você
-              pode pagar com PIX.
+              A confirmação aparece nesta tela.
+              {podePagarComPix
+                ? " Se o banco não aprovar, você pode pagar com PIX."
+                : " Se o banco não aprovar, o pedido expira sozinho no prazo da reserva."}
             </p>
             {/* B2, rodada 2 da revisão de risco pré-publicação (26/09/2026):
                 "Tentar outro cartão" saiu — com o cartão ainda em
@@ -851,15 +862,17 @@ export function PagamentoComCartao({
                 "Pagar com PIX" continua sendo a única saída real: a edge
                 cancela o cartão em `action_required`/`created` antes de criar
                 o PIX, ou responde 409 `cartaoEmAnalise` se não conseguir. */}
-            <button
-              type="button"
-              // O desafio 3DS acabou de ser concluído; o webhook ainda pode
-              // aprovar o cartão a qualquer momento.
-              onClick={() => onPagarComPix(true)}
-              className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-            >
-              Pagar com PIX
-            </button>
+            {podePagarComPix && (
+              <button
+                type="button"
+                // O desafio 3DS acabou de ser concluído; o webhook ainda pode
+                // aprovar o cartão a qualquer momento.
+                onClick={() => onPagarComPix(true)}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+              >
+                Pagar com PIX
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -900,18 +913,32 @@ export function PagamentoComCartao({
               SEM "Tentar outro cartão" (rodada 2 da revisão): com o cartão em
               `action_required`, um cartão novo bate na branch (d) da edge e
               recebe de volta o MESMO desafio — nunca troca nada de verdade. */}
-          <p className="text-xs text-zinc-500">
-            Não conseguiu concluir com o banco? Você pode pagar com PIX.
-          </p>
-          <button
-            type="button"
-            // O desafio ainda está aberto — o cartão está vivo, esperando o
-            // banco.
-            onClick={() => onPagarComPix(true)}
-            className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
-          >
-            Pagar com PIX
-          </button>
+          {podePagarComPix ? (
+            <>
+              <p className="text-xs text-zinc-500">
+                Não conseguiu concluir com o banco? Você pode pagar com PIX.
+              </p>
+              <button
+                type="button"
+                // O desafio ainda está aberto — o cartão está vivo, esperando
+                // o banco.
+                onClick={() => onPagarComPix(true)}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+              >
+                Pagar com PIX
+              </button>
+            </>
+          ) : (
+            // P1 do PR #711: sem PIX, o desafio 3DS não tem botão de saída —
+            // "Tentar outro cartão" já não existe aqui (a edge devolveria o
+            // MESMO desafio) e "Cancelar pedido" é proibido com o cartão vivo.
+            // O que existe de seguro é esperar: nada é cobrado sem o banco
+            // confirmar, e a reserva vence sozinha e devolve o estoque.
+            <p className="text-xs text-zinc-500">
+              Não conseguiu concluir com o banco? Pode sair desta tela: o pedido
+              expira sozinho no prazo da reserva.
+            </p>
+          )}
         </div>
       )}
 

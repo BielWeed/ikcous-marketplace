@@ -76,6 +76,7 @@ import {
     decifrar,
     lerRegistroMp,
     type Registro,
+    resolverCredenciaisMp,
     type UltimoTeste,
 } from "../_shared/credenciais-mp.ts";
 
@@ -119,6 +120,14 @@ export type RespostaLer = {
     pix_ligado: boolean;
     /** A ficha da loja já carrega ESTA Public Key (e não outra, nem nenhuma). */
     public_key_na_loja: boolean;
+    /**
+     * O checkout vai OFERECER o Pix a esta loja? Só é verdade com a chave de
+     * assinatura do webhook cadastrada e legível (a mesma regra que a
+     * `criar-pagamento` usa para recusar ou criar o Pix — ver
+     * `pixDisponivelNaLoja`). `pix_ligado` é o interruptor do pagamento online
+     * (compartilhado com o cartão); `pix_disponivel` é o Pix de fato.
+     */
+    pix_disponivel: boolean;
 };
 
 /** A parte da ficha pública da loja que esta tela precisa enxergar. */
@@ -320,6 +329,7 @@ function mensagemDeRecusaDaFicha(
 function respostaLer(
     registro: Registro | null,
     ficha: FichaDaLoja,
+    pixDisponivel: boolean,
 ): RespostaLer {
     // A Public Key da ficha só "confere" quando existe dos DOIS lados e é a
     // mesma: ficha vazia, ou ficha com a chave de outra loja, é exatamente o
@@ -336,6 +346,7 @@ function respostaLer(
             atualizado_em: null,
             pix_ligado: ficha.pagamento_online,
             public_key_na_loja,
+            pix_disponivel: pixDisponivel,
         };
     }
     return {
@@ -347,7 +358,62 @@ function respostaLer(
         atualizado_em: registro.atualizado_em,
         pix_ligado: ficha.pagamento_online,
         public_key_na_loja,
+        pix_disponivel: pixDisponivel,
     };
+}
+
+/**
+ * O Pix vai aparecer para o cliente desta loja? (P1 do PR #711, 29/09/2026)
+ *
+ * `pagamento_online` é COMPARTILHADA com o cartão, então "ligado" não diz que
+ * o Pix funciona: sem a chave de assinatura do webhook cadastrada pela loja, a
+ * `criar-pagamento` recusa o Pix (409 `pixSemChaveDeAssinatura`) e o checkout,
+ * que pergunta a ela antes de oferecer (`{acao:"metodos"}`), o esconde. Esta
+ * resposta existe para o lojista ficar sabendo ANTES do cliente sentir.
+ *
+ * Usa `resolverCredenciaisMp` — o MESMO caminho que a `criar-pagamento` roda
+ * (decifra token e chave de assinatura, fecha se o cofre falhar) — e a MESMA
+ * condição do `pixPermitido` de lá: token E origem "lojista" E chave de
+ * assinatura legível. Ler só "tem `webhook_cifrado` no registro" diria
+ * "disponível" para chave ilegível (cofre trocado), que a criação recusa.
+ *
+ * TRÊS respostas, como a sonda da `criar-pagamento`:
+ *   * `true`  — o Pix aparece.
+ *   * `false` — a chave de assinatura realmente falta (ou é ilegível no
+ *     registro): estado estável, o lojista precisa agir.
+ *   * `null`  — NÃO deu para conferir agora (cofre ausente, banco recusou a
+ *     leitura...): falha transitória de infraestrutura NÃO é "falta a chave", e
+ *     dizer ao lojista para cadastrar de novo uma chave que já cadastrou seria
+ *     mandá-lo consertar a coisa errada.
+ * Falha aqui nunca derruba a ação que chamou (o Pix já foi ligado, salvo etc.).
+ * Nunca devolve nem loga segredo.
+ */
+async function pixDisponivelNaLoja(
+    supabase: any,
+    registro: Registro | null,
+): Promise<boolean | null> {
+    // Condições NECESSÁRIAS baratas primeiro: sem token ou sem chave de
+    // assinatura no registro o Pix não existe, e nem vale decifrar (nem gerar
+    // log de "sem credencial" toda vez que o lojista abre a tela nova).
+    if (
+        !registro?.token_cifrado || !registro.webhook_cifrado ||
+        !registro.webhook_iv
+    ) {
+        return false;
+    }
+    try {
+        const credenciais = await resolverCredenciaisMp(supabase);
+        if (credenciais.origem === "indisponivel") return null;
+        return Boolean(credenciais.token) &&
+            credenciais.origem === "lojista" &&
+            Boolean(credenciais.segredoWebhook);
+    } catch (err) {
+        console.error(
+            "[credenciais-mp] não consegui conferir se o Pix está disponível:",
+            err instanceof Error ? err.message : err,
+        );
+        return null;
+    }
 }
 
 /**
@@ -419,7 +485,14 @@ export async function handler(
         if (body.acao === "ler") {
             const registro = await lerRegistroMp(supabase);
             const ficha = await lerFichaDaLoja(supabase);
-            return json(respostaLer(registro, ficha), 200);
+            return json(
+                respostaLer(
+                    registro,
+                    ficha,
+                    (await pixDisponivelNaLoja(supabase, registro)) === true,
+                ),
+                200,
+            );
         }
 
         // ── salvar: valida, cifra e grava; segredo vazio = mantém o salvo ──
@@ -594,7 +667,11 @@ export async function handler(
             // desligar o PIX calado seria o lojista descobrindo pelo cliente.
             return json(
                 {
-                    ...respostaLer(registro, ficha),
+                    ...respostaLer(
+                        registro,
+                        ficha,
+                        (await pixDisponivelNaLoja(supabase, registro)) === true,
+                    ),
                     ...(desligarPix
                         ? {
                             pix_desligado: true,
@@ -789,9 +866,29 @@ export async function handler(
                     "O PIX está ligado, mas não consegui registrar quem ligou; tente salvar de novo mais tarde.",
                 );
             }
+            // O Pix só aparece para o cliente com a chave de assinatura do
+            // webhook cadastrada (P1 do PR #711). LIGAR continua ligando —
+            // `pagamento_online` é compartilhada com o cartão, e desligá-la
+            // aqui derrubaria quem vende por ele —, mas o lojista precisa
+            // ouvir AGORA o que isso significa, não descobrir pelo cliente:
+            // numa loja sem cartão configurado, o cliente fica sem nenhuma
+            // forma de pagar online até a chave ser cadastrada.
+            const pixDisponivel = await pixDisponivelNaLoja(supabase, registro);
+            if (pixDisponivel === false) {
+                avisos.push(
+                    "O pagamento online foi ligado, mas o Pix só aparece para o cliente depois que você cadastrar a chave de assinatura do webhook. Se a sua loja não tiver o cartão configurado, o cliente ficará sem nenhuma forma de pagar online até lá",
+                );
+            } else if (pixDisponivel === null) {
+                // Não deu para conferir (cofre/banco): NÃO acusar falta de
+                // chave que talvez esteja cadastrada.
+                avisos.push(
+                    "O pagamento online foi ligado, mas não consegui conferir agora se o Pix já está disponível para o cliente; abra a tela de novo em instantes para ver",
+                );
+            }
             return json(
                 {
                     pix_ligado: true,
+                    pix_disponivel: pixDisponivel === true,
                     quando: agora,
                     // `comPontoFinal` (mp-10): sem ele, dois avisos juntos
                     // grudavam sem pontuação ("...de verdadeO PIX está

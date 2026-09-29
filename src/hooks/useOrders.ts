@@ -3396,6 +3396,14 @@ export function useOrders(
         // MESMA regra estrita do `terminal`: só `true` booleano conta, falha
         // fechada em qualquer outra coisa (campo ausente, string "true").
         let cartaoEmAnalise = false;
+        // P1 do PR #711 (29/09/2026): o 409 "Para pagar com Pix, a loja
+        // precisa cadastrar a chave de assinatura…" carrega
+        // `pixSemChaveDeAssinatura: true` (junto de `terminal: true`). É o
+        // marcador que deixa o checkout oferecer "Pagar com cartão" no lugar
+        // — o 409 vem ANTES de a edge ler pedido/vaga, então trocar o MESMO
+        // pedido para cartão é seguro. Mesma regra estrita: só `true`
+        // booleano conta, e o front NUNCA reconhece o caso pelo texto.
+        let pixSemChaveDeAssinatura = false;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
@@ -3403,11 +3411,18 @@ export function useOrders(
           if (typeof corpo?.cartaoEmAnalise === "boolean") {
             cartaoEmAnalise = corpo.cartaoEmAnalise;
           }
+          if (typeof corpo?.pixSemChaveDeAssinatura === "boolean") {
+            pixSemChaveDeAssinatura = corpo.pixSemChaveDeAssinatura;
+          }
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw Object.assign(new Error(mensagem), { terminal, cartaoEmAnalise });
+        throw Object.assign(new Error(mensagem), {
+          terminal,
+          cartaoEmAnalise,
+          pixSemChaveDeAssinatura,
+        });
       }
       if (data?.error) {
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
@@ -3422,6 +3437,9 @@ export function useOrders(
           cartaoEmAnalise:
             typeof (data as any).cartaoEmAnalise === "boolean" &&
             (data as any).cartaoEmAnalise,
+          pixSemChaveDeAssinatura:
+            typeof (data as any).pixSemChaveDeAssinatura === "boolean" &&
+            (data as any).pixSemChaveDeAssinatura,
         });
       }
       return data as RespostaCriarPagamento;

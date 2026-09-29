@@ -63,6 +63,7 @@ import {
   primeiraFormaDePagamentoDisponivel,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { usePixDisponivel } from "@/lib/pix-disponivel";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -181,6 +182,12 @@ const MENSAGEM_CARTAO_EM_ANALISE_409 =
 // ainda rodando uma edge anterior a esse commit.
 const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
   "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
+
+// P1 do PR #711 (29/09/2026): a frase que o COMPRADOR lê quando a edge recusa o
+// PIX com o 409 `pixSemChaveDeAssinatura` (o texto da edge fala com o
+// operador). Reconhecido pelo sinal "pixSemChave", nunca pelo texto.
+const MENSAGEM_PIX_INDISPONIVEL =
+  "O pagamento por Pix não está disponível nesta loja agora.";
 
 interface CheckoutFormValues {
   name: string;
@@ -1027,14 +1034,44 @@ export function CheckoutView({
   // que o pedido nasce. Por isso o submétodo mora num estado à parte e só
   // vale enquanto `paymentMethod === "online"` (ver `metodoOnlineEfetivo`).
   // Toda seleção AUTOMÁTICA de "online" (transportadora, fallback da loja)
-  // volta para PIX — cartão só por escolha explícita do cliente.
+  // volta para PIX — cartão só por escolha explícita do cliente, salvo se a
+  // sonda da edge escondeu o PIX (ver `metodoOnlineAutomatico`).
   const [metodoOnline, setMetodoOnline] = useState<MetodoOnline>("pix");
   // `null` = cartão NÃO oferecido (carregando, desligado, leitura falhou ou
   // loja sem Public Key) — falha fechada, ver useConfigDoCartao.
-  const configDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
-  const cartaoDisponivel = pagamentoOnlineLigado() && configDoCartao !== null;
+  const onlineLigado = pagamentoOnlineLigado();
+  const configDoCartao = useConfigDoCartao(onlineLigado);
+  const cartaoDisponivel = onlineLigado && configDoCartao !== null;
+  // O PIX PELO APP PODE ESTAR ESCONDIDO COM O PAGAMENTO ONLINE LIGADO (P1 do
+  // PR #711): a loja sem a chave de assinatura do webhook cadastrada tem o
+  // online "ligado" na ficha, mas a edge recusa o PIX (409
+  // `pixSemChaveDeAssinatura`) e o cliente travava antes do QR. A ficha
+  // (`pagamentoOnlineLigado()`) é compartilhada com o cartão, então a sonda
+  // da edge (`usePixDisponivel`) esconde SÓ o PIX. Só `false` esconde —
+  // carregando, erro e edge antiga são desconhecido e oferecem, como sempre
+  // foi (fail-open; a recusa de verdade continua sendo da edge). A sonda só
+  // vai à rede com o online ligado e conta logada (online exige conta).
+  const { pix: pixDaEdge, consultando: consultandoPix } = usePixDisponivel(
+    onlineLigado && !!user,
+  );
+  const pixEscondido = pixDaEdge === false;
+  // "Online" existe para a tela quando está ligado E sobrou algo para
+  // oferecer nele: PIX, ou — com o PIX escondido — o cartão. Sem nenhum dos
+  // dois o checkout age como online DESLIGADO (formas na entrega, nada de
+  // auto-seleção de "online"). Use isto no lugar de `pagamentoOnlineLigado()`
+  // em toda decisão de oferecer/selecionar online.
+  const onlineDisponivel = onlineLigado && !(pixEscondido && !cartaoDisponivel);
+  // O submétodo de toda seleção AUTOMÁTICA de "online": PIX, salvo se ele
+  // está escondido — aí o cartão (cartão só por escolha explícita continua
+  // valendo quando o PIX está à mostra). As seleções automáticas ESPERAM a
+  // sonda (`consultandoPix`, no máximo `PRAZO_DA_SONDA_MS`): escolher o PIX e
+  // tirá-lo do cliente um instante depois seria pior que esperar; a escolha
+  // MANUAL do cliente nunca espera.
+  const metodoOnlineAutomatico: MetodoOnline = pixEscondido ? "cartao" : "pix";
   const metodoOnlineEfetivo: MetodoOnline =
-    paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
+    paymentMethod === "online" &&
+    cartaoDisponivel &&
+    (metodoOnline === "cartao" || pixEscondido)
       ? "cartao"
       : "pix";
   const [notes, setNotes] = useState("");
@@ -1119,7 +1156,15 @@ export function CheckoutView({
     categoria: CategoriaErroPagamento;
     cartaoEmAnalise: boolean;
     semCobranca: boolean;
+    // P1 do PR #711: a edge recusou o PIX (409 `pixSemChaveDeAssinatura`).
+    pixSemChave: boolean;
   } | null>(null);
+  // P1 do PR #711: a edge JÁ recusou o PIX deste pedido nesta abertura — vale
+  // mesmo que a sonda tenha vindo "desconhecida". Junto de `pixEscondido`,
+  // decide se as saídas "Pagar com PIX" existem: depois de um 409 terminal
+  // elas só levariam de volta ao mesmo 409.
+  const [pixRecusadoPelaEdge, setPixRecusadoPelaEdge] = useState(false);
+  const pixIndisponivelNoPedido = pixEscondido || pixRecusadoPelaEdge;
   // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
   // 26/09/2026): `cartaoEmAnalise` acima é julgado POR ERRO — a sequência que
   // quebra isso: (1) um 502 ambíguo do POST de cartão (o Mercado Pago pode
@@ -1793,13 +1838,18 @@ export function CheckoutView({
     if (!selectedShippingOption) return;
     if (ehEntregaLocal) return;
     if (paymentMethod === "online") return;
-    if (!pagamentoOnlineLigado()) return;
+    // `onlineDisponivel`, não a ficha: com o PIX escondido e sem cartão o
+    // online não tem o que oferecer — não seleciona (quem trava é a guarda).
+    if (!onlineDisponivel || consultandoPix) return;
     if (authLoading || !user) return;
     setPaymentMethod("online");
-    // Auto-seleção é sempre o PIX (o texto do toast promete isso).
-    setMetodoOnline("pix");
+    // Auto-seleção é o PIX (o texto do toast promete isso) — ou o cartão,
+    // com o texto certo, quando a sonda escondeu o PIX.
+    setMetodoOnline(metodoOnlineAutomatico);
     toast.info(
-      "Envio por transportadora exige pagamento antecipado: selecionamos o PIX no app para você.",
+      metodoOnlineAutomatico === "pix"
+        ? "Envio por transportadora exige pagamento antecipado: selecionamos o PIX no app para você."
+        : "Envio por transportadora exige pagamento antecipado: selecionamos o cartão no app para você.",
     );
   }, [
     selectedShippingOption,
@@ -1807,6 +1857,9 @@ export function CheckoutView({
     paymentMethod,
     authLoading,
     user,
+    onlineDisponivel,
+    consultandoPix,
+    metodoOnlineAutomatico,
   ]);
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): a loja pode desligar a forma
@@ -1825,7 +1878,7 @@ export function CheckoutView({
   // pix): um convidado nunca chega a "online" por aqui.
   useEffect(() => {
     if (!ehEntregaLocal && selectedShippingOption) return;
-    if (authLoading) return;
+    if (authLoading || consultandoPix) return;
     if (paymentMethod === "online") return;
     if (
       formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega).includes(
@@ -1838,12 +1891,12 @@ export function CheckoutView({
       formasNaEntrega: formasPagamentoNaEntregaValidas(
         config.formasPagamentoEntrega,
       ),
-      pagamentoOnlineLigado: pagamentoOnlineLigado(),
+      pagamentoOnlineLigado: onlineDisponivel,
       logado: !!user,
     });
     if (proxima) {
       setPaymentMethod(proxima);
-      if (proxima === "online") setMetodoOnline("pix");
+      if (proxima === "online") setMetodoOnline(metodoOnlineAutomatico);
     }
   }, [
     config.formasPagamentoEntrega,
@@ -1852,6 +1905,9 @@ export function CheckoutView({
     paymentMethod,
     authLoading,
     user,
+    onlineDisponivel,
+    consultandoPix,
+    metodoOnlineAutomatico,
   ]);
 
   useEffect(() => {
@@ -2140,7 +2196,7 @@ export function CheckoutView({
     temOpcaoSelecionada: !!selectedShippingOption,
     ehEntregaLocal,
     paymentMethod,
-    pagamentoOnlineLigado: pagamentoOnlineLigado(),
+    pagamentoOnlineLigado: onlineDisponivel,
   });
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o segundo eixo — a loja
@@ -2417,14 +2473,13 @@ export function CheckoutView({
     // orientação depende da modalidade, e nenhuma delas manda cliente de
     // outra cidade "escolher entrega local" — impossível para ele.
     if (pagamentoIncompativel) {
-      const onlineStale =
-        paymentMethod === "online" && !pagamentoOnlineLigado();
+      const onlineStale = paymentMethod === "online" && !onlineDisponivel;
       toast.error(
         onlineStale
           ? ehEntregaLocal
             ? "O pagamento pelo app saiu do ar nesta loja. Escolha um meio de pagamento na entrega para finalizar."
             : "O pagamento pelo app saiu do ar nesta loja, e o envio por transportadora exige pagamento antecipado. Fale com a loja para combinar a entrega."
-          : pagamentoOnlineLigado()
+          : onlineDisponivel
             ? cartaoDisponivel
               ? "Envio por transportadora exige pagamento antecipado. Escolha um pagamento pelo app para finalizar."
               : "Envio por transportadora exige pagamento antecipado. Escolha \u201cPagar agora com PIX\u201d para finalizar."
@@ -3134,7 +3189,8 @@ export function CheckoutView({
               erroPagamento.categoria !== "terminal" &&
               erroPagamento.semCobranca &&
               !erroPagamento.cartaoEmAnalise &&
-              !pedidoTemCobrancaIncerta && (
+              !pedidoTemCobrancaIncerta &&
+              !pixIndisponivelNoPedido && (
                 <Button
                   onClick={() => {
                     setMetodoDoPedido("pix");
@@ -3145,6 +3201,29 @@ export function CheckoutView({
                   className="w-full rounded-xl"
                 >
                   Pagar com PIX
+                </Button>
+              )}
+            {/* P1 do PR #711: o PIX foi recusado pela edge (loja sem a chave de
+                assinatura do webhook). O 409 vem ANTES de a edge ler pedido e
+                vaga — nenhuma cobrança foi tocada —, então o MESMO pedido pode
+                ir para o cartão, mas só se NENHUM cartão pode estar vivo nele
+                (`pedidoTemCobrancaIncerta`: aí a saída é a de sempre, falar
+                com a loja). Sem cartão na loja, ficam a frase e "Cancelar
+                pedido". */}
+            {erroPagamento.pixSemChave &&
+              metodoDoPedido === "pix" &&
+              cartaoDisponivel &&
+              !!user &&
+              !pedidoTemCobrancaIncerta && (
+                <Button
+                  onClick={() => {
+                    setMetodoDoPedido("cartao");
+                    setErroPagamento(null);
+                    setErroCancelamento(null);
+                  }}
+                  className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+                >
+                  Pagar com cartão
                 </Button>
               )}
             {/* CHECKOUT-070 (#197): visível nos dois casos — no terminal é a
@@ -3264,6 +3343,7 @@ export function CheckoutView({
             metodo={metodoDoPedido}
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
+            podePagarComPix={!pixIndisponivelNoPedido}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             //
@@ -3305,6 +3385,7 @@ export function CheckoutView({
               // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
               // seja incerto.
               if (cartaoTalvezEmCurso) setPedidoTemCobrancaIncerta(true);
+              if (sinal === "pixSemChave") setPixRecusadoPelaEdge(true);
 
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
@@ -3317,10 +3398,17 @@ export function CheckoutView({
                 atual?.categoria === "terminal"
                   ? atual
                   : {
-                      mensagem: msg,
+                      // O texto da edge para o 409 sem chave é de OPERADOR
+                      // ("a loja precisa cadastrar a chave…"); quem compra lê
+                      // uma frase de comprador. Reconhecido pelo SINAL.
+                      mensagem:
+                        sinal === "pixSemChave"
+                          ? MENSAGEM_PIX_INDISPONIVEL
+                          : msg,
                       categoria,
                       cartaoEmAnalise: cartaoTalvezEmCurso,
                       semCobranca: sinal === "semCobranca",
+                      pixSemChave: sinal === "pixSemChave",
                     },
               );
             }}
@@ -3371,7 +3459,7 @@ export function CheckoutView({
     requerConta: boolean;
   }
 
-  const opcoesNoApp: OpcaoDePagamento[] = pagamentoOnlineLigado()
+  const opcoesNoAppSemFiltro: OpcaoDePagamento[] = onlineDisponivel
     ? [
         {
           value: "online",
@@ -3404,6 +3492,12 @@ export function CheckoutView({
           : []),
       ]
     : [];
+  // PIX escondido pela sonda da edge (P1 do PR #711): some SÓ a opção do PIX
+  // pelo app; o cartão fica. (O PIX NA ENTREGA é outra forma, paga na mão, e
+  // não passa por aqui.) Se sobrar nada, o grupo "No app" inteiro some.
+  const opcoesNoApp = pixEscondido
+    ? opcoesNoAppSemFiltro.filter((opcao) => opcao.metodoOnline !== "pix")
+    : opcoesNoAppSemFiltro;
 
   // Retirada na loja: o pagamento acontece NA RETIRADA — só o TEXTO muda;
   // `value` (pix/card/cash) e as regras de cobrança são os mesmos da entrega
@@ -4343,7 +4437,7 @@ export function CheckoutView({
                 entrega" — o bloqueio é a regra e o texto diz por quê. */}
             {selectedShippingOption && !ehEntregaLocal && (
               <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
-                {pagamentoOnlineLigado()
+                {onlineDisponivel
                   ? cartaoDisponivel
                     ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
                     : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."

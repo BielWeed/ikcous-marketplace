@@ -822,6 +822,11 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        // P1 do PR #711: sem a chave de assinatura o ligar_pix
+                        // ganha o aviso do Pix (C33). Este passo prova a loja
+                        // COMPLETA em produção — a asserção de "nenhum aviso"
+                        // abaixo continua a original.
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1556,6 +1561,268 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(corpo.mensagem.includes("Loja Real"), true);
             const salvo = JSON.parse(estado.valor!);
             assertEquals(salvo.ultimo_teste.ambiente, null);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    // ── P1 do PR #711 (29/09/2026): o Pix só aparece com a chave de
+    // assinatura do webhook. `pagamento_online` é compartilhada com o cartão,
+    // então LIGAR continua ligando — mas a resposta diz se o Pix de fato vai
+    // aparecer (`pix_disponivel`) e, quando não vai, avisa em português leigo.
+
+    /** Salva (com ou sem chave de assinatura), testa e devolve o cliente pronto
+     * para `ligar_pix`. */
+    async function lojaPronta(
+        cliente: any,
+        opcoes: { webhook?: boolean; live_mode?: boolean } = {},
+    ) {
+        await comFetch(fetchAdminFalso, () =>
+            handler(
+                requisicao({
+                    acao: "salvar",
+                    public_key: PUBLIC_KEY_FALSA,
+                    access_token: TOKEN_FALSO,
+                    ...(opcoes.webhook ? { webhook_secret: WEBHOOK_FALSO } : {}),
+                }),
+                { supabase: cliente },
+            )
+        );
+        const { buscar } = buscarMpFalso(200, {
+            live_mode: opcoes.live_mode ?? true,
+            nickname: "Loja Teste",
+        });
+        await comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+        );
+    }
+
+    // O aviso diz as duas coisas que o lojista precisa ouvir: o Pix fica
+    // ESCONDIDO até cadastrar a chave, e numa loja sem cartão configurado o
+    // cliente fica sem nenhuma forma de pagar online. NÃO afirma que "o
+    // cartão não depende da chave" (a confirmação do cartão nessas lojas hoje
+    // só vem pelo reconciliador).
+    const AVISO_PIX_SEM_CHAVE =
+        "O pagamento online foi ligado, mas o Pix só aparece para o cliente depois que você cadastrar a chave de assinatura do webhook. Se a sua loja não tiver o cartão configurado, o cliente ficará sem nenhuma forma de pagar online até lá.";
+
+    await t.step("C33 — ligar_pix SEM chave de assinatura: liga mesmo assim, 200, pix_disponivel false e aviso claro; nenhum segredo na resposta", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaPronta(cliente, { webhook: false });
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.pix_disponivel, false);
+            assertEquals(corpo.aviso, AVISO_PIX_SEM_CHAVE);
+            // O interruptor do pagamento online LIGOU de verdade.
+            assertEquals(estado.loja.pagamento_online, true);
+            const texto = JSON.stringify(corpo);
+            assertEquals(texto.includes(TOKEN_FALSO), false);
+            assertEquals(texto.includes(WEBHOOK_FALSO), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C33b — ligar_pix SEM chave de assinatura e com chave de TESTE: os DOIS avisos saem, separados por pontuação", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            await lojaPronta(cliente, { webhook: false, live_mode: false });
+            const corpo = await (await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            )).json();
+            assertEquals(corpo.pix_disponivel, false);
+            assertEquals(
+                corpo.aviso,
+                `Chave de TESTE: o PIX não vai receber dinheiro de verdade. ${AVISO_PIX_SEM_CHAVE}`,
+            );
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C33c — ligar_pix com a chave cadastrada mas o COFRE fora do ar (não deu para conferir): liga, pix_disponivel false, e NÃO acusa 'falta a chave' que o lojista já cadastrou", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaPronta(cliente, { webhook: true });
+            Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY"); // o cofre some DEPOIS de salvar e testar
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.pix_disponivel, false);
+            assertEquals(corpo.aviso.includes("não consegui conferir"), true);
+            assertEquals(corpo.aviso.includes("cadastrar a chave"), false);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C34 — ligar_pix COM chave de assinatura: pix_disponivel true e NENHUM aviso extra", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            await lojaPronta(cliente, { webhook: true });
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.pix_disponivel, true);
+            assertEquals(corpo.aviso, undefined);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C34b — ligar_pix duas vezes (idempotente): mesma resposta de disponibilidade e o mesmo aviso, sem acumular", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            await lojaPronta(cliente, { webhook: false });
+            const ligar = () =>
+                comFetch(fetchAdminFalso, () =>
+                    handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+                ).then((r: Response) => r.json());
+            const primeira = await ligar();
+            const segunda = await ligar();
+            assertEquals(segunda.pix_disponivel, false);
+            assertEquals(segunda.aviso, primeira.aviso);
+            assertEquals(segunda.aviso, AVISO_PIX_SEM_CHAVE);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C35 — ler devolve pix_disponivel: sem registro false; sem chave de assinatura false; com chave true — e nunca o segredo", async () => {
+        const desfazerEnv = prepararEnv();
+        try {
+            const lerCom = async (cliente: any) => {
+                const resposta = await comFetch(fetchAdminFalso, () =>
+                    handler(requisicao({ acao: "ler" }), { supabase: cliente })
+                );
+                assertEquals(resposta.status, 200);
+                return resposta.json();
+            };
+
+            // Loja que nunca cadastrou nada.
+            const vazia = supabaseFalso();
+            assertEquals((await lerCom(vazia.cliente)).pix_disponivel, false);
+
+            // Token cadastrado, chave de assinatura NÃO (registro anterior a esta regra).
+            const semChave = supabaseFalso();
+            await lojaPronta(semChave.cliente, { webhook: false });
+            assertEquals((await lerCom(semChave.cliente)).pix_disponivel, false);
+
+            // Com a chave de assinatura.
+            const comChave = supabaseFalso();
+            await lojaPronta(comChave.cliente, { webhook: true });
+            const corpo = await lerCom(comChave.cliente);
+            assertEquals(corpo.pix_disponivel, true);
+            assertEquals(JSON.stringify(corpo).includes(WEBHOOK_FALSO), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C35b — ler com a chave de assinatura ILEGÍVEL (cofre trocado / dado corrompido) diz false: a criação a recusaria, então a tela não promete Pix", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaPronta(cliente, { webhook: true });
+            const lerPixDisponivel = async () =>
+                (await (await comFetch(fetchAdminFalso, () =>
+                    handler(requisicao({ acao: "ler" }), { supabase: cliente })
+                )).json()).pix_disponivel;
+            assertEquals(await lerPixDisponivel(), true);
+
+            // Ciphertext da chave de assinatura corrompido no banco.
+            const registro = JSON.parse(estado.valor!);
+            estado.valor = JSON.stringify({ ...registro, webhook_cifrado: "AAAA" });
+            assertEquals(await lerPixDisponivel(), false);
+
+            // Restaurado, mas agora o COFRE some da env.
+            estado.valor = JSON.stringify(registro);
+            assertEquals(await lerPixDisponivel(), true);
+            Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+            assertEquals(await lerPixDisponivel(), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C36 — salvar também devolve pix_disponivel (a tela reaproveita a resposta): com chave true; re-salvar sem mexer na chave de assinatura MANTÉM true", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            const salvar = (extra: Record<string, unknown>) =>
+                comFetch(fetchAdminFalso, () =>
+                    handler(
+                        requisicao({
+                            acao: "salvar",
+                            public_key: PUBLIC_KEY_FALSA,
+                            access_token: TOKEN_FALSO,
+                            ...extra,
+                        }),
+                        { supabase: cliente },
+                    )
+                ).then((r: Response) => r.json());
+
+            assertEquals((await salvar({})).pix_disponivel, false);
+            assertEquals(
+                (await salvar({ webhook_secret: WEBHOOK_FALSO })).pix_disponivel,
+                true,
+            );
+            // Re-salvar sem o campo: a chave de assinatura antiga é mantida.
+            assertEquals((await salvar({})).pix_disponivel, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C37 — CONCORDÂNCIA com a criar-pagamento: para cada configuração de loja, pix_disponivel === pixPermitido(credenciais que a cobrança resolve)", async () => {
+        // Anti-divergência entre as duas edges: a tela do lojista (aqui) e o
+        // checkout (sonda da criar-pagamento) respondem "o Pix aparece?" por
+        // código separado; este passo prova que dão a MESMA resposta nas
+        // configurações que importam. (Só o teste importa a outra edge.)
+        const { pixPermitido } = await import("../criar-pagamento/index.ts");
+        const { resolverCredenciaisMp } = await import("../_shared/credenciais-mp.ts");
+        const desfazerEnv = prepararEnv();
+        try {
+            const configuracoes: Array<{
+                nome: string;
+                montar: (c: any, s: any) => Promise<void>;
+            }> = [
+                { nome: "sem registro", montar: async () => {} },
+                { nome: "token sem chave de assinatura", montar: (c) => lojaPronta(c, { webhook: false }) },
+                { nome: "token + chave de assinatura", montar: (c) => lojaPronta(c, { webhook: true }) },
+                {
+                    nome: "chave de assinatura corrompida",
+                    montar: async (c, s) => {
+                        await lojaPronta(c, { webhook: true });
+                        s.valor = JSON.stringify({ ...JSON.parse(s.valor), webhook_cifrado: "AAAA" });
+                    },
+                },
+            ];
+            for (const cfg of configuracoes) {
+                const { cliente, estado } = supabaseFalso();
+                await cfg.montar(cliente, estado);
+                const corpo = await (await comFetch(fetchAdminFalso, () =>
+                    handler(requisicao({ acao: "ler" }), { supabase: cliente })
+                )).json();
+                const daCobranca = pixPermitido(await resolverCredenciaisMp(cliente));
+                assertEquals(corpo.pix_disponivel, daCobranca, cfg.nome);
+            }
         } finally {
             desfazerEnv();
         }

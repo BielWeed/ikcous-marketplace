@@ -62,8 +62,18 @@ export type CategoriaErroPagamento = "recuperavel" | "terminal";
  * infraestrutura — sem confirmação de que "não há cobrança", a rede de
  * segurança é não oferecer PIX (evita a corrida provada: duas cobranças
  * vivas para o mesmo pedido).
+ *
+ * "pixSemChave" (P1 do PR #711, 29/09/2026): a edge recusou o PIX com o 409
+ * `pixSemChaveDeAssinatura` (a loja não cadastrou a chave de assinatura do
+ * webhook). Sempre TERMINAL, e vem ANTES de a edge ler pedido/vaga — nenhuma
+ * cobrança foi tocada, então o CheckoutView pode oferecer o cartão no lugar
+ * (no MESMO pedido) quando nenhum cartão pode estar vivo. Lido do CAMPO do
+ * corpo, nunca do texto.
  */
-export type SinalDeErroPagamento = "cartaoEmAnalise" | "semCobranca";
+export type SinalDeErroPagamento =
+  | "cartaoEmAnalise"
+  | "semCobranca"
+  | "pixSemChave";
 
 type CriarPagamento = (
   args: ArgsCriarPagamento,
@@ -350,6 +360,8 @@ export function dispararPagamentoPix({
       // (achado B3, revisão de risco pré-publicação).
       if (err?.cartaoEmAnalise === true) {
         onErro(mensagem, categoria, "cartaoEmAnalise");
+      } else if (err?.pixSemChaveDeAssinatura === true) {
+        onErro(mensagem, categoria, "pixSemChave");
       } else {
         onErro(mensagem, categoria);
       }
@@ -388,6 +400,7 @@ export function PagamentoOnline({
   configDoCartao = null,
   emailDoPagador,
   onTrocarParaPix,
+  podePagarComPix = true,
 }: {
   orderId: string;
   valor: number;
@@ -404,6 +417,11 @@ export function PagamentoOnline({
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
+  // P1 do PR #711: `false` quando a sonda da edge disse que o PIX não está
+  // pronto nesta loja — a tela do cartão não oferece nenhuma saída "Pagar com
+  // PIX" (o 409 é terminal e, com o cartão vivo, ainda ligaria a cobrança
+  // incerta). Só `false` esconde; o padrão é oferecer, como sempre foi.
+  podePagarComPix?: boolean;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
   const pagarComPix = (cartaoAindaVivo: boolean) => {
@@ -442,6 +460,7 @@ export function PagamentoOnline({
           emailDoPagador={emailDoPagador}
           onErro={onErro}
           onPagarComPix={pagarComPix}
+          podePagarComPix={podePagarComPix}
         />
       );
     }
@@ -453,13 +472,15 @@ export function PagamentoOnline({
         <p className="text-sm text-zinc-700">
           O pagamento com cartão não está disponível nesta loja agora.
         </p>
-        <button
-          type="button"
-          onClick={() => pagarComPix(cartaoEsteveEmCena)}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-        >
-          Pagar com PIX
-        </button>
+        {podePagarComPix && (
+          <button
+            type="button"
+            onClick={() => pagarComPix(cartaoEsteveEmCena)}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Pagar com PIX
+          </button>
+        )}
       </div>
     );
   }

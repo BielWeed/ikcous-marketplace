@@ -6342,3 +6342,353 @@ Deno.test("PIX 409 idempotency — busca devolve order PIX MORTA (expired): NÃO
 
   assertEquals(resposta.status, 502);
 });
+
+// =============================================================================
+// SONDA DE FORMAS DE PAGAMENTO — `{acao:"metodos"}` -> `{pix: boolean}`
+// (P1 do PR #711, 29/09/2026).
+//
+// O BURACO: `store_config.pagamento_online` é COMPARTILHADA com o cartão, então
+// a loja pode oferecer PIX no checkout sem ter cadastrado a chave de
+// assinatura do webhook — e o cliente só descobria no 409
+// `pixSemChaveDeAssinatura`, DEPOIS de escolher PIX e sem QR. O front agora
+// pergunta antes de oferecer. A sonda e a recusa usam o MESMO predicado
+// (`pixPermitido`), e estes testes provam que elas nunca divergem: para cada
+// configuração de loja, o que a sonda diz é exatamente o que a criação faz.
+// =============================================================================
+
+/** Envolve o dublê do banco: só `app_settings` pode ser lido — qualquer outra
+ * tabela (pedido, config do cartão) LANÇA, e a lista do que foi tocado sobra
+ * para a asserção. */
+function soAppSettings(supabase: { from: (t: string) => unknown }) {
+  const tabelasLidas: string[] = [];
+  return {
+    tabelasLidas,
+    supabase: {
+      from(tabela: string) {
+        tabelasLidas.push(tabela);
+        if (tabela !== "app_settings") {
+          throw new Error(`a sonda não pode tocar a tabela ${tabela}`);
+        }
+        return supabase.from(tabela);
+      },
+      rpc() {
+        throw new Error("a sonda não pode chamar rpc");
+      },
+    },
+  };
+}
+
+const CORPO_SONDA = { acao: "metodos" };
+const FETCH_PROIBIDO = () => {
+  throw new Error("a sonda NÃO pode chamar o Mercado Pago");
+};
+
+async function sondar(
+  registroMp: Record<string, unknown> | null | undefined,
+  authorization?: string,
+) {
+  const { supabase } = cenarioCartao(registroMp === undefined ? {} : { registroMp });
+  const { supabase: restrito, tabelasLidas } = soAppSettings(supabase);
+  const resposta = await handler(requisicao(CORPO_SONDA, authorization), {
+    supabase: restrito,
+    fetchImpl: FETCH_PROIBIDO,
+  });
+  return { resposta, corpo: await resposta.json(), tabelasLidas };
+}
+
+const RESPOSTA_PIX_CRIADO = {
+  criar: {
+    status: 201,
+    corpo: {
+      id: "ORD888",
+      status: "action_required",
+      status_detail: "waiting_transfer",
+      transactions: {
+        payments: [
+          {
+            id: "PAY888",
+            payment_method: {
+              qr_code: "QRCODE-888",
+              qr_code_base64: "QR888",
+              ticket_url: "https://www.mercadopago.com.br/sandbox/payments/888/ticket",
+            },
+          },
+        ],
+      },
+    },
+  },
+};
+
+Deno.test("SONDA PIX — REPRODUZ o caso: lojista com token e SEM chave de assinatura -> sonda {pix:false} E criar PIX recusa 409 pixSemChaveDeAssinatura (a sonda concorda com a recusa)", async () => {
+  const registroSemChave = await registroMpDeTeste({ webhookSecret: null });
+
+  const { resposta, corpo } = await sondar(registroSemChave);
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, { pix: false });
+
+  // Mesma loja, agora tentando CRIAR o PIX: a recusa que o cliente sentia.
+  const { supabase } = cenarioCartao({ registroMp: registroSemChave });
+  const mp = fetchMP({});
+  const criar = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpoCriar = await criar.json();
+  assertEquals(criar.status, 409);
+  assertEquals(corpoCriar.pixSemChaveDeAssinatura, true);
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("SONDA PIX — lojista COM chave de assinatura: sonda {pix:true} E criar PIX segue como antes (200, UMA order no MP)", async () => {
+  const { resposta, corpo } = await sondar(undefined); // default: lojista COM chave
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, { pix: true });
+
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP(RESPOSTA_PIX_CRIADO);
+  const criar = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  assertEquals(criar.status, 200);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("SONDA PIX — loja nas chaves da PLATAFORMA (origem != lojista): {pix:false}, mesmo com MP_WEBHOOK_SECRET global no ambiente (a chave global não substitui a da loja)", async () => {
+  Deno.env.set("MP_WEBHOOK_SECRET", WEBHOOK_AMBIENTE_FALSO);
+  try {
+    const { resposta, corpo } = await sondar(null); // sem registro: cai no ambiente
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo, { pix: false });
+  } finally {
+    Deno.env.delete("MP_WEBHOOK_SECRET");
+    Deno.env.delete("MP_ACCESS_TOKEN");
+  }
+});
+
+Deno.test("SONDA PIX — sem token nenhum (plataforma sem MP_ACCESS_TOKEN): {pix:false} com 200 — sem token não é erro da sonda, é 'não oferece'", async () => {
+  const registroVazio = null;
+  const { supabase } = cenarioCartao({ registroMp: registroVazio });
+  Deno.env.delete("MP_ACCESS_TOKEN"); // o cenário o seta; aqui ele NÃO existe
+  Deno.env.delete("MP_WEBHOOK_SECRET");
+  const resposta = await handler(requisicao(CORPO_SONDA), {
+    supabase,
+    fetchImpl: FETCH_PROIBIDO,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(await resposta.json(), { pix: false });
+});
+
+/** A sonda fecha em 503 — o front trata como "desconhecido" e NÃO esconde o
+ * PIX. O corpo não pode carregar `pix` (nem `false`, nem `true`), `terminal`
+ * (é falha recuperável) nem nada além da mensagem de sempre. */
+async function assertSondaDesconhecida(resposta: Response) {
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 503);
+  assertEquals(corpo, { error: "Pagamento indisponível." });
+}
+
+Deno.test("SONDA PIX — TRÊS ESTADOS: com chave {pix:true}; SEM chave {pix:false}; credencial INDISPONÍVEL (não dá para saber) -> 503, NUNCA {pix:false}", async () => {
+  // 1) estável e afirmativo.
+  assertEquals((await sondar(undefined)).corpo, { pix: true });
+  // 2) estável e negativo: a chave de assinatura REALMENTE falta.
+  assertEquals((await sondar(await registroMpDeTeste({ webhookSecret: null }))).corpo, { pix: false });
+  // 3) desconhecido: falha transitória de infraestrutura (cofre) com a chave
+  //    cadastrada — a sonda NÃO pode dizer "não tem".
+  const registro = await registroMpDeTeste();
+  const { supabase } = cenarioCartao({ registroMp: registro });
+  Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY"); // cenarioCartao re-seta o cofre; tira DEPOIS
+  try {
+    await assertSondaDesconhecida(
+      await handler(requisicao(CORPO_SONDA), { supabase, fetchImpl: FETCH_PROIBIDO }),
+    );
+  } finally {
+    Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  }
+});
+
+Deno.test("SONDA PIX — leitura do registro do lojista RECUSADA pelo banco (registro_ilegivel): 503, nunca {pix:false}", async () => {
+  const { supabase } = cenarioCartao();
+  const comBancoCaido = {
+    from(tabela: string) {
+      if (tabela !== "app_settings") throw new Error(`a sonda não pode tocar a tabela ${tabela}`);
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: { message: "statement timeout" } }),
+          }),
+        }),
+      };
+    },
+    rpc: supabase.rpc,
+  };
+  await assertSondaDesconhecida(
+    await handler(requisicao(CORPO_SONDA), { supabase: comBancoCaido, fetchImpl: FETCH_PROIBIDO }),
+  );
+});
+
+Deno.test("SONDA PIX — valor ilegível em app_settings (registro corrompido): 503, nunca {pix:false}", async () => {
+  const { supabase } = cenarioCartao();
+  const comLixo = {
+    from(tabela: string) {
+      if (tabela !== "app_settings") throw new Error(`a sonda não pode tocar a tabela ${tabela}`);
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: { value: "{isto não é json" }, error: null }) }),
+        }),
+      };
+    },
+    rpc: supabase.rpc,
+  };
+  await assertSondaDesconhecida(
+    await handler(requisicao(CORPO_SONDA), { supabase: comLixo, fetchImpl: FETCH_PROIBIDO }),
+  );
+});
+
+Deno.test("SONDA PIX — client SEM service role (chave publicável): a leitura viria vazia por RLS, então a credencial fecha e a sonda responde 503 — nunca {pix:false} por RLS calada", async () => {
+  const { supabase } = cenarioCartao();
+  const clienteErrado = Object.assign(Object.create(supabase), {
+    from: supabase.from,
+    rpc: supabase.rpc,
+    supabaseKey: "sb_publishable_chave-de-teste",
+  });
+  await assertSondaDesconhecida(
+    await handler(requisicao(CORPO_SONDA), { supabase: clienteErrado, fetchImpl: FETCH_PROIBIDO }),
+  );
+});
+
+Deno.test("SONDA PIX — credencial 'indisponivel' injetada (mesma costura de deps.credenciaisMp): 503; 'ambiente' sem chave: {pix:false}", async () => {
+  const { supabase } = cenarioCartao();
+  const indisponivel: CredenciaisMp = {
+    origem: "indisponivel",
+    token: null,
+    segredoWebhook: null,
+    publicKey: null,
+    motivo: "registro_ilegivel",
+  };
+  await assertSondaDesconhecida(
+    await handler(requisicao(CORPO_SONDA), { supabase, fetchImpl: FETCH_PROIBIDO, credenciaisMp: indisponivel }),
+  );
+  const daPlataforma: CredenciaisMp = {
+    origem: "ambiente",
+    token: TOKEN_PLATAFORMA_FALSO,
+    segredoWebhook: WEBHOOK_AMBIENTE_FALSO,
+    publicKey: null,
+  };
+  const resposta = await handler(requisicao(CORPO_SONDA), {
+    supabase,
+    fetchImpl: FETCH_PROIBIDO,
+    credenciaisMp: daPlataforma,
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(await resposta.json(), { pix: false });
+});
+
+Deno.test("SONDA PIX — não polui o log: nenhuma linha 'PIX recusado' (o log do guard) por consulta, e nenhum segredo em nenhum log", async () => {
+  const original = console.error;
+  const linhas: string[] = [];
+  console.error = (...args: unknown[]) => {
+    linhas.push(args.map(String).join(" "));
+  };
+  try {
+    await sondar(await registroMpDeTeste({ webhookSecret: null })); // {pix:false}
+    await sondar(undefined); // {pix:true}
+    await sondar(null); // plataforma
+  } finally {
+    console.error = original;
+  }
+  assertEquals(linhas.filter((l) => l.includes("PIX recusado")), []);
+  for (const l of linhas) {
+    for (const segredo of [TOKEN_LOJISTA_FALSO, WEBHOOK_LOJISTA_FALSO, WEBHOOK_AMBIENTE_FALSO]) {
+      assertEquals(l.includes(segredo), false);
+    }
+  }
+});
+
+Deno.test("SONDA PIX — não chama o MP, não lê pedido nem config do cartão, não grava nada, e a resposta é SÓ o booleano (nenhum segredo, origem, motivo ou máscara)", async () => {
+  const { supabase, registro, chamadasRpc, leiturasConfigCartao } = cenarioCartao();
+  const { supabase: restrito, tabelasLidas } = soAppSettings(supabase);
+  const resposta = await handler(requisicao(CORPO_SONDA, montarToken(DONO_LOGADO)), {
+    supabase: restrito,
+    fetchImpl: FETCH_PROIBIDO, // lança se chamado
+  });
+  const texto = await resposta.text();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(JSON.parse(texto), { pix: true });
+  // Só o cofre do lojista foi lido; pedido/vaga/config do cartão intocados.
+  assertEquals([...new Set(tabelasLidas)], ["app_settings"]);
+  assertEquals(registro.chamadasUpdate, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(leiturasConfigCartao.length, 0);
+  // Nada de segredo, ainda que o segredo esteja de fato cadastrado.
+  for (const segredo of [TOKEN_LOJISTA_FALSO, WEBHOOK_LOJISTA_FALSO, PUBLIC_KEY_LOJISTA_FALSA]) {
+    assertEquals(texto.includes(segredo), false);
+  }
+  assertEquals(/lojista|origem|motivo|••••/.test(texto), false);
+});
+
+Deno.test("SONDA PIX — funciona sem sessão (convidado com a chave anônima) e é IDEMPOTENTE: chamar duas vezes devolve o mesmo e não muda nada", async () => {
+  const { supabase, registro } = cenarioCartao();
+  const a = await handler(requisicao(CORPO_SONDA), { supabase, fetchImpl: FETCH_PROIBIDO });
+  const b = await handler(requisicao(CORPO_SONDA), { supabase, fetchImpl: FETCH_PROIBIDO });
+  assertEquals(await a.json(), { pix: true });
+  assertEquals(await b.json(), { pix: true });
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("SONDA PIX — falha ao montar o client de service role -> 503 recuperável (o front trata como 'desconhecido'), sem terminal", async () => {
+  Deno.env.set("SUPABASE_URL", "https://xyz.supabase.co");
+  Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
+  Deno.env.delete("SUPABASE_SECRET_KEYS");
+  try {
+    const resposta = await handler(requisicao(CORPO_SONDA), { fetchImpl: FETCH_PROIBIDO });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 503);
+    assertEquals(corpo.error, "Pagamento indisponível.");
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(corpo.pix, undefined);
+  } finally {
+    Deno.env.delete("SUPABASE_URL");
+  }
+});
+
+Deno.test("SONDA PIX — corpo SEM acao (ou com acao desconhecida) continua caindo em 'Pedido inválido.' 400, como antes", async () => {
+  for (const corpo of [{}, { metodo: "pix" }, { acao: "outra-coisa" }, { acao: "METODOS" }, { acao: 1 }]) {
+    const resposta = await handler(requisicao(corpo, montarToken(DONO_LOGADO)), {
+      fetchImpl: FETCH_PROIBIDO,
+    });
+    assertEquals(resposta.status, 400, JSON.stringify(corpo));
+    assertEquals((await resposta.json()).error, "Pedido inválido.");
+  }
+});
+
+Deno.test("SONDA PIX — acao 'metodos' vence mesmo com orderId/metodo no corpo: nunca cria cobrança por engano", async () => {
+  const { supabase } = cenarioCartao();
+  const resposta = await handler(
+    requisicao({ acao: "metodos", orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: FETCH_PROIBIDO },
+  );
+  assertEquals(resposta.status, 200);
+  assertEquals(await resposta.json(), { pix: true });
+});
+
+Deno.test("SONDA PIX — CARTÃO inalterado: loja SEM chave de assinatura (sonda pix:false) ainda cobra no cartão normalmente (o 409 do PIX só vale para !dadosCartao)", async () => {
+  const registroSemChave = await registroMpDeTeste({ webhookSecret: null });
+  const { resposta: sonda, corpo: corpoSonda } = await sondar(registroSemChave);
+  assertEquals(corpoSonda, { pix: false });
+  assertEquals(sonda.status, 200);
+
+  const { supabase, registro } = cenarioCartao({ registroMp: registroSemChave });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+  const criar = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await criar.json();
+  assertEquals(criar.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+  assertEquals(mp.criacoes().length, 1);
+  assertEquals(registro.valoresUpdate?.metodo_online, "credito");
+});
