@@ -52,9 +52,9 @@ jobs:
             };
             const sql = async (query, op) => {
               try { return await apiJson(`/projects/${REF}/database/query/read-only`, { query }); }
-              // (2) Erro FIXO por operação — e.message desta fonte é sempre
-              // "POST <caminho> → <status>" (controlado); nada de corpo de resposta.
-              catch (e) { falhas++; console.log(`::error::consulta falhou (${op}): ${e.message}`); return null; }
+              // Erro fixo por operação: um 2xx com JSON inválido também pode
+              // incluir trechos do corpo em e.message. Nunca imprimi-lo.
+              catch { falhas++; console.log(`::error::consulta falhou (${op})`); return null; }
             };
 
             // (4) Matriz de migrations do PR #666 — INDÍCIO (o workflow atual
@@ -90,10 +90,9 @@ jobs:
             // (3) Cofre — chave EXATA do registro do lojista; presença ≠ validade.
             // ENV FALLBACK: não verificável por leitura sem expor valores — os
             // env MP_* da function ficam fora deste diagnóstico por desenho.
-            const chaves = await sql("SELECT key FROM app_settings", "cofre");
-            const temMp = (chaves ?? []).some((c) => String(c.key) === "pagamentos_mercado_pago");
-            console.log(`== Registro MP do lojista (chave pagamentos_mercado_pago): ${temMp ? "PRESENTE (presença NÃO comprova validade)" : "AUSENTE"} ==`);
-            console.log(`app_settings: ${(chaves ?? []).length} linha(s); chaves não-MP não são impressas; fallback de env MP_* NÃO é verificado aqui (exigiria expor valores) — fica para o checklist por loja`);
+            const cofre = await sql("SELECT EXISTS (SELECT 1 FROM public.app_settings WHERE key=$$pagamentos_mercado_pago$$) AS presente", "cofre");
+            if (cofre) console.log(`== Registro MP do lojista: ${cofre[0]?.presente === true ? "PRESENTE (presença NÃO comprova validade)" : "AUSENTE"} ==`);
+            console.log("Fallback de env MP_* NÃO é verificado aqui — fica para o checklist por loja");
 
             // (4) Marcadores nos corpos — INDÍCIO de geração/correção
             // implantada, NÃO prova funcional. Booleans, sem despejar código.
