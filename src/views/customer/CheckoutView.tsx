@@ -1200,28 +1200,53 @@ export function CheckoutView({
   useEffect(() => {
     if (!retomarPedidoId) return;
     let vivo = true;
-    setOrderId(retomarPedidoId);
-    setAguardandoPagamento(true);
-    // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
-    // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`);
-    // o método retoma o da última tentativa quando legível.
+    // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
+    // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
+    // orderId/aguardandoPagamento ligassem aqui, um pedido de CARTÃO em
+    // desafio 3DS montaria o PagamentoComPix — cujo efeito de MONTAGEM
+    // dispara `criarPagamento` PIX — e a edge leria como troca de método,
+    // cancelando a order de cartão no Mercado Pago. Valor, método, orderId
+    // e aguardandoPagamento ligam JUNTOS, DEPOIS da leitura; leitura sem
+    // resposta não liga nada (a retomada fica parada, nada monta, nada
+    // dispara).
     supabase
       .from("marketplace_orders")
-      .select("total, metodo_online")
+      .select("total, metodo_online, gateway_payment_id")
       .eq("id", retomarPedidoId)
       .maybeSingle()
       .then(({ data }) => {
         if (!vivo || !data) return;
+        // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
+        // "verificando:..." com metodo_online null é um CARTÃO ambíguo
+        // aguardando reconciliação no servidor. Montar pagamento aqui
+        // dispararia criar-pagamento PIX que a edge leria como troca de
+        // método — cancelando cobrança de cartão que pode estar viva.
+        // Nada monta até o estado resolver (o cliente volta aos pedidos e
+        // reabre a retomada depois).
+        const gateway = (data as { gateway_payment_id?: unknown })
+          .gateway_payment_id;
+        if (typeof gateway === "string" && gateway.startsWith("verificando:")) {
+          setRetomadaBloqueadaPorSentinela(true);
+          return;
+        }
         setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
         const metodo = (data as { metodo_online?: unknown }).metodo_online;
         if (metodo === "credito" || metodo === "debito") {
           setMetodoDoPedido("cartao");
         }
+        setOrderId(retomarPedidoId);
+        setAguardandoPagamento(true);
       });
     return () => {
       vivo = false;
     };
   }, [retomarPedidoId]);
+  // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
+  // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
+  // método retoma o da última tentativa quando legível. O gateway_payment_id
+  // entra para reconhecer o SENTINELA de cartão (gate no efeito acima).
+  const [retomadaBloqueadaPorSentinela, setRetomadaBloqueadaPorSentinela] =
+    useState(false);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -2897,6 +2922,28 @@ export function CheckoutView({
     // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
     globalThis.open(url, "_blank", "noopener,noreferrer");
   };
+
+  if (retomadaBloqueadaPorSentinela) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Pagamento em verificação
+        </h1>
+        <p className="text-sm text-zinc-600">
+          O pagamento deste pedido está em análise com o banco. Nada precisa ser
+          feito agora: esta tela muda sozinha quando o banco decidir — tente
+          retomar daqui a alguns minutos.
+        </p>
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
 
   if (aguardandoPagamento && orderId) {
     // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
