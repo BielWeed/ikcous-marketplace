@@ -1,11 +1,14 @@
 // Temporário (28-29/09/2026), autorizado pelo dono: destrava o pg_cron da loja
 // principal. Na troca de banco do incidente, o histórico `cron.job_run_details`
-// veio restaurado (runid até 25857), mas o `cron.runid_seq` recomeçou (214):
-// cada execução nova batia em chave duplicada e o agendador reiniciava, então
-// reconciliação do Pix, expiração e devolução de cupons pararam às 03:20 UTC.
-// ÚNICA escrita: `setval` do `cron.runid_seq` para o máximo do histórico (não
-// apaga nada, não mexe em pedido). Depois só lê: acompanha as execuções novas
-// e o pedido de R$ 1 até a reconciliação passar (jobs a cada 5/10/15 min).
+// veio restaurado do projeto antigo (runid até 25857, jobs 1/27/45 que não
+// existem mais), mas o `cron.runid_seq` recomeçou: cada execução nova batia
+// em chave duplicada e o agendador reiniciava — reconciliação do Pix,
+// expiração e devolução de cupons pararam às 03:20 UTC.
+// O `setval` na sequência é negado ao papel `postgres` (dona: supabase_admin).
+// ÚNICA escrita: apagar do LOG de execuções as linhas dos jobs que não existem
+// mais em `cron.job` (o log do projeto antigo; manutenção documentada pelo
+// Supabase). Não toca pedido, pagamento nem job. Depois só lê: acompanha as
+// execuções novas e o pedido de R$ 1 até a reconciliação passar.
 
 const REF = "dekxabvqdsuukijblazl";
 const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
@@ -35,11 +38,17 @@ const espera = (ms) => new Promise((ok) => setTimeout(ok, ms));
 const [antes] = await sql(`SELECT (SELECT last_value FROM cron.runid_seq) AS seq,
   (SELECT max(runid) FROM cron.job_run_details) AS max_runid, now() AS agora`);
 mostra("Antes", antes);
-if (Number(antes.seq) < Number(antes.max_runid)) {
-  const [depois] = await sql("SELECT setval('cron.runid_seq', (SELECT max(runid) FROM cron.job_run_details)) AS seq_novo");
-  mostra("setval aplicado", depois);
+const [alvo] = await sql(`SELECT count(*) AS linhas, min(runid) AS menor, max(runid) AS maior,
+  array_agg(DISTINCT jobid ORDER BY jobid) AS jobs_antigos,
+  (SELECT count(*) FROM cron.job_run_details WHERE jobid IN (SELECT jobid FROM cron.job)) AS linhas_de_jobs_atuais
+  FROM cron.job_run_details WHERE jobid NOT IN (SELECT jobid FROM cron.job)`);
+mostra("Log de execuções de jobs que não existem mais (alvo)", alvo);
+if (Number(alvo.linhas) > 0 && Number(antes.seq) < Number(antes.max_runid)) {
+  const apagado = await sql(`WITH x AS (DELETE FROM cron.job_run_details
+    WHERE jobid NOT IN (SELECT jobid FROM cron.job) RETURNING 1) SELECT count(*) AS apagadas FROM x`);
+  mostra("Log antigo apagado", apagado);
 } else {
-  console.log("\nA sequência já está à frente do histórico; nada a aplicar.");
+  console.log("\nNada a apagar (sem log antigo ou a sequência já está à frente).");
 }
 const marco = antes.agora;
 
