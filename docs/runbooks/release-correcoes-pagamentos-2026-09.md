@@ -85,19 +85,20 @@ lojista e chama a mesma RPC `confirmar_pagamento`; o MP reenvia a notificação,
 que processa sozinha quando a chave própria é cadastrada).
 
 **⚠️ AVISO HONESTO (correção de 29/09 a pedido do dono): a confirmação
-"≤10 minutos pelo reconciliador" NÃO é garantia — é desenho.** A checagem
-anterior do ambiente ativo NÃO confirmou logs nem execução recente do
-`reconciliar-pagamentos` (pg_cron), nem a saúde das credenciais dele. Sem essa
-prova, o prazo é **risco residual não verificado**. Consequência prática:
-**a loja NÃO fica liberada para receber PIX/cartão até ter a chave própria
-cadastrada e o painel MP conferido** (regra explícita do dono — e o gate da
-frente 3 já bloqueia a criação de PIX sem chave própria; o cartão é ligado só
-pelo dono após o pedido de teste do runbook de publicação). Verificar antes do
-rollout, nesta ordem: (1) `pg_cron` ativo e o job da reconciliação executando
-(tabela `cron.job_run_details` do projeto da loja); (2) logs da function
-`reconciliar-pagamentos` com execuções recentes; (3) `RECONCILIACAO_SECRET`
-presente no ambiente. **Sem essas três provas, tratar a loja como "sem
-backstop" e exigir a chave própria ANTES de habilitar qualquer meio online.**
+"≤10 minutos pelo reconciliador" NÃO é garantia — é desenho.** ATUALIZAÇÃO
+(29/09 09:53Z, run diagnóstico somente leitura #716 → GitHub run
+`36552091809`, SUCCESS): o sinal (1) está **PROVADO** — pg_cron tem o job
+`reconciliar-pagamentos` ativo a cada 10 minutos com as 8 últimas execuções
+`succeeded` (08:40–09:50Z). Os sinais (2) logs da function e (3)
+`RECONCILIACAO_SECRET` presente **SEGUEM NÃO COMPROVADOS** (o diagnóstico
+read-only não lê logs nem env). O registro MP do lojista EXISTE em
+`public.app_settings` (presença ≠ validade; env fallback não verificado).
+Sem as provas (2)+(3), o prazo continua **risco residual** e a regra
+permanece: **a loja NÃO fica liberada para receber PIX/cartão até ter a
+chave própria cadastrada e o painel MP conferido** (regra explícita do dono
+— e o gate da frente 3 já bloqueia a criação de PIX sem chave própria; o
+cartão é ligado só pelo dono após o pedido de teste do runbook de
+publicação).
 
 **Ordem de mitigação recomendada (antes do deploy):**
 1. Listar lojas ativas com pagamento online (app_settings/registro do lojista).

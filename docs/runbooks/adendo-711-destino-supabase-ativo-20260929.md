@@ -51,6 +51,26 @@ achismo**:
    `estorno_manual_registrado_em`). O workflow "Diagnóstico de pagamentos"
    (PR #716, somente leitura) já consulta exatamente esses objetos.
 
+**REGISTRO DA DISTINÇÃO (29/09 09:53Z, run diagnóstico read-only do #716 —
+GitHub run `36552091809`, SUCCESS; nenhum deploy/migration/compra):**
+
+- **BANCO = Cenário A comprovado por objetos**: `devolucoes` e
+  `config_pagamento_cartao` EXISTEM no schema ativo (tabelas exclusivas do
+  PR #666). Ledger 6/6 (`20261175`–`20261180`) é só indício (o
+  `aplicar-migrations` não grava ledger).
+- **FUNCTIONS = geração INTERMEDIÁRIA, marcadores no corpo (INDÍCIOS)**:
+  `criar-pagamento` TEM a linha nova Orders/idempotência por tentativa, MAS
+  as frentes 3 (política PIX) e 7 (409 PIX) estão AUSENTES;
+  `webhook-mercadopago` está SEM W9 e SEM as frentes 8/9;
+  `estornar-pagamento` está SEM o gate da frente 5. Leitura: base nova
+  compatível (tratamento de publicação = Cenário A), **sem nenhuma das
+  correções da missão** — a #711 é 100% valor novo no destino, sem risco de
+  sobreposição parcial. Os bugs que as 10 frentes corrigem seguem VIVOS no
+  ar (inclusive o estorno parcial que fecha linha com refund `processing`).
+- **Reconciliador vivo**: job `reconciliar-pagamentos` ativo (10 min), 8
+  últimas execuções `succeeded`. Registro MP PRESENTE em
+  `public.app_settings` (presença ≠ validade).
+
 **Regra de segurança enquanto não distinguido**: tratar como **Cenário B** (o
 mais conservador) — a publicação da #711 acompanha a promoção da linha claude
 (decisão de release maior do dono), não vai sozinha para a loja viva.
