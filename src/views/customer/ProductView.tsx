@@ -787,7 +787,22 @@ export const ProductView = React.memo(function ProductView({
   });
 
   return (
-    <div className={cn("pb-customer relative min-h-full bg-white", "lg:pb-0")}>
+    <div
+      className={cn(
+        "pb-customer relative min-h-full bg-white",
+        // lg:pb-0 (revisão F3, 28/09): no desktop o rodapé da loja fecha a
+        // página -- o respiro do pb-customer vira vão morto em cima dele.
+        // lg:shrink-0 (F3, 29/09): o wrapper da cliente (App.tsx, size-full +
+        // min-h-full em flex-col) espreme a raiz da view até o piso de
+        // min-h-full (1 viewport) com flex-shrink, enquanto o conteúdo
+        // transborda por baixo. Com o rodapé da loja (F1) montado como irmão
+        // DEPOIS da view, dentro do mesmo container de rolagem, ele caía no
+        // MEIO da página -- a descrição rolava por baixo do bloco preto.
+        // Recusando o encolhimento no desktop, a raiz volta a medir o
+        // conteúdo inteiro e o rodapé desenha depois de tudo.
+        "lg:shrink-0 lg:pb-0",
+      )}
+    >
       <div
         className={cn(
           CONTAINER_DO_COMPUTADOR,
@@ -800,6 +815,10 @@ export const ProductView = React.memo(function ProductView({
             className={cn(
               "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
               "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-96px)] lg:rounded-3xl",
+              // Ring sutil de definição: a caixa #F8F9FA sobre página branca
+              // "sumia" no desktop (achado da prévia de 29/09) -- o traço
+              // quase invisível separa a galeria do fundo sem virar cartão.
+              "lg:ring-1 lg:ring-zinc-950/5",
             )}
           >
             <div className="relative flex size-full items-center justify-center overflow-hidden">
@@ -854,14 +873,24 @@ export const ProductView = React.memo(function ProductView({
                   aria-label="Foto anterior"
                   // Laudo 05/09, M4: `after:-inset-1.5` amplia o alvo de toque
                   // de 32px para 44px (recomendado mobile) sem mudar o visual.
-                  className="pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95"
+                  className={cn(
+                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
+                    // Setas maiores no desktop: no leitor de 27" o alvo de
+                    // 32px flutuava pequeno demais dentro da foto quadrada.
+                    "lg:size-10",
+                  )}
                 >
                   <ChevronLeft className="size-4" />
                 </button>
                 <button
                   onClick={nextImage}
                   aria-label="Próxima foto"
-                  className="pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95"
+                  className={cn(
+                    "pointer-events-auto relative flex size-8 items-center justify-center rounded-full bg-white/80 shadow-premium backdrop-blur-md transition-all after:absolute after:-inset-1.5 after:content-[''] hover:bg-white active:scale-95",
+                    // Setas maiores no desktop: no leitor de 27" o alvo de
+                    // 32px flutuava pequeno demais dentro da foto quadrada.
+                    "lg:size-10",
+                  )}
                 >
                   <ChevronRight className="size-4" />
                 </button>
@@ -958,7 +987,7 @@ export const ProductView = React.memo(function ProductView({
                   }
                   onClick={() => setCurrentImageIndex(index)}
                   className={cn(
-                    "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2",
+                    "lg:size-[72px] lg:overflow-hidden lg:rounded-xl lg:border-2 lg:bg-zinc-50 lg:p-1 lg:transition-colors lg:focus-visible:outline-none lg:focus-visible:ring-2 lg:focus-visible:ring-primary lg:focus-visible:ring-offset-2 lg:shadow-sm",
                     index === currentImageIndex
                       ? "lg:border-primary"
                       : "lg:border-zinc-200 lg:hover:border-zinc-400",
@@ -985,13 +1014,17 @@ export const ProductView = React.memo(function ProductView({
             className={cn(
               COLUNA_FIXA_NO_COMPUTADOR,
               "lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:min-w-0 lg:rounded-3xl lg:border lg:border-zinc-200 lg:bg-white lg:p-8",
+              // Elevação discreta no desktop: o cartão de compra é o ponto
+              // de ação da página -- a sombra o destaca do fundo sem peso
+              // (spec §3.1: cartões arredondados, sem blocos pesados).
+              "lg:shadow-[0_1px_2px_rgba(0,0,0,0.03),0_16px_40px_-12px_rgba(0,0,0,0.08)]",
             )}
           >
             {/* Breadcrumbs */}
             <nav
               className={cn(
                 "scrollbar-hide mb-3 flex items-center gap-1.5 overflow-x-auto whitespace-nowrap text-[9px] font-bold uppercase tracking-widest text-zinc-400",
-                "lg:text-[11px] lg:text-zinc-500",
+                "lg:mb-4 lg:gap-2 lg:text-[11px] lg:text-zinc-500",
               )}
             >
               <button
@@ -1001,11 +1034,24 @@ export const ProductView = React.memo(function ProductView({
                 Início
               </button>
               <ChevronRight className="size-2.5" />
-              <button className="transition-colors hover:text-zinc-900">
+              <button
+                className={cn(
+                  "transition-colors hover:text-zinc-900",
+                  // A categoria vem do banco com caixa variada ("brinquedo",
+                  // "TÊNIS FEMININO") -- o capitalize uniformiza o rastro no
+                  // desktop sem tocar no dado (achado da prévia de 29/09).
+                  "lg:capitalize",
+                )}
+              >
                 {product.category}
               </button>
               <ChevronRight className="size-2.5" />
-              <span className="max-w-[150px] truncate text-zinc-900">
+              <span
+                className={cn(
+                  "max-w-[150px] truncate text-zinc-900",
+                  "lg:max-w-[260px]",
+                )}
+              >
                 {product.name}
               </span>
             </nav>
@@ -1062,9 +1108,24 @@ export const ProductView = React.memo(function ProductView({
             </div>
 
             {/* Price & Promo Badges Row */}
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+            <div
+              className={cn(
+                "mb-4 flex flex-wrap items-center justify-between gap-4",
+                // Desktop (prévia 29/09): preço e selos dividiam a MESMA
+                // linha com justify-between -- em promoção o riscado encavalava
+                // na baseline do preço grande e os selos apertavam à direita.
+                // No desktop o bloco empilha: preço (com riscado na mesma
+                // baseline) e, abaixo, a fileira de selos.
+                "lg:mb-6 lg:flex-col lg:items-start lg:gap-3",
+              )}
+            >
               {product.originalPrice && product.originalPrice > currentPrice ? (
-                <div className="flex items-baseline gap-2">
+                <div
+                  className={cn(
+                    "flex items-baseline gap-2",
+                    "lg:gap-3 lg:flex-wrap",
+                  )}
+                >
                   <span
                     className={cn(
                       "text-2xl font-black tracking-tight",
@@ -1094,7 +1155,7 @@ export const ProductView = React.memo(function ProductView({
                 </span>
               )}
 
-              <div className="flex items-center gap-1.5">
+              <div className={cn("flex items-center gap-1.5", "lg:gap-2")}>
                 {discount > 0 && (
                   <span
                     className={cn(
@@ -1238,7 +1299,17 @@ export const ProductView = React.memo(function ProductView({
             )}
 
             {/* Purchase Console (All in a single row) */}
-            <div className="mb-5 flex items-center gap-2">
+            <div
+              className={cn(
+                "mb-5 flex items-center gap-2",
+                // Desktop (prévia 29/09): quantidade + WhatsApp + CTA numa
+                // ÚNICA linha de 356px úteis fazia o rótulo "ADICIONAR AO
+                // CARRINHO" (whitespace-nowrap) transbordar e ser CORTADO
+                // pela borda do cartão. No desktop a linha quebra: quantidade
+                // e WhatsApp ficam juntos; o CTA ocupa a linha inteira abaixo.
+                "lg:mb-6 lg:flex-wrap lg:gap-3",
+              )}
+            >
               {!isOutOfStock && Object.entries(variantGroups).length === 0 && (
                 <div className="flex-shrink-0">
                   <QuantitySelector
@@ -1257,7 +1328,12 @@ export const ProductView = React.memo(function ProductView({
                 <button
                   onClick={handleWhatsApp}
                   title="Dúvidas no WhatsApp"
-                  className="flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95"
+                  className={cn(
+                    "flex size-11 flex-shrink-0 items-center justify-center rounded-2xl border border-emerald-100 bg-emerald-50 text-emerald-600 transition-all duration-300 hover:bg-emerald-500 hover:text-white active:scale-95",
+                    // Altura do CTA no desktop: os dois botões da linha de
+                    // cima ficam alinhados (48px) em vez de 44 vs 48.
+                    "lg:size-12",
+                  )}
                 >
                   <MessageCircle className="size-5" />
                 </button>
@@ -1268,7 +1344,10 @@ export const ProductView = React.memo(function ProductView({
                 disabled={isOutOfStock || cartStatus !== "idle"}
                 className={cn(
                   "flex-1 h-11 text-white text-[9px] min-[380px]:text-[10px] xs:text-[11px] font-black uppercase tracking-[0.025em] xs:tracking-[0.15em] rounded-2xl transition-all duration-500 flex items-center justify-center gap-1.5 xs:gap-2 overflow-hidden",
-                  "lg:h-12 lg:text-xs lg:tracking-wider",
+                  // lg:basis-full: no desktop o CTA não divide a linha com
+                  // nada -- largura inteira do cartão, rótulo nunca cortado
+                  // (a jornada C12 a 1280 exige "Adicionar ao Carrinho" visível).
+                  "lg:h-12 lg:basis-full lg:text-xs lg:tracking-wider",
                   cartStatus === "idle"
                     ? "bg-primary hover:bg-primary/90 shadow-lg shadow-black/10 active:scale-[0.98]"
                     : "bg-primary/80 shadow-none",
@@ -1298,7 +1377,16 @@ export const ProductView = React.memo(function ProductView({
               </button>
             </div>
           </div>
-          <div className="lg:col-start-1 lg:row-start-2 lg:min-w-0">
+          <div
+            className={cn(
+              "lg:col-start-1 lg:row-start-2 lg:min-w-0",
+              // Respiro de fim de página no desktop: quando o rodapé da loja
+              // (F1) está integrado, ele desenha depois desta coluna -- o
+              // pb-24 garante que a última fileira de relacionados não cole
+              // no bloco preto.
+              "lg:pb-24",
+            )}
+          >
             {/* Sentinel for tab bar stickiness */}
             <div
               ref={stickySentinelRef}
@@ -1312,13 +1400,20 @@ export const ProductView = React.memo(function ProductView({
                 scrolled
                   ? "bg-white/80 backdrop-blur-md border-zinc-200/60 shadow-sm"
                   : "bg-transparent border-transparent",
+                // Desktop: as margens negativas do celular sangravam a barra
+                // sticky para fora da coluna de conteúdo.
+                "lg:mx-0 lg:px-0 lg:mb-6",
               )}
             >
               <nav
                 aria-label="Seções do produto"
                 className={cn(
                   "mx-auto flex w-full max-w-[290px] items-center gap-0.5 rounded-full border border-zinc-200/40 bg-zinc-100/60 p-0.5",
-                  "lg:mx-0 lg:max-w-[360px]",
+                  // Desktop (prévia 29/09): a pílula flutuante de 360px
+                  // parecia um controle perdido dentro da coluna de 732px.
+                  // Abas de site: linha inteira, separador embaixo e a seção
+                  // ativa marcada por traço preto (o pill vira o traço abaixo).
+                  "lg:mx-0 lg:max-w-none lg:gap-8 lg:rounded-none lg:border-x-0 lg:border-t-0 lg:bg-transparent lg:p-0",
                 )}
               >
                 {[
@@ -1345,13 +1440,21 @@ export const ProductView = React.memo(function ProductView({
                       // sem repor — padrão do BottomNav (onda 1 do laudo 03/09).
                       className={cn(
                         "relative flex-1 rounded-full p-1 text-[9px] font-bold uppercase tracking-wider outline-none transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-zinc-900/50",
-                        "lg:p-2 lg:text-[11px]",
+                        // Respiro vertical maior no desktop: o rótulo não gruda
+                        // no traço de underline que o pill desenha embaixo.
+                        "lg:px-2 lg:pb-3 lg:pt-2 lg:text-[11px]",
                       )}
                     >
                       {isActive && (
                         <motion.div
                           layoutId="activeDetailTabPill"
-                          className="absolute inset-0 z-0 rounded-full border border-zinc-200/50 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
+                          className={cn(
+                            "absolute inset-0 z-0 rounded-full border border-zinc-200/50 bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]",
+                            // Desktop: o pill branco vira um TRAÇO preto
+                            // rente ao separador -- indicador clássico de aba
+                            // de site, na largura do rótulo ativo.
+                            "lg:inset-x-0 lg:top-auto lg:bottom-[-1px] lg:h-[2.5px] lg:rounded-none lg:border-0 lg:bg-zinc-950 lg:shadow-none",
+                          )}
                           transition={{
                             type: "spring",
                             stiffness: 380,
@@ -1398,7 +1501,12 @@ export const ProductView = React.memo(function ProductView({
                   não é renderizado. Fail-closed: só cobertura "local" mostra. */}
                   {config.storeCity && config.shippingCoverage === "local" && (
                     <div className="flex items-center gap-3 text-sm text-gray-700">
-                      <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
+                      <div
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full bg-gray-100",
+                          "lg:size-9 lg:bg-zinc-100",
+                        )}
+                      >
                         <Truck className="size-4" />
                       </div>
                       <span>
@@ -1415,7 +1523,12 @@ export const ProductView = React.memo(function ProductView({
                   mesmo produto (achado ProductView-1253). */}
                   {!isOutOfStock && (
                     <div className="flex items-center gap-3 text-sm text-gray-700">
-                      <div className="flex size-8 items-center justify-center rounded-full bg-gray-100">
+                      <div
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full bg-gray-100",
+                          "lg:size-9 lg:bg-zinc-100",
+                        )}
+                      >
                         <ShoppingCart className="size-4" />
                       </div>
                       <span>Produto em estoque</span>
@@ -1588,7 +1701,15 @@ export const ProductView = React.memo(function ProductView({
                 ref={recsRef}
                 className="mt-20 border-t border-zinc-100 pt-10"
               >
-                <div className="mb-10 flex flex-col items-center text-center">
+                <div
+                  className={cn(
+                    "mb-10 flex flex-col items-center text-center",
+                    // Desktop: título de seção alinhado à esquerda, na
+                    // régua da coluna de conteúdo (prévia 29/09: centrado
+                    // numa coluna estreita, parecia deslocado).
+                    "lg:mb-8 lg:items-start lg:text-left",
+                  )}
+                >
                   <h3 className="text-3xl font-black leading-none tracking-tighter text-zinc-900">
                     Você também pode gostar
                   </h3>
