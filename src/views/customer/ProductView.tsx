@@ -814,7 +814,7 @@ export const ProductView = React.memo(function ProductView({
           <div
             className={cn(
               "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
-              "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-96px)] lg:rounded-3xl",
+              "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
               // Ring sutil de definição: a caixa #F8F9FA sobre página branca
               // "sumia" no desktop (achado da prévia de 29/09) -- o traço
               // quase invisível separa a galeria do fundo sem virar cartão.
@@ -1401,8 +1401,11 @@ export const ProductView = React.memo(function ProductView({
                   ? "bg-white/80 backdrop-blur-md border-zinc-200/60 shadow-sm"
                   : "bg-transparent border-transparent",
                 // Desktop: as margens negativas do celular sangravam a barra
-                // sticky para fora da coluna de conteúdo.
-                "lg:mx-0 lg:px-0 lg:mb-6",
+                // sticky para fora da coluna de conteúdo. O border-t abre a
+                // seção de leitura (abas + descrição) com um traço próprio,
+                // separada da galeria e da compra (diagnóstico Codex 29/09:
+                // "abas e conteúdo soltos, sem separação visual").
+                "lg:mx-0 lg:px-0 lg:mb-6 lg:border-t lg:border-zinc-100 lg:pt-3",
               )}
             >
               <nav

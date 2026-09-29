@@ -184,7 +184,7 @@ describe("F3 — produto no computador e celular preservado", () => {
     expect(caixa.classList.contains("lg:rounded-3xl")).toBe(true);
     expect(
       caixa.classList.contains(
-        "lg:max-h-[calc(100dvh-var(--header-height)-96px)]",
+        "lg:max-h-[calc(100dvh-var(--header-height)-220px)]",
       ),
     ).toBe(true);
     expect(foto.parentElement!.classList.contains("lg:h-[70vh]")).toBe(false);
