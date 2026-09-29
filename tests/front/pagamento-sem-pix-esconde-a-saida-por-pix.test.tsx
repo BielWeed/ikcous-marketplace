@@ -299,6 +299,9 @@ describe("PagamentoOnline em modo cartão com o PIX indisponível (podePagarComP
     expect(hospedeiro.textContent).toContain(
       "O pagamento com cartão não está disponível nesta loja agora.",
     );
+    expect(hospedeiro.textContent).toContain(
+      "Pode sair desta tela: o pedido expira sozinho no prazo da reserva.",
+    );
     expect(botao("Pagar com PIX")).toBeUndefined();
     expect(criarPagamento).not.toHaveBeenCalled();
   });
@@ -307,6 +310,7 @@ describe("PagamentoOnline em modo cartão com o PIX indisponível (podePagarComP
     instalarSdkFalso();
     await renderCartao({ config: null });
     expect(botao("Pagar com PIX")).toBeDefined();
+    expect(hospedeiro.textContent).not.toContain("Pode sair desta tela");
   });
 });
 

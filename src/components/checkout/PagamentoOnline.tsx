@@ -472,6 +472,11 @@ export function PagamentoOnline({
         <p className="text-sm text-zinc-700">
           O pagamento com cartão não está disponível nesta loja agora.
         </p>
+        {!podePagarComPix && (
+          <p className="text-xs text-zinc-500">
+            Pode sair desta tela: o pedido expira sozinho no prazo da reserva.
+          </p>
+        )}
         {podePagarComPix && (
           <button
             type="button"
