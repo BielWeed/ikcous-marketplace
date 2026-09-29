@@ -94,9 +94,10 @@ export interface SondaDoPix {
   pix: boolean | null;
   /**
    * A consulta está no ar (ativa e ainda sem resposta nem falha). Quem ESCOLHE
-   * "online" sozinho (transportadora, fallback) espera isto virar `false`
-   * para não selecionar o PIX e tirá-lo do cliente um instante depois; a
-   * espera é limitada por `PRAZO_DA_SONDA_MS`.
+   * "online" sozinho (transportadora, fallback) espera a resposta para não
+   * selecionar o PIX e tirá-lo do cliente um instante depois. O checkout
+   * também segura o envio manual de PIX enquanto esta flag é true, sem
+   * segurar cartão; a espera é limitada por `PRAZO_DA_SONDA_MS`.
    */
   consultando: boolean;
 }

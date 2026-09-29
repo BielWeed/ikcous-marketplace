@@ -314,7 +314,14 @@ describe("CheckoutView — checagem prévia de revisão do frete antes de fechar
 
   it("confirmação do frete sem resposta: termina a espera, recota e não cria pedido", async () => {
     await gravarEnvelope("rev-antiga");
-    invoke.mockImplementation(() => new Promise(() => {}));
+    // Só a revisão do FRETE fica pendente. A sonda do Pix é uma chamada
+    // independente à mesma edge mockada e precisa responder para este teste
+    // chegar ao submit que quer examinar.
+    invoke.mockImplementation((nome: string) =>
+      nome === "criar-pagamento"
+        ? Promise.resolve({ data: { pix: true }, error: null })
+        : new Promise(() => {}),
+    );
     const agendar = globalThis.setTimeout;
     vi.spyOn(globalThis, "setTimeout").mockImplementation(
       (callback, prazo, ...args) =>

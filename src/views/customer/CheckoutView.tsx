@@ -1066,7 +1066,8 @@ export function CheckoutView({
   // valendo quando o PIX está à mostra). As seleções automáticas ESPERAM a
   // sonda (`consultandoPix`, no máximo `PRAZO_DA_SONDA_MS`): escolher o PIX e
   // tirá-lo do cliente um instante depois seria pior que esperar; a escolha
-  // MANUAL do cliente nunca espera.
+  // MANUAL do cliente pode escolher PIX já, mas o envio espera o resultado
+  // da sonda para não criar um pedido sem QR (ver `pixManualAguardandoSonda`).
   const metodoOnlineAutomatico: MetodoOnline = pixEscondido ? "cartao" : "pix";
   const metodoOnlineEfetivo: MetodoOnline =
     paymentMethod === "online" &&
@@ -2234,6 +2235,14 @@ export function CheckoutView({
   // reenvio manual É a saída desenhada.
   const aguardandoConferenciaDaRecusa =
     recusaDoUltimoClique?.acao === "conferir_antes";
+  // A escolha manual de PIX continua visível durante a sonda, mas o pedido
+  // não pode nascer antes de sabermos se a edge o oferece. A sonda encerra em
+  // até 4 s; erro/timeout viram desconhecido e liberam o envio (fail-open).
+  // Cartão e pagamento na entrega não dependem desta resposta.
+  const pixManualAguardandoSonda =
+    paymentMethod === "online" &&
+    metodoOnlineEfetivo === "pix" &&
+    consultandoPix;
 
   // Fonte ÚNICA da condição de "Finalizar Pedido" apagado. Antes desta
   // constante, o `disabled` do botão e o `cn(...)` que decide a APARÊNCIA
@@ -2251,6 +2260,7 @@ export function CheckoutView({
     semFreteSelecionado ||
     isOffline ||
     aguardandoConferenciaDaRecusa ||
+    pixManualAguardandoSonda ||
     convidadoForaDaCidade ||
     pagamentoIncompativel ||
     formaDePagamentoDesligada;
@@ -2357,6 +2367,9 @@ export function CheckoutView({
   };
 
   const handleSubmitEvent = async () => {
+    // O `disabled` protege o clique normal; esta guarda cobre a invocação
+    // direta do handler enquanto a sonda do PIX ainda está pendente.
+    if (pixManualAguardandoSonda) return;
     /*
       TRAVA SINCRONA, ANTES DE QUALQUER `await` (CHECKOUT-030, #27).
 

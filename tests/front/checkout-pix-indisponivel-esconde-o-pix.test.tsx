@@ -526,6 +526,65 @@ describe("CheckoutView — o PIX pelo app segue a sonda da edge", () => {
     expect(propsDoPagamento.at(-1)!.metodo).toBe("cartao");
   });
 
+  it("não cria pedido Pix ao finalizar enquanto a sonda pendente ainda pode responder false", async () => {
+    let soltar!: (r: Resposta) => void;
+    sondaDaEdge = () => new Promise<Resposta>((ok) => (soltar = ok));
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(opcaoPix()!);
+
+    await preencherFormulario();
+    const botao = botaoPorTexto(document.body, "Finalizar Pedido")!;
+    expect(botao.disabled).toBe(true);
+    const onClickReal = capturarOnClick(botao);
+    await act(async () => {
+      onClickReal();
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+
+    await act(async () => {
+      soltar(respondePix(false));
+      await esperarMicrotarefas();
+    });
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(opcaoPix()).toBeUndefined();
+  });
+
+  it("cartão pode finalizar enquanto a sonda de Pix está pendente", async () => {
+    let soltar!: (r: Resposta) => void;
+    sondaDaEdge = () => new Promise<Resposta>((ok) => (soltar = ok));
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(opcaoCartao()!);
+
+    await finalizar();
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(propsDoPagamento.at(-1)!.metodo).toBe("cartao");
+    await act(async () => {
+      soltar(respondePix(false));
+      await esperarMicrotarefas();
+    });
+  });
+
+  it("sonda Pix sem resposta libera o envio após o prazo (fail-open)", async () => {
+    sondaDaEdge = () => new Promise<Resposta>(() => {});
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await montar(CheckoutView);
+    await clicar(opcaoPix()!);
+    await preencherFormulario();
+    expect(botaoPorTexto(document.body, "Finalizar Pedido")!.disabled).toBe(true);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, PRAZO_DA_SONDA_MS));
+      await esperarMicrotarefas();
+    });
+    expect(botaoPorTexto(document.body, "Finalizar Pedido")!.disabled).toBe(false);
+    await clicar(botaoPorTexto(document.body, "Finalizar Pedido")!);
+    expect(createOrder).toHaveBeenCalledTimes(1);
+    expect(propsDoPagamento.at(-1)!.metodo).toBe("pix");
+  }, 12_000);
+
   it("transportadora + sonda {pix:false} + cartão: auto-seleciona online JÁ no cartão, e o aviso não promete PIX", async () => {
     sondaDaEdge = () => respondePix(false);
     mockSelectedShippingOption = { ...TRANSPORTADORA };
@@ -609,7 +668,7 @@ describe("CheckoutView — o PIX pelo app segue a sonda da edge", () => {
     await clicar(opcaoPix()!);
     await preencherFormulario();
     expect(botaoPorTexto(document.body, "Finalizar Pedido")!.disabled).toBe(
-      false,
+      true,
     );
 
     await act(async () => {
