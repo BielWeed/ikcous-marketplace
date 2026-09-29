@@ -164,11 +164,15 @@ publicação financeira):**
    release: incorporar/reconciliar o `ci.yml` do #717 na branch-base
    (`claude/app-major-upgrade-wmc8x2`) — o check verde em develop não
    esverdeia esta branch sozinho.**
-7. **Destino do deploy corrigido na branch efetiva** — **PR #718 MÍNIMA**
-   (apenas `publicar-functions.yml`: ref `loja` → `dekxabvqdsuukijblazl` +
-   teste) **aprovada independentemente, checks de código verdes**;
-   integração na branch-base EM ANDAMENTO; sem dispatch (e precisa alcançar
-   develop para `workflow_dispatch`). **O #671 NÃO será mesclado inteiro.**
+7. **Destino do deploy corrigido na branch efetiva** — **#718 MÍNIMA
+   MESCLADA na branch-base** (`claude/app-major-upgrade-wmc8x2`, merge
+   `1057d376`; revisão independente; arquivo conferido na branch: `loja` →
+   `dekxabvqdsuukijblazl`, sandbox intacto, `workflow_dispatch` +
+   `--project-ref` preservados; **sem deploy/dispatch**). Pendências:
+   **develop ainda requer o mesmo patch** para dispatch a partir de lá, e
+   `DEPLOYMENT.md` (comandos manuais antigos) será corrigido antes da
+   release. **O #671 NÃO será mesclado.** Esta release não toca o workflow
+   — merge da #711 preserva o arquivo da #718.
 8. Só então: `publicar-functions` com ESTA release (as 5 de cobrança) →
    checklist por loja (§4) → front → monitoração 24 h.
 

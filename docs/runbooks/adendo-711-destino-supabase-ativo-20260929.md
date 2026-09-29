@@ -87,16 +87,17 @@ mais conservador) — a publicação da #711 acompanha a promoção da linha cla
    **Residual**: vale para **develop** — a branch-base desta release
    (`claude/app-major-upgrade-wmc8x2`) ainda precisa **incorporar/reconciliar
    a mudança do `ci.yml`** antes do próprio check ficar verde aqui.
-2. **Destino ativo do deploy**: **PR #718 MÍNIMA** (apenas
-   `publicar-functions.yml` + teste da ref `loja` → `dekxabvqdsuukijblazl`)
-   **aprovada por revisão independente, checks de código verdes**;
-   **integração na branch-base EM ANDAMENTO — sem dispatch** (e precisa
-   alcançar develop para `workflow_dispatch`). **O #671 (draft amplo,
-   31 arquivos) NÃO será mesclado inteiro — fora do gate.**
-   **Gate (condicionado ao que ainda pendura)**: (i) #718 integrada na
-   branch efetiva de deploy; (ii) reconciliação do `ci.yml` do #717 na
-   branch-base com o check real verde AQUI. Nenhum deploy ao projeto antigo
-   pausado, em nenhuma hipótese.
+2. **Destino ativo do deploy**: **PR #718 MÍNIMA MESCLADA na branch-base
+   desta release** (`claude/app-major-upgrade-wmc8x2`, merge `1057d376`)
+   após revisão independente — arquivo conferido NA BRANCH: `loja` →
+   `dekxabvqdsuukijblazl` (ativo), sandbox `lofznuxcvezrhxsgjqyg` intacto,
+   `workflow_dispatch` e `--project-ref` preservados. **NENHUM
+   deploy/dispatch realizado.** Pendências do destino: (a) **develop ainda
+   requer o mesmo patch** antes de qualquer dispatch A PARTIR de develop;
+   (b) `DEPLOYMENT.md` ainda contém comandos manuais antigos — correção
+   prometida antes da release. **O #671 (draft amplo) NÃO será mesclado.**
+   Como esta release NÃO toca `publicar-functions.yml`, o merge da #711 na
+   base preserva o arquivo corrigido da #718 (sem conflito).
 3. Distinguir geração (§2) e CONFIRMAR migrations 20261175-80 aplicadas no
    banco novo (senão: `aplicar-migrations.yml` arquivo por arquivo, com os runs
    separados — regra do repo).
