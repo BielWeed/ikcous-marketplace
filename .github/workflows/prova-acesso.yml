@@ -1,0 +1,68 @@
+# Prova de acesso SOMENTE LEITURA ao projeto ativo da loja (29/09/2026).
+#
+# Por que existe: o secret `SUPABASE_ACCESS_TOKEN` do GitHub foi (re)gravado
+# com um token escopado à org IKCOUS / projeto ikcous-loja
+# (`dekxabvqdsuukijblazl`). Antes de QUALquer publicação (functions,
+# migrations, front) precisamos provar que o 403 da conta antiga sumiu —
+# lendo APENAS metadados via Management API.
+#
+# Garantias:
+# - NÃO usa `supabase link`, NÃO faz deploy, NÃO roda DDL, NÃO escreve nada.
+# - NÃO é o `publicar-functions.yml` nem o `aplicar-migrations.yml` (esses
+#   ainda apontam refs antigos e têm efeito de escrita).
+# - O token só entra como env do step e nunca é impresso; em caso de erro,
+#   o corpo da resposta é truncado em 200 chars (padrão de erro da API não
+#   contém o token, mas truncamos por higiene).
+# - Saída esperada: `GET /projects/{ref} → 200` + nome/status/região, e
+#   `GET /functions → 200` + lista de slug/status/updated_at (metadados).
+#   403/404 = acesso ainda não efetivo.
+#
+# Ciclo de vida: arquivo de prova de um incidente; apagar junto com o runbook
+# de migração quando a operação terminar.
+name: Prova de acesso (somente leitura)
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: prova-acesso
+  cancel-in-progress: false
+jobs:
+  prova:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GET projeto ativo + lista de functions (Management API)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          node --input-type=module -e '
+            const REF = "dekxabvqdsuukijblazl";
+            const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
+            if (token === "") { console.log("::error::Falta o secret SUPABASE_ACCESS_TOKEN"); process.exit(1); }
+            const api = async (caminho) => {
+              const resposta = await fetch(`https://api.supabase.com/v1${caminho}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const texto = await resposta.text();
+              return { status: resposta.status, texto };
+            };
+            const projeto = await api(`/projects/${REF}`);
+            console.log(`GET /projects/${REF} → ${projeto.status}`);
+            if (projeto.status !== 200) {
+              console.log(projeto.texto.slice(0, 200));
+              console.log("::error::Token ainda sem acesso ao projeto ativo (403/404 = conta/escopo errado).");
+              process.exit(1);
+            }
+            const corpo = JSON.parse(projeto.texto);
+            console.log(`projeto: ${corpo.name} | status: ${corpo.status} | região: ${corpo.region} | org: ${corpo.organization_id}`);
+            const funcoes = await api(`/projects/${REF}/functions`);
+            console.log(`GET /projects/${REF}/functions → ${funcoes.status}`);
+            if (funcoes.status === 200) {
+              const lista = JSON.parse(funcoes.texto);
+              if (!Array.isArray(lista) || lista.length === 0) console.log("(nenhuma function)");
+              for (const f of lista) console.log(`- ${f.slug} | ${f.status} | atualizada: ${f.updated_at}`);
+            } else {
+              console.log(funcoes.texto.slice(0, 200));
+            }
+          '
