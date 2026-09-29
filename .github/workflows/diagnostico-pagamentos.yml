@@ -216,7 +216,6 @@ jobs:
               console.log("::error::resposta booleana fora do contrato");
               process.exit(1);
             }
-            console.log(`projeto=${projeto}`);
             for (const campo of campos) console.log(`${campo}=${linhas[0][campo]}`);
             console.log("presença de ciphertext/IV NÃO comprova que a Edge consegue decifrar nem que a credencial MP é válida");
           '
