@@ -45,6 +45,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - name: Recusa diagnóstico completo fora da loja principal
+        env:
+          PROJETO: ${{ inputs.projeto }}
+        run: |
+          if [ "$PROJETO" != "loja" ]; then
+            echo "::error::modo completo só aceita loja"
+            exit 1
+          fi
       - name: Migrations + cron + cofre + marcadores das functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
