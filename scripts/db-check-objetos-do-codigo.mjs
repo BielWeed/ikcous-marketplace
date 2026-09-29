@@ -308,7 +308,9 @@ export async function lerCatalogoPelaApi({
   fetchImpl = globalThis.fetch,
 }) {
   if (!/^[a-z]{20}$/.test(ref ?? "")) {
-    throw new Error("SUPABASE_PROJECT_REF inválido (esperado: 20 letras minúsculas).");
+    throw new Error(
+      "SUPABASE_PROJECT_REF inválido (esperado: 20 letras minúsculas).",
+    );
   }
   if (!token) throw new Error("SUPABASE_ACCESS_TOKEN vazio.");
   const consultar = async (query, operacao) => {
