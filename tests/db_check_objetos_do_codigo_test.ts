@@ -31,9 +31,9 @@ import {
   conferirProjeto,
   extrairDeConteudo,
   formatar,
-  refDoProjeto,
   lerCatalogoPelaApi,
   montarCatalogo,
+  refDoProjeto,
 } from "../scripts/db-check-objetos-do-codigo.mjs";
 
 const CATÁLOGO = () => ({

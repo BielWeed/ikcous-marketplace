@@ -474,7 +474,9 @@ async function main() {
     process.exit(0);
   }
   if (viaApi) {
-    console.log("Catálogo lido pela API de gestão do Supabase, endpoint somente leitura.");
+    console.log(
+      "Catálogo lido pela API de gestão do Supabase, endpoint somente leitura.",
+    );
   } else {
     const host = new URL(url).hostname;
     const refDaUrl = refDoProjeto(url);
