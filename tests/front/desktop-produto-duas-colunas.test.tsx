@@ -201,6 +201,21 @@ describe("F3 — produto no computador e celular preservado", () => {
     ).toBe(true);
   });
 
+  it("F3.2 limita a largura da galeria ao mesmo teto da altura, sem centralizar", async () => {
+    // Achado do Codex no #680 (29/09): no Chromium o teto de altura já passa
+    // para a largura pelo aspect-ratio (476x476 em 1366x768); o max-w com o
+    // MESMO teto deixa isso explícito para motores que não fazem a
+    // transferência. Sem lg:mx-auto: centralizar seria mudança de desenho (a
+    // galeria sairia do alinhamento com as abas), decisão do dono.
+    const teto = "calc(100dvh-var(--header-height)-220px)";
+    await montar();
+    const caixa = elemento(".main-product-image").parentElement!.parentElement!;
+    expect(caixa.classList.contains(`lg:max-h-[${teto}]`)).toBe(true);
+    expect(caixa.classList.contains(`lg:max-w-[${teto}]`)).toBe(true);
+    expect(caixa.classList.contains("lg:aspect-square")).toBe(true);
+    expect(caixa.classList.contains("lg:mx-auto")).toBe(false);
+  });
+
   it.each([false, true])(
     "F3.4 conserva título e preço, inclusive promoção=%s",
     async (promocao) => {

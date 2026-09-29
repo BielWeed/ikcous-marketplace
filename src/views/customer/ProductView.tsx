@@ -815,6 +815,11 @@ export const ProductView = React.memo(function ProductView({
             className={cn(
               "group relative aspect-[4/3] overflow-hidden rounded-b-[2rem] bg-[#F8F9FA] sm:aspect-[4/3]",
               "lg:aspect-square lg:max-h-[calc(100dvh-var(--header-height)-220px)] lg:rounded-3xl",
+              // max-w com o mesmo teto do max-h (achado do Codex no #680,
+              // 29/09). No Chromium o teto de altura já passa para a largura
+              // pelo aspect-ratio (medido: 476x476 em 1366x768); o max-w deixa
+              // isso explícito para motores que não fazem essa transferência.
+              "lg:max-w-[calc(100dvh-var(--header-height)-220px)]",
               // Ring sutil de definição: a caixa #F8F9FA sobre página branca
               // "sumia" no desktop (achado da prévia de 29/09) -- o traço
               // quase invisível separa a galeria do fundo sem virar cartão.
