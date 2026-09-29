@@ -31,43 +31,12 @@ async function api(metodo, caminho, corpo) {
 const sql = (query) => api("POST", `/projects/${REF}/database/query`, { query });
 const mostra = (titulo, v) => console.log(`\n== ${titulo} ==\n${typeof v === "string" ? v : JSON.stringify(v, null, 1)}`);
 
-mostra("Numeração do pg_cron × histórico", await sql(`SELECT
-  (SELECT last_value FROM cron.runid_seq) AS runid_seq_last_value,
-  (SELECT is_called FROM cron.runid_seq) AS runid_seq_is_called,
-  (SELECT max(runid) FROM cron.job_run_details) AS max_runid_no_historico,
-  (SELECT last_value FROM cron.jobid_seq) AS jobid_seq_last_value,
-  (SELECT max(jobid) FROM cron.job) AS max_jobid`));
-mostra("Execuções recentes por job (qualquer data, últimas 6)", await sql(`SELECT jobid, runid, status, start_time, left(return_message, 120) AS msg
-  FROM cron.job_run_details ORDER BY runid DESC LIMIT 6`));
-mostra("O pedido de R$ 1 agora", await sql(`SELECT left(id::text, 8) AS id, status, payment_status, expires_at, paid_at, updated_at
-  FROM public.marketplace_orders WHERE created_at > now() - interval '8 hours' AND total = 1.00`));
-mostra("Processo do agendador", await sql(`SELECT pid, backend_type, backend_start, state, wait_event
-  FROM pg_stat_activity WHERE backend_type ILIKE '%cron%'`));
-
-// Logs pelo endpoint atual (/analytics/endpoints/logs). Testa as tabelas
-// uma a uma com uma consulta mínima, e filtra as de interesse.
-const fim = new Date();
-const inicio = new Date(fim.getTime() - 3 * 60 * 60 * 1000);
-async function logs(titulo, consulta) {
-  const q = new URLSearchParams({ sql: consulta, iso_timestamp_start: inicio.toISOString(), iso_timestamp_end: fim.toISOString() });
-  const r = await api("GET", `/projects/${REF}/analytics/endpoints/logs?${q}`);
-  console.log(`\n== ${titulo} ==`);
-  if (r?.ERRO || r?.error) return console.log(JSON.stringify(r?.ERRO ? r : r.error).slice(0, 400));
-  const linhas = r?.result ?? [];
-  if (linhas.length === 0) return console.log("(nada nas últimas 3 h)");
-  for (const l of linhas) {
-    const quando = l.timestamp ? new Date(Number(l.timestamp) / 1000).toISOString().slice(11, 19) : "?";
-    console.log(`${quando}  ${String(l.event_message ?? JSON.stringify(l)).replace(/\s+/g, " ").replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").slice(0, 320)}`);
-  }
-}
-await logs("Postgres: erros e cron (3 h)", `select timestamp, event_message from postgres_logs
-  where regexp_contains(event_message, '(?i)cron|duplicate key|job_run_details|runid')
-  order by timestamp desc limit 25`);
-await logs("Borda: chamadas às functions de pagamento (3 h)", `select timestamp, event_message from edge_logs
-  where regexp_contains(event_message, 'webhook-mercadopago|reconciliar-pagamentos|criar-pagamento')
-  order by timestamp desc limit 30`);
-await logs("Functions: chamadas (3 h)", `select timestamp, event_message from function_edge_logs
-  where regexp_contains(event_message, 'webhook-mercadopago|reconciliar-pagamentos|criar-pagamento')
-  order by timestamp desc limit 30`);
-await logs("Functions: mensagens (3 h)", `select timestamp, event_message from function_logs
-  order by timestamp desc limit 40`);
+mostra("Pedidos com Pix online ainda 'aguardando' e vencidos", await sql(`SELECT left(id::text, 8) AS id, status, payment_status,
+  metodo_online, created_at, expires_at,
+  CASE WHEN gateway_payment_id IS NULL THEN null ELSE left(gateway_payment_id, 3) || '… (' || length(gateway_payment_id) || ')' END AS gateway
+  FROM public.marketplace_orders WHERE payment_status = 'aguardando' AND expires_at < now() ORDER BY created_at DESC LIMIT 10`));
+mostra("Execuções do pg_cron desde a correção", await sql(`SELECT j.jobname, d.status, d.start_time, left(d.return_message, 100) AS msg
+  FROM cron.job_run_details d JOIN cron.job j USING (jobid) ORDER BY d.start_time DESC LIMIT 8`));
+mostra("Respostas do pg_net (reconciliação)", await sql(`SELECT status_code, created,
+  left(regexp_replace(coalesce(content::text, error_msg, ''), '\\s+', ' ', 'g'), 300) AS resumo
+  FROM net._http_response ORDER BY created DESC LIMIT 4`));
