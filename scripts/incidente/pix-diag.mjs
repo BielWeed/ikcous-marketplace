@@ -1,4 +1,4 @@
-// Temporário (28-29/09/2026): SÓ LEITURA na loja principal. Rodada 4
+// Temporário (28-29/09/2026, check-in das 11:40 UTC): SÓ LEITURA na loja principal. Rodada 4
 // (check-in de 29/09): depois de destravar o pg_cron, confere que a
 // reconciliação, a expiração e a devolução de cupons seguem rodando, que as
 // chamadas do pg_net voltam 2xx, que nenhum Pix ficou preso em "aguardando"
