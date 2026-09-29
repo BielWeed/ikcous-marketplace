@@ -239,6 +239,52 @@ loja, é custo dele — EXCLUÍDO por restrição explícita.
 locais + três revisões adversariais; produção com PIX real PENDENTE de
 observação" — **nunca declarar 100% funcional** antes do Estágio C observado.
 
+## 6.3 ESTRATÉGIA DE PUBLICAÇÃO PÚBLICA SEM CUSTO DO DONO (decisão 29/09)
+
+O dono AUTORIZOU publicar as correções para todos e execução técnica
+autônoma; a compra de teste paga por ele está FORA. Estratégia concreta:
+
+**Fase 0 — sandbox gratuito: BLOQUEIO MATERIAL (29/09, 10:39Z).** O deploy
+das 5 corrigidas foi disparado da branch da release (run
+36556837516`, `projeto=sandbox`) e FALHOU no primeiro function:
+unexpected list functions status 404: {"message":"Resource has been
+removed"}` — o projeto sandbox `lofznuxcvezrhxsgjqyg` **não existe mais no
+Supabase** (removido; os workflows ainda o referenciam). Gates gratuitos
+(§6.2 Estágio B) ficam BLOQUEADOS até existir alvo. Desbloqueios mínimos,
+ambos gratuitos e de painel (dono): (a) criar novo projeto Supabase free
+como sandbox e apontar o workflow (PR mínimo de ref); ou (b) fornecer
+credenciais de TESTE do MP para uso no ambiente que vier a existir. Sem
+alvo, a Fase 1 (produção inerte) NÃO corre antes dos gates gratuitos
+(ordem explícita do dono: "não altere produção antes de gates").
+
+**Fase 1 — produção INERTE para todos.** Publicar functions (base já com
+destino #718) + front. Meio online permanece travado pelas três portas
+existentes: `store_config.pagamento_online=false` (ou cofre inválido
+pós-migração), gate PIX 409 sem chave própria, cartão desligado de nascença.
+Zero risco financeiro; correções de UX/estorno/webhook já no ar.
+
+**Fase 2 — liberação por loja (checklist §4/§5)**: credenciais produtivas +
+chave própria + webhook produtivo com a MESMA chave + `ligar_pix`.
+
+**Fase 3 — primeiro pedido orgânico com PREVENÇÃO ATIVA (não passiva).**
+- **Pausa imediata**: RPC `desligar_pix` (existente) corta NOVAS cobranças
+  por loja em segundos; pedidos pendentes continuam resolvendo (dinheiro
+  não fica preso); rollback por function individual pelo workflow.
+- **Antídoto contra "cobrança confirmada sem pedido"**: reconciliador
+  (pg_cron 10 min, provado ativo com 8 runs succeeded) + política P1
+  (`pago_apos_expirar` honra pagamento tardio — nunca 2ª cobrança) +
+  painel admin com alerta de DINHEIRO PRESO (`AlertasCancelados`,
+  `temDinheiroPreso`) + confirmação manual admin como última instância.
+- **Monitoramento do dia 1**: conferir `payment_status='aguardando'` com
+  `gateway_payment_id` > 15 min (log da webhook + `cron.job_run_details`).
+- **Fulfillment**: entrega é AÇÃO manual do lojista no painel; pedido nasce
+  `pending/aguardando` e não avança sozinho — sem código de auto-entrega.
+
+**Rótulo permanente** (§6.2): test mode + suítes + três revisões
+adversariais; produção com PIX real PENDENTE de observação — nunca 100%.
+
+
+
 ## 7. Riscos residuais declarados
 
 1. Busca da Orders API UNVERIFIED em produção (nome de campo/param já
