@@ -43,7 +43,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [develop, main, claude/app-major-upgrade-wmc8x2]
+    branches: [develop, main, claude/app-major-upgrade-wmc8x2, production]
   push:
     branches: [develop, main, claude/app-major-upgrade-wmc8x2]
 
