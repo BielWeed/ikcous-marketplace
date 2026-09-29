@@ -1,10 +1,9 @@
-// Temporário (28/09/2026): SÓ LEITURA na loja principal. O Pix de R$ 1 do
-// dono (23:07 UTC) ficou "aguardando". Rodada 3: o pg_cron não roda desde
-// 03:20 UTC (hora da troca de banco no incidente) — confere a numeração
-// interna do pg_cron contra o histórico restaurado (suspeita: runid_seq atrás
-// do max(runid) → o agendador bate em chave duplicada e não registra/roda),
-// e tenta de novo os logs (webhook do MP e erros do Postgres) pelo endpoint
-// atual. Nada escreve; nenhum segredo é impresso.
+// Temporário (28-29/09/2026): SÓ LEITURA na loja principal. Rodada 4
+// (check-in de 29/09): depois de destravar o pg_cron, confere que a
+// reconciliação, a expiração e a devolução de cupons seguem rodando, que as
+// chamadas do pg_net voltam 2xx, que nenhum Pix ficou preso em "aguardando"
+// depois de vencer e que o modo sandbox (MP_SANDBOX_PAYER_EMAIL) continua
+// desligado. Nada escreve; nenhum segredo nem dado pessoal é impresso.
 
 const REF = "dekxabvqdsuukijblazl";
 const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
@@ -31,15 +30,31 @@ async function api(metodo, caminho, corpo) {
 const sql = (query) => api("POST", `/projects/${REF}/database/query`, { query });
 const mostra = (titulo, v) => console.log(`\n== ${titulo} ==\n${typeof v === "string" ? v : JSON.stringify(v, null, 1)}`);
 
-mostra("Os dois pedidos de R$ 1: mesmo cliente? como nasceram?", await sql(`WITH p AS (
-    SELECT * FROM public.marketplace_orders WHERE left(id::text, 8) IN ('1bba1c18', 'c3dc3350'))
-  SELECT left(id::text, 8) AS id, created_at, status, payment_status, paid_at,
-    (SELECT count(DISTINCT user_id) FROM p) AS clientes_distintos,
-    (SELECT count(*) FROM public.marketplace_order_items i WHERE i.order_id = p.id) AS itens,
-    left(gateway_payment_id, 12) || '…' || right(gateway_payment_id, 4) AS gateway
-  FROM p ORDER BY created_at`));
-mostra("Colunas de marketplace_orders (para achar vínculo entre pedidos)", (await sql(`SELECT string_agg(column_name, ', ' ORDER BY ordinal_position) AS colunas
-  FROM information_schema.columns WHERE table_schema='public' AND table_name='marketplace_orders'`)));
-mostra("Histórico dos dois pedidos", await sql(`SELECT left(order_id::text, 8) AS pedido, created_at,
-  (SELECT string_agg(column_name, ',') FROM information_schema.columns WHERE table_name='marketplace_order_history') AS cols
-  FROM public.marketplace_order_history WHERE left(order_id::text, 8) IN ('1bba1c18', 'c3dc3350') ORDER BY created_at LIMIT 1`));
+mostra("Jobs do pg_cron nas últimas 2 h", await sql(`SELECT j.jobname, j.schedule, j.active,
+    count(d.runid) FILTER (WHERE d.status = 'succeeded') AS ok,
+    count(d.runid) FILTER (WHERE d.status <> 'succeeded') AS falhas,
+    max(d.start_time) AS ultima,
+    (SELECT left(x.return_message, 160) FROM cron.job_run_details x
+      WHERE x.jobid = j.jobid AND x.status <> 'succeeded' ORDER BY x.start_time DESC LIMIT 1) AS ultima_falha
+  FROM cron.job j
+  LEFT JOIN cron.job_run_details d ON d.jobid = j.jobid AND d.start_time > now() - interval '2 hours'
+  GROUP BY j.jobid, j.jobname, j.schedule, j.active ORDER BY j.jobname`));
+mostra("Respostas do pg_net nas últimas 2 h (por código)", await sql(`SELECT status_code, count(*) AS n,
+    max(created) AS ultima FROM net._http_response
+  WHERE created > now() - interval '2 hours' GROUP BY status_code ORDER BY status_code`));
+mostra("Pedidos online das últimas 24 h (por situação do pagamento)", await sql(`SELECT payment_status, count(*) AS n,
+    max(created_at) AS mais_recente
+  FROM public.marketplace_orders
+  WHERE created_at > now() - interval '24 hours' AND gateway_payment_id IS NOT NULL
+  GROUP BY payment_status ORDER BY payment_status`));
+mostra("Pix presos: 'aguardando' com prazo vencido há mais de 10 min (esperado: 0)", await sql(`SELECT count(*) AS presos,
+    min(expires_at) AS mais_antigo
+  FROM public.marketplace_orders
+  WHERE payment_status = 'aguardando' AND expires_at < now() - interval '10 minutes'`));
+
+const nomes = await api("GET", `/projects/${REF}/secrets`);
+const sandbox = Array.isArray(nomes) && nomes.some((s) => s.name === "MP_SANDBOX_PAYER_EMAIL");
+mostra("Modo sandbox do Pix", Array.isArray(nomes)
+  ? (sandbox ? "ATENÇÃO: MP_SANDBOX_PAYER_EMAIL PRESENTE" : "desligado (MP_SANDBOX_PAYER_EMAIL ausente)")
+  : nomes);
+if (sandbox) console.log("::error::MP_SANDBOX_PAYER_EMAIL presente com credenciais reais.");
