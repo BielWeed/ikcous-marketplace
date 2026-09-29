@@ -369,14 +369,20 @@ rate-limit externo — não é mais bloqueio de arquivo/código.**
    `updated_at` novos; diagnóstico read-only mostrando os MARCADORES das
    frentes PRESENTES nos corpos; checkout "na entrega" normal; PIX segue
    INERTE (flag false + gate 409 + cartão off).
-4. **Front — AMBOS os aliases, com SHA exato** (coordenado com a sessão de
-   produto, que já estabilizou a linha em 1.5.12): build/deploy Vercel da
-   linha de release → **re-apontar `ickous-marketplace.vercel.app` E
-   `brandmeliz.vercel.app` para o deployment novo** (o estado atual é
-   preview da branch `production` em `95dbc8c5` — servir novo código
-   NÃO é automático) → **verificar `version.json` nos DOIS domínios**
-   mostrando o `codeVersion`/`codeSha` novos. **Rollback do front =
-   re-alias para o deployment registrado `95dbc8c5`** (o atual, NUNCA o
+4. **Front — DUAS CLASSES de domínio, verificação por classe** (auditoria
+   Vercel do dono/Codex + sondagem própria `version.json`, 29/09):
+   - **Classe A (2 aliases ligados à branch `production`)**:
+     `brandmeliz` e `ickous-marketplace` — hoje no PREVIEW `95dbc8c5`.
+   - **Classe B (7 domínios clientes, `gitBranch=null`, target
+     Production)** — ex. `spacelojadoskit`/`almeidastore` — hoje no
+     Production `bc1cbc8` (sondagem própria confirmou ambos).
+   Para servir a TODOS: (1) **promover o SHA da release a target
+   Production** (atualiza a classe B) E (2) **atualizar a branch
+   `production` OU reatribuir os 2 aliases** (atualiza a classe A) —
+   nenhum dos dois sozinho basta. **Verificação mínima: um domínio de CADA
+   classe** com `codeVersion`/`codeSha` novos no `version.json`.
+   **Rollback por classe**: classe B = promover o deployment anterior
+   (`bc1cbc8`); classe A = re-alias para `95dbc8c5` (registrado; NUNCA o
    `03a89fa2` pré-remoção PII).
 5. **Ativação (quando o dono quiser)**: Ajustes → credenciais MP produtivas
    → **Testar conexão** (precisa dar verde) → chave de assinatura própria →
