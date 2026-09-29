@@ -78,21 +78,25 @@ mais conservador) — a publicação da #711 acompanha a promoção da linha cla
 ## 3. Sequência de publicação segura (ordem final, sem etapas implícitas)
 
 1. **(j)** `SUPABASE_ACCESS_TOKEN` da org nova no GitHub + check "Código x banco".
-   **Estado (29/09, coordenação do dono)**: token novo JÁ salvo e provado (run
-   #715 SUCCESS). **PR #717** (draft → develop, sessão Claude Code): usa o
-   token existente + endpoint SQL read-only; **check "Código x banco" REAL
-   passou** com o `DATABASE_URL` antigo INTACTO; lint em correção; revisão
-   independente em andamento — **veredito pendente**.
-2. **Destino ativo do deploy**: **PR MÍNIMA separada** (em criação contra esta
-   mesma branch-base) alterando APENAS `publicar-functions.yml` + teste da ref
-   `loja` → `dekxabvqdsuukijblazl` (2 testes/13 cenários focados já verdes);
-   precisa **alcançar develop** antes de qualquer `workflow_dispatch` nessa
-   ref. **O #671 (draft amplo, 31 arquivos) NÃO será mesclado inteiro — deixou
-   de ser dependência textual.**
-   **Gate reformulado (condicionado aos vereditos ainda pendentes)**:
-   (i) PR mínima de destino ativo **integrada na branch efetiva de deploy**;
-   (ii) **#717 integrado e check real verde na branch efetiva**. Nenhum deploy
-   ao projeto antigo pausado, em nenhuma hipótese.
+   **Estado (29/09, marco de CI)**: token novo JÁ salvo e provado (run #715
+   SUCCESS). **PR #717 MESCLADA em develop** (merge `26543922`) após revisão
+   independente; **CI pós-merge VERDE, inclusive "Código x banco"** (9 jobs
+   passaram; rate-limit Vercel externo). Solução: `SUPABASE_ACCESS_TOKEN`
+   existente + endpoint SQL somente leitura do projeto ativo, catálogo e
+   permissões estritos, `DATABASE_URL` antigo INTACTO; sem deploy.
+   **Residual**: vale para **develop** — a branch-base desta release
+   (`claude/app-major-upgrade-wmc8x2`) ainda precisa **incorporar/reconciliar
+   a mudança do `ci.yml`** antes do próprio check ficar verde aqui.
+2. **Destino ativo do deploy**: **PR #718 MÍNIMA** (apenas
+   `publicar-functions.yml` + teste da ref `loja` → `dekxabvqdsuukijblazl`)
+   **aprovada por revisão independente, checks de código verdes**;
+   **integração na branch-base EM ANDAMENTO — sem dispatch** (e precisa
+   alcançar develop para `workflow_dispatch`). **O #671 (draft amplo,
+   31 arquivos) NÃO será mesclado inteiro — fora do gate.**
+   **Gate (condicionado ao que ainda pendura)**: (i) #718 integrada na
+   branch efetiva de deploy; (ii) reconciliação do `ci.yml` do #717 na
+   branch-base com o check real verde AQUI. Nenhum deploy ao projeto antigo
+   pausado, em nenhuma hipótese.
 3. Distinguir geração (§2) e CONFIRMAR migrations 20261175-80 aplicadas no
    banco novo (senão: `aplicar-migrations.yml` arquivo por arquivo, com os runs
    separados — regra do repo).

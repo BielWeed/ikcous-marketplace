@@ -157,27 +157,26 @@ publicação financeira):**
    notificação de teste chega (log da `webhook-mercadopago`) e assinatura valida.
 5. **Reconciliador provado** (pg_cron ativo + job executando + logs recentes +
    `RECONCILIACAO_SECRET` válido) — sem isso, loja não habilita PIX (§5).
-6. **Check "Código x banco" REAL verde na branch efetiva** — caminho atual:
-   **#717** (draft → develop; token existente + endpoint SQL read-only;
-   `DATABASE_URL` antigo INTACTO; check real já passou no draft; lint em
-   correção e revisão independente pendentes). **Gate = #717 integrado e o
-   check verde NA BRANCH EFETIVA de deploy** — não "trocar o valor do
-   `DATABASE_URL`" como passo manual.
-7. **Destino do deploy corrigido na branch efetiva** — **PR MÍNIMA separada**
+6. **Check "Código x banco" REAL verde** — **#717 MESCLADA em develop**
+   (`26543922`; revisão independente + CI pós-merge verde, 9 jobs, inclusive
+   o check; token existente + endpoint SQL read-only do projeto ativo;
+   `DATABASE_URL` antigo INTACTO; sem deploy). **Pendência para ESTA
+   release: incorporar/reconciliar o `ci.yml` do #717 na branch-base
+   (`claude/app-major-upgrade-wmc8x2`) — o check verde em develop não
+   esverdeia esta branch sozinho.**
+7. **Destino do deploy corrigido na branch efetiva** — **PR #718 MÍNIMA**
    (apenas `publicar-functions.yml`: ref `loja` → `dekxabvqdsuukijblazl` +
-   teste; 2 testes/13 cenários focados verdes), integrada na branch efetiva e
-   alcançando develop (exigência do `workflow_dispatch`). **O #671 NÃO será
-   mesclado inteiro** (draft amplo, 31 arquivos) — deixou de ser dependência.
+   teste) **aprovada independentemente, checks de código verdes**;
+   integração na branch-base EM ANDAMENTO; sem dispatch (e precisa alcançar
+   develop para `workflow_dispatch`). **O #671 NÃO será mesclado inteiro.**
 8. Só então: `publicar-functions` com ESTA release (as 5 de cobrança) →
    checklist por loja (§4) → front → monitoração 24 h.
 
 **Correção estreita examinada e REJEITADA como suficiente (historico)**: trocar
 só o ref do workflow (`loja` → `dekxabvqdsuukijblazl`) falharia no 403 do
 token (j) e mascararia as pendências f/i — publicação ilusória. Atualização da
-coordenação (29/09): a correção do destino vem pela **PR mínima dedicada**
-(acima) e o check pelo **#717** — ambos condicionados aos vereditos de revisão
-pendentes; o #671 amplo fica de fora. **Nenhum deploy ao projeto antigo
-pausado.**
+coordenação (29/09): destino pela **#718 mínima** e check pelo **#717**;
+#671 amplo fora. **Nenhum deploy ao projeto antigo pausado.**
 
 ## 7. Riscos residuais declarados
 
