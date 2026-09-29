@@ -446,11 +446,19 @@ escolher a **branch** (o que sobe é o código daquele commit) e preencher:
 
 - `functions`: os nomes, separados por vírgula ou espaço (`credenciais-mercado-pago`), ou o
   apelido `cobranca`, que vira as cinco da §5.3 na ordem certa;
-- `projeto`: `loja` (`dekxabvqdsuukijblazl`, o padrão) ou `sandbox` (`lofznuxcvezrhxsgjqyg`).
+- `projeto`: `loja` (`dekxabvqdsuukijblazl`, o padrão), `sandbox`
+  (`lofznuxcvezrhxsgjqyg`) ou `savy` (`gnjsrucsmjkajijrakzr`).
+- `expected_sha`: para `savy`, o SHA completo (40 caracteres) do commit aprovado. O workflow
+  compara esse valor com o SHA do próprio run **antes** do primeiro deploy; se a branch tiver
+  avançado desde a revisão, o run falha sem publicar. Confira também o `head_sha` do run.
+
+No destino `savy`, o campo `functions` aceita somente as cinco Functions financeiras do apelido
+`cobranca`, juntas ou individualmente. Outros nomes são recusados antes do deploy.
 
 O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do
-projeto, que também vai para o resumo do job — é a prova de que a versão subiu (a tabela da §2
-envelhece; esse resumo não).
+projeto, que também vai para o resumo do job. A lista confirma as Functions ativas e suas versões
+de deploy; **não identifica o SHA nem o conteúdo do bundle publicado**. Confira o SHA do run,
+o ref de destino e o comportamento observado antes de declarar a publicação concluída.
 
 **O que ele faz diferente dos comandos da §5.3, de propósito:**
 
@@ -464,10 +472,29 @@ envelhece; esse resumo não).
 - **só dispara à mão.** Push em `develop` ou `main` não publica nada: publicar em produção
   continua sendo um ato humano, só que sem exigir CLI e login na máquina de quem publica.
 
-**O que ele precisa, uma vez só:** o segredo `SUPABASE_ACCESS_TOKEN` no repositório (§5.2). É um
-token pessoal da conta do Supabase e vale para todos os projetos dela — trate-o como a senha do
-painel. Sem o segredo o workflow falha no passo "Confere o segredo", antes de tocar em qualquer
-coisa.
+**O que ele precisa, uma vez só:** `SUPABASE_ACCESS_TOKEN` para `loja` e `sandbox` (§5.2), ou
+`SUPABASE_ACCESS_TOKEN_SAVY` para `savy`. São tokens pessoais; mantenha cada valor apenas nos
+secrets do GitHub e nunca o copie para o log ou para uma conversa. O workflow confere apenas o
+segredo do destino escolhido e falha antes do deploy se ele faltar. A presença do secret e uma
+consulta de leitura com o token Savy **não comprovam permissão de deploy**; confirme essa
+permissão antes de depender da publicação.
+
+**Antes da primeira publicação Savy:** registre o SHA exato da branch selecionada no
+`workflow_dispatch` e confira que ele contém o workflow com a opção `savy` e as cinco Functions
+pretendidas. Compare migrations, cron e configuração do projeto Savy com as dependências desse
+SHA. Registre a origem exata do código atualmente publicado e prepare uma branch de rollback
+que **também contenha este workflow com a opção `savy`**, mas publique o código anterior das
+Functions. Um commit anterior à inclusão da opção `savy` não serve como rollback pelo formulário.
+Se não for possível identificar o código anterior ou preparar e verificar a branch de rollback,
+não inicie o deploy. A lista de versões do Supabase, sozinha, não recupera o bundle anterior.
+
+**Pagamento Savy:** antes de publicar as Functions de cobrança, configure no aplicativo Mercado
+Pago da própria Savy o webhook de produção
+`https://gnjsrucsmjkajijrakzr.supabase.co/functions/v1/webhook-mercadopago` para as notificações
+de pagamento e order, e grave a assinatura secreta no painel autenticado da Savy. Não envie a
+chave por chat. Depois do deploy controlado, faça um teste de notificação e confira a validação
+HMAC e a atualização do pedido antes de promover o front; o teste de conexão do Access Token
+verifica outra coisa. Sem essa evidência, mantenha a publicação de pagamento pendente.
 
 O que ele NÃO faz: migrations (`supabase db push` continua proibido, AGENTS.md) e secrets das
 functions (esses continuam no painel, §5.2). Publicar uma function que depende de uma migration

@@ -52,6 +52,10 @@ on:
           - loja
           - savy
           - sandbox
+      expected_sha:
+        description: "Savy: SHA completo do commit aprovado, igual ao SHA deste run"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -70,12 +74,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
       - name: Resolve o projeto e valida os nomes
         id: alvo
         env:
           PROJETO: ${{ inputs.projeto }}
           PEDIDAS: ${{ inputs.functions }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
           case "$PROJETO" in
@@ -84,6 +91,11 @@ jobs:
             sandbox) REF=lofznuxcvezrhxsgjqyg ;;
             *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy ou sandbox)"; exit 1 ;;
           esac
+          if [ "$PROJETO" = "savy" ]; then
+            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+              echo "::error::Savy exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+            fi
+          fi
           if [ "$(echo "$PEDIDAS" | tr -d '[:space:]')" = "cobranca" ]; then
             PEDIDAS="criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago"
           fi
@@ -94,6 +106,12 @@ jobs:
             fi
             if [ "$n" = "send-order-whatsapp" ]; then
               echo "::error::send-order-whatsapp foi despublicada em 11/08/2026 e não volta (DEPLOYMENT.md §2)"; exit 1
+            fi
+            if [ "$PROJETO" = "savy" ]; then
+              case "$n" in
+                criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
+                *) echo "::error::Savy só admite as cinco Functions financeiras"; exit 1 ;;
+              esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then
               echo "::error::não existe supabase/functions/$n/index.ts"; exit 1

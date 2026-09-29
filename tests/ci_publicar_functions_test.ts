@@ -78,14 +78,25 @@ function blocoRunDoStep(yaml: string, nomeDoStep: string): string {
 }
 
 /** Roda o bloco de validação como o runner rodaria: bash, na raiz do repo. */
-async function validar(projeto: string, pedidas: string) {
+async function validar(
+  projeto: string,
+  pedidas: string,
+  expectedSha = "",
+  actualSha = "a".repeat(40),
+) {
   const yaml = await Deno.readTextFile(WORKFLOW);
   const bloco = blocoRunDoStep(yaml, "Resolve o projeto e valida os nomes");
   const saida = await Deno.makeTempFile({ prefix: "publicar_out_" });
   const proc = new Deno.Command("bash", {
     args: ["-c", bloco],
     cwd: RAIZ,
-    env: { PROJETO: projeto, PEDIDAS: pedidas, GITHUB_OUTPUT: saida },
+    env: {
+      PROJETO: projeto,
+      PEDIDAS: pedidas,
+      EXPECTED_SHA: expectedSha,
+      GITHUB_SHA: actualSha,
+      GITHUB_OUTPUT: saida,
+    },
     stdout: "piped",
     stderr: "piped",
   });
@@ -223,6 +234,15 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
     }
   });
 
+  await t.step("checkout e trava de SHA precedem todo deploy Savy", () => {
+    assertStringIncludes(yaml, "expected_sha:");
+    assertStringIncludes(yaml, "ref: ${{ github.sha }}");
+    assertStringIncludes(yaml, "EXPECTED_SHA: ${{ inputs.expected_sha }}");
+    const iTrava = yaml.indexOf('if [ "$PROJETO" = "savy" ]; then');
+    const iDeploy = yaml.indexOf("name: Publica Savy, uma function por vez");
+    assert(iTrava > 0 && iTrava < iDeploy);
+  });
+
   await t.step(
     "um deploy por projeto de cada vez, nunca cancelado no meio",
     () => {
@@ -274,11 +294,30 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     },
   );
 
-  await t.step("Savy resolve a ref própria e mantém as cinco Functions", async () => {
-    const r = await validar("savy", "cobranca");
+  await t.step(
+    "Savy resolve a ref própria e mantém as cinco Functions",
+    async () => {
+      const r = await validar("savy", "cobranca", "a".repeat(40));
+      assertEquals(r.codigo, 0, r.stderr + r.stdout);
+      assertEquals(r.outputs.ref, REF_SAVY);
+      assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+    },
+  );
+
+  await t.step("Savy exige o SHA exato do commit aprovado", async () => {
+    for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+      const r = await validar("savy", "cobranca", expected);
+      assertEquals(r.codigo, 1, `SHA ${expected} deveria falhar`);
+      assertEquals(r.outputs.nomes, undefined);
+    }
+    const r = await validar("savy", "criar-pagamento", "a".repeat(40));
     assertEquals(r.codigo, 0, r.stderr + r.stdout);
-    assertEquals(r.outputs.ref, REF_SAVY);
-    assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+  });
+
+  await t.step("Savy só admite as cinco Functions financeiras", async () => {
+    const r = await validar("savy", "send-push", "a".repeat(40));
+    assertEquals(r.codigo, 1);
+    assertEquals(r.outputs.nomes, undefined);
   });
 
   await t.step(
