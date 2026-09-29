@@ -16,7 +16,7 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  *    nomes que existem, expande o apelido `cobranca` nas cinco do Mercado
  *    Pago, recusa a `send-order-whatsapp` (despublicada em 11/08/2026),
  *    recusa `_shared`, nome inexistente, nome com shell dentro e projeto
- *    desconhecido, e resolve `loja`/`sandbox` nos refs certos.
+ *    desconhecido, e resolve `loja`/`savy`/`sandbox` nos refs certos.
  *
  * Extraído e não copiado: copiado, o teste passaria enquanto o arquivo
  * apodrece.
@@ -32,6 +32,7 @@ const WORKFLOW = fromFileUrl(
 );
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const REF_LOJA = "dekxabvqdsuukijblazl";
+const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
 const AS_CINCO_DA_COBRANCA =
   "criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago";
@@ -77,14 +78,25 @@ function blocoRunDoStep(yaml: string, nomeDoStep: string): string {
 }
 
 /** Roda o bloco de validação como o runner rodaria: bash, na raiz do repo. */
-async function validar(projeto: string, pedidas: string) {
+async function validar(
+  projeto: string,
+  pedidas: string,
+  expectedSha = "",
+  actualSha = "a".repeat(40),
+) {
   const yaml = await Deno.readTextFile(WORKFLOW);
   const bloco = blocoRunDoStep(yaml, "Resolve o projeto e valida os nomes");
   const saida = await Deno.makeTempFile({ prefix: "publicar_out_" });
   const proc = new Deno.Command("bash", {
     args: ["-c", bloco],
     cwd: RAIZ,
-    env: { PROJETO: projeto, PEDIDAS: pedidas, GITHUB_OUTPUT: saida },
+    env: {
+      PROJETO: projeto,
+      PEDIDAS: pedidas,
+      EXPECTED_SHA: expectedSha,
+      GITHUB_SHA: actualSha,
+      GITHUB_OUTPUT: saida,
+    },
     stdout: "piped",
     stderr: "piped",
   });
@@ -152,15 +164,13 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
           (l) =>
             l.includes("supabase functions deploy") && !l.includes("::group::"),
         );
-      assertEquals(
-        reais.length,
-        1,
-        `esperava exatamente uma chamada real de deploy, achei ${reais.length}`,
-      );
-      assertEquals(
-        reais.at(0).trim(),
-        'supabase functions deploy "$n" --project-ref "$REF"',
-      );
+      assertEquals(reais.length, 2, "um deploy isolado por caminho de token");
+      for (const chamada of reais) {
+        assertEquals(
+          chamada.trim(),
+          'supabase functions deploy "$n" --project-ref "$REF"',
+        );
+      }
     },
   );
 
@@ -182,16 +192,56 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
   );
 
   await t.step(
-    "os dois destinos são fechados e apontam para loja ativa e sandbox",
+    "os três destinos são fechados e apontam para loja, Savy e sandbox",
     () => {
       assertStringIncludes(yaml, `loja) REF=${REF_LOJA} ;;`);
+      assertStringIncludes(yaml, `savy) REF=${REF_SAVY} ;;`);
       assertStringIncludes(yaml, `sandbox) REF=${REF_SANDBOX} ;;`);
       assertStringIncludes(
         yaml,
-        "options:\n          - loja\n          - sandbox",
+        "options:\n          - loja\n          - savy\n          - sandbox",
       );
     },
   );
+
+  await t.step("Savy usa somente o token próprio nas etapas de deploy", () => {
+    const nomes = [
+      "Confere o segredo Savy",
+      "Publica Savy, uma function por vez",
+      "Lista o que ficou publicado na Savy",
+    ];
+    for (const nome of nomes) {
+      const inicio = yaml.indexOf(`name: ${nome}`);
+      assert(inicio >= 0, `step Savy ausente: ${nome}`);
+      const proximo = yaml.indexOf("\n      - ", inicio + 1);
+      const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+      assertStringIncludes(step, "if: inputs.projeto == 'savy'");
+      assertStringIncludes(step, "${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}");
+      assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
+    }
+    for (const nome of [
+      "Confere o segredo",
+      "Publica, uma function por vez, sempre pelo nome",
+      "Lista o que ficou publicado",
+    ]) {
+      const inicio = yaml.indexOf(`name: ${nome}\n`);
+      assert(inicio >= 0, `step loja/sandbox ausente: ${nome}`);
+      const proximo = yaml.indexOf("\n      - ", inicio + 1);
+      const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+      assertStringIncludes(step, "if: inputs.projeto != 'savy'");
+      assertStringIncludes(step, "${{ secrets.SUPABASE_ACCESS_TOKEN }}");
+      assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}"));
+    }
+  });
+
+  await t.step("checkout e trava de SHA precedem todo deploy Savy", () => {
+    assertStringIncludes(yaml, "expected_sha:");
+    assertStringIncludes(yaml, "ref: ${{ github.sha }}");
+    assertStringIncludes(yaml, "EXPECTED_SHA: ${{ inputs.expected_sha }}");
+    const iTrava = yaml.indexOf('if [ "$PROJETO" = "savy" ]; then');
+    const iDeploy = yaml.indexOf("name: Publica Savy, uma function por vez");
+    assert(iTrava > 0 && iTrava < iDeploy);
+  });
 
   await t.step(
     "um deploy por projeto de cada vez, nunca cancelado no meio",
@@ -243,6 +293,32 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
       }
     },
   );
+
+  await t.step(
+    "Savy resolve a ref própria e mantém as cinco Functions",
+    async () => {
+      const r = await validar("savy", "cobranca", "a".repeat(40));
+      assertEquals(r.codigo, 0, r.stderr + r.stdout);
+      assertEquals(r.outputs.ref, REF_SAVY);
+      assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+    },
+  );
+
+  await t.step("Savy exige o SHA exato do commit aprovado", async () => {
+    for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+      const r = await validar("savy", "cobranca", expected);
+      assertEquals(r.codigo, 1, `SHA ${expected} deveria falhar`);
+      assertEquals(r.outputs.nomes, undefined);
+    }
+    const r = await validar("savy", "criar-pagamento", "a".repeat(40));
+    assertEquals(r.codigo, 0, r.stderr + r.stdout);
+  });
+
+  await t.step("Savy só admite as cinco Functions financeiras", async () => {
+    const r = await validar("savy", "send-push", "a".repeat(40));
+    assertEquals(r.codigo, 1);
+    assertEquals(r.outputs.nomes, undefined);
+  });
 
   await t.step(
     "recusa a send-order-whatsapp, despublicada em 11/08/2026",
