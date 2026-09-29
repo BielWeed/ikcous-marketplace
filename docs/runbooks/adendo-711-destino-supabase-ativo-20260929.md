@@ -78,6 +78,14 @@ mais conservador) — a publicação da #711 acompanha a promoção da linha cla
 ## 3. Sequência de publicação segura (ordem final, sem etapas implícitas)
 
 1. **(j)** `SUPABASE_ACCESS_TOKEN` da org nova no GitHub + `DATABASE_URL` novo.
+   **Estado (29/09)**: token novo JÁ salvo e provado (run #715 SUCCESS).
+   `DATABASE_URL` segue antigo — o check "Código x banco" segue vermelho.
+   **PR #717** (sessão Claude Code, worktree isolada) propõe resolver o
+   check; **em teste/CI, sem veredito** — não presumir se preserva o valor
+   antigo nem se elimina a necessidade de credencial nova. Gate atualiza
+   quando #717 fechar com prova e revisão. (Nota de separação: o **#671**
+   corrige o DESTINO do workflow de deploy; VALOR de secret é operação
+   distinta — merge do #671 por si só não muda segredo nenhum.)
 2. Distinguir geração (§2) e CONFIRMAR migrations 20261175-80 aplicadas no
    banco novo (senão: `aplicar-migrations.yml` arquivo por arquivo, com os runs
    separados — regra do repo).
