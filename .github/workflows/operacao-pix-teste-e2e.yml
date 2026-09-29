@@ -1,0 +1,27 @@
+# Temporário (29/09/2026): teste de ponta a ponta do Pix em sandbox na loja
+# IKCOUS (desenvolvimento), pedido do dono.
+name: Operação — teste do Pix em sandbox (temporário)
+on:
+  push:
+    branches: [infra/operacao-incidente]
+    paths:
+      - scripts/incidente/pix-teste-e2e.mjs
+      - .github/workflows/operacao-pix-teste-e2e.yml
+permissions:
+  contents: read
+concurrency:
+  group: pix-teste-e2e
+  cancel-in-progress: false
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - run: node scripts/incidente/pix-teste-e2e.mjs
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          LOJAS_ADMIN_SENHA: ${{ secrets.LOJAS_ADMIN_SENHA }}
