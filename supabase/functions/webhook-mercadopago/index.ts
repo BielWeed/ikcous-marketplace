@@ -768,7 +768,16 @@ async function registrarDesfechoDoEstorno(args: {
       ehPayments,
       linha,
       pedido,
-      idsJaReivindicados: Array.from(reivindicados),
+      // O id da PRÓPRIA linha sai do conjunto (achado MÉDIO da revisão do
+      // P1 de estorno, 29/09): com a regra nova, a linha em_processamento
+      // CARREGA o id do refund dela — deixá-lo no conjunto fazia
+      // refundQueCobreALinha excluir o refund dela mesma e a linha ficava
+      // tentar_depois para sempre (só o cron concluía). Os ids das OUTRAS
+      // linhas permanecem: um refund credita UMA linha (P0). Paridade com
+      // o cron, que exclui a própria linha com .neq('id', ...).
+      idsJaReivindicados: Array.from(reivindicados).filter(
+        (id) => id !== linha.mp_refund_id,
+      ),
       temPreVeredito: false,
     });
     if (resultado.tipo === "concluido") {

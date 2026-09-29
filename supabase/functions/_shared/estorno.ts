@@ -518,7 +518,10 @@ function interpretarOrders(
         return {
           tipo: "em_processamento",
           mp_refund_id: idComoString(refundDaLinha.id),
-          mp_status: mpStatus,
+          // Status do REFUND da linha (ex. 'processing'), não do topo da
+          // order — rotular linha pendente com 'refunded' parecia terminal
+          // (achado BAIXA da revisão, 29/09; campo só para diagnóstico/T6).
+          mp_status: String(refundDaLinha.status ?? ""),
         };
       }
       return {

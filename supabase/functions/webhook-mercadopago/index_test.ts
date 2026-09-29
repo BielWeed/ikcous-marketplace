@@ -2665,6 +2665,63 @@ Deno.test("W2 - order 'processed'+'partially_refunded' com refund de 30 e linha 
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
+Deno.test("W2b - achado MÉDIO da revisão do P1 de estorno: linha em_processamento COM o próprio mp_refund_id 'r2' e refund AGORA 'processed' -> conclui pela T5 (id próprio NÃO entra em idsJaReivindicados)", async () => {
+  // Com a regra do P1 de estorno (29/09), o caso majoritário passou a ser
+  // linha em_processamento COM o id do refund dela gravado (POST nasce
+  // 'processing'). O conjunto 'reivindicados' do webhook incluía o id da
+  // PRÓPRIA linha pendente — refundQueCobreALinha excluía o refund dela e a
+  // linha ficava tentar_depois para SEMPRE (só o cron concluía). O id
+  // próprio precisa sair do conjunto por linha (mesma regra do cron, que
+  // exclui a própria linha com .neq('id', ...)).
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-2b",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: "r2",
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r2", amount: "30.00", status: "processed" }],
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-2b");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r2");
+});
+
 Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA linha 'sistema' concluída; a MESMA notificação de novo -> zero inserções, zero RPC nova", async () => {
   const registro = {
     chamadasRpc: [] as any[],

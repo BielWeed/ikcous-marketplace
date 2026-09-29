@@ -530,7 +530,7 @@ Deno.test("E14b - Orders 201 refunded com refunds na resposta -> mp_refund_id é
     {
       tipo: "em_processamento",
       mp_refund_id: "REF01J67CQQH5904WDBVZEM1234D",
-      mp_status: "refunded",
+      mp_status: "processing",
     },
   );
 
