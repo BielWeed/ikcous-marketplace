@@ -166,7 +166,8 @@ jobs:
     steps:
       - name: Consulta somente leitura com resposta booleana
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_LOJA: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
           PROJETO: ${{ inputs.projeto }}
         run: |
           node --input-type=module -e '
@@ -179,9 +180,11 @@ jobs:
               console.log("::error::destino fora da lista fechada");
               process.exit(1);
             }
-            const token = (process.env.SUPABASE_ACCESS_TOKEN ?? "").trim();
-            if (!token) {
-              console.log("::error::SUPABASE_ACCESS_TOKEN ausente");
+            const token = (projeto === "savy"
+              ? process.env.SUPABASE_ACCESS_TOKEN_SAVY
+              : process.env.SUPABASE_ACCESS_TOKEN_LOJA) ?? "";
+            if (!token.trim()) {
+              console.log("::error::token do projeto selecionado ausente");
               process.exit(1);
             }
             // Só booleans saem do banco. Ciphertext, IV, chave pública,
@@ -196,13 +199,21 @@ jobs:
                 AND NULLIF(btrim(value::jsonb ->> $$webhook_cifrado$$), $$$$) IS NOT NULL
                 AND NULLIF(btrim(value::jsonb ->> $$webhook_iv$$), $$$$) IS NOT NULL) AS assinatura_cifrada_presente,
               EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
-                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$conectado$$) = $$true$$
-                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$ambiente$$) = $$producao$$) AS ultimo_teste_prod_conectado`;
+                AND value::jsonb -> $$ultimo_teste$$ IS NOT NULL
+                AND value::jsonb -> $$ultimo_teste$$ <> $$null$$::jsonb) AS ultimo_teste_registrado,
+              EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
+                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$conectado$$) = $$true$$) AS ultimo_teste_conectado,
+              EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
+                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$ambiente$$) = $$producao$$) AS ultimo_teste_ambiente_producao,
+              EXISTS(SELECT 1 FROM public.app_settings WHERE key = $$pagamentos_mercado_pago$$
+                AND value::jsonb -> $$ultimo_teste$$ IS NOT NULL
+                AND value::jsonb -> $$ultimo_teste$$ <> $$null$$::jsonb
+                AND jsonb_extract_path_text(value::jsonb, $$ultimo_teste$$, $$ambiente$$) IS NULL) AS ultimo_teste_ambiente_desconhecido`;
             let resposta;
             try {
               resposta = await fetch(`https://api.supabase.com/v1/projects/${refs[projeto]}/database/query/read-only`, {
                 method: "POST",
-                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+                headers: { Authorization: `Bearer ${token.trim()}`, "Content-Type": "application/json" },
                 body: JSON.stringify({ query }),
               });
             } catch {
@@ -219,7 +230,7 @@ jobs:
               console.log("::error::resposta booleana ilegível");
               process.exit(1);
             }
-            const campos = ["ficha_existe", "pix_ligado", "token_cifrado_presente", "assinatura_cifrada_presente", "ultimo_teste_prod_conectado"];
+            const campos = ["ficha_existe", "pix_ligado", "token_cifrado_presente", "assinatura_cifrada_presente", "ultimo_teste_registrado", "ultimo_teste_conectado", "ultimo_teste_ambiente_producao", "ultimo_teste_ambiente_desconhecido"];
             if (!Array.isArray(linhas) || linhas.length !== 1 || campos.some((campo) => typeof linhas[0]?.[campo] !== "boolean")) {
               console.log("::error::resposta booleana fora do contrato");
               process.exit(1);
