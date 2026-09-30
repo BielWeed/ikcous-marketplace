@@ -268,6 +268,33 @@ describe("MercadoPagoSection — interruptor honesto do PIX no app", () => {
     );
   });
 
+  it("X10 — ligar sem a Chave de notificações salva: o 409 da edge chega ao lojista e o interruptor não acende", async () => {
+    // 30/09/2026: `ligar_pix` recusa (409) quando a loja não salvou a chave
+    // de assinatura do webhook — o criar-pagamento recusaria o PIX no fim da
+    // compra. O recado escrito no servidor tem de aparecer como veio (é ele
+    // que diz ao lojista o que colar), e a tela não pode acender por conta.
+    const RECADO =
+      "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+    cenario.salvo = {
+      ...CONFIGURADO,
+      ultimo_teste: CONECTADO,
+      mascara_webhook: null,
+    };
+    cenario.erroLigar = Object.assign(new Error("falhou"), {
+      name: "FunctionsHttpError",
+      context: new Response(JSON.stringify({ erro: RECADO }), { status: 409 }),
+    });
+    raiz = await montarSecaoComChavesAbertas();
+
+    await clique(interruptorDoPix());
+
+    expect(interruptorDoPix().getAttribute("aria-checked")).toBe("false");
+    expect(toastError).toHaveBeenCalledWith(RECADO);
+    expect(document.body.textContent).not.toContain(
+      "A vitrine passa a refletir em até 1 minuto",
+    );
+  });
+
   it("X7 — o guia manda ligar o interruptor, não para no teste de conexão", () => {
     const ultimo = PASSOS_DO_GUIA[PASSOS_DO_GUIA.length - 1];
     expect(`${ultimo.titulo} ${ultimo.descricao}`).toContain(
