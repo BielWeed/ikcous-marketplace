@@ -6607,26 +6607,33 @@ Deno.test("revisão 30/09 (MENOR 2): PIX cancelado e a vaga já liberada pela no
   assertEquals(db.linha.gateway_payment_id, sentinela);
 });
 
-Deno.test("revisão de risco 30/09 (MENOR 4): PIX já MORTO no MP ainda gravado na vaga -> sem cancelar, a vaga passa direto para o sentinela", async () => {
+Deno.test("revisão de risco 30/09 (MENOR 4): PIX já MORTO no MP (expirado, recusado, cancelado) ainda gravado na vaga -> sem cancelar e sem alarme, a vaga passa direto para o sentinela", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
-  const { db, fn, cancelamentos } = cenarioPixCanceladoComVagaMudando(null, "expired");
-  const console_error = console.error;
-  const console_warn = console.warn;
-  console.error = () => {};
-  console.warn = () => {};
-  try {
-    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
-      supabase: db,
-      fetchImpl: fn,
-      alertarAdminCartaoOrfao: async () => {},
-    });
-    await r.json();
-  } finally {
-    console.error = console_error;
-    console.warn = console_warn;
+  for (const statusDoPix of ["expired", "failed", "canceled"]) {
+    const { db, fn, cancelamentos } = cenarioPixCanceladoComVagaMudando(null, statusDoPix);
+    const avisos: Array<Record<string, unknown>> = [];
+    const console_error = console.error;
+    const console_warn = console.warn;
+    console.error = () => {};
+    console.warn = () => {};
+    try {
+      const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase: db,
+        fetchImpl: fn,
+        alertarAdminCartaoOrfao: async (a) => {
+          avisos.push(a as Record<string, unknown>);
+        },
+      });
+      await r.json();
+    } finally {
+      console.error = console_error;
+      console.warn = console_warn;
+    }
+    assertEquals(cancelamentos.length, 0, statusDoPix);
+    assertEquals(String(db.linha.gateway_payment_id).startsWith(`verificando:${UUID}:c0:`), true, statusDoPix);
+    const titulos = avisos.map((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? ""));
+    assertEquals(titulos.some((t) => t.includes("PIX no mesmo pedido")), false, statusDoPix);
   }
-  assertEquals(cancelamentos.length, 0);
-  assertEquals(String(db.linha.gateway_payment_id).startsWith(`verificando:${UUID}:c0:`), true);
 });
 
 Deno.test("revisão de risco 30/09 (MENOR 4): consulta do PIX na vaga FALHA -> 409 como antes, mas AVISA o admin (nunca em silêncio)", async () => {
@@ -6779,4 +6786,106 @@ Deno.test("revisão 30/09 (MENOR 4): sentinela de OUTRA tentativa na vaga -> nun
   assertEquals(status, 409);
   assertEquals(db.linha.gateway_payment_id, outro);
   assertEquals(avisos.length, 1);
+});
+
+// Revisão de risco de 30/09/2026 (3ª rodada, MENOR 2): a fronteira da chave
+// do sentinela. Re-criação sobre o sentinela SÓ com a chave atual — no
+// formato novo (`:<ms>`) e no antigo (sem sufixo) —, e o `:` separa `c1` de
+// `c10`. Busca sem nenhuma order: nada se resolve por ela.
+Deno.test("revisão de risco 30/09: re-criação sobre o sentinela só com a chave ATUAL (formato novo e antigo; c1 ≠ c10)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const casos: Array<[string, number, string | null]> = [
+    [`verificando:${UUID}:c0`, 0, `${UUID}:c0`],
+    [`verificando:${UUID}:c0`, 1, null],
+    [`verificando:${UUID}:c3:1790000000000`, 3, `${UUID}:c3`],
+    [`verificando:${UUID}:c10:1790000000000`, 1, null],
+    [`verificando:${UUID}:c1:1790000000000`, 10, null],
+  ];
+  for (const [sentinela, tentativas, chaveEsperada] of casos) {
+    const nome = `${sentinela} com tentativas=${tentativas}`;
+    const db = bancoComEstado(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas, gateway_payment_id: sentinela }),
+    );
+    const chaves: string[] = [];
+    const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+      if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+        chaves.push((init.headers as Record<string, string>)["X-Idempotency-Key"]);
+        throw new TypeError("error sending request: connection reset");
+      }
+      if (url.includes("/v1/orders?")) return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+    };
+    const console_error = console.error;
+    const console_warn = console.warn;
+    console.error = () => {};
+    console.warn = () => {};
+    try {
+      const r = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+        supabase: db,
+        fetchImpl: fn,
+        alertarAdminCartaoOrfao: async () => {},
+      });
+      await r.json();
+    } finally {
+      console.error = console_error;
+      console.warn = console_warn;
+    }
+    assertEquals(chaves, chaveEsperada === null ? [] : [chaveEsperada], nome);
+    assertEquals(db.linha.gateway_payment_id, sentinela, nome);
+    assertEquals(db.linha.tentativas_de_pagamento, tentativas, nome);
+  }
+});
+
+// Revisão de risco de 30/09/2026 (3ª rodada, MENOR 1): sentinela de chave
+// ANTERIOR (`c0`, tentativa já em 2) e a busca devolve só a order MORTA de
+// uma tentativa POSTERIOR (a `c0` ambígua ainda não indexada). Liberar aqui
+// levaria a um POST com `c3` ao lado de uma `c0` que ainda pode aprovar.
+Deno.test("revisão de risco 30/09: busca com só uma order morta NUNCA libera sentinela de chave anterior (nenhum POST, vaga intacta)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const t0 = Date.now() - 10 * 60 * 1000;
+  const sentinela = `verificando:${UUID}:c0:${t0}`;
+  const db = bancoComEstado(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 2, gateway_payment_id: sentinela }),
+  );
+  const mortaPosterior = {
+    id: "ORDTST0000000000000000000004",
+    status: "failed",
+    status_detail: "failed",
+    external_reference: UUID,
+    total_amount: "100.00",
+    date_created: new Date(t0 + 5 * 60 * 1000).toISOString(),
+    transactions: { payments: [{ id: "PAY", payment_method: { id: "master", type: "credit_card" } }] },
+  };
+  const posts: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST") {
+      posts.push(url);
+      throw new Error(`nenhum POST esperado: ${url}`);
+    }
+    if (url.includes("/v1/orders?")) return new Response(JSON.stringify({ results: [mortaPosterior] }), { status: 200 });
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  let status = 0;
+  let corpo: Record<string, unknown> = {};
+  try {
+    const r = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async () => {},
+    });
+    status = r.status;
+    corpo = await r.json();
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(posts.length, 0);
+  assertEquals(status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(db.linha.tentativas_de_pagamento, 2);
 });

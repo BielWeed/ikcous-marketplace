@@ -1291,7 +1291,22 @@ async function handler(
         fetchImpl: deps.fetchImpl,
       });
       if (resolucao.ok && resolucao.order === null) {
-        sentinelaResolvidoParaLiberar = true;
+        // Revisão de risco de 30/09/2026 (MENOR 1 da 3ª rodada): um sentinela
+        // com a chave de uma tentativa ANTERIOR (`c<n>` com a tentativa atual
+        // já em `n+1`, ver IMPORTANTE 1 mais abaixo) nunca libera pela
+        // busca. O limite inferior dele é o instante da tentativa n, e a
+        // janela pode trazer só a order MORTA de uma tentativa POSTERIOR
+        // enquanto a `c<n>` ambígua ainda não foi indexada — liberar aqui
+        // levaria a um POST com chave nova e a duas capturas. Só a adoção
+        // (order viva/aprovada) ou `expires_at` resolvem esse sentinela.
+        if (sentinelaDaChave(idGatewayReconsulta, await chaveDeIdempotencia(pedido, "cartao"))) {
+          sentinelaResolvidoParaLiberar = true;
+        } else {
+          console.warn(
+            "criar-pagamento: busca mandaria liberar um sentinela de chave anterior — mantido até adoção ou expiração",
+            { orderId: pedido.id },
+          );
+        }
       } else if (resolucao.ok && resolucao.order !== null) {
         // Achado S3 (3ª revisão de risco, 26/09/2026): grava `metodo_online`/
         // `parcelas` JUNTO do id real — a partir daqui a vaga deixa de estar
