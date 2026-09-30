@@ -6342,3 +6342,550 @@ Deno.test("PIX 409 idempotency — busca devolve order PIX MORTA (expired): NÃO
 
   assertEquals(resposta.status, 502);
 });
+
+// --- Auditoria de 30/09/2026 do cartão (item 1) -----------------------------
+//
+// Cartão ambíguo (a resposta da criação se perde) enquanto OUTRA aba cria um
+// PIX e ocupa a vaga primeiro. Antes: o cartão (possivelmente capturado)
+// ficava sem registro, o PIX continuava vivo, nenhum aviso — e o "Tentar de
+// novo" cancelava o PIX e criava um SEGUNDO cartão. Agora: o PIX aberto é
+// cancelado, a vaga fica com o SENTINELA do cartão ambíguo, e a nova
+// tentativa resolve o sentinela (achando o cartão já capturado) em vez de
+// cobrar outro.
+Deno.test("auditoria item 1: cartão ambíguo + PIX concorrente na vaga -> cancela o PIX, ocupa com o sentinela, e o retry NÃO cria segundo cartão", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const orders: Array<Record<string, unknown>> = [];
+  const cancelamentos: string[] = [];
+  const idDe = (n: number) => `ORDTST${String(n).padStart(22, "0")}`;
+  const rota = async (url: string, init?: RequestInit): Promise<Response | null> => {
+    if (init?.method === "POST" && url.includes("/cancel")) {
+      cancelamentos.push(url);
+      const alvo = orders.find((o) => url.includes(String(o.id)));
+      if (alvo) alvo.status = "canceled";
+      return new Response(JSON.stringify({ ...(alvo ?? {}), status: "canceled", status_detail: "canceled" }), { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.includes("/v1/orders?")) {
+      return new Response(JSON.stringify({ results: orders }), { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.includes("/v1/orders/")) {
+      const alvo = orders.find((o) => url.endsWith(`/v1/orders/${o.id}`));
+      return alvo ? new Response(JSON.stringify(alvo), { status: 200 }) : new Response("{}", { status: 404 });
+    }
+    return null;
+  };
+  let respostaPix: Record<string, unknown> | null = null;
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const roteada = await rota(url, init);
+    if (roteada) return roteada;
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      const corpo = JSON.parse(String(init.body));
+      const tipo = corpo.transactions.payments[0].payment_method.type;
+      const pix = tipo === "bank_transfer";
+      const o: Record<string, unknown> = {
+        id: idDe(orders.length + 1),
+        status: pix ? "action_required" : "processed",
+        status_detail: pix ? "waiting_transfer" : "accredited",
+        external_reference: corpo.external_reference,
+        total_amount: corpo.total_amount,
+        date_created: new Date().toISOString(),
+        transactions: { payments: [{ id: "PAY", payment_method: { id: pix ? "pix" : "visa", type: tipo, qr_code: pix ? "QR" : undefined } }] },
+      };
+      orders.push(o);
+      if (!pix) {
+        // Enquanto o POST do cartão está pendurado, a outra aba pede PIX...
+        const r = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+          supabase: db,
+          fetchImpl: fn,
+        });
+        respostaPix = { status: r.status, ...(await r.json()) };
+        // ...e a resposta do cartão se perde (timeout).
+        throw new DOMException("abortado", "AbortError");
+      }
+      return new Response(JSON.stringify(o), { status: 201 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const avisos: unknown[] = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a);
+      },
+    });
+    await r.json();
+
+    // A outra aba chegou a gerar o PIX (a corrida é real)...
+    assertEquals((respostaPix as Record<string, unknown> | null)?.status, 200);
+    // ...mas ele foi CANCELADO no MP e a vaga passou para o sentinela.
+    assertEquals(cancelamentos.some((u) => u.includes(idDe(2))), true);
+    assertEquals(String(db.linha.gateway_payment_id).startsWith("verificando:"), true);
+    // Revisão de 30/09 (MENOR 3): o sentinela não herda o 'pix' do ocupante.
+    assertEquals(db.linha.metodo_online ?? null, null);
+    assertEquals(db.linha.parcelas ?? null, null);
+
+    // "Tentar de novo" com o cartão (token novo): resolve o sentinela pela
+    // busca, acha o cartão JÁ capturado e o adota — nunca cria outro.
+    const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: async (url: string, init?: RequestInit) => {
+        const roteada = await rota(url, init);
+        if (roteada) return roteada;
+        throw new Error(`o retry NÃO pode criar cobrança nova: ${init?.method} ${url}`);
+      },
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a);
+      },
+    });
+    const corpo2 = await r2.json();
+    assertEquals(orders.filter((o) => (o.transactions as any).payments[0].payment_method.type === "credit_card").length, 1);
+    assertEquals(db.linha.gateway_payment_id, idDe(1));
+    assertEquals(corpo2.statusPagamento, "pago");
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+});
+
+Deno.test("auditoria item 1: PIX concorrente JÁ PAGO na vaga -> não cancela nada, avisa o admin e responde como antes (409)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const pixPago = {
+    id: "ORDTST0000000000000000000009",
+    status: "processed",
+    status_detail: "accredited",
+    external_reference: UUID,
+    total_amount: "100.00",
+    transactions: { payments: [{ id: "PAY", payment_method: { id: "pix", type: "bank_transfer" } }] },
+  };
+  const cancelamentos: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      // O PIX de outra aba já ocupou (e foi pago) enquanto o cartão pendia.
+      db.linha.gateway_payment_id = pixPago.id;
+      throw new DOMException("abortado", "AbortError");
+    }
+    if (init?.method === "POST" && url.includes("/cancel")) {
+      cancelamentos.push(url);
+      return new Response("{}", { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.endsWith(`/v1/orders/${pixPago.id}`)) {
+      return new Response(JSON.stringify(pixPago), { status: 200 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const avisos: Array<Record<string, unknown>> = [];
+  const console_error = console.error;
+  console.error = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a as Record<string, unknown>);
+      },
+    });
+    assertEquals(r.status, 409);
+  } finally {
+    console.error = console_error;
+  }
+  assertEquals(cancelamentos.length, 0);
+  assertEquals(db.linha.gateway_payment_id, pixPago.id);
+  assertEquals(
+    avisos.some((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? "").includes("PIX no mesmo pedido")),
+    true,
+  );
+});
+
+// Revisão de 30/09/2026 (MENOR 2): o PIX é cancelado no MP, mas a vaga não
+// passa para o sentinela por comparação. Se a notificação do cancelamento
+// já liberou a vaga (NULL), ocupa a vaga livre; se outra cobrança ocupou,
+// avisa o admin (o cartão ambíguo ficou sem registro no pedido).
+function cenarioPixCanceladoComVagaMudando(vagaAposCancelar: string | null, statusDoPix = "action_required") {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const pixAberto = {
+    id: "ORDTST0000000000000000000008",
+    status: statusDoPix,
+    status_detail: statusDoPix === "action_required" ? "waiting_transfer" : statusDoPix,
+    external_reference: UUID,
+    total_amount: "100.00",
+    transactions: { payments: [{ id: "PAY", payment_method: { id: "pix", type: "bank_transfer" } }] },
+  };
+  const cancelamentos: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      db.linha.gateway_payment_id = pixAberto.id;
+      db.linha.metodo_online = "pix";
+      throw new DOMException("abortado", "AbortError");
+    }
+    if (init?.method === "POST" && url.includes("/cancel")) {
+      cancelamentos.push(url);
+      // A notificação do cancelamento chega ANTES da troca e mexe na vaga —
+      // liberar a vaga é `liberar_cobranca_do_pedido`, que SOMA a tentativa
+      // (a SQL real; o revisor de risco achou o teste sem isto).
+      if (vagaAposCancelar === null) {
+        db.linha.tentativas_de_pagamento = Number(db.linha.tentativas_de_pagamento ?? 0) + 1;
+      }
+      db.linha.gateway_payment_id = vagaAposCancelar;
+      return new Response(JSON.stringify({ ...pixAberto, status: "canceled", status_detail: "canceled" }), { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.endsWith(`/v1/orders/${pixAberto.id}`)) {
+      return new Response(JSON.stringify(pixAberto), { status: 200 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  return { db, fn, cancelamentos };
+}
+
+Deno.test("revisão 30/09 (MENOR 2): PIX cancelado e a vaga já liberada pela notificação -> ocupa a vaga LIVRE com o sentinela", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, fn } = cenarioPixCanceladoComVagaMudando(null);
+  const avisos: Array<Record<string, unknown>> = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a as Record<string, unknown>);
+      },
+    });
+    await r.json();
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(String(db.linha.gateway_payment_id).startsWith(`verificando:${UUID}:c0:`), true);
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
+  assertEquals(db.linha.metodo_online ?? null, null);
+  const titulos = avisos.map((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? ""));
+  assertEquals(titulos.some((t) => t.includes("sem registro")), false);
+
+  // Revisão de risco (IMPORTANTE 1): o sentinela tem a chave `c0`, mas a
+  // tentativa já é 1. "Tentar de novo" com a busca do MP fora do ar (ou ainda
+  // sem indexar) NÃO pode criar cobrança com `c1` — o MP não deduplicaria
+  // contra a `c0` ambígua, e as duas poderiam ser capturadas.
+  const posts: string[] = [];
+  const sentinela = db.linha.gateway_payment_id;
+  const console_warn2 = console.warn;
+  const console_error2 = console.error;
+  console.warn = () => {};
+  console.error = () => {};
+  let status = 0;
+  let corpo: Record<string, unknown> = {};
+  try {
+    const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: async (url: string, init?: RequestInit) => {
+        if (init?.method === "POST") {
+          posts.push(url);
+          throw new Error(`o retry NÃO pode chamar o MP para criar: ${url}`);
+        }
+        if (url.includes("/v1/orders?")) return new Response("{}", { status: 503 });
+        throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+      },
+      alertarAdminCartaoOrfao: async () => {},
+    });
+    status = r2.status;
+    corpo = await r2.json();
+  } finally {
+    console.warn = console_warn2;
+    console.error = console_error2;
+  }
+  assertEquals(posts.length, 0);
+  assertEquals(status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+});
+
+Deno.test("revisão de risco 30/09 (MENOR 4): PIX já MORTO no MP (expirado, recusado, cancelado) ainda gravado na vaga -> sem cancelar e sem alarme, a vaga passa direto para o sentinela", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  for (const statusDoPix of ["expired", "failed", "canceled"]) {
+    const { db, fn, cancelamentos } = cenarioPixCanceladoComVagaMudando(null, statusDoPix);
+    const avisos: Array<Record<string, unknown>> = [];
+    const console_error = console.error;
+    const console_warn = console.warn;
+    console.error = () => {};
+    console.warn = () => {};
+    try {
+      const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase: db,
+        fetchImpl: fn,
+        alertarAdminCartaoOrfao: async (a) => {
+          avisos.push(a as Record<string, unknown>);
+        },
+      });
+      await r.json();
+    } finally {
+      console.error = console_error;
+      console.warn = console_warn;
+    }
+    assertEquals(cancelamentos.length, 0, statusDoPix);
+    assertEquals(String(db.linha.gateway_payment_id).startsWith(`verificando:${UUID}:c0:`), true, statusDoPix);
+    const titulos = avisos.map((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? ""));
+    assertEquals(titulos.some((t) => t.includes("PIX no mesmo pedido")), false, statusDoPix);
+  }
+});
+
+Deno.test("revisão de risco 30/09 (MENOR 4): consulta do PIX na vaga FALHA -> 409 como antes, mas AVISA o admin (nunca em silêncio)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const idPix = "ORDTST0000000000000000000005";
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      db.linha.gateway_payment_id = idPix;
+      throw new DOMException("abortado", "AbortError");
+    }
+    if ((init?.method ?? "GET") === "GET" && url.endsWith(`/v1/orders/${idPix}`)) {
+      return new Response(JSON.stringify({ message: "internal_error" }), { status: 500 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const avisos: Array<Record<string, unknown>> = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a as Record<string, unknown>);
+      },
+    });
+    assertEquals(r.status, 409);
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(db.linha.gateway_payment_id, idPix);
+  const titulos = avisos.map((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? ""));
+  assertEquals(titulos.some((t) => t.includes("PIX no mesmo pedido")), true);
+});
+
+Deno.test("revisão 30/09 (MENOR 2): PIX cancelado e OUTRA cobrança ocupou a vaga -> 409 como antes, mas AVISA o admin", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, fn } = cenarioPixCanceladoComVagaMudando("ORDTST0000000000000000000007");
+  const avisos: Array<Record<string, unknown>> = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a as Record<string, unknown>);
+      },
+    });
+    assertEquals(r.status, 409);
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(db.linha.gateway_payment_id, "ORDTST0000000000000000000007");
+  const titulos = avisos.map((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? ""));
+  assertEquals(titulos.some((t) => t.includes("sem registro no pedido")), true);
+});
+
+// Revisão de 30/09/2026 (MENOR 4): enquanto o POST do cartão pende, outra
+// aba grava o SENTINELA desta MESMA tentativa (chave `<pedido>:c0`). O POST
+// volta aprovado: é a cobrança que o sentinela guarda — troca o sentinela
+// pelo id real e responde 200, sem o falso "Cobrança de cartão sem registro".
+function cenarioSentinelaNaVagaDuranteOPost(sentinelaGravadoPelaOutraAba: string) {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const aprovada = {
+    id: "ORDTST0000000000000000000006",
+    status: "processed",
+    status_detail: "accredited",
+    external_reference: UUID,
+    total_amount: "100.00",
+    transactions: { payments: [{ id: "PAY", payment_method: { id: "master", type: "credit_card", installments: 3 } }] },
+  };
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      db.linha.gateway_payment_id = sentinelaGravadoPelaOutraAba;
+      return new Response(JSON.stringify(aprovada), { status: 201 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.endsWith(`/v1/orders/${aprovada.id}`)) {
+      return new Response(JSON.stringify(aprovada), { status: 200 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  return { db, fn, aprovada };
+}
+
+Deno.test("revisão 30/09 (MENOR 4): POST aprovado com o sentinela DESTA tentativa na vaga -> adota o cartão (200), sem aviso de órfão", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, fn, aprovada } = cenarioSentinelaNaVagaDuranteOPost(`verificando:${UUID}:c0:1790000000000`);
+  const avisos: unknown[] = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  let status = 0;
+  let corpo: Record<string, unknown> = {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a);
+      },
+    });
+    status = r.status;
+    corpo = await r.json();
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(status, 200);
+  assertEquals(corpo.paymentId, aprovada.id);
+  assertEquals(db.linha.gateway_payment_id, aprovada.id);
+  assertEquals(db.linha.metodo_online, "credito");
+  assertEquals(db.linha.parcelas, 3);
+  assertEquals(avisos.length, 0);
+});
+
+Deno.test("revisão 30/09 (MENOR 4): sentinela de OUTRA tentativa na vaga -> nunca adota por cima (resposta terminal e aviso, como antes)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  // `c01` começa com `c0` — o prefixo exige o `:` logo depois da chave.
+  const outro = `verificando:${UUID}:c01:1790000000000`;
+  const { db, fn } = cenarioSentinelaNaVagaDuranteOPost(outro);
+  const avisos: unknown[] = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  let status = 0;
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a);
+      },
+    });
+    status = r.status;
+    await r.json();
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(status, 409);
+  assertEquals(db.linha.gateway_payment_id, outro);
+  assertEquals(avisos.length, 1);
+});
+
+// Revisão de risco de 30/09/2026 (3ª rodada, MENOR 2): a fronteira da chave
+// do sentinela. Re-criação sobre o sentinela SÓ com a chave atual — no
+// formato novo (`:<ms>`) e no antigo (sem sufixo) —, e o `:` separa `c1` de
+// `c10`. Busca sem nenhuma order: nada se resolve por ela.
+Deno.test("revisão de risco 30/09: re-criação sobre o sentinela só com a chave ATUAL (formato novo e antigo; c1 ≠ c10)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const casos: Array<[string, number, string | null]> = [
+    [`verificando:${UUID}:c0`, 0, `${UUID}:c0`],
+    [`verificando:${UUID}:c0`, 1, null],
+    [`verificando:${UUID}:c3:1790000000000`, 3, `${UUID}:c3`],
+    [`verificando:${UUID}:c10:1790000000000`, 1, null],
+    [`verificando:${UUID}:c1:1790000000000`, 10, null],
+  ];
+  for (const [sentinela, tentativas, chaveEsperada] of casos) {
+    const nome = `${sentinela} com tentativas=${tentativas}`;
+    const db = bancoComEstado(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas, gateway_payment_id: sentinela }),
+    );
+    const chaves: string[] = [];
+    const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+      if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+        chaves.push((init.headers as Record<string, string>)["X-Idempotency-Key"]);
+        throw new TypeError("error sending request: connection reset");
+      }
+      if (url.includes("/v1/orders?")) return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+    };
+    const console_error = console.error;
+    const console_warn = console.warn;
+    console.error = () => {};
+    console.warn = () => {};
+    try {
+      const r = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+        supabase: db,
+        fetchImpl: fn,
+        alertarAdminCartaoOrfao: async () => {},
+      });
+      await r.json();
+    } finally {
+      console.error = console_error;
+      console.warn = console_warn;
+    }
+    assertEquals(chaves, chaveEsperada === null ? [] : [chaveEsperada], nome);
+    assertEquals(db.linha.gateway_payment_id, sentinela, nome);
+    assertEquals(db.linha.tentativas_de_pagamento, tentativas, nome);
+  }
+});
+
+// Revisão de risco de 30/09/2026 (3ª rodada, MENOR 1): sentinela de chave
+// ANTERIOR (`c0`, tentativa já em 2) e a busca devolve só a order MORTA de
+// uma tentativa POSTERIOR (a `c0` ambígua ainda não indexada). Liberar aqui
+// levaria a um POST com `c3` ao lado de uma `c0` que ainda pode aprovar.
+Deno.test("revisão de risco 30/09: busca com só uma order morta NUNCA libera sentinela de chave anterior (nenhum POST, vaga intacta)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const t0 = Date.now() - 10 * 60 * 1000;
+  const sentinela = `verificando:${UUID}:c0:${t0}`;
+  const db = bancoComEstado(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 2, gateway_payment_id: sentinela }),
+  );
+  const mortaPosterior = {
+    id: "ORDTST0000000000000000000004",
+    status: "failed",
+    status_detail: "failed",
+    external_reference: UUID,
+    total_amount: "100.00",
+    date_created: new Date(t0 + 5 * 60 * 1000).toISOString(),
+    transactions: { payments: [{ id: "PAY", payment_method: { id: "master", type: "credit_card" } }] },
+  };
+  const posts: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST") {
+      posts.push(url);
+      throw new Error(`nenhum POST esperado: ${url}`);
+    }
+    if (url.includes("/v1/orders?")) return new Response(JSON.stringify({ results: [mortaPosterior] }), { status: 200 });
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  let status = 0;
+  let corpo: Record<string, unknown> = {};
+  try {
+    const r = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async () => {},
+    });
+    status = r.status;
+    corpo = await r.json();
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+  assertEquals(posts.length, 0);
+  assertEquals(status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(db.linha.tentativas_de_pagamento, 2);
+});
