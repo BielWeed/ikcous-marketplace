@@ -2456,6 +2456,36 @@ Deno.test("handler: cartão em pedido CANCELADO pelo cliente (aguardando + cance
   assertEquals(chamadas.length, 0);
 });
 
+Deno.test("handler: cartão em pedido que o lojista ADIANTOU ('processing') continua pagável — só 'cancelled' recusa (IMPORTANTE B)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, status: "processing" });
+  const chamadas: ChamadaMP[] = [];
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at } }),
+    fetchImpl: fetchEmSequencia([{ status: 201, corpo: orderCartao() }], chamadas),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 1);
+});
+
+Deno.test("handler: UPDATE perdido mas a MESMA cobrança já gravada (adoção do webhook) responde 200, não erro (MENOR D)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const supabase = clienteFalso({
+    pedido,
+    gravado: null,
+    releitura: { payment_status: "aguardando", gateway_payment_id: "ORD01CARTAO", expires_at: pedido.expires_at },
+  });
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: fetchEmSequencia([{ status: 201, corpo: orderCartao() }], []),
+  });
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, "ORD01CARTAO");
+});
+
 Deno.test("handler: cobrança recusada com status_detail DESCONHECIDO na raiz (failed:rejected_by_issuer) ainda é substituída (IMPORTANTE 2)", async () => {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD01RECUSADA" });

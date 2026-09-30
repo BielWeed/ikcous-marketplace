@@ -65,6 +65,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
   avaliarAssinatura,
+  cobrancaMorta,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
@@ -1489,41 +1490,77 @@ async function handler(
   // revisão do cartão). Uma cobrança pode ser PAGA sem nunca ter sido
   // gravada no pedido: o cartão cobrado cuja resposta não chegou à
   // criar-pagamento (timeout, 5xx) ou cujo UPDATE falhou. Sem isto, a RPC
-  // devolve 'divergente' (o pedido não tem cobrança com que comparar), o MP
-  // recebe 200 e não reenvia, e a reconciliação nunca a enxerga (ela parte
-  // de `gateway_payment_id`) — dinheiro sem registro.
+  // devolve 'divergente', o MP recebe 200 e não reenvia, e a reconciliação
+  // nunca a enxerga (ela parte de `gateway_payment_id`) — dinheiro sem
+  // registro.
   //
-  // Só adota quando o pedido NÃO TEM cobrança nenhuma (`IS NULL`, no WHERE
-  // do UPDATE — nunca troca a cobrança de outro) e só pela rota `order`,
-  // com o status 'pago' e o pedido lidos da RESPOSTA AUTENTICADA do MP (o
-  // `external_reference` é a invariante nº 1 deste arquivo) e o valor já
-  // conferido logo acima. Depois disso, a RPC decide como sempre — com a
-  // guarda de identidade valendo, porque o id agora é o do pedido.
-  if (
-    rota === "order" &&
-    statusMapeado === "pago" &&
-    linhaDoPedido &&
-    (linhaDoPedido as Record<string, unknown>).gateway_payment_id === null
-  ) {
-    const { data: adotado, error: erroAdocao } = await supabase
-      .from("marketplace_orders")
-      .update({ gateway_payment_id: idParaRpc, updated_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .is("gateway_payment_id", null)
-      .select("id")
-      .maybeSingle();
-    if (erroAdocao) {
-      console.error(
-        "webhook-mercadopago: falha ao adotar cobrança paga sem registro — evento mantido na fila do MP",
-        { orderId, paymentId: idParaRpc },
-        erroAdocao,
-      );
-      return json({ error: "Erro ao registrar a cobrança." }, 500);
+  // Adota em DOIS casos, e só nesses — nunca troca uma cobrança viva:
+  //   1. o pedido não tem cobrança nenhuma (`IS NULL`);
+  //   2. a cobrança gravada é outra e está MORTA no MP (recusada, cancelada
+  //      ou vencida — `cobrancaMorta`, consultada agora pelo id gravado).
+  //      É o caso da nova tentativa depois de uma recusa (IMPORTANTE A da
+  //      2ª rodada da revisão): o pedido guarda a order recusada, não NULL.
+  // O WHERE exige a cobrança exata que foi examinada (`IS NULL` ou `= id`),
+  // então uma troca concorrente não é sobrescrita. Só pela rota `order`,
+  // com status 'pago', pedido e valor lidos da RESPOSTA AUTENTICADA do MP
+  // (invariante nº 1 deste arquivo; valor conferido logo acima). Depois, a
+  // RPC decide como sempre, com a guarda de identidade valendo.
+  //
+  // A rota `payment` (tópico clássico) NÃO adota: o id que ela recebe é o
+  // do pagamento clássico, não o da order que a criar-pagamento grava — um
+  // cartão cobrado sem registro por essa rota continua 'divergente' e cai
+  // no console.error de baixo (MENOR E da revisão; inscrever o painel do MP
+  // no tópico `order` resolve).
+  const gravadoNoPedido = (linhaDoPedido as Record<string, unknown> | null)?.gateway_payment_id;
+  if (rota === "order" && statusMapeado === "pago" && linhaDoPedido) {
+    // `undefined` = não adotar; `null` = adotar sobre pedido sem cobrança;
+    // string = adotar sobre ESTA cobrança morta.
+    let cobrancaSubstituivel: string | null | undefined;
+    if (gravadoNoPedido === null) {
+      cobrancaSubstituivel = null;
+    } else if (
+      typeof gravadoNoPedido === "string" &&
+      gravadoNoPedido !== idParaRpc &&
+      !idEhClassico(gravadoNoPedido)
+    ) {
+      const gravada = await consultarOrder({
+        token: Deno.env.get("MP_ACCESS_TOKEN") ?? "",
+        orderId: gravadoNoPedido,
+        fetchImpl: deps.fetchImpl,
+      });
+      if (!gravada.ok) {
+        console.error(
+          "webhook-mercadopago: não consegui consultar a cobrança gravada antes de adotar — evento mantido na fila do MP",
+          { orderId, gravadoNoPedido, paymentId: idParaRpc, status: gravada.status },
+        );
+        return json({ error: "Erro ao consultar a cobrança gravada." }, 500);
+      }
+      if (cobrancaMorta(gravada.order)) cobrancaSubstituivel = gravadoNoPedido;
     }
-    console.warn(
-      "webhook-mercadopago: cobrança PAGA sem registro no pedido — adotada antes de confirmar",
-      { orderId, paymentId: idParaRpc, adotada: Boolean(adotado) },
-    );
+
+    if (cobrancaSubstituivel !== undefined) {
+      const base = supabase
+        .from("marketplace_orders")
+        .update({ gateway_payment_id: idParaRpc, updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+      const filtrado =
+        cobrancaSubstituivel === null
+          ? base.is("gateway_payment_id", null)
+          : base.eq("gateway_payment_id", cobrancaSubstituivel);
+      const { data: adotado, error: erroAdocao } = await filtrado.select("id").maybeSingle();
+      if (erroAdocao) {
+        console.error(
+          "webhook-mercadopago: falha ao adotar cobrança paga sem registro — evento mantido na fila do MP",
+          { orderId, paymentId: idParaRpc },
+          erroAdocao,
+        );
+        return json({ error: "Erro ao registrar a cobrança." }, 500);
+      }
+      console.warn(
+        "webhook-mercadopago: cobrança PAGA sem registro no pedido — adotada antes de confirmar",
+        { orderId, paymentId: idParaRpc, substituida: cobrancaSubstituivel, adotada: Boolean(adotado) },
+      );
+    }
   }
 
   let resultado: string;

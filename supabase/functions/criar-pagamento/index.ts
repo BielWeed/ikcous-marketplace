@@ -473,7 +473,10 @@ async function handler(
     // 'aguardando' + 'cancelled', com o estoque já de volta, e `podeCobrar`
     // não olha `status`. Com PIX isso gerava só um QR; com cartão seria
     // débito na hora num pedido morto. Definitivo para este pedido.
-    if (pedido.status !== "pending") {
+    // `=== 'cancelled'`, NUNCA `!== 'pending'` (IMPORTANTE B da 2ª rodada):
+    // o lojista pode adiantar o pedido para 'processing' dentro dos 30 min
+    // (20260807000000:100-102) — esse pedido continua pagável.
+    if (pedido.status === "cancelled") {
       return json({ error: "Este pedido foi cancelado. Faça um pedido novo.", terminal: true }, 409);
     }
     // Ver MARGEM_MINIMA_CARTAO_MS. `terminal`: em menos de um minuto o
@@ -786,7 +789,15 @@ async function handler(
         "id",
       );
       if (erroRecusa || !gravadoRecusa) {
-        console.warn("criar-pagamento: recusa de cartão não gravada", idRecusada, erroRecusa);
+        // error, não warn (IMPORTANTE C da 2ª rodada): sem a recusa gravada,
+        // a próxima tentativa deste pedido — de cartão OU de PIX — reusa a
+        // mesma chave de idempotência e o MP barra, até o prazo acabar.
+        console.error(
+          "criar-pagamento: recusa de cartão NÃO gravada — a próxima tentativa deste pedido vai colidir na mesma chave",
+          idRecusada,
+          pedido.id,
+          erroRecusa,
+        );
       }
     }
     return json(
@@ -1135,9 +1146,28 @@ async function handler(
     // prazo" com o prazo intacto. Reler o estado real distingue os dois.
     const { data: atual } = await supabase
       .from("marketplace_orders")
-      .select("payment_status, gateway_payment_id")
+      .select("payment_status, gateway_payment_id, expires_at")
       .eq("id", pedido.id)
       .maybeSingle();
+
+    if (atual?.gateway_payment_id === idGateway) {
+      // A MESMA cobrança já está gravada — quem gravou foi o webhook
+      // (adoção da cobrança paga sem registro) ou uma requisição gêmea que
+      // recebeu o replay do MP pela mesma chave. Não é falha: responder
+      // erro aqui mostraria "Cancelar pedido" a um cliente que acabou de
+      // pagar (MENOR D da 2ª rodada).
+      return json(
+        {
+          paymentId: idGateway,
+          statusPagamento: statusCru,
+          expiraEm: atual.expires_at ?? pedido.expires_at,
+          qrCode,
+          qrCodeBase64,
+          ticketUrl,
+        },
+        200,
+      );
+    }
 
     if (atual?.payment_status === "expirado") {
       if (ehCartao) {

@@ -91,6 +91,13 @@ confirmação quando o webhook grava 'pago'.
   tela de aprovado; texto da análise; log do 402 sem dados do pagador; comentários sobre
   negação por RLS.
 
+- **2ª rodada:** a adoção do webhook cobre também a nova tentativa depois de uma recusa
+  (cobrança gravada MORTA no MP é substituída); só `status = 'cancelled'` recusa cartão
+  (pedido adiantado pelo lojista continua pagável); recusa não gravada vira `console.error`;
+  a mesma cobrança já gravada por outro caminho responde 200. **Limite conhecido:** a rota
+  clássica `payment` do webhook não adota — o painel do MP precisa estar inscrito no tópico
+  `order`.
+
 ## Publicação (sessão local) — a ORDEM importa
 
 1. Aplicar `20261160000000` e `20261160000100` (db-apply, com a verificação do mapa).
@@ -104,8 +111,10 @@ Com a function nova e a RPC velha, a primeira recusa de cartão ainda cancelaria
 
 Esta sessão não alcança a API do MP; os testes usam respostas escritas a partir da doc.
 
-- Corpo do **402** de cartão recusado: a order vem em `data` ou na raiz, com `id` `ORD…`?
-  Sem id, a próxima tentativa do mesmo pedido colide na chave (fica só o log).
+- **CONDIÇÃO DE MERGE** — corpo do **402** de cartão recusado: a order vem em `data` ou na
+  raiz, com `id` `ORD…`? Sem id, a próxima tentativa do mesmo pedido — de cartão **e** de PIX —
+  colide na mesma chave até o prazo acabar. Se o id não vier, é preciso outro jeito de marcar
+  a recusa no pedido antes de juntar.
 - **GET** de uma order recusada: `status` da raiz é `failed`?
 - Chave de idempotência **igual com corpo diferente** devolve 409?
 - Payment Brick: `selectedPaymentMethod` (`credit_card`/`debit_card`/`bank_transfer`),

@@ -387,23 +387,24 @@ function clienteFalso(opts: {
           return {
             eq(c1: string, v1: unknown) {
               filtros.push([c1, v1]);
-              return {
-                is(c2: string, v2: unknown) {
-                  filtros.push([c2, v2]);
-                  return {
-                    select() {
-                      return {
-                        maybeSingle: async () => {
-                          (opts.registro as any)?.updatesPedido?.push({ valores, filtros });
-                          const casa = (opts.pedido as any)?.gateway_payment_id === null;
-                          if (casa && opts.pedido) (opts.pedido as any).gateway_payment_id = valores.gateway_payment_id;
-                          return { data: casa ? { id: v1 } : null, error: null };
-                        },
-                      };
-                    },
-                  };
-                },
+              // `.is(col, null)` (pedido sem cobrança) ou `.eq(col, id)`
+              // (cobrança morta sendo substituída) — espelham o WHERE real.
+              const segundo = (c2: string, v2: unknown) => {
+                filtros.push([c2, v2]);
+                return {
+                  select() {
+                    return {
+                      maybeSingle: async () => {
+                        (opts.registro as any)?.updatesPedido?.push({ valores, filtros });
+                        const casa = (opts.pedido as any)?.gateway_payment_id === v2;
+                        if (casa && opts.pedido) (opts.pedido as any).gateway_payment_id = valores.gateway_payment_id;
+                        return { data: casa ? { id: v1 } : null, error: null };
+                      },
+                    };
+                  },
+                };
               };
+              return { is: segundo, eq: segundo };
             },
           };
         },
@@ -1579,6 +1580,57 @@ Deno.test("cartão (plano 2026-09-30): cobrança PAGA sem registro no pedido (ga
   assertEquals(registro.updatesPedido[0].filtros, [["id", UUID_PEDIDO], ["gateway_payment_id", null]]);
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+});
+
+Deno.test("cartão (plano 2026-09-30): cobrança PAGA com a cobrança gravada MORTA (nova tentativa depois da recusa) é adotada no lugar da morta", async () => {
+  const registro: any = { chamadasRpc: [], updatesPedido: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, gateway_payment_id: "ORD01RECUSADA" };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const urls: string[] = [];
+  const fetchImpl = async (url: string) => {
+    urls.push(String(url));
+    const corpo = String(url).endsWith("/ORD01RECUSADA")
+      ? { id: "ORD01RECUSADA", external_reference: UUID_PEDIDO, status: "failed", status_detail: "failed", total_amount: "149.90" }
+      : { id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited", total_amount: "149.90" };
+    return new Response(JSON.stringify(corpo), { status: 200 });
+  };
+  const console_warn = console.warn;
+  console.warn = () => {};
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush: async () => {} });
+    assertEquals(resposta.status, 200);
+  } finally {
+    console.warn = console_warn;
+  }
+  assertEquals(urls.some((u) => u.endsWith("/ORD01RECUSADA")), true);
+  assertEquals(registro.updatesPedido.length, 1);
+  assertEquals(registro.updatesPedido[0].filtros, [["id", UUID_PEDIDO], ["gateway_payment_id", "ORD01RECUSADA"]]);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+});
+
+Deno.test("cartão (plano 2026-09-30): falha ao consultar a cobrança gravada antes de adotar devolve 500 (evento fica na fila do MP) e não chama a RPC", async () => {
+  const registro: any = { chamadasRpc: [], updatesPedido: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, gateway_payment_id: "ORD01RECUSADA" };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = async (url: string) =>
+    String(url).endsWith("/ORD01RECUSADA")
+      ? new Response("{}", { status: 500 })
+      : new Response(
+          JSON.stringify({ id: ID_ORDER_TESTE, external_reference: UUID_PEDIDO, status: "processed", status_detail: "accredited", total_amount: "149.90" }),
+          { status: 200 },
+        );
+  const console_error = console.error;
+  console.error = () => {};
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush: async () => {} });
+    assertEquals(resposta.status, 500);
+  } finally {
+    console.error = console_error;
+  }
+  assertEquals(registro.updatesPedido.length, 0);
+  assertEquals(registro.chamadasRpc.length, 0);
 });
 
 Deno.test("cartão (plano 2026-09-30): pedido COM cobrança gravada nunca tem a cobrança trocada pela adoção; status não-pago nunca adota", async () => {
