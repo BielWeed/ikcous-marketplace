@@ -16,10 +16,13 @@ import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const writeText = vi.fn(async () => undefined);
+const { leitura } = vi.hoisted(() => ({ leitura: { valor: null as unknown } }));
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    functions: { invoke: vi.fn(async () => ({ data: null, error: null })) },
+    functions: {
+      invoke: vi.fn(async () => ({ data: leitura.valor, error: null })),
+    },
   },
 }));
 
@@ -83,12 +86,42 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    leitura.valor = null;
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
       configurable: true,
     });
+  });
+
+  it("G5b — Pix ligado sem assinatura exibe a recusa real ao lojista", async () => {
+    leitura.valor = {
+      configurado: true,
+      public_key: "APP_USR-publica-falsa-de-teste",
+      mascara_token: "••••9999",
+      mascara_webhook: null,
+      ultimo_teste: { conectado: true, quando: new Date().toISOString() },
+      pix_ligado: true,
+      public_key_na_loja: true,
+    };
+    raiz = createRoot(hospedeiro);
+    await act(async () => {
+      raiz.render(<MercadoPagoSection />);
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    const chaves = botaoPorTexto("Suas chaves");
+    await act(async () => {
+      chaves.click();
+    });
+    expect(document.body.textContent).toContain(
+      "Sem a assinatura da sua loja, o servidor recusa a cobrança por Pix",
+    );
+    expect(document.body.textContent).toContain(
+      "a chave global do app não substitui a sua",
+    );
   });
 
   afterEach(async () => {
@@ -142,20 +175,16 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     expect(botaoPorTexto("Copiado!")).toBeTruthy();
   });
 
-  // Peça 27 (15/09): o campo "Chave de notificações (opcional)" da tela não
-  // era ensinado em lugar nenhum. O prompt agora pede ao agente o passo a
-  // passo leigo de onde copiar essa chave, e o guia diz que ela é OPCIONAL —
-  // o Pix funciona sem ela (o teste real do dono foi feito sem ela).
-  it("G4 e G5 — chave de notificações opcional: o prompt ensina onde copiar e o guia diz que pode ficar para depois", async () => {
-    // G4 — o PROMPT copiável menciona a chave de notificações como opcional
-    // e pede ao agente o caminho exato (área de Webhooks) para copiá-la.
+  // A política atual do Pix exige a assinatura da própria loja. O guia
+  // precisa dizer isso antes de sugerir que o interruptor abra pagamentos.
+  it("G4 e G5 — chave própria obrigatória para Pix no prompt, guia e formulário", async () => {
     const promptMinusculo = PROMPT_PARA_AGENTE_MP.toLowerCase();
     expect(promptMinusculo).toContain("chave de notificações");
-    expect(promptMinusculo).toContain("opcional");
+    expect(promptMinusculo).toContain("obrigatória para o pix");
     expect(promptMinusculo).toContain("webhook");
-    expect(promptMinusculo).toContain("pix já funciona sem ela");
+    expect(promptMinusculo).toContain("testar conexão não valida a assinatura");
+    expect(promptMinusculo).not.toContain("pix já funciona sem ela");
 
-    // G5 — o guia NA TELA diz o mesmo: pode deixar vazio e colar depois.
     raiz = createRoot(hospedeiro);
     await act(async () => {
       raiz.render(<MercadoPagoSection />);
@@ -164,17 +193,24 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       await new Promise((r) => setTimeout(r, 10));
     });
     await abrirGuia();
-    const tela = document.body.textContent ?? "";
-    expect(tela).toContain("Chave de notificações (opcional)");
-    expect(tela).toContain("pode deixar vazio e colar depois");
-    expect(tela).toContain("já funciona sem ela");
+    expect(document.body.textContent).toContain("Assinatura secreta");
+    const chaves = botaoPorTexto("Suas chaves");
+    await act(async () => {
+      chaves.click();
+    });
+    expect(document.body.textContent).toContain(
+      "Chave de notificações (obrigatória para Pix)",
+    );
+    expect(document.body.textContent).toContain(
+      "Sem a assinatura da sua loja, o servidor recusa a cobrança por Pix",
+    );
   });
 
   // Peça 28 (17/09): o dono pediu um prompt que diga ao agente do MP com
   // QUEM ele fala (lojista leigo), o que precisa sair da conversa, como
-  // guiar e tirar dúvidas, e que ensine a chave de notificações no final,
-  // como opcional — com o endereço REAL de notificações desta loja.
-  it("G6 — o prompt é um roteiro para o agente: quem fala, o que sair, como guiar, a chave opcional no fim, segurança", () => {
+  // guiar e tirar dúvidas, e que ensine a assinatura no final das chaves,
+  // antes de ligar o Pix — com o endereço REAL de notificações desta loja.
+  it("G6 — o prompt guia as três chaves e não declara o Pix pronto sem assinatura", () => {
     const url = "https://exemplo.supabase.co/functions/v1/webhook-mercadopago";
     const comUrl = montarPromptParaAgenteMp({ urlDeNotificacoes: url });
     const semUrl = montarPromptParaAgenteMp({ urlDeNotificacoes: null });
@@ -183,7 +219,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       // quem fala e o que o app usa
       expect(p).toContain("não sou programador");
       expect(p).toContain("checkout api");
-      // o que precisa sair: as duas de produção, e a terceira opcional no fim
+      // o que precisa sair: as duas credenciais e a assinatura da loja
       expect(p).toContain("public key de produção");
       expect(p).toContain("access token de produção");
       expect(p).toContain("credenciais de teste não me servem agora");
@@ -193,11 +229,14 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       expect(p).toContain("um passo por vez");
       expect(p).toContain("palavra técnica");
       expect(p).toContain("pergunta no meio");
-      // a chave de notificações fica para o FINAL e é opcional
+      // a assinatura vem após o Access Token, mas antes de ligar o Pix
       const iChaves = p.indexOf("access token de produção");
-      const iNoFinal = p.indexOf("no final: a chave de notificações");
+      const iNoFinal = p.indexOf("no final: configure a chave de notificações");
       expect(iNoFinal).toBeGreaterThan(iChaves);
-      expect(p).toContain("pix já funciona sem ela");
+      expect(p).toContain(
+        "sem a assinatura da minha loja, o pix não pode ser cobrado",
+      );
+      expect(p).not.toContain("pix já funciona sem ela");
       // segurança
       expect(p).toContain("secretas");
       expect(p).toContain("nem colar aqui nesta conversa");

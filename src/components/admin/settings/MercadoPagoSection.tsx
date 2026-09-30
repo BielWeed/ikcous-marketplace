@@ -400,7 +400,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       }
       haptic.success();
       toast.success("Chaves do Mercado Pago salvas!", {
-        description: 'Agora toque em "Testar conexão" para conferir.',
+        description:
+          "Teste a conexão do Access Token e valide uma notificação assinada antes de receber Pix.",
       });
     } catch (err) {
       haptic.error();
@@ -737,7 +738,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               htmlFor="mp-webhook-secret"
               className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
             >
-              <span>Chave de notificações (opcional)</span>
+              <span>Chave de notificações (obrigatória para Pix)</span>
               {config.mascara_webhook && (
                 <span className="font-mono normal-case tracking-normal text-zinc-400">
                   salva: {config.mascara_webhook}
@@ -753,11 +754,18 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               placeholder={
                 config.mascara_webhook
                   ? "Deixe vazio para manter a salva"
-                  : "Opcional: a chave de validação de notificações do MP"
+                  : "Cole a Assinatura secreta dos Webhooks da sua loja"
               }
               autoComplete="new-password"
               className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
             />
+            {!config.mascara_webhook && (
+              <p className="text-[11px] leading-relaxed text-amber-300">
+                Sem a assinatura da sua loja, o servidor recusa a cobrança por
+                Pix mesmo com o interruptor ligado. Testar conexão não valida
+                notificações; a chave global do app não substitui a sua.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -811,8 +819,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   Receber PIX no app
                 </span>
                 <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-400">
-                  Ligado, o cliente escolhe PIX no fim da compra e paga dentro
-                  do seu app, com as suas chaves.
+                  Ligado, o cliente pode escolher Pix no fim da compra. A
+                  cobrança exige também a assinatura de Webhooks da sua loja.
                 </span>
               </span>
               <Switch
