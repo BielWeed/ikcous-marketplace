@@ -10,6 +10,7 @@
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  chaveDeIdempotencia,
   descricaoDoPedido,
   donoConfere,
   emailDoToken,
@@ -66,6 +67,13 @@ function montarToken(sub: string | null): string {
 function clienteFalso(opts: {
   pedido: Record<string, unknown> | null;
   gravado: Record<string, unknown> | null;
+  // Plano 2026-09-30 (cartão): resultados de UPDATE em SEQUÊNCIA — o 1º
+  // UPDATE devolve gravados[0], o 2º gravados[1]... Esgotada a lista (ou
+  // ausente), cai em `gravado`, que é o que todo teste anterior usa.
+  gravados?: Array<Record<string, unknown> | null>;
+  // Linha `app_settings` 'pagamentos_cartao': `undefined` = linha ausente.
+  configCartao?: string;
+  erroConfig?: Record<string, unknown> | null;
   releitura?: Record<string, unknown> | null;
   // Simula falha de LEITURA (statement timeout, pool esgotado, fetch
   // caindo) na PRIMEIRA select — a releitura pós-UPDATE-falho nunca usa
@@ -86,11 +94,35 @@ function clienteFalso(opts: {
     chamadasUpdate: number;
     filtrosUpdate?: Array<[string, unknown]>;
     valoresUpdate?: Record<string, unknown>;
+    // Todos os UPDATEs, na ordem — `filtrosUpdate`/`valoresUpdate` acima
+    // guardam só o ÚLTIMO, como sempre guardaram.
+    updates?: Array<{ valores: Record<string, unknown>; filtros: Array<[string, unknown]> }>;
+    leuConfig?: number;
   };
 }) {
   let chamadasSelect = 0;
+  const filaGravados = [...(opts.gravados ?? [])];
   return {
     from(_tabela: string) {
+      if (_tabela === "app_settings") {
+        return {
+          select(_cols: string) {
+            return {
+              eq(_col: string, _val: unknown) {
+                return {
+                  maybeSingle: async () => {
+                    if (opts.registro) opts.registro.leuConfig = (opts.registro.leuConfig ?? 0) + 1;
+                    return {
+                      data: opts.configCartao === undefined ? null : { value: opts.configCartao },
+                      error: opts.erroConfig ?? null,
+                    };
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
       return {
         select(_cols: string) {
           chamadasSelect++;
@@ -117,13 +149,32 @@ function clienteFalso(opts: {
           };
         },
         update(_valores: Record<string, unknown>) {
+          const filtros: Array<[string, unknown]> = [];
           if (opts.registro) {
             opts.registro.chamadasUpdate++;
-            opts.registro.filtrosUpdate = [];
+            opts.registro.filtrosUpdate = filtros;
             opts.registro.valoresUpdate = _valores;
+            opts.registro.updates?.push({ valores: _valores, filtros });
           }
           const registrarFiltro = (coluna: string, valor: unknown) => {
-            opts.registro?.filtrosUpdate?.push([coluna, valor]);
+            filtros.push([coluna, valor]);
+          };
+          const resultado = filaGravados.length > 0 ? filaGravados.shift() ?? null : opts.gravado;
+          // O terceiro filtro é `.is(col, null)` na primeira cobrança e
+          // `.eq(col, id)` na substituição de uma cobrança morta (plano
+          // 2026-09-30) — os dois levam ao mesmo `.select().maybeSingle()`.
+          const terceiro = (c3: string, v3: unknown) => {
+            registrarFiltro(c3, v3);
+            return {
+              select(_cols: string) {
+                return {
+                  maybeSingle: async () => ({
+                    data: projetarColunas(resultado, _cols),
+                    error: null,
+                  }),
+                };
+              },
+            };
           };
           return {
             eq(c1: string, v1: unknown) {
@@ -131,21 +182,7 @@ function clienteFalso(opts: {
               return {
                 eq(c2: string, v2: unknown) {
                   registrarFiltro(c2, v2);
-                  return {
-                    is(c3: string, v3: unknown) {
-                      registrarFiltro(c3, v3);
-                      return {
-                        select(_cols: string) {
-                          return {
-                            maybeSingle: async () => ({
-                              data: projetarColunas(opts.gravado, _cols),
-                              error: null,
-                            }),
-                          };
-                        },
-                      };
-                    },
-                  };
+                  return { is: terceiro, eq: terceiro };
                 },
               };
             },
@@ -1849,37 +1886,505 @@ Deno.test("handler: pedido expirado com cobrança existente recusa, não reconsu
   assertEquals(registro.chamadasUpdate, 0);
 });
 
-// --- handler: Task 7 da Fase 3 — cartão fica recusado desde a edge function
+// --- handler: CARTÃO (plano docs/superpowers/plans/2026-09-30-cartao-de-credito-e-debito.md)
+//
+// Até 30/09/2026 esta seção provava o CONTRÁRIO: cartão recusado com 400
+// antes de tocar o MP, porque depois da primeira recusa o pedido ficava
+// impagável. Os testes abaixo provam as três causas fechadas: cobrança
+// morta é SUBSTITUÍDA, a chave de idempotência MUDA por tentativa (e não
+// muda dentro da mesma), e a recusa não mexe no pedido — a parte da RPC é a
+// migration 20261160000000.
 
-Deno.test("handler: metodo 'cartao' devolve 400 e NÃO chama o Mercado Pago", async () => {
-  // A Fase 3 entrega só PIX. O caminho de cartão tem defeito conhecido
-  // (herança nº 2 da Fase 2): depois da primeira recusa o pedido fica
-  // impagável até expirar. A recusa tem que acontecer aqui, antes de
-  // qualquer chamada ao gateway — não só no Brick (Task 8).
-  const pedido = pedidoBase();
-  const supabase = clienteFalso({ pedido, gravado: { id: UUID } });
-  let chamadasFetch = 0;
-  const fetchImpl = async (_url: string, _init?: RequestInit) => {
-    chamadasFetch++;
-    return new Response(JSON.stringify({ id: 1, status: "pending" }), { status: 201 });
+type ChamadaMP = { url: string; method: string; headers: Record<string, string>; body: any };
+
+/** `fetch` falso com respostas em SEQUÊNCIA e registro de cada chamada. */
+function fetchEmSequencia(
+  respostas: Array<{ status: number; corpo: unknown }>,
+  chamadas: ChamadaMP[],
+) {
+  const fila = [...respostas];
+  return async (url: string, init?: RequestInit) => {
+    chamadas.push({
+      url: String(url),
+      method: init?.method ?? "GET",
+      headers: (init?.headers ?? {}) as Record<string, string>,
+      body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+    });
+    const proxima = fila.shift();
+    if (!proxima) throw new Error("fetchEmSequencia: chamada ao MP não esperada");
+    return new Response(JSON.stringify(proxima.corpo), { status: proxima.status });
   };
+}
 
-  const resposta = await handler(requisicao({ orderId: UUID, metodo: "cartao" }), {
+function corpoCartao(extra: Record<string, unknown> = {}) {
+  return {
+    orderId: UUID,
+    metodo: "cartao",
+    tipoCartao: "credit_card",
+    token: "ff8080814c11e237014c1ff593b57b4d",
+    paymentMethodId: "visa",
+    parcelas: 3,
+    email: "cliente@exemplo.com",
+    ...extra,
+  };
+}
+
+function orderCartao(overrides: Record<string, unknown> = {}, pagamento: Record<string, unknown> = {}) {
+  return {
+    id: "ORD01CARTAO",
+    status: "processed",
+    status_detail: "accredited",
+    transactions: {
+      payments: [
+        {
+          id: "PAY01CARTAO",
+          status: "processed",
+          status_detail: "accredited",
+          payment_method: { id: "visa", type: "credit_card", installments: 3 },
+          ...pagamento,
+        },
+      ],
+    },
+    ...overrides,
+  };
+}
+
+const RECUSA_402 = {
+  errors: [{ code: "failed", message: "The following transactions failed" }],
+  data: orderCartao(
+    { id: "ORD01RECUSADA", status: "failed", status_detail: "failed" },
+    { status: "failed", status_detail: "insufficient_amount" },
+  ),
+};
+
+Deno.test("handler: cartão aprovado cria order com o corpo de cartão, grava o id e devolve 'pago' sem QR", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, total: 149.9 });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia([{ status: 201, corpo: orderCartao() }], chamadas);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.paymentId, "ORD01CARTAO");
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.qrCode, undefined);
+  assertEquals(chamadas.length, 1);
+  assertEquals(chamadas[0].method, "POST");
+  assertEquals(chamadas[0].url.endsWith("/v1/orders"), true);
+  assertEquals(chamadas[0].headers["X-Idempotency-Key"], `${UUID}:cartao:inicio`);
+  assertEquals(chamadas[0].body.total_amount, "149.90");
+  assertEquals(chamadas[0].body.transactions.payments[0].payment_method, {
+    id: "visa",
+    type: "credit_card",
+    token: "ff8080814c11e237014c1ff593b57b4d",
+    installments: 3,
+  });
+  assertEquals(registro.updates[0].valores.gateway_payment_id, "ORD01CARTAO");
+  assertEquals(registro.updates[0].filtros, [
+    ["id", UUID],
+    ["payment_status", "aguardando"],
+    ["gateway_payment_id", null],
+  ]);
+});
+
+Deno.test("handler: cartão em análise (processing) devolve 'aguardando' — o desfecho vem do webhook", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at } });
+  const fetchImpl = fetchEmSequencia(
+    [{ status: 201, corpo: orderCartao({ status: "processing", status_detail: "in_process" }) }],
+    [],
+  );
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "aguardando");
+});
+
+Deno.test("handler: cartão RECUSADO (402) devolve 200 'recusado' com o motivo curado, e grava a order recusada no pedido", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchEmSequencia([{ status: 402, corpo: RECUSA_402 }], []);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(corpo.paymentId, "ORD01RECUSADA");
+  assertEquals(
+    corpo.motivoRecusa,
+    "O cartão não tem limite ou saldo suficiente. Tente outro cartão ou pague com PIX.",
+  );
+  // O código cru do MP nunca chega ao cliente.
+  assertEquals(JSON.stringify(corpo).includes("insufficient_amount"), false);
+  assertEquals(corpo.terminal, undefined);
+  // Gravar a recusada é o que faz a PRÓXIMA tentativa substituí-la.
+  assertEquals(registro.updates.length, 1);
+  assertEquals(registro.updates[0].valores.gateway_payment_id, "ORD01RECUSADA");
+  assertEquals("payment_status" in registro.updates[0].valores, false);
+});
+
+Deno.test("handler: 402 sem order reconhecível ainda devolve 'recusado' e NÃO grava nada", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = fetchEmSequencia([{ status: 402, corpo: { errors: [{ code: "failed" }] } }], []);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(corpo.paymentId, null);
+  assertEquals(corpo.motivoRecusa, "O pagamento com cartão foi recusado. Tente outro cartão ou pague com PIX.");
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: SEGUNDA tentativa depois da recusa — reconsulta a morta, cria OUTRA com chave nova e SUBSTITUI no UPDATE (o defeito da Fase 3.5)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD01RECUSADA" });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia(
+    [
+      { status: 200, corpo: RECUSA_402.data },
+      { status: 201, corpo: orderCartao({ id: "ORD02APROVADA" }) },
+    ],
+    chamadas,
+  );
+
+  const resposta = await handler(
+    requisicao(corpoCartao({ token: "outro-token-de-outro-cartao-000000" }), montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, "ORD02APROVADA");
+  assertEquals(chamadas[0].method, "GET");
+  assertEquals(chamadas[0].url.endsWith("/v1/orders/ORD01RECUSADA"), true);
+  assertEquals(chamadas[1].method, "POST");
+  assertEquals(chamadas[1].headers["X-Idempotency-Key"], `${UUID}:cartao:ORD01RECUSADA`);
+  assertEquals(registro.updates[0].valores.gateway_payment_id, "ORD02APROVADA");
+  // Substitui SÓ a cobrança que foi reconsultada — nunca a de outro.
+  assertEquals(registro.updates[0].filtros, [
+    ["id", UUID],
+    ["payment_status", "aguardando"],
+    ["gateway_payment_id", "ORD01RECUSADA"],
+  ]);
+});
+
+Deno.test("handler: PIX depois de cartão recusado — cria o PIX com chave nova e substitui a recusada", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD01RECUSADA" });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia(
+    [
+      { status: 200, corpo: RECUSA_402.data },
+      {
+        status: 201,
+        corpo: {
+          id: "ORD03PIX",
+          status: "action_required",
+          status_detail: "waiting_transfer",
+          transactions: { payments: [{ id: "PAY03", payment_method: { id: "pix", type: "bank_transfer", qr_code: "QR3", qr_code_base64: "B64" } }] },
+        },
+      },
+    ],
+    chamadas,
+  );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
     supabase,
     fetchImpl,
   });
   const corpo = await resposta.json();
 
-  assertEquals(resposta.status, 400);
-  assertEquals(corpo.error, "No momento aceitamos apenas PIX.");
-  // A prova que importa: não é só o código HTTP, é o contador do MP em zero.
-  assertEquals(chamadasFetch, 0);
-  // CHECKOUT-050 (#194), correção da revisão: NÃO é terminal. "Tentar de
-  // novo" remonta o Brick, e é justamente lá que o cliente escolhe PIX — o
-  // próprio retry troca de método e destrava. Marcar terminal prendia o
-  // cliente numa caixa que já tinha desmontado o formulário onde ele faria
-  // essa troca.
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QR3");
+  assertEquals(chamadas[1].headers["X-Idempotency-Key"], `${UUID}:ORD01RECUSADA`);
+  assertEquals(registro.updates[0].filtros[2], ["gateway_payment_id", "ORD01RECUSADA"]);
+});
+
+Deno.test("handler: cartão com PIX VIVO no pedido devolve 409 sem terminal e NÃO cria cobrança", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD789" });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia(
+    [
+      {
+        status: 200,
+        corpo: {
+          id: "ORD789",
+          status: "action_required",
+          status_detail: "waiting_transfer",
+          transactions: { payments: [{ payment_method: { id: "pix", type: "bank_transfer", qr_code: "QR" } }] },
+        },
+      },
+    ],
+    chamadas,
+  );
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.error, "Este pedido já tem um PIX gerado. Escolha PIX para ver o QR code de novo.");
   assertEquals(corpo.terminal, undefined);
+  assertEquals(chamadas.length, 1); // só a consulta — nenhuma cobrança nova
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: PIX com CARTÃO EM ANÁLISE no pedido devolve 409 — nunca duas cobranças vivas", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD01CARTAO" });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia(
+    [{ status: 200, corpo: orderCartao({ status: "processing", status_detail: "in_process" }) }],
+    chamadas,
+  );
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(
+    corpo.error,
+    "O pagamento com cartão deste pedido ainda está em análise pelo banco. Aguarde a confirmação nesta tela.",
+  );
+  assertEquals(chamadas.length, 1);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: cartão com cartão JÁ PAGO no pedido devolve o 'pago' da mesma cobrança, sem cobrar de novo", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD01CARTAO" });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia([{ status: 200, corpo: orderCartao() }], chamadas);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, "ORD01CARTAO");
+  assertEquals(chamadas.length, 1);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: 409/423 de idempotência no cartão NÃO tenta de novo — responde 409 recuperável", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  for (const status of [409, 423]) {
+    const pedido = pedidoBase({ user_id: DONO_LOGADO });
+    const registro = { chamadasUpdate: 0 };
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+    const chamadas: ChamadaMP[] = [];
+    const fetchImpl = fetchEmSequencia([{ status, corpo: { code: "idempotency_key_already_used" } }], chamadas);
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409, String(status));
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(chamadas.length, 1, String(status));
+    assertEquals(registro.chamadasUpdate, 0);
+  }
+});
+
+Deno.test("handler: configuração do lojista vale no servidor — débito desligado, parcelas acima do limite, débito parcelado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const casos: Array<[string, Record<string, unknown>, string]> = [
+    ['{"credito":true,"debito":false,"parcelas_max":null}', { tipoCartao: "debit_card", parcelas: 1 }, "Esta loja não aceita cartão de débito."],
+    ['{"credito":true,"debito":true,"parcelas_max":6}', { parcelas: 7 }, "Esta loja parcela em até 6x."],
+    ['{"credito":false,"debito":true,"parcelas_max":null}', { parcelas: 1 }, "Esta loja não aceita cartão de crédito."],
+  ];
+  for (const [config, extra, mensagem] of casos) {
+    const pedido = pedidoBase({ user_id: DONO_LOGADO });
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID }, configCartao: config });
+    const chamadas: ChamadaMP[] = [];
+    const fetchImpl = fetchEmSequencia([], chamadas);
+
+    const resposta = await handler(requisicao(corpoCartao(extra), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 400, mensagem);
+    assertEquals(corpo.error, mensagem);
+    assertEquals(chamadas.length, 0, mensagem);
+  }
+  // Débito é só à vista mesmo com a configuração padrão.
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const resposta = await handler(
+    requisicao(corpoCartao({ tipoCartao: "debit_card", parcelas: 2 }), montarToken(DONO_LOGADO)),
+    { supabase: clienteFalso({ pedido, gravado: { id: UUID } }), fetchImpl: fetchEmSequencia([], []) },
+  );
+  assertEquals(resposta.status, 400);
+  assertEquals((await resposta.json()).error, "Cartão de débito é só à vista.");
+});
+
+Deno.test("handler: configuração ilegível falha FECHADA (503, nunca o padrão) e leitura com erro vira 503", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const r1 = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: clienteFalso({ pedido, gravado: { id: UUID }, configCartao: "{lixo" }),
+    fetchImpl: fetchEmSequencia([], []),
+  });
+  assertEquals(r1.status, 503);
+  assertEquals((await r1.json()).error, "Pagamento com cartão indisponível no momento. Pague com PIX.");
+
+  const r2 = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: clienteFalso({ pedido, gravado: { id: UUID }, erroConfig: { message: "timeout" } }),
+    fetchImpl: fetchEmSequencia([], []),
+  });
+  assertEquals(r2.status, 503);
+});
+
+Deno.test("handler: PIX não lê a configuração do cartão", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0, leuConfig: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, configCartao: "{lixo", registro });
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: fetchFalsoMP({}),
+  });
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.leuConfig, 0);
+});
+
+Deno.test("handler: dados do cartão malformados devolvem 400 sem tocar banco nem MP", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  for (
+    const extra of [
+      { tipoCartao: "pix" },
+      { tipoCartao: undefined },
+      { token: "" },
+      { token: 123 },
+      { paymentMethodId: undefined },
+      { parcelas: "3" },
+      { parcelas: 1.5 },
+    ]
+  ) {
+    const registro = { chamadasUpdate: 0, leuConfig: 0 };
+    const chamadas: ChamadaMP[] = [];
+    const resposta = await handler(requisicao(corpoCartao(extra), montarToken(DONO_LOGADO)), {
+      supabase: clienteFalso({ pedido: pedidoBase({ user_id: DONO_LOGADO }), gravado: null, registro }),
+      fetchImpl: fetchEmSequencia([], chamadas),
+    });
+    assertEquals(resposta.status, 400, JSON.stringify(extra));
+    assertEquals(chamadas.length, 0);
+    assertEquals(registro.leuConfig, 0);
+  }
+  // Bandeira fora do formato passa a forma básica e é barrada ao montar o corpo.
+  const chamadas: ChamadaMP[] = [];
+  const resposta = await handler(requisicao(corpoCartao({ paymentMethodId: "VISA; DROP" }), montarToken(DONO_LOGADO)), {
+    supabase: clienteFalso({ pedido: pedidoBase({ user_id: DONO_LOGADO }), gravado: null }),
+    fetchImpl: fetchEmSequencia([], chamadas),
+  });
+  assertEquals(resposta.status, 400);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("handler: metodo desconhecido devolve 400", async () => {
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "boleto" }), {
+    supabase: clienteFalso({ pedido: pedidoBase(), gravado: null }),
+    fetchImpl: fetchEmSequencia([], []),
+  });
+  assertEquals(resposta.status, 400);
+  assertEquals((await resposta.json()).error, "Meio de pagamento inválido.");
+});
+
+Deno.test("handler: cartão com menos de 60 s de prazo NÃO cobra — terminal", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({
+    user_id: DONO_LOGADO,
+    expires_at: new Date(Date.now() + 30_000).toISOString(),
+  });
+  const chamadas: ChamadaMP[] = [];
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: clienteFalso({ pedido, gravado: { id: UUID } }),
+    fetchImpl: fetchEmSequencia([], chamadas),
+  });
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("handler: cartão aprovado num pedido que EXPIROU no meio do caminho grava o id no pedido expirado (P1) e avisa o cliente", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({
+    pedido,
+    gravados: [null, { id: UUID }],
+    gravado: null,
+    releitura: { payment_status: "expirado", gateway_payment_id: null },
+    registro,
+  });
+  const fetchImpl = fetchEmSequencia([{ status: 201, corpo: orderCartao() }], []);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(registro.updates.length, 2);
+  assertEquals(registro.updates[1].valores.gateway_payment_id, "ORD01CARTAO");
+  assertEquals(registro.updates[1].filtros, [
+    ["id", UUID],
+    ["payment_status", "expirado"],
+    ["gateway_payment_id", null],
+  ]);
+});
+
+Deno.test("handler: MP_SANDBOX_PAYER_EMAIL vale também para o cartão (sem 'APRO' no nome)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "test_user_123@testuser.com");
+  try {
+    const pedido = pedidoBase({ user_id: DONO_LOGADO });
+    const chamadas: ChamadaMP[] = [];
+    await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at } }),
+      fetchImpl: fetchEmSequencia([{ status: 201, corpo: orderCartao() }], chamadas),
+    });
+    assertEquals(chamadas[0].body.payer.email, "test_user_123@testuser.com");
+    assertEquals(chamadas[0].body.payer.first_name, undefined);
+  } finally {
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+Deno.test("chaveDeIdempotencia: PIX na 1ª tentativa é o id puro; substituição e cartão mudam a chave", () => {
+  assertEquals(chaveDeIdempotencia(UUID, "pix", null), UUID);
+  assertEquals(chaveDeIdempotencia(UUID, "pix", "ORD1"), `${UUID}:ORD1`);
+  assertEquals(chaveDeIdempotencia(UUID, "cartao", null), `${UUID}:cartao:inicio`);
+  assertEquals(chaveDeIdempotencia(UUID, "cartao", "ORD1"), `${UUID}:cartao:ORD1`);
+  // Teto do MP: 128 caracteres.
+  assertEquals(chaveDeIdempotencia(UUID, "cartao", "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG").length <= 128, true);
 });
 
 Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar nada com 200", async () => {
@@ -1996,10 +2501,44 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "não 'pedido não existe' — zero linhas devolve error:null no " +
         "postgrest-js; retry é seguro assim que o banco responder",
     ],
+    // Plano 2026-09-30 (cartão). "No momento aceitamos apenas PIX." SAIU:
+    // o cartão foi religado. As entradas abaixo são as recusas novas do
+    // caminho do cartão — todas recuperáveis porque "Tentar de novo"
+    // remonta o Brick, onde o cliente troca de cartão ou de meio.
     [
-      "No momento aceitamos apenas PIX.",
-      "'Tentar de novo' remonta o Brick, e é lá que o cliente escolhe PIX " +
-        "— o próprio retry troca de método e destrava",
+      "Meio de pagamento inválido.",
+      "o corpo não disse PIX nem cartão; o Brick remontado manda um dos dois",
+    ],
+    [
+      "Dados do cartão inválidos. Confira e tente de novo.",
+      "o formulário do Brick é preenchido de novo; nada foi cobrado nem gravado",
+    ],
+    [
+      "cabe.motivo",
+      "a tentativa não cabe na configuração do lojista (cartão desligado, " +
+        "parcelas acima do limite); outro cartão, outro parcelamento ou o " +
+        "PIX cabem",
+    ],
+    [
+      "Pagamento com cartão indisponível no momento. Pague com PIX.",
+      "configuração do cartão ilegível — falha fechada só para cartão; o " +
+        "PIX, no mesmo Brick, continua disponível",
+    ],
+    [
+      "Este pedido já tem um PIX gerado. Escolha PIX para ver o QR code de novo.",
+      "cobrança PIX viva (legada) no pedido; escolher PIX devolve o mesmo QR",
+    ],
+    [
+      "mensagem",
+      "cobrança viva de outro meio (ou cartão em análise) no pedido — nunca " +
+        "duas vivas; escolher o meio da cobrança viva, ou esperar a análise " +
+        "terminar, muda o resultado",
+    ],
+    [
+      "Já existe uma tentativa de pagamento em andamento para este pedido. Aguarde alguns segundos e tente de novo, ou pague com PIX.",
+      "o MP barrou a chave desta tentativa (409/423): outra aba do MESMO " +
+        "pedido está cobrando; em segundos ela grava e a próxima chamada " +
+        "converge pelo 'reconsultar'",
     ],
     [
       "r.erro",
@@ -2089,6 +2628,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // muda só quando um ponto de retorno é acrescentado ou removido de
   // propósito — o que É a enumeração pedida, não um acidente de estilo.
   //
+  // 30, não mais 19: cartão religado (plano 2026-09-30). Saíram 2 ("No
+  // momento aceitamos apenas PIX." e o `r.erro` do ramo clássico de cartão,
+  // que foi apagado). Entraram 13: forma do meio e do cartão
+  // (2), configuração do lojista (leitura com erro, ilegível e `cabe.motivo`
+  // — 3), margem de prazo do cartão (1, terminal), cartão contra PIX legado
+  // (1), cobrança viva de outro meio (`mensagem`, 1), e o ramo de criação do
+  // cartão com as mesmas quatro saídas do PIX (corpo recusado, `r.erro`,
+  // resposta sem id) mais o 409/423 de idempotência (4), e o cartão que
+  // expirou no meio do caminho (1, terminal).
+  //
   // 19, não mais 18: PEDIDO-07 (auditoria de 26/08/2026) envolveu o
   // createClient() do client real (usado quando `deps.supabase` não vem, o
   // caso de produção) num try/catch — antes ele ficava fora de qualquer
@@ -2126,7 +2675,7 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
   // duas causas eram opostas e tinham que responder diferente (achado da
   // revisão do CHECKOUT-050, #194).
-  assertEquals(achados, 19);
+  assertEquals(achados, 30);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper

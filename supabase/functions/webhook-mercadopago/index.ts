@@ -1558,6 +1558,17 @@ async function handler(
       const enviarAvisoAtrasado = deps.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
       await enviarAvisoAtrasado({ supabase, orderId });
     }
+  } else if (resultado === "divergente" && statusMapeado === "recusado") {
+    // Cartão (plano 2026-09-30): cada tentativa recusada vira uma order
+    // própria, e a seguinte a SUBSTITUI no pedido (criar-pagamento). O aviso
+    // da recusa ANTIGA chega com um id que já não é o do pedido — é o
+    // 'divergente' esperado, e numa recusa NENHUM dinheiro entrou. O
+    // console.error de baixo ("dinheiro pode ter entrado sem registro")
+    // seria alarme falso a cada cartão recusado duas vezes.
+    console.warn(
+      "webhook-mercadopago: recusa de uma cobrança que não é mais a do pedido (tentativa substituída) — nada a fazer",
+      { orderId, paymentId: idParaRpc },
+    );
   } else if (resultado === "divergente" || resultado === "inexistente") {
     // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
     // ignorado...), estes dois chegam com o pagamento JÁ APROVADO pelo MP —

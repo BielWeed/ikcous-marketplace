@@ -1525,6 +1525,43 @@ Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acus
   }
 });
 
+Deno.test("cartão (plano 2026-09-30): RECUSA de uma tentativa já substituída devolve 'divergente' -> console.warn, NUNCA o console.error de 'dinheiro sem registro'", async () => {
+  const registro = { chamadasRpc: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null };
+  const supabase = clienteFalso({ rpcResultado: "divergente", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "failed",
+    status_detail: "failed",
+    total_amount: "149.90",
+  });
+  const chamadasErro: unknown[][] = [];
+  const chamadasAviso: unknown[][] = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = (...args: unknown[]) => {
+    chamadasErro.push(args);
+  };
+  console.warn = (...args: unknown[]) => {
+    chamadasAviso.push(args);
+  };
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(registro.chamadasRpc[0].args.p_status, "recusado");
+    assertEquals(chamadasErro.length, 0, "recusa não é dinheiro sem registro");
+    const avisos = chamadasAviso.map((a) => a.map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join(" "));
+    assertEquals(avisos.some((t) => t.includes("tentativa substituída")), true);
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+});
+
 // --- correção de 21/08/2026: gateway_payment_id gravado vs. id que a rota
 // `payment` do MP devolve (achado de auditoria, os três elos) ---------------
 //

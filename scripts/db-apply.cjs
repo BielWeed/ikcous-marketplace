@@ -1611,6 +1611,28 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // Plano 2026-09-30 (cartão): recusa em pedido vivo deixa de cancelar o
+  // pedido. O rótulo novo prova o ramo novo; a contagem de devolver_estoque
+  // (1 = só o ramo do estorno) prova que a chamada do ramo 'recusado' SAIU —
+  // um REPLACE que a reintroduzisse daria 2. O ramo de pedido que já saiu de
+  // 'pending' continua marcando 'recusado' (1 ocorrência do SET).
+  //
+  // A migration 20261160000100 (policy de leitura da configuração do
+  // cartão) NÃO tem entrada: policy e grant não são lidos por
+  // pg_get_functiondef. Confira à mão depois de aplicar:
+  //   SELECT polname, polcmd, pg_get_expr(polqual, polrelid)
+  //     FROM pg_policy WHERE polname = 'app_settings_config_cartao_select_policy';
+  //   -- esperado: 1 linha, polcmd 'r', qual (key = 'pagamentos_cartao'::text).
+  "20261160000000_a_recusa_do_cartao_nao_derruba_o_pedido.sql": [
+    {
+      funcao: "confirmar_pagamento",
+      esperado: [
+        { texto: "RETURN 'tentativa_recusada';", vezes: 1 },
+        { texto: "PERFORM public.devolver_estoque(p_order_id);", vezes: 1 },
+        { texto: "SET payment_status = 'recusado',", vezes: 1 },
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

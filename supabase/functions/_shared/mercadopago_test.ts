@@ -25,7 +25,11 @@ import {
   mapearStatus,
   mapearStatusOrder,
   minutosDaExpiracaoPix,
-  montarCorpoCartao,
+  detalheDoPagamentoDaOrder,
+  meioDaOrder,
+  mensagemDeRecusaDoCartao,
+  montarCorpoCartaoOrders,
+  orderDoCorpoDeErro,
   montarCorpoPix,
   montarCorpoPixOrders,
   TEMPO_LIMITE_MS,
@@ -154,30 +158,143 @@ Deno.test("montarCorpoPix sem notificationUrl NÃO inclui a chave no corpo — n
   assertEquals("notification_url" in corpo, false);
 });
 
-Deno.test("montarCorpoCartao leva o token, a referência do pedido, e NUNCA dados do cartão", () => {
-  const corpo = montarCorpoCartao({
+Deno.test("montarCorpoCartaoOrders: envelope da Orders API, token e NUNCA dados do cartão", () => {
+  const corpo = montarCorpoCartaoOrders({
     valor: 149.9,
-    descricao: "Pedido 3f2a1b8c",
     email: "cliente@exemplo.com",
     token: "tok_teste_123",
     parcelas: 3,
-    metodo: "visa",
-    emissor: "310",
+    bandeira: "visa",
+    tipo: "credit_card",
     documento: { type: "CPF", number: "12345678909" },
     orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
   });
 
-  assertEquals(corpo.token, "tok_teste_123");
-  assertEquals(corpo.installments, 3);
-  assertEquals(corpo.payment_method_id, "visa");
-  assertEquals(corpo.issuer_id, "310");
-  assertEquals(corpo.external_reference, "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b");
+  assertEquals(corpo, {
+    type: "online",
+    processing_mode: "automatic",
+    external_reference: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    total_amount: "149.90",
+    payer: {
+      email: "cliente@exemplo.com",
+      identification: { type: "CPF", number: "12345678909" },
+    },
+    transactions: {
+      payments: [
+        {
+          amount: "149.90",
+          payment_method: {
+            id: "visa",
+            type: "credit_card",
+            token: "tok_teste_123",
+            installments: 3,
+          },
+        },
+      ],
+    },
+  });
 
   // O número do cartão é tokenizado NO NAVEGADOR e não passa por aqui. Se
   // algum dia passar, este teste é o que avisa.
   const serializado = JSON.stringify(corpo);
   assertEquals(serializado.includes("card_number"), false);
   assertEquals(serializado.includes("security_code"), false);
+  // Cartão não tem prazo de QR: expiration_time é só PIX/boleto.
+  assertEquals(serializado.includes("expiration_time"), false);
+});
+
+Deno.test("montarCorpoCartaoOrders: débito sai com type debit_card", () => {
+  const corpo = montarCorpoCartaoOrders({
+    valor: 50,
+    email: "c@e.com",
+    token: "tok",
+    parcelas: 1,
+    bandeira: "debelo",
+    tipo: "debit_card",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+  });
+  const pagamento = (corpo.transactions as any).payments[0];
+  assertEquals(pagamento.payment_method.type, "debit_card");
+  assertEquals(pagamento.payment_method.id, "debelo");
+  assertEquals((corpo.payer as any).identification, undefined);
+});
+
+Deno.test("montarCorpoCartaoOrders: recusa o que vem torto do corpo da requisição", () => {
+  const base = {
+    valor: 50,
+    email: "c@e.com",
+    token: "tok",
+    parcelas: 1,
+    bandeira: "visa",
+    tipo: "credit_card",
+    orderId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+  };
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, tipo: "pix" }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, tipo: undefined }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, token: "" }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, token: undefined }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, bandeira: "VISA" }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, bandeira: 'visa", "x' }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, parcelas: 0 }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, parcelas: 37 }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, parcelas: 2.5 }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, valor: 0 }));
+  assertThrows(() => montarCorpoCartaoOrders({ ...base, valor: Number.NaN }));
+});
+
+Deno.test("orderDoCorpoDeErro: acha a order no corpo do 402, em data ou na raiz", () => {
+  const order = { id: "ORD01JS2V6CM8KJ0EC4H502TGK1WP", status: "failed" };
+  assertEquals(orderDoCorpoDeErro({ errors: [{ code: "failed" }], data: order }), order);
+  assertEquals(orderDoCorpoDeErro(order), order);
+  assertEquals(orderDoCorpoDeErro({ id: "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG" })?.id, "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG");
+});
+
+Deno.test("orderDoCorpoDeErro: sem id de ORDER não devolve palpite", () => {
+  assertEquals(orderDoCorpoDeErro(undefined), null);
+  assertEquals(orderDoCorpoDeErro({ errors: [{ code: "failed" }] }), null);
+  assertEquals(orderDoCorpoDeErro({ data: { id: "PAY01XYZ" } }), null);
+  assertEquals(orderDoCorpoDeErro({ id: 123 }), null);
+  assertEquals(orderDoCorpoDeErro({ data: [{ id: "ORD01X" }] }), null);
+});
+
+Deno.test("detalheDoPagamentoDaOrder: lê o status_detail do PAGAMENTO, não da raiz", () => {
+  const order = {
+    id: "ORD01X",
+    status: "failed",
+    status_detail: "failed",
+    transactions: { payments: [{ id: "PAY01X", status: "failed", status_detail: "rejected_by_issuer" }] },
+  };
+  assertEquals(detalheDoPagamentoDaOrder(order), "rejected_by_issuer");
+  assertEquals(detalheDoPagamentoDaOrder({ id: "ORD01X" }), null);
+  assertEquals(detalheDoPagamentoDaOrder(null), null);
+});
+
+Deno.test("meioDaOrder: distingue PIX de cartão, e não chuta quando não dá para saber", () => {
+  const com = (payment_method: unknown) => ({ transactions: { payments: [{ payment_method }] } });
+  assertEquals(meioDaOrder(com({ id: "visa", type: "credit_card" })), "cartao");
+  assertEquals(meioDaOrder(com({ id: "debelo", type: "debit_card" })), "cartao");
+  assertEquals(meioDaOrder(com({ id: "pix", type: "bank_transfer" })), "pix");
+  assertEquals(meioDaOrder(com({ id: null, type: null, qr_code: "000201..." })), "pix");
+  assertEquals(meioDaOrder(com({ id: null, type: null })), null);
+  assertEquals(meioDaOrder(com(null)), null);
+  assertEquals(meioDaOrder({ id: "ORD01X" }), null);
+});
+
+Deno.test("mensagemDeRecusaDoCartao: texto curado por motivo, genérico no desconhecido", () => {
+  assertStringIncludes(mensagemDeRecusaDoCartao("insufficient_amount"), "limite ou saldo");
+  assertStringIncludes(mensagemDeRecusaDoCartao("card_insufficient_amount"), "limite ou saldo");
+  assertStringIncludes(mensagemDeRecusaDoCartao("bad_filled_card_data"), "dado do cartão");
+  assertStringIncludes(mensagemDeRecusaDoCartao("invalid_installments"), "parcelas");
+  assertStringIncludes(mensagemDeRecusaDoCartao("rejected_by_issuer"), "banco do cartão");
+  assertEquals(
+    mensagemDeRecusaDoCartao("algo_novo_do_mp"),
+    "O pagamento com cartão foi recusado. Tente outro cartão ou pague com PIX.",
+  );
+  assertEquals(mensagemDeRecusaDoCartao(null), mensagemDeRecusaDoCartao(undefined));
+  // O código cru NUNCA aparece no texto do cliente.
+  for (const codigo of ["rejected_by_issuer", "high_risk", "insufficient_amount", "card_disabled"]) {
+    assertEquals(mensagemDeRecusaDoCartao(codigo).includes(codigo), false, codigo);
+  }
 });
 
 Deno.test("formatarExpiracao devolve ISO com offset, que é o que o MP aceita", () => {
@@ -808,6 +925,38 @@ Deno.test("criarOrder não vaza o corpo do erro do MP para quem chamou", async (
   }
 });
 
+Deno.test("criarOrder: 402 de cartão recusado devolve o corpo PARSEADO em `corpo`, e `erro` segue curado", async () => {
+  const corpo402 = {
+    errors: [{ code: "failed", message: "The following transactions failed" }],
+    data: {
+      id: "ORD01JS2V6CM8KJ0EC4H502TGK1WP",
+      status: "failed",
+      status_detail: "failed",
+      transactions: { payments: [{ id: "PAY01X", status: "failed", status_detail: "rejected_by_issuer" }] },
+    },
+  };
+  const fetchStub = (() =>
+    Promise.resolve(new Response(JSON.stringify(corpo402), { status: 402 }))) as unknown as typeof fetch;
+
+  const r = await criarOrder({ token: "APP_USR-t", corpo: {}, chaveIdempotencia: "k", fetchImpl: fetchStub });
+
+  assertEquals(r.ok, false);
+  if (!r.ok) {
+    assertEquals(r.status, 402);
+    assertEquals(r.corpo, corpo402);
+    assertEquals(r.erro, "Não foi possível gerar a cobrança.");
+  }
+});
+
+Deno.test("criarOrder: erro com corpo que não é objeto JSON não inventa `corpo`", async () => {
+  for (const bruto of ["<html>502</html>", "", "[1,2]", "null"]) {
+    const fetchStub = (() => Promise.resolve(new Response(bruto, { status: 500 }))) as unknown as typeof fetch;
+    const r = await criarOrder({ token: "APP_USR-t", corpo: {}, chaveIdempotencia: "k", fetchImpl: fetchStub });
+    assertEquals(r.ok, false);
+    if (!r.ok) assertEquals("corpo" in r, false, bruto);
+  }
+});
+
 Deno.test("criarOrder trata rede caída sem estourar", async () => {
   const fetchStub = (() =>
     Promise.reject(new Error("connection refused"))) as unknown as typeof fetch;
@@ -1225,9 +1374,9 @@ Deno.test("mapearStatusOrder devolve null para combinação desconhecida — nun
   assertEquals(mapearStatusOrder(null as unknown as string, null as unknown as string), null);
 });
 
-// --- MAPA_STATUS_ORDER: os 13 pares mapeiam para o payment_status certo ---
+// --- MAPA_STATUS_ORDER: os 17 pares mapeiam para o payment_status certo ---
 
-Deno.test("MAPA_STATUS_ORDER: os 13 pares mapeiam para o MESMO payment_status que mapearStatusOrder já devolve — a tabela não tem mais chave 'front'", () => {
+Deno.test("MAPA_STATUS_ORDER: os 17 pares mapeiam para o MESMO payment_status que mapearStatusOrder já devolve — a tabela não tem mais chave 'front'", () => {
   // CHECKOUT-080 (#213): até esta tarefa, MAPA_STATUS_ORDER guardava
   // `{ banco, front? }` — 6 dos 14 pares (estornos, chargeback, `expired`)
   // não tinham `front` de propósito, porque o vocabulário clássico do MP
@@ -1255,6 +1404,11 @@ Deno.test("MAPA_STATUS_ORDER: os 13 pares mapeiam para o MESMO payment_status qu
   assertEquals(MAPA_STATUS_ORDER["canceled:canceled"], "recusado");
   assertEquals(MAPA_STATUS_ORDER["failed:failed"], "recusado");
   assertEquals(MAPA_STATUS_ORDER["expired:expired"], "expirado");
+  // Cartão (plano 2026-09-30, T2): pares de análise — o desfecho vem depois.
+  assertEquals(MAPA_STATUS_ORDER["processing:in_review"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["processing:pending_review_manual"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["in_review:in_review"], "aguardando");
+  assertEquals(MAPA_STATUS_ORDER["action_required:pending_challenge"], "aguardando");
 
   // PEDIDO-05: "processed:partially_refunded" SAIU da tabela de propósito —
   // não é mais um par conhecido que aponta para "estornado". A CHAVE em si
@@ -1264,11 +1418,11 @@ Deno.test("MAPA_STATUS_ORDER: os 13 pares mapeiam para o MESMO payment_status qu
   assertEquals("processed:partially_refunded" in MAPA_STATUS_ORDER, false);
 
   // Conta as chaves para pegar um par ADICIONADO ou REMOVIDO — as asserções
-  // acima sozinhas não acusariam uma 14ª chave sobrando na tabela.
+  // acima sozinhas não acusariam uma 18ª chave sobrando na tabela.
   assertEquals(
     Object.keys(MAPA_STATUS_ORDER).length,
-    13,
-    "MAPA_STATUS_ORDER deveria ter exatamente os 13 pares conhecidos — ver a lista acima",
+    17,
+    "MAPA_STATUS_ORDER deveria ter exatamente os 17 pares conhecidos — ver a lista acima",
   );
 });
 

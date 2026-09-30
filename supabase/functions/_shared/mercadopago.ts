@@ -141,8 +141,9 @@ export function montarCorpoPix(args: {
 }): Record<string, unknown> {
   const payer: Record<string, unknown> = { email: args.email };
   // A-2 da revisão final: sem isso o documento entrava pelo front e sumia
-  // aqui — montarCorpoCartao já aceitava o mesmo parâmetro; a documentação
-  // de PIX do MP monta o payer com identification igual à de cartão.
+  // aqui — o corpo clássico de cartão já aceitava o mesmo parâmetro; a
+  // documentação de PIX do MP monta o payer com identification igual à de
+  // cartão.
   if (args.documento) payer.identification = args.documento;
 
   return {
@@ -161,33 +162,83 @@ export function montarCorpoPix(args: {
   };
 }
 
-export function montarCorpoCartao(args: {
+/**
+ * Monta o corpo de `POST /v1/orders` para CARTÃO (crédito ou débito) — plano
+ * docs/superpowers/plans/2026-09-30-cartao-de-credito-e-debito.md, T2.
+ * Substitui o `montarCorpoCartao` clássico (`/v1/payments`, marcado "legacy"
+ * na doc de hoje), que era código morto desde a Fase 3.
+ *
+ * Formato da doc oficial (checkout-api-orders/payment-integration/cards,
+ * lida em 30/09/2026): mesmo envelope do PIX (`type: "online"`,
+ * `processing_mode: "automatic"`, valores em STRING com duas casas), com
+ * `payment_method = { id: <bandeira>, type: "credit_card" | "debit_card",
+ * token, installments }`. Sem `expiration_time` (só existe para PIX e
+ * boleto) e sem `config.online.transaction_security`: o padrão documentado é
+ * `validation: "never"` — 3DS fica desligado até existir tela para o desafio.
+ *
+ * O NÚMERO DO CARTÃO NUNCA PASSA POR AQUI: o Brick tokeniza no navegador, e
+ * o que chega é o `token` (uso único, vale 7 dias). Mesma regra do teste que
+ * existia para o clássico.
+ *
+ * Valida e LANÇA (mesma regra de `montarCorpoPixOrders`: este arquivo é
+ * `@ts-nocheck`, e só o `throw` barra) — quem chama traduz para 400, porque
+ * todos estes campos vêm do corpo da requisição do cliente.
+ */
+export const TIPOS_DE_CARTAO = ["credit_card", "debit_card"] as const;
+
+export function montarCorpoCartaoOrders(args: {
   valor: number;
-  descricao: string;
   email: string;
+  orderId: string;
   token: string;
   parcelas: number;
-  metodo: string;
-  emissor?: string;
+  bandeira: string;
+  tipo: string;
   documento?: { type: string; number: string };
-  orderId: string;
 }): Record<string, unknown> {
+  if (!TIPOS_DE_CARTAO.includes(args.tipo)) {
+    throw new Error(`montarCorpoCartaoOrders: tipo de cartão inválido (${String(args.tipo)})`);
+  }
+  if (typeof args.token !== "string" || args.token.trim() === "") {
+    throw new Error("montarCorpoCartaoOrders: token do cartão ausente");
+  }
+  // Bandeira é um id curto do catálogo do MP ("visa", "master", "debelo"...).
+  // Formato fechado: nada que venha do corpo entra cru num campo de enum.
+  if (typeof args.bandeira !== "string" || !/^[a-z0-9_]{2,30}$/.test(args.bandeira)) {
+    throw new Error("montarCorpoCartaoOrders: bandeira do cartão inválida");
+  }
+  // 36 é o teto do campo na Orders API (API reference, create order).
+  if (!Number.isInteger(args.parcelas) || args.parcelas < 1 || args.parcelas > 36) {
+    throw new Error("montarCorpoCartaoOrders: parcelas fora de 1..36");
+  }
+  if (!Number.isFinite(args.valor) || args.valor <= 0) {
+    throw new Error("montarCorpoCartaoOrders: valor inválido");
+  }
+
+  const valorFormatado = args.valor.toFixed(2);
   const payer: Record<string, unknown> = { email: args.email };
   if (args.documento) payer.identification = args.documento;
 
-  const corpo: Record<string, unknown> = {
-    transaction_amount: args.valor,
-    description: args.descricao,
-    token: args.token,
-    installments: args.parcelas,
-    payment_method_id: args.metodo,
-    payer,
-    // Mesmo motivo do PIX: é o que permite achar o pedido a partir do
-    // pagamento na reconciliação da Fase 3.
+  return {
+    type: "online",
+    processing_mode: "automatic",
     external_reference: args.orderId,
+    total_amount: valorFormatado,
+    payer,
+    transactions: {
+      payments: [
+        {
+          amount: valorFormatado,
+          payment_method: {
+            id: args.bandeira,
+            type: args.tipo,
+            token: args.token,
+            installments: args.parcelas,
+          },
+        },
+      ],
+    },
   };
-  if (args.emissor) corpo.issuer_id = args.emissor;
-  return corpo;
 }
 
 /**
@@ -257,6 +308,17 @@ export const MAPA_STATUS_ORDER: Record<string, string> = {
   "action_required:waiting_capture": "aguardando",
   // waiting_transfer é o estado do PIX recém-criado — o mais comum em produção.
   "action_required:waiting_transfer": "aguardando",
+  // CARTÃO (plano 2026-09-30, T2) — pares de ANÁLISE que a doc oficial lista
+  // (checkout-api-orders/payment-management/status, lida em 30/09/2026): o
+  // cartão foi enviado e o desfecho chega depois, pelo webhook. Todos viram
+  // 'aguardando', que é o estado em que o pedido JÁ está — a RPC devolve
+  // 'ignorado' e nada muda. `pending_challenge` (3DS) não deveria aparecer
+  // (o app não pede 3DS; o padrão do MP é `never`), mas se aparecer, o
+  // pagamento NÃO foi feito ainda: 'aguardando' é a leitura honesta.
+  "processing:in_review": "aguardando",
+  "processing:pending_review_manual": "aguardando",
+  "in_review:in_review": "aguardando",
+  "action_required:pending_challenge": "aguardando",
   "refunded:refunded": "estornado",
   "charged_back:in_process": "estornado",
   "charged_back:settled": "estornado",
@@ -448,7 +510,20 @@ export function montarCorpoPixOrders(args: {
 
 type ResultadoOrder =
   | { ok: true; order: Record<string, unknown> }
-  | { ok: false; erro: string; status: number };
+  | {
+      ok: false;
+      erro: string;
+      status: number;
+      // Corpo do erro do MP, JÁ PARSEADO, quando é JSON legível (plano
+      // 2026-09-30, T2). Existe por UM motivo: a recusa de cartão é um 402
+      // cujo corpo carrega a ORDER criada e o `status_detail` da recusa
+      // (API reference, create order: "Order was created but some
+      // transaction failed"). Quem chama pode ler DADOS daqui (ids, códigos
+      // de enum) — NUNCA repassar texto dele ao cliente: a regra "o corpo do
+      // erro do MP vai para o log, nunca para o cliente" continua valendo
+      // para `erro`, que segue sendo sempre uma frase curada.
+      corpo?: Record<string, unknown>;
+    };
 
 /**
  * `criarOrder` — faz `POST {base}/v1/orders`, o caminho novo para PIX.
@@ -507,7 +582,19 @@ export async function criarOrder(args: {
     // ele carrega detalhe de credencial e de conta.
     const detalhe = await resposta.text().catch(() => "");
     console.error("mercadopago: orders recusou", resposta.status, detalhe);
-    return { ok: false, erro: "Não foi possível gerar a cobrança.", status: resposta.status };
+    let corpo: Record<string, unknown> | undefined;
+    try {
+      const parseado = JSON.parse(detalhe);
+      if (parseado && typeof parseado === "object" && !Array.isArray(parseado)) corpo = parseado;
+    } catch {
+      // Corpo não-JSON (HTML de proxy, vazio): fica sem `corpo`, igual a antes.
+    }
+    return {
+      ok: false,
+      erro: "Não foi possível gerar a cobrança.",
+      status: resposta.status,
+      ...(corpo ? { corpo } : {}),
+    };
   }
 
   // A leitura do corpo mora no MESMO try que trata resposta ilegível: um 2xx
@@ -729,6 +816,117 @@ export function extrairDataExpiracaoOrder(
     : null;
 }
 
+/** O primeiro pagamento da order — mesma leitura de `extrairQrCode`. */
+function primeiroPagamentoDaOrder(
+  order: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | undefined {
+  if (!order || typeof order !== "object") return undefined;
+  const transacoes = order.transactions as Record<string, unknown> | undefined;
+  const pagamentos = transacoes?.payments as unknown[] | undefined;
+  const pagamento = pagamentos?.[0];
+  return pagamento && typeof pagamento === "object"
+    ? (pagamento as Record<string, unknown>)
+    : undefined;
+}
+
+/**
+ * A ORDER que veio dentro de uma resposta de ERRO do MP — hoje, o 402 de
+ * cartão recusado ("Order was created but some transaction failed", API
+ * reference de create order, 30/09/2026). A doc diz que a order É CRIADA
+ * nesse caso, mas não fixa onde ela vem no corpo; aceita as duas formas
+ * plausíveis (`corpo.data` ou o próprio corpo) e só devolve algo com `id`
+ * de ORDER (prefixo "ORD") — nunca um palpite. `null` = o corpo não trouxe
+ * uma order reconhecível, e quem chama trata como "recusa sem id".
+ */
+export function orderDoCorpoDeErro(
+  corpo: Record<string, unknown> | null | undefined,
+): Record<string, unknown> | null {
+  if (!corpo || typeof corpo !== "object") return null;
+  for (const candidato of [corpo.data, corpo]) {
+    if (
+      candidato &&
+      typeof candidato === "object" &&
+      !Array.isArray(candidato) &&
+      typeof (candidato as Record<string, unknown>).id === "string" &&
+      /^ORD[A-Z0-9]+$/.test((candidato as Record<string, unknown>).id as string)
+    ) {
+      return candidato as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+/**
+ * O `status_detail` do PAGAMENTO (não da order) — é ali que mora o motivo da
+ * recusa do cartão (`rejected_by_issuer`, `insufficient_amount`...). A raiz
+ * da order recusada diz só `failed:failed`.
+ */
+export function detalheDoPagamentoDaOrder(
+  order: Record<string, unknown> | null | undefined,
+): string | null {
+  const detalhe = primeiroPagamentoDaOrder(order)?.status_detail;
+  return typeof detalhe === "string" ? detalhe : null;
+}
+
+/**
+ * Com que MEIO a order foi criada: "pix" ou "cartao". `null` quando a order
+ * não deixa saber — e quem chama trata `null` com a regra mais segura
+ * (nunca criar uma segunda cobrança viva ao lado de uma que não se sabe o
+ * que é). Olha `payment_method.type`/`id` e, como reforço para o PIX, a
+ * presença do QR: a doc de exemplo mostra respostas com `payment_method` em
+ * `null`, então o tipo sozinho não é garantido.
+ */
+export function meioDaOrder(
+  order: Record<string, unknown> | null | undefined,
+): "pix" | "cartao" | null {
+  const metodo = primeiroPagamentoDaOrder(order)?.payment_method as
+    | Record<string, unknown>
+    | undefined;
+  if (!metodo || typeof metodo !== "object") return null;
+  if (metodo.type === "credit_card" || metodo.type === "debit_card") return "cartao";
+  if (
+    metodo.type === "bank_transfer" ||
+    metodo.id === "pix" ||
+    typeof metodo.qr_code === "string"
+  ) {
+    return "pix";
+  }
+  return null;
+}
+
+/**
+ * O motivo da recusa em português de gente, para o CLIENTE. Os códigos são
+ * os `status_detail` de transação `failed` da doc oficial (lida em
+ * 30/09/2026). Texto curado, fechado — o código cru nunca chega à tela.
+ * Código desconhecido cai na frase genérica, que ainda diz o que fazer.
+ */
+export function mensagemDeRecusaDoCartao(detalhe: string | null | undefined): string {
+  const saida = "Tente outro cartão ou pague com PIX.";
+  switch (detalhe) {
+    case "insufficient_amount":
+    case "card_insufficient_amount":
+      return `O cartão não tem limite ou saldo suficiente. ${saida}`;
+    case "bad_filled_card_data":
+    case "invalid_card_token":
+      return "Algum dado do cartão está incorreto. Confira número, validade e código de segurança e tente de novo.";
+    case "invalid_installments":
+      return "O cartão não aceita esse número de parcelas. Escolha outro parcelamento ou outro cartão.";
+    case "amount_limit_exceeded":
+      return `O valor passou do limite do cartão. ${saida}`;
+    case "card_disabled":
+      return `O cartão está bloqueado ou desativado. ${saida}`;
+    case "required_call_for_authorize":
+      return `O banco pediu que você autorize a compra. Ligue para o banco do cartão ou tente outro meio. ${saida}`;
+    case "max_attempts_exceeded":
+      return "O cartão passou do número de tentativas permitido. Pague com outro cartão ou com PIX.";
+    case "high_risk":
+    case "rejected_by_issuer":
+      return `O pagamento foi recusado pelo banco do cartão. ${saida}`;
+    default:
+      return `O pagamento com cartão foi recusado. ${saida}`;
+  }
+}
+
 // Tolerância da conferência de valor (laudo caça-bugs 31/08, achado A3) —
 // a MESMA da criação de pedido: `create_marketplace_order_v23/v24` conferem
 // o total enviado pelo front a ±R$ 0,05. Abaixo disso é arredondamento de
@@ -771,7 +969,7 @@ type ResultadoPagamento =
       // QUAL PEDIDO a confirmação pertence, e o corpo do webhook não serve
       // para isso — qualquer um pode forjar um POST. A resposta do MP, do
       // outro lado, veio autenticada pelo token do gateway. `criarPagamento`
-      // grava este mesmo valor (montarCorpoPix/montarCorpoCartao, acima) na
+      // grava este mesmo valor (montarCorpoPix e o corpo clássico de cartão) na
       // criação; aqui é onde ele volta.
       externalReference?: string;
       // Valor cobrado, na grafia da resposta clássica do MP
