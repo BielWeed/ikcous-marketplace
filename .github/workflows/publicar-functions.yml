@@ -22,10 +22,19 @@
 # CREDENCIAL: o segredo `SUPABASE_ACCESS_TOKEN` do repositório (GitHub →
 # Settings → Secrets and variables → Actions) é um token pessoal da conta do
 # Supabase (Account → Access Tokens). Ele vale para TODOS os projetos da
-# conta — por isso o destino é uma escolha fechada (loja | savy | sandbox) e
-# o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo separado
-# `SUPABASE_ACCESS_TOKEN_SAVY`, da conta que tem acesso àquele projeto.
+# conta — por isso o destino é uma escolha fechada (loja | savy | almeida |
+# sandbox) e o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo
+# separado `SUPABASE_ACCESS_TOKEN_SAVY`, da conta que tem acesso àquele projeto.
+# Almeida (loja cliente, desde 30/09/2026) está no MESMO org Supabase da loja
+# principal e por isso usa o mesmo `SUPABASE_ACCESS_TOKEN` — nunca o da Savy.
 # Revogar: na mesma página do Supabase.
+#
+# LOJA CLIENTE (savy | almeida) = mesma disciplina, de propósito: só as cinco
+# Functions financeiras (as do apelido `cobranca`) e `expected_sha` completo,
+# igual ao SHA do run, conferido ANTES do primeiro deploy. Function de dinheiro
+# numa loja de terceiro não sobe de um commit que ninguém aprovou. As outras
+# lojas clientes (Brand Meliz, Space Loja do Kit) ficam em projetos de contas
+# sem acesso deste token e não têm rota aqui.
 #
 # Testado por tests/ci_publicar_functions_test.ts: o bloco de validação é
 # extraído DESTE arquivo e rodado com bash contra os casos que importam.
@@ -44,16 +53,20 @@ on:
         required: true
         type: string
       projeto:
-        description: "Destino fechado: loja (dek...), savy (gnj...) ou sandbox (lof...)"
+        description: >-
+          Destino fechado: loja (dek...), savy (gnj...), almeida (cue...)
+          ou sandbox (lof...)
         required: true
         type: choice
         default: loja
         options:
           - loja
           - savy
+          - almeida
           - sandbox
       expected_sha:
-        description: "Savy: SHA completo do commit aprovado, igual ao SHA deste run"
+        description: >-
+          Savy e Almeida: SHA completo do commit aprovado, igual ao SHA deste run
         required: false
         type: string
 
@@ -88,12 +101,15 @@ jobs:
           case "$PROJETO" in
             loja) REF=dekxabvqdsuukijblazl ;;
             savy) REF=gnjsrucsmjkajijrakzr ;;
+            almeida) REF=cuemaffjmhkebhmghbap ;;
             sandbox) REF=lofznuxcvezrhxsgjqyg ;;
-            *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy ou sandbox)"; exit 1 ;;
+            *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy, almeida ou sandbox)"; exit 1 ;;
           esac
-          if [ "$PROJETO" = "savy" ]; then
+          CLIENTE=nao
+          case "$PROJETO" in savy|almeida) CLIENTE=sim ;; esac
+          if [ "$CLIENTE" = "sim" ]; then
             if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
-              echo "::error::Savy exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+              echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
             fi
           fi
           if [ "$(echo "$PEDIDAS" | tr -d '[:space:]')" = "cobranca" ]; then
@@ -107,10 +123,10 @@ jobs:
             if [ "$n" = "send-order-whatsapp" ]; then
               echo "::error::send-order-whatsapp foi despublicada em 11/08/2026 e não volta (DEPLOYMENT.md §2)"; exit 1
             fi
-            if [ "$PROJETO" = "savy" ]; then
+            if [ "$CLIENTE" = "sim" ]; then
               case "$n" in
                 criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
-                *) echo "::error::Savy só admite as cinco Functions financeiras"; exit 1 ;;
+                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras"; exit 1 ;;
               esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then

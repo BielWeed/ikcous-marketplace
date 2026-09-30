@@ -196,7 +196,7 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     await montar({ pixLigado: false });
     expect(credito().disabled).toBe(true);
     expect(debito().disabled).toBe(true);
-    expect(hospedeiro.textContent).toContain("Ligue o PIX pelo app");
+    expect(hospedeiro.textContent).toContain("pagamento pelo app liberado");
     await clicar(credito());
     expect(banco.rpc).not.toHaveBeenCalled();
   });

@@ -95,7 +95,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     });
   });
 
-  it("G5b — Pix ligado sem assinatura exibe a recusa real ao lojista", async () => {
+  it("G5b — pagamento ligado sem assinatura exibe ao lojista que sem ela o app não libera", async () => {
     leitura.valor = {
       configurado: true,
       public_key: "APP_USR-publica-falsa-de-teste",
@@ -117,7 +117,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       chaves.click();
     });
     expect(document.body.textContent).toContain(
-      "Sem a assinatura da sua loja, o servidor recusa a cobrança por Pix",
+      "Sem a assinatura da sua loja, o pagamento pelo app não é liberado",
     );
     expect(document.body.textContent).toContain(
       "a chave global do app não substitui a sua",
@@ -145,9 +145,10 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     const itens = document.body.querySelectorAll("ol li");
     expect(itens.length).toBe(PASSOS_DO_GUIA.length);
     expect(itens.length).toBe(5);
-    // o primeiro passo é abrir o app do MP; o último é voltar, colar, salvar e testar
+    // o primeiro passo é abrir o app do MP; o último é voltar, colar e salvar
+    // (o teste e a liberação são automáticos — 30/09/2026)
     expect(document.body.textContent).toContain("Abra o app do Mercado Pago");
-    expect(document.body.textContent).toContain("salve e teste");
+    expect(document.body.textContent).toContain("cole as três chaves e salve");
     // o prompt pronto é visível para quem vai copiar
     expect(document.body.textContent).toContain(PROMPT_NA_TELA.slice(0, 40));
   });
@@ -180,7 +181,9 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
   it("G4 e G5 — chave própria obrigatória para Pix no prompt, guia e formulário", async () => {
     const promptMinusculo = PROMPT_PARA_AGENTE_MP.toLowerCase();
     expect(promptMinusculo).toContain("chave de notificações");
-    expect(promptMinusculo).toContain("obrigatória para o pix");
+    expect(promptMinusculo).toContain("obrigatória para receber pelo app");
+    expect(promptMinusculo).not.toContain("obrigatória para o pix");
+    expect(promptMinusculo).not.toContain("o pix está pronto");
     expect(promptMinusculo).toContain("webhook");
     expect(promptMinusculo).toContain("testar conexão não valida a assinatura");
     expect(promptMinusculo).not.toContain("pix já funciona sem ela");
@@ -199,10 +202,10 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       chaves.click();
     });
     expect(document.body.textContent).toContain(
-      "Chave de notificações (obrigatória para Pix)",
+      "Chave de notificações (obrigatória para receber pelo app)",
     );
     expect(document.body.textContent).toContain(
-      "Sem a assinatura da sua loja, o servidor recusa a cobrança por Pix",
+      "Sem a assinatura da sua loja, o pagamento pelo app não é liberado",
     );
   });
 
