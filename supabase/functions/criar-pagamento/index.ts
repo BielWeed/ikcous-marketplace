@@ -1942,6 +1942,98 @@ async function handler(
     // ambiguidade (adotando a cobrança, se ela aparecer aprovada — Achado
     // B2, `webhook-mercadopago/index.ts`) ou a busca do Ponto 1/B1 liberar,
     // ou a reserva expirar.
+    // Auditoria de 30/09/2026 do cartão (item 1) — ver o uso em
+    // `ocuparVagaComSentinela`, abaixo. Devolve `true` SÓ quando o PIX aberto
+    // foi cancelado no MP E a vaga passou do PIX para o sentinela (UPDATE com
+    // o id do PIX no WHERE: nunca sobrescreve uma troca concorrente). Em todo
+    // outro caso devolve `false` e o chamador segue o caminho de antes (409),
+    // com um aviso ao admin quando sobrou um PIX vivo ou pago ao lado deste
+    // cartão ambíguo — a única situação em que o dinheiro pode estar dos dois
+    // lados.
+    const trocarPixAbertoPeloSentinela = async (
+      atual: Record<string, unknown> | null,
+      sentinela: string,
+    ): Promise<boolean> => {
+      if (atual?.payment_status !== "aguardando") return false;
+      const idOcupante =
+        typeof atual.gateway_payment_id === "string" && atual.gateway_payment_id.length > 0
+          ? atual.gateway_payment_id
+          : null;
+      if (!idOcupante || idEhClassico(idOcupante) || vagaEmVerificacao(idOcupante)) return false;
+
+      const consulta = await consultarOrder({
+        token: mpToken,
+        orderId: idOcupante,
+        fetchImpl: deps.fetchImpl,
+        corpoNoLog: false,
+      });
+      if (!consulta.ok) return false;
+      const ordemOcupante = consulta.order as Record<string, unknown>;
+      if (tipoDoPagamentoDaOrder(ordemOcupante) !== "bank_transfer") return false;
+      const statusOcupante = mapearStatusOrder(
+        String(ordemOcupante.status ?? ""),
+        String(ordemOcupante.status_detail ?? ""),
+      );
+
+      const avisarPixAoLadoDoCartao = async (situacao: string) => {
+        console.error(
+          `criar-pagamento: cartão ambíguo com PIX ${situacao} na vaga — dinheiro pode estar dos dois lados; conferir no painel do MP`,
+          { orderId: pedido.id, idPixOcupante: idOcupante },
+        );
+        const alertarAdmin = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
+        await dispararSemEsperarCliente(
+          alertarAdmin({
+            supabase,
+            orderId: pedido.id,
+            idOrderOrfa: sentinela,
+            aviso: {
+              title: "Cartão em verificação com PIX no mesmo pedido",
+              body: `${descricaoDoPedido(pedido.id)} · confira no painel do Mercado Pago se houve cobrança em dobro`,
+            },
+          }),
+          5000,
+        );
+      };
+
+      if (statusOcupante !== "aguardando") {
+        if (statusOcupante === "pago") await avisarPixAoLadoDoCartao("PAGO");
+        return false;
+      }
+
+      const cancelamento = await cancelarOrder({
+        token: mpToken,
+        orderId: idOcupante,
+        chaveIdempotencia: `cancelar:${idOcupante}`,
+        fetchImpl: deps.fetchImpl,
+      });
+      if (!cancelamento.ok || !orderCancelada(cancelamento.order)) {
+        await avisarPixAoLadoDoCartao("aberto que o MP não cancelou");
+        return false;
+      }
+
+      const { data: trocou, error: erroTroca } = await supabase
+        .from("marketplace_orders")
+        .update({ gateway_payment_id: sentinela, updated_at: new Date().toISOString() })
+        .eq("id", pedido.id)
+        .eq("gateway_payment_id", idOcupante)
+        .select("id")
+        .maybeSingle();
+      if (erroTroca || !trocou) {
+        // O PIX já está cancelado no MP; quem ganhou a vaga (ou a falha de
+        // banco) decide pelo caminho de antes. Nada mais a fazer aqui.
+        console.warn(
+          "criar-pagamento: PIX concorrente cancelado, mas a vaga não passou para o sentinela",
+          { orderId: pedido.id, idPixCancelado: idOcupante, erro: erroTroca },
+        );
+        return false;
+      }
+      console.warn(
+        "criar-pagamento: PIX concorrente aberto cancelado e trocado pelo sentinela do cartão ambíguo (auditoria 30/09, item 1)",
+        { orderId: pedido.id, idPixCancelado: idOcupante },
+      );
+      return true;
+    };
+
     const ocuparVagaComSentinela = async (
       motivoLog: string,
     ): Promise<{ ok: true } | { ok: false; resposta: Response }> => {
@@ -2011,16 +2103,33 @@ async function handler(
         `criar-pagamento: cartao_em_verificacao — ${motivoLog}; a cobrança da tentativa anterior PODE ter sido aprovada`,
         { orderId: pedido.id, vagaOcupada: Boolean(ocupou) },
       );
-      if (!ocupou) {
+      let ocupouVaga = Boolean(ocupou);
+      let atual: Record<string, unknown> | null = null;
+      if (!ocupouVaga) {
         // A vaga já não está livre — outra chamada concorrente resolveu
         // isto primeiro (adotou uma cobrança, ou já marcou a MESMA
         // verificação). Relê o estado real, mesmo padrão do resto do
         // handler: nunca inventa causa.
-        const { data: atual } = await supabase
+        const { data: relido } = await supabase
           .from("marketplace_orders")
           .select("payment_status, gateway_payment_id")
           .eq("id", pedido.id)
           .maybeSingle();
+        atual = (relido as Record<string, unknown> | null) ?? null;
+        // Auditoria de 30/09/2026 do cartão (item 1): quem ocupou a vaga pode
+        // ser um PIX ABERTO de outra aba — e este cartão, ambíguo, pode já
+        // estar cobrado. Antes, este ramo só relia e devolvia 409: o PIX
+        // continuava vivo (pagável) ao lado de um cartão possivelmente
+        // capturado e sem registro, sem aviso ao admin — e o "Tentar de
+        // novo" da caixa âmbar chegava ao ramo (c) da reconsulta, que
+        // cancelava o PIX e criava um SEGUNDO cartão. A manobra certa é a
+        // MESMA do Achado R2 (mais abaixo): cancela o PIX aberto e ocupa a
+        // vaga com o SENTINELA no lugar dele — o webhook, a busca do Ponto 1
+        // e a reconciliação passam a resolver este cartão, e o retry cai no
+        // sentinela em vez de criar outro cartão.
+        ocupouVaga = await trocarPixAbertoPeloSentinela(atual, sentinela);
+      }
+      if (!ocupouVaga) {
         // Achado da 7ª rodada de risco (26/09/2026): `ocuparVagaComSentinela`
         // só é chamada de dentro do fluxo de CARTÃO (409 idempotência ou
         // criação ambígua) — a cobrança da tentativa anterior PODE existir e
@@ -2039,10 +2148,11 @@ async function handler(
       // avisar quando um PEDIDO expira ainda com o sentinela na vaga (o
       // pg_cron que expira pedidos é SQL puro, sem HTTP), o ponto mais
       // barato e mais confiável é aqui — na ESCRITA do sentinela, feita uma
-      // única vez por tentativa ambígua. `reconciliar-pagamentos` (Achado
-      // S5/N3) passou a IGNORAR vagas em verificação (não tenta mais
-      // consultar o MP com elas a cada 10 min), então esperar por ela para
-      // avisar deixaria o admin sem sinal nenhum até a reserva morrer.
+      // única vez por tentativa ambígua. `reconciliar-pagamentos` não avisa
+      // (SEM PUSH AQUI, no cabeçalho dela) — desde a auditoria de
+      // 30/09/2026 ela ADOTA o cartão capturado atrás do sentinela, mas
+      // continua sem avisar; esperar por ela para avisar deixaria o admin
+      // sem sinal nenhum até a reserva morrer.
       //
       // S5(b) (achado da 4ª revisão de risco, 26/09/2026): título/corpo
       // PRÓPRIOS, nunca "Cobrança de cartão sem registro" — este aviso sai

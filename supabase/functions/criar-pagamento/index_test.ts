@@ -5825,3 +5825,160 @@ Deno.test("PIX (corrida real, controle): duas abas no mesmo pedido -> UMA única
   assertEquals(mp.orders.length, 1);
   assertEquals([r1.status, r2.status].sort(), [200, 409]);
 });
+
+// --- Auditoria de 30/09/2026 do cartão (item 1) -----------------------------
+//
+// Cartão ambíguo (a resposta da criação se perde) enquanto OUTRA aba cria um
+// PIX e ocupa a vaga primeiro. Antes: o cartão (possivelmente capturado)
+// ficava sem registro, o PIX continuava vivo, nenhum aviso — e o "Tentar de
+// novo" cancelava o PIX e criava um SEGUNDO cartão. Agora: o PIX aberto é
+// cancelado, a vaga fica com o SENTINELA do cartão ambíguo, e a nova
+// tentativa resolve o sentinela (achando o cartão já capturado) em vez de
+// cobrar outro.
+Deno.test("auditoria item 1: cartão ambíguo + PIX concorrente na vaga -> cancela o PIX, ocupa com o sentinela, e o retry NÃO cria segundo cartão", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const orders: Array<Record<string, unknown>> = [];
+  const cancelamentos: string[] = [];
+  const idDe = (n: number) => `ORDTST${String(n).padStart(22, "0")}`;
+  const rota = async (url: string, init?: RequestInit): Promise<Response | null> => {
+    if (init?.method === "POST" && url.includes("/cancel")) {
+      cancelamentos.push(url);
+      const alvo = orders.find((o) => url.includes(String(o.id)));
+      if (alvo) alvo.status = "canceled";
+      return new Response(JSON.stringify({ ...(alvo ?? {}), status: "canceled", status_detail: "canceled" }), { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.includes("/v1/orders?")) {
+      return new Response(JSON.stringify({ results: orders }), { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.includes("/v1/orders/")) {
+      const alvo = orders.find((o) => url.endsWith(`/v1/orders/${o.id}`));
+      return alvo ? new Response(JSON.stringify(alvo), { status: 200 }) : new Response("{}", { status: 404 });
+    }
+    return null;
+  };
+  let respostaPix: Record<string, unknown> | null = null;
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const roteada = await rota(url, init);
+    if (roteada) return roteada;
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      const corpo = JSON.parse(String(init.body));
+      const tipo = corpo.transactions.payments[0].payment_method.type;
+      const pix = tipo === "bank_transfer";
+      const o: Record<string, unknown> = {
+        id: idDe(orders.length + 1),
+        status: pix ? "action_required" : "processed",
+        status_detail: pix ? "waiting_transfer" : "accredited",
+        external_reference: corpo.external_reference,
+        total_amount: corpo.total_amount,
+        date_created: new Date().toISOString(),
+        transactions: { payments: [{ id: "PAY", payment_method: { id: pix ? "pix" : "visa", type: tipo, qr_code: pix ? "QR" : undefined } }] },
+      };
+      orders.push(o);
+      if (!pix) {
+        // Enquanto o POST do cartão está pendurado, a outra aba pede PIX...
+        const r = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+          supabase: db,
+          fetchImpl: fn,
+        });
+        respostaPix = { status: r.status, ...(await r.json()) };
+        // ...e a resposta do cartão se perde (timeout).
+        throw new DOMException("abortado", "AbortError");
+      }
+      return new Response(JSON.stringify(o), { status: 201 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const avisos: unknown[] = [];
+  const console_error = console.error;
+  const console_warn = console.warn;
+  console.error = () => {};
+  console.warn = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a);
+      },
+    });
+    await r.json();
+
+    // A outra aba chegou a gerar o PIX (a corrida é real)...
+    assertEquals((respostaPix as Record<string, unknown> | null)?.status, 200);
+    // ...mas ele foi CANCELADO no MP e a vaga passou para o sentinela.
+    assertEquals(cancelamentos.some((u) => u.includes(idDe(2))), true);
+    assertEquals(String(db.linha.gateway_payment_id).startsWith("verificando:"), true);
+
+    // "Tentar de novo" com o cartão (token novo): resolve o sentinela pela
+    // busca, acha o cartão JÁ capturado e o adota — nunca cria outro.
+    const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: async (url: string, init?: RequestInit) => {
+        const roteada = await rota(url, init);
+        if (roteada) return roteada;
+        throw new Error(`o retry NÃO pode criar cobrança nova: ${init?.method} ${url}`);
+      },
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a);
+      },
+    });
+    const corpo2 = await r2.json();
+    assertEquals(orders.filter((o) => (o.transactions as any).payments[0].payment_method.type === "credit_card").length, 1);
+    assertEquals(db.linha.gateway_payment_id, idDe(1));
+    assertEquals(corpo2.statusPagamento, "pago");
+  } finally {
+    console.error = console_error;
+    console.warn = console_warn;
+  }
+});
+
+Deno.test("auditoria item 1: PIX concorrente JÁ PAGO na vaga -> não cancela nada, avisa o admin e responde como antes (409)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const pixPago = {
+    id: "ORDTST0000000000000000000009",
+    status: "processed",
+    status_detail: "accredited",
+    external_reference: UUID,
+    total_amount: "100.00",
+    transactions: { payments: [{ id: "PAY", payment_method: { id: "pix", type: "bank_transfer" } }] },
+  };
+  const cancelamentos: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      // O PIX de outra aba já ocupou (e foi pago) enquanto o cartão pendia.
+      db.linha.gateway_payment_id = pixPago.id;
+      throw new DOMException("abortado", "AbortError");
+    }
+    if (init?.method === "POST" && url.includes("/cancel")) {
+      cancelamentos.push(url);
+      return new Response("{}", { status: 200 });
+    }
+    if ((init?.method ?? "GET") === "GET" && url.endsWith(`/v1/orders/${pixPago.id}`)) {
+      return new Response(JSON.stringify(pixPago), { status: 200 });
+    }
+    throw new Error(`fetch inesperado: ${init?.method} ${url}`);
+  };
+  const avisos: Array<Record<string, unknown>> = [];
+  const console_error = console.error;
+  console.error = () => {};
+  try {
+    const r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: db,
+      fetchImpl: fn,
+      alertarAdminCartaoOrfao: async (a) => {
+        avisos.push(a as Record<string, unknown>);
+      },
+    });
+    assertEquals(r.status, 409);
+  } finally {
+    console.error = console_error;
+  }
+  assertEquals(cancelamentos.length, 0);
+  assertEquals(db.linha.gateway_payment_id, pixPago.id);
+  assertEquals(
+    avisos.some((a) => String((a.aviso as Record<string, unknown> | undefined)?.title ?? "").includes("PIX no mesmo pedido")),
+    true,
+  );
+});

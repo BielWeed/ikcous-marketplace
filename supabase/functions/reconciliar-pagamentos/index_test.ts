@@ -83,7 +83,12 @@ function clienteFalso(opts: {
   // devolvido (default true) e a falha de banco simulada.
   liberarResultado?: boolean;
   liberarErro?: unknown;
+  // Auditoria de 30/09/2026 (item 2): adoção do cartão capturado atrás do
+  // sentinela. `adocaoGravou: false` = o WHERE não casou (vaga trocada).
+  adocaoGravou?: boolean;
+  erroAdocao?: unknown;
   registro: {
+    adocoesPedido?: Array<{ valores: Record<string, unknown>; filtros: Array<[string, unknown]> }>;
     chamadasConfirmar: Array<{ args: Record<string, unknown> }>;
     chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
@@ -327,6 +332,37 @@ function clienteFalso(opts: {
                         data: { total: opts.pedidoTotal ?? 149.9, total_amount: null },
                         error: null,
                       };
+                  },
+                };
+              },
+            };
+          },
+          // Auditoria de 30/09/2026 (item 2): a adoção do cartão CAPTURADO
+          // atrás do sentinela — `.update().eq("id").eq("gateway_payment_id",
+          // sentinela).select().maybeSingle()`. Registra o SET e os filtros;
+          // `adocaoGravou: false` simula outra escrita ter trocado a vaga.
+          update(valores: Record<string, unknown>) {
+            const filtros: Array<[string, unknown]> = [];
+            return {
+              eq(c1: string, v1: unknown) {
+                filtros.push([c1, v1]);
+                return {
+                  eq(c2: string, v2: unknown) {
+                    filtros.push([c2, v2]);
+                    return {
+                      select() {
+                        return {
+                          maybeSingle: async () => {
+                            if (!opts.registro.adocoesPedido) {
+                              throw new Error("update inesperado em marketplace_orders neste teste");
+                            }
+                            opts.registro.adocoesPedido.push({ valores, filtros });
+                            if (opts.erroAdocao) return { data: null, error: opts.erroAdocao };
+                            return { data: opts.adocaoGravou === false ? null : { id: v1 }, error: null };
+                          },
+                        };
+                      },
+                    };
                   },
                 };
               },
@@ -645,37 +681,151 @@ Deno.test("candidato novo (ULID de order) nunca chama /v1/payments/ — vai dire
   assertEquals(urlsChamadas.every((u) => !u.includes("/v1/payments/")), true);
 });
 
-// Achado S5/N3 (3ª revisão de risco, 26/09/2026): um candidato cuja vaga
-// guarda o SENTINELA (`verificando:...`, Achado B2) nunca é um id de order
-// de verdade — `idEhClassico` também não reconhece — e cada ciclo (a cada
-// 10 min) gastava uma chamada ao MP que SEMPRE falhava (400
-// `invalid_path_param`), sem o candidato nunca sair da fila.
+// SENTINELA na vaga (`verificando:...`, Achado B2). Até 30/09/2026 este
+// candidato era só IGNORADO, sem chamar o MP. A auditoria de 30/09/2026 do
+// cartão da proxima/base (item 2) achou o buraco: um cartão CAPTURADO atrás
+// do sentinela, com a notificação do webhook perdida, expirava sem registro.
+// Agora a reconciliação BUSCA as orders de cartão do pedido e adota SÓ a
+// capturada; os testes abaixo provam as duas metades — adota o capturado, e
+// não mexe em nada no resto.
 //
-// Também fecha a 2ª metade do cenário Q4b (B2, 5ª revisão de risco,
-// 26/09/2026, `criar-pagamento/index_test.ts`, teste "B2, Q4"): o filtro por
-// `external_reference` em `buscarOrdersDoPedido` já impede a order APROVADA
-// de OUTRO pedido de ser gravada na vaga — a vaga fica um SENTINELA, nunca o
-// id órfão. Este teste prova que, MESMO se algo escapasse essa 1ª barreira,
-// `reconciliar-pagamentos` ainda IGNORA qualquer vaga em sentinela — nunca
-// chama `confirmar_pagamento` para ela, então nunca confirmaria este pedido
-// com a cobrança de outro.
-Deno.test("candidato com o SENTINELA na vaga ('verificando:...') -> ignorado, NUNCA chama o MP (Achado S5/N3)", async () => {
-  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
-  const sentinela = `verificando:${UUID_PEDIDO_1}:c0`;
-  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: sentinela }];
-  const supabase = clienteFalso({ candidatos, registro });
-  const fetchImpl = async (url: string) => {
-    throw new Error(`fetch inesperado nos testes — o sentinela NUNCA deveria chegar ao MP: ${url}`);
-  };
-  const req = requisicaoComSegredo(SEGREDO);
+// Continua valendo a 2ª metade do cenário Q4b (B2, 5ª revisão de risco):
+// `buscarOrdersDoPedido` filtra por `external_reference === pedidoId` DEPOIS
+// da resposta — a order aprovada de OUTRO pedido nunca é adotada (teste
+// "order capturada de OUTRO pedido", abaixo).
+const SENTINELA_1 = `verificando:${UUID_PEDIDO_1}:c0`;
 
-  const resposta = await handler(req, { supabase, fetchImpl });
+function orderDeCartao(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ORDTST01CARTAOCAPTURADO",
+    external_reference: UUID_PEDIDO_1,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    date_created: "2026-09-30T12:00:00.000Z",
+    transactions: {
+      payments: [{ status: "processed", payment_method: { id: "visa", type: "credit_card", installments: 3 } }],
+    },
+    ...overrides,
+  };
+}
+
+/** Busca (`GET /v1/orders?...`) devolve `resultadoBusca`; reconsulta por id
+ * (`GET /v1/orders/<id>`) devolve `orderReconsultada`. */
+function fetchSentinela(
+  resultadoBusca: { status: number; corpo: unknown },
+  orderReconsultada: Record<string, unknown> | null,
+  urls: string[],
+) {
+  return async (url: string) => {
+    urls.push(String(url));
+    if (String(url).includes("/v1/orders?")) {
+      return new Response(JSON.stringify(resultadoBusca.corpo), { status: resultadoBusca.status });
+    }
+    if (orderReconsultada && String(url).includes("/v1/orders/")) {
+      return new Response(JSON.stringify(orderReconsultada), { status: 200 });
+    }
+    throw new Error(`fetch inesperado: ${url}`);
+  };
+}
+
+Deno.test("sentinela com cartão CAPTURADO no MP -> adota (grava id, forma e parcelas no lugar do sentinela) e CONFIRMA", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+  const supabase = clienteFalso({ candidatos, registro });
+  const urls: string[] = [];
+  const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [orderDeCartao()] } }, orderDeCartao(), urls);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 200);
-  assertEquals(corpo.verificados, 1);
+  assertEquals(registro.adocoesPedido.length, 1);
+  assertEquals(registro.adocoesPedido[0].valores.gateway_payment_id, "ORDTST01CARTAOCAPTURADO");
+  assertEquals(registro.adocoesPedido[0].valores.metodo_online, "credito");
+  assertEquals(registro.adocoesPedido[0].valores.parcelas, 3);
+  // Nunca sobrescreve: o WHERE exige o MESMO sentinela.
+  assertEquals(registro.adocoesPedido[0].filtros, [["id", UUID_PEDIDO_1], ["gateway_payment_id", SENTINELA_1]]);
+  // Depois da adoção, o laço normal decide: reconsulta por id e confirma
+  // com o id REAL, nunca com o sentinela.
+  assertEquals(registro.chamadasConfirmar.length, 1);
+  assertEquals(registro.chamadasConfirmar[0].args.p_payment_id, "ORDTST01CARTAOCAPTURADO");
+  assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+  assertEquals(corpo.confirmados, 1);
+  assertEquals(urls.some((u) => u.includes("verificando")), false);
+});
+
+Deno.test("sentinela: cartão EM ANÁLISE, busca vazia, busca falhando ou só orders mortas -> nada adotado, nada confirmado, ignorado", async () => {
+  const cenarios: Array<[string, { status: number; corpo: unknown }]> = [
+    ["em análise", { status: 200, corpo: { results: [orderDeCartao({ status: "processing", status_detail: "in_process" })] } }],
+    ["busca vazia", { status: 200, corpo: { results: [] } }],
+    ["busca falhou", { status: 500, corpo: { message: "internal_error" } }],
+    ["só morta", { status: 200, corpo: { results: [orderDeCartao({ status: "failed", status_detail: "failed" })] } }],
+  ];
+  for (const [nome, resultadoBusca] of cenarios) {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+    const supabase = clienteFalso({ candidatos, registro });
+    const fetchImpl = fetchSentinela(resultadoBusca, null, []);
+    const console_error = console.error;
+    console.error = () => {};
+    let corpo: Record<string, unknown>;
+    try {
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+      assertEquals(resposta.status, 200, nome);
+      corpo = await resposta.json();
+    } finally {
+      console.error = console_error;
+    }
+    assertEquals(registro.adocoesPedido.length, 0, nome);
+    assertEquals(registro.chamadasConfirmar.length, 0, nome);
+    assertEquals(corpo.ignorados, 1, nome);
+    assertEquals(corpo.falhas, 0, nome);
+  }
+});
+
+Deno.test("sentinela: order capturada de OUTRO pedido (MP ignorou o filtro) NUNCA é adotada", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+  const supabase = clienteFalso({ candidatos, registro });
+  const fetchImpl = fetchSentinela(
+    { status: 200, corpo: { results: [orderDeCartao({ external_reference: "outro-pedido" })] } },
+    null,
+    [],
+  );
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+  assertEquals(registro.adocoesPedido.length, 0);
+  assertEquals(registro.chamadasConfirmar.length, 0);
   assertEquals(corpo.ignorados, 1);
-  assertEquals(corpo.falhas, 0);
+});
+
+Deno.test("sentinela: vaga trocada entre a busca e o UPDATE (WHERE não casa) -> não confirma nada neste ciclo", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+  const supabase = clienteFalso({ candidatos, registro, adocaoGravou: false });
+  const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [orderDeCartao()] } }, orderDeCartao(), []);
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+  assertEquals(registro.adocoesPedido.length, 1);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+  assertEquals(corpo.ignorados, 1);
+});
+
+Deno.test("sentinela: falha de BANCO na adoção conta como falha (candidato volta no próximo ciclo), nunca confirma", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+  const supabase = clienteFalso({ candidatos, registro, erroAdocao: { message: "deadlock" } });
+  const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [orderDeCartao()] } }, orderDeCartao(), []);
+  const console_error = console.error;
+  console.error = () => {};
+  try {
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+    assertEquals(corpo.falhas, 1);
+  } finally {
+    console.error = console_error;
+  }
   assertEquals(registro.chamadasConfirmar.length, 0);
 });
 
