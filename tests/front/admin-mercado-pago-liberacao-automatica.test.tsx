@@ -557,7 +557,9 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
   it("A13 — o guia diz que as três chaves liberam sozinhas, sem botão de ligar", () => {
     const ultimo = PASSOS_DO_GUIA[PASSOS_DO_GUIA.length - 1];
     const texto = `${ultimo.titulo} ${ultimo.descricao}`;
-    expect(texto).toContain("Pix e cartão");
+    expect(texto).toContain("libera o Pix pelo app");
+    expect(texto).toContain("Formas de pagamento");
+    expect(texto).not.toContain("Pix e cartão");
     expect(texto).toContain("automaticamente");
     expect(texto).toContain("Pausar");
     // Nada de mandar o lojista procurar um botão que não existe mais.
