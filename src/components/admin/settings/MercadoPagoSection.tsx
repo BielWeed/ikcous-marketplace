@@ -1,4 +1,3 @@
-import { Switch } from "@/components/ui/switch";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
@@ -40,26 +39,27 @@ import {
  * - O teste de conexão roda NO SERVIDOR (edge credenciais-mercado-pago) —
  *   a chave real nunca chega ao navegador, nem no teste.
  *
- * O PIX DO CLIENTE PASSA POR AQUI (tarefa mp-4, 16/09/2026 — deixou de ser
- * "frente futura"): abaixo do teste de conexão mora o interruptor "Receber
- * PIX no app", que acende e apaga `store_config.pagamento_online` pelas
- * ações `ligar_pix`/`desligar_pix` da mesma edge. Regras de HONESTIDADE
- * desta tela, porque aqui se abre (ou se fecha) a porta do dinheiro:
- * - Ligar só depois de um teste BEM-SUCEDIDO — vitrine com PIX que o
- *   Mercado Pago recusa é cliente travado no fim da compra. Enquanto não
- *   houver teste conectado, o interruptor fica desabilitado COM a
- *   explicação à vista (bloqueio mudo é a tela mentindo por omissão).
- * - Desligar é o lado seguro e nunca fica bloqueado.
- * - O estado do interruptor é o que o SERVIDOR devolveu (`pix_ligado` da
- *   ficha da loja), nunca um palpite otimista do clique.
+ * O PAGAMENTO PELO APP LIBERA SOZINHO (30/09/2026, pedido do dono: "a partir
+ * do momento que ela cola lá, webhook dela, ela já libera... tem que ser assim
+ * pra todo mundo"). O antigo interruptor "Receber PIX no app" (mp-4) morreu:
+ * as três chaves salvas + o teste de conexão que passou LIGAM
+ * `store_config.pagamento_online` (Pix e cartão pelo app) NO SERVIDOR, e o
+ * lojista só PAUSA e RETOMA (ações `desligar_pix`/`ligar_pix` da mesma edge,
+ * com os nomes antigos por compatibilidade). Regras de HONESTIDADE desta tela,
+ * porque aqui se abre (ou se fecha) a porta do dinheiro:
+ * - O estado mostrado é SEMPRE o que o servidor devolveu (`pix_ligado`,
+ *   `pausado`, `faltando`) — nunca um palpite otimista do clique. Três
+ *   leituras: "Recebendo pelo app", "Pausado por você" ou "Falta para receber
+ *   pelo app:" com a lista em linguagem de leigo. Bloqueio mudo é a tela
+ *   mentindo por omissão, então o que falta fica sempre à vista.
+ * - A pausa vence o automático: salvar ou testar não religam quem pausou.
+ * - Salvar credencial que mudou faz o servidor TESTAR na hora; a resposta traz
+ *   o resultado do teste e o novo estado, e a tela mostra os dois. Credencial
+ *   nova só fica ligada se o teste dela passou (senão o servidor desliga e a
+ *   mensagem dele aparece — `aviso`).
  * - Chave de sandbox conecta igual à de produção: o aviso amarelo de
  *   ambiente "teste" vem PRONTO da edge e é mostrado como veio.
- * - (mp-9) Salvar credencial NOVA zera o teste guardado no servidor — e a
- *   edge desliga o PIX nesse mesmo salvar (`pix_desligado`). Enquanto o
- *   estado gravado for "ligado sem teste", a tela DIZ isso em âmbar com o
- *   "Testar conexão" ao alcance: a loja estaria cobrando por uma chave que
- *   ninguém provou, e calar seria a tela mentindo por omissão de novo.
- * - (mp-9) O resultado do interruptor sobe pelo `onPixAlternado` para quem
+ * - (mp-9) O resultado de tudo isso sobe pelo `onPixAlternado` para quem
  *   hospeda a seção (a tela de Ajustes), porque o painel "Minha loja está
  *   no ar?" lê o retrato do BOOT da ficha e ficaria contando o estado
  *   antigo até um recarregamento completo.
@@ -87,6 +87,25 @@ type ConfiguracaoMp = {
   pix_ligado: boolean;
   /** A ficha da loja já carrega ESTA Public Key (e não outra, nem nenhuma). */
   public_key_na_loja: boolean;
+  /**
+   * O que ainda falta para receber pelo app (códigos da edge; vazio = tudo
+   * pronto). `null` = a edge NÃO devolveu o campo: é uma edge ANTIGA (o front
+   * sobe antes das functions), e "nada faltando" seria mentira — a tela cai no
+   * modo "sistema sendo atualizado" em vez de afirmar o que não sabe.
+   */
+  faltando: string[] | null;
+  /** O lojista pausou o pagamento pelo app (vence o automático). */
+  pausado: boolean;
+};
+
+/** O que a edge devolve em salvar/testar/ligar/desligar — só o estado. */
+type EstadoDevolvido = {
+  pix_ligado?: boolean;
+  pausado?: boolean;
+  faltando?: unknown;
+  testou?: boolean;
+  public_key_na_loja?: boolean;
+  aviso?: string;
 };
 
 const VAZIA: ConfiguracaoMp = {
@@ -98,15 +117,19 @@ const VAZIA: ConfiguracaoMp = {
   atualizado_em: null,
   pix_ligado: false,
   public_key_na_loja: false,
+  faltando: [],
+  pausado: false,
 };
 
 /**
- * A resposta da edge vira estado com os dois campos da FICHA coercidos a
- * booleano: instalação com a edge antiga (que ainda não devolve `pix_ligado`
- * / `public_key_na_loja`) tem que virar "desligado" e "chave não publicada".
- * `undefined` no interruptor o tornaria não controlado — e a tela passaria a
- * inventar sozinha o estado do dinheiro, que é justamente o que esta peça
- * veio proibir.
+ * A resposta da edge vira estado com os campos da FICHA e da PAUSA coercidos:
+ * instalação com a edge antiga (que ainda não devolve `pix_ligado` /
+ * `public_key_na_loja` / `faltando` / `pausado`) tem que virar "desligado",
+ * "chave não publicada" e "não pausado" — e `faltando` AUSENTE vira `null`
+ * ("servidor desatualizado"), nunca `[]`: "nada faltando" numa edge antiga
+ * faria a tela dizer "Tudo preenchido" sobre uma loja que não liga sozinha.
+ * `undefined` no estado o tornaria indefinido — e a tela passaria a inventar
+ * sozinha o estado do dinheiro, que é justamente o que esta peça veio proibir.
  */
 function comoConfig(data: unknown): ConfiguracaoMp {
   const lida = (data ?? {}) as ConfiguracaoMp;
@@ -114,7 +137,33 @@ function comoConfig(data: unknown): ConfiguracaoMp {
     ...lida,
     pix_ligado: lida.pix_ligado === true,
     public_key_na_loja: lida.public_key_na_loja === true,
+    faltando: Array.isArray(lida.faltando)
+      ? comoListaDeFaltas(lida.faltando)
+      : null,
+    pausado: lida.pausado === true,
   };
+}
+
+function comoListaDeFaltas(valor: unknown): string[] {
+  return Array.isArray(valor)
+    ? valor.filter((falta): falta is string => typeof falta === "string")
+    : [];
+}
+
+/**
+ * O que falta, em linguagem de leigo (os códigos da edge nunca vão para a
+ * tela). Código que esta tela não conhece cai numa frase genérica em vez de
+ * vazar o nome interno.
+ */
+const TEXTO_DA_FALTA: ReadonlyMap<string, string> = new Map([
+  ["public_key", "colar a Public Key"],
+  ["access_token", "colar o Access Token"],
+  ["chave_notificacoes", "colar a Chave de notificações"],
+  ["teste", "testar a conexão com o Mercado Pago"],
+]);
+
+function textoDaFalta(falta: string): string {
+  return TEXTO_DA_FALTA.get(falta) ?? "completar as chaves";
 }
 
 /**
@@ -256,10 +305,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   const [testando, setTestando] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
-  // Interruptor do PIX (mp-4): `alternandoPix` segura o clique duplo;
-  // `avisoPix` é o recado AMARELO que a edge devolve (chave de sandbox) e
-  // `ecoDaVitrine` só aparece depois de um liga/desliga que deu certo — é a
-  // frase que explica por que a loja ainda mostra o estado antigo.
+  // Pausar/retomar: `alternandoPix` segura o clique duplo; `avisoPix` é o
+  // recado AMARELO que a edge devolve (chave de sandbox, "desliguei porque o
+  // teste não passou"...) e `ecoDaVitrine` só aparece depois de uma mudança
+  // de estado que deu certo — é a frase que explica por que a loja ainda
+  // mostra o estado antigo.
   const [alternandoPix, setAlternandoPix] = useState(false);
   const [avisoPix, setAvisoPix] = useState<string | null>(null);
   const [ecoDaVitrine, setEcoDaVitrine] = useState(false);
@@ -350,7 +400,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       });
       return;
     }
-    if (salvando) return;
+    // Não salva no meio de um pausar/retomar (as duas gravações correm juntas).
+    if (salvando || alternandoPix) return;
     if (!publicKey.trim()) {
       toast.error("Cole a Public Key do Mercado Pago.");
       return;
@@ -381,27 +432,36 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       if (error) throw error;
 
       const salva = comoConfig(data);
+      const ligadoAntes = config.pix_ligado;
       setConfig(salva);
       setPublicKey(salva.public_key ?? "");
       setAccessToken("");
       setWebhookSecret("");
 
-      // Credencial nova derruba o PIX no servidor (mp-8). Quem descobre
-      // isso pelo cliente sem receber descobre tarde: a mensagem vem
-      // PRONTA da edge e sobe também para o painel da tela de Ajustes.
-      const desligouNoSalvar = (data ?? {}) as {
-        pix_desligado?: boolean;
-        aviso?: string;
-      };
-      if (desligouNoSalvar.pix_desligado === true) {
-        setAvisoPix(desligouNoSalvar.aviso ?? null);
-        setEcoDaVitrine(false);
-        onPixAlternado?.(salva.pix_ligado);
-      }
+      // O servidor TESTOU a conexão dentro do salvar (se a credencial mudou)
+      // e decidiu sozinho se o pagamento pelo app fica ligado: o resultado
+      // do teste vem em `ultimo_teste` (já no `setConfig` acima) e a
+      // mensagem do que ele fez — "Desliguei...", "não ligou...", chave de
+      // TESTE — vem PRONTA em `aviso`. Calar isso é o lojista descobrindo
+      // pelo cliente. O estado sobe SEMPRE para o painel da tela de Ajustes.
+      const devolvido = (data ?? {}) as EstadoDevolvido;
+      setAvisoPix(devolvido.aviso ?? null);
+      setEcoDaVitrine(salva.pix_ligado !== ligadoAntes);
+      onPixAlternado?.(salva.pix_ligado, salva.public_key_na_loja);
       haptic.success();
+      // Só fala do TESTE quando ele rodou (`testou`): re-salvar sem mudar
+      // nada não chama o Mercado Pago, e dizer "o teste passou" seria mentira.
+      // Edge antiga (sem `faltando`/`testou`) não afirma nada além do salvo.
       toast.success("Chaves do Mercado Pago salvas!", {
-        description:
-          "Teste a conexão do Access Token e valide uma notificação assinada antes de receber Pix.",
+        description: salva.pix_ligado
+          ? devolvido.testou === true
+            ? "O teste de conexão passou e o pagamento pelo app foi liberado."
+            : "As chaves foram salvas."
+          : salva.pausado
+            ? "As chaves foram salvas; o pagamento pelo app segue pausado até você retomar."
+            : salva.faltando === null
+              ? "As chaves foram salvas."
+              : "Veja abaixo o que ainda falta para receber pelo app.",
       });
     } catch (err) {
       haptic.error();
@@ -416,12 +476,45 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     }
   };
 
+  /**
+   * Aplica o estado que o SERVIDOR devolveu (salvar/testar/pausar/retomar) —
+   * nada de acender a tela no clique e descobrir depois que a ficha recusou.
+   * Mostra o aviso que veio pronto, conta o atraso da vitrine quando o estado
+   * MUDOU e ecoa para o painel da tela de Ajustes. A Public Key na ficha só
+   * sobe quando a edge a informou (o painel infere "ligado = chave OK" só na
+   * falta dela).
+   */
+  const aplicarEstadoDoServidor = (resposta: EstadoDevolvido) => {
+    const ligado = resposta.pix_ligado === true;
+    const chaveNaLoja =
+      typeof resposta.public_key_na_loja === "boolean"
+        ? resposta.public_key_na_loja
+        : undefined;
+    const mudou = ligado !== config.pix_ligado;
+    setConfig((antes) => ({
+      ...antes,
+      pix_ligado: ligado,
+      pausado:
+        typeof resposta.pausado === "boolean"
+          ? resposta.pausado
+          : antes.pausado,
+      faltando: Array.isArray(resposta.faltando)
+        ? comoListaDeFaltas(resposta.faltando)
+        : antes.faltando,
+      ...(chaveNaLoja === undefined ? {} : { public_key_na_loja: chaveNaLoja }),
+    }));
+    setAvisoPix(resposta.aviso ?? null);
+    setEcoDaVitrine(mudou);
+    if (chaveNaLoja === undefined) onPixAlternado?.(ligado);
+    else onPixAlternado?.(ligado, chaveNaLoja);
+  };
+
   const testarConexao = async () => {
     if (isOffline) {
       toast.error("Sem conexão com a internet");
       return;
     }
-    if (testando || dirty || !config.configurado) return;
+    if (testando || alternandoPix || dirty || !config.configurado) return;
 
     setTestando(true);
     haptic.light();
@@ -431,7 +524,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         { body: { acao: "testar" } },
       );
       if (error) throw error;
-      const resultado = (data ?? {}) as {
+      const resultado = (data ?? {}) as EstadoDevolvido & {
         conectado: boolean;
         mensagem: string;
         ambiente?: "producao" | "teste" | null;
@@ -450,6 +543,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           conta: resultado.conta ?? null,
         },
       }));
+      // O servidor também RECONCILIOU o pagamento pelo app com o resultado
+      // (liga se passou e não está pausado, desliga se falhou): mostra o que
+      // ele fez. Edge antiga (sem `pix_ligado` na resposta) não mexe no estado.
+      if (typeof resultado.pix_ligado === "boolean") {
+        aplicarEstadoDoServidor(resultado);
+      }
       if (resultado.conectado) haptic.success();
       else haptic.error();
     } catch (err) {
@@ -466,18 +565,22 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   };
 
   /**
-   * Liga/desliga o PIX do cliente na ficha da loja. O estado do interruptor
-   * é sempre o que o SERVIDOR devolveu — nada de acender a tela no clique e
-   * descobrir depois que a ficha recusou.
+   * PAUSAR (`desligar_pix`) e RETOMAR (`ligar_pix`): os nomes das ações
+   * ficaram por compatibilidade. Pausar é o lado seguro e nunca é bloqueado;
+   * retomar o servidor recusa (409, com o recado do que falta) se a loja não
+   * estiver inteira — o recado dele vai para a tela como veio.
    */
-  const alternarPix = async (ligar: boolean) => {
+  const pausarOuRetomar = async (retomar: boolean) => {
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
-        description: "Você precisa estar online para mudar o PIX da loja.",
+        description:
+          "Você precisa estar online para mudar o pagamento pelo app.",
       });
       return;
     }
-    if (alternandoPix || carregando) return;
+    // Nunca pausa/retoma no meio de um teste ou de um salvar: as gravações
+    // do servidor correm juntas, e a pausa perderia a corrida.
+    if (alternandoPix || carregando || testando || salvando) return;
 
     setAlternandoPix(true);
     setAvisoPix(null);
@@ -486,27 +589,19 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     try {
       const { data, error } = await supabase.functions.invoke(
         "credenciais-mercado-pago",
-        { body: { acao: ligar ? "ligar_pix" : "desligar_pix" } },
+        { body: { acao: retomar ? "ligar_pix" : "desligar_pix" } },
       );
       if (error) throw error;
-      const resposta = (data ?? {}) as {
-        pix_ligado?: boolean;
-        aviso?: string;
-      };
-      const ligadoNaFicha = resposta.pix_ligado === true;
-      setConfig((antes) => ({ ...antes, pix_ligado: ligadoNaFicha }));
-      setAvisoPix(resposta.aviso ?? null);
-      setEcoDaVitrine(true);
-      onPixAlternado?.(ligadoNaFicha);
+      aplicarEstadoDoServidor((data ?? {}) as EstadoDevolvido);
       haptic.success();
     } catch (err) {
       haptic.error();
       toast.error(
         await erroAmigavel(
           err,
-          ligar
-            ? "Não consegui ligar o PIX agora. Tente de novo."
-            : "Não consegui desligar o PIX agora. Tente de novo.",
+          retomar
+            ? "Não consegui retomar o pagamento pelo app agora. Tente de novo."
+            : "Não consegui pausar o pagamento pelo app agora. Tente de novo.",
         ),
       );
     } finally {
@@ -538,25 +633,43 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
 
   const teste = config.ultimo_teste;
 
-  // LIGAR exige teste conectado (a edge recusa com 409 de qualquer jeito —
-  // a tela só não deixa o lojista descobrir isso por um erro). DESLIGAR
-  // nunca é bloqueado: é o lado seguro, e trancar a saída seria pior.
-  const faltaTestarParaLigar = !config.pix_ligado && !teste?.conectado;
-
-  // LIGADO SEM TESTE (mp-9): a edge zera `ultimo_teste` quando o lojista
-  // salva uma credencial nova, então "sem teste guardado" é justamente o
-  // caso em que a chave que está cobrando nunca passou pelo Mercado Pago.
-  // Não dá para saber de QUAL credencial é um teste antigo — o servidor
-  // apaga o registro no lugar de carimbar a chave —, então a ausência é o
-  // único sinal que existe, e ele basta para avisar.
-  // Um teste que FALHOU (`conectado: false`) é notícia pior, não melhor: o
-  // aviso continua até um teste CONECTADO (ressalva da revisão de mp-9).
-  const ligadoSemTeste = config.pix_ligado && !teste?.conectado;
+  // O ESTADO do recebimento pelo app, lido do que o SERVIDOR devolveu:
+  // ligado na ficha manda (é o que o cliente vê); depois a pausa; depois o que
+  // falta. "Pronto" é tudo preenchido, mas desligado e sem pausa (loja que
+  // já existia, ou a ficha recusou a última tentativa): um teste reconcilia.
+  // EDGE ANTIGA (`faltando` ausente): o front sobe antes das functions, e a
+  // edge antiga não liga sozinha nem conhece pausa. A tela não afirma "tudo
+  // preenchido" nem oferece Pausar/Retomar (que não existem lá): mostra o
+  // estado REAL (`pix_ligado`), diz que o sistema está sendo atualizado e
+  // mantém só o Ligar/Desligar de antes (a edge antiga valida tudo).
+  const servidorDesatualizado = config.faltando === null;
+  const faltando = config.faltando ?? [];
+  const estadoDoRecebimento:
+    | "desatualizado"
+    | "recebendo"
+    | "pausado"
+    | "faltando"
+    | "pronto" = servidorDesatualizado
+    ? "desatualizado"
+    : config.pix_ligado
+      ? "recebendo"
+      : config.pausado
+        ? "pausado"
+        : faltando.length > 0
+          ? "faltando"
+          : "pronto";
+  const listaDoQueFalta = faltando.map(textoDaFalta);
+  const faltaTestar = faltando.includes("teste");
 
   // Mesma trava do fluxo do dono nos DOIS botões de testar (o do formulário
   // e o do aviso âmbar): testar coisa diferente do que está salvo enganaria.
   const testeBloqueado =
-    testando || carregando || isOffline || dirty || !config.configurado;
+    testando ||
+    carregando ||
+    isOffline ||
+    alternandoPix ||
+    dirty ||
+    !config.configurado;
 
   return (
     <div className="space-y-4">
@@ -738,7 +851,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               htmlFor="mp-webhook-secret"
               className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
             >
-              <span>Chave de notificações (obrigatória para Pix)</span>
+              <span>
+                Chave de notificações (obrigatória para receber pelo app)
+              </span>
               {config.mascara_webhook && (
                 <span className="font-mono normal-case tracking-normal text-zinc-400">
                   salva: {config.mascara_webhook}
@@ -761,9 +876,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             />
             {!config.mascara_webhook && (
               <p className="text-[11px] leading-relaxed text-amber-300">
-                Sem a assinatura da sua loja, o servidor recusa a cobrança por
-                Pix mesmo com o interruptor ligado. Testar conexão não valida
-                notificações; a chave global do app não substitui a sua.
+                Sem a assinatura da sua loja, o pagamento pelo app não é
+                liberado. Testar conexão não valida notificações; a chave global
+                do app não substitui a sua.
               </p>
             )}
           </div>
@@ -771,7 +886,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               type="button"
-              disabled={salvando || carregando || isOffline}
+              disabled={salvando || carregando || isOffline || alternandoPix}
               onClick={salvar}
               className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
             >
@@ -809,108 +924,223 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             )}
           </div>
 
-          {/* ── PIX no app: o interruptor que o CLIENTE sente (mp-4) ────
-              Fica logo abaixo do teste porque é o passo seguinte dele:
-              testou, deu certo, agora abre a porta do pagamento. ──────── */}
-          <div className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="min-w-0">
-                <span className="block text-xs font-bold text-white">
-                  Receber PIX no app
-                </span>
-                <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-400">
-                  Ligado, o cliente pode escolher Pix no fim da compra. A
-                  cobrança exige também a assinatura de Webhooks da sua loja.
-                </span>
+          {/* ── Receber pelo app: o ESTADO que o CLIENTE sente ─────────────
+              Antes era um interruptor (mp-4). Agora o servidor liga sozinho
+              quando as três chaves estão salvas e o teste passou, e a tela só
+              mostra o que ele decidiu — com Pausar/Retomar nas mãos do
+              lojista. Nada de estado por palpite do clique. ─────────────── */}
+          {!carregando && !erroCarga && (
+            <div
+              data-estado-recebimento={estadoDoRecebimento}
+              className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3"
+            >
+              <span className="block text-xs font-bold text-white">
+                Receber PIX no app
               </span>
-              <Switch
-                checked={config.pix_ligado}
-                disabled={
-                  carregando ||
-                  isOffline ||
-                  alternandoPix ||
-                  faltaTestarParaLigar
-                }
-                aria-label="Receber PIX no app"
-                onCheckedChange={alternarPix}
-                className="shrink-0 scale-90 data-[state=checked]:bg-admin-gold"
-              />
-            </div>
-
-            {/* Bloqueio MUDO é a tela mentindo por omissão: enquanto faltar
-                teste conectado, o motivo fica à vista ao lado do botão. */}
-            {faltaTestarParaLigar && !carregando && (
-              <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-zinc-400">
-                <AlertCircle className="mt-0.5 size-3 shrink-0 text-amber-400" />
-                <span>
-                  Faça o teste de conexão dar certo antes de ligar — o app não
-                  abre o PIX com uma chave que o Mercado Pago não aceitou.
+              {!servidorDesatualizado && (
+                <span className="block text-[11px] leading-relaxed text-zinc-400">
+                  O pagamento pelo app (Pix e cartão) liga sozinho quando as
+                  três chaves estão salvas e o teste de conexão passa.
                 </span>
-              </p>
-            )}
+              )}
 
-            {/* LIGADO SEM TESTE: a loja está cobrando por uma credencial
-                que nunca falou com o Mercado Pago (o servidor zera o teste
-                ao salvar chave nova). O conserto — testar — fica no próprio
-                aviso: mandar o lojista procurar o botão lá em cima era
-                contar o problema e esconder a saída. */}
-            {ligadoSemTeste && !carregando && (
-              <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+              {estadoDoRecebimento === "desatualizado" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p
+                      role="status"
+                      className={cn(
+                        "flex items-center gap-1.5 text-xs font-bold",
+                        config.pix_ligado
+                          ? "text-emerald-300"
+                          : "text-zinc-300",
+                      )}
+                    >
+                      {config.pix_ligado
+                        ? "Recebendo pelo app (Pix e cartão)"
+                        : "Pagamento pelo app desligado"}
+                    </p>
+                    {(config.pix_ligado || teste?.conectado) && (
+                      <button
+                        type="button"
+                        disabled={
+                          alternandoPix || isOffline || testando || salvando
+                        }
+                        onClick={() => pausarOuRetomar(!config.pix_ligado)}
+                        className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                      >
+                        {config.pix_ligado ? "Desligar" : "Ligar"}
+                      </button>
+                    )}
+                  </div>
+                  <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      Atualizando o sistema de pagamentos desta loja — tente de
+                      novo em alguns minutos.
+                    </span>
+                  </p>
+                </div>
+              )}
+
+              {estadoDoRecebimento === "recebendo" && (
+                <div className="flex items-center justify-between gap-3">
+                  <p
+                    role="status"
+                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-300"
+                  >
+                    <CheckCircle2 className="size-4 shrink-0" />
+                    Recebendo pelo app (Pix e cartão)
+                  </p>
+                  <button
+                    type="button"
+                    disabled={
+                      alternandoPix || isOffline || testando || salvando
+                    }
+                    onClick={() => pausarOuRetomar(false)}
+                    className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                  >
+                    Pausar
+                  </button>
+                </div>
+              )}
+
+              {estadoDoRecebimento === "pausado" && (
+                <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p
+                      role="status"
+                      className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                    >
+                      <AlertCircle className="size-4 shrink-0" />
+                      Pausado por você
+                    </p>
+                    <button
+                      type="button"
+                      disabled={
+                        alternandoPix || isOffline || testando || salvando
+                      }
+                      onClick={() => pausarOuRetomar(true)}
+                      className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                    >
+                      Retomar
+                    </button>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-amber-200/90">
+                    Nenhum cliente consegue pagar pelo app enquanto estiver
+                    pausado. Salvar ou testar as chaves não religa: toque em
+                    Retomar.
+                  </p>
+                  {listaDoQueFalta.length > 0 && (
+                    <p className="text-[11px] leading-relaxed text-amber-200/90">
+                      Para receber quando retomar, ainda falta:{" "}
+                      {listaDoQueFalta.join(", ")}.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {estadoDoRecebimento === "faltando" && (
+                <div className="space-y-1.5">
+                  <p
+                    role="status"
+                    className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                  >
+                    <AlertCircle className="size-4 shrink-0" />
+                    Falta para receber pelo app:
+                  </p>
+                  <ul className="list-disc space-y-0.5 pl-9 text-[11px] leading-relaxed text-zinc-300">
+                    {listaDoQueFalta.map((texto) => (
+                      <li key={texto}>{texto}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {estadoDoRecebimento === "pronto" && (
+                <div className="space-y-1">
+                  <p
+                    role="status"
+                    className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                  >
+                    <AlertCircle className="size-4 shrink-0" />
+                    Tudo preenchido, mas o pagamento pelo app está desligado.
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-zinc-400">
+                    Toque em Testar conexão para liberar.
+                  </p>
+                </div>
+              )}
+
+              {/* LIGADO COM FALTA (loja que já existia): a loja estaria
+                  cobrando com uma chave que nunca passou por tudo isto. O
+                  conserto — testar — fica no próprio aviso: mandar o lojista
+                  procurar o botão lá em cima era contar o problema e
+                  esconder a saída. */}
+              {estadoDoRecebimento === "recebendo" &&
+                listaDoQueFalta.length > 0 && (
+                  <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                    <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        O pagamento pelo app está ligado, mas ainda falta:{" "}
+                        {listaDoQueFalta.join(", ")}. Complete para o cliente
+                        não travar no fim da compra.
+                      </span>
+                    </p>
+                    {faltaTestar && (
+                      <button
+                        type="button"
+                        disabled={testeBloqueado}
+                        onClick={testarConexao}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                      >
+                        {testando ? (
+                          <RefreshCw className="size-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="size-3.5" />
+                        )}
+                        <span>Testar conexão</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+              {/* O que o servidor fez e quer contar (chave de sandbox,
+                  "desliguei porque o teste não passou"...) vem PRONTO da edge
+                  e aparece como veio. */}
+              {avisoPix && (
+                <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                  <span>{avisoPix}</span>
+                </p>
+              )}
+
+              {/* Por que "até 1 minuto": a vitrine lê a ficha da loja pelo
+                  porteiro, que guarda a ficha fresca por CACHE_FRESCO_MS =
+                  60_000 (src/hospedagem/porteiro.ts). Prometer "na hora"
+                  faria o lojista abrir a loja, não ver mudança e achar que
+                  falhou. */}
+              {ecoDaVitrine && (
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  Pronto. A vitrine passa a refletir em até 1 minuto.
+                </p>
+              )}
+
+              {/* Ligado sem a Public Key publicada na ficha é exatamente o
+                  caso em que o cliente NÃO vê PIX — a tela conta em vez de
+                  deixar o lojista descobrir na venda perdida. */}
+              {config.pix_ligado && !config.public_key_na_loja && (
+                <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                   <span>
-                    O PIX está ligado, mas a chave salva ainda não passou pelo
-                    teste de conexão. Teste agora ou desligue até testar.
+                    A ficha da loja ainda não carrega esta Public Key — salve as
+                    chaves de novo para o cliente conseguir pagar.
                   </span>
                 </p>
-                <button
-                  type="button"
-                  disabled={testeBloqueado}
-                  onClick={testarConexao}
-                  className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
-                >
-                  {testando ? (
-                    <RefreshCw className="size-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="size-3.5" />
-                  )}
-                  <span>Testar conexão</span>
-                </button>
-              </div>
-            )}
-
-            {/* O aviso de chave de sandbox vem PRONTO da edge (ela é quem
-                sabe o `live_mode` da conta) e aparece como veio. */}
-            {avisoPix && (
-              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
-                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                <span>{avisoPix}</span>
-              </p>
-            )}
-
-            {/* Por que "até 1 minuto": a vitrine lê a ficha da loja pelo
-                porteiro, que guarda a ficha fresca por CACHE_FRESCO_MS =
-                60_000 (src/hospedagem/porteiro.ts). Prometer "na hora" faria
-                o lojista abrir a loja, não ver mudança e achar que falhou. */}
-            {ecoDaVitrine && (
-              <p className="text-[11px] leading-relaxed text-zinc-400">
-                Pronto. A vitrine passa a refletir em até 1 minuto.
-              </p>
-            )}
-
-            {/* Ligado sem a Public Key publicada na ficha é exatamente o caso
-                em que o cliente NÃO vê PIX — a tela conta em vez de deixar o
-                lojista descobrir na venda perdida. */}
-            {config.pix_ligado && !config.public_key_na_loja && (
-              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
-                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  A ficha da loja ainda não carrega esta Public Key — salve as
-                  chaves de novo para o cliente conseguir pagar.
-                </span>
-              </p>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-500">
             <Lock className="mt-0.5 size-3 shrink-0" /> {RECADO_DE_SEGURANCA}

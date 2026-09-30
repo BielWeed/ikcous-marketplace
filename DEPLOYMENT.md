@@ -254,7 +254,7 @@ regra inteira está na §5.2.1 — leia-a antes de mexer em qualquer linha `MP_`
 | variável | onde | observação |
 | --- | --- | --- |
 | `VITE_MP_PUBLIC_KEY` | **só desenvolvimento local** (`.env`) | o prefixo não indica ambiente (ver 5.1); pegue-a na aba "Credenciais de teste" do painel. Vai para o bundle, é pública por natureza. Em **qualquer deploy — produção OU Preview** — este valor assado é ignorado: quem vale é a ficha da loja (`store_config.mp_public_key`, §5.2.1); o assado só é lido em `npm run dev` (`import.meta.env.DEV`, `src/config/configuracaoDaLoja.ts`) |
-| `VITE_PAGAMENTO_ONLINE` | **só desenvolvimento local** (`.env`) | exatamente a string `true`; qualquer outro valor mantém o checkout antigo. Em **qualquer deploy — produção OU Preview** — este valor assado é ignorado: quem liga o PIX é o interruptor da tela (`store_config.pagamento_online`, §5.2.1), não esta variável. Preview da Vercel é build de produção (`DEV` falso) e passa pelo mesmo porteiro: definir a variável lá não faz o PIX aparecer |
+| `VITE_PAGAMENTO_ONLINE` | **só desenvolvimento local** (`.env`) | exatamente a string `true`; qualquer outro valor mantém o checkout antigo. Em **qualquer deploy — produção OU Preview** — este valor assado é ignorado: quem liga o PIX é o servidor (`store_config.pagamento_online`, que liga sozinho quando as três chaves da loja estão salvas e o teste de conexão passa, §5.2.1), não esta variável. Preview da Vercel é build de produção (`DEV` falso) e passa pelo mesmo porteiro: definir a variável lá não faz o PIX aparecer |
 | `MP_ACCESS_TOKEN` | Supabase → Edge Functions → Secrets | **RESERVA desde 15/09/2026**: só é usado quando o lojista NÃO cadastrou chave na tela (§5.2.1). O prefixo NÃO indica ambiente na Orders API (teste e produção começam com `APP_USR`, ver 5.1) — pegue-o na aba "Credenciais de teste" do painel; **nunca** com prefixo `VITE_`, senão vaza no bundle |
 | `MP_CHAVES_ENCRYPTION_KEY` | Supabase → Edge Functions → Secrets | **o COFRE**: 32 bytes em base64 (AES-256-GCM) com que a edge `credenciais-mercado-pago` cifra e decifra a chave do lojista em `app_settings`. Sem ele a tela não salva nem testa, e **a loja que já cadastrou chave para de cobrar** — é falha fechada de propósito (§5.2.1). Nunca com prefixo `VITE_`; nunca no banco (lá só moram ciphertext e iv). Trocá-lo torna ilegível o que já estava guardado: o lojista precisa colar as chaves de novo |
 | `MP_SANDBOX_PAYER_EMAIL` | Supabase → Edge Functions → Secrets | **opcional**, só faz sentido em ambiente de TESTE. Presente (e não vazia), `criar-pagamento` troca o e-mail do pagador do PIX por este valor e liga `payer.first_name = "APRO"` — o valor mágico que a doc de teste de PIX do MP exige para a order simular o fluxo completo. Desde 13/08/2026 uma string vazia já se comporta como ausente (achado de revisão: CHECKOUT-070), mas a forma CERTA de desligar o sandbox continua sendo **apagar o secret**, não deixar o campo em branco — é a única sem margem para engano |
@@ -298,12 +298,17 @@ saem apenas `origem` e `motivo` (`cofre_ausente`, `token_ilegivel`, `registro_il
 `ambiente_sem_token`, e `webhook_ilegivel` para o segredo de notificação, que sozinho não
 derruba a cobrança) — **nenhum token, nenhum segredo, nunca**.
 
-**Ligar o PIX é um ato separado de salvar a chave.** Em *Ajustes > Pagamentos > Mercado Pago* o
-lojista cola as chaves, toca em "Salvar chaves", depois em "Testar conexão", e só então liga o
-interruptor **"Receber PIX no app"**. O checkout do cliente só oferece PIX quando a ficha pública
-da loja traz `pagamento_online = true` **e** `mp_public_key` preenchida
-(`src/config/configuracaoDaLoja.ts`) — chave salva com o interruptor desligado é loja sem PIX, e
-é assim de propósito.
+**O pagamento pelo app liga SOZINHO (30/09/2026).** Em *Ajustes > Pagamentos > Mercado Pago* o
+lojista cola as três chaves (Public Key, Access Token e a Chave de notificações — a assinatura
+do webhook) e toca em "Salvar chaves": o servidor testa a conexão na hora e, se as três chaves
+estão salvas e o teste passou, liga `pagamento_online` (Pix **e** cartão pelo app) sem botão
+nenhum. O bloco **"Receber PIX no app"** da tela só MOSTRA o estado que o servidor devolveu
+("Recebendo pelo app", "Pausado por você" ou "Falta para receber pelo app:" com a lista) e tem
+**Pausar** e **Retomar**; a pausa vence o automático (salvar ou testar não religam). Falta
+qualquer uma das três chaves, ou o teste falhou: desliga sozinho. O checkout do cliente só
+oferece PIX quando a ficha pública da loja traz `pagamento_online = true` **e** `mp_public_key`
+preenchida (`src/config/configuracaoDaLoja.ts`). `ler` só lê: loja que já existia com o estado
+antigo só muda quando o lojista salva, testa ou pausa.
 
 Essas duas colunas de `store_config` são escritas pela **própria edge
 `credenciais-mercado-pago`**, que roda com service role (claim `service_role`) e já é trancada
@@ -313,15 +318,20 @@ para isto:
 
 - **`salvar`** publica a Public Key em `store_config.mp_public_key`; se a ficha recusar, a
   resposta é erro explícito — nunca "salvo" calado;
-- **`ligar_pix`** acende `pagamento_online`, e **só com teste de conexão bem-sucedido** (senão
-  `409`, "Teste a conexão com sucesso antes de ligar o PIX"); carimba `pix_ligado_em` e
-  `pix_ligado_por` (uid do admin) para auditoria. Com chave de TESTE ele liga e devolve o aviso
-  "Chave de TESTE: o PIX não vai receber dinheiro de verdade" — chave de sandbox conecta
-  igualzinho à de produção, e quem não for avisado vai achar que vendeu;
-- **`desligar_pix`** apaga `pagamento_online` e é sempre permitido: desligar é o lado seguro (o
-  cliente volta a ver só os meios de pagamento manuais).
+- **`salvar`** também TESTA a conexão na hora quando alguma credencial mudou (Access Token novo,
+  Public Key diferente ou Chave de notificações nova) e só deixa `pagamento_online` ligado se o
+  teste dessa credencial passou; carimba `pix_ligado_em` e `pix_ligado_por` (uid do admin) ao
+  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Com
+  chave de TESTE liga e devolve o aviso "Chave de TESTE: o PIX não vai receber dinheiro de
+  verdade" — chave de sandbox conecta igualzinho à de produção, e quem não for avisado vai
+  achar que vendeu;
+- **`ligar_pix`** virou **retomar**: tira a pausa e reconcilia; faltando qualquer chave ou o
+  teste, `409` com o recado do que falta e nada gravado;
+- **`desligar_pix`** virou **pausar** e é sempre permitido (desligar é o lado seguro): apaga
+  `pagamento_online` e registra a pausa; se a loja ficaria sem nenhuma forma de pagamento, `409`
+  e a pausa não fica gravada.
 
-Depois de ligar ou desligar, **a vitrine reflete em até 1 minuto**: o porteiro serve a ficha da
+Depois de liberar, pausar ou retomar, **a vitrine reflete em até 1 minuto**: o porteiro serve a ficha da
 loja de um cache fresco de 60 s (`CACHE_FRESCO_MS`, em `src/hospedagem/porteiro.ts`).
 
 ### 5.3 Deploy das functions da cobrança (três do checkout, mais duas desde 15/09/2026)
@@ -431,6 +441,28 @@ perde; o inventário é que fica preso enquanto a janela durar.
 **Isto vale para CADA loja clonada deste molde**, em todo upgrade que cruze uma versão de
 `criar-pagamento` que mude o vocabulário do campo `statusPagamento`/`status` — não só nesta
 migração específica.
+
+### 5.3.1-b A ordem de deploy da liberação automática do PIX: function ANTES do front (30/09/2026)
+
+A liberação automática do pagamento pelo app (o servidor liga `store_config.pagamento_online`
+sozinho com as três chaves + teste de conexão, e a tela mostra "Recebendo", "Pausado por você" ou
+"Falta para receber") vive na function `credenciais-mercado-pago`. O front (Vercel) sobe sozinho
+no merge; **a function NÃO** — ela é publicada por loja (§5.3.2), uma a uma. Daí a janela: front
+novo falando com function antiga.
+
+**Regra: publique `credenciais-mercado-pago` em TODAS as lojas (a principal e cada cliente)
+ANTES de juntar o PR do front.** Confirme por loja que a resposta da ação `ler` já traz o campo
+`faltando` (é a marca da versão nova).
+
+**O que acontece se a ordem for invertida** (medido em
+`tests/front/admin-mercado-pago-liberacao-automatica.test.tsx`, casos A15/A15b/A15c): a tela
+percebe que a resposta não traz `faltando` e entra em modo "servidor desatualizado" — não diz
+"Tudo preenchido", não oferece Pausar/Retomar (a function antiga não conhece pausa), mostra o
+estado REAL (`pix_ligado`) e o recado "Atualizando o sistema de pagamentos desta loja — tente de
+novo em alguns minutos." Só resta o Ligar/Desligar de antes (a function antiga valida tudo por
+conta própria: só liga com teste conectado). Nada é cobrado errado e nada liga sem prova — mas a
+loja **não libera sozinha** até a function ser publicada, e o lojista vê um aviso em vez do
+estado novo. É estado transitório, não defeito: publique a function e recarregue a tela.
 
 ### 5.3.2 Publicar pelo GitHub, sem CLI na máquina (workflow `publicar-functions`, desde 17/09/2026)
 

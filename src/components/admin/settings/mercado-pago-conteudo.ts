@@ -39,6 +39,11 @@
  * O passo 5 passou a dizer isso com todas as letras, inclusive o atraso de
  * até 1 minuto da vitrine (cache fresco do porteiro, CACHE_FRESCO_MS).
  *
+ * Liberação automática (30/09/2026, pedido do dono): o interruptor morreu. As
+ * três chaves salvas + o teste de conexão que passou LIGAM o recebimento pelo
+ * app (Pix e cartão) sozinhos, e o lojista só PAUSA/RETOMA. O passo 5 e o
+ * prompt deixaram de mandar "ligar o PIX" e de dizer "obrigatória para Pix".
+ *
  * Cartão pelo app (Fase 3.5, 26/09/2026): as MESMAS chaves cobram cartão
  * de crédito/débito pelo Card Payment Brick (os dados do cartão ficam em
  * campos seguros do Mercado Pago dentro da nossa tela). Quem liga é o bloco
@@ -74,10 +79,9 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
       'As chaves ficam no painel de desenvolvedores do Mercado Pago (developers.mercadopago.com), com a MESMA conta do seu app. Se o agente não conseguir te levar até lá, o caminho direto é: entrar no site com a sua conta, abrir "Suas integrações", criar a aplicação da sua loja e abrir "Credenciais de produção". Nessa tela, toque em "Ativar credenciais de produção" — aceite os termos e conclua o reCAPTCHA; sem esse passo, as chaves não recebem dinheiro de verdade.',
   },
   {
-    titulo:
-      "Volte aqui: cole as três chaves, salve e teste antes de ligar o PIX",
+    titulo: "Volte aqui: cole as três chaves e salve",
     descricao:
-      'Copie a Public Key e o Access Token de produção. Na mesma aplicação do Mercado Pago, configure Webhooks de produção com o endereço de notificações da sua loja e copie a Assinatura secreta para o campo "Chave de notificações (obrigatória para Pix)". Salve as três chaves e toque em "Testar conexão": esse teste confirma o Access Token, não a assinatura do webhook. Sem a assinatura da sua loja, o servidor recusa a cobrança por Pix, mesmo com o interruptor ligado; a chave global do app não substitui a sua. Depois de configurar as notificações e validar um aviso assinado, LIGUE "Receber PIX no app". A vitrine reflete a mudança em até 1 minuto. Para o dinheiro cair na sua conta, confira também sua CHAVE PIX na área do Pix do Mercado Pago.',
+      'Copie a Public Key e o Access Token de produção. Na mesma aplicação do Mercado Pago, configure Webhooks de produção com o endereço de notificações da sua loja e copie a Assinatura secreta para o campo "Chave de notificações (obrigatória para receber pelo app)". Ao salvar as três chaves, o app testa a conexão sozinho e, se der certo, libera o recebimento pelo app (Pix e cartão) automaticamente — não existe botão de ligar. Esse teste confirma o Access Token, não a assinatura do webhook: sem a assinatura da sua loja, o pagamento pelo app não é liberado, e a chave global do app não substitui a sua. Se quiser parar de receber por um tempo, use "Pausar" nesta tela; "Retomar" volta ao normal. A vitrine reflete a mudança em até 1 minuto. Para o dinheiro cair na sua conta, confira também sua CHAVE PIX na área do Pix do Mercado Pago.',
   },
 ];
 
@@ -167,7 +171,7 @@ O QUE EU PRECISO TER EM MÃOS NO FIM DESTA CONVERSA
 1) A PUBLIC KEY de PRODUÇÃO.
 2) O ACCESS TOKEN de PRODUÇÃO.
 As duas da MESMA conta que eu uso no app do Mercado Pago do meu celular, e as duas de PRODUÇÃO (as que recebem dinheiro de verdade). As credenciais de TESTE não me servem agora.
-3) A CHAVE DE NOTIFICAÇÕES da MINHA aplicação (no painel aparece como "Assinatura secreta", na área de Webhooks). Ela é obrigatória para o Pix: sem a assinatura da minha loja, o Pix não pode ser cobrado. A chave global do aplicativo não substitui a minha.
+3) A CHAVE DE NOTIFICAÇÕES da MINHA aplicação (no painel aparece como "Assinatura secreta", na área de Webhooks). Ela é obrigatória para receber pelo app (Pix e cartão): sem a assinatura da minha loja, o Pix não pode ser cobrado. A chave global do aplicativo não substitui a minha.
 
 COMO EU QUERO QUE VOCÊ ME GUIE
 - UM passo por vez, bem curto, dizendo exatamente ONDE eu toco: o nome do menu, do ícone ou do botão, do jeito que aparece na tela. Espere eu dizer que consegui antes de passar ao próximo.
@@ -175,11 +179,11 @@ COMO EU QUERO QUE VOCÊ ME GUIE
 - Se eu fizer uma pergunta no meio, responda e depois volte para o passo em que paramos.
 - Se algo não aparecer no app do celular, me leve pelo site: entrar em developers.mercadopago.com com a minha conta, abrir "Suas integrações", criar a aplicação da minha loja (se ainda não existir) e abrir "Credenciais de produção".
 - Se aparecer o botão "Ativar credenciais de produção", me ajude a concluir esse passo (aceitar os termos e o reCAPTCHA). Sem isso as chaves não recebem dinheiro de verdade.
-- Quando eu chegar nas credenciais, me mostre o botão de copiar de cada uma: primeiro a Public Key, depois o Access Token. Depois me guie para configurar a assinatura de Webhooks. Me lembre de colar as três no aplicativo da minha loja, em Ajustes, Pagamentos, Mercado Pago, na parte "Suas chaves", e depois tocar em "Salvar chaves" e em "Testar conexão". Testar conexão não valida a assinatura do webhook.
+- Quando eu chegar nas credenciais, me mostre o botão de copiar de cada uma: primeiro a Public Key, depois o Access Token. Depois me guie para configurar a assinatura de Webhooks. Me lembre de colar as três no aplicativo da minha loja, em Ajustes, Pagamentos, Mercado Pago, na parte "Suas chaves", e depois tocar em "Salvar chaves": o aplicativo testa a conexão sozinho e libera o recebimento pelo app (Pix e cartão) quando as três chaves estiverem salvas. Testar conexão não valida a assinatura do webhook.
 - Me lembre de conferir se a minha conta do Mercado Pago tem uma CHAVE PIX cadastrada (na área do Pix do app). Sem ela, o dinheiro do Pix não tem onde cair.
 
-NO FINAL: CONFIGURE A CHAVE DE NOTIFICAÇÕES ANTES DE LIGAR O PIX
-Depois que eu tiver a Public Key e o Access Token, explique em uma frase para que serve a assinatura: ela permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago. Leve-me até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar e copiar a "Assinatura secreta". Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Chave de notificações (obrigatória para Pix)". Sem ela, não me diga que o Pix está pronto. Um aviso assinado e a atualização do pedido ainda precisam ser validados.
+NO FINAL: CONFIGURE A CHAVE DE NOTIFICAÇÕES ANTES DE RECEBER PELO APP
+Depois que eu tiver a Public Key e o Access Token, explique em uma frase para que serve a assinatura: ela permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago. Leve-me até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar e copiar a "Assinatura secreta". Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Chave de notificações (obrigatória para receber pelo app)". Sem ela, não me diga que o recebimento pelo app está liberado. Um aviso assinado e a atualização do pedido ainda precisam ser validados.
 
 SEGURANÇA
 Essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e dentro do aplicativo da minha loja. Não vou enviá-las para ninguém, nem colar em outro site, nem colar aqui nesta conversa. Se eu tentar colar uma chave aqui, me avise para não fazer isso.`;
@@ -212,7 +216,7 @@ export const CARTAO_PELO_APP = {
   testeAntes:
     "Antes de ligar para os clientes, faça um pedido de teste com um cartão de teste do Mercado Pago.",
   semPix:
-    "Ligue o PIX pelo app (seção Mercado Pago) antes: o cartão usa as mesmas chaves e só aparece para o cliente com o pagamento pelo app ligado.",
+    "Deixe o pagamento pelo app liberado antes (seção Mercado Pago: as três chaves salvas e testadas): o cartão usa as mesmas chaves e só aparece para o cliente com o pagamento pelo app ligado.",
   leituraFalhou:
     "Não foi possível ler a configuração do cartão. Recarregue a página para tentar de novo.",
   debito:
