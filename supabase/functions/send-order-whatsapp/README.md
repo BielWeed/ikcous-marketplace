@@ -147,3 +147,28 @@ nunca `false`.
 custo da Evolution API, número banido, mudança de canal — ele não sobreviveu.
 Isso continua sem resposta; a despublicação da edge function não muda esse
 fato, só encerra a peça que ainda estava no ar sem uso.
+
+## Arquivada por decisão do dono (30/09/2026)
+
+Reavaliada depois de aparecer ATIVA na loja Almeida (publicada por engano no
+deploy em massa de 28/09, versão 3, `verify_jwt` ligado; só devolve erro,
+porque as colunas `whatsapp_api_*` não existem mais e nada a chama). A
+decisão do dono foi **arquivar, não apagar**: pode voltar no futuro, mas
+**só como opção que o lojista assinante escolhe depois de conhecer os
+riscos**. Os riscos que precisam estar na conversa com ele:
+
+- **Número banido:** ela fala com um gateway NÃO oficial do WhatsApp
+  (`/message/sendText/{instancia}` com `apikey`, estilo Evolution API). O
+  WhatsApp pode bloquear o número da loja que manda mensagem automática
+  assim.
+- **Custo:** o gateway precisa de servidor ligado 24h (pago, ou uma máquina
+  sempre ligada). A alternativa oficial (WhatsApp Cloud API da Meta) cobra por
+  mensagem.
+- **Refazer, não religar:** voltar exige de novo as colunas de configuração
+  por loja (removidas em `20260601000001_remove_whatsapp_infrastructure.sql`),
+  o gatilho de pedido novo e a revisão da própria função (ela lê pedido com
+  service role a partir do corpo da requisição).
+
+Enquanto isso o app avisa o cliente por e-mail e push, e o contato por
+WhatsApp é por link (`wa.me`), grátis e sem risco de bloqueio. A cópia no ar
+da Almeida deve ser removida pelo painel do Supabase.
