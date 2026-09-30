@@ -378,6 +378,35 @@ function clienteFalso(opts: {
 
       // ── comportamento pré-existente (marketplace_orders) ──────────────
       return {
+        // Plano 2026-09-30 (adoção da cobrança paga sem registro): o UPDATE
+        // condicional `.update().eq().is().select().maybeSingle()`. Registra
+        // e devolve a linha só se o fixture estiver com gateway_payment_id
+        // null — espelha o `IS NULL` do WHERE real.
+        update(valores: Record<string, unknown>) {
+          const filtros: Array<[string, unknown]> = [];
+          return {
+            eq(c1: string, v1: unknown) {
+              filtros.push([c1, v1]);
+              return {
+                is(c2: string, v2: unknown) {
+                  filtros.push([c2, v2]);
+                  return {
+                    select() {
+                      return {
+                        maybeSingle: async () => {
+                          (opts.registro as any)?.updatesPedido?.push({ valores, filtros });
+                          const casa = (opts.pedido as any)?.gateway_payment_id === null;
+                          if (casa && opts.pedido) (opts.pedido as any).gateway_payment_id = valores.gateway_payment_id;
+                          return { data: casa ? { id: v1 } : null, error: null };
+                        },
+                      };
+                    },
+                  };
+                },
+              };
+            },
+          };
+        },
         select(colunas: string) {
           return {
             eq(coluna: string, valor: unknown) {
@@ -1522,6 +1551,56 @@ Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acus
     } finally {
       console.error = console_error;
     }
+  }
+});
+
+Deno.test("cartão (plano 2026-09-30): cobrança PAGA sem registro no pedido (gateway_payment_id NULL) é ADOTADA antes da RPC — dinheiro nunca fica sem dono", async () => {
+  const registro: any = { chamadasRpc: [], updatesPedido: [] };
+  const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, gateway_payment_id: null };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+  });
+  const console_warn = console.warn;
+  console.warn = () => {};
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush: async () => {} });
+    assertEquals(resposta.status, 200);
+  } finally {
+    console.warn = console_warn;
+  }
+  assertEquals(registro.updatesPedido.length, 1);
+  assertEquals(registro.updatesPedido[0].valores.gateway_payment_id, ID_ORDER_TESTE);
+  assertEquals(registro.updatesPedido[0].filtros, [["id", UUID_PEDIDO], ["gateway_payment_id", null]]);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_TESTE);
+});
+
+Deno.test("cartão (plano 2026-09-30): pedido COM cobrança gravada nunca tem a cobrança trocada pela adoção; status não-pago nunca adota", async () => {
+  for (const [gravado, status, detalhe] of [
+    ["ORD_OUTRA_COBRANCA", "processed", "accredited"],
+    [null, "failed", "failed"],
+    [null, "action_required", "waiting_transfer"],
+  ] as const) {
+    const registro: any = { chamadasRpc: [], updatesPedido: [] };
+    const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, gateway_payment_id: gravado };
+    const supabase = clienteFalso({ rpcResultado: "ignorado", pedido, registro });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const fetchImpl = fetchConsulta(200, {
+      id: ID_ORDER_TESTE,
+      external_reference: UUID_PEDIDO,
+      status,
+      status_detail: detalhe,
+      total_amount: "149.90",
+    });
+    const resposta = await handler(req, { supabase, fetchImpl, enviarPush: async () => {} });
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.updatesPedido.length, 0, `${gravado}/${status}`);
   }
 });
 

@@ -144,7 +144,8 @@ export function montarBrick({
     expiraEm: string;
     ticketUrl?: string;
   }) => void;
-  /** Cartão aceito pelo MP ('pago') ou em análise ('aguardando'). */
+  /** Cartão aceito pelo MP ('pago') ou em análise ('aguardando'), ou
+   * qualquer meio que o MP já dê como 'pago'. */
   onCartao: (statusPagamento: "pago" | "aguardando") => void;
 }): () => void {
   let cancelado = false;
@@ -279,8 +280,11 @@ export function montarBrick({
                 );
               }
 
-              if (!ehPix) {
-                // Cartão aceito ('pago') ou em análise ('aguardando'). NUNCA
+              if (!ehPix || r.statusPagamento === "pago") {
+                // Cartão aceito ('pago') ou em análise ('aguardando') — e
+                // QUALQUER meio já 'pago' (MENOR 4 da revisão: pedir PIX num
+                // pedido cujo cartão já foi pago devolve 'pago' sem QR, e o
+                // ramo do PIX abaixo chamaria isso de falha). NUNCA
                 // é a confirmação do pedido: quem grava 'pago' é o webhook, e
                 // é o CheckoutView que troca para a tela de confirmação
                 // quando o banco muda. Aqui só se tira o formulário da tela
@@ -565,13 +569,13 @@ export function PagamentoOnline({
       >
         <p className="text-sm font-bold text-zinc-900">
           {cartao === "pago"
-            ? "Pagamento com cartão aprovado"
+            ? "Pagamento aprovado"
             : "Pagamento com cartão em análise"}
         </p>
         <p className="text-xs text-zinc-500">
           {cartao === "pago"
             ? "Estamos confirmando o seu pedido. Esta tela muda sozinha em instantes."
-            : "O banco do cartão está analisando o pagamento. Esta tela muda sozinha quando a resposta chegar."}
+            : "O banco do cartão está analisando o pagamento. Se for aprovado, esta tela muda sozinha. Se demorar ou o banco recusar, você pode tentar outro pagamento."}
         </p>
         {cartao === "aguardando" && ofereceOutroPagamento && (
           <button

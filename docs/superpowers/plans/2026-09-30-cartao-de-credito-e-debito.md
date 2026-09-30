@@ -79,6 +79,41 @@ confirmação quando o webhook grava 'pago'.
 - [ ] T6 Painel: seção "Cartão de crédito e débito" nos Ajustes. Testes.
 - [ ] T7 Verificação completa + revisão por contexto limpo.
 
+## Revisão de contexto limpo (30/09/2026) — o que mudou por causa dela
+
+- **BLOQUEIO 1 (cobrança dupla PIX + cartão):** a chave de idempotência passou a ser UMA
+  por tentativa para os dois meios; resposta ambígua do cartão (timeout, 5xx, 2xx
+  ilegível) é repetida com a mesma chave e o mesmo corpo; 409/423 não sugerem mais PIX; o
+  webhook ADOTA uma cobrança paga quando o pedido ainda não tem cobrança gravada.
+- **IMPORTANTE 2:** cobrança morta decidida pelo `status` da raiz (`failed`/`canceled`/
+  `expired`), qualquer que seja o `status_detail`.
+- **Menores:** cartão recusado em pedido cancelado pelo cliente; "pago" sem QR vai para a
+  tela de aprovado; texto da análise; log do 402 sem dados do pagador; comentários sobre
+  negação por RLS.
+
+## Publicação (sessão local) — a ORDEM importa
+
+1. Aplicar `20261160000000` e `20261160000100` (db-apply, com a verificação do mapa).
+2. Publicar `webhook-mercadopago` (adoção da cobrança sem registro).
+3. Publicar `criar-pagamento`.
+4. Publicar o front.
+
+Com a function nova e a RPC velha, a primeira recusa de cartão ainda cancelaria o pedido.
+
+## Medir no sandbox do Mercado Pago antes do merge
+
+Esta sessão não alcança a API do MP; os testes usam respostas escritas a partir da doc.
+
+- Corpo do **402** de cartão recusado: a order vem em `data` ou na raiz, com `id` `ORD…`?
+  Sem id, a próxima tentativa do mesmo pedido colide na chave (fica só o log).
+- **GET** de uma order recusada: `status` da raiz é `failed`?
+- Chave de idempotência **igual com corpo diferente** devolve 409?
+- Payment Brick: `selectedPaymentMethod` (`credit_card`/`debit_card`/`bank_transfer`),
+  `formData.installments` numérico, `maxInstallments` respeitado.
+- Parcelado com juros: `total_amount` da order continua o valor base (a conferência de
+  valor do webhook depende disso).
+- Débito: aparece `pending_challenge` (3DS) mesmo com `validation` padrão?
+
 ## Fora do escopo (anotado)
 
 - Cancelar automaticamente um PIX aberto quando o cliente troca para cartão (hoje: 409 com

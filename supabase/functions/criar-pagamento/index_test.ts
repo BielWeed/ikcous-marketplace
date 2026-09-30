@@ -252,6 +252,7 @@ function pedidoBase(overrides: Record<string, unknown> = {}) {
     id: UUID,
     user_id: null,
     total: 100,
+    status: "pending",
     payment_status: "aguardando",
     expires_at: "2099-01-01T00:00:00.000Z",
     gateway_payment_id: null,
@@ -1976,7 +1977,7 @@ Deno.test("handler: cartão aprovado cria order com o corpo de cartão, grava o 
   assertEquals(chamadas.length, 1);
   assertEquals(chamadas[0].method, "POST");
   assertEquals(chamadas[0].url.endsWith("/v1/orders"), true);
-  assertEquals(chamadas[0].headers["X-Idempotency-Key"], `${UUID}:cartao:inicio`);
+  assertEquals(chamadas[0].headers["X-Idempotency-Key"], UUID);
   assertEquals(chamadas[0].body.total_amount, "149.90");
   assertEquals(chamadas[0].body.transactions.payments[0].payment_method, {
     id: "visa",
@@ -2077,7 +2078,7 @@ Deno.test("handler: SEGUNDA tentativa depois da recusa — reconsulta a morta, c
   assertEquals(chamadas[0].method, "GET");
   assertEquals(chamadas[0].url.endsWith("/v1/orders/ORD01RECUSADA"), true);
   assertEquals(chamadas[1].method, "POST");
-  assertEquals(chamadas[1].headers["X-Idempotency-Key"], `${UUID}:cartao:ORD01RECUSADA`);
+  assertEquals(chamadas[1].headers["X-Idempotency-Key"], `${UUID}:ORD01RECUSADA`);
   assertEquals(registro.updates[0].valores.gateway_payment_id, "ORD02APROVADA");
   // Substitui SÓ a cobrança que foi reconsultada — nunca a de outro.
   assertEquals(registro.updates[0].filtros, [
@@ -2378,13 +2379,100 @@ Deno.test("handler: MP_SANDBOX_PAYER_EMAIL vale também para o cartão (sem 'APR
   }
 });
 
-Deno.test("chaveDeIdempotencia: PIX na 1ª tentativa é o id puro; substituição e cartão mudam a chave", () => {
-  assertEquals(chaveDeIdempotencia(UUID, "pix", null), UUID);
-  assertEquals(chaveDeIdempotencia(UUID, "pix", "ORD1"), `${UUID}:ORD1`);
-  assertEquals(chaveDeIdempotencia(UUID, "cartao", null), `${UUID}:cartao:inicio`);
-  assertEquals(chaveDeIdempotencia(UUID, "cartao", "ORD1"), `${UUID}:cartao:ORD1`);
+Deno.test("chaveDeIdempotencia: UMA chave por tentativa para PIX e cartão (BLOQUEIO 1 da revisão)", () => {
+  assertEquals(chaveDeIdempotencia(UUID, null), UUID);
+  assertEquals(chaveDeIdempotencia(UUID, "ORD1"), `${UUID}:ORD1`);
   // Teto do MP: 128 caracteres.
-  assertEquals(chaveDeIdempotencia(UUID, "cartao", "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG").length <= 128, true);
+  assertEquals(chaveDeIdempotencia(UUID, "ORDTST01KB0JDVXYPD6HPP2HSJDKH8FG").length <= 128, true);
+});
+
+Deno.test("handler: cartão sem resposta (500) REPETE com a MESMA chave e o MESMO token, e usa o desfecho real", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia(
+    [{ status: 500, corpo: { message: "internal_error" } }, { status: 201, corpo: orderCartao() }],
+    chamadas,
+  );
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(chamadas.length, 2);
+  assertEquals(chamadas[0].headers["X-Idempotency-Key"], chamadas[1].headers["X-Idempotency-Key"]);
+  assertEquals(chamadas[0].body, chamadas[1].body);
+  assertEquals(registro.updates[0].valores.gateway_payment_id, "ORD01CARTAO");
+});
+
+Deno.test("handler: cartão ambíguo DUAS vezes responde 502 sem sugerir PIX e sem gravar nada", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO });
+  const registro = { chamadasUpdate: 0 };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+  const fetchImpl = async () => {
+    throw new Error("timeout");
+  };
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.terminal, undefined);
+  assertEquals(/PIX/i.test(corpo.error), false);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("handler: PIX barrado pela chave da tentativa (409 do MP) responde 409 — nunca cria cobrança por cima de um cartão não gravado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  for (const status of [409, 423]) {
+    const pedido = pedidoBase({ user_id: DONO_LOGADO });
+    const registro = { chamadasUpdate: 0 };
+    const supabase = clienteFalso({ pedido, gravado: { id: UUID }, registro });
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: fetchEmSequencia([{ status, corpo: { code: "idempotency_key_already_used" } }], []),
+    });
+    const corpo = await resposta.json();
+    assertEquals(resposta.status, 409, String(status));
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(registro.chamadasUpdate, 0);
+  }
+});
+
+Deno.test("handler: cartão em pedido CANCELADO pelo cliente (aguardando + cancelled) é recusado sem tocar o MP", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const chamadas: ChamadaMP[] = [];
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: clienteFalso({ pedido: pedidoBase({ user_id: DONO_LOGADO, status: "cancelled" }), gravado: null }),
+    fetchImpl: fetchEmSequencia([], chamadas),
+  });
+  const corpo = await resposta.json();
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(chamadas.length, 0);
+});
+
+Deno.test("handler: cobrança recusada com status_detail DESCONHECIDO na raiz (failed:rejected_by_issuer) ainda é substituída (IMPORTANTE 2)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const pedido = pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: "ORD01RECUSADA" });
+  const registro = { chamadasUpdate: 0, updates: [] as any[] };
+  const supabase = clienteFalso({ pedido, gravado: { id: UUID, expires_at: pedido.expires_at }, registro });
+  const chamadas: ChamadaMP[] = [];
+  const fetchImpl = fetchEmSequencia(
+    [
+      { status: 200, corpo: { ...RECUSA_402.data, status: "failed", status_detail: "rejected_by_issuer" } },
+      { status: 201, corpo: orderCartao({ id: "ORD02APROVADA" }) },
+    ],
+    chamadas,
+  );
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl });
+  assertEquals(resposta.status, 200);
+  assertEquals(chamadas.length, 2);
+  assertEquals(registro.updates[0].filtros[2], ["gateway_payment_id", "ORD01RECUSADA"]);
 });
 
 Deno.test("handler: consulta ao Mercado Pago falhando devolve 502, sem confirmar nada com 200", async () => {
@@ -2535,10 +2623,16 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "terminar, muda o resultado",
     ],
     [
-      "Já existe uma tentativa de pagamento em andamento para este pedido. Aguarde alguns segundos e tente de novo, ou pague com PIX.",
-      "o MP barrou a chave desta tentativa (409/423): outra aba do MESMO " +
-        "pedido está cobrando; em segundos ela grava e a próxima chamada " +
-        "converge pelo 'reconsultar'",
+      "MSG_TENTATIVA_EM_ANDAMENTO",
+      "o MP barrou a chave desta tentativa (409/423), de PIX ou de cartão: " +
+        "outra requisição do MESMO pedido está cobrando; em segundos ela " +
+        "grava e a próxima chamada converge pelo 'reconsultar'",
+    ],
+    [
+      "Não conseguimos confirmar com o Mercado Pago se o cartão foi cobrado. Aguarde alguns minutos e confira seus pedidos antes de tentar de novo.",
+      "resposta ambígua do MP mesmo depois de repetir com a mesma chave; " +
+        "uma nova tentativa usa a MESMA chave (o MP barra cobrança dupla) e, " +
+        "se o cartão foi cobrado, o webhook adota a cobrança no pedido",
     ],
     [
       "r.erro",
@@ -2628,6 +2722,10 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // muda só quando um ponto de retorno é acrescentado ou removido de
   // propósito — o que É a enumeração pedida, não um acidente de estilo.
   //
+  // 33, não mais 30: revisão do cartão (BLOQUEIO 1 e MENOR 6) — o 409/423
+  // de idempotência também no PIX, a resposta ambígua do cartão depois de
+  // repetir, e o cartão em pedido cancelado pelo cliente (terminal).
+  //
   // 30, não mais 19: cartão religado (plano 2026-09-30). Saíram 2 ("No
   // momento aceitamos apenas PIX." e o `r.erro` do ramo clássico de cartão,
   // que foi apagado). Entraram 13: forma do meio e do cartão
@@ -2675,7 +2773,7 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // virou dois — falha de LEITURA (503) e "não existe" (404) — porque as
   // duas causas eram opostas e tinham que responder diferente (achado da
   // revisão do CHECKOUT-050, #194).
-  assertEquals(achados, 30);
+  assertEquals(achados, 33);
 });
 
 // CHECKOUT-050 (#194), achado por mutação: o teste acima só casa o helper

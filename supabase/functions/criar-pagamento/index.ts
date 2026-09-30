@@ -59,6 +59,7 @@ import {
   idEhClassico,
   mapearStatus,
   mapearStatusOrder,
+  cobrancaMorta,
   meioDaOrder,
   mensagemDeRecusaDoCartao,
   minutosDaExpiracaoPix,
@@ -112,27 +113,36 @@ export const MARGEM_MINIMA_CARTAO_MS = 60_000;
  *
  * AGORA: (pedido, cobrança anterior). A chave MUDA quando a tentativa
  * anterior morreu (recusada/cancelada/vencida) e foi gravada no pedido — mas
- * duas requisições da MESMA tentativa (duas abas, duplo envio) montam a
- * MESMA chave, e o MP barra a segunda (409 `idempotency_key_already_used`
- * ou 423 `resource_locked`) em vez de cobrar duas vezes. Uma chave por
- * token do cartão NÃO teria essa proteção: cada envio do Brick gera um token
- * novo.
+ * duas requisições da MESMA tentativa (duas abas, duplo envio, retry depois
+ * de um timeout) montam a MESMA chave, e o MP barra a segunda (409
+ * `idempotency_key_already_used` ou 423 `resource_locked`) em vez de cobrar
+ * duas vezes. Uma chave por token do cartão NÃO teria essa proteção: cada
+ * envio do Brick gera um token novo.
  *
- * PIX na primeira tentativa continua sendo o id do pedido puro — o formato
- * de antes, para não mudar o que já estava em produção. PIX e cartão têm
- * prefixos diferentes: um não consome a chave do outro.
+ * UMA CHAVE PARA OS DOIS MEIOS (BLOQUEIO 1 da revisão): PIX e cartão da
+ * mesma tentativa colidem de propósito. Com espaços separados, um cartão
+ * cobrado sem resposta (timeout, 5xx) deixava o cliente criar um PIX na
+ * mesma tentativa e pagar os dois — e a order do cartão ficava sem
+ * `gateway_payment_id`. Sem uma trava no banco ANTES da cobrança, a chave do
+ * MP é a única exclusão mútua que existe entre as duas requisições.
  *
- * Tamanho: uuid (36) + ":cartao:" (8) + id de order (~32) — bem abaixo do
- * teto de 128 do MP.
+ * A primeira tentativa continua sendo o id do pedido puro — o formato de
+ * antes para o PIX. Tamanho: uuid (36) + ":" + id de order (~32), bem abaixo
+ * do teto de 128 do MP.
  */
-export function chaveDeIdempotencia(
-  pedidoId: string,
-  metodo: "pix" | "cartao",
-  idAnterior: string | null,
-): string {
-  if (metodo === "cartao") return `${pedidoId}:cartao:${idAnterior ?? "inicio"}`;
+export function chaveDeIdempotencia(pedidoId: string, idAnterior: string | null): string {
   return idAnterior === null ? pedidoId : `${pedidoId}:${idAnterior}`;
 }
+
+/** Resposta do MP que não diz se a cobrança aconteceu: rede/timeout (0),
+ * erro do servidor deles (5xx) ou 2xx ilegível. */
+function respostaAmbigua(status: number): boolean {
+  return status === 0 || status >= 500 || (status >= 200 && status < 300);
+}
+
+/** Frase para 409/423 de idempotência — PIX e cartão (a chave é a mesma). */
+const MSG_TENTATIVA_EM_ANDAMENTO =
+  "Já existe uma tentativa de pagamento em andamento para este pedido. Aguarde alguns segundos e tente de novo.";
 
 export function pareceUuid(v: unknown): boolean {
   return (
@@ -409,7 +419,7 @@ async function handler(
 
   const { data: pedido, error } = await supabase
     .from("marketplace_orders")
-    .select("id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data")
+    .select("id, user_id, total, status, payment_status, expires_at, gateway_payment_id, customer_data")
     .eq("id", body.orderId)
     .maybeSingle();
 
@@ -459,6 +469,13 @@ async function handler(
   const ehCartao = body.metodo === "cartao";
 
   if (ehCartao) {
+    // MENOR 6 da revisão: pedido que o cliente CANCELOU pelo app fica
+    // 'aguardando' + 'cancelled', com o estoque já de volta, e `podeCobrar`
+    // não olha `status`. Com PIX isso gerava só um QR; com cartão seria
+    // débito na hora num pedido morto. Definitivo para este pedido.
+    if (pedido.status !== "pending") {
+      return json({ error: "Este pedido foi cancelado. Faça um pedido novo.", terminal: true }, 409);
+    }
     // Ver MARGEM_MINIMA_CARTAO_MS. `terminal`: em menos de um minuto o
     // pg_cron cancela este pedido de qualquer jeito — "Tentar de novo" só
     // repetiria a mesma recusa.
@@ -609,10 +626,16 @@ async function handler(
     );
     const meioAnterior = meioDaOrder(r.order);
 
-    if (statusAnterior === "recusado" || statusAnterior === "expirado") {
-      // Cobrança MORTA — desfecho 1 do comentário acima. 'expirado' aqui é
-      // o PRAZO DO MP (o QR venceu), não o do pedido: `podeCobrar` já
-      // recusou pedido vencido lá em cima.
+    if (
+      cobrancaMorta(r.order) ||
+      statusAnterior === "recusado" ||
+      statusAnterior === "expirado"
+    ) {
+      // Cobrança MORTA — desfecho 1 do comentário acima. `cobrancaMorta`
+      // decide pelo status da RAIZ (failed/canceled/expired), qualquer que
+      // seja o status_detail (IMPORTANTE 2 da revisão). 'expirado' aqui é o
+      // PRAZO DO MP (o QR venceu), não o do pedido: `podeCobrar` já recusou
+      // pedido vencido lá em cima.
       idAnterior = idGatewayReconsulta;
     } else if (
       statusAnterior !== "pago" &&
@@ -871,10 +894,18 @@ async function handler(
       // Um retry do front sobre a MESMA tentativa não cria uma segunda
       // cobrança no MP; a substituição de uma cobrança morta usa chave nova
       // (ver chaveDeIdempotencia).
-      chaveIdempotencia: chaveDeIdempotencia(String(pedido.id), "pix", idAnterior),
+      chaveIdempotencia: chaveDeIdempotencia(String(pedido.id), idAnterior),
       fetchImpl: deps.fetchImpl,
     });
-    if (!r.ok) return json({ error: r.erro }, 502);
+    if (!r.ok) {
+      // Mesma chave do cartão da mesma tentativa (ver chaveDeIdempotencia):
+      // 409/423 aqui é o MP barrando um PIX ao lado de um cartão que ainda
+      // não foi gravado — nunca criar outra cobrança por cima.
+      if (r.status === 409 || r.status === 423) {
+        return json({ error: MSG_TENTATIVA_EM_ANDAMENTO }, 409);
+      }
+      return json({ error: r.erro }, 502);
+    }
 
     const extraido = extrairQrCode(r.order);
     if (!extraido?.orderId) {
@@ -974,12 +1005,27 @@ async function handler(
       return json({ error: "Dados do cartão inválidos. Confira e tente de novo." }, 400);
     }
 
-    const r = await criarOrder({
+    const chaveCartao = chaveDeIdempotencia(String(pedido.id), idAnterior);
+    let r = await criarOrder({
       token: mpToken,
       corpo,
-      chaveIdempotencia: chaveDeIdempotencia(String(pedido.id), "cartao", idAnterior),
+      chaveIdempotencia: chaveCartao,
       fetchImpl: deps.fetchImpl,
     });
+    if (!r.ok && respostaAmbigua(r.status)) {
+      // BLOQUEIO 1 da revisão: timeout, 5xx ou 2xx ilegível NÃO dizem se o
+      // cartão foi cobrado. Repetir com a MESMA chave e o MESMO corpo (o
+      // mesmo token) é seguro — o MP devolve o desfecho da primeira, nunca
+      // cobra de novo — e é o único jeito de saber o que aconteceu antes de
+      // responder ao cliente.
+      console.warn("criar-pagamento: resposta ambígua do MP no cartão — repetindo com a mesma chave", r.status);
+      r = await criarOrder({
+        token: mpToken,
+        corpo,
+        chaveIdempotencia: chaveCartao,
+        fetchImpl: deps.fetchImpl,
+      });
+    }
 
     if (!r.ok) {
       if (r.status === 402) {
@@ -997,12 +1043,25 @@ async function handler(
         // tentativa existe para impedir (ver chaveDeIdempotencia). Sem
         // `terminal`: em segundos a outra tentativa grava e a próxima cai
         // no ramo "reconsultar".
+        return json({ error: MSG_TENTATIVA_EM_ANDAMENTO }, 409);
+      }
+      if (respostaAmbigua(r.status)) {
+        // Continua ambíguo depois da repetição: o cartão PODE ter sido
+        // cobrado. Não sugerir PIX (seria a cobrança dupla do BLOQUEIO 1) —
+        // uma nova tentativa usa a MESMA chave e o MP barra; se o cartão
+        // tiver sido cobrado, o webhook adota a cobrança no pedido
+        // (webhook-mercadopago, "cobrança paga sem registro").
+        console.error(
+          "criar-pagamento: resposta ambígua do MP no cartão mesmo depois de repetir — o cartão pode ter sido cobrado",
+          pedido.id,
+          r.status,
+        );
         return json(
           {
             error:
-              "Já existe uma tentativa de pagamento em andamento para este pedido. Aguarde alguns segundos e tente de novo, ou pague com PIX.",
+              "Não conseguimos confirmar com o Mercado Pago se o cartão foi cobrado. Aguarde alguns minutos e confira seus pedidos antes de tentar de novo.",
           },
-          409,
+          502,
         );
       }
       return json({ error: r.erro }, 502);
@@ -1124,8 +1183,18 @@ async function handler(
       return json({ error: "Este pedido já tem uma cobrança gerada." }, 409);
     }
     // Estado que a releitura não explicou (ex.: ela também falhou) — sem
-    // inventar causa. Recuperável: sem causa conhecida, tentar de novo é
-    // razoável, e a chave de idempotência protege contra cobrança duplicada.
+    // inventar causa. Recuperável: uma nova tentativa usa a MESMA chave (a
+    // cobrança anterior do pedido não mudou), e o MP barra a segunda
+    // cobrança, de PIX ou de cartão. Se esta cobrança for paga sem nunca
+    // ter sido gravada, o webhook a adota no pedido.
+    if (ehCartao) {
+      console.error(
+        "criar-pagamento: COBRANÇA DE CARTÃO SEM PEDIDO — UPDATE falhou sem causa na releitura; conferir no painel do MP",
+        idGateway,
+        pedido.id,
+        erroUpdate,
+      );
+    }
     return json({ error: "Não foi possível confirmar a cobrança." }, 409);
   }
 

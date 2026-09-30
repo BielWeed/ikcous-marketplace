@@ -25,6 +25,7 @@ import {
   mapearStatus,
   mapearStatusOrder,
   minutosDaExpiracaoPix,
+  cobrancaMorta,
   detalheDoPagamentoDaOrder,
   meioDaOrder,
   mensagemDeRecusaDoCartao,
@@ -240,6 +241,46 @@ Deno.test("montarCorpoCartaoOrders: recusa o que vem torto do corpo da requisiç
   assertThrows(() => montarCorpoCartaoOrders({ ...base, parcelas: 2.5 }));
   assertThrows(() => montarCorpoCartaoOrders({ ...base, valor: 0 }));
   assertThrows(() => montarCorpoCartaoOrders({ ...base, valor: Number.NaN }));
+});
+
+Deno.test("cobrancaMorta: decide pelo status da RAIZ, qualquer que seja o status_detail", () => {
+  for (const status of ["failed", "canceled", "expired"]) {
+    assertEquals(cobrancaMorta({ id: "ORD1", status, status_detail: "algo_novo_do_mp" }), true, status);
+  }
+  for (const status of ["processed", "processing", "action_required", "created", "in_review", "refunded", "charged_back"]) {
+    assertEquals(cobrancaMorta({ id: "ORD1", status, status_detail: "failed" }), false, status);
+  }
+  assertEquals(cobrancaMorta(null), false);
+  assertEquals(cobrancaMorta({ id: "ORD1" }), false);
+});
+
+Deno.test("criarOrder: o log do 402 leva só o id da order e o motivo — nunca o corpo com dados do pagador", async () => {
+  const corpo402 = {
+    errors: [{ code: "failed" }],
+    data: {
+      id: "ORD01LOG",
+      status: "failed",
+      payer: { email: "cliente-secreto@exemplo.com", identification: { type: "CPF", number: "12345678909" } },
+      transactions: { payments: [{ status: "failed", status_detail: "rejected_by_issuer" }] },
+    },
+  };
+  const fetchStub = (() =>
+    Promise.resolve(new Response(JSON.stringify(corpo402), { status: 402 }))) as unknown as typeof fetch;
+  const logs: string[] = [];
+  const originais = { error: console.error, warn: console.warn };
+  console.error = (...a: unknown[]) => logs.push(a.map(String).join(" "));
+  console.warn = (...a: unknown[]) => logs.push(a.map(String).join(" "));
+  try {
+    await criarOrder({ token: "APP_USR-t", corpo: {}, chaveIdempotencia: "k", fetchImpl: fetchStub });
+  } finally {
+    console.error = originais.error;
+    console.warn = originais.warn;
+  }
+  const tudo = logs.join("\n");
+  assertStringIncludes(tudo, "ORD01LOG");
+  assertStringIncludes(tudo, "rejected_by_issuer");
+  assertEquals(tudo.includes("cliente-secreto@exemplo.com"), false);
+  assertEquals(tudo.includes("12345678909"), false);
 });
 
 Deno.test("orderDoCorpoDeErro: acha a order no corpo do 402, em data ou na raiz", () => {

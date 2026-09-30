@@ -36,6 +36,11 @@ export type EstadoConfiguracaoCartao =
  * NUNCA lança: linha ausente é o padrão (tudo ligado); erro de leitura ou
  * valor ilegível vira CONFIGURACAO_SO_PIX, com o motivo no console. A trava
  * que vale é do servidor, que relê a mesma linha.
+ *
+ * ATENÇÃO (MENOR 5 da revisão): negação por RLS NÃO é erro — sem a policy da
+ * migration 20261160000100 a leitura devolve "nenhuma linha", e isso cai no
+ * PADRÃO, não no só-PIX. O servidor continua recusando o cartão que o
+ * lojista desligou; só a tela oferece a mais.
  */
 export function useConfiguracaoCartao(
   ativo: boolean,

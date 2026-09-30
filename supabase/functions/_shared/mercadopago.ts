@@ -581,13 +581,26 @@ export async function criarOrder(args: {
     // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
     // ele carrega detalhe de credencial e de conta.
     const detalhe = await resposta.text().catch(() => "");
-    console.error("mercadopago: orders recusou", resposta.status, detalhe);
     let corpo: Record<string, unknown> | undefined;
     try {
       const parseado = JSON.parse(detalhe);
       if (parseado && typeof parseado === "object" && !Array.isArray(parseado)) corpo = parseado;
     } catch {
       // Corpo não-JSON (HTML de proxy, vazio): fica sem `corpo`, igual a antes.
+    }
+    if (resposta.status === 402) {
+      // Recusa de cartão é ROTINA agora (plano 2026-09-30), e o corpo do
+      // 402 traz a order inteira — com e-mail e documento do pagador se o
+      // MP ecoar o `payer`. Achado MENOR 7 da revisão: no log vão só o id
+      // da order e o motivo, nunca o corpo inteiro a cada recusa.
+      const orderRecusada = orderDoCorpoDeErro(corpo);
+      console.warn(
+        "mercadopago: orders recusou 402 (cartão recusado)",
+        orderRecusada?.id ?? "(sem id de order no corpo)",
+        detalheDoPagamentoDaOrder(orderRecusada) ?? "(sem motivo)",
+      );
+    } else {
+      console.error("mercadopago: orders recusou", resposta.status, detalhe);
     }
     return {
       ok: false,
@@ -854,6 +867,21 @@ export function orderDoCorpoDeErro(
     }
   }
   return null;
+}
+
+/**
+ * A cobrança já NÃO PODE ser paga? (plano 2026-09-30, IMPORTANTE 2 da
+ * revisão.) Decide pelo `status` da RAIZ da order — `failed`, `canceled` ou
+ * `expired` — independente do `status_detail`. Antes a decisão passava por
+ * `mapearStatusOrder`, que exige o PAR exato: uma order recusada com um
+ * `status_detail` que a tabela não conhece (ex.: `failed:rejected_by_issuer`)
+ * virava `null`, e o pedido voltava a ficar "impagável depois da primeira
+ * recusa" — o defeito que esta frente existe para fechar. Os três estados
+ * são terminais na doc oficial de status da order (lida em 30/09/2026).
+ */
+export function cobrancaMorta(order: Record<string, unknown> | null | undefined): boolean {
+  if (!order || typeof order !== "object") return false;
+  return order.status === "failed" || order.status === "canceled" || order.status === "expired";
 }
 
 /**

@@ -2,9 +2,12 @@
 -- Rollback manual — o cliente lê a configuração do cartão (20261160000100)
 -- ============================================================================
 -- Tira a policy de leitura da linha 'pagamentos_cartao'. O cliente volta a
--- não ler nada de `app_settings`; a tela de pagamento, sem conseguir ler a
--- configuração, oferece só PIX (falha fechada para cartão — o servidor já
--- recusaria de qualquer jeito o que não coubesse).
+-- não ler nada de `app_settings`. ATENÇÃO: negação por RLS não é erro — a
+-- leitura devolve "nenhuma linha", e a tela trata isso como o PADRÃO (crédito
+-- e débito ligados, sem limite do app). Se o lojista tiver desligado algum
+-- cartão, o Brick volta a oferecê-lo e o servidor recusa na hora de pagar
+-- ("Esta loja não aceita…"): seguro para o dinheiro, ruim para o cliente.
+-- Despublicar o cartão ANTES deste rollback evita isso.
 --
 -- Os GRANTs de tabela NÃO são revogados: esta migration não prova que eles
 -- não existiam antes (o baseline saiu sem privilégios), e revogar poderia

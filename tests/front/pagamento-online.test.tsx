@@ -770,6 +770,35 @@ describe("montarBrick", () => {
   // recusada, pelo caminho PIX (mesmo pedido, mesmo gateway_payment_id).
   // ehPix é true mas não há QR nenhum — nunca pode desmontar o Brick sem QR
   // de verdade, senão o cliente fica preso numa tela vazia sem volta.
+  it("PIX pedido com o pedido JÁ PAGO ('pago' sem QR) vai para onCartao('pago') — não é falha de QR (MENOR 4)", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const unmount = vi.fn();
+    const create = vi.fn().mockResolvedValue({ unmount });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const onCartao = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "ORD-9",
+      statusPagamento: "pago",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro, onCartao }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await onSubmit({ selectedPaymentMethod: "bank_transfer", formData: {} });
+
+    expect(onCartao).toHaveBeenCalledWith("pago");
+    expect(onErro).not.toHaveBeenCalled();
+    expect(unmount).toHaveBeenCalledTimes(1);
+  });
+
   it("PIX sem QR (qrCode e qrCodeBase64 ausentes) NÃO chama onPix nem desmonta o Brick", async () => {
     const { montarBrick } = await importarLimpo();
 
@@ -1330,7 +1359,7 @@ describe("PagamentoOnline - link para o ticket_url", () => {
       });
     });
 
-    expect(hospedeiro.textContent).toContain("Pagamento com cartão aprovado");
+    expect(hospedeiro.textContent).toContain("Pagamento aprovado");
     expect(hospedeiro.textContent).not.toContain("Tentar outro pagamento");
   });
 });

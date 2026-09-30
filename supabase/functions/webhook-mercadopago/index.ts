@@ -1485,6 +1485,47 @@ async function handler(
     }
   }
 
+  // ADOÇÃO DA COBRANÇA PAGA SEM REGISTRO (plano 2026-09-30, BLOQUEIO 1 da
+  // revisão do cartão). Uma cobrança pode ser PAGA sem nunca ter sido
+  // gravada no pedido: o cartão cobrado cuja resposta não chegou à
+  // criar-pagamento (timeout, 5xx) ou cujo UPDATE falhou. Sem isto, a RPC
+  // devolve 'divergente' (o pedido não tem cobrança com que comparar), o MP
+  // recebe 200 e não reenvia, e a reconciliação nunca a enxerga (ela parte
+  // de `gateway_payment_id`) — dinheiro sem registro.
+  //
+  // Só adota quando o pedido NÃO TEM cobrança nenhuma (`IS NULL`, no WHERE
+  // do UPDATE — nunca troca a cobrança de outro) e só pela rota `order`,
+  // com o status 'pago' e o pedido lidos da RESPOSTA AUTENTICADA do MP (o
+  // `external_reference` é a invariante nº 1 deste arquivo) e o valor já
+  // conferido logo acima. Depois disso, a RPC decide como sempre — com a
+  // guarda de identidade valendo, porque o id agora é o do pedido.
+  if (
+    rota === "order" &&
+    statusMapeado === "pago" &&
+    linhaDoPedido &&
+    (linhaDoPedido as Record<string, unknown>).gateway_payment_id === null
+  ) {
+    const { data: adotado, error: erroAdocao } = await supabase
+      .from("marketplace_orders")
+      .update({ gateway_payment_id: idParaRpc, updated_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .is("gateway_payment_id", null)
+      .select("id")
+      .maybeSingle();
+    if (erroAdocao) {
+      console.error(
+        "webhook-mercadopago: falha ao adotar cobrança paga sem registro — evento mantido na fila do MP",
+        { orderId, paymentId: idParaRpc },
+        erroAdocao,
+      );
+      return json({ error: "Erro ao registrar a cobrança." }, 500);
+    }
+    console.warn(
+      "webhook-mercadopago: cobrança PAGA sem registro no pedido — adotada antes de confirmar",
+      { orderId, paymentId: idParaRpc, adotada: Boolean(adotado) },
+    );
+  }
+
   let resultado: string;
   try {
     const { data, error: erroRpc } = await supabase.rpc("confirmar_pagamento", {
