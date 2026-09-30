@@ -439,13 +439,6 @@ async function dispararAvisoDePagamentoAtrasadoReal(args: {
 }
 
 /**
- * Mesma costura `handler(req, deps = {})` da Task 4
- * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
- * `handler(req)` com um único argumento; os testes injetam `supabase` e
- * `fetchImpl` para não tocar rede nem banco — o que importa aqui, porque a
- * RPC `pagamentos_a_reconciliar` (Task 5) ainda não foi aplicada em produção.
- */
-/**
  * Resolve um SENTINELA na reconciliação — só no sentido de ADOTAR um cartão
  * já CAPTURADO (auditoria de 30/09/2026, item 2; ver o comentário no laço do
  * handler). Devolve o id da order adotada, ou `null` quando não há nada a
@@ -469,7 +462,7 @@ async function adotarCartaoCapturadoDoSentinela(args: {
 }): Promise<string | null> {
   const { data: pedido, error: erroPedido } = await args.supabase
     .from("marketplace_orders")
-    .select("created_at")
+    .select("created_at, total, total_amount")
     .eq("id", args.pedidoId)
     .maybeSingle();
   if (erroPedido) throw erroPedido;
@@ -489,13 +482,48 @@ async function adotarCartaoCapturadoDoSentinela(args: {
   const idOrder = order.id === null || order.id === undefined ? "" : String(order.id);
   if (idOrder.length === 0) return null;
 
-  const tipo = tipoDoPagamentoDaOrder(order);
+  // Revisão de 30/09/2026 (MENOR 1): `processed` na BUSCA não basta — um
+  // `processed:partially_refunded` (estorno parcial à mão no painel) ou um
+  // valor que não bate com o pedido nunca seria confirmado pelo laço, e a
+  // vaga já teria perdido o sentinela para ele: o webhook do cartão certo
+  // cairia em `cartao_divergente`. Mesma régua da adoção do webhook: só
+  // adota o que a RECONSULTA por id mapeia como "pago" e com valor que bate.
+  const reconsulta = await consultarOrder({
+    token: args.token,
+    orderId: idOrder,
+    fetchImpl: args.fetchImpl,
+    corpoNoLog: false,
+  });
+  if (!reconsulta.ok) return null;
+  const orderReconsultada = reconsulta.order as Record<string, unknown>;
+  const statusReconsultado = mapearStatusOrder(
+    String(orderReconsultada.status ?? ""),
+    String(orderReconsultada.status_detail ?? ""),
+  );
+  if (statusReconsultado !== "pago") return null;
+  const linha = pedido as Record<string, unknown> | null;
+  const brutoTotal = linha?.total ?? linha?.total_amount;
+  const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
+  const valorAprovado = extrairValorDaOrder(orderReconsultada);
+  if (
+    typeof valorAprovado === "number" &&
+    Number.isFinite(totalDoPedido) &&
+    Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
+  ) {
+    console.error(
+      "reconciliar-pagamentos: cartão capturado atrás do sentinela com VALOR divergente — não adotado; conferir no painel do MP",
+      { orderId: args.pedidoId, idOrder, valorAprovado, totalDoPedido },
+    );
+    return null;
+  }
+
+  const tipo = tipoDoPagamentoDaOrder(orderReconsultada);
   const { data: adotado, error: erroAdocao } = await args.supabase
     .from("marketplace_orders")
     .update({
       gateway_payment_id: idOrder,
       metodo_online: tipo === "credit_card" ? "credito" : tipo === "debit_card" ? "debito" : null,
-      parcelas: parcelasDaOrder(order),
+      parcelas: parcelasDaOrder(orderReconsultada),
       updated_at: new Date().toISOString(),
     })
     .eq("id", args.pedidoId)
@@ -512,6 +540,13 @@ async function adotarCartaoCapturadoDoSentinela(args: {
   return idOrder;
 }
 
+/**
+ * Mesma costura `handler(req, deps = {})` da Task 4
+ * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
+ * `handler(req)` com um único argumento; os testes injetam `supabase` e
+ * `fetchImpl` para não tocar rede nem banco — o que importa aqui, porque a
+ * RPC `pagamentos_a_reconciliar` (Task 5) ainda não foi aplicada em produção.
+ */
 async function handler(
   req: Request,
   deps: {
@@ -664,7 +699,9 @@ async function handler(
       // AGORA: busca as orders de cartão do pedido (MESMA regra do
       // criar-pagamento — `buscarOrdersDoPedido` + `resolverSentinela`, fonte
       // única em _shared) e, SÓ quando a order resolvida está CAPTURADA
-      // (`processed`), troca o sentinela pelo id real e segue o laço normal:
+      // (`processed` na busca E "pago", com valor que bate, na reconsulta
+      // por id — mesma régua da adoção do webhook), troca o sentinela pelo
+      // id real e segue o laço normal:
       // a reconsulta por id, a conferência de valor e `confirmar_pagamento`
       // decidem como para qualquer outro candidato. Order viva (em análise),
       // morta ou busca inconclusiva: fica como estava (ignorado) — liberar

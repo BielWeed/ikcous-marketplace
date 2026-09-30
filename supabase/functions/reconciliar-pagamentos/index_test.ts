@@ -784,6 +784,36 @@ Deno.test("sentinela: cartão EM ANÁLISE, busca vazia, busca falhando ou só or
   }
 });
 
+Deno.test("sentinela: capturada na BUSCA mas a RECONSULTA diz estorno parcial ou valor divergente -> NÃO adota (vaga fica com o sentinela), não confirma", async () => {
+  // Revisão de 30/09/2026 (MENOR 1): adotar uma order que o laço nunca vai
+  // confirmar tirava o sentinela da vaga — e o webhook do cartão certo caía
+  // em `cartao_divergente`. A régua é a MESMA da adoção do webhook.
+  const cenarios: Array<[string, Record<string, unknown>]> = [
+    ["estorno parcial", orderDeCartao({ status_detail: "partially_refunded" })],
+    ["valor divergente", orderDeCartao({ total_amount: "10.00" })],
+  ];
+  for (const [nome, reconsultada] of cenarios) {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+    const supabase = clienteFalso({ candidatos, registro });
+    const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [orderDeCartao()] } }, reconsultada, []);
+    const console_error = console.error;
+    console.error = () => {};
+    let corpo: Record<string, unknown>;
+    try {
+      const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+      assertEquals(resposta.status, 200, nome);
+      corpo = await resposta.json();
+    } finally {
+      console.error = console_error;
+    }
+    assertEquals(registro.adocoesPedido.length, 0, nome);
+    assertEquals(registro.chamadasConfirmar.length, 0, nome);
+    assertEquals(corpo.ignorados, 1, nome);
+    assertEquals(corpo.falhas, 0, nome);
+  }
+});
+
 Deno.test("sentinela: order capturada de OUTRO pedido (MP ignorou o filtro) NUNCA é adotada", async () => {
   const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
   const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
