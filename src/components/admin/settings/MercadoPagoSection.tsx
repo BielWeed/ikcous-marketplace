@@ -939,8 +939,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               </span>
               {!servidorDesatualizado && (
                 <span className="block text-[11px] leading-relaxed text-zinc-400">
-                  O pagamento pelo app (Pix e cartão) liga sozinho quando as
-                  três chaves estão salvas e o teste de conexão passa.
+                  O Pix pelo app liga sozinho quando as três chaves estão salvas
+                  e o teste de conexão passa.
                 </span>
               )}
 
@@ -957,7 +957,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                       )}
                     >
                       {config.pix_ligado
-                        ? "Recebendo pelo app (Pix e cartão)"
+                        ? "Pix liberado no app"
                         : "Pagamento pelo app desligado"}
                     </p>
                     {(config.pix_ligado || teste?.conectado) && (
@@ -976,8 +976,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
                     <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                     <span>
-                      Atualizando o sistema de pagamentos desta loja — tente de
-                      novo em alguns minutos.
+                      O sistema de pagamentos desta loja ainda não foi
+                      atualizado. Enquanto isso, o Pix segue como está; fale com
+                      o suporte para atualizar.
                     </span>
                   </p>
                 </div>
@@ -985,13 +986,22 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
 
               {estadoDoRecebimento === "recebendo" && (
                 <div className="flex items-center justify-between gap-3">
-                  <p
-                    role="status"
-                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-300"
-                  >
-                    <CheckCircle2 className="size-4 shrink-0" />
-                    Recebendo pelo app (Pix e cartão)
-                  </p>
+                  {/* Só o que é verdade: `pagamento_online` liberou o PIX, mas o
+                      CARTÃO tem interruptor próprio (`config_pagamento_cartao`,
+                      no card Formas de pagamento) e nasce desligado — o
+                      `criar-pagamento` recusa cartão enquanto ele estiver
+                      assim. Esta seção não lê essa config (não há prop nem
+                      contexto, e o card vizinho a muda sem avisar aqui), então
+                      o texto não afirma cartão nem o nega. */}
+                  <div role="status" className="space-y-0.5">
+                    <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
+                      <CheckCircle2 className="size-4 shrink-0" />
+                      Pix liberado no app
+                    </p>
+                    <p className="text-[11px] leading-relaxed text-zinc-400">
+                      Cartão pelo app: ligue ou desligue em Formas de pagamento.
+                    </p>
+                  </div>
                   <button
                     type="button"
                     disabled={
