@@ -666,6 +666,18 @@ export async function chaveDeIdempotencia(
   return `${id}:c${tentativas}`;
 }
 
+/**
+ * `true` quando `idGateway` é o SENTINELA gravado para esta MESMA chave de
+ * idempotência — `verificando:<chave>` (formato antigo) ou
+ * `verificando:<chave>:<ms>` (`montarSentinela`). O `:` depois da chave é o
+ * que separa `c0` de `c01`. Revisões de 30/09/2026 (MENOR 4 e IMPORTANTE 1).
+ */
+function sentinelaDaChave(idGateway: unknown, chave: string): boolean {
+  if (typeof idGateway !== "string") return false;
+  const prefixo = `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}`;
+  return idGateway === prefixo || idGateway.startsWith(`${prefixo}:`);
+}
+
 export type DadosDoCartao = {
   token: string;
   paymentMethodId: string;
@@ -1392,6 +1404,29 @@ async function handler(
             409,
           );
         }
+        // Revisão de risco de 30/09/2026 (IMPORTANTE 1): a premissa acima
+        // ("a chave não muda: a vaga não foi liberada") QUEBRA quando o
+        // sentinela foi gravado com a chave de uma tentativa que já avançou —
+        // a troca PIX -> sentinela pode ocupar a vaga depois de a notificação
+        // do cancelamento do PIX ter chamado `liberar_cobranca_do_pedido`
+        // (que soma `tentativas_de_pagamento`), e a vaga fica com
+        // `verificando:<pedido>:c<n>` enquanto a chave atual já é `c<n+1>`.
+        // Recriar aqui usaria `c<n+1>`: o MP não tem como deduplicar contra
+        // a cobrança ambígua `c<n>`, e as DUAS podem ser capturadas (o
+        // revisor reproduziu). Com a chave divergente, NÃO chama o MP:
+        // responde o MESMO "aguardando" do 409 de idempotência sobre o
+        // sentinela — o webhook, a busca do Ponto 1 ou a reconciliação
+        // resolvem a cobrança `c<n>`; sem desfecho, a reserva expira.
+        if (!sentinelaDaChave(idGatewayReconsulta, await chaveDeIdempotencia(pedido, "cartao"))) {
+          console.warn(
+            "criar-pagamento: sentinela com chave de tentativa anterior — retry do cartão não cria cobrança nova",
+            { orderId: pedido.id },
+          );
+          return json(
+            { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
+            200,
+          );
+        }
         vagaEsperadaNaGravacao = idGatewayReconsulta;
       }
     }
@@ -2081,8 +2116,9 @@ async function handler(
 
     // Auditoria de 30/09/2026 do cartão (item 1) — ver o uso em
     // `ocuparVagaComSentinela`, abaixo. Devolve `true` SÓ quando o PIX aberto
-    // foi cancelado no MP E a vaga passou do PIX para o sentinela (UPDATE com
-    // o id do PIX no WHERE: nunca sobrescreve uma troca concorrente). Em todo
+    // foi cancelado no MP (ou já estava morto lá) E a vaga passou para o
+    // sentinela (UPDATE com o id do PIX no WHERE: nunca sobrescreve uma troca
+    // concorrente; ou a vaga livre, ver MENOR 2 abaixo). Em todo
     // outro caso devolve `false` e o chamador segue o caminho de antes (409),
     // com um aviso ao admin quando sobrou um PIX vivo ou pago ao lado deste
     // cartão ambíguo — a única situação em que o dinheiro pode estar dos dois
@@ -2097,20 +2133,6 @@ async function handler(
           ? atual.gateway_payment_id
           : null;
       if (!idOcupante || idEhClassico(idOcupante) || vagaEmVerificacao(idOcupante)) return false;
-
-      const consulta = await consultarOrder({
-        token: mpToken,
-        orderId: idOcupante,
-        fetchImpl: deps.fetchImpl,
-        corpoNoLog: false,
-      });
-      if (!consulta.ok) return false;
-      const ordemOcupante = consulta.order as Record<string, unknown>;
-      if (tipoDoPagamentoDaOrder(ordemOcupante) !== "bank_transfer") return false;
-      const statusOcupante = mapearStatusOrder(
-        String(ordemOcupante.status ?? ""),
-        String(ordemOcupante.status_detail ?? ""),
-      );
 
       const avisarAdmin = async (aviso: { title: string; body: string }) => {
         const alertarAdmin = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
@@ -2130,20 +2152,45 @@ async function handler(
         });
       };
 
-      if (statusOcupante !== "aguardando") {
-        if (statusOcupante === "pago") await avisarPixAoLadoDoCartao("PAGO");
-        return false;
-      }
-
-      const cancelamento = await cancelarOrder({
+      const consulta = await consultarOrder({
         token: mpToken,
         orderId: idOcupante,
-        chaveIdempotencia: `cancelar:${idOcupante}`,
         fetchImpl: deps.fetchImpl,
+        corpoNoLog: false,
       });
-      if (!cancelamento.ok || !orderCancelada(cancelamento.order)) {
-        await avisarPixAoLadoDoCartao("aberto que o MP não cancelou");
+      // Revisão de risco de 30/09/2026 (MENOR 4): as saídas daqui para baixo
+      // que deixam o cartão ambíguo SEM a vaga avisam o admin — antes, uma
+      // consulta que falhava (ou um status que não se sabe ler) devolvia
+      // `false` em silêncio.
+      if (!consulta.ok) {
+        await avisarPixAoLadoDoCartao("que não deu para consultar");
         return false;
+      }
+      const ordemOcupante = consulta.order as Record<string, unknown>;
+      if (tipoDoPagamentoDaOrder(ordemOcupante) !== "bank_transfer") return false;
+      const statusOcupante = mapearStatusOrder(
+        String(ordemOcupante.status ?? ""),
+        String(ordemOcupante.status_detail ?? ""),
+      );
+
+      // PIX já MORTO no MP (cancelado/recusado ou expirado), ainda gravado na
+      // vaga: não há o que cancelar — a vaga passa direto para o sentinela.
+      const pixJaMorto = statusOcupante === "recusado" || statusOcupante === "expirado";
+      if (!pixJaMorto) {
+        if (statusOcupante !== "aguardando") {
+          await avisarPixAoLadoDoCartao(statusOcupante === "pago" ? "PAGO" : `em estado ${statusOcupante ?? "desconhecido"}`);
+          return false;
+        }
+        const cancelamento = await cancelarOrder({
+          token: mpToken,
+          orderId: idOcupante,
+          chaveIdempotencia: `cancelar:${idOcupante}`,
+          fetchImpl: deps.fetchImpl,
+        });
+        if (!cancelamento.ok || !orderCancelada(cancelamento.order)) {
+          await avisarPixAoLadoDoCartao("aberto que o MP não cancelou");
+          return false;
+        }
       }
 
       // `metodo_online`/`parcelas` zerados JUNTO (revisão de 30/09/2026,
@@ -2885,12 +2932,7 @@ async function handler(
         // (idempotência do MP): troca o sentinela pelo id real, por comparação,
         // em vez de responder "pode ter sido cobrado" a quem pagou e avisar o
         // admin de um órfão que não existe.
-        const chaveDestaTentativa = await chaveDeIdempotencia(pedido, "cartao");
-        const prefixoDoSentinelaDestaTentativa = `${PREFIXO_VAGA_EM_VERIFICACAO}${chaveDestaTentativa}`;
-        const sentinelaDestaTentativa =
-          idOcupante !== null &&
-          (idOcupante === prefixoDoSentinelaDestaTentativa ||
-            idOcupante.startsWith(`${prefixoDoSentinelaDestaTentativa}:`));
+        const sentinelaDestaTentativa = sentinelaDaChave(idOcupante, await chaveDeIdempotencia(pedido, "cartao"));
         if (sentinelaDestaTentativa) {
           const { data: adotado } = await supabase
             .from("marketplace_orders")
