@@ -119,7 +119,12 @@ describe("PagamentoOnline — o botão de copiar o PIX diz se copiou", () => {
 
     await act(async () => {
       raiz.render(
-        <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />,
+        <PagamentoOnline
+          orderId="ped-1"
+          valor={100}
+          configCartao={{ credito: true, debito: true, parcelasMax: null }}
+          onErro={() => {}}
+        />,
       );
     });
 

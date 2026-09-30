@@ -64,6 +64,14 @@ const MercadoPagoSection = lazy(() =>
   })),
 );
 
+// Plano 2026-09-30 (cartão): quais cartões o checkout aceita e até quantas
+// parcelas — mesma porta preguiçosa do Mercado Pago, logo acima.
+const CartaoSection = lazy(() =>
+  import("@/components/admin/settings/CartaoSection").then((module) => ({
+    default: module.CartaoSection,
+  })),
+);
+
 const BusinessHoursEditor = memo(function BusinessHoursEditor({
   onDirtyChange,
   active = true,
@@ -727,6 +735,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // Peça 20: mesma trava das demais — chave digitada e não salva não pode
   // sumir num clique no cabeçalho da seção.
   const [pagamentosPendente, setPagamentosPendente] = useState(false);
+  const [cartaoPendente, setCartaoPendente] = useState(false);
 
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
@@ -737,7 +746,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
         transportadorasPendentes ||
           identidadePendente ||
           horarioPendente ||
-          pagamentosPendente,
+          pagamentosPendente ||
+          cartaoPendente,
       );
   }, [
     active,
@@ -745,6 +755,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
     identidadePendente,
     horarioPendente,
     pagamentosPendente,
+    cartaoPendente,
     onSetDirty,
   ]);
 
@@ -1024,6 +1035,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   }
                 >
                   <MercadoPagoSection onDirtyMudou={setPagamentosPendente} />
+                </Suspense>
+              </SecaoColapsavel>
+              <SecaoColapsavel
+                titulo="Cartão de crédito e débito"
+                subtitulo="Quais cartões e até quantas parcelas"
+                icone={CreditCard}
+                comPendencia={cartaoPendente}
+              >
+                <Suspense
+                  fallback={
+                    <p className="text-sm text-zinc-400">Carregando cartão…</p>
+                  }
+                >
+                  <CartaoSection onDirtyMudou={setCartaoPendente} />
                 </Suspense>
               </SecaoColapsavel>
             </GrupoDeAjustes>

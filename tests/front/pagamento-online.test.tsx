@@ -194,6 +194,31 @@ describe("carregarSdkMercadoPago", () => {
 type ModuloComponente = typeof import("@/components/checkout/PagamentoOnline");
 type OpcoesMontarBrick = Parameters<ModuloComponente["montarBrick"]>[0];
 
+describe("meiosDoBrick", () => {
+  // A chave OMITIDA é o jeito de desligar um meio no Payment Brick — por
+  // isso as asserções conferem o objeto inteiro, não só as chaves ligadas.
+  it("tudo ligado e sem limite: PIX, crédito e débito, sem maxInstallments", async () => {
+    const { meiosDoBrick } = await importarLimpo();
+    expect(
+      meiosDoBrick({ credito: true, debito: true, parcelasMax: null }),
+    ).toEqual({ bankTransfer: "all", creditCard: "all", debitCard: "all" });
+  });
+
+  it("cartões desligados (ou configuração que não foi lida): só PIX", async () => {
+    const { meiosDoBrick } = await importarLimpo();
+    expect(
+      meiosDoBrick({ credito: false, debito: false, parcelasMax: null }),
+    ).toEqual({ bankTransfer: "all" });
+  });
+
+  it("limite de parcelas só entra com crédito ligado — débito é à vista", async () => {
+    const { meiosDoBrick } = await importarLimpo();
+    expect(
+      meiosDoBrick({ credito: false, debito: true, parcelasMax: 6 }),
+    ).toEqual({ bankTransfer: "all", debitCard: "all" });
+  });
+});
+
 describe("montarBrick", () => {
   beforeEach(() => {
     document.head.innerHTML = "";
@@ -222,6 +247,8 @@ describe("montarBrick", () => {
       criarPagamento: vi.fn(),
       onErro: vi.fn(),
       onPix: vi.fn(),
+      onCartao: vi.fn(),
+      configCartao: { credito: true, debito: true, parcelasMax: null },
       ...sobrepor,
     };
   }
@@ -463,7 +490,11 @@ describe("montarBrick", () => {
   // onSubmit não fazia nada (ehPix é falso), o cliente não via aviso nenhum,
   // e ao trocar para PIX a reconsulta trazia o MESMO status "recusado" sem
   // QR — cadeia que terminava desmontando o Brick para um QR vazio.
-  it("statusPagamento 'recusado' chama onErro e MANTÉM o Brick vivo — não desmonta", async () => {
+  // Plano 2026-09-30 (cartão religado): a recusa deixou de ser terminal. O
+  // servidor substitui a cobrança recusada na próxima tentativa, e a RPC não
+  // cancela mais o pedido por recusa — então "Tentar de novo" (remonta o
+  // Brick) deixa o cliente usar outro cartão ou o PIX, até o prazo.
+  it("cartão 'recusado' chama onErro RECUPERÁVEL com o motivo do servidor e MANTÉM o Brick vivo", async () => {
     const { montarBrick } = await importarLimpo();
 
     const unmount = vi.fn();
@@ -475,38 +506,51 @@ describe("montarBrick", () => {
 
     const onErro = vi.fn();
     const onPix = vi.fn();
+    const onCartao = vi.fn();
     const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
+      paymentId: "ORD-1",
       statusPagamento: "recusado",
+      motivoRecusa:
+        "O cartão não tem limite ou saldo suficiente. Tente outro cartão ou pague com PIX.",
       expiraEm: "2026-08-06T15:30:00.000Z",
     });
 
-    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix }));
+    montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix, onCartao }));
     await carregarSdk();
 
     const { onSubmit } = create.mock.calls[0][2].callbacks;
-    // token presente => cartão. Mesmo assim tem que rejeitar a promise, para
-    // o Brick sair de "processando" (mesmo contrato do catch de erro).
+    // Rejeita a promise para o Brick sair de "processando".
     await expect(
-      onSubmit({ formData: { token: "tok-123" } }),
+      onSubmit({
+        selectedPaymentMethod: "credit_card",
+        formData: {
+          token: "tok-123",
+          installments: 3,
+          payment_method_id: "visa",
+        },
+      }),
     ).rejects.toThrow();
 
+    expect(criarPagamento).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metodo: "cartao",
+        tipoCartao: "credit_card",
+        token: "tok-123",
+        parcelas: 3,
+        paymentMethodId: "visa",
+      }),
+    );
     expect(onErro).toHaveBeenCalledTimes(1);
-    // Terminal: a MESMA cobrança recusada volta em qualquer reconsulta —
-    // não pode haver "tentar de novo" para este pedido.
-    expect(onErro.mock.calls[0][1]).toBe("terminal");
+    expect(onErro.mock.calls[0]).toEqual([
+      "O cartão não tem limite ou saldo suficiente. Tente outro cartão ou pague com PIX.",
+      "recuperavel",
+    ]);
     expect(onPix).not.toHaveBeenCalled();
+    expect(onCartao).not.toHaveBeenCalled();
     expect(unmount).not.toHaveBeenCalled();
   });
 
-  // Conserto de cópia: as duas instruções antigas ("tente outro cartão ou
-  // pague com PIX") eram impossíveis de seguir — cartão está desligado no
-  // Brick, e "pague com PIX" reconsulta a MESMA cobrança recusada
-  // (podeCobrar manda para `reconsultar` sempre que já existe
-  // gateway_payment_id, sem criar cobrança nova). A asserção de
-  // `not.toMatch` é a que tem dente: sem ela, uma reescrita futura que volte
-  // a falar em cartão passaria despercebida.
-  it("mensagem de 'recusado' não fala em cartão nem sugere tentar de novo neste pedido", async () => {
+  it("cartão 'recusado' sem motivo usa a frase curada, que diz o que fazer", async () => {
     const { montarBrick } = await importarLimpo();
 
     const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
@@ -517,7 +561,7 @@ describe("montarBrick", () => {
 
     const onErro = vi.fn();
     const criarPagamento = vi.fn().mockResolvedValue({
-      paymentId: "pay-1",
+      paymentId: null,
       statusPagamento: "recusado",
       expiraEm: "2026-08-06T15:30:00.000Z",
     });
@@ -530,12 +574,113 @@ describe("montarBrick", () => {
       onSubmit({ formData: { token: "tok-123" } }),
     ).rejects.toThrow();
 
-    expect(onErro).toHaveBeenCalledTimes(1);
-    const mensagem = onErro.mock.calls[0][0] as string;
-    expect(mensagem).toBe(
-      "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
+    expect(onErro.mock.calls[0]).toEqual([
+      "O pagamento com cartão foi recusado. Tente outro cartão ou pague com PIX.",
+      "recuperavel",
+    ]);
+  });
+
+  it("PIX 'recusado' também é recuperável, com frase de PIX (não de cartão)", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const onErro = vi.fn();
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "ORD-1",
+      statusPagamento: "recusado",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento, onErro }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await expect(
+      onSubmit({ selectedPaymentMethod: "bank_transfer", formData: {} }),
+    ).rejects.toThrow();
+
+    expect(onErro.mock.calls[0][1]).toBe("recuperavel");
+    expect(onErro.mock.calls[0][0]).toMatch(/PIX/);
+    expect(onErro.mock.calls[0][0]).not.toMatch(/cart[aã]o/i);
+  });
+
+  it("débito: selectedPaymentMethod 'debit_card' chega ao servidor como tipoCartao 'debit_card'", async () => {
+    const { montarBrick } = await importarLimpo();
+
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+
+    const criarPagamento = vi.fn().mockResolvedValue({
+      paymentId: "ORD-2",
+      statusPagamento: "aguardando",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    montarBrick(opcoesPadrao({ criarPagamento }));
+    await carregarSdk();
+
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await onSubmit({
+      selectedPaymentMethod: "debit_card",
+      formData: {
+        token: "tok-9",
+        installments: 1,
+        payment_method_id: "debelo",
+      },
+    });
+
+    expect(criarPagamento).toHaveBeenCalledWith(
+      expect.objectContaining({ metodo: "cartao", tipoCartao: "debit_card" }),
     );
-    expect(mensagem).not.toMatch(/cart[aã]o/i);
+  });
+
+  it("cartão 'pago' ou 'aguardando' desmonta o Brick e avisa onCartao — NUNCA onErro nem onPix", async () => {
+    for (const statusPagamento of ["pago", "aguardando"] as const) {
+      const { montarBrick } = await importarLimpo();
+
+      const unmount = vi.fn();
+      const create = vi.fn().mockResolvedValue({ unmount });
+      // @ts-expect-error stub do SDK
+      globalThis.MercadoPago = function MercadoPagoStub() {
+        return { bricks: () => ({ create }) };
+      };
+
+      const onErro = vi.fn();
+      const onPix = vi.fn();
+      const onCartao = vi.fn();
+      const criarPagamento = vi.fn().mockResolvedValue({
+        paymentId: "ORD-3",
+        statusPagamento,
+        expiraEm: "2026-08-06T15:30:00.000Z",
+      });
+
+      montarBrick(opcoesPadrao({ criarPagamento, onErro, onPix, onCartao }));
+      await carregarSdk();
+
+      const { onSubmit } = create.mock.calls[0][2].callbacks;
+      await onSubmit({
+        selectedPaymentMethod: "credit_card",
+        formData: {
+          token: "tok-1",
+          installments: 1,
+          payment_method_id: "visa",
+        },
+      });
+
+      expect(unmount).toHaveBeenCalledTimes(1);
+      expect(onCartao).toHaveBeenCalledWith(statusPagamento);
+      expect(onErro).not.toHaveBeenCalled();
+      expect(onPix).not.toHaveBeenCalled();
+      document.head.innerHTML = "";
+    }
   });
 
   // CHECKOUT-080 (#213): 'expirado' e 'estornado' não tinham representação
@@ -760,7 +905,7 @@ describe("montarBrick", () => {
   // with X": a chave OMITIDA é o jeito de desligar um meio de pagamento, não
   // um valor vazio — por isso o teste confere ausência (`toBeUndefined`), não
   // `""` nem `[]`.
-  it("customization.paymentMethods habilita só PIX — creditCard não entra", async () => {
+  it("customization.paymentMethods segue a configuração do lojista — PIX sempre, cartões e limite de parcelas conforme a loja", async () => {
     const { montarBrick } = await importarLimpo();
 
     const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
@@ -769,12 +914,19 @@ describe("montarBrick", () => {
       return { bricks: () => ({ create }) };
     };
 
-    montarBrick(opcoesPadrao());
+    montarBrick(
+      opcoesPadrao({
+        configCartao: { credito: true, debito: false, parcelasMax: 6 },
+      }),
+    );
     await carregarSdk();
 
     const { paymentMethods } = create.mock.calls[0][2].customization;
-    expect(paymentMethods.bankTransfer).toBe("all");
-    expect(paymentMethods.creditCard).toBeUndefined();
+    expect(paymentMethods).toEqual({
+      bankTransfer: "all",
+      creditCard: "all",
+      maxInstallments: 6,
+    });
   });
 
   // CHECKOUT-050: o Brick nunca chegou a criar cobrança nenhuma aqui — a
@@ -900,7 +1052,14 @@ describe("PagamentoOnline (render de verdade)", () => {
    * React RE-renderiza — não remonta — a cada `raiz.render(<Pai />)`.
    */
   function Pai() {
-    return <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />;
+    return (
+      <PagamentoOnline
+        orderId="ped-1"
+        valor={100}
+        configCartao={{ credito: true, debito: true, parcelasMax: null }}
+        onErro={() => {}}
+      />
+    );
   }
 
   it("re-render do pai com onErro inline NÃO recria o Brick", async () => {
@@ -996,7 +1155,12 @@ describe("PagamentoOnline - link para o ticket_url", () => {
 
     await act(async () => {
       raiz.render(
-        <PagamentoOnline orderId="ped-1" valor={100} onErro={() => {}} />,
+        <PagamentoOnline
+          orderId="ped-1"
+          valor={100}
+          configCartao={{ credito: true, debito: true, parcelasMax: null }}
+          onErro={() => {}}
+        />,
       );
     });
 
@@ -1045,5 +1209,128 @@ describe("PagamentoOnline - link para o ticket_url", () => {
       hospedeiro.querySelector("img[alt='QR code do PIX']"),
     ).not.toBeNull();
     expect(hospedeiro.textContent).toContain("Copiar código PIX");
+  });
+
+  // Plano 2026-09-30 (cartão): o componente troca o formulário pela tela de
+  // cartão enviado. Em análise ('aguardando'), depois de 30 s aparece a
+  // saída "Tentar outro pagamento", que REMONTA o Brick — o servidor
+  // responde 409 se a análise ainda estiver em curso, ou substitui a
+  // cobrança se ela tiver sido recusada.
+  it("cartão em análise mostra a tela de análise e, depois da espera, 'Tentar outro pagamento' remonta o Brick", async () => {
+    const { ESPERA_ANTES_DE_OFERECER_OUTRO_PAGAMENTO_MS } = await import(
+      "@/components/checkout/PagamentoOnline"
+    );
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+    criarPagamento.mockReset().mockResolvedValue({
+      paymentId: "ORD-5",
+      statusPagamento: "aguardando",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    await act(async () => {
+      raiz.render(
+        <PagamentoOnline
+          orderId="ped-1"
+          valor={100}
+          configCartao={{ credito: true, debito: true, parcelasMax: null }}
+          onErro={() => {}}
+        />,
+      );
+    });
+    document
+      .querySelector("script[data-mp-sdk]")
+      ?.dispatchEvent(new Event("load"));
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+
+    vi.useFakeTimers();
+    try {
+      const { onSubmit } = create.mock.calls[0][2].callbacks;
+      await act(async () => {
+        await onSubmit({
+          selectedPaymentMethod: "credit_card",
+          formData: {
+            token: "tok-1",
+            installments: 1,
+            payment_method_id: "visa",
+          },
+        });
+      });
+
+      expect(hospedeiro.textContent).toContain(
+        "Pagamento com cartão em análise",
+      );
+      expect(hospedeiro.textContent).not.toContain("Tentar outro pagamento");
+
+      await act(async () => {
+        vi.advanceTimersByTime(ESPERA_ANTES_DE_OFERECER_OUTRO_PAGAMENTO_MS);
+      });
+      const botao = Array.from(hospedeiro.querySelectorAll("button")).find(
+        (b) => b.textContent === "Tentar outro pagamento",
+      );
+      expect(botao).toBeDefined();
+
+      await act(async () => {
+        botao!.click();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+
+    expect(hospedeiro.querySelector("#mp-container")).not.toBeNull();
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("cartão aprovado mostra a tela de aprovado e NÃO oferece outro pagamento", async () => {
+    const create = vi.fn().mockResolvedValue({ unmount: vi.fn() });
+    // @ts-expect-error stub do SDK
+    globalThis.MercadoPago = function MercadoPagoStub() {
+      return { bricks: () => ({ create }) };
+    };
+    criarPagamento.mockReset().mockResolvedValue({
+      paymentId: "ORD-6",
+      statusPagamento: "pago",
+      expiraEm: "2026-08-06T15:30:00.000Z",
+    });
+
+    await act(async () => {
+      raiz.render(
+        <PagamentoOnline
+          orderId="ped-1"
+          valor={100}
+          configCartao={{ credito: true, debito: true, parcelasMax: null }}
+          onErro={() => {}}
+        />,
+      );
+    });
+    document
+      .querySelector("script[data-mp-sdk]")
+      ?.dispatchEvent(new Event("load"));
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    const { onSubmit } = create.mock.calls[0][2].callbacks;
+    await act(async () => {
+      await onSubmit({
+        selectedPaymentMethod: "credit_card",
+        formData: {
+          token: "tok-1",
+          installments: 1,
+          payment_method_id: "visa",
+        },
+      });
+    });
+
+    expect(hospedeiro.textContent).toContain("Pagamento com cartão aprovado");
+    expect(hospedeiro.textContent).not.toContain("Tentar outro pagamento");
   });
 });

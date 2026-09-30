@@ -139,6 +139,8 @@ function opcoesPadrao(sobrepor: Partial<OpcoesMontarBrick> = {}) {
     criarPagamento: vi.fn(),
     onErro: vi.fn(),
     onPix: vi.fn(),
+    onCartao: vi.fn(),
+    configCartao: { credito: true, debito: true, parcelasMax: null },
     ...sobrepor,
   };
 }

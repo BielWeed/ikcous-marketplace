@@ -181,6 +181,19 @@ let mockRespostaPoll: {
   error: { message: string } | null;
 } = { data: { payment_status: "aguardando", expires_at: null }, error: null };
 
+// Plano 2026-09-30 (cartão): o CheckoutView também lê a configuração do
+// cartão (`app_settings`) quando abre — uma consulta a mais em `from`, que
+// este arquivo CONTA para provar quando a verificação periódica para. O hook
+// entra simulado para a contagem continuar medindo só o polling; o que ele
+// faz é coberto por tests/front/use-configuracao-cartao.test.tsx.
+vi.mock("@/hooks/useConfiguracaoCartao", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useConfiguracaoCartao")>()),
+  useConfiguracaoCartao: () => ({
+    estado: "pronto",
+    config: { credito: false, debito: false, parcelasMax: null },
+  }),
+}));
+
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (tabela: string) => {

@@ -407,8 +407,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
     // Peça 20: o Mercado Pago entra como sexto acordeão, nascido fechado
-    // como os demais (mesma decisão do dono de 02/09).
-    expect(cabecalhos.length).toBe(6);
+    // como os demais (mesma decisão do dono de 02/09). Plano 2026-09-30:
+    // "Cartão de crédito e débito" é o sétimo, também fechado.
+    expect(cabecalhos.length).toBe(7);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }

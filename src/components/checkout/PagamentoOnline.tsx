@@ -1,5 +1,6 @@
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
 import { useOrders } from "@/hooks/useOrders";
+import type { ConfiguracaoCartao } from "@/lib/configuracaoCartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { useEffect, useRef, useState } from "react";
 
@@ -60,19 +61,18 @@ export function carregarSdkMercadoPago(): Promise<void> {
  * o QR que a criação não trouxe. Nos dois casos insistir é seguro; muda só o
  * caminho que `criar-pagamento` escolhe.
  *
- * "terminal": a cobrança já existe e está morta para este pedido (recusada,
- * cancelada, com status que o banco não reconhece) OU a reserva do pedido já
- * venceu. Tentar de novo bate na MESMA recusa — `podeCobrar` manda para
- * `reconsultar` sempre que já existe `gateway_payment_id`, devolvendo o
- * status da mesma cobrança (ver o comentário grande dentro de `onSubmit`
- * abaixo).
+ * "terminal": a cobrança já existe e está morta para este pedido (vencida,
+ * estornada, com status que o banco não reconhece) OU a reserva do pedido já
+ * venceu. Tentar de novo bate na MESMA resposta. RECUSA não é mais terminal
+ * (plano 2026-09-30): o servidor substitui a cobrança recusada na próxima
+ * tentativa, e o cliente escolhe outro cartão ou o PIX.
  */
 export type CategoriaErroPagamento = "recuperavel" | "terminal";
 
 /**
  * Marca um erro como TERMINAL para quem captura no catch de `onSubmit` —
- * usado só nos dois pontos abaixo onde SABEMOS que reconsultar devolve a
- * mesma recusa. Qualquer outro erro (rede, `criarPagamento` rejeitando por
+ * usado só nos pontos abaixo onde SABEMOS que tentar de novo devolve a
+ * mesma resposta. Qualquer outro erro (rede, `criarPagamento` rejeitando por
  * outro motivo) é tratado como recuperável por padrão.
  */
 class ErroPagamentoTerminal extends Error {}
@@ -99,15 +99,43 @@ class ErroPagamentoTerminal extends Error {}
  *
  * Exportada para teste — não é API pública do componente.
  */
+/**
+ * Os meios que o Brick oferece, a partir da configuração do lojista (plano
+ * docs/superpowers/plans/2026-09-30-cartao-de-credito-e-debito.md, T5). A
+ * chave OMITIDA é o jeito de desligar um meio no Payment Brick — nunca um
+ * valor vazio. `maxInstallments` só existe quando o lojista limitou; sem
+ * limite, o Brick mostra o que o Mercado Pago oferecer para aquele cartão.
+ * Exportada para teste.
+ */
+export function meiosDoBrick(
+  config: ConfiguracaoCartao,
+): Record<string, unknown> {
+  return {
+    bankTransfer: "all",
+    ...(config.credito ? { creditCard: "all" } : {}),
+    ...(config.debito ? { debitCard: "all" } : {}),
+    ...(config.credito && config.parcelasMax !== null
+      ? { maxInstallments: config.parcelasMax }
+      : {}),
+  };
+}
+
+/** Frase da recusa do cartão quando o servidor não mandou o motivo. */
+const RECUSA_DO_CARTAO_GENERICA =
+  "O pagamento com cartão foi recusado. Tente outro cartão ou pague com PIX.";
+
 export function montarBrick({
   orderId,
   valor,
+  configCartao,
   criarPagamento,
   onErro,
   onPix,
+  onCartao,
 }: {
   orderId: string;
   valor: number;
+  configCartao: ConfiguracaoCartao;
   criarPagamento: ReturnType<typeof useOrders>["criarPagamento"];
   onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
   onPix: (pix: {
@@ -116,6 +144,8 @@ export function montarBrick({
     expiraEm: string;
     ticketUrl?: string;
   }) => void;
+  /** Cartão aceito pelo MP ('pago') ou em análise ('aguardando'). */
+  onCartao: (statusPagamento: "pago" | "aguardando") => void;
 }): () => void {
   let cancelado = false;
   let controlador: { unmount: () => void } | null = null;
@@ -134,12 +164,13 @@ export function montarBrick({
       const criado = await mp.bricks().create("payment", "mp-container", {
         initialization: { amount: valor },
         customization: {
-          // So PIX na Fase 3. O caminho de cartao existe no codigo mas tem
-          // defeito conhecido: depois da primeira recusa o pedido fica
-          // impagavel ate expirar, e a mensagem atual pede "tente outro
-          // cartao", o que e' impossivel. Religar cartao e' a Fase 3.5, e
-          // depende de chave de idempotencia versionada.
-          paymentMethods: { bankTransfer: "all" },
+          // Cartão religado (plano 2026-09-30): crédito e débito conforme a
+          // configuração do lojista. O defeito que o mantinha desligado
+          // ("depois da primeira recusa o pedido fica impagável") fechou no
+          // servidor — cobrança morta é substituída, a chave de
+          // idempotência muda por tentativa, e a recusa não cancela mais o
+          // pedido (migration 20261160000000).
+          paymentMethods: meiosDoBrick(configCartao),
         },
         callbacks: {
           onReady: () => {},
@@ -148,14 +179,30 @@ export function montarBrick({
             // O Brick nem chegou a montar — nenhuma cobrança foi criada.
             onErro("Não foi possível carregar o pagamento.", "recuperavel");
           },
-          onSubmit: async ({ formData }: { formData: Record<string, any> }) => {
+          onSubmit: async ({
+            selectedPaymentMethod,
+            formData,
+          }: {
+            selectedPaymentMethod?: string;
+            formData: Record<string, any>;
+          }) => {
             try {
-              // PIX volta sem token; cartão volta tokenizado NO NAVEGADOR — o
-              // número do cartão não passa pelo nosso servidor.
-              const ehPix = !formData.token;
+              // O Brick diz o meio em `selectedPaymentMethod`
+              // ("bank_transfer", "credit_card", "debit_card"). Sem ele,
+              // vale a regra de antes: PIX volta sem token; cartão volta
+              // tokenizado NO NAVEGADOR — o número do cartão não passa pelo
+              // nosso servidor.
+              const ehPix = selectedPaymentMethod
+                ? selectedPaymentMethod === "bank_transfer"
+                : !formData.token;
               const r = await criarPagamento({
                 orderId,
                 metodo: ehPix ? "pix" : "cartao",
+                tipoCartao: ehPix
+                  ? undefined
+                  : selectedPaymentMethod === "debit_card"
+                    ? "debit_card"
+                    : "credit_card",
                 token: formData.token,
                 parcelas: formData.installments,
                 paymentMethodId: formData.payment_method_id,
@@ -175,20 +222,21 @@ export function montarBrick({
               // `StatusPagamentoConhecido`), não mais no vocabulário cru do
               // MP: a edge function já traduziu.
               if (r.statusPagamento === "recusado") {
-                // Nem "outro cartão" nem "pague com PIX" cabem aqui: cartão
-                // está desligado no Brick (só PIX, ver comentário acima), e
-                // `podeCobrar` (criar-pagamento/index.ts) manda para
-                // `reconsultar` sempre que o pedido já tem
-                // gateway_payment_id — o que devolve o status da MESMA
-                // cobrança recusada, sem criar outra. Qualquer nova
-                // tentativa neste pedido bate na mesma recusa até expirar.
+                // Plano 2026-09-30: a recusa deixou de ser terminal. O
+                // servidor SUBSTITUI a cobrança morta na próxima tentativa
+                // (e a RPC não cancela mais o pedido por recusa), então
+                // "Tentar de novo" remonta o Brick e o cliente escolhe outro
+                // cartão ou o PIX — até o prazo do pedido. `motivoRecusa` é
+                // texto curado do servidor (nunca o código cru do MP).
                 // 'recusado' cobre os dois desfechos que o vocabulário
                 // clássico separava em "rejected"/"cancelled" — este banco
-                // não tem um valor 'cancelado' distinto de 'recusado'
-                // (ver o comentário de MAPA_STATUS_ORDER em
+                // não tem um valor 'cancelado' distinto de 'recusado' (ver o
+                // comentário de MAPA_STATUS_ORDER em
                 // supabase/functions/_shared/mercadopago.ts).
-                throw new ErroPagamentoTerminal(
-                  "Este pagamento foi recusado e não pode ser tentado novamente neste pedido. Faça um pedido novo ou fale com a loja.",
+                throw new Error(
+                  ehPix
+                    ? "O PIX não foi aceito pelo Mercado Pago. Tente de novo ou escolha outro meio de pagamento."
+                    : (r.motivoRecusa ?? RECUSA_DO_CARTAO_GENERICA),
                 );
               }
               if (r.statusPagamento === "expirado") {
@@ -229,6 +277,20 @@ export function montarBrick({
                 throw new ErroPagamentoTerminal(
                   "Não foi possível confirmar o pagamento.",
                 );
+              }
+
+              if (!ehPix) {
+                // Cartão aceito ('pago') ou em análise ('aguardando'). NUNCA
+                // é a confirmação do pedido: quem grava 'pago' é o webhook, e
+                // é o CheckoutView que troca para a tela de confirmação
+                // quando o banco muda. Aqui só se tira o formulário da tela
+                // (mesmo motivo do PIX abaixo: desmontar ANTES de trocar o
+                // JSX, senão a próxima montagem esbarra em "Brick already
+                // initialized").
+                controlador?.unmount();
+                controlador = null;
+                onCartao(r.statusPagamento as "pago" | "aguardando");
+                return;
               }
 
               if (ehPix) {
@@ -295,10 +357,12 @@ export function montarBrick({
               // `error` sobrepõe o literal padrão, e a única coisa que emite
               // essa chave neste caminho é a nossa própria edge function.
               // Enumeração:
-              // 1) os quatro `throw new ErroPagamentoTerminal(...)` acima
-              //    (recusado/expirado/estornado/status desconhecido) e o
-              //    `throw new Error("Não foi possível gerar o QR code do
-              //    PIX.")` — literais fixos deste arquivo;
+              // 1) os três `throw new ErroPagamentoTerminal(...)` acima
+              //    (expirado/estornado/status desconhecido), o `throw new
+              //    Error(...)` da recusa (literal deste arquivo OU
+              //    `motivoRecusa`, texto curado da edge function — o código
+              //    cru do MP nunca chega aqui) e o `throw new Error("Não foi
+              //    possível gerar o QR code do PIX.")`;
               // 2) `criarPagamento` (useOrders.ts) só lança
               //    `Object.assign(new Error(mensagem), { terminal })`, onde
               //    `mensagem` é OU o literal "Não foi possível gerar a
@@ -370,13 +434,24 @@ export function montarBrick({
   };
 }
 
+/**
+ * Quanto tempo o cartão "em análise" fica na tela antes de aparecer a saída
+ * "tentar outro pagamento". O webhook chega em ~6 s (medido em 30/09/2026);
+ * 30 s cobre com folga o caso normal e não prende o cliente quando o banco
+ * segura a análise. Exportada para teste.
+ */
+export const ESPERA_ANTES_DE_OFERECER_OUTRO_PAGAMENTO_MS = 30_000;
+
 export function PagamentoOnline({
   orderId,
   valor,
+  configCartao,
   onErro,
 }: {
   orderId: string;
   valor: number;
+  /** Quais cartões o Brick oferece — `useConfiguracaoCartao`, no pai. */
+  configCartao: ConfiguracaoCartao;
   onErro: (msg: string, categoria: CategoriaErroPagamento) => void;
 }) {
   // Achado 4 da revisão do CHECKOUT-090 (16/08/2026): `isAdmin=false`, não
@@ -415,18 +490,42 @@ export function PagamentoOnline({
     onErroRef.current = onErro;
   });
 
+  // Cartão enviado (plano 2026-09-30): 'pago' = o MP aceitou; 'aguardando'
+  // = em análise. Nos dois, o formulário sai da tela e o CheckoutView troca
+  // para a confirmação quando o webhook gravar o pagamento.
+  const [cartao, setCartao] = useState<"pago" | "aguardando" | null>(null);
+  const [ofereceOutroPagamento, setOfereceOutroPagamento] = useState(false);
+  // Incrementar remonta o Brick (entra nas deps do efeito abaixo) — é a
+  // saída "tentar outro pagamento" do cartão em análise.
+  const [tentativa, setTentativa] = useState(0);
+
+  const { credito, debito, parcelasMax } = configCartao;
   useEffect(() => {
     return montarBrick({
       orderId,
       valor,
+      // Recomposto a partir de primitivos: o objeto do pai pode mudar de
+      // identidade sem mudar de valor, e isso não pode remontar o Brick.
+      configCartao: { credito, debito, parcelasMax },
       criarPagamento,
       onErro: (msg, categoria) => onErroRef.current(msg, categoria),
       onPix: setPix,
+      onCartao: setCartao,
     });
     // `onErro` de propósito fora das deps — ver o comentário do onErroRef
-    // acima. O Brick fica vivo enquanto `orderId`/`valor` (primitivos) e
-    // `criarPagamento` (useCallback(..., []) em useOrders.ts) não mudarem.
-  }, [orderId, valor, criarPagamento]);
+    // acima. O Brick fica vivo enquanto `orderId`/`valor`/a configuração do
+    // cartão (primitivos), `criarPagamento` (useCallback(..., []) em
+    // useOrders.ts) e `tentativa` não mudarem.
+  }, [orderId, valor, credito, debito, parcelasMax, criarPagamento, tentativa]);
+
+  useEffect(() => {
+    if (cartao !== "aguardando") return;
+    const relogio = setTimeout(
+      () => setOfereceOutroPagamento(true),
+      ESPERA_ANTES_DE_OFERECER_OUTRO_PAGAMENTO_MS,
+    );
+    return () => clearTimeout(relogio);
+  }, [cartao]);
 
   // Brief "o app não mente quando copia" (08/09/2026): o botão chamava
   // `navigator.clipboard.writeText(...)` sem await, sem catch e sem NENHUM
@@ -456,6 +555,40 @@ export function PagamentoOnline({
     setPixCopiado(true);
     setTimeout(() => setPixCopiado(false), 2000);
   };
+
+  if (cartao) {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        className="space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 text-center"
+      >
+        <p className="text-sm font-bold text-zinc-900">
+          {cartao === "pago"
+            ? "Pagamento com cartão aprovado"
+            : "Pagamento com cartão em análise"}
+        </p>
+        <p className="text-xs text-zinc-500">
+          {cartao === "pago"
+            ? "Estamos confirmando o seu pedido. Esta tela muda sozinha em instantes."
+            : "O banco do cartão está analisando o pagamento. Esta tela muda sozinha quando a resposta chegar."}
+        </p>
+        {cartao === "aguardando" && ofereceOutroPagamento && (
+          <button
+            type="button"
+            onClick={() => {
+              setCartao(null);
+              setOfereceOutroPagamento(false);
+              setTentativa((t) => t + 1);
+            }}
+            className="w-full rounded-xl border border-zinc-200 px-4 py-3 text-xs font-bold uppercase tracking-wider text-zinc-900"
+          >
+            Tentar outro pagamento
+          </button>
+        )}
+      </div>
+    );
+  }
 
   if (pix) {
     return (

@@ -2638,6 +2638,8 @@ export function useOrders(
     async (args: {
       orderId: string;
       metodo: "pix" | "cartao";
+      // Plano 2026-09-30 (cartão): qual cartão o Brick usou. Só no cartão.
+      tipoCartao?: "credit_card" | "debit_card";
       token?: string;
       parcelas?: number;
       paymentMethodId?: string;
@@ -2708,6 +2710,11 @@ export function useOrders(
         qrCode?: string;
         qrCodeBase64?: string;
         ticketUrl?: string;
+        // Plano 2026-09-30 (cartão): o motivo da recusa, já em português de
+        // gente — texto curado da edge function (mensagemDeRecusaDoCartao em
+        // supabase/functions/_shared/mercadopago.ts), nunca o código cru do
+        // Mercado Pago. Só vem com statusPagamento 'recusado' de cartão.
+        motivoRecusa?: string;
       };
     },
     [],

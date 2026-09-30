@@ -13,6 +13,10 @@ import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
+import {
+  rotuloPagarAgora,
+  useConfiguracaoCartao,
+} from "@/hooks/useConfiguracaoCartao";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
@@ -416,6 +420,13 @@ export function CheckoutView({
   });
   const { validateCoupon } = useCoupons();
   const { user, profile, loading: authLoading } = useAuth();
+  // Plano 2026-09-30 (cartão): quais cartões a loja aceita — decide o rótulo
+  // da opção "Pagar agora" e o que o Brick oferece (PagamentoOnline). Só
+  // consulta com pagamento online ligado E sessão (P6: só cliente logado
+  // paga pelo app). Falha de leitura vira "só PIX", nunca erro na tela.
+  const configCartao = useConfiguracaoCartao(
+    pagamentoOnlineLigado() && Boolean(user),
+  );
   // CHECKOUT-070 (#197): sinal de rede para o cancelamento do pagamento
   // falho — mesmo hook já usado por ShippingCalculator, sem mecanismo novo.
   const isOffline = useOnlineStatus();
@@ -1951,10 +1962,23 @@ export function CheckoutView({
               </p>
             )}
           </div>
+        ) : configCartao.estado === "carregando" ? (
+          // A configuração do cartão ainda não chegou: montar o Brick agora
+          // e remontar depois (com os cartões) faria o cliente perder o que
+          // já tivesse digitado. É uma leitura só, iniciada quando o
+          // checkout abriu — na prática já chegou antes deste ponto.
+          <div
+            role="status"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-zinc-100 bg-white p-6 text-xs text-zinc-500"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Carregando o pagamento…
+          </div>
         ) : (
           <PagamentoOnline
             orderId={orderId}
             valor={valorDoPedido}
+            configCartao={configCartao.config}
             onErro={(msg, categoria) =>
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
@@ -2017,14 +2041,9 @@ export function CheckoutView({
     ? [
         {
           value: "online",
-          // SÓ PIX, e o rótulo tem de dizer isso. A Fase 3 recusa cartão em
-          // DOIS lugares — o Brick só oferece `bankTransfer`
-          // (PagamentoOnline.tsx) e a criar-pagamento devolve 400 "No
-          // momento aceitamos apenas PIX". O rótulo antigo dizia "(PIX ou
-          // cartão)" e sobreviveu à Fase 3: prometia ao cliente o que o
-          // código nega. Ao religar cartão na Fase 3.5, este rótulo volta
-          // junto.
-          label: "Pagar agora com PIX",
+          // Diz o que o Brick vai oferecer (plano 2026-09-30) — ver
+          // `rotuloPagarAgora`.
+          label: rotuloPagarAgora(configCartao),
           icon: CreditCard,
           color: "text-violet-500 bg-violet-50",
           // Pagamento online exige conta (decisão do Gabriel, 16/08/2026) —
