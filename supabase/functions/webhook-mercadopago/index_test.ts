@@ -4740,6 +4740,48 @@ Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido 
   });
 });
 
+// Revisão de risco de 30/09/2026 (3ª rodada, MENOR 1): o MESMO cenário do
+// S1, mas o sentinela é de uma tentativa ANTERIOR (`c0` com a tentativa já
+// em 2). A busca só enxerga a order MORTA de uma tentativa posterior; a
+// `c0` ambígua pode ainda não estar indexada — soltar a vaga abriria um
+// cartão novo (chave `c2`) ao lado dela. O fallback NÃO solta.
+Deno.test("cartão — recusa com o sentinela de uma tentativa ANTERIOR na vaga -> a busca manda liberar, mas o fallback NÃO solta (chave diverge da tentativa atual)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinela = montarSentinela(`${UUID_PEDIDO}:c0`, Date.now() - 5 * 60_000);
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinela, tentativas_de_pagamento: 2 };
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false, true] });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemRecusada = {
+    ...orderDoMp("failed", "cc_rejected_other_reason", "credit_card"),
+    date_created: new Date().toISOString(),
+  };
+  const fetchImpl = async (url: string) =>
+    url.includes("/v1/orders?")
+      ? new Response(JSON.stringify({ results: [ordemRecusada] }), { status: 200 })
+      : new Response(JSON.stringify(ordemRecusada), { status: 200 });
+
+  const console_warn = console.warn;
+  console.warn = () => {};
+  let corpo: unknown;
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+    assertEquals(resposta.status, 200);
+    corpo = await resposta.json();
+  } finally {
+    console.warn = console_warn;
+  }
+
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(registro.chamadasRpc.length, 0);
+  // Só a 1ª tentativa (pelo id do MP) — o fallback pelo sentinela não roda.
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(registro.chamadasLiberar[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: ID_ORDER_CARTAO_MP,
+  });
+});
+
 // Q2 (4ª revisão de risco, 26/09/2026, harness ponta a ponta do 4º revisor):
 // a recusa ATRASADA (ou reenviada) da tentativa c0 NÃO pode soltar o
 // sentinela da tentativa c1 — que a busca confirma AINDA ESTAR EM ANÁLISE no

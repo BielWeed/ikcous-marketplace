@@ -76,6 +76,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   buscarOrdersDoPedido,
   cancelarOrder,
+  chaveDoCartaoDaTentativa,
   consultarOrder,
   consultarPagamento,
   criarOrder,
@@ -101,8 +102,8 @@ import {
   orderEhDeCartao,
   parcelasDaOrder,
   parcelasValidas,
-  PREFIXO_VAGA_EM_VERIFICACAO,
   resolverSentinela,
+  sentinelaDaChave,
   tipoDeCartaoValido,
   tipoDoPagamentoDaOrder,
   tokenDeCartaoValido,
@@ -663,19 +664,7 @@ export async function chaveDeIdempotencia(
   // acima. `void token` só para o parâmetro continuar documentado na
   // assinatura sem o lint acusar variável não usada.
   void token;
-  return `${id}:c${tentativas}`;
-}
-
-/**
- * `true` quando `idGateway` é o SENTINELA gravado para esta MESMA chave de
- * idempotência — `verificando:<chave>` (formato antigo) ou
- * `verificando:<chave>:<ms>` (`montarSentinela`). O `:` depois da chave é o
- * que separa `c0` de `c01`. Revisões de 30/09/2026 (MENOR 4 e IMPORTANTE 1).
- */
-function sentinelaDaChave(idGateway: unknown, chave: string): boolean {
-  if (typeof idGateway !== "string") return false;
-  const prefixo = `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}`;
-  return idGateway === prefixo || idGateway.startsWith(`${prefixo}:`);
+  return chaveDoCartaoDaTentativa(id, tentativas);
 }
 
 export type DadosDoCartao = {
