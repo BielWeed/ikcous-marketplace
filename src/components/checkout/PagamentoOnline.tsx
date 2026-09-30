@@ -69,6 +69,48 @@ type CriarPagamento = (
   args: ArgsCriarPagamento,
 ) => Promise<RespostaCriarPagamento>;
 
+/**
+ * Diagnóstico do checkout (29/09/2026): a criação do PIX dependia de
+ * `supabase.functions.invoke` SEM tempo limite — rede presa deixava o
+ * spinner "Gerando o QR code do Pix…" rodando para sempre, sem erro e sem
+ * saída. O prazo é LOCAL (`Promise.race`): nunca cancela o POST em voo, só
+ * deixa de esperar por ele. O desfecho é o erro RECUPERÁVEL que a tela já
+ * tem — a retentativa converge, porque a edge reconsulta a MESMA cobrança
+ * pelo `gateway_payment_id` (ou cria do zero se a primeira nunca chegou).
+ */
+export const TEMPO_LIMITE_CRIACAO_PIX_MS = 20_000;
+export const MENSAGEM_TEMPO_LIMITE_PIX =
+  "O Pix está demorando mais que o normal para ser gerado. Verifique sua conexão e toque em Tentar de novo.";
+
+/**
+ * Corre `promessa` contra um relógio local. O estouro rejeita com erro
+ * MARCADO (`tempoLimite: true`) — quem consome decide o que fazer (o PIX
+ * avisa o cliente; o SDK do cartão cai na falha de montagem que já existe).
+ * Assentamento TARDIO da original: nada acontece com o `race`, o timer morre
+ * no `finally` — e a original é consumida em silêncio (`catch` vazio) para
+ * uma rejeição tardia nunca virar rejeição não tratada (o caso do SDK, cuja
+ * promessa memoizada pode ficar sem espectador depois do estouro).
+ */
+export function comTempoLimite<T>(
+  promessa: Promise<T>,
+  prazoMs: number,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const estouro = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          Object.assign(new Error("tempo limite esgotado"), {
+            tempoLimite: true,
+          }),
+        ),
+      prazoMs,
+    );
+  });
+  promessa.catch(() => {});
+  return Promise.race([promessa.finally(() => clearTimeout(timer)), estouro]);
+}
+
 type DadosDoPix = {
   qrCodeBase64?: string;
   qrCode?: string;
@@ -261,7 +303,9 @@ export function dispararPagamentoPix({
     promessa.then(removerDoCache, removerDoCache);
   }
 
-  promessa
+  // O relógio local corre por CADA acoplamento à promessa (não só na
+  // criação): reusar a promessa em cache do StrictMode herda o mesmo prazo.
+  comTempoLimite(promessa, TEMPO_LIMITE_CRIACAO_PIX_MS)
     .then((r) => {
       if (cancelado) return;
       const resultado = classificarRespostaPagamento(r);
@@ -277,6 +321,20 @@ export function dispararPagamentoPix({
     })
     .catch((err: any) => {
       if (cancelado) return;
+      // Tempo limite LOCAL (rede presa, resposta que nunca chega): sai como
+      // erro recuperável com mensagem própria, e a promessa pendurada SAI DO
+      // CACHE — sem isso, o "Tentar de novo" reusaria a MESMA promessa
+      // pendurada (só sai do mapa na assentação, que nunca chega) e o
+      // spinner voltaria para sempre. Repetir o POST é seguro pela própria
+      // edge: a segunda chamada reconsulta a MESMA cobrança pelo
+      // `gateway_payment_id`, ou cria do zero se a primeira nunca chegou.
+      if (err?.tempoLimite === true) {
+        if (promessasPagamentoPix.get(orderId) === promessa) {
+          promessasPagamentoPix.delete(orderId);
+        }
+        onErro(MENSAGEM_TEMPO_LIMITE_PIX, "recuperavel");
+        return;
+      }
       // Contrato do CHECKOUT-050: `.terminal` (e, desde o B3, `.cartaoEmAnalise`)
       // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
       // 409/etc. da edge function, nunca reconstruído a partir do texto da
@@ -353,6 +411,27 @@ export function PagamentoOnline({
     onTrocarParaPix?.(cartaoAindaVivo);
   };
 
+  // Diagnóstico do checkout (29/09/2026) — a troca cartão→PIX não pode
+  // esconder a cobrança incerta: a tela do cartão esteve em cena nesta
+  // montagem e a config sumiu DEPOIS (a loja desligou o cartão ou o
+  // pagamento pelo app no meio do pagamento), o fallback assume DESMONTANDO
+  // a tela do cartão — inclusive "em análise"/3DS, onde uma cobrança PODE
+  // existir. Nesse caso a troca tem de avisar `cartaoAindaVivo: true`, para
+  // o CheckoutView marcar a cobrança incerta e "Cancelar pedido" nunca
+  // reaparecer sobre um cartão que o banco pode aprovar. Fallback que nasce
+  // COM a tela (config ausente desde o primeiro render) nunca teve POST de
+  // cartão — `false` continua sendo o valor verdadeiro ali. Estado, não ref:
+  // o valor entra no `onClick` durante o render.
+  const cartaoEmCena =
+    metodo === "cartao" &&
+    !trocouParaPix &&
+    !!configDoCartao &&
+    cartaoLigado(configDoCartao);
+  const [cartaoEsteveEmCena, setCartaoEsteveEmCena] = useState(false);
+  useEffect(() => {
+    if (cartaoEmCena) setCartaoEsteveEmCena(true);
+  }, [cartaoEmCena]);
+
   if (metodo === "cartao" && !trocouParaPix) {
     if (configDoCartao && cartaoLigado(configDoCartao)) {
       return (
@@ -367,8 +446,8 @@ export function PagamentoOnline({
       );
     }
     // A loja desligou o cartão entre a escolha e a tela de pagamento (ou a
-    // config sumiu) — nenhum cartão chegou a ser submetido, então nunca há
-    // cobrança em curso.
+    // config sumiu). Se a tela do cartão ESTEVE em cena nesta montagem, uma
+    // cobrança pode existir — ver o comentário de `cartaoEsteveEmCena`.
     return (
       <div className="mx-auto w-full max-w-md space-y-3 rounded-2xl border border-zinc-100 bg-white p-4 text-center sm:p-6">
         <p className="text-sm text-zinc-700">
@@ -376,7 +455,7 @@ export function PagamentoOnline({
         </p>
         <button
           type="button"
-          onClick={() => pagarComPix(false)}
+          onClick={() => pagarComPix(cartaoEsteveEmCena)}
           className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
         >
           Pagar com PIX

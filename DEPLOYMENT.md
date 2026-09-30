@@ -24,16 +24,14 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
 1. Fazer o deploy da função via CLI:
 
    ```bash
-   supabase functions deploy send-push
+   supabase functions deploy send-push --project-ref dekxabvqdsuukijblazl
    ```
 
-   **O comando pergunta em qual projeto, e vem com o cursor no errado.** Desde
-   05/08/2026 a org tem **dois** projetos — o `jvgyjlbjhbfrncwbytls` foi
-   excluído (#85). O que hospeda a loja é o `cafkrminfnokvgjqtkle`, o mesmo que
-   está em `VITE_SUPABASE_URL`; o outro é o `lofznuxcvezrhxsgjqyg`
-   (`ikcous-mkt-priemira-cliente`), que aparece **antes** dele na lista. Dar
-   Enter direto publica no lugar errado sem erro nenhum. Para pular a escolha:
-   `--project-ref cafkrminfnokvgjqtkle`.
+   **Informe sempre `--project-ref` no comando.** A loja ativa usa
+   `dekxabvqdsuukijblazl`; o projeto anterior `cafkrminfnokvgjqtkle` está
+   pausado. O `lofznuxcvezrhxsgjqyg` é o sandbox e não recebe a publicação da
+   loja. Sem o ref explícito, o CLI abre uma escolha interativa na qual confirmar
+   o projeto errado pode publicar sem erro.
 
    Desde 17/09/2026 dá para publicar sem CLI na máquina: o workflow
    `publicar-functions` (GitHub → Actions → "Publicar edge functions
@@ -77,7 +75,7 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    **A `notify-new-order` também exige `--no-verify-jwt`** (PEDIDO-020, #89):
 
    ```bash
-   supabase functions deploy notify-new-order --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+   supabase functions deploy notify-new-order --no-verify-jwt --project-ref dekxabvqdsuukijblazl
    ```
 
    Ela é chamada pelo navegador do CLIENTE logo depois do pedido — muitas vezes
@@ -90,10 +88,11 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
    ter sido criado nos últimos 15 minutos. O pior caso de um id vazado é
    duplicar o aviso de um pedido que acabou de entrar.
 
-   **O que está publicado hoje** — medido em 11/08/2026, depois da
+   **O que estava publicado em 11/08/2026** — medido depois da
    despublicação da `send-order-whatsapp`, com
-   `supabase functions list --project-ref cafkrminfnokvgjqtkle`. Esta tabela
-   envelhece; rode o comando em vez de confiar nela:
+   `supabase functions list --project-ref cafkrminfnokvgjqtkle` no projeto
+   anterior. Esta tabela é histórica; para conferir a loja ativa, rode
+   `supabase functions list --project-ref dekxabvqdsuukijblazl`:
 
    | Função | Versão | Atualizada em (UTC) |
    | --- | --- | --- |
@@ -120,7 +119,8 @@ O sistema utiliza a Edge Function `send-push` para notificações. Certifique-se
      com o painel fechado — continua não exercitado**, porque testá-lo cria
      pedido em produção.
    - **`send-order-whatsapp` foi DESPUBLICADA em 11/08/2026** (#167, rastreada
-     pela #187):
+     pela #187). O comando e a saída abaixo são registro histórico do projeto
+     anterior; **não execute este comando**:
 
      ```
      supabase functions delete send-order-whatsapp --project-ref cafkrminfnokvgjqtkle --yes
@@ -228,7 +228,7 @@ sem dizer **como o PIX de teste é pago** — que é a única parte não óbvia 
 A URL a cadastrar é:
 
 ```
-https://cafkrminfnokvgjqtkle.supabase.co/functions/v1/webhook-mercadopago
+https://dekxabvqdsuukijblazl.supabase.co/functions/v1/webhook-mercadopago
 ```
 
 **Isto mudou com a migração para a Orders API.** Com `montarCorpoPix` (clássico) o código mandava
@@ -332,15 +332,15 @@ O `verify_jwt` de cada uma está versionado em `supabase/config.toml`, mas **a f
 comando ganha do arquivo**. Então os comandos abaixo não são intercambiáveis:
 
 ```bash
-supabase functions deploy criar-pagamento --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy criar-pagamento --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy webhook-mercadopago --no-verify-jwt --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy reconciliar-pagamentos --no-verify-jwt --project-ref dekxabvqdsuukijblazl
 ```
 
 - `criar-pagamento` vai **sem** `--no-verify-jwt`: quem chama é o cliente com sessão.
@@ -355,11 +355,11 @@ valer de verdade (§5.2.1) e trouxe duas functions para esta mesma folha. As dua
 **sem** `--no-verify-jwt`:
 
 ```bash
-supabase functions deploy estornar-pagamento --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy estornar-pagamento --project-ref dekxabvqdsuukijblazl
 ```
 
 ```bash
-supabase functions deploy credenciais-mercado-pago --project-ref cafkrminfnokvgjqtkle
+supabase functions deploy credenciais-mercado-pago --project-ref dekxabvqdsuukijblazl
 ```
 
 - `estornar-pagamento` já existia e passou a resolver a credencial como as outras três;
@@ -446,11 +446,19 @@ escolher a **branch** (o que sobe é o código daquele commit) e preencher:
 
 - `functions`: os nomes, separados por vírgula ou espaço (`credenciais-mercado-pago`), ou o
   apelido `cobranca`, que vira as cinco da §5.3 na ordem certa;
-- `projeto`: `loja` (`cafkrminfnokvgjqtkle`, o padrão) ou `sandbox` (`lofznuxcvezrhxsgjqyg`).
+- `projeto`: `loja` (`dekxabvqdsuukijblazl`, o padrão), `sandbox`
+  (`lofznuxcvezrhxsgjqyg`) ou `savy` (`gnjsrucsmjkajijrakzr`).
+- `expected_sha`: para `savy`, o SHA completo (40 caracteres) do commit aprovado. O workflow
+  compara esse valor com o SHA do próprio run **antes** do primeiro deploy; se a branch tiver
+  avançado desde a revisão, o run falha sem publicar. Confira também o `head_sha` do run.
+
+No destino `savy`, o campo `functions` aceita somente as cinco Functions financeiras do apelido
+`cobranca`, juntas ou individualmente. Outros nomes são recusados antes do deploy.
 
 O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do
-projeto, que também vai para o resumo do job — é a prova de que a versão subiu (a tabela da §2
-envelhece; esse resumo não).
+projeto, que também vai para o resumo do job. A lista confirma as Functions ativas e suas versões
+de deploy; **não identifica o SHA nem o conteúdo do bundle publicado**. Confira o SHA do run,
+o ref de destino e o comportamento observado antes de declarar a publicação concluída.
 
 **O que ele faz diferente dos comandos da §5.3, de propósito:**
 
@@ -464,10 +472,29 @@ envelhece; esse resumo não).
 - **só dispara à mão.** Push em `develop` ou `main` não publica nada: publicar em produção
   continua sendo um ato humano, só que sem exigir CLI e login na máquina de quem publica.
 
-**O que ele precisa, uma vez só:** o segredo `SUPABASE_ACCESS_TOKEN` no repositório (§5.2). É um
-token pessoal da conta do Supabase e vale para todos os projetos dela — trate-o como a senha do
-painel. Sem o segredo o workflow falha no passo "Confere o segredo", antes de tocar em qualquer
-coisa.
+**O que ele precisa, uma vez só:** `SUPABASE_ACCESS_TOKEN` para `loja` e `sandbox` (§5.2), ou
+`SUPABASE_ACCESS_TOKEN_SAVY` para `savy`. São tokens pessoais; mantenha cada valor apenas nos
+secrets do GitHub e nunca o copie para o log ou para uma conversa. O workflow confere apenas o
+segredo do destino escolhido e falha antes do deploy se ele faltar. A presença do secret e uma
+consulta de leitura com o token Savy **não comprovam permissão de deploy**; confirme essa
+permissão antes de depender da publicação.
+
+**Antes da primeira publicação Savy:** registre o SHA exato da branch selecionada no
+`workflow_dispatch` e confira que ele contém o workflow com a opção `savy` e as cinco Functions
+pretendidas. Compare migrations, cron e configuração do projeto Savy com as dependências desse
+SHA. Registre a origem exata do código atualmente publicado e prepare uma branch de rollback
+que **também contenha este workflow com a opção `savy`**, mas publique o código anterior das
+Functions. Um commit anterior à inclusão da opção `savy` não serve como rollback pelo formulário.
+Se não for possível identificar o código anterior ou preparar e verificar a branch de rollback,
+não inicie o deploy. A lista de versões do Supabase, sozinha, não recupera o bundle anterior.
+
+**Pagamento Savy:** antes de publicar as Functions de cobrança, configure no aplicativo Mercado
+Pago da própria Savy o webhook de produção
+`https://gnjsrucsmjkajijrakzr.supabase.co/functions/v1/webhook-mercadopago` para as notificações
+de pagamento e order, e grave a assinatura secreta no painel autenticado da Savy. Não envie a
+chave por chat. Depois do deploy controlado, faça um teste de notificação e confira a validação
+HMAC e a atualização do pedido antes de promover o front; o teste de conexão do Access Token
+verifica outra coisa. Sem essa evidência, mantenha a publicação de pagamento pendente.
 
 O que ele NÃO faz: migrations (`supabase db push` continua proibido, AGENTS.md) e secrets das
 functions (esses continuam no painel, §5.2). Publicar uma function que depende de uma migration

@@ -44,6 +44,7 @@ import {
     decifrar,
     lerRegistroMp,
     type Registro,
+    registroTemChaveDeAssinatura,
     resolverCredenciaisMp,
 } from "./credenciais-mp.ts";
 // Os dublês moram em `credenciais-mp_fixtures.ts` (ressalva da revisão de
@@ -221,6 +222,44 @@ Deno.test("credenciais-mp (módulo compartilhado)", async (t) => {
         assertEquals(credenciais.origem, "lojista");
         assertEquals(credenciais.token, TOKEN_LOJISTA_FALSO);
         assertEquals(credenciais.segredoWebhook, null);
+    });
+
+    await t.step("R10b — 'a loja tem chave de assinatura' é UMA definição: o helper e o resolvedor concordam", async () => {
+        // A tela (ligar_pix) e quem cobra (criar-pagamento) precisam responder
+        // igual, senão o interruptor acende PIX que o checkout recusa (30/09/2026).
+        const completo = await registroMpDeTeste();
+        const semSegredo = await registroMpDeTeste({ webhookSecret: null });
+        const semIv: Registro = { ...completo, webhook_iv: null };
+        const semCifrado: Registro = { ...completo, webhook_cifrado: null };
+        const legado = { ...completo } as Partial<Registro>;
+        delete legado.webhook_cifrado;
+        delete legado.webhook_iv;
+        const casos: Array<[string, Registro, boolean]> = [
+            ["completo", completo, true],
+            ["sem segredo", semSegredo, false],
+            ["cifrado sem iv", semIv, false],
+            ["iv sem cifrado", semCifrado, false],
+            ["registro legado sem os campos", legado as Registro, false],
+        ];
+        for (const [nome, registro, esperado] of casos) {
+            assertEquals(
+                registroTemChaveDeAssinatura(registro),
+                esperado,
+                `helper: ${nome}`,
+            );
+            const credenciais = await resolverCredenciaisMp(
+                supabaseComRegistro(registro),
+                envDaPlataforma(),
+            );
+            // O env da plataforma TEM MP_WEBHOOK_SECRET — e mesmo assim, com
+            // registro do lojista, o segredo da plataforma não entra.
+            assertEquals(
+                credenciais.segredoWebhook !== null,
+                esperado,
+                `resolvedor: ${nome}`,
+            );
+        }
+        assertEquals(registroTemChaveDeAssinatura(null), false);
     });
 
     await t.step("R11 — primitivas movidas seguem de pé", async () => {

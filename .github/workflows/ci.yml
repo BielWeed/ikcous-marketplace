@@ -366,40 +366,35 @@ jobs:
     # Distingue AUSENTE (o banco não tem) de INALCANÇÁVEL (tem, mas nenhum
     # papel da origem alcança) — defeitos de correção diferente.
     #
-    # PRECONDIÇÃO: o secret DATABASE_URL do repo tem de apontar para a LOJA
-    # (dekxabvqdsuukijblazl), de preferência com um role só de leitura — o
-    # ref é extraído tanto do host direto quanto do usuário do pooler
-    # (Supavisor aceita QUALQUER role como usuário, no formato <role>.<ref>;
-    # não precisa ser postgres.<ref>). Este job agora RECUSA um banco de
-    # outro projeto (PROJETO_REF_ESPERADO abaixo): em 19/09/2026 o secret
-    # apontava para o SANDBOX e o script não notava — imprimia "TODAS as
-    # referências existem" enquanto a loja estava sem as migrations 72-74. Se
-    # o log virar vermelho com "::error::...BANCO ERRADO...", o dono precisa
-    # corrigir o secret, não o código.
+    # FONTE DO CATÁLOGO (29/09/2026): o secret SUPABASE_ACCESS_TOKEN (o mesmo de
+    # aplicar-migrations e publicar-functions) lido pelo endpoint OFICIAL
+    # somente leitura da API de gestão — `POST /database/query/read-only`, o
+    # mesmo provado em diagnostico-pagamentos.yml. Antes a fonte era o secret
+    # DATABASE_URL, que apontava para o projeto pausado em 28/09 e deixou este
+    # job vermelho em toda rodada por "tenant/user not found". O SQL e a
+    # montagem do catálogo são idênticos nos dois transportes (constantes
+    # compartilhadas em scripts/db-check-objetos-do-codigo.mjs, travadas por
+    # tests/db_check_objetos_do_codigo_test.ts); a comparação continua estrita.
+    # DATABASE_URL segue valendo para rodar o script à mão, fora do CI.
     #
-    # Depois de o secret apontar para a loja, este job AINDA PODE ficar
-    # vermelho de verdade: se o código já referenciar objeto de QUALQUER
-    # migration que existe no repo mas ainda não foi aplicada na loja, o
-    # detector vai reportar AUSENTE até o workflow "Aplicar migrations" rodar
-    # essa migration — esse vermelho é o job funcionando, não um defeito dele.
+    # O ref abaixo tem de ser o projeto da loja em produção (o mesmo de
+    # diagnostico-pagamentos.yml e prova-acesso.yml).
     #
-    # Enquanto não existir DATABASE_URL, o script sai 0 com um ::warning::
-    # visível no log — detector inerte é dívida declarada, não vermelho que o
-    # time aprende a ignorar (regra deste arquivo). A lógica em si já é
-    # coberta sem banco por tests/db_check_objetos_do_codigo_test.ts (caso da
-    # view sumida semeado) e tests/ci_objetos_do_codigo_test.ts (fiação do
-    # PROJETO_REF_ESPERADO e o processo real recusando antes de conectar),
-    # que rodam no job Testes.
+    # Sem o token (PR de fork ou do Dependabot não recebem secrets), o script
+    # sai 0 com um ::warning:: visível no log — detector inerte é dívida
+    # declarada, não vermelho que o time aprende a ignorar (regra deste
+    # arquivo). A lógica em si já é coberta sem banco por
+    # tests/db_check_objetos_do_codigo_test.ts, que roda no job Testes.
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      # Só pelo `pg`: o detector em si usa node:fs/node:path.
+      # O caminho do CI (API) não usa `pg`; fica só para o modo local por DATABASE_URL.
       - run: npm ci
       - name: Confere objetos usados pelo código contra o catálogo do banco
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          PROJETO_REF_ESPERADO: dekxabvqdsuukijblazl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: dekxabvqdsuukijblazl
         run: node scripts/db-check-objetos-do-codigo.mjs

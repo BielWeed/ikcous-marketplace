@@ -1281,12 +1281,21 @@ export async function consultarOrder(args: {
  * order e ela aparecer nesta busca. A referência usada (achado do revisor) é
  * https://www.mercadopago.com.br/developers/en/reference/online-payments/
  * checkout-api/search-order/get — que documenta `external_reference`,
- * `begin_date` e `end_date` como parâmetros de query, mas não confirma o
- * NOME do campo que carrega a lista de orders na resposta. Por segurança,
- * esta função aceita os dois nomes mais comuns entre endpoints de busca do
- * MP (`results`, o do `/v1/payments/search` clássico; `elements`, usado por
- * outros recursos) e também um array na RAIZ — qualquer OUTRO formato
- * (corpo sem lista reconhecível, corpo não-JSON, HTTP não-2xx, erro de rede)
+ * `begin_date` e `end_date` como parâmetros de query OBRIGATÓRIOS em RFC
+ * 3339 (o que esta função já manda: `Date.toISOString()`), e a RESPOSTA como
+ * `{ data: [...], paging: { ... } }` — nome confirmado também no SDK oficial
+ * Node (mercadopago@3.2.1); segue UNVERIFIED contra a API viva (o proxy
+ * deste ambiente bloqueia mercadopago.*). ATÉ o achado, o nome da lista era
+ * UNVERIFIED e só os nomes adivinhados eram aceitos (`results`, o do
+ * `/v1/payments/search` clássico; `elements`, usado por outros recursos; e
+ * um array na RAIZ) — com o corpo REAL, a busca voltava `{ ok: false }`
+ * SEMPRE e a liberação do sentinela por busca (Ponto 1 da criar-pagamento e
+ * o webhook, Ponto 2) era código morto: só `expires_at` liberava. `data`
+ * vem PRIMEIRO; os nomes antigos ficam como defesa. Paginação documentada:
+ * `page`/`page_size` (default 20, máx 100) — NÃO paginamos; um pedido com
+ * mais orders que o page_size veria lista PARCIALMENTE indexada (o que os
+ * chamadores já tratam como "não libera"). Qualquer OUTRO formato (corpo
+ * sem lista reconhecível, corpo não-JSON, HTTP não-2xx, erro de rede)
  * volta como `{ ok: false }`, NUNCA como lista vazia: quem chama
  * (`resolverSentinela`, abaixo, e os dois chamadores em `criar-pagamento/
  * index.ts` e `webhook-mercadopago/index.ts`) trata falha e "nada
@@ -1378,15 +1387,17 @@ export async function buscarOrdersDoPedido(args: {
   }
 
   const corpo = json && typeof json === "object" ? json as Record<string, unknown> : null;
-  const lista = Array.isArray(corpo?.results)
-    ? corpo.results
-    : Array.isArray(corpo?.elements)
-      ? corpo.elements
-      : Array.isArray(json)
-        ? json
-        : null;
+  const lista = Array.isArray(corpo?.data)
+    ? corpo.data
+    : Array.isArray(corpo?.results)
+      ? corpo.results
+      : Array.isArray(corpo?.elements)
+        ? corpo.elements
+        : Array.isArray(json)
+          ? json
+          : null;
   if (!lista) {
-    console.error("mercadopago: busca de orders com corpo sem lista reconhecível (results/elements)");
+    console.error("mercadopago: busca de orders com corpo sem lista reconhecível (data/results/elements)");
     return { ok: false };
   }
 

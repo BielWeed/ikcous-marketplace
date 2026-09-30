@@ -964,6 +964,51 @@ Deno.test("buscarOrdersDoPedido: HTTP não-2xx, corpo ilegível, corpo sem lista
   assertEquals((await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: redeCaida })).ok, false);
 });
 
+// ACHADO (doc primária + SDK oficial mercadopago@3.2.1; confirmado na
+// reference: response = { data: [...], paging: {...} }): a lista da busca de
+// orders vem em `data` — NÃO em `results`/`elements`. Sem aceitar `data`, a
+// busca volta ok:false SEMPRE em produção e a liberação do sentinela por
+// busca (Ponto 1 da criar-pagamento e o webhook, Ponto 2) vira código morto:
+// só `expires_at` liberaria.
+
+Deno.test("buscarOrdersDoPedido: lista em 'data' (formato DOCUMENTADO da busca de orders) -> ok:true com as orders DESTE pedido — order de outro pedido dentro de 'data' continua refiltrada (B2)", async () => {
+  const minha = { id: "ORD-MINHA", status: "failed", external_reference: "p" };
+  const deOutro = { id: "ORD-OUTRA", status: "processed", external_reference: "outro-pedido" };
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ data: [minha, deOutro], paging: { total: 2, limit: 20 } }), { status: 200 }),
+    )) as unknown as typeof fetch;
+
+  const r = await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: fetchStub });
+  assertEquals(r, { ok: true, orders: [minha] });
+});
+
+Deno.test("buscarOrdersDoPedido: {data:[]} -> ok:true com lista VAZIA ('nada encontrado' != falha) — e resolverSentinela com lista vazia segue NUNCA liberando (null)", async () => {
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ data: [], paging: { total: 0 } }), { status: 200 }),
+    )) as unknown as typeof fetch;
+
+  const r = await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: fetchStub });
+  assertEquals(r, { ok: true, orders: [] });
+  // A semântica fail-safe sobrevive ao novo nome: lista vazia NUNCA é
+  // "liberar" — atraso de indexação não é o mesmo fato que "encontrei e está
+  // morta".
+  assertEquals(resolverSentinela(r.ok ? r.orders : [], AGORA_MS), null);
+});
+
+Deno.test("buscarOrdersDoPedido: 'data' que não é array (ou corpo só com paging) continua ok:false — NUNCA lista vazia", async () => {
+  const dataNaoLista = (() =>
+    Promise.resolve(
+      new Response(JSON.stringify({ data: null, paging: { total: 0 } }), { status: 200 }),
+    )) as unknown as typeof fetch;
+  const soPaging = (() =>
+    Promise.resolve(new Response(JSON.stringify({ paging: { total: 0 } }), { status: 200 }))) as unknown as typeof fetch;
+
+  assertEquals((await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: dataNaoLista })).ok, false);
+  assertEquals((await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: soPaging })).ok, false);
+});
+
 // --- extrairQrCode: o QR não está mais na raiz da resposta ---
 //
 // Medido na resposta real de /v1/orders:
@@ -1923,6 +1968,132 @@ Deno.test("resolverSentinela (B1): order morta sem date_created/created_date leg
   const comCreatedDate = ordemMinima("failed", "credit_card", "ORD-CREATED-DATE", null);
   comCreatedDate.created_date = new Date(AGORA_MS + 60_000).toISOString();
   assertEquals(resolverSentinela([comCreatedDate], AGORA_MS), { acao: "liberar" });
+});
+
+// --- Troca PIX→cartão com resposta perdida (8ª rodada, achado #2; 9ª rodada,
+// achado #3 — RESÍDUO DOCUMENTADO em AGENTS.md, "Fluxo do dinheiro") --------
+// Cenário: o cliente troca PIX por cartão; o PIX é cancelado em T0 e a order
+// de cartão nasce em T0+1s; a resposta da criação se perde (timeout/rede/5xx)
+// e a vaga recebe o SENTINELA `verificando:<pedido>:c<n>:<T0>` — o limite
+// inferior é gravado uma única vez, ≈ T0. A order ambígua nasce 1-2s DEPOIS
+// do limite, portanto DENTRO da margem de 15s
+// (`MARGEM_LIBERAR_APOS_LIMITE_MS`). A fronteira travada aqui:
+//   morta + dentro da margem  -> presa até expires_at (resíduo aceito);
+//   VIVA (ou processed)       -> adotada, MESMO dentro da margem;
+//   morta + passada a margem  -> libera (20s, 60s; fronteira exata inclusa).
+
+Deno.test("resolverSentinela (troca PIX→cartão, resposta perdida): a order ambígua MORRE de verdade (failed/canceled/expired) nascida ~1,5s depois do limite -> null — vaga presa até expires_at (RESÍDUO ACEITO pelo dono, AGENTS.md 8ª/9ª rodada)", () => {
+  const limiteInferiorMs = AGORA_MS; // ≈ T0: o instante gravado no nascimento do sentinela
+  // O sentinela nasce do formato real (`criar-pagamento/index.ts`): a leitura
+  // de volta do limite é o que alimenta o segundo argumento abaixo.
+  const sentinela = montarSentinela("3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b:c1", limiteInferiorMs);
+  assertEquals(limiteInferiorDoSentinela(sentinela), limiteInferiorMs);
+  for (const status of ["failed", "canceled", "expired"]) {
+    const ambiguaMorta = ordemMinima(
+      status,
+      "credit_card",
+      "ORD-C1-AMBIGUA",
+      new Date(limiteInferiorMs + 1_500).toISOString(), // nasce 1,5s DEPOIS do limite — dentro da margem
+    );
+    // Mesmo morta DE VERDADE, uma order nascida dentro da margem nunca conta
+    // para a janela de liberação (`criadaEm > limite + margem` é falso):
+    // `resolverSentinela` devolve null — o chamador mantém o sentinela e a
+    // vaga só libera por tempo em `expires_at` (~30-40 min): cliente fica sem
+    // cartão E sem PIX até lá. Sem dinheiro em jogo (a vaga só afeta o
+    // PRÓPRIO cliente) — resíduo aceito, não é buraco de cobrança dupla: o
+    // lado seguro ("não libera") nunca cobra duas vezes.
+    assertEquals(resolverSentinela([ambiguaMorta], limiteInferiorMs), null, status);
+  }
+});
+
+Deno.test("resolverSentinela (9ª rodada, achado #3): enquanto a order ambígua segue VIVA (ou processed), ela é ADOTADA mesmo nascida dentro da margem -> gravar com o id — só a MORTE dela dentro da margem prende", () => {
+  const limiteInferiorMs = AGORA_MS;
+  for (const status of ["created", "processing", "action_required", "processed"]) {
+    const ambigua = ordemMinima(
+      status,
+      "credit_card",
+      "ORD-C1-AMBIGUA-VIVA",
+      new Date(limiteInferiorMs + 1_000).toISOString(), // 1s depois do limite — dentro da margem de 15s
+    );
+    // A ADOÇÃO não olha data nenhuma: processed/viva -> gravar (o desfecho
+    // fino fica com a reconsulta por id). Se este teste um dia falhar com
+    // null, a troca PIX→cartão ficou PIOR que o documentado: nem a cobrança
+    // viva seria rastreada pelo webhook.
+    assertEquals(resolverSentinela([ambigua], limiteInferiorMs), { acao: "gravar", order: ambigua }, status);
+  }
+});
+
+Deno.test("resolverSentinela (fronteira exata da troca PIX→cartão): order morta nascida a +20s do limite LIBERA; em limite+margem EM PONTO não libera (comparação estrita); 1ms depois disso libera", () => {
+  const limiteInferiorMs = AGORA_MS;
+  // Missão (b): morta MUITO depois do limite+15s (ex.: +20s) DEVE liberar.
+  const vinteSegundos = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-20S-DEPOIS",
+    new Date(limiteInferiorMs + 20_000).toISOString(),
+  );
+  assertEquals(resolverSentinela([vinteSegundos], limiteInferiorMs), { acao: "liberar" });
+  // A comparação é ESTRITA (`>`): no ponto exato limite+margem ainda não.
+  const noPonto = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-NO-PONTO-DA-MARGEM",
+    new Date(limiteInferiorMs + MARGEM_LIBERAR_APOS_LIMITE_MS).toISOString(),
+  );
+  assertEquals(resolverSentinela([noPonto], limiteInferiorMs), null);
+  const umMsDepoisDoPonto = ordemMinima(
+    "failed",
+    "credit_card",
+    "ORD-1MS-APOS-A-MARGEM",
+    new Date(limiteInferiorMs + MARGEM_LIBERAR_APOS_LIMITE_MS + 1).toISOString(),
+  );
+  assertEquals(resolverSentinela([umMsDepoisDoPonto], limiteInferiorMs), { acao: "liberar" });
+});
+
+Deno.test("troca PIX→cartão (B2 x B1, corpo em 'data'): order de OUTRO pedido NUNCA adota nem libera — o refiltro por external_reference no cliente roda ANTES do resolverSentinela", async () => {
+  const limiteInferiorMs = AGORA_MS;
+  // Se o MP ignorar o filtro da query, a busca devolveria também orders de
+  // outro pedido: uma APROVADA e uma MORTA nascida FORA da margem. O refiltro
+  // do cliente (`buscarOrdersDoPedido`) tira as duas ANTES do resolver.
+  const deOutroAprovada = {
+    id: "ORD-OUTRO-APROVADA",
+    status: "processed",
+    external_reference: "pedido-OUTRO",
+    date_created: new Date(limiteInferiorMs + 60_000).toISOString(),
+    transactions: { payments: [{ id: "PAY-OUTRO", payment_method: { id: "x", type: "credit_card" } }] },
+  };
+  const deOutroMortaForaDaMargem = {
+    id: "ORD-OUTRO-MORTA",
+    status: "failed",
+    external_reference: "pedido-OUTRO",
+    date_created: new Date(limiteInferiorMs + 60_000).toISOString(),
+    transactions: { payments: [{ id: "PAY-OUTRO2", payment_method: { id: "x", type: "credit_card" } }] },
+  };
+  const minhaAmbiguaMortaDentroDaMargem = {
+    id: "ORD-C1-AMBIGUA",
+    status: "failed",
+    external_reference: "pedido-MEU",
+    date_created: new Date(limiteInferiorMs + 1_500).toISOString(),
+    transactions: { payments: [{ id: "PAY-MEU", payment_method: { id: "x", type: "credit_card" } }] },
+  };
+  const fetchStub = (() =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ data: [deOutroAprovada, deOutroMortaForaDaMargem, minhaAmbiguaMortaDentroDaMargem] }),
+        { status: 200 },
+      ),
+    )) as unknown as typeof fetch;
+  const busca = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "pedido-MEU",
+    desde: new Date(limiteInferiorMs).toISOString(),
+    fetchImpl: fetchStub,
+  });
+  assertEquals(busca, { ok: true, orders: [minhaAmbiguaMortaDentroDaMargem] });
+  // Nem a APROVADA de outro pedido é adotada, nem a MORTA de outro pedido
+  // (fora da margem) libera: sobra só a ambígua DESTE pedido, morta dentro da
+  // margem -> null (presa até expires_at — o resíduo documentado, não desvio).
+  assertEquals(resolverSentinela(busca.ok ? busca.orders : [], limiteInferiorMs), null);
 });
 
 // --- montarSentinela / limiteInferiorDoSentinela: o formato NOVO do

@@ -173,6 +173,10 @@ function clienteSupaFalso(opts: {
 } = {}) {
     const registro = {
         leiturasLinha: 0,
+        // Colunas pedidas pelo .select() da LEITURA DA LINHA (a primeira
+        // leitura simples) — o F12 confere que 'solicitado_por' segue no
+        // SELECT da edge (gate 2b depende dela).
+        colunasDaLinha: null as string | null,
         leiturasRegistroMp: 0,
         leiturasPedido: 0,
         leiturasIdsReivindicados: 0,
@@ -194,6 +198,11 @@ function clienteSupaFalso(opts: {
             const no: any = { tabela, acao: null, valores: null, filtros: [] as any[] }
             const api: any = {
                 select(_colunas?: string) {
+                    // Revisão de 29/09 (achado MÉDIO): capturar as colunas —
+                    // o dublê devolve a linha INTEIRA, e sem isto remover
+                    // 'solicitado_por' do SELECT da edge desarmaria o gate 2b
+                    // (dinheiro) com a suíte verde.
+                    no.colunas = _colunas ?? null
                     return api
                 },
                 update(valores: any) {
@@ -264,6 +273,9 @@ function clienteSupaFalso(opts: {
         }
         if (no.acao === null) {
             registro.leiturasLinha++
+            if (registro.leiturasLinha === 1) {
+                registro.colunasDaLinha = no.colunas
+            }
             // A 2a+ leitura simples (409 unificado do laudo do PR #439:
             // index.ts releu o status quando o UPDATE terminal perdeu a
             // linha) devolve linhaFinal se configurada — representa o que
@@ -462,10 +474,13 @@ Deno.test("F5 - fluxo feliz conclui via RPC e responde {status, valor, texto} se
     assertEquals(registro.marcas[0].valores.tentativas, 1)
     // E a marca é CONDICIONAL (I2 do laudo do PR #439): os filtros exigem o id
     // E o estado vivo — sem o .in de status, dois cliques simultâneos chamam o
-    // MP duas vezes; apagar esta linha da edge derruba esta asserção.
+    // MP duas vezes; apagar esta linha da edge derruba esta asserção. Desde a
+    // defesa em profundidade de 29/09, a marca também EXCLUI linha de sistema
+    // (.neq do cron — se o gate 2b for pulado num dia, a marca devolve 0).
     assertEquals(registro.marcas[0].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+        { metodo: "neq", coluna: "solicitado_por", valor: "sistema" },
     ])
     // E a conclusão é ATÔMICA pela RPC (a edge não soma valor_estornado na mão).
     assertEquals(registro.rpcs.length, 1)
@@ -696,6 +711,8 @@ Deno.test("F9 - segunda chamada que perde a marca responde 409 e o MP so' e' cha
     assertEquals(registro.marcas[1].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["solicitado", "em_processamento"] },
+        // Defesa em profundidade de 29/09: a marca também exclui sistema.
+        { metodo: "neq", coluna: "solicitado_por", valor: "sistema" },
     ])
 })
 
@@ -998,4 +1015,71 @@ Deno.test("M2 - chave do lojista cadastrada + cofre ausente: falha FECHADA (500)
     // Passo 4 da edge: sem token não há execução — e uma linha marcada
     // em_processamento sem chamada é fila parada à toa.
     assertEquals(registro.marcas.length, 0)
+})
+
+// ── F12 (missão pagamentos, 29/09/2026): linha de RASTREIO de chargeback ────
+// (solicitado_por 'sistema', VIVA) NÃO é executável pelo clique do lojista.
+// O webhook nasce linhas 'sistema' em_processamento para CONTABILIZAR
+// chargeback em análise (dinheiro que já se moveu por fora do app);
+// executá-la aqui seria um POST de refund NOVO durante a disputa aberta —
+// dupla saída se o banco liquidar a favor da loja. O cron já exclui essas
+// linhas com este motivo; este teste trava a MESMA regra na porta do clique.
+
+Deno.test("F12 - linha solicitado_por 'sistema' (chargeback em_processamento) responde 409 estorno_de_sistema SEM marcar, SEM executor e SEM MP", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, status: "em_processamento", solicitado_por: "sistema" },
+        pedido: PEDIDO_PAGO,
+    })
+    const executor = executorFalso({ tipo: "concluido" })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    const corpo = await resposta.json()
+    assertEquals(corpo.erro, "estorno_de_sistema")
+    assertEquals(corpo.status, "em_processamento")
+    assertEquals(executor.registro.chamadas.length, 0)
+    assertEquals(mp.registro.chamadas, 0)
+    // Nada é marcado: a linha de contabilidade segue como está, e o cron
+    // continua sendo o único caminho de conclusão dela (pela consulta, sem POST).
+    assertEquals(registro.marcas.length, 0)
+    // Revisão de 29/09 (achado MÉDIO): o dublê devolve a linha inteira e
+    // ignora colunas — sem esta asserção, REMOVER 'solicitado_por' do SELECT
+    // da edge desarmaria o gate 2b (undefined !== 'sistema') com a suíte
+    // verde. A coluna que sustenta o gate fica PRESA aqui.
+    assertEquals(String(registro.colunasDaLinha).includes("solicitado_por"), true)
+})
+
+Deno.test("F12b - defesa em profundidade: a MARCA de uma linha legítima carrega .neq('solicitado_por','sistema') — o MESMO filtro do cron", async () => {
+    // Se uma refatura futura pular o gate 2b, a marca de uma linha de
+    // rastreio precisa devolver 0 linhas (nada executado). Este teste prende
+    // o filtro na marca de um fluxo NORMAL (linha de cliente, executada):
+    // os filtros da marca têm de incluir o .neq do cron.
+    const { cliente, registro } = clienteSupaFalso({
+        linha: LINHA_SOLICITADA,
+        pedido: PEDIDO_PAGO,
+    })
+    const executor = executorFalso({ tipo: "concluido" })
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: fetchMpFalso().buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(registro.marcas.length, 1)
+    const temNeqSistema = registro.marcas[0].filtros.some(
+        (f: any) => f.metodo === "neq" && f.coluna === "solicitado_por" && f.valor === "sistema",
+    )
+    assertEquals(temNeqSistema, true)
 })

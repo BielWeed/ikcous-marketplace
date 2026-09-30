@@ -183,6 +183,25 @@ export async function lerRegistroMp(
 }
 
 /**
+ * A loja SALVOU a chave de assinatura do webhook do Mercado Pago (cifrada +
+ * iv no registro)? É a definição ÚNICA de "tem chave própria" (30/09/2026):
+ * `resolverCredenciaisMp` só tenta decifrar quando ela diz sim, e a ação
+ * `ligar_pix` da tela de Ajustes só acende o PIX quando ela diz sim — as duas
+ * nunca divergem, que era o defeito (a tela acendia PIX que o criar-pagamento
+ * recusava no fim da compra). O MP_WEBHOOK_SECRET do ambiente NÃO entra aqui:
+ * só o que a própria loja cadastrou.
+ *
+ * É presença, não decifração: quem precisa do segredo em claro decifra.
+ */
+export function registroTemChaveDeAssinatura<
+    R extends Pick<Registro, "webhook_cifrado" | "webhook_iv">,
+>(
+    registro: R | null | undefined,
+): registro is R & { webhook_cifrado: string; webhook_iv: string } {
+    return Boolean(registro?.webhook_cifrado && registro?.webhook_iv);
+}
+
+/**
  * Papel declarado pela chave com que o client do Supabase foi construído,
  * quando dá para saber — `null` quando não dá (dublê de teste sem chave,
  * formato desconhecido). É leitura local: nenhuma ida ao banco, nenhuma
@@ -274,7 +293,7 @@ export async function resolverCredenciaisMp(
     // derruba a cobrança — quem confere assinatura é que decide o que fazer
     // com a falta dele.
     let segredoWebhook: string | null = null;
-    if (registro.webhook_cifrado && registro.webhook_iv) {
+    if (registroTemChaveDeAssinatura(registro)) {
         try {
             segredoWebhook = await decifrar(
                 registro.webhook_cifrado,

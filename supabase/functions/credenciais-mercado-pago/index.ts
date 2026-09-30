@@ -31,6 +31,11 @@
 //     e "falhou" com o PIX aceso faz o lojista ligar duas vezes.
 //   * Escrita na ficha sem linha afetada é RECUSA, não sucesso (o UPDATE pede
 //     `select('id')`): ficha ausente vira 500 honesto, nunca "salvo" calado.
+//   * (30/09/2026) `ligar_pix` também recusa com 409 quando a loja não salvou
+//     a Chave de notificações (assinatura do webhook) — o criar-pagamento
+//     recusa PIX sem ela, e o interruptor aceso viraria erro no fim da
+//     compra. Só a chave da PRÓPRIA loja conta (não a MP_WEBHOOK_SECRET do
+//     ambiente). `desligar_pix` segue sempre permitido; `salvar` não mudou.
 //
 // SOBRAS DAS REVISÕES (tarefa mp-10, 16/09/2026):
 //   * `salvar` escreve a FICHA antes do REGISTRO (era o contrário): se a
@@ -76,6 +81,7 @@ import {
     decifrar,
     lerRegistroMp,
     type Registro,
+    registroTemChaveDeAssinatura,
     type UltimoTeste,
 } from "../_shared/credenciais-mp.ts";
 
@@ -732,6 +738,19 @@ export async function handler(
             if (!FORMATO_CREDENCIAL.test(publicKeyDoRegistro)) {
                 return json(
                     { erro: "Salve a Public Key do Mercado Pago antes de ligar o PIX — sem ela o cliente vê o PIX e trava no fim da compra." },
+                    409,
+                );
+            }
+            // 30/09/2026: o criar-pagamento recusa PIX (409
+            // pixSemChaveDeAssinatura) em loja sem a chave de assinatura do
+            // webhook SALVA PELA PRÓPRIA LOJA — acender o interruptor sem ela
+            // é o cliente escolher PIX e tomar erro no fim da compra. Mesma
+            // definição de "tem chave" de quem cobra (helper compartilhado);
+            // a MP_WEBHOOK_SECRET do ambiente não conta. Antes de qualquer
+            // escrita: nem a ficha nem o carimbo mexem numa recusa.
+            if (!registroTemChaveDeAssinatura(registro)) {
+                return json(
+                    { erro: "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra." },
                     409,
                 );
             }

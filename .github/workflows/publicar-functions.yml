@@ -22,8 +22,10 @@
 # CREDENCIAL: o segredo `SUPABASE_ACCESS_TOKEN` do repositório (GitHub →
 # Settings → Secrets and variables → Actions) é um token pessoal da conta do
 # Supabase (Account → Access Tokens). Ele vale para TODOS os projetos da
-# conta — por isso o destino é uma escolha fechada (loja | sandbox) e o log
-# imprime o ref antes de publicar. Revogar: na mesma página do Supabase.
+# conta — por isso o destino é uma escolha fechada (loja | savy | sandbox) e
+# o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo separado
+# `SUPABASE_ACCESS_TOKEN_SAVY`, da conta que tem acesso àquele projeto.
+# Revogar: na mesma página do Supabase.
 #
 # Testado por tests/ci_publicar_functions_test.ts: o bloco de validação é
 # extraído DESTE arquivo e rodado com bash contra os casos que importam.
@@ -42,13 +44,18 @@ on:
         required: true
         type: string
       projeto:
-        description: "Projeto de destino: loja (cafkrminfnokvgjqtkle) ou sandbox (lofznuxcvezrhxsgjqyg)"
+        description: "Destino fechado: loja (dek...), savy (gnj...) ou sandbox (lof...)"
         required: true
         type: choice
         default: loja
         options:
           - loja
+          - savy
           - sandbox
+      expected_sha:
+        description: "Savy: SHA completo do commit aprovado, igual ao SHA deste run"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -67,19 +74,28 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
 
       - name: Resolve o projeto e valida os nomes
         id: alvo
         env:
           PROJETO: ${{ inputs.projeto }}
           PEDIDAS: ${{ inputs.functions }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           set -euo pipefail
           case "$PROJETO" in
-            loja) REF=cafkrminfnokvgjqtkle ;;
+            loja) REF=dekxabvqdsuukijblazl ;;
+            savy) REF=gnjsrucsmjkajijrakzr ;;
             sandbox) REF=lofznuxcvezrhxsgjqyg ;;
-            *) echo "::error::projeto desconhecido: $PROJETO (use loja ou sandbox)"; exit 1 ;;
+            *) echo "::error::projeto desconhecido: $PROJETO (use loja, savy ou sandbox)"; exit 1 ;;
           esac
+          if [ "$PROJETO" = "savy" ]; then
+            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+              echo "::error::Savy exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+            fi
+          fi
           if [ "$(echo "$PEDIDAS" | tr -d '[:space:]')" = "cobranca" ]; then
             PEDIDAS="criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago"
           fi
@@ -90,6 +106,12 @@ jobs:
             fi
             if [ "$n" = "send-order-whatsapp" ]; then
               echo "::error::send-order-whatsapp foi despublicada em 11/08/2026 e não volta (DEPLOYMENT.md §2)"; exit 1
+            fi
+            if [ "$PROJETO" = "savy" ]; then
+              case "$n" in
+                criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
+                *) echo "::error::Savy só admite as cinco Functions financeiras"; exit 1 ;;
+              esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then
               echo "::error::não existe supabase/functions/$n/index.ts"; exit 1
@@ -108,6 +130,7 @@ jobs:
           echo "nomes=$NOMES" >> "$GITHUB_OUTPUT"
 
       - name: Confere o segredo
+        if: inputs.projeto != 'savy'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
@@ -115,11 +138,21 @@ jobs:
             echo "::error::segredo SUPABASE_ACCESS_TOKEN ausente no repositório (Settings → Secrets and variables → Actions)"; exit 1
           fi
 
+      - name: Confere o segredo Savy
+        if: inputs.projeto == 'savy'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::segredo SUPABASE_ACCESS_TOKEN_SAVY ausente no repositório"; exit 1
+          fi
+
       - uses: supabase/setup-cli@v1
         with:
           version: latest
 
       - name: Publica, uma function por vez, sempre pelo nome
+        if: inputs.projeto != 'savy'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           REF: ${{ steps.alvo.outputs.ref }}
@@ -132,9 +165,39 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Publica Savy, uma function por vez
+        if: inputs.projeto == 'savy'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
+          REF: ${{ steps.alvo.outputs.ref }}
+          NOMES: ${{ steps.alvo.outputs.nomes }}
+        run: |
+          set -euo pipefail
+          for n in $NOMES; do
+            echo "::group::supabase functions deploy $n --project-ref $REF"
+            supabase functions deploy "$n" --project-ref "$REF"
+            echo "::endgroup::"
+          done
+
       - name: Lista o que ficou publicado
+        if: inputs.projeto != 'savy'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          REF: ${{ steps.alvo.outputs.ref }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Publicado em \`$REF\`"
+            echo
+            echo '```'
+            supabase functions list --project-ref "$REF"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Lista o que ficou publicado na Savy
+        if: inputs.projeto == 'savy'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}
           REF: ${{ steps.alvo.outputs.ref }}
         run: |
           set -euo pipefail

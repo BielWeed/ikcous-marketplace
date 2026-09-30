@@ -206,7 +206,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //    a edge, e a porta de admin já filtreou quem chegou até aqui).
         const { data: linha, error: erroLinha } = await supabase
             .from('order_refunds')
-            .select('id, order_id, amount, status, mp_refund_id, tentativas')
+            .select('id, order_id, amount, status, mp_refund_id, tentativas, solicitado_por')
             .eq('id', refundId)
             .maybeSingle()
         if (erroLinha) {
@@ -221,6 +221,22 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //    passado (o botão da T6 nem aparece; aqui é a defesa de baixo).
         if (linha.status !== 'solicitado' && linha.status !== 'em_processamento') {
             return json({ erro: 'estorno_ja_tratado', status: linha.status }, 409)
+        }
+
+        // 2b. A linha de RASTREIO do sistema (solicitado_por 'sistema') é
+        //     CONTABILIDADE, não ordem de devolução: ela nasce no webhook
+        //     para dar razão a dinheiro que JÁ SE MOVEU por fora do app
+        //     (chargeback em análise / estorno feito no painel do MP).
+        //     Executá-la pelo clique do lojista seria um POST de refund NOVO
+        //     durante a disputa aberta — devolver de novo o que já voltou,
+        //     e saída DUPLA se o banco liquidar a favor da loja depois. O
+        //     cron (reconciliar-pagamentos) exclui essas linhas exatamente
+        //     por este motivo; aqui é a MESMA regra, na porta do clique.
+        //     Nada é marcado, nada é executado — o cron segue sendo o único
+        //     caminho de conclusão dessa linha (por CONSULTA, sem POST).
+        //     (Missão pagamentos, 29/09/2026 — achado de dupla saída.)
+        if (linha.solicitado_por === 'sistema') {
+            return json({ erro: 'estorno_de_sistema', status: linha.status }, 409)
         }
 
         // 3. O pedido da linha (o executor valida pagamento/prazo/saldo).
@@ -287,6 +303,12 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //    SQL): numa corrida de duas execuções a contagem pode perder 1
         //    ponto — `tentativas` é MÉTRICA de fila (teto do cron na T4), o
         //    dinheiro é protegido pela chave de idempotência, não por ela.
+        //    O `.neq('solicitado_por', 'sistema')` é DEFESA EM PROFUNDIDADE
+        //    (achado da revisão de 29/09): o MESMO filtro que o cron usa na
+        //    própria fila — se uma refatura futura pular o gate 2b, a marca
+        //    de uma linha de rastreio ainda devolve 0 linhas e NADA é
+        //    executado. Hoje é inalcançável (2b vem antes); amanhã, é o cinto
+        //    que sobra quando o suspensário escapar.
         const { data: marcada, error: erroMarca } = await supabase
             .from('order_refunds')
             .update({
@@ -296,6 +318,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             })
             .eq('id', refundId)
             .in('status', ['solicitado', 'em_processamento'])
+            .neq('solicitado_por', 'sistema')
             .select()
         if (erroMarca) {
             console.error('[estornar-pagamento] Erro ao marcar a linha:', erroMarca)
@@ -376,7 +399,11 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             const { data: concluida, error: erroConcluir } = await supabase
                 .rpc('concluir_estorno', {
                     p_refund_id: refundId,
-                    p_mp_refund_id: resultado.mp_refund_id,
+                    // '' (refund sem id legível na resposta) vira NULL — o
+                    // COALESCE da RPC preserva o que já existia; string vazia
+                    // na coluna violaria 'gravado só quando existe de
+                    // verdade' (revisão de 29/09).
+                    p_mp_refund_id: resultado.mp_refund_id || null,
                     p_mp_status: resultado.mp_status,
                     p_mp_status_detail: resultado.mp_status_detail,
                 })

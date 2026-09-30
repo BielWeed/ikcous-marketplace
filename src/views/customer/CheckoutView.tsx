@@ -560,6 +560,9 @@ interface CheckoutViewProps {
   readonly onClearCart?: () => void;
   readonly onNavigate: (view: View, productId?: string) => void;
   readonly onSetBackOverride: (override: (() => void) | null) => void;
+  // Frente 10 (29/09/2026): id do pedido cujo pagamento está sendo retomado
+  // do card do pedido — liga a tela de pagamento DIRETO, sem carrinho.
+  readonly retomarPedidoId?: string;
 }
 
 export function CheckoutView({
@@ -570,6 +573,7 @@ export function CheckoutView({
   onClearCart: propOnClearCart,
   onNavigate,
   onSetBackOverride,
+  retomarPedidoId,
 }: CheckoutViewProps) {
   const {
     config,
@@ -1182,6 +1186,70 @@ export function CheckoutView({
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
   // cartão por uma cobrança PIX criada sozinha.
   const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
+  // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
+  // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
+  // (OrderDetailsView → "Retomar pagamento") e caía num checkout de CARRINHO
+  // (vazio — o pedido já nasceu). Com `retomarPedidoId`, este componente
+  // nasce DIRETO na tela de pagamento do pedido existente: `orderId` +
+  // `aguardandoPagamento` ligam o early-return de sempre (`Finalize o
+  // pagamento`), e o PagamentoOnline chama a MESMA edge — o servidor é quem
+  // decide o que é seguro: reconsulta e devolve o MESMO QR se a cobrança
+  // vive, cria outra com chave de tentativa nova se a anterior morreu, e
+  // 409 terminal se o pedido não é mais cobrável (a tela já trata o
+  // terminal). Nunca cobrança duplicada, nunca pedido perdido.
+  useEffect(() => {
+    if (!retomarPedidoId) return;
+    let vivo = true;
+    // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
+    // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
+    // orderId/aguardandoPagamento ligassem aqui, um pedido de CARTÃO em
+    // desafio 3DS montaria o PagamentoComPix — cujo efeito de MONTAGEM
+    // dispara `criarPagamento` PIX — e a edge leria como troca de método,
+    // cancelando a order de cartão no Mercado Pago. Valor, método, orderId
+    // e aguardandoPagamento ligam JUNTOS, DEPOIS da leitura; leitura sem
+    // resposta não liga nada (a retomada fica parada, nada monta, nada
+    // dispara).
+    supabase
+      .from("marketplace_orders")
+      .select("total, metodo_online, gateway_payment_id")
+      .eq("id", retomarPedidoId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!vivo || !data) return;
+        // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
+        // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
+        // no servidor (metodo_online costuma vir null nesse estado, mas o
+        // gate depende SÓ do gateway_payment_id — bloqueia também método
+        // preenchido com sentinela na vaga, estado igualmente ambíguo; PIX
+        // legítimo nunca carrega sentinela). Montar pagamento aqui
+        // dispararia criar-pagamento PIX que a edge leria como troca de
+        // método — cancelando cobrança de cartão que pode estar viva.
+        // Nada monta até o estado resolver (o cliente volta aos pedidos e
+        // reabre a retomada depois).
+        const gateway = (data as { gateway_payment_id?: unknown })
+          .gateway_payment_id;
+        if (typeof gateway === "string" && gateway.startsWith("verificando:")) {
+          setRetomadaBloqueadaPorSentinela(true);
+          return;
+        }
+        setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
+        const metodo = (data as { metodo_online?: unknown }).metodo_online;
+        if (metodo === "credito" || metodo === "debito") {
+          setMetodoDoPedido("cartao");
+        }
+        setOrderId(retomarPedidoId);
+        setAguardandoPagamento(true);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [retomarPedidoId]);
+  // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
+  // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
+  // método retoma o da última tentativa quando legível. O gateway_payment_id
+  // entra para reconhecer o SENTINELA de cartão (gate no efeito acima).
+  const [retomadaBloqueadaPorSentinela, setRetomadaBloqueadaPorSentinela] =
+    useState(false);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -2857,6 +2925,28 @@ export function CheckoutView({
     // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
     globalThis.open(url, "_blank", "noopener,noreferrer");
   };
+
+  if (retomadaBloqueadaPorSentinela) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Pagamento em verificação
+        </h1>
+        <p className="text-sm text-zinc-600">
+          O pagamento deste pedido está em análise com o banco. Nada precisa ser
+          feito agora: daqui a alguns minutos, abra "Ver meus pedidos" e retome
+          o pagamento — ele continua de onde parou quando o banco decidir.
+        </p>
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
 
   if (aguardandoPagamento && orderId) {
     // CHECKOUT-090: pagamento confirmado — troca o QR (e o aviso de reserva
