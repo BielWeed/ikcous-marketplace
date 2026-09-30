@@ -820,7 +820,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
     // recusa do invariante, falha no meio da gravação).
     // ══════════════════════════════════════════════════════════════════════
     const RECADO_SEM_CHAVE_DE_ASSINATURA =
-        "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+        "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve para voltar a receber pelo app — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
     const OK_PRODUCAO = { live_mode: true, nickname: "Loja Teste" };
     const TRES_CHAVES = {
         acao: "salvar",
@@ -899,7 +899,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(resposta.status, 409);
             const corpo = await resposta.json();
             assertEquals(
-                corpo.erro.includes("Teste a conexão com sucesso antes de ligar"),
+                corpo.erro.includes("Teste a conexão com sucesso para voltar a receber pelo app"),
                 true,
             );
             assertEquals(estado.loja.pagamento_online, false);
@@ -1057,9 +1057,20 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             );
             assertEquals(resposta.status, 409);
             const corpo = await resposta.json();
+            // O teste da chave nova FALHOU (recusada): o recado diz isso e
+            // manda conferir o Access Token ANTES de mandar ligar forma na
+            // entrega — a lojista pode só ter colado a chave errada.
             assertEquals(
-                corpo.erro,
-                "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
+                corpo.erro.startsWith(
+                    "O teste de conexão com as chaves novas não passou: confira o Access Token.",
+                ),
+                true,
+            );
+            assertEquals(
+                corpo.erro.endsWith(
+                    "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
+                ),
+                true,
             );
             // mp-8 não relaxa: a credencial NOVA não fica gravada em lugar
             // nenhum (nem app_settings, nem a Public Key na ficha).
@@ -1497,12 +1508,13 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C29 — gravarRegistro falha DEPOIS de a ficha já ter desligado o PIX: o recado soma as duas metades", async () => {
+    await t.step("C29 — gravarRegistro falha DEPOIS de a ficha já ter desligado o PIX: a ficha volta ao que era e o recado diz que nada mudou (R2)", async () => {
         // Ordem ficha-primeiro (C27): a ficha já apagou `pagamento_online`
-        // quando o `app_settings` (o registro cifrado) estoura. O catch
-        // geral do handler diria só "não consegui gravar as chaves agora",
-        // que é verdade sobre o registro e SILÊNCIO sobre o PIX que acabou
-        // de ser desligado — o lojista só descobriria recarregando a tela.
+        // quando o `app_settings` (o registro cifrado) estoura. O registro
+        // antigo (a credencial que vendia) continua de pé; então a ficha é
+        // DEVOLVIDA ao que era — antes (30/09) ela ficava desligada com um
+        // recado "desliguei por segurança", e a loja parava de vender por
+        // causa de uma escrita que nem valeu.
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -1521,15 +1533,182 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             );
             assertEquals(resposta.status, 500);
             const corpo = await resposta.json();
-            // O recado soma as DUAS metades: nem promete "salvei" (o
-            // registro não gravou), nem cala sobre o pagamento (que a ficha
-            // já desligou por segurança).
             assertEquals(corpo.erro.includes("Não salvei as chaves"), true);
-            assertEquals(corpo.erro.includes("desliguei o pagamento pelo app"), true);
-            // A ficha REALMENTE desligou — não é só o texto do erro.
-            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(corpo.erro.includes("nada mudou"), true);
+            // A ficha voltou: ligada e com a Public Key ANTIGA.
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_FALSA);
             // O registro (a credencial) NÃO trocou: gravarRegistro recusou.
             assertEquals(estado.valor, registroAntesDaFalha);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("R2 — Public Key nova, ficha já ligada, teste OK e o registro estoura: a ficha NÃO fica com a chave nova e o registro velho", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            const registroAntes = estado.valor;
+            estado.falhaNoUpsert = true;
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: "APP_USR-publica-falsa-de-outra-conta" },
+                buscarMpFalso(200, OK_PRODUCAO).buscar,
+            );
+            assertEquals(resposta.status, 500);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro.includes("nada mudou"), true);
+            // O PIX segue ligado (o teste passou, não houve mudança de
+            // pagamento) e a Public Key da ficha é a de antes.
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_FALSA);
+            assertEquals(estado.valor, registroAntes);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("R2b — a reversão da ficha também falha: 500 pede o suporte e não promete que nada mudou", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            estado.falhaNoUpsert = true;
+            // A ficha aceita o 1º update (publicar a chave nova) e recusa o
+            // 2º (a reversão).
+            const original = cliente.from;
+            let updates = 0;
+            cliente.from = (nome: string) => {
+                const tabela = original(nome);
+                if (nome !== "store_config") return tabela;
+                return {
+                    ...tabela,
+                    update: (linha: any) => {
+                        updates++;
+                        if (updates >= 2) {
+                            const recusa = { error: { message: "banco fora" }, data: null };
+                            return {
+                                eq: () => ({
+                                    select: () => Promise.resolve(recusa),
+                                    then: (ok: any) => Promise.resolve(recusa).then(ok),
+                                }),
+                            };
+                        }
+                        return tabela.update(linha);
+                    },
+                };
+            };
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: "APP_USR-publica-falsa-de-outra-conta" },
+                buscarMpFalso(200, OK_PRODUCAO).buscar,
+            );
+            assertEquals(resposta.status, 500);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro.includes("suporte"), true);
+            assertEquals(corpo.erro.includes("nada mudou"), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("R1a — pausa gravada ENTRE a leitura e a escrita do testar: o testar herda a pausa fresca e NÃO religa", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            // Enquanto o MP responde ao teste, o lojista aperta Pausar
+            // (ficha apagada + pausa no registro).
+            const buscar = (async () => {
+                estado.loja.pagamento_online = false;
+                const r = JSON.parse(estado.valor!);
+                r.pagamento_pausado = true;
+                r.pausado_em = "2026-09-30T12:00:00.000Z";
+                r.pausado_por = ID_ADMIN;
+                estado.valor = JSON.stringify(r);
+                return new Response(JSON.stringify(OK_PRODUCAO), { status: 200 });
+            }) as any;
+            estado.updatesLoja.length = 0;
+            const resposta = await chamar(cliente, { acao: "testar" }, buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pausado, true);
+            assertEquals(corpo.pix_ligado, false);
+            // A pausa sobreviveu à gravação do resultado do teste...
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.pagamento_pausado, true);
+            assertEquals(salvo.pausado_por, ID_ADMIN);
+            assertEquals(salvo.ultimo_teste.conectado, true);
+            // ...e a ficha continua apagada (nenhum update ligou).
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.some((u: any) => u.pagamento_online === true), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("R1b — pausa gravada durante o teste do SALVAR: o salvar herda a pausa fresca e não liga", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            const buscar = (async () => {
+                estado.loja.pagamento_online = false;
+                const r = JSON.parse(estado.valor!);
+                r.pagamento_pausado = true;
+                r.pausado_em = "2026-09-30T12:00:00.000Z";
+                r.pausado_por = ID_ADMIN;
+                estado.valor = JSON.stringify(r);
+                return new Response(JSON.stringify(OK_PRODUCAO), { status: 200 });
+            }) as any;
+            estado.updatesLoja.length = 0;
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO_2 },
+                buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pausado, true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(JSON.parse(estado.valor!).pagamento_pausado, true);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.some((u: any) => u.pagamento_online === true), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("Ra — a rede do teste caiu e a loja só vende pelo app: o 409 diz que tentar de novo pode resolver", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({ falhaSemFormaDePagamento: true });
+        try {
+            await lojaLigada(cliente);
+            const resposta = await chamar(
+                cliente,
+                { ...TRES_CHAVES, access_token: TOKEN_FALSO_2 },
+                buscarMpRede().buscar,
+            );
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro.includes("tentar de novo pode resolver"), true);
+            assertEquals(corpo.erro.includes("Ligue ao menos uma forma de pagamento na entrega"), true);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("Rb — `testou` na resposta do salvar diz se o MP foi chamado (re-salvar igual: false)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente } = supabaseFalso();
+        try {
+            const primeira = await (await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, OK_PRODUCAO).buscar)).json();
+            assertEquals(primeira.testou, true);
+            const reSalvar = await (await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA })).json();
+            assertEquals(reSalvar.testou, false);
         } finally {
             desfazerEnv();
         }
@@ -1938,7 +2117,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             // criar-pagamento cairia nas chaves da plataforma).
             assertEquals(estado.loja.pagamento_online, false);
             assertEquals(estado.valor, null);
-            assertEquals(estado.updatesLoja[estado.updatesLoja.length - 1], { pagamento_online: false });
+            assertEquals(estado.updatesLoja[estado.updatesLoja.length - 1], { mp_public_key: null, pagamento_online: false });
         } finally {
             desfazerEnv();
         }

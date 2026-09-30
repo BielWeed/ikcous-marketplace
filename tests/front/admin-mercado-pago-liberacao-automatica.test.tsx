@@ -31,8 +31,14 @@
 //   A12 rótulo do campo e textos sem "obrigatória para Pix" nem interruptor;
 //   A13 o guia diz que as três chaves liberam sozinhas, sem botão de ligar;
 //   A14 estado pausado + faltas: a tela conta o que falta para quando retomar;
-//   A15 `ler` de instalação antiga (sem `faltando`/`pausado`) não quebra: cai
-//       em "desligado" e "não pausado".
+//   A15 edge ANTIGA (o front sobe antes das functions): sem `faltando` a tela
+//       NÃO mente "Tudo preenchido" nem oferece Pausar/Retomar — diz, em
+//       linguagem de leigo, que o sistema de pagamentos está sendo atualizado,
+//       mostra o estado REAL (`pix_ligado`) e mantém Ligar/Desligar seguros
+//       (a edge antiga valida tudo);
+//   A17 Pausar/Retomar ficam travados enquanto testa/salva, e Testar/Salvar
+//       enquanto pausa/retoma (corrida entre as duas gravações);
+//   A8b re-salvar sem mudar nada NÃO diz que o teste passou (nenhum teste rodou).
 //
 // Mesmo padrão dos vizinhos (mercado-pago-secao-salva-e-testa.test.tsx):
 // createRoot + act do React puro, dependências de fora mockadas.
@@ -56,6 +62,9 @@ const { invokeFalso, cenario } = vi.hoisted(() => ({
     respostaSalvar: {} as Record<string, unknown>,
     respostaTestar: {} as Record<string, unknown>,
     erroRetomar: null as unknown,
+    // Promessas que SEGURAM a resposta da edge (corrida testar x pausar).
+    segurarTestar: null as Promise<void> | null,
+    segurarPausar: null as Promise<void> | null,
   },
 }));
 
@@ -71,12 +80,14 @@ invokeFalso.mockImplementation(async (nome: string, { body }: any) => {
     return { data: cenario.respostaRetomar, error: null };
   }
   if (body?.acao === "desligar_pix") {
+    if (cenario.segurarPausar) await cenario.segurarPausar;
     return { data: cenario.respostaPausar, error: null };
   }
   if (body?.acao === "salvar") {
     return { data: cenario.respostaSalvar, error: null };
   }
   if (body?.acao === "testar") {
+    if (cenario.segurarTestar) await cenario.segurarTestar;
     return { data: cenario.respostaTestar, error: null };
   }
   return { data: null, error: null };
@@ -219,6 +230,8 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     cenario.respostaSalvar = { ...BASE };
     cenario.respostaTestar = {};
     cenario.erroRetomar = null;
+    cenario.segurarTestar = null;
+    cenario.segurarPausar = null;
   });
 
   afterEach(async () => {
@@ -298,7 +311,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
   it("A4 — recusa do servidor ao retomar não mente: o recado aparece e segue 'Pausado'", async () => {
     const RECADO =
-      "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+      "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve para voltar a receber pelo app — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
     cenario.salvo = { ...PAUSADO, faltando: ["chave_notificacoes"] };
     cenario.erroRetomar = Object.assign(new Error("falhou"), {
       name: "FunctionsHttpError",
@@ -384,7 +397,11 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
       ultimo_teste: null,
       faltando: ["public_key", "access_token", "chave_notificacoes", "teste"],
     };
-    cenario.respostaSalvar = { ...RECEBENDO, ultimo_teste: CONECTADO };
+    cenario.respostaSalvar = {
+      ...RECEBENDO,
+      ultimo_teste: CONECTADO,
+      testou: true,
+    };
     const onPixAlternado = vi.fn();
     raiz = await montarSecaoComChavesAbertas(onPixAlternado);
     expect(estadoDoRecebimento().textContent).toContain("Falta para receber");
@@ -552,7 +569,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(estado).toContain("colar a Chave de notificações");
   });
 
-  it("A15 — `ler` de instalação antiga (sem `faltando`/`pausado`) não quebra: cai em desligado e não pausado", async () => {
+  it("A15 — edge ANTIGA (sem `faltando`): a tela não mente 'Tudo preenchido', não oferece Pausar/Retomar e diz que o sistema está sendo atualizado", async () => {
     cenario.salvo = {
       configurado: true,
       public_key: PUBLICA_FALSA,
@@ -565,9 +582,126 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     };
     raiz = await montarSecaoComChavesAbertas();
     const estado = estadoDoRecebimento().textContent ?? "";
+    expect(estado).toContain(
+      "Atualizando o sistema de pagamentos desta loja — tente de novo em alguns minutos.",
+    );
+    expect(estado).not.toContain("Tudo preenchido");
+    expect(estado).not.toContain("Falta para receber");
     expect(estado).not.toContain("Pausado por você");
-    expect(estado).not.toContain("Recebendo pelo app");
     expect(temBotao("Pausar")).toBe(false);
+    expect(temBotao("Retomar")).toBe(false);
+    // O estado REAL que a edge antiga devolveu continua à vista.
+    expect(estado).toContain("Pagamento pelo app desligado");
+  });
+
+  it("A15b — edge antiga, desligado com teste conectado: o botão Ligar do comportamento antigo segue possível e mostra o estado real depois", async () => {
+    cenario.salvo = {
+      configurado: true,
+      public_key: PUBLICA_FALSA,
+      mascara_token: "••••9999",
+      mascara_webhook: "••••7777",
+      ultimo_teste: CONECTADO,
+      atualizado_em: new Date().toISOString(),
+      pix_ligado: false,
+      public_key_na_loja: true,
+    };
+    // A edge antiga responde só { pix_ligado, quando }.
+    cenario.respostaRetomar = { pix_ligado: true, quando: "x" };
+    raiz = await montarSecaoComChavesAbertas();
+
+    await clique(botaoPorTexto("Ligar"));
+
+    expect(chamadas.some((c) => c.corpo.acao === "ligar_pix")).toBe(true);
+    const estado = estadoDoRecebimento().textContent ?? "";
+    expect(estado).toContain("Recebendo pelo app");
+    expect(estado).toContain("Atualizando o sistema de pagamentos");
+    expect(temBotao("Desligar")).toBe(true);
+    expect(temBotao("Pausar")).toBe(false);
+  });
+
+  it("A15c — edge antiga sem teste conectado: nada de botão Ligar (a edge antiga recusaria)", async () => {
+    cenario.salvo = {
+      configurado: true,
+      public_key: PUBLICA_FALSA,
+      mascara_token: "••••9999",
+      mascara_webhook: "••••7777",
+      ultimo_teste: null,
+      atualizado_em: new Date().toISOString(),
+      pix_ligado: false,
+      public_key_na_loja: true,
+    };
+    raiz = await montarSecaoComChavesAbertas();
+    expect(temBotao("Ligar")).toBe(false);
+    expect(estadoDoRecebimento().textContent).toContain(
+      "Atualizando o sistema de pagamentos",
+    );
+  });
+
+  it("A8b — re-salvar sem mudar nada não diz que o teste passou (a edge informou `testou: false`)", async () => {
+    cenario.salvo = { ...RECEBENDO };
+    cenario.respostaSalvar = { ...RECEBENDO, testou: false };
+    raiz = await montarSecaoComChavesAbertas();
+
+    await clique(botaoPorTexto("Salvar chaves"));
+
+    const [, opcoes] = toastSuccess.mock.calls[0];
+    expect(opcoes.description).not.toContain("teste de conexão");
+    expect(opcoes.description).not.toContain("liberado");
+  });
+
+  it("A17 — Pausar fica travado enquanto o teste roda; Testar e Salvar ficam travados enquanto pausa", async () => {
+    cenario.salvo = { ...RECEBENDO };
+    let soltarTeste: () => void = () => {};
+    cenario.segurarTestar = new Promise<void>((r) => {
+      soltarTeste = r;
+    });
+    cenario.respostaTestar = {
+      conectado: true,
+      mensagem: CONECTADO.mensagem,
+      ambiente: "producao",
+      conta: "Loja Teste",
+      quando: new Date().toISOString(),
+      pix_ligado: true,
+      faltando: [],
+      pausado: false,
+      public_key_na_loja: true,
+    };
+    raiz = await montarSecaoComChavesAbertas();
+
+    // Testar em andamento (resposta segurada): Pausar não pode sair.
+    await act(async () => {
+      botaoPorTexto("Testar conexão").click();
+    });
+    expect(botaoPorTexto("Pausar").disabled).toBe(true);
+    await clique(botaoPorTexto("Pausar"));
+    expect(chamadas.some((c) => c.corpo.acao === "desligar_pix")).toBe(false);
+    await act(async () => {
+      soltarTeste();
+    });
+    await assentar();
+    expect(botaoPorTexto("Pausar").disabled).toBe(false);
+
+    // Pausar em andamento (resposta segurada): Testar e Salvar não podem sair.
+    let soltarPausa: () => void = () => {};
+    cenario.segurarPausar = new Promise<void>((r) => {
+      soltarPausa = r;
+    });
+    cenario.respostaPausar = {
+      pix_ligado: false,
+      pausado: true,
+      faltando: [],
+      public_key_na_loja: true,
+    };
+    await act(async () => {
+      botaoPorTexto("Pausar").click();
+    });
+    expect(botaoPorTexto("Testar conexão").disabled).toBe(true);
+    expect(botaoPorTexto("Salvar chaves").disabled).toBe(true);
+    await act(async () => {
+      soltarPausa();
+    });
+    await assentar();
+    expect(botaoPorTexto("Testar conexão").disabled).toBe(false);
   });
 
   it("A16 — ligado sem a Public Key na ficha da loja continua sendo contado na tela", async () => {

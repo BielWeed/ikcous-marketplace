@@ -87,8 +87,13 @@ type ConfiguracaoMp = {
   pix_ligado: boolean;
   /** A ficha da loja já carrega ESTA Public Key (e não outra, nem nenhuma). */
   public_key_na_loja: boolean;
-  /** O que ainda falta para receber pelo app (códigos da edge; vazio = tudo pronto). */
-  faltando: string[];
+  /**
+   * O que ainda falta para receber pelo app (códigos da edge; vazio = tudo
+   * pronto). `null` = a edge NÃO devolveu o campo: é uma edge ANTIGA (o front
+   * sobe antes das functions), e "nada faltando" seria mentira — a tela cai no
+   * modo "sistema sendo atualizado" em vez de afirmar o que não sabe.
+   */
+  faltando: string[] | null;
   /** O lojista pausou o pagamento pelo app (vence o automático). */
   pausado: boolean;
 };
@@ -98,6 +103,7 @@ type EstadoDevolvido = {
   pix_ligado?: boolean;
   pausado?: boolean;
   faltando?: unknown;
+  testou?: boolean;
   public_key_na_loja?: boolean;
   aviso?: string;
 };
@@ -119,9 +125,11 @@ const VAZIA: ConfiguracaoMp = {
  * A resposta da edge vira estado com os campos da FICHA e da PAUSA coercidos:
  * instalação com a edge antiga (que ainda não devolve `pix_ligado` /
  * `public_key_na_loja` / `faltando` / `pausado`) tem que virar "desligado",
- * "chave não publicada", "nada faltando" e "não pausado". `undefined` no
- * estado o tornaria indefinido — e a tela passaria a inventar sozinha o estado
- * do dinheiro, que é justamente o que esta peça veio proibir.
+ * "chave não publicada" e "não pausado" — e `faltando` AUSENTE vira `null`
+ * ("servidor desatualizado"), nunca `[]`: "nada faltando" numa edge antiga
+ * faria a tela dizer "Tudo preenchido" sobre uma loja que não liga sozinha.
+ * `undefined` no estado o tornaria indefinido — e a tela passaria a inventar
+ * sozinha o estado do dinheiro, que é justamente o que esta peça veio proibir.
  */
 function comoConfig(data: unknown): ConfiguracaoMp {
   const lida = (data ?? {}) as ConfiguracaoMp;
@@ -129,7 +137,9 @@ function comoConfig(data: unknown): ConfiguracaoMp {
     ...lida,
     pix_ligado: lida.pix_ligado === true,
     public_key_na_loja: lida.public_key_na_loja === true,
-    faltando: comoListaDeFaltas(lida.faltando),
+    faltando: Array.isArray(lida.faltando)
+      ? comoListaDeFaltas(lida.faltando)
+      : null,
     pausado: lida.pausado === true,
   };
 }
@@ -390,7 +400,8 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       });
       return;
     }
-    if (salvando) return;
+    // Não salva no meio de um pausar/retomar (as duas gravações correm juntas).
+    if (salvando || alternandoPix) return;
     if (!publicKey.trim()) {
       toast.error("Cole a Public Key do Mercado Pago.");
       return;
@@ -438,12 +449,19 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       setEcoDaVitrine(salva.pix_ligado !== ligadoAntes);
       onPixAlternado?.(salva.pix_ligado, salva.public_key_na_loja);
       haptic.success();
+      // Só fala do TESTE quando ele rodou (`testou`): re-salvar sem mudar
+      // nada não chama o Mercado Pago, e dizer "o teste passou" seria mentira.
+      // Edge antiga (sem `faltando`/`testou`) não afirma nada além do salvo.
       toast.success("Chaves do Mercado Pago salvas!", {
         description: salva.pix_ligado
-          ? "O teste de conexão passou e o pagamento pelo app foi liberado."
+          ? devolvido.testou === true
+            ? "O teste de conexão passou e o pagamento pelo app foi liberado."
+            : "As chaves foram salvas."
           : salva.pausado
             ? "As chaves foram salvas; o pagamento pelo app segue pausado até você retomar."
-            : "Veja abaixo o que ainda falta para receber pelo app.",
+            : salva.faltando === null
+              ? "As chaves foram salvas."
+              : "Veja abaixo o que ainda falta para receber pelo app.",
       });
     } catch (err) {
       haptic.error();
@@ -496,7 +514,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       toast.error("Sem conexão com a internet");
       return;
     }
-    if (testando || dirty || !config.configurado) return;
+    if (testando || alternandoPix || dirty || !config.configurado) return;
 
     setTestando(true);
     haptic.light();
@@ -560,7 +578,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
       });
       return;
     }
-    if (alternandoPix || carregando) return;
+    // Nunca pausa/retoma no meio de um teste ou de um salvar: as gravações
+    // do servidor correm juntas, e a pausa perderia a corrida.
+    if (alternandoPix || carregando || testando || salvando) return;
 
     setAlternandoPix(true);
     setAvisoPix(null);
@@ -617,21 +637,39 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   // ligado na ficha manda (é o que o cliente vê); depois a pausa; depois o que
   // falta. "Pronto" é tudo preenchido, mas desligado e sem pausa (loja que
   // já existia, ou a ficha recusou a última tentativa): um teste reconcilia.
-  const estadoDoRecebimento: "recebendo" | "pausado" | "faltando" | "pronto" =
-    config.pix_ligado
+  // EDGE ANTIGA (`faltando` ausente): o front sobe antes das functions, e a
+  // edge antiga não liga sozinha nem conhece pausa. A tela não afirma "tudo
+  // preenchido" nem oferece Pausar/Retomar (que não existem lá): mostra o
+  // estado REAL (`pix_ligado`), diz que o sistema está sendo atualizado e
+  // mantém só o Ligar/Desligar de antes (a edge antiga valida tudo).
+  const servidorDesatualizado = config.faltando === null;
+  const faltando = config.faltando ?? [];
+  const estadoDoRecebimento:
+    | "desatualizado"
+    | "recebendo"
+    | "pausado"
+    | "faltando"
+    | "pronto" = servidorDesatualizado
+    ? "desatualizado"
+    : config.pix_ligado
       ? "recebendo"
       : config.pausado
         ? "pausado"
-        : config.faltando.length > 0
+        : faltando.length > 0
           ? "faltando"
           : "pronto";
-  const listaDoQueFalta = config.faltando.map(textoDaFalta);
-  const faltaTestar = config.faltando.includes("teste");
+  const listaDoQueFalta = faltando.map(textoDaFalta);
+  const faltaTestar = faltando.includes("teste");
 
   // Mesma trava do fluxo do dono nos DOIS botões de testar (o do formulário
   // e o do aviso âmbar): testar coisa diferente do que está salvo enganaria.
   const testeBloqueado =
-    testando || carregando || isOffline || dirty || !config.configurado;
+    testando ||
+    carregando ||
+    isOffline ||
+    alternandoPix ||
+    dirty ||
+    !config.configurado;
 
   return (
     <div className="space-y-4">
@@ -848,7 +886,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               type="button"
-              disabled={salvando || carregando || isOffline}
+              disabled={salvando || carregando || isOffline || alternandoPix}
               onClick={salvar}
               className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
             >
@@ -899,10 +937,51 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               <span className="block text-xs font-bold text-white">
                 Receber PIX no app
               </span>
-              <span className="block text-[11px] leading-relaxed text-zinc-400">
-                O pagamento pelo app (Pix e cartão) liga sozinho quando as três
-                chaves estão salvas e o teste de conexão passa.
-              </span>
+              {!servidorDesatualizado && (
+                <span className="block text-[11px] leading-relaxed text-zinc-400">
+                  O pagamento pelo app (Pix e cartão) liga sozinho quando as
+                  três chaves estão salvas e o teste de conexão passa.
+                </span>
+              )}
+
+              {estadoDoRecebimento === "desatualizado" && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p
+                      role="status"
+                      className={cn(
+                        "flex items-center gap-1.5 text-xs font-bold",
+                        config.pix_ligado
+                          ? "text-emerald-300"
+                          : "text-zinc-300",
+                      )}
+                    >
+                      {config.pix_ligado
+                        ? "Recebendo pelo app (Pix e cartão)"
+                        : "Pagamento pelo app desligado"}
+                    </p>
+                    {(config.pix_ligado || teste?.conectado) && (
+                      <button
+                        type="button"
+                        disabled={
+                          alternandoPix || isOffline || testando || salvando
+                        }
+                        onClick={() => pausarOuRetomar(!config.pix_ligado)}
+                        className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                      >
+                        {config.pix_ligado ? "Desligar" : "Ligar"}
+                      </button>
+                    )}
+                  </div>
+                  <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                    <span>
+                      Atualizando o sistema de pagamentos desta loja — tente de
+                      novo em alguns minutos.
+                    </span>
+                  </p>
+                </div>
+              )}
 
               {estadoDoRecebimento === "recebendo" && (
                 <div className="flex items-center justify-between gap-3">
@@ -915,7 +994,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   </p>
                   <button
                     type="button"
-                    disabled={alternandoPix || isOffline}
+                    disabled={
+                      alternandoPix || isOffline || testando || salvando
+                    }
                     onClick={() => pausarOuRetomar(false)}
                     className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
                   >
@@ -936,7 +1017,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     </p>
                     <button
                       type="button"
-                      disabled={alternandoPix || isOffline}
+                      disabled={
+                        alternandoPix || isOffline || testando || salvando
+                      }
                       onClick={() => pausarOuRetomar(true)}
                       className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
                     >

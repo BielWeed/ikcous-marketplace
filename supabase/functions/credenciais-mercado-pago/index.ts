@@ -69,6 +69,10 @@
 //     estado muda. Se o invariante LOJA_SEM_FORMA_DE_PAGAMENTO recusar o
 //     desligamento, o teste fica gravado, a ficha fica como estava e a
 //     resposta leva `aviso` (200, nunca 500).
+//   * Corrida com PAUSAR (revisão de 30/09): o teste chama o Mercado Pago (segundos)
+//     entre a leitura e a escrita do registro; `testar` e `salvar` RELEEM o
+//     registro logo antes de gravar e herdam a pausa fresca. Se o registro não
+//     grava depois de a ficha gravar, a ficha é DEVOLVIDA ao que era.
 //   * `ler` é SÓ leitura: nunca liga nem desliga (loja que já existia com o
 //     estado antigo só muda quando o lojista salva, testa ou pausa).
 //   * `desligar_pix` virou PAUSAR (mesmo nome, compatibilidade): ficha
@@ -557,19 +561,19 @@ const ROTULO_DA_FALTA: ReadonlyMap<Falta, string> = new Map<Falta, string>([
 function recadoDaFalta(falta: Falta): string {
     switch (falta) {
         case "teste":
-            return "Teste a conexão com sucesso antes de ligar o PIX.";
+            return "Teste a conexão com sucesso para voltar a receber pelo app.";
         case "public_key":
             // O Payment Brick do checkout não sobe sem a Public Key: acender
             // o PIX sem ela é o cliente chegando no fim da compra e vendo
             // "Pagamento indisponível".
-            return "Salve a Public Key do Mercado Pago antes de ligar o PIX — sem ela o cliente vê o PIX e trava no fim da compra.";
+            return "Salve a Public Key do Mercado Pago para voltar a receber pelo app — sem ela o cliente vê o PIX e trava no fim da compra.";
         case "access_token":
-            return "Salve o Access Token do Mercado Pago antes de ligar o PIX — é a chave que processa os pagamentos.";
+            return "Salve o Access Token do Mercado Pago para voltar a receber pelo app — é a chave que processa os pagamentos.";
         case "chave_notificacoes":
             // O criar-pagamento recusa PIX (409 pixSemChaveDeAssinatura) em
             // loja sem a chave de assinatura do webhook SALVA PELA PRÓPRIA
             // LOJA; a MP_WEBHOOK_SECRET do ambiente não conta.
-            return "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+            return "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve para voltar a receber pelo app — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
     }
 }
 
@@ -883,6 +887,16 @@ export async function handler(
                 }
             }
 
+            // R1 (revisão de 30/09): o teste acima leva segundos, e o lojista
+            // pode ter apertado PAUSAR nesse meio-tempo. O `registroAntigo`
+            // é de ANTES do teste — gravá-lo de volta apagaria a pausa e a
+            // reconciliação religaria a loja. Pausa e carimbo vêm da leitura
+            // FRESCA, imediatamente antes de montar o que vai ser gravado.
+            const registroFresco = await lerRegistroMp(
+                supabase,
+            ) as RegistroComPix | null;
+            const base = registroFresco ?? registroAntigo;
+
             const novoToken = accessToken
                 ? await cifrar(accessToken, chave)
                 : null;
@@ -913,12 +927,12 @@ export async function handler(
                 ultimo_teste: ultimoTeste,
                 // O carimbo de quem ligou o PIX ATRAVESSA o salvar: auditoria
                 // que some porque o lojista reeditou a chave não é auditoria.
-                pix_ligado_em: registroAntigo?.pix_ligado_em ?? null,
-                pix_ligado_por: registroAntigo?.pix_ligado_por ?? null,
+                pix_ligado_em: base?.pix_ligado_em ?? null,
+                pix_ligado_por: base?.pix_ligado_por ?? null,
                 // A PAUSA também atravessa: ela vence salvar e testar.
-                pagamento_pausado: registroAntigo?.pagamento_pausado,
-                pausado_em: registroAntigo?.pausado_em,
-                pausado_por: registroAntigo?.pausado_por,
+                pagamento_pausado: base?.pagamento_pausado,
+                pausado_em: base?.pausado_em,
+                pausado_por: base?.pausado_por,
                 atualizado_em: agora,
             };
 
@@ -969,12 +983,22 @@ export async function handler(
                 // lojista ligar uma forma na entrega antes de trocar a chave
                 // (ou não trocar ainda) — nunca o servidor decidir por ela.
                 const semFormaDePagamento = recusa === LOJA_SEM_FORMA_DE_PAGAMENTO;
+                // O que DESLIGOU foi o teste da chave nova que não passou:
+                // a lojista precisa saber disso (e se tentar de novo pode
+                // resolver) ANTES de ouvir "ligue uma forma na entrega" — ela
+                // pode só ter colado a chave errada, ou a rede caiu.
+                const testeFalhou = credencialMudou && !ultimoTeste?.conectado;
+                const porQueDesligaria = !testeFalhou
+                    ? ""
+                    : testeSemResposta
+                    ? "O teste de conexão com as chaves novas não passou porque o Mercado Pago não respondeu; tentar de novo pode resolver. Nada foi salvo. "
+                    : "O teste de conexão com as chaves novas não passou: confira o Access Token. Nada foi salvo. ";
                 return json(
                     {
                         erro: mensagemDeRecusaDaFicha(
                             recusa,
                             "Não consegui publicar a Public Key na ficha da loja — as chaves não foram salvas, para o pagamento pelo app não ficar com uma credencial que ninguém testou. Tente salvar de novo.",
-                            "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
+                            `${porQueDesligaria}Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.`,
                         ),
                     },
                     semFormaDePagamento ? 409 : 500,
@@ -983,57 +1007,47 @@ export async function handler(
             try {
                 await gravarRegistro(supabase, registro);
             } catch (err) {
-                // A ficha JÁ gravou (linha acima) — o catch geral (fim do
-                // arquivo) devolveria "não consegui gravar as chaves agora",
-                // que é verdade sobre o registro e SILÊNCIO sobre o que a
-                // ficha acabou de fazer; o lojista só descobriria recarregando
-                // a tela (ressalva da revisão de mp-10). Sem `mudarPagamento`,
-                // nada mudou na ficha além da Public Key — o catch geral já
-                // diz a coisa certa.
-                if (mudarPagamento && !alvo) {
+                // A ficha JÁ gravou (linha acima) e o registro que a sustenta
+                // NÃO gravou: ficaria a Public Key nova (e/ou o
+                // `pagamento_online` novo) na ficha com a credencial VELHA no
+                // registro — o cliente veria o Brick de uma conta cobrando pela
+                // outra, ou o pagamento ligado sem as chaves por trás (na 1ª
+                // vez, sem registro nenhum: o criar-pagamento cairia nas
+                // chaves da PLATAFORMA). O registro antigo continua de pé, então
+                // a ficha é DEVOLVIDA ao que era (R2, revisão de 30/09) e o
+                // recado diz a verdade: nada mudou. Sem mudança na ficha, o
+                // catch geral já diz a coisa certa.
+                const campos: Partial<FichaDaLoja> = {};
+                if (fichaAntes.mp_public_key !== publicKey) {
+                    campos.mp_public_key = fichaAntes.mp_public_key;
+                }
+                if (mudarPagamento) {
+                    campos.pagamento_online = fichaAntes.pagamento_online;
+                }
+                if (Object.keys(campos).length === 0) throw err;
+                console.error(
+                    "[credenciais-mp] gravarRegistro falhou depois de a ficha gravar; devolvendo a ficha ao que era:",
+                    err instanceof Error ? err.message : err,
+                );
+                const desfez = await escreverNaFichaDaLoja(supabase, campos);
+                if (desfez) {
                     console.error(
-                        "[credenciais-mp] gravarRegistro falhou com o pagamento pelo app já desligado na ficha:",
-                        err instanceof Error ? err.message : err,
+                        "[credenciais-mp] a reversão da ficha também falhou:",
+                        desfez,
                     );
                     return json(
                         {
-                            erro: "Não salvei as chaves novas E desliguei o pagamento pelo app por segurança (a credencial trocou e a nova não passou no teste). Salve as chaves de novo depois de conferir o Access Token.",
+                            erro: "Não salvei as chaves novas e não consegui devolver a ficha da loja ao que era. Confira o estado nesta tela e fale com o suporte.",
                         },
                         500,
                     );
                 }
-                if (mudarPagamento && alvo) {
-                    // A ficha LIGOU e o registro que a sustenta não gravou:
-                    // pagamento aceso sem as chaves por trás (ou, na 1ª vez,
-                    // sem registro nenhum — o criar-pagamento cairia nas chaves
-                    // da PLATAFORMA). Desfaz o que a ficha acabou de fazer.
-                    console.error(
-                        "[credenciais-mp] gravarRegistro falhou com o pagamento pelo app já ligado na ficha; revertendo:",
-                        err instanceof Error ? err.message : err,
-                    );
-                    const desfez = await escreverNaFichaDaLoja(supabase, {
-                        pagamento_online: false,
-                    });
-                    if (desfez) {
-                        console.error(
-                            "[credenciais-mp] a reversão da ficha também falhou:",
-                            desfez,
-                        );
-                        return json(
-                            {
-                                erro: "Não salvei as chaves novas e não consegui desligar o pagamento pelo app que tinha acabado de ligar. Confira o estado nesta tela e fale com o suporte.",
-                            },
-                            500,
-                        );
-                    }
-                    return json(
-                        {
-                            erro: "Não salvei as chaves novas; o pagamento pelo app ficou desligado por segurança. Tente salvar de novo.",
-                        },
-                        500,
-                    );
-                }
-                throw err;
+                return json(
+                    {
+                        erro: "Não salvei as chaves novas: nada mudou — a loja segue com as chaves e o pagamento pelo app como estavam. Tente salvar de novo.",
+                    },
+                    500,
+                );
             }
 
             const ficha = await lerFichaDaLoja(supabase);
@@ -1062,6 +1076,9 @@ export async function handler(
             return json(
                 {
                     ...respostaLer(registro, ficha),
+                    // A tela só fala do teste quando ele RODOU (re-salvar sem
+                    // mudar nada não chama o Mercado Pago).
+                    testou: credencialMudou,
                     ...(mudarPagamento && !alvo ? { pix_desligado: true } : {}),
                     ...juntarAvisos(avisos),
                 },
@@ -1104,9 +1121,22 @@ export async function handler(
             }
 
             const { ultimoTeste } = await executarTesteDeConexao(token, buscar);
+            // R1 (revisão de 30/09): o teste leva segundos e o lojista pode ter
+            // apertado PAUSAR nesse meio-tempo. Gravar o `registro` lido ANTES
+            // apagaria a pausa, e a reconciliação abaixo religaria a loja. A
+            // pausa (e o carimbo) vêm de uma leitura FRESCA, feita agora.
+            const registroFresco = await lerRegistroMp(
+                supabase,
+            ) as RegistroComPix | null;
+            const base = registroFresco ?? registro;
             let registroAtual: RegistroComPix = {
                 ...registro,
                 ultimo_teste: ultimoTeste,
+                pix_ligado_em: base.pix_ligado_em,
+                pix_ligado_por: base.pix_ligado_por,
+                pagamento_pausado: base.pagamento_pausado,
+                pausado_em: base.pausado_em,
+                pausado_por: base.pausado_por,
                 atualizado_em: ultimoTeste.quando,
             };
             await gravarRegistro(supabase, registroAtual);
