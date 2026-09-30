@@ -48,6 +48,9 @@ npx vercel --prod --yes --build-env IKCOUS_CODE_SHA=<sha40> --build-env VERCEL_G
    `<sha40>` publicado, e a tela tem de mostrar a PROPRIA loja, nunca a principal.
    Caderneta `ausente` ou loja principal aparecendo no dominio cliente = o deploy
    saiu como Preview, sem as `IKCOUS_FROTA_*`. Refazer com `--prod`.
+   Na loja PRINCIPAL o esperado e o contrario: o cabecalho `X-Ikcous-Caderneta: ausente`
+   e NORMAL (ela segue a branch `production`, que e um Preview sem `IKCOUS_FROTA_*`, e o
+   porteiro usa o proprio projeto). So nos dominios CLIENTES `ausente` e defeito.
 
 `vercel` sem `--prod` cria Preview: nunca usar nas lojas clientes.
 
