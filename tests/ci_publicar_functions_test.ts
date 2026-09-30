@@ -16,7 +16,9 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  *    nomes que existem, expande o apelido `cobranca` nas cinco do Mercado
  *    Pago, recusa a `send-order-whatsapp` (despublicada em 11/08/2026),
  *    recusa `_shared`, nome inexistente, nome com shell dentro e projeto
- *    desconhecido, e resolve `loja`/`savy`/`sandbox` nos refs certos.
+ *    desconhecido, e resolve `loja`/`savy`/`almeida`/`sandbox` nos refs certos.
+ *    Lojas clientes (`savy`, `almeida`) só admitem as cinco Functions
+ *    financeiras e exigem `expected_sha` igual ao SHA do run.
  *
  * Extraído e não copiado: copiado, o teste passaria enquanto o arquivo
  * apodrece.
@@ -34,6 +36,7 @@ const RAIZ = fromFileUrl(new URL("..", import.meta.url));
 const REF_LOJA = "dekxabvqdsuukijblazl";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
+const REF_ALMEIDA = "cuemaffjmhkebhmghbap";
 const AS_CINCO_DA_COBRANCA =
   "criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago";
 
@@ -192,15 +195,33 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
   );
 
   await t.step(
-    "os três destinos são fechados e apontam para loja, Savy e sandbox",
+    "os quatro destinos são fechados: loja, Savy, Almeida e sandbox",
     () => {
       assertStringIncludes(yaml, `loja) REF=${REF_LOJA} ;;`);
       assertStringIncludes(yaml, `savy) REF=${REF_SAVY} ;;`);
+      assertStringIncludes(yaml, `almeida) REF=${REF_ALMEIDA} ;;`);
       assertStringIncludes(yaml, `sandbox) REF=${REF_SANDBOX} ;;`);
       assertStringIncludes(
         yaml,
-        "options:\n          - loja\n          - savy\n          - sandbox",
+        "options:\n          - loja\n          - savy\n          - almeida\n          - sandbox",
       );
+    },
+  );
+
+  await t.step(
+    "Almeida usa o MESMO segredo da loja (mesmo org Supabase), nunca o da Savy",
+    () => {
+      // As etapas de token da loja/sandbox têm `if: inputs.projeto != 'savy'`,
+      // então Almeida cai nelas. O segredo da Savy tem de continuar exclusivo
+      // da Savy: uma condição que citasse 'almeida' nas etapas Savy, ou um
+      // segredo novo, mudaria de quem é a credencial sem ninguém decidir.
+      assert(!yaml.includes("inputs.projeto == 'almeida'"));
+      assert(!yaml.includes("SUPABASE_ACCESS_TOKEN_ALMEIDA"));
+      const inicio = yaml.indexOf("name: Publica Savy, uma function por vez");
+      const proximo = yaml.indexOf("\n      - ", inicio + 1);
+      const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+      assertStringIncludes(step, "if: inputs.projeto == 'savy'");
+      assert(!step.includes("almeida"));
     },
   );
 
@@ -234,14 +255,19 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
     }
   });
 
-  await t.step("checkout e trava de SHA precedem todo deploy Savy", () => {
-    assertStringIncludes(yaml, "expected_sha:");
-    assertStringIncludes(yaml, "ref: ${{ github.sha }}");
-    assertStringIncludes(yaml, "EXPECTED_SHA: ${{ inputs.expected_sha }}");
-    const iTrava = yaml.indexOf('if [ "$PROJETO" = "savy" ]; then');
-    const iDeploy = yaml.indexOf("name: Publica Savy, uma function por vez");
-    assert(iTrava > 0 && iTrava < iDeploy);
-  });
+  await t.step(
+    "checkout e trava de SHA precedem todo deploy de loja cliente",
+    () => {
+      assertStringIncludes(yaml, "expected_sha:");
+      assertStringIncludes(yaml, "ref: ${{ github.sha }}");
+      assertStringIncludes(yaml, "EXPECTED_SHA: ${{ inputs.expected_sha }}");
+      const iTrava = yaml.indexOf("Loja cliente");
+      const iPrimeiroDeploy = yaml.indexOf(
+        "name: Publica, uma function por vez",
+      );
+      assert(iTrava > 0 && iTrava < iPrimeiroDeploy);
+    },
+  );
 
   await t.step(
     "um deploy por projeto de cada vez, nunca cancelado no meio",
@@ -353,6 +379,113 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
           `"${pedido}" não pode virar output`,
         );
       }
+    },
+  );
+
+  await t.step(
+    "Almeida resolve a ref própria e mantém as cinco Functions",
+    async () => {
+      const r = await validar("almeida", "cobranca", "a".repeat(40));
+      assertEquals(r.codigo, 0, r.stderr + r.stdout);
+      assertEquals(r.outputs.ref, REF_ALMEIDA);
+      assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+      assertStringIncludes(r.stdout, `Projeto: almeida (${REF_ALMEIDA})`);
+    },
+  );
+
+  await t.step(
+    "Almeida aceita uma function financeira sozinha e SHA em maiúsculas",
+    async () => {
+      const r = await validar(
+        "almeida",
+        "criar-pagamento",
+        "A".repeat(40),
+        "a".repeat(40),
+      );
+      assertEquals(r.codigo, 0, r.stderr + r.stdout);
+      assertEquals(r.outputs.nomes, "criar-pagamento");
+    },
+  );
+
+  await t.step(
+    "Almeida exige o SHA exato: vazio, outro, curto ou comprido recusam",
+    async () => {
+      for (const expected of [
+        "",
+        "b".repeat(40),
+        "a".repeat(39),
+        "a".repeat(41),
+        `${"a".repeat(39)}g`,
+      ]) {
+        const r = await validar("almeida", "cobranca", expected);
+        assertEquals(r.codigo, 1, `SHA "${expected}" deveria falhar`);
+        // Pelo MOTIVO certo: sem isto, o teste passaria com o destino ainda
+        // "desconhecido" (recusa por outro caminho) e não provaria a trava.
+        assertStringIncludes(r.stdout, "exige expected_sha");
+        assert(!r.stdout.includes("projeto desconhecido"));
+        assertEquals(r.outputs.nomes, undefined);
+        assertEquals(r.outputs.ref, undefined);
+      }
+    },
+  );
+
+  await t.step(
+    "Almeida recusa function não financeira, sozinha ou no meio de um pedido",
+    async () => {
+      for (const pedido of [
+        "send-push",
+        "melhor-envio-etiqueta",
+        "criar-pagamento send-push",
+        "send-push, criar-pagamento",
+      ]) {
+        const r = await validar("almeida", pedido, "a".repeat(40));
+        assertEquals(r.codigo, 1, `"${pedido}" deveria ser recusado`);
+        assertStringIncludes(
+          r.stdout,
+          "só admite as cinco Functions financeiras",
+        );
+        assert(!r.stdout.includes("projeto desconhecido"));
+        assertEquals(
+          r.outputs.nomes,
+          undefined,
+          `"${pedido}" não pode virar output`,
+        );
+        assertEquals(r.outputs.ref, undefined);
+      }
+    },
+  );
+
+  await t.step(
+    "Almeida mantém as recusas gerais: whatsapp, nome inválido, pedido vazio",
+    async () => {
+      for (const pedido of [
+        "send-order-whatsapp",
+        "$(id)",
+        "criar-pagamento;echo pwned",
+        "",
+      ]) {
+        const r = await validar("almeida", pedido, "a".repeat(40));
+        assertEquals(r.codigo, 1, `"${pedido}" deveria ser recusado`);
+        assert(!r.stdout.includes("projeto desconhecido"));
+        assertEquals(r.outputs.nomes, undefined);
+      }
+    },
+  );
+
+  await t.step(
+    "os outros destinos NÃO mudaram: loja e sandbox seguem sem trava de SHA",
+    async () => {
+      for (const [projeto, ref] of [
+        ["loja", REF_LOJA],
+        ["sandbox", REF_SANDBOX],
+      ]) {
+        const r = await validar(projeto, "send-push");
+        assertEquals(r.codigo, 0, r.stderr + r.stdout);
+        assertEquals(r.outputs.ref, ref);
+        assertEquals(r.outputs.nomes, "send-push");
+      }
+      const savy = await validar("savy", "cobranca", "a".repeat(40));
+      assertEquals(savy.outputs.ref, REF_SAVY);
     },
   );
 
