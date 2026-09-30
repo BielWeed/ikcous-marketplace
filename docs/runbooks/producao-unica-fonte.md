@@ -6,9 +6,10 @@
   a segue: apenas `ickous-marketplace.vercel.app` acompanha os deployments da branch
   `production` (Branch Domain da Vercel).
 - As 4 lojas clientes (`almeidastore`, `savycollection`, `brandmeliz` e
-  `spacelojadoskit`, todas `.vercel.app`) NAO seguem a branch: servem o target
-  Production do proprio projeto e recebem o front por `npx vercel --prod`, de uma
-  worktree limpa no SHA publicado (secao "Front das lojas clientes").
+  `spacelojadoskit`, todas `.vercel.app`) NAO seguem a branch: estao no MESMO projeto
+  Vercel (`ickous-marketplace`), servem o target Production e recebem o front por UM
+  `npx vercel --prod`, de uma worktree limpa no SHA publicado (secao "Front das lojas
+  clientes"). O porteiro escolhe a loja pelo host, via caderneta `frota_lojas`.
 - Correcao de 30/09/2026: ate esta data este arquivo dizia que `brandmeliz.vercel.app`
   tambem seguia a branch. Nao segue. Por que importa: deployment PREVIEW nao tem as
   variaveis `IKCOUS_FROTA_*` (elas so existem em Production), a caderneta fica
@@ -30,17 +31,20 @@
 
 ## Front das lojas clientes
 
-Para cada loja cliente (almeidastore, savycollection, brandmeliz, spacelojadoskit):
+Um deploy so cobre as 4 lojas clientes (almeidastore, savycollection, brandmeliz,
+spacelojadoskit), porque todas servem o target Production do mesmo projeto:
 
-1. Worktree limpa no SHA publicado (o mesmo `<sha40>` que foi para `production`), sem
-   arquivo solto, dentro do projeto Vercel DAQUELA loja.
-2. Publicar no target Production, informando o SHA duas vezes ao build:
+1. Worktree limpa e destacada no SHA publicado (o mesmo `<sha40>` que foi para
+   `production`), sem arquivo solto, com `.vercel/project.json` apontando para o
+   projeto `ickous-marketplace` (`projectId` + `orgId` do time).
+2. Publicar no target Production, informando o SHA duas vezes ao build (feito assim
+   em 30/09/2026, ~3 min):
 
 ```powershell
-npx vercel --prod --build-env IKCOUS_CODE_SHA=<sha40> --build-env VERCEL_GIT_COMMIT_SHA=<sha40>
+npx vercel --prod --yes --build-env IKCOUS_CODE_SHA=<sha40> --build-env VERCEL_GIT_COMMIT_SHA=<sha40>
 ```
 
-3. Conferir `https://<dominio-da-loja>/version.json`: o `codeSha` tem de ser o
+3. Conferir em CADA dominio cliente `https://<dominio-da-loja>/version.json`: o `codeSha` tem de ser o
    `<sha40>` publicado, e a tela tem de mostrar a PROPRIA loja, nunca a principal.
    Caderneta `ausente` ou loja principal aparecendo no dominio cliente = o deploy
    saiu como Preview, sem as `IKCOUS_FROTA_*`. Refazer com `--prod`.
@@ -65,7 +69,7 @@ Savy e Almeida (lojas clientes no workflow) aceitam SO as cinco functions financ
 
 - Principal: reverter o PR na `production`, ou promover o deployment anterior na Vercel.
 - Lojas clientes: rodar de novo o `npx vercel --prod` da secao acima com o SHA anterior,
-  ou promover o deployment Production anterior no projeto da loja.
+  ou promover o deployment Production anterior do projeto (vale para as 4 de uma vez).
 
 ## Rollback integral da configuracao
 
