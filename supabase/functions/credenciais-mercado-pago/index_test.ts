@@ -159,7 +159,7 @@ const fetchClienteFalso = ((input: any) => {
 }) as any;
 
 globalThis.fetch = fetchAdminFalso;
-const { handler } = await import("./index.ts");
+const { handler, faltasParaReceber } = await import("./index.ts");
 globalThis.fetch = fetchNativo;
 
 async function comFetch(
@@ -232,6 +232,13 @@ function supabaseFalso(
         falhaNoUpsert: false,
         falhaNaLojaAgora: false,
         lojaSemLinhaAgora: false,
+        // Quantos upserts em app_settings ainda passam (Infinity = todos):
+        // permite encenar "a 1ª gravação do registro passa e a 2ª estoura"
+        // (o carimbo de auditoria depois da ficha).
+        upsertsPermitidos: Infinity as number,
+        // Ordem em que as duas tabelas foram tocadas ("ficha" | "registro"),
+        // para provar ficha ANTES do registro (mp-10).
+        ordem: [] as string[],
         upserts: [] as any[],
         loja: {
             pagamento_online: false as boolean,
@@ -253,11 +260,15 @@ function supabaseFalso(
             });
         },
         upsert(linha: any) {
-            if (estado.falhaNoUpsert) {
+            if (
+                estado.falhaNoUpsert ||
+                estado.upserts.length >= estado.upsertsPermitidos
+            ) {
                 return Promise.resolve({
                     error: { message: "app_settings fora do ar" },
                 });
             }
+            estado.ordem.push("registro");
             estado.upserts.push(linha);
             estado.valor = linha.value;
             return Promise.resolve({ error: null });
@@ -275,9 +286,14 @@ function supabaseFalso(
         },
         update(linha: any) {
             estado.updatesLoja.push(linha);
+            estado.ordem.push("ficha");
+            // A trigger real só recusa quando a linha FINAL fica sem forma
+            // nenhuma — ou seja, ao DESLIGAR `pagamento_online`. Ligar, ou só
+            // publicar a Public Key, nunca esbarra nela.
             const recusa = (opcoes.falhaNaLoja || estado.falhaNaLojaAgora)
                 ? { message: "DOMINIO_PUBLICO_SO_MUDA_PELA_FROTA" }
-                : opcoes.falhaSemFormaDePagamento
+                : opcoes.falhaSemFormaDePagamento &&
+                        linha.pagamento_online === false
                 ? { message: "LOJA_SEM_FORMA_DE_PAGAMENTO" }
                 : null;
             const zeroLinha = opcoes.lojaSemLinha || estado.lojaSemLinhaAgora;
@@ -603,7 +619,11 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C12 — trocar o token derruba o último teste antigo", async () => {
+    await t.step("C12 — trocar o token substitui o último teste antigo pelo teste do token NOVO (feito na hora, no salvar)", async () => {
+        // 30/09/2026 (liberação automática): antes, trocar o token só ZERAVA
+        // o `ultimo_teste` (null) e deixava o lojista testar à mão. Agora o
+        // salvar testa o token novo NA HORA — o "Velha" não fala mais desta
+        // chave e é trocado pelo resultado do teste dela, nunca fica velho.
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -622,7 +642,8 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
             );
             assertEquals(JSON.parse(estado.valor!).ultimo_teste.conta, "Velha");
-            // Troca o token: o "Velha" não fala mais desta chave.
+            // Troca o token: o teste do token novo roda dentro do salvar.
+            const nova = buscarMpFalso(200, { live_mode: true, nickname: "Nova" });
             await comFetch(fetchAdminFalso, () =>
                 handler(
                     requisicao({
@@ -630,11 +651,13 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO_2,
                     }),
-                    { supabase: cliente },
+                    { supabase: cliente, buscar: nova.buscar },
                 )
             );
             const salvo = JSON.parse(estado.valor!);
-            assertEquals(salvo.ultimo_teste, null);
+            assertEquals(salvo.ultimo_teste.conta, "Nova");
+            assertEquals(nova.anotacoes.length, 1);
+            assertEquals(nova.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO_2}`);
             assertEquals(salvo.mascara_token, `••••${TOKEN_FALSO_2.slice(-4)}`);
         } finally {
             desfazerEnv();
@@ -788,245 +811,56 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C17 — ligar_pix sem teste conectado -> 409 e ficha desligada", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso();
-        try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(resposta.status, 409);
-            const corpo = await resposta.json();
-            assertEquals(
-                corpo.erro.includes("Teste a conexão com sucesso antes de ligar"),
-                true,
-            );
-            assertEquals(estado.loja.pagamento_online, false);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    await t.step("C18 — ligar_pix com teste conectado liga e carimba quem ligou", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso();
-        try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(resposta.status, 200);
-            const corpo = await resposta.json();
-            assertEquals(corpo.pix_ligado, true);
-            // Chave de produção: nada de aviso de dinheiro de mentira.
-            assertEquals(corpo.aviso, undefined);
-            assertEquals(estado.loja.pagamento_online, true);
-            // Auditoria: quem ligou e quando, no registro.
-            const salvo = JSON.parse(estado.valor!);
-            assertEquals(salvo.pix_ligado_por, ID_ADMIN);
-            assertEquals(typeof salvo.pix_ligado_em, "string");
-            // E o carimbo sobrevive a um novo salvar (auditoria não some).
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({ acao: "salvar", public_key: PUBLIC_KEY_FALSA }),
-                    { supabase: cliente },
-                )
-            );
-            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    await t.step("C19 — ligar_pix com chave de TESTE liga com aviso", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso();
-        try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: false,
-                nickname: "Loja Sandbox",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(resposta.status, 200);
-            const corpo = await resposta.json();
-            assertEquals(corpo.pix_ligado, true);
-            assertEquals(corpo.aviso.includes("TESTE"), true);
-            assertEquals(estado.loja.pagamento_online, true);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    await t.step("C20 — desligar_pix desliga e ler conta a verdade da ficha", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso();
-        try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, { live_mode: true, nickname: "Loja Teste" });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            const respostaLigada = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ler" }), { supabase: cliente })
-            );
-            const corpoLigado = await respostaLigada.json();
-            assertEquals(corpoLigado.pix_ligado, true);
-            assertEquals(corpoLigado.public_key_na_loja, true);
-
-            const respostaDesligar = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "desligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(respostaDesligar.status, 200);
-            assertEquals((await respostaDesligar.json()).pix_ligado, false);
-            assertEquals(estado.loja.pagamento_online, false);
-
-            // Ficha com OUTRA Public Key (semeada por fora): `ler` acusa a
-            // divergência em vez de dizer que está tudo certo.
-            estado.loja.mp_public_key = "APP_USR-publica-de-outra-loja";
-            const respostaDivergente = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ler" }), { supabase: cliente })
-            );
-            const corpoDivergente = await respostaDivergente.json();
-            assertEquals(corpoDivergente.pix_ligado, false);
-            assertEquals(corpoDivergente.public_key_na_loja, false);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    await t.step("C31 — desligar_pix numa loja sem forma na entrega -> 409 amigável, PIX continua aceso", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso({
-            falhaSemFormaDePagamento: true,
-        });
-        // A loja já vendia só pelo app (PIX aceso, nenhuma forma na
-        // entrega) — é EXATAMENTE o estado que a trigger protege.
-        estado.loja.pagamento_online = true;
-        try {
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "desligar_pix" }), {
-                    supabase: cliente,
-                })
-            );
-            assertEquals(resposta.status, 409);
-            const corpo = await resposta.json();
-            assertEquals(
-                corpo.erro,
-                "Ligue ao menos uma forma de pagamento na entrega antes de desligar o PIX pelo app.",
-            );
-            // Nunca o recado genérico "tente de novo" — a lojista precisa
-            // saber O QUE fazer, não tentar de novo (tentar de novo dá o
-            // MESMO erro).
-            assertEquals(corpo.erro.includes("tente de novo"), false);
-            // A recusa da trigger impede a mutação simulada (Object.assign)
-            // — o PIX continua aceso, exatamente como estava.
-            assertEquals(estado.loja.pagamento_online, true);
-            assertEquals(estado.updatesLoja.length, 1);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    await t.step("C32 — salvar credencial nova numa loja sem forma na entrega -> 409 com recado de troca de chave, mp-8 nao relaxa", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso({
-            falhaSemFormaDePagamento: true,
-        });
-        // PIX já aceso (mesmo cenário de C31): é a troca de credencial que
-        // aciona mp-8 (desligarPix = trocou credencial && pagamento_online
-        // atual) e por isso esbarra no invariante.
-        estado.loja.pagamento_online = true;
-        try {
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            assertEquals(resposta.status, 409);
-            const corpo = await resposta.json();
-            assertEquals(
-                corpo.erro,
-                "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
-            );
-            // mp-8 não relaxa: a credencial NOVA não fica gravada em lugar
-            // nenhum (nem app_settings, nem a Public Key na ficha).
-            assertEquals(estado.upserts.length, 0);
-            assertEquals(estado.loja.mp_public_key, null);
-            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    // ── C33–C38 (30/09/2026): o PIX só acende com a CHAVE DE ASSINATURA DO
-    // WEBHOOK da própria loja salva. criar-pagamento já recusa PIX sem ela
-    // (409 pixSemChaveDeAssinatura); acender o interruptor sem a chave é o
-    // cliente escolher PIX e tomar erro no fim da compra.
+    // ══════════════════════════════════════════════════════════════════════
+    // LIBERAÇÃO AUTOMÁTICA (30/09/2026). Do C17 ao C38 abaixo, cada teste que
+    // antes ligava o PIX à mão (`ligar_pix` depois de `testar`) foi reescrito
+    // para o comportamento novo: as três chaves + teste de conexão que passou
+    // LIGAM sozinhos, `ligar_pix` virou "retomar" e `desligar_pix` virou
+    // "pausar". Os L1–L20 são os casos NOVOS (limite, dado que já existia,
+    // recusa do invariante, falha no meio da gravação).
+    // ══════════════════════════════════════════════════════════════════════
     const RECADO_SEM_CHAVE_DE_ASSINATURA =
         "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+    const OK_PRODUCAO = { live_mode: true, nickname: "Loja Teste" };
+    const TRES_CHAVES = {
+        acao: "salvar",
+        public_key: PUBLIC_KEY_FALSA,
+        access_token: TOKEN_FALSO,
+        webhook_secret: WEBHOOK_FALSO,
+    };
 
-    /** Salva credenciais, testa a conexão (conectado) — deixa pronto para ligar. */
+    /** Uma chamada ao handler, com a porta de admin e (opcional) o MP dublê. */
+    function chamar(cliente: any, corpo: unknown, buscar?: any) {
+        return comFetch(fetchAdminFalso, () =>
+            handler(requisicao(corpo), {
+                supabase: cliente,
+                ...(buscar ? { buscar } : {}),
+            })
+        );
+    }
+
+    /** MP dublê que estoura como a rede de verdade (nem chega a haver resposta). */
+    function buscarMpRede() {
+        const anotacoes: Array<{ url: string; bearer: string }> = [];
+        const buscar = (async (url: any, init?: RequestInit) => {
+            anotacoes.push({
+                url: String(url),
+                bearer: new Headers(init?.headers).get("Authorization") ?? "",
+            });
+            throw new TypeError("falha de rede simulada");
+        }) as any;
+        return { buscar, anotacoes };
+    }
+
+    /** As três chaves + teste que passa: a loja liga SOZINHA. */
+    async function lojaLigada(cliente: any, corpoExtra: Record<string, unknown> = {}) {
+        const mp = buscarMpFalso(200, OK_PRODUCAO);
+        const r = await chamar(cliente, { ...TRES_CHAVES, ...corpoExtra }, mp.buscar);
+        assertEquals(r.status, 200);
+        return mp;
+    }
+
+    /** Salva credenciais e testa (conectado), SEM a chave de notificações. */
     async function prepararLojaTestada(
         cliente: any,
         segredoDeWebhook?: string,
@@ -1044,16 +878,206 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                 { supabase: cliente },
             )
         );
-        const { buscar } = buscarMpFalso(200, {
-            live_mode: true,
-            nickname: "Loja Teste",
-        });
+        const { buscar } = buscarMpFalso(200, OK_PRODUCAO);
         await comFetch(fetchAdminFalso, () =>
             handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
         );
     }
 
-    await t.step("C33 — ligar_pix sem a chave de assinatura salva -> 409 com recado e NENHUMA escrita", async () => {
+    await t.step("C17 — ligar_pix (retomar) com o teste falhado -> 409 e ficha desligada, sem escrita", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            // As 3 chaves salvas, mas o teste do salvar foi recusado: só
+            // falta o teste.
+            const mp = buscarMpFalso(401, { message: "invalid token" });
+            await chamar(cliente, TRES_CHAVES, mp.buscar);
+            const upsertsAntes = estado.upserts.length;
+            estado.updatesLoja.length = 0;
+
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(
+                corpo.erro.includes("Teste a conexão com sucesso antes de ligar"),
+                true,
+            );
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(estado.upserts.length, upsertsAntes);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C18 — salvar as três chaves com teste que passa LIGA sozinho: ficha antes do registro, carimbo de quem ligou", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(200, OK_PRODUCAO);
+            const resposta = await chamar(cliente, TRES_CHAVES, mp.buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.faltando, []);
+            assertEquals(corpo.pausado, false);
+            // Chave de produção: nada de aviso de dinheiro de mentira.
+            assertEquals(corpo.aviso, undefined);
+            assertEquals(corpo.ultimo_teste.conectado, true);
+            // O teste rodou UMA vez, com o token NOVO em claro.
+            assertEquals(mp.anotacoes.length, 1);
+            assertEquals(mp.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO}`);
+            // Ficha: um update só, com as DUAS colunas juntas (nunca aceso sem
+            // chave) — e a ficha vem ANTES do registro (ordem mp-10).
+            assertEquals(estado.updatesLoja.length, 1);
+            assertEquals(estado.updatesLoja[0].pagamento_online, true);
+            assertEquals(estado.updatesLoja[0].mp_public_key, PUBLIC_KEY_FALSA);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.ordem, ["ficha", "registro"]);
+            // Auditoria: quem ligou e quando, no registro.
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.pix_ligado_por, ID_ADMIN);
+            assertEquals(typeof salvo.pix_ligado_em, "string");
+            assertEquals(salvo.ultimo_teste.conectado, true);
+            // O segredo nunca aparece na resposta.
+            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
+            // E o carimbo sobrevive a um novo salvar (auditoria não some).
+            await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA });
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C19 — chave de TESTE liga, mas com aviso de que não entra dinheiro de verdade", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(200, { live_mode: false, nickname: "Loja Sandbox" });
+            const resposta = await chamar(cliente, TRES_CHAVES, mp.buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.aviso.includes("TESTE"), true);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C20 — desligar_pix (pausar) desliga e registra a pausa; ler conta a verdade da ficha", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            const corpoLigado = await (await chamar(cliente, { acao: "ler" })).json();
+            assertEquals(corpoLigado.pix_ligado, true);
+            assertEquals(corpoLigado.public_key_na_loja, true);
+            assertEquals(corpoLigado.pausado, false);
+            assertEquals(corpoLigado.faltando, []);
+
+            const respostaPausar = await chamar(cliente, { acao: "desligar_pix" });
+            assertEquals(respostaPausar.status, 200);
+            const corpoPausar = await respostaPausar.json();
+            assertEquals(corpoPausar.pix_ligado, false);
+            assertEquals(corpoPausar.pausado, true);
+            assertEquals(estado.loja.pagamento_online, false);
+            // A pausa fica no registro, com quem pausou e quando.
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.pagamento_pausado, true);
+            assertEquals(salvo.pausado_por, ID_ADMIN);
+            assertEquals(typeof salvo.pausado_em, "string");
+            // Pausar NÃO apaga o carimbo de quem ligou (auditoria).
+            assertEquals(salvo.pix_ligado_por, ID_ADMIN);
+            // Ficha ANTES do registro também ao pausar.
+            assertEquals(estado.ordem.slice(-2), ["ficha", "registro"]);
+
+            const lidoPausado = await (await chamar(cliente, { acao: "ler" })).json();
+            assertEquals(lidoPausado.pausado, true);
+            assertEquals(lidoPausado.pix_ligado, false);
+
+            // Ficha com OUTRA Public Key (semeada por fora): `ler` acusa a
+            // divergência em vez de dizer que está tudo certo.
+            estado.loja.mp_public_key = "APP_USR-publica-de-outra-loja";
+            const corpoDivergente = await (await chamar(cliente, { acao: "ler" })).json();
+            assertEquals(corpoDivergente.pix_ligado, false);
+            assertEquals(corpoDivergente.public_key_na_loja, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C31 — pausar numa loja sem forma na entrega -> 409 amigável, PIX continua aceso e a pausa NÃO fica gravada", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({
+            falhaSemFormaDePagamento: true,
+        });
+        try {
+            // A loja já vendia só pelo app (PIX aceso, nenhuma forma na
+            // entrega) — é EXATAMENTE o estado que a trigger protege.
+            await lojaLigada(cliente);
+            const registroAntes = estado.valor;
+            const resposta = await chamar(cliente, { acao: "desligar_pix" });
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(
+                corpo.erro,
+                "Ligue ao menos uma forma de pagamento na entrega antes de desligar o PIX pelo app.",
+            );
+            // Nunca o recado genérico "tente de novo" — a lojista precisa
+            // saber O QUE fazer (tentar de novo dá o MESMO erro).
+            assertEquals(corpo.erro.includes("tente de novo"), false);
+            // A recusa da trigger impede a mutação: o PIX continua aceso e
+            // o registro NÃO ganhou pausa nenhuma (senão a tela diria
+            // "Pausado" com o PIX vendendo, e o próximo teste o religaria).
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(estado.valor, registroAntes);
+            assertEquals(JSON.parse(estado.valor!).pagamento_pausado ?? false, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C32 — salvar credencial nova que FALHA no teste, numa loja sem forma na entrega -> 409 com recado de troca de chave; mp-8 não relaxa", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({
+            falhaSemFormaDePagamento: true,
+        });
+        try {
+            await lojaLigada(cliente);
+            const registroAntes = estado.valor;
+            const publicaAntes = estado.loja.mp_public_key;
+            // O token novo NÃO passa no teste: o alvo passa a ser desligado,
+            // e desligar esbarra no invariante.
+            const mp = buscarMpFalso(401, { message: "invalid token" });
+            const resposta = await chamar(
+                cliente,
+                { ...TRES_CHAVES, access_token: TOKEN_FALSO_2, public_key: "APP_USR-publica-falsa-nova-conta" },
+                mp.buscar,
+            );
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(
+                corpo.erro,
+                "Ligue ao menos uma forma de pagamento na entrega antes de trocar as chaves do Mercado Pago.",
+            );
+            // mp-8 não relaxa: a credencial NOVA não fica gravada em lugar
+            // nenhum (nem app_settings, nem a Public Key na ficha).
+            assertEquals(estado.valor, registroAntes);
+            assertEquals(estado.loja.mp_public_key, publicaAntes);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO_2), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    // ── C33–C38 (30/09/2026): o PIX só acende com a CHAVE DE ASSINATURA DO
+    // WEBHOOK da própria loja salva. criar-pagamento já recusa PIX sem ela
+    // (409 pixSemChaveDeAssinatura); acender o interruptor sem a chave é o
+    // cliente escolher PIX e tomar erro no fim da compra.
+
+    await t.step("C33 — retomar sem a chave de assinatura salva -> 409 com recado e NENHUMA escrita", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
@@ -1061,14 +1085,12 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             const upsertsAntes = estado.upserts.length;
             estado.updatesLoja.length = 0;
 
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(resposta.status, 409);
             const corpo = await resposta.json();
             assertEquals(corpo.erro, RECADO_SEM_CHAVE_DE_ASSINATURA);
             // A recusa vem ANTES de qualquer escrita: nem a ficha (o
-            // interruptor), nem o registro (o carimbo de auditoria).
+            // interruptor), nem o registro (a pausa / o carimbo).
             assertEquals(estado.updatesLoja.length, 0);
             assertEquals(estado.loja.pagamento_online, false);
             assertEquals(estado.upserts.length, upsertsAntes);
@@ -1081,69 +1103,76 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C34 — ligar_pix com a chave de assinatura salva liga como antes", async () => {
+    await t.step("C34 — as três chaves + teste que passa ligam sozinhas (no testar); retomar depois é idempotente", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
             await prepararLojaTestada(cliente, WEBHOOK_FALSO);
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(resposta.status, 200);
-            assertEquals((await resposta.json()).pix_ligado, true);
+            // Ninguém chamou ligar_pix: o `testar` já ligou.
             assertEquals(estado.loja.pagamento_online, true);
             assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+            const upsertsAntes = estado.upserts.length;
+            estado.updatesLoja.length = 0;
+
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.pausado, false);
+            // Já estava ligado e em sincronia com a ficha: nada a escrever
+            // na ficha, e o carimbo de quem ligou não é regravado.
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+            assertEquals(estado.upserts.length, upsertsAntes);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("C35 — o caminho do recado funciona: salvar a chave depois do 409 e ligar, sem retestar", async () => {
+    await t.step("C35 — o caminho do recado funciona: salvar a chave de notificações (com o teste que passa) liga sozinho, sem botão", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
             await prepararLojaTestada(cliente);
-            const recusada = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const recusada = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(recusada.status, 409);
+            assertEquals(estado.loja.pagamento_online, false);
 
-            // A tela reenvia a Public Key (a mesma) + a chave nova, sem token:
-            // não é troca de credencial, o teste de conexão continua valendo.
-            const salvou = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
+            // Chave de notificações NOVA = credencial nova = teste na hora.
+            const mp = buscarMpFalso(200, OK_PRODUCAO);
+            const salvou = await chamar(
+                cliente,
+                {
+                    acao: "salvar",
+                    public_key: PUBLIC_KEY_FALSA,
+                    webhook_secret: WEBHOOK_FALSO,
+                },
+                mp.buscar,
             );
             assertEquals(salvou.status, 200);
-
-            const ligou = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(ligou.status, 200);
+            assertEquals((await salvou.json()).pix_ligado, true);
             assertEquals(estado.loja.pagamento_online, true);
+            // O teste do salvar usou o token JÁ SALVO (decifrado): o lojista
+            // não colou o token de novo.
+            assertEquals(mp.anotacoes.length, 1);
+            assertEquals(mp.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO}`);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("C36 — desligar_pix continua permitido SEM a chave de assinatura", async () => {
+    await t.step("C36 — pausar continua permitido SEM a chave de assinatura (loja ligada antes desta regra)", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
             await prepararLojaTestada(cliente);
             // PIX já aceso por fora (loja que ligou antes desta regra).
             estado.loja.pagamento_online = true;
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "desligar_pix" }), { supabase: cliente })
-            );
+            const resposta = await chamar(cliente, { acao: "desligar_pix" });
             assertEquals(resposta.status, 200);
-            assertEquals((await resposta.json()).pix_ligado, false);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.pausado, true);
             assertEquals(estado.loja.pagamento_online, false);
         } finally {
             desfazerEnv();
@@ -1157,14 +1186,11 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         const { cliente, estado } = supabaseFalso();
         try {
             await prepararLojaTestada(cliente);
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            // Nem sozinho (no testar), nem por retomar.
+            assertEquals(estado.loja.pagamento_online, false);
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(resposta.status, 409);
-            assertEquals(
-                (await resposta.json()).erro,
-                RECADO_SEM_CHAVE_DE_ASSINATURA,
-            );
+            assertEquals((await resposta.json()).erro, RECADO_SEM_CHAVE_DE_ASSINATURA);
             assertEquals(estado.loja.pagamento_online, false);
         } finally {
             desfazerEnv();
@@ -1176,6 +1202,10 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         const { cliente, estado } = supabaseFalso();
         try {
             await prepararLojaTestada(cliente, WEBHOOK_FALSO);
+            // A loja ligou sozinha; simulamos a ficha desligada para provar a
+            // recusa do retomar (nada de acender com registro pela metade).
+            estado.loja.pagamento_online = false;
+            estado.updatesLoja.length = 0;
 
             // (a) Registro gravado ANTES de existir a chave de webhook: os
             // campos nem existem no JSON (não são null, são ausentes).
@@ -1185,90 +1215,59 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             delete legado.webhook_iv;
             delete legado.mascara_webhook;
             estado.valor = JSON.stringify(legado);
-            const semCampos = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const semCampos = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(semCampos.status, 409);
 
             // (b) Registro pela metade: cifrado sem o iv não decifra nada —
             // mesma noção de "tem chave" que o criar-pagamento usa.
             estado.valor = JSON.stringify({ ...completo, webhook_iv: null });
-            const semIv = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const semIv = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(semIv.status, 409);
             assertEquals(estado.loja.pagamento_online, false);
-            assertEquals(estado.updatesLoja.length, 1 /* só o da 1ª salvar */);
+            assertEquals(estado.updatesLoja.length, 0);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("C21 — ligar_pix publica a Public Key no MESMO update que acende o PIX", async () => {
+    await t.step("C21 — retomar publica a Public Key no MESMO update que acende o PIX", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
+            await lojaLigada(cliente);
+            await chamar(cliente, { acao: "desligar_pix" });
             // A ficha ficou SEM a Public Key (restauração de backup, escrita
             // manual no banco): acender o PIX assim é beco sem saída no fim da
             // compra — o Payment Brick não sobe sem a chave.
             estado.loja.mp_public_key = null;
             estado.updatesLoja.length = 0;
 
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(resposta.status, 200);
-            assertEquals((await resposta.json()).pix_ligado, true);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.pausado, false);
+            assertEquals(corpo.public_key_na_loja, true);
             // As DUAS colunas no MESMO update — nunca aceso sem chave.
             assertEquals(estado.updatesLoja.length, 1);
             assertEquals(estado.updatesLoja[0].pagamento_online, true);
             assertEquals(estado.updatesLoja[0].mp_public_key, PUBLIC_KEY_FALSA);
             assertEquals(estado.loja.pagamento_online, true);
             assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_FALSA);
+            // A pausa saiu do registro.
+            const salvo = JSON.parse(estado.valor!);
+            assertEquals(salvo.pagamento_pausado, false);
+            assertEquals(salvo.pausado_em ?? null, null);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("C22 — ligar_pix sem Public Key válida no registro -> 409 e ficha apagada", async () => {
+    await t.step("C22 — retomar sem Public Key válida no registro -> 409 e nada escrito", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
+            await prepararLojaTestada(cliente);
             // Registro antigo (gravado antes desta regra) sem Public Key: o
             // teste conecta, mas não há o que publicar na ficha.
             const registroSemChave = JSON.parse(estado.valor!);
@@ -1276,9 +1275,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             estado.valor = JSON.stringify(registroSemChave);
             estado.updatesLoja.length = 0;
 
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(resposta.status, 409);
             const corpo = await resposta.json();
             assertEquals(corpo.erro.includes("Public Key"), true);
@@ -1290,82 +1287,55 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C23 — salvar credencial nova desliga o PIX aceso; re-salvar igual não desliga", async () => {
+    await t.step("C23 — salvar credencial nova que FALHA no teste desliga o PIX aceso (mesmo update); re-salvar igual não desliga", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(estado.loja.pagamento_online, true);
+            await lojaLigada(cliente);
             estado.updatesLoja.length = 0;
 
-            // Token NOVO: a credencial que o PIX aceso usava não existe mais —
-            // ficar aceso é toda tentativa de PIX morrendo no cliente.
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO_2,
-                    }),
-                    { supabase: cliente },
-                )
+            // Token NOVO que o MP recusa: a credencial que o PIX aceso usava
+            // não existe mais, e a nova não passou — ficar aceso é toda
+            // tentativa de PIX morrendo no cliente.
+            const recusado = buscarMpFalso(401, { message: "invalid token" });
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO_2 },
+                recusado.buscar,
             );
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
             assertEquals(corpo.pix_desligado, true);
-            assertEquals(corpo.aviso.includes("Desliguei o PIX"), true);
+            assertEquals(corpo.aviso.includes("Desliguei"), true);
             assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["teste"]);
+            assertEquals(corpo.ultimo_teste.conectado, false);
             // Desligou no MESMO update que publicou a chave.
             assertEquals(estado.updatesLoja.length, 1);
             assertEquals(estado.updatesLoja[0].pagamento_online, false);
             assertEquals(estado.updatesLoja[0].mp_public_key, PUBLIC_KEY_FALSA);
             assertEquals(estado.loja.pagamento_online, false);
-
-            // De volta ao ar com a credencial nova testada...
-            const segundoMp = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), {
-                    supabase: cliente,
-                    buscar: segundoMp.buscar,
-                })
+            // O token novo ficou gravado (cifrado) com o teste que falhou.
+            assertEquals(
+                JSON.parse(estado.valor!).mascara_token,
+                `••••${TOKEN_FALSO_2.slice(-4)}`,
             );
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+
+            // De volta ao ar com o token que passa (salvar de novo, é troca)…
+            await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO },
+                buscarMpFalso(200, OK_PRODUCAO).buscar,
             );
             assertEquals(estado.loja.pagamento_online, true);
             estado.updatesLoja.length = 0;
 
             // ...e re-salvar SEM trocar credencial (a tela manda o token vazio)
             // não pode derrubar o PIX de quem está vendendo.
-            const reSalvar = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({ acao: "salvar", public_key: PUBLIC_KEY_FALSA }),
-                    { supabase: cliente },
-                )
-            );
+            const reSalvar = await chamar(cliente, {
+                acao: "salvar",
+                public_key: PUBLIC_KEY_FALSA,
+            });
             assertEquals(reSalvar.status, 200);
             const corpoReSalvar = await reSalvar.json();
             assertEquals(corpoReSalvar.pix_desligado, undefined);
@@ -1377,71 +1347,18 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C24 — ficha sem a linha id = 1: salvar falha, o recado é o certo e NADA fica pela metade", async () => {
-        const desfazerEnv = prepararEnv();
-        const { cliente, estado } = supabaseFalso({ lojaSemLinha: true });
-        try {
-            const respostaSalvar = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            // UPDATE sem error e sem linha afetada NÃO é "publicado".
-            assertEquals(respostaSalvar.status, 500);
-            const corpoSalvar = await respostaSalvar.json();
-            // mp-10: a causa certa ("não existe") e o conselho certo
-            // ("suporte") — nunca "tente de novo", que aqui é promessa vazia
-            // (nenhum retry cria a linha id = 1 sozinho).
-            assertEquals(corpoSalvar.erro.includes("não existe"), true);
-            assertEquals(corpoSalvar.erro.includes("suporte"), true);
-            assertEquals(corpoSalvar.erro.includes("Tente de novo"), false);
-            assertEquals(estado.loja.mp_public_key, null);
-            // mp-10: FICHA primeiro — como ela recusou, o REGISTRO (a
-            // credencial cifrada) nem chegou a ser gravado em app_settings.
-            // A versão anterior gravava o registro ANTES da ficha, e um
-            // 500 aqui saía com a credencial nova já em vigor.
-            assertEquals(estado.upserts.length, 0);
-            assertEquals(estado.valor, null);
-        } finally {
-            desfazerEnv();
-        }
-    });
-
-    await t.step("C24b — ligar_pix com a ficha sem a linha id = 1 também é falha explícita e honesta", async () => {
+    await t.step("C24b — retomar com a ficha sem a linha id = 1 também é falha explícita e honesta", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            // A linha id = 1 some ENTRE o teste e o ligar (ex.: restauração
-            // de backup) — o mesmo estado que C24 encena, só que a partir
-            // daqui, com credencial já salva e testada por trás.
+            await lojaLigada(cliente);
+            await chamar(cliente, { acao: "desligar_pix" });
+            // A linha id = 1 some ENTRE a pausa e o retomar (ex.: restauração
+            // de backup) — o mesmo estado que C24 encena.
             estado.lojaSemLinhaAgora = true;
+            const carimboAntes = JSON.parse(estado.valor!).pix_ligado_em;
 
-            const respostaLigar = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const respostaLigar = await chamar(cliente, { acao: "ligar_pix" });
             assertEquals(respostaLigar.status, 500);
             const corpoLigar = await respostaLigar.json();
             assertEquals(corpoLigar.pix_ligado, undefined);
@@ -1450,40 +1367,23 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             assertEquals(corpoLigar.erro.includes("Tente de novo"), false);
             // Nada acendeu — e o registro não carimbou um "ligou" que não ligou.
             assertEquals(estado.loja.pagamento_online, false);
-            assertEquals(JSON.parse(estado.valor!).pix_ligado_por ?? null, null);
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_em, carimboAntes);
         } finally {
             desfazerEnv();
         }
     });
 
-    await t.step("C25 — carimbo de auditoria falhou com o PIX já aceso -> 200 com aviso, nunca 'falhou'", async () => {
+    await t.step("C25 — carimbo de auditoria falhou com o PIX já aceso (retomar) -> 200 com aviso, nunca 'falhou'", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            // O app_settings cai DEPOIS de a ficha já ter acendido o PIX.
-            estado.falhaNoUpsert = true;
+            await lojaLigada(cliente);
+            await chamar(cliente, { acao: "desligar_pix" });
+            // Retomar grava 2 vezes: (1) tira a pausa, (2) carimba quem
+            // ligou. Só a 2ª (o carimbo) estoura, DEPOIS de a ficha acender.
+            estado.upsertsPermitidos = estado.upserts.length + 1;
 
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
             // A verdade do estado é a ficha: dizer "não consegui" com o PIX
             // aceso faz o lojista tentar de novo achando que está desligado.
             assertEquals(resposta.status, 200);
@@ -1497,49 +1397,29 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C26 — trocar SÓ a Public Key (sem mexer no Access Token) com o PIX aceso também desliga o PIX", async () => {
+    await t.step("C26 — trocar SÓ a Public Key (sem mexer no Access Token) é troca de credencial: testa na hora e, se falhar, desliga o PIX aceso", async () => {
         // Prende a mutação `trocouPublicKey = false`: com ela, este cenário
-        // (token vazio no corpo — nenhuma troca de TOKEN) não desligaria o
-        // PIX, e a loja ficaria vendendo com o Payment Brick de OUTRA conta
-        // sem uma palavra ao lojista.
+        // (token vazio no corpo — nenhuma troca de TOKEN) não testaria nada e
+        // a loja ficaria vendendo com o Payment Brick de OUTRA conta sem uma
+        // palavra ao lojista.
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
-            assertEquals(estado.loja.pagamento_online, true);
+            await lojaLigada(cliente);
             estado.updatesLoja.length = 0;
 
-            // SÓ a Public Key muda; nenhum access_token no corpo (a tela
-            // manda vazio quando o lojista não reeditou o Access Token).
             const PUBLIC_KEY_TROCADA = "APP_USR-publica-falsa-de-outra-conta";
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({ acao: "salvar", public_key: PUBLIC_KEY_TROCADA }),
-                    { supabase: cliente },
-                )
+            const mp = buscarMpFalso(401, { message: "invalid token" });
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_TROCADA },
+                mp.buscar,
             );
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
+            // O teste rodou, com o token JÁ SALVO (decifrado).
+            assertEquals(mp.anotacoes.length, 1);
+            assertEquals(mp.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO}`);
             assertEquals(corpo.pix_desligado, true);
             assertEquals(corpo.pix_ligado, false);
             assertEquals(estado.loja.pagamento_online, false);
@@ -1553,27 +1433,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            await lojaLigada(cliente);
             assertEquals(estado.loja.pagamento_online, true);
             const registroAntesDaFalha = estado.valor;
 
@@ -1582,15 +1442,10 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             estado.falhaNaLojaAgora = true;
 
             const PUBLIC_KEY_NOVA = "APP_USR-publica-falsa-de-outra-conta";
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_NOVA,
-                        access_token: TOKEN_FALSO_2,
-                    }),
-                    { supabase: cliente },
-                )
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_NOVA, access_token: TOKEN_FALSO_2 },
+                buscarMpFalso(200, OK_PRODUCAO).buscar,
             );
             assertEquals(resposta.status, 500);
             // A credencial ANTIGA — a que está vendendo de verdade — não foi
@@ -1610,43 +1465,29 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
-    await t.step("C28 — dois avisos de ligar_pix juntos saem com pontuação entre eles", async () => {
+    await t.step("C28 — os dois avisos (chave de TESTE + carimbo falhou) saem com pontuação entre eles (testar)", async () => {
         // Chave de SANDBOX (gera o primeiro aviso, que termina em "de
-        // verdade" sem ponto) + app_settings fora do ar (gera o segundo,
-        // depois de a ficha já ter acendido): os DOIS avisos saem juntos.
+        // verdade" sem ponto) + app_settings fora do ar NA 2ª gravação (gera
+        // o segundo, depois de a ficha já ter acendido): os DOIS avisos saem
+        // juntos.
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: false,
-                nickname: "Loja Sandbox",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            estado.falhaNoUpsert = true;
+            // As 3 chaves salvas com teste que FALHOU (401): ficha apagada.
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(401, { message: "x" }).buscar);
+            assertEquals(estado.loja.pagamento_online, false);
+            // `testar` grava 2 vezes ao ligar: o resultado do teste e o
+            // carimbo. Só o carimbo (a 2ª) estoura.
+            estado.upsertsPermitidos = estado.upserts.length + 1;
 
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            const { buscar } = buscarMpFalso(200, { live_mode: false, nickname: "Loja Sandbox" });
+            const resposta = await chamar(cliente, { acao: "testar" }, buscar);
             assertEquals(resposta.status, 200);
             const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
             // A frase da chave de TESTE termina em "de verdade" (sem ponto
             // no código-fonte) — sem a normalização, o `join(" ")` colava a
-            // frase seguinte direto nela: "...de verdade O PIX está ligado"
-            // sem separação de leitura nenhuma. Com o ponto, as DUAS frases
-            // ficam legíveis e discretas uma da outra.
+            // frase seguinte direto nela.
             assertEquals(
                 corpo.aviso.includes("de verdade. O PIX está ligado"),
                 true,
@@ -1665,27 +1506,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
         try {
-            await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_FALSA,
-                        access_token: TOKEN_FALSO,
-                        webhook_secret: WEBHOOK_FALSO,
-                    }),
-                    { supabase: cliente },
-                )
-            );
-            const { buscar } = buscarMpFalso(200, {
-                live_mode: true,
-                nickname: "Loja Teste",
-            });
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
-            );
-            await comFetch(fetchAdminFalso, () =>
-                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
-            );
+            await lojaLigada(cliente);
             assertEquals(estado.loja.pagamento_online, true);
             const registroAntesDaFalha = estado.valor;
 
@@ -1693,28 +1514,560 @@ Deno.test("credenciais-mercado-pago", async (t) => {
             // MEIO do próximo `salvar`, depois de a ficha já ter escrito.
             estado.falhaNoUpsert = true;
 
-            const PUBLIC_KEY_NOVA = "APP_USR-publica-falsa-de-outra-conta";
-            const resposta = await comFetch(fetchAdminFalso, () =>
-                handler(
-                    requisicao({
-                        acao: "salvar",
-                        public_key: PUBLIC_KEY_NOVA,
-                        access_token: TOKEN_FALSO_2,
-                    }),
-                    { supabase: cliente },
-                )
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: "APP_USR-publica-falsa-de-outra-conta", access_token: TOKEN_FALSO_2 },
+                buscarMpFalso(401, { message: "invalid token" }).buscar,
             );
             assertEquals(resposta.status, 500);
             const corpo = await resposta.json();
             // O recado soma as DUAS metades: nem promete "salvei" (o
-            // registro não gravou), nem cala sobre o PIX (que a ficha já
-            // desligou por segurança).
+            // registro não gravou), nem cala sobre o pagamento (que a ficha
+            // já desligou por segurança).
             assertEquals(corpo.erro.includes("Não salvei as chaves"), true);
-            assertEquals(corpo.erro.includes("desliguei o PIX"), true);
+            assertEquals(corpo.erro.includes("desliguei o pagamento pelo app"), true);
             // A ficha REALMENTE desligou — não é só o texto do erro.
             assertEquals(estado.loja.pagamento_online, false);
             // O registro (a credencial) NÃO trocou: gravarRegistro recusou.
             assertEquals(estado.valor, registroAntesDaFalha);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
+    // CASOS NOVOS DA LIBERAÇÃO AUTOMÁTICA
+    // ══════════════════════════════════════════════════════════════════════
+
+    await t.step("L1 — sem a chave de notificações NÃO liga, mesmo com o teste que passou (a ficha só recebe a Public Key)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(200, OK_PRODUCAO);
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO },
+                mp.buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["chave_notificacoes"]);
+            assertEquals(corpo.ultimo_teste.conectado, true);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.length, 1);
+            assertEquals(Object.keys(estado.updatesLoja[0]), ["mp_public_key"]);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L2 — teste recusado (401) NÃO liga: o resultado fica gravado e o aviso diz o que fazer", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const mp = buscarMpFalso(401, { message: "invalid token" });
+            const resposta = await chamar(cliente, TRES_CHAVES, mp.buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["teste"]);
+            assertEquals(corpo.ultimo_teste.conectado, false);
+            assertEquals(corpo.ultimo_teste.mensagem.includes("recusou"), true);
+            assertEquals(corpo.aviso.includes("não ligou"), true);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(JSON.parse(estado.valor!).ultimo_teste.conectado, false);
+            assertEquals(JSON.stringify(corpo).includes(TOKEN_FALSO), false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L3 — erro de REDE no teste do salvar: conectado=false, não liga, sem 500, e a resposta manda tocar em Testar", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            const mp = buscarMpRede();
+            const resposta = await chamar(cliente, TRES_CHAVES, mp.buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.ultimo_teste.conectado, false);
+            assertEquals(corpo.aviso.includes("Testar conexão"), true);
+            assertEquals(estado.loja.pagamento_online, false);
+            // As chaves FORAM salvas (só o teste é que não deu para fazer).
+            assertEquals(JSON.parse(estado.valor!).mascara_token, `••••${TOKEN_FALSO.slice(-4)}`);
+            // E o `testar` manual depois, com a rede de volta, liga.
+            const depois = await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar);
+            assertEquals((await depois.json()).pix_ligado, true);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L4 — trocar para um token que PASSA no teste mantém o PIX aceso (sem mexer em pagamento_online)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            estado.updatesLoja.length = 0;
+            const mp = buscarMpFalso(200, OK_PRODUCAO);
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO_2 },
+                mp.buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.pix_desligado, undefined);
+            assertEquals(mp.anotacoes[0].bearer, `Bearer ${TOKEN_FALSO_2}`);
+            // Estava ligado e continua: a ficha só recebeu a Public Key.
+            assertEquals(Object.keys(estado.updatesLoja[0]), ["mp_public_key"]);
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L5 — a PAUSA vence salvar e testar: nenhum dos dois religa; só retomar", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            await chamar(cliente, { acao: "desligar_pix" });
+            assertEquals(estado.loja.pagamento_online, false);
+            estado.updatesLoja.length = 0;
+
+            // Salvar credencial nova com teste que PASSA: a pausa segura.
+            const salvou = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, access_token: TOKEN_FALSO_2 },
+                buscarMpFalso(200, OK_PRODUCAO).buscar,
+            );
+            const corpoSalvar = await salvou.json();
+            assertEquals(corpoSalvar.pix_ligado, false);
+            assertEquals(corpoSalvar.pausado, true);
+            assertEquals(corpoSalvar.faltando, []);
+            assertEquals(estado.loja.pagamento_online, false);
+            // A pausa atravessa o salvar (o registro é regravado por inteiro).
+            assertEquals(JSON.parse(estado.valor!).pagamento_pausado, true);
+
+            // Testar com sucesso: também não religa.
+            const testou = await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar);
+            const corpoTestar = await testou.json();
+            assertEquals(corpoTestar.conectado, true);
+            assertEquals(corpoTestar.pix_ligado, false);
+            assertEquals(corpoTestar.pausado, true);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.some((u: any) => u.pagamento_online === true), false);
+            assertEquals(JSON.parse(estado.valor!).pagamento_pausado, true);
+
+            // Só "retomar" (ligar_pix) religa e limpa a pausa.
+            const retomou = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(retomou.status, 200);
+            assertEquals((await retomou.json()).pix_ligado, true);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(JSON.parse(estado.valor!).pagamento_pausado, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L6 — retomar com falta -> 409 com o recado do que falta e NENHUMA escrita (nem a pausa sai)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            await chamar(cliente, { acao: "desligar_pix" });
+            // Registro pela metade: o token cifrado sumiu (ex.: restauração).
+            const registro = JSON.parse(estado.valor!);
+            registro.token_cifrado = "";
+            estado.valor = JSON.stringify(registro);
+            const registroAntes = estado.valor;
+            estado.updatesLoja.length = 0;
+            const upsertsAntes = estado.upserts.length;
+
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(resposta.status, 409);
+            assertEquals((await resposta.json()).erro.includes("Access Token"), true);
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(estado.upserts.length, upsertsAntes);
+            // A pausa continua de pé (nada foi gravado).
+            assertEquals(estado.valor, registroAntes);
+            assertEquals(JSON.parse(estado.valor!).pagamento_pausado, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L7 — `ler` NUNCA escreve, nem quando o registro e a ficha discordam (sem registro, legado, ligado sem chave)", async () => {
+        const desfazerEnv = prepararEnv();
+        try {
+            // (a) nenhum registro ainda: tudo falta, nada é escrito.
+            {
+                const { cliente, estado } = supabaseFalso();
+                const corpo = await (await chamar(cliente, { acao: "ler" })).json();
+                assertEquals(corpo.configurado, false);
+                assertEquals(corpo.faltando, ["public_key", "access_token", "chave_notificacoes", "teste"]);
+                assertEquals(corpo.pausado, false);
+                assertEquals(estado.upserts.length, 0);
+                assertEquals(estado.updatesLoja.length, 0);
+            }
+            // (b) ficha LIGADA por fora e registro sem a chave de
+            // notificações: `ler` conta a falta, mas NÃO desliga sozinho.
+            {
+                const { cliente, estado } = supabaseFalso();
+                await prepararLojaTestada(cliente);
+                estado.loja.pagamento_online = true;
+                estado.updatesLoja.length = 0;
+                const upsertsAntes = estado.upserts.length;
+                const corpo = await (await chamar(cliente, { acao: "ler" })).json();
+                assertEquals(corpo.pix_ligado, true);
+                assertEquals(corpo.faltando, ["chave_notificacoes"]);
+                assertEquals(estado.loja.pagamento_online, true);
+                assertEquals(estado.updatesLoja.length, 0);
+                assertEquals(estado.upserts.length, upsertsAntes);
+            }
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L8 — re-salvar IDÊNTICO não chama o MP nem mexe no estado (só republica a Public Key)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            const testeAntes = JSON.parse(estado.valor!).ultimo_teste;
+            estado.updatesLoja.length = 0;
+
+            const espia = buscarMpFalso(200, OK_PRODUCAO);
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA },
+                espia.buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(espia.anotacoes.length, 0);
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.aviso, undefined);
+            assertEquals(Object.keys(estado.updatesLoja[0]), ["mp_public_key"]);
+            assertEquals(JSON.parse(estado.valor!).ultimo_teste, testeAntes);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L8b — re-salvar IDÊNTICO não corrige a ficha nem para um lado nem para o outro (loja que já existia com o estado antigo só muda quando algo MUDA)", async () => {
+        const desfazerEnv = prepararEnv();
+        try {
+            // (a) tudo pronto, mas a ficha está desligada (desligada à mão no
+            // modelo antigo): re-salvar igual NÃO liga.
+            {
+                const { cliente, estado } = supabaseFalso();
+                await lojaLigada(cliente);
+                estado.loja.pagamento_online = false;
+                estado.updatesLoja.length = 0;
+                const corpo = await (
+                    await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA })
+                ).json();
+                assertEquals(corpo.pix_ligado, false);
+                assertEquals(estado.loja.pagamento_online, false);
+                assertEquals(Object.keys(estado.updatesLoja[0]), ["mp_public_key"]);
+            }
+            // (b) ficha ligada por fora com o registro sem a chave de
+            // notificações: re-salvar igual NÃO desliga.
+            {
+                const { cliente, estado } = supabaseFalso();
+                await prepararLojaTestada(cliente);
+                estado.loja.pagamento_online = true;
+                estado.updatesLoja.length = 0;
+                const corpo = await (
+                    await chamar(cliente, { acao: "salvar", public_key: PUBLIC_KEY_FALSA })
+                ).json();
+                assertEquals(corpo.pix_ligado, true);
+                assertEquals(corpo.faltando, ["chave_notificacoes"]);
+                assertEquals(estado.loja.pagamento_online, true);
+                assertEquals(Object.keys(estado.updatesLoja[0]), ["mp_public_key"]);
+            }
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L9 — faltasParaReceber: ordem fixa e uma falta por causa", () => {
+        const teste = { quando: "x", conectado: true, mensagem: "ok", ambiente: null, conta: null };
+        const completo = {
+            public_key: PUBLIC_KEY_FALSA,
+            token_cifrado: "c",
+            token_iv: "i",
+            mascara_token: "••••1",
+            webhook_cifrado: "w",
+            webhook_iv: "v",
+            mascara_webhook: "••••2",
+            ultimo_teste: teste,
+            atualizado_em: "x",
+        };
+        assertEquals(faltasParaReceber(completo), []);
+        assertEquals(faltasParaReceber(null), ["public_key", "access_token", "chave_notificacoes", "teste"]);
+        assertEquals(faltasParaReceber(undefined).length, 4);
+        assertEquals(faltasParaReceber({ ...completo, public_key: "" }), ["public_key"]);
+        assertEquals(faltasParaReceber({ ...completo, public_key: "chave-sem-prefixo" }), ["public_key"]);
+        assertEquals(faltasParaReceber({ ...completo, token_cifrado: "" }), ["access_token"]);
+        assertEquals(faltasParaReceber({ ...completo, token_iv: "" }), ["access_token"]);
+        assertEquals(faltasParaReceber({ ...completo, webhook_cifrado: null }), ["chave_notificacoes"]);
+        assertEquals(faltasParaReceber({ ...completo, webhook_iv: null }), ["chave_notificacoes"]);
+        assertEquals(faltasParaReceber({ ...completo, ultimo_teste: null }), ["teste"]);
+        assertEquals(faltasParaReceber({ ...completo, ultimo_teste: { ...teste, conectado: false } }), ["teste"]);
+        // Várias faltas saem na ORDEM fixa.
+        assertEquals(
+            faltasParaReceber({ ...completo, webhook_cifrado: null, public_key: "", ultimo_teste: null }),
+            ["public_key", "chave_notificacoes", "teste"],
+        );
+        // A pausa NÃO é falta: registro pausado e completo não tem faltas.
+        assertEquals(faltasParaReceber({ ...completo, pagamento_pausado: true }), []);
+    });
+
+    await t.step("L10 — testar que FALHA e o invariante recusa desligar: 200, o teste fica gravado, a ficha fica como estava e há aviso claro (sem 500)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso({
+            falhaSemFormaDePagamento: true,
+        });
+        try {
+            await lojaLigada(cliente);
+            const resposta = await chamar(
+                cliente,
+                { acao: "testar" },
+                buscarMpFalso(401, { message: "invalid token" }).buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.conectado, false);
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(corpo.aviso.includes("forma de pagamento na entrega"), true);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(JSON.parse(estado.valor!).ultimo_teste.conectado, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L11 — testar reconcilia: liga quando tudo passa, e só escreve na ficha quando o estado MUDA", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(401, { message: "x" }).buscar);
+            assertEquals(estado.loja.pagamento_online, false);
+            estado.updatesLoja.length = 0;
+
+            const primeira = await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar);
+            const corpo = await primeira.json();
+            assertEquals(corpo.conectado, true);
+            assertEquals(corpo.pix_ligado, true);
+            // O painel de Ajustes infere "chave OK" a partir daqui: a resposta
+            // diz o que a ficha REALMENTE carrega.
+            assertEquals(corpo.public_key_na_loja, true);
+            assertEquals(corpo.faltando, []);
+            assertEquals(estado.updatesLoja.length, 1);
+            assertEquals(estado.updatesLoja[0].pagamento_online, true);
+            assertEquals(estado.updatesLoja[0].mp_public_key, PUBLIC_KEY_FALSA);
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+
+            // Segundo teste que passa: já está em sincronia, nada a escrever.
+            await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar);
+            assertEquals(estado.updatesLoja.length, 1);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L12 — testar que FALHA desliga o PIX aceso e conta isso", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            const resposta = await chamar(
+                cliente,
+                { acao: "testar" },
+                buscarMpFalso(401, { message: "invalid token" }).buscar,
+            );
+            const corpo = await resposta.json();
+            assertEquals(corpo.conectado, false);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.faltando, ["teste"]);
+            assertEquals(corpo.aviso.includes("Desliguei"), true);
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L13 — ficha LIGADA com a Public Key errada/ausente é corrigida no reconcilia (não vira 'em sincronia' falso)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            estado.loja.mp_public_key = null;
+            estado.updatesLoja.length = 0;
+            const corpo = await (
+                await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar)
+            ).json();
+            assertEquals(corpo.pix_ligado, true);
+            assertEquals(estado.updatesLoja.length, 1);
+            assertEquals(estado.updatesLoja[0].pagamento_online, true);
+            assertEquals(estado.updatesLoja[0].mp_public_key, PUBLIC_KEY_FALSA);
+            assertEquals(estado.loja.mp_public_key, PUBLIC_KEY_FALSA);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L14 — primeira vez: a ficha liga e o registro estoura -> reverte a ficha (nunca aceso sem registro por trás) e responde 500", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            estado.falhaNoUpsert = true;
+            const resposta = await chamar(cliente, TRES_CHAVES, buscarMpFalso(200, OK_PRODUCAO).buscar);
+            assertEquals(resposta.status, 500);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro.includes("Não salvei as chaves"), true);
+            // Sem registro gravado, a ficha NÃO pode ficar aceso (o
+            // criar-pagamento cairia nas chaves da plataforma).
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.valor, null);
+            assertEquals(estado.updatesLoja[estado.updatesLoja.length - 1], { pagamento_online: false });
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L15 — token salvo ilegível + só a chave de notificações nova: o teste falha SEM 500, e o recado diz para colar de novo", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            const registro = JSON.parse(estado.valor!);
+            registro.token_cifrado = "lixo-que-nao-decifra";
+            estado.valor = JSON.stringify(registro);
+            const espia = buscarMpFalso(200, OK_PRODUCAO);
+            const resposta = await chamar(
+                cliente,
+                { acao: "salvar", public_key: PUBLIC_KEY_FALSA, webhook_secret: "outro-segredo-de-webhook-1234" },
+                espia.buscar,
+            );
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(espia.anotacoes.length, 0);
+            assertEquals(corpo.ultimo_teste.conectado, false);
+            assertEquals(corpo.ultimo_teste.mensagem.includes("Não consegui ler a chave salva"), true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L16 — dado que JÁ EXISTIA (registro sem os campos de pausa, ficha desligada, tudo completo): `ler` conta e não escreve; o próximo testar liga", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            // Volta ao formato de ANTES: sem nenhum campo de pausa, e a
+            // ficha desligada (a loja tinha desligado no modelo manual).
+            const registro = JSON.parse(estado.valor!);
+            delete registro.pagamento_pausado;
+            delete registro.pausado_em;
+            delete registro.pausado_por;
+            estado.valor = JSON.stringify(registro);
+            estado.loja.pagamento_online = false;
+            estado.updatesLoja.length = 0;
+            const registroAntes = estado.valor;
+
+            const lido = await (await chamar(cliente, { acao: "ler" })).json();
+            assertEquals(lido.pausado, false);
+            assertEquals(lido.faltando, []);
+            assertEquals(lido.pix_ligado, false);
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(estado.valor, registroAntes);
+
+            // Sem pausa registrada, a reconciliação do testar o liga.
+            const testou = await (
+                await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar)
+            ).json();
+            assertEquals(testou.pix_ligado, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L17 — pausar sem nenhum registro: só apaga a ficha (não inventa registro pela metade)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            // Loja que vendia pelas chaves da PLATAFORMA (sem registro).
+            estado.loja.pagamento_online = true;
+            const resposta = await chamar(cliente, { acao: "desligar_pix" });
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.upserts.length, 0);
+            assertEquals(estado.valor, null);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L18 — pausar: a ficha apaga mas o registro estoura -> 500 honesto (a pausa não ficou registrada)", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            estado.falhaNoUpsert = true;
+            const resposta = await chamar(cliente, { acao: "desligar_pix" });
+            assertEquals(resposta.status, 500);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro.includes("pausa"), true);
+            // A ficha apagou (o lado seguro), e a tela vai contar isso.
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L19 — retomar: o registro (tirar a pausa) estoura ANTES da ficha -> 500 e a ficha NÃO acende", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await lojaLigada(cliente);
+            await chamar(cliente, { acao: "desligar_pix" });
+            estado.falhaNoUpsert = true;
+            estado.updatesLoja.length = 0;
+            const resposta = await chamar(cliente, { acao: "ligar_pix" });
+            assertEquals(resposta.status, 500);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.length, 0);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("L20 — testar com a ficha recusando LIGAR (linha sumiu): 200 com aviso do suporte, o teste fica gravado", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await chamar(cliente, TRES_CHAVES, buscarMpFalso(401, { message: "x" }).buscar);
+            estado.lojaSemLinhaAgora = true;
+            const resposta = await chamar(cliente, { acao: "testar" }, buscarMpFalso(200, OK_PRODUCAO).buscar);
+            assertEquals(resposta.status, 200);
+            const corpo = await resposta.json();
+            assertEquals(corpo.conectado, true);
+            assertEquals(corpo.pix_ligado, false);
+            assertEquals(corpo.aviso.includes("suporte"), true);
+            assertEquals(JSON.parse(estado.valor!).ultimo_teste.conectado, true);
         } finally {
             desfazerEnv();
         }

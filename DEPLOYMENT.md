@@ -298,12 +298,17 @@ saem apenas `origem` e `motivo` (`cofre_ausente`, `token_ilegivel`, `registro_il
 `ambiente_sem_token`, e `webhook_ilegivel` para o segredo de notificação, que sozinho não
 derruba a cobrança) — **nenhum token, nenhum segredo, nunca**.
 
-**Ligar o PIX é um ato separado de salvar a chave.** Em *Ajustes > Pagamentos > Mercado Pago* o
-lojista cola as chaves, toca em "Salvar chaves", depois em "Testar conexão", e só então liga o
-interruptor **"Receber PIX no app"**. O checkout do cliente só oferece PIX quando a ficha pública
-da loja traz `pagamento_online = true` **e** `mp_public_key` preenchida
-(`src/config/configuracaoDaLoja.ts`) — chave salva com o interruptor desligado é loja sem PIX, e
-é assim de propósito.
+**O pagamento pelo app liga SOZINHO (30/09/2026).** Em *Ajustes > Pagamentos > Mercado Pago* o
+lojista cola as três chaves (Public Key, Access Token e a Chave de notificações — a assinatura
+do webhook) e toca em "Salvar chaves": o servidor testa a conexão na hora e, se as três chaves
+estão salvas e o teste passou, liga `pagamento_online` (Pix **e** cartão pelo app) sem botão
+nenhum. O bloco **"Receber PIX no app"** da tela só MOSTRA o estado que o servidor devolveu
+("Recebendo pelo app", "Pausado por você" ou "Falta para receber pelo app:" com a lista) e tem
+**Pausar** e **Retomar**; a pausa vence o automático (salvar ou testar não religam). Falta
+qualquer uma das três chaves, ou o teste falhou: desliga sozinho. O checkout do cliente só
+oferece PIX quando a ficha pública da loja traz `pagamento_online = true` **e** `mp_public_key`
+preenchida (`src/config/configuracaoDaLoja.ts`). `ler` só lê: loja que já existia com o estado
+antigo só muda quando o lojista salva, testa ou pausa.
 
 Essas duas colunas de `store_config` são escritas pela **própria edge
 `credenciais-mercado-pago`**, que roda com service role (claim `service_role`) e já é trancada
@@ -313,15 +318,20 @@ para isto:
 
 - **`salvar`** publica a Public Key em `store_config.mp_public_key`; se a ficha recusar, a
   resposta é erro explícito — nunca "salvo" calado;
-- **`ligar_pix`** acende `pagamento_online`, e **só com teste de conexão bem-sucedido** (senão
-  `409`, "Teste a conexão com sucesso antes de ligar o PIX"); carimba `pix_ligado_em` e
-  `pix_ligado_por` (uid do admin) para auditoria. Com chave de TESTE ele liga e devolve o aviso
-  "Chave de TESTE: o PIX não vai receber dinheiro de verdade" — chave de sandbox conecta
-  igualzinho à de produção, e quem não for avisado vai achar que vendeu;
-- **`desligar_pix`** apaga `pagamento_online` e é sempre permitido: desligar é o lado seguro (o
-  cliente volta a ver só os meios de pagamento manuais).
+- **`salvar`** também TESTA a conexão na hora quando alguma credencial mudou (Access Token novo,
+  Public Key diferente ou Chave de notificações nova) e só deixa `pagamento_online` ligado se o
+  teste dessa credencial passou; carimba `pix_ligado_em` e `pix_ligado_por` (uid do admin) ao
+  ligar. `testar` grava o resultado e reconcilia (liga se tudo passou, desliga se falhou). Com
+  chave de TESTE liga e devolve o aviso "Chave de TESTE: o PIX não vai receber dinheiro de
+  verdade" — chave de sandbox conecta igualzinho à de produção, e quem não for avisado vai
+  achar que vendeu;
+- **`ligar_pix`** virou **retomar**: tira a pausa e reconcilia; faltando qualquer chave ou o
+  teste, `409` com o recado do que falta e nada gravado;
+- **`desligar_pix`** virou **pausar** e é sempre permitido (desligar é o lado seguro): apaga
+  `pagamento_online` e registra a pausa; se a loja ficaria sem nenhuma forma de pagamento, `409`
+  e a pausa não fica gravada.
 
-Depois de ligar ou desligar, **a vitrine reflete em até 1 minuto**: o porteiro serve a ficha da
+Depois de liberar, pausar ou retomar, **a vitrine reflete em até 1 minuto**: o porteiro serve a ficha da
 loja de um cache fresco de 60 s (`CACHE_FRESCO_MS`, em `src/hospedagem/porteiro.ts`).
 
 ### 5.3 Deploy das functions da cobrança (três do checkout, mais duas desde 15/09/2026)
