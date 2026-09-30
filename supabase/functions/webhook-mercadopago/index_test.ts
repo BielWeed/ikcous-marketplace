@@ -2665,6 +2665,127 @@ Deno.test("W2 - order 'processed'+'partially_refunded' com refund de 30 e linha 
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
+Deno.test("W2b - achado MÉDIO da revisão do P1 de estorno: linha em_processamento COM o próprio mp_refund_id 'r2' e refund AGORA 'processed' -> conclui pela T5 (id próprio NÃO entra em idsJaReivindicados)", async () => {
+  // Com a regra do P1 de estorno (29/09), o caso majoritário passou a ser
+  // linha em_processamento COM o id do refund dela gravado (POST nasce
+  // 'processing'). O conjunto 'reivindicados' do webhook incluía o id da
+  // PRÓPRIA linha pendente — refundQueCobreALinha excluía o refund dela e a
+  // linha ficava tentar_depois para SEMPRE (só o cron concluía). O id
+  // próprio precisa sair do conjunto por linha (mesma regra do cron, que
+  // exclui a própria linha com .neq('id', ...)).
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-2b",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: "r2",
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r2", amount: "30.00", status: "processed" }],
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.resultado, "estorno_parcial_registrado");
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-2b");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r2");
+});
+
+Deno.test("W2c - hardening do achado MÉDIO da revisão final: DUAS pendentes com o MESMO mp_refund_id (ledger anômalo) -> SÓ a primeira conclui no lote; a segunda fica para o cron (1 RPC)", async () => {
+  // Estado já viola o P0 de origem (nenhum fluxo próprio o produz), mas a
+  // revisão final apontou que o filtro por valor (id !== próprio) derrotaria
+  // o re-add de reivindicados para a SEGUNDA linha — as duas concluiriam com
+  // o mesmo refund (crédito duplo dentro do cap). A trava: ids concluídos
+  // NESTE lote voltam a bloquear mesmo sendo id 'próprio' da linha seguinte.
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "cancelled",
+  };
+  const orderRefundsRows = [
+    {
+      id: "linha-x",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: "r9",
+      tentativas: 1,
+      concluido_em: null,
+    },
+    {
+      id: "linha-y",
+      order_id: UUID_PEDIDO,
+      amount: 30,
+      status: "em_processamento",
+      solicitado_por: "cliente",
+      mp_refund_id: "r9",
+      tentativas: 1,
+      concluido_em: null,
+    },
+  ];
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const fetchImpl = fetchConsulta(200, {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: {
+      payments: [{ id: "PAY01XYZ", status: "processed" }],
+      refunds: [{ id: "r9", amount: "30.00", status: "processed" }],
+    },
+  });
+
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  // SÓ a primeira linha do lote conclui; a segunda fica pendente para o cron.
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-x");
+  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r9");
+});
+
 Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA linha 'sistema' concluída; a MESMA notificação de novo -> zero inserções, zero RPC nova", async () => {
   const registro = {
     chamadasRpc: [] as any[],
@@ -2709,6 +2830,80 @@ Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA lin
   const resposta2 = await handler(req2, { supabase, fetchImpl });
   assertEquals(resposta2.status, 200);
   assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+});
+
+// =============================================================================
+// W9 — Missão pagamentos (28/09/2026). A guarda do Achado B1 reconsulta a
+// ORDER GRAVADA quando a notificação CLÁSSICA (type 'payment') fala de
+// reembolso/chargeback e o id gravado é um ORD — mas o corpo ORDER vinha
+// acompanhado da rota 'payment' DA NOTIFICAÇÃO. `registrarDesfechoDoEstorno`
+// deriva `ehPayments = rota === 'payment'` e lê `corpo.refunds[]` com
+// terminal 'approved' + `transaction_amount_refunded` (formato Payments):
+// uma ORDER não tem NENHUM desses campos — os refunds moram em
+// `transactions[].refunds[]` com terminal 'processed'. Resultado: estorno
+// REAL feito no painel ficava FORA do ledger para sempre (zero inserts,
+// zero concluir_estorno) — o pedido só virava 'estornado' pela RPC de
+// pagamento lá de baixo, sem `valor_estornado` nem razão (mesmo estado
+// quebrado que o Achado S4 descreve, por outra porta).
+// =============================================================================
+Deno.test("W9 - rota payment (id clássico ≠ ORD gravado): refund da ORDER gravada 'refunded' (transactions[].refunds processed) -> UMA linha 'sistema' concluída com o mp_refund_id da ORDER", async () => {
+  const registro = {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+    updatesOrderRefunds: [] as any[],
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total: 100,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+  // O pagamento CLÁSSICO consultado só carrega o GATILHO ('refunded') — sem
+  // refunds[]/transaction_amount_refunded de propósito: quem decide é a ORDER
+  // GRAVADA (guarda B1). Se o passo ler o pagamento clássico no formato
+  // Payments em vez da ORDER reconsultada, o teste cai.
+  const { fn: fetchImpl, chamadas } = fetchInspecionavel({
+    pagamento: {
+      status: 200,
+      corpo: {
+        id: ID_PAGAMENTO_DO_MP,
+        status: "refunded",
+        status_detail: "refunded",
+        external_reference: UUID_PEDIDO,
+      },
+    },
+    order: {
+      status: 200,
+      corpo: {
+        id: ID_ORDER_TESTE,
+        external_reference: UUID_PEDIDO,
+        status: "refunded",
+        status_detail: "refunded",
+        transactions: {
+          payments: [{ id: "PAY01XYZ", status: "processed" }],
+          refunds: [{ id: "r9", amount: "100.00", status: "processed" }],
+        },
+      },
+    },
+  });
+
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const resposta = await handler(req, { supabase, fetchImpl });
+
+  assertEquals(resposta.status, 200);
+  // A guarda B1 reconsultou a ORDER gravada (além do pagamento clássico).
+  assertStringIncludes(chamadas.join(" | "), `/v1/orders/${ID_ORDER_TESTE}`);
+  // O refund 'r9' da ORDER — formato Order — é o que entra no ledger.
+  assertEquals(registro.insertsOrderRefunds.length, 1);
+  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "r9");
+  assertEquals(registro.insertsOrderRefunds[0].status, "concluido");
+  assertEquals(registro.insertsOrderRefunds[0].solicitado_por, "sistema");
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
 });
 
@@ -3986,7 +4181,17 @@ Deno.test("MP-W1 — lojista com chave cadastrada: a assinatura vale pelo SEGRED
   }
 });
 
-Deno.test("MP-W2 — lojista com TOKEN mas SEM segredo de webhook: o MP_WEBHOOK_SECRET do ambiente é a reserva do SEGREDO, e o token continua sendo o do lojista", async () => {
+Deno.test("MP-W2 — lojista com TOKEN mas SEM chave de assinatura própria: a reserva do MP_WEBHOOK_SECRET do ambiente NÃO vale mais (frente 8, decisão do dono 29/09) — 500 nomeado, nada processado", async () => {
+  // O MP-W2 ANTIGO pinava o contrário: notificação assinada com o segredo DO
+  // AMBIENTE era processada com 200 para lojista sem chave própria. Isso
+  // deixava a CONFIRMAÇÃO de pagamento de uma loja depender do segredo
+  // GLOBAL da plataforma — exatamente o que o dono rejeita no app
+  // multi-loja ("a chave global do ambiente não é substituta da chave de
+  // assinatura cadastrada por cada loja") e o oposto do que a política do
+  // PIX aprovada já faz na CRIAÇÃO (lojista sem chave não gera PIX). Com a
+  // camada de notificação alinhada à de criação: 500 com o motivo certo
+  // (padrão do estado `indisponivel` — o MP reenvia e a loja se cura
+  // cadastrando a chave em Ajustes; o reconciliador segue de backstop).
   Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
   try {
     const registro = { chamadasRpc: [] };
@@ -3996,7 +4201,8 @@ Deno.test("MP-W2 — lojista com TOKEN mas SEM segredo de webhook: o MP_WEBHOOK_
       registro,
       registroMp: await registroMpDeTeste({ webhookSecret: null }),
     });
-    // Assinada com o segredo DO AMBIENTE — a reserva que este teste prende.
+    // Assinada com o segredo DO AMBIENTE — a reserva que este teste prova
+    // que NÃO vale mais para lojista sem chave própria.
     const req = await requisicaoAssinada("999");
     const capturado = { autorizacoes: [] as string[], chamadas: 0 };
     const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
@@ -4008,10 +4214,44 @@ Deno.test("MP-W2 — lojista com TOKEN mas SEM segredo de webhook: o MP_WEBHOOK_
 
     const resposta = await handler(req, { supabase, fetchImpl });
 
-    assertEquals(resposta.status, 200, "sem a reserva do segredo, notificação legítima viraria 401");
+    assertEquals(resposta.status, 500);
+    assertEquals(registro.chamadasRpc.length, 0);
+    assertEquals(capturado.chamadas, 0);
+  } finally {
+    Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
+  }
+});
+
+Deno.test("MP-W2b — SEM cadastro nenhum (origem ambiente): a reserva do MP_WEBHOOK_SECRET do ambiente CONTINUA valendo — notificação legítima processa com o TOKEN da plataforma", async () => {
+  // A reserva LEGÍTIMA: quando não existe cadastro de lojista (deploy da
+  // plataforma/ambiente), o segredo do ambiente é a chave CERTA por definição.
+  // Este teste prende a fronteira da frente 8: a reserva morre SÓ para
+  // lojista sem chave própria — não para o ambiente.
+  Deno.env.set("MP_CHAVES_ENCRYPTION_KEY", CHAVE_CIFRA_TESTE);
+  try {
+    const registro = { chamadasRpc: [] };
+    const supabase = clienteFalso({
+      rpcResultado: "pago",
+      pedido: pedidoDeTeste(),
+      registro,
+      registroMp: null,
+    });
+    const req = await requisicaoAssinada("999");
+    const capturado = { autorizacoes: [] as string[], chamadas: 0 };
+    const fetchImpl = fetchConsultaComHeaders(capturado, 200, {
+      id: ID_PAGAMENTO_DO_MP,
+      status: "approved",
+      external_reference: UUID_PEDIDO,
+      transaction_amount: 149.9,
+    });
+
+    const resposta = await handler(req, { supabase, fetchImpl });
+
+    assertEquals(resposta.status, 200);
     assertEquals(registro.chamadasRpc.length, 1);
-    // O TOKEN não tem reserva: continua o do lojista, nunca o da plataforma.
-    assertEquals(capturado.autorizacoes[0], `Bearer ${TOKEN_LOJISTA_FALSO}`);
+    // "token-de-teste" é o MP_ACCESS_TOKEN do AMBIENTE nesta suíte (:104) —
+    // o token da plataforma, que é o certo para origem ambiente.
+    assertEquals(capturado.autorizacoes[0], "Bearer token-de-teste");
   } finally {
     Deno.env.delete("MP_CHAVES_ENCRYPTION_KEY");
   }
@@ -4330,6 +4570,100 @@ for (
     assertEquals(registro.chamadasFrom.length, 0);
   });
 }
+
+// ── Frente 9 (29/09/2026): recusa ilegível sob SENTINELA ───────────────────
+// O hardening do metodo_online cobre credito/debito, mas o sentinela DEIXA
+// metodo_online NULL por desenho (fechamento S3) — recusa de cartão com tipo
+// ilegível no corpo caía no caminho de PIX: confirmar_pagamento('recusado')
+// CANCELA o pedido e devolve o estoque com o cliente na tela de retry (venda
+// perdida). Sentinela é mecanismo EXCLUSIVO do cartão: vaga sentinela +
+// método desconhecido ⇒ cartão, liberar em vez de cancelar.
+
+Deno.test("cartão — recusa com tipo ILEGÍVEL no corpo + vaga SENTINELA + metodo_online NULL -> liberar_cobranca_do_pedido (nunca cancelar o pedido: venda perdida)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const pedidoSobSentinela = {
+    id: UUID_PEDIDO,
+    total: 149.9,
+    // Sentinela do cartão (Achado B2): metodo_online fica NULL por desenho.
+    gateway_payment_id: `verificando:${UUID_PEDIDO}:c0:1790000000000`,
+    metodo_online: null,
+  };
+  const supabase = clienteFalso({
+    rpcResultado: "recusado",
+    pedido: pedidoSobSentinela,
+    registro,
+    // Fidelidade (revisão da frente 9, 29/09): a RPC REAL devolve false aqui
+    // — a vaga guarda o SENTINELA, e p_gateway_payment_id é o id da order
+    // RECUSADA (WHERE da migration 20261176000000 não bate). A resposta de
+    // produção é 'nada_a_liberar' (o pedido NÃO morre; o sentinela é solto
+    // pelo resolverVagaEmVerificacao no retry do cliente).
+    liberarResultado: false,
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+
+  // Corpo SEM transactions: orderEhDeCartao não decide — é o cenário do
+  // hardening (resposta incompleta, nunca medida contra a API real).
+  const orderIlegivel = {
+    id: ID_ORDER_CARTAO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "failed",
+    status_detail: "rejected_by_issuer",
+    total_amount: "149.90",
+  };
+
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, orderIlegivel),
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(registro.chamadasRpc.length, 0, "confirmar_pagamento('recusado') cancelaria o pedido e devolveria o estoque — venda perdida");
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(registro.chamadasLiberar[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: ID_ORDER_CARTAO_MP,
+  });
+});
+
+Deno.test("fronteira — recusa ilegível + metodo_online NULL + vaga VAZIA (sem sentinela): caminho de PIX permanece (PIX recusado é final; cartão nunca deixa vaga vazia)", async () => {
+  // Prende a DELIMITAÇÃO do fix: só a vaga SENTINELA (mecanismo exclusivo do
+  // cartão) decide cartão quando nada mais é legível. Vaga NULL + método
+  // NULL é o PIX de resposta perdida — confirmar_pagamento('recusado')
+  // segue sendo o desfecho certo (spec: recusado é final só para PIX).
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const pedidoSemVaga = {
+    id: UUID_PEDIDO,
+    total: 149.9,
+    gateway_payment_id: null,
+    metodo_online: null,
+  };
+  const supabase = clienteFalso({
+    rpcResultado: "recusado",
+    pedido: pedidoSemVaga,
+    registro,
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const orderIlegivel = {
+    id: ID_ORDER_CARTAO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "failed",
+    status_detail: "rejected_by_issuer",
+    total_amount: "149.90",
+  };
+
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, orderIlegivel),
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 1);
+  assertEquals(registro.chamadasLiberar.length, 0);
+});
 
 Deno.test("cartão — reenvio da MESMA recusa (vaga já solta, RPC devolve false) -> 200 'nada_a_liberar', ainda sem confirmar_pagamento", async () => {
   ambienteDoWebhook();

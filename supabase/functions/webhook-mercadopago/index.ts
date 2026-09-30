@@ -67,13 +67,14 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // Tarefa mp-2 (15/09/2026): as DUAS chaves deste webhook (o segredo que
 // autentica a notificação e o token que reconsulta o MP) saem daqui — da
 // chave do LOJISTA quando ela existe, do ambiente quando não existe cadastro.
-// Tarefa mp-7 (16/09/2026), a regra fechada do SEGREDO em uma frase: a
-// reserva do ambiente (`MP_WEBHOOK_SECRET`) só vale quando não há cadastro
-// nenhum (origem "ambiente") ou quando o lojista cadastrou a chave de
-// cobrança e NÃO o segredo de notificação (origem "lojista" com
-// `segredoWebhook` nulo) — NUNCA quando existe cadastro ilegível (origem
-// "indisponivel"), estado em que esta função fecha com 500 antes da
-// assinatura, porque o MP está assinando com o segredo DO LOJISTA.
+// Frente 8 (29/09/2026, decisão do dono), a regra fechada do SEGREDO em uma
+// frase: a reserva do ambiente (`MP_WEBHOOK_SECRET`) só vale quando NÃO há
+// cadastro nenhum (origem "ambiente") — para origem "lojista" SEM a chave de
+// assinatura própria a reserva MORRE (500 nomeado antes da assinatura,
+// alinhado ao gate do PIX na criação: a confirmação de uma loja não depende
+// de segredo global da plataforma), e origem "indisponivel" segue fechando
+// com 500 antes da assinatura, porque o MP está assinando com o segredo DO
+// LOJISTA.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
@@ -767,13 +768,29 @@ async function registrarDesfechoDoEstorno(args: {
       ehPayments,
       linha,
       pedido,
-      idsJaReivindicados: Array.from(reivindicados),
+      // O id da PRÓPRIA linha sai do conjunto (achado MÉDIO da revisão do
+      // P1 de estorno, 29/09): com a regra nova, a linha em_processamento
+      // CARREGA o id do refund dela — deixá-lo no conjunto fazia
+      // refundQueCobreALinha excluir o refund dela mesma e a linha ficava
+      // tentar_depois para sempre (só o cron concluía). Os ids das OUTRAS
+      // linhas permanecem: um refund credita UMA linha (P0). Paridade com
+      // o cron, que exclui a própria linha com .neq('id', ...).
+      // Segunda camada para o lote (achado da revisão final, teste W2c):
+      // DUAS pendentes com o MESMO id (ledger anômalo) não concluem as
+      // duas — o acúmulo em memória de `pedido.valor_estornado` (I-B,
+      // abaixo) + a guarda de soma bruta (E37) recusam a 2ª linha ainda
+      // neste ciclo; ela fica para o cron, que relê o banco por linha.
+      idsJaReivindicados: Array.from(reivindicados).filter(
+        (id) => id !== linha.mp_refund_id,
+      ),
       temPreVeredito: false,
     });
     if (resultado.tipo === "concluido") {
       const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
         p_refund_id: linha.id,
-        p_mp_refund_id: resultado.mp_refund_id,
+        // '' (refund sem id legível na resposta) vira NULL — o COALESCE da
+        // RPC preserva o que já existia (revisão de 29/09).
+        p_mp_refund_id: resultado.mp_refund_id || null,
         p_mp_status: resultado.mp_status,
         p_mp_status_detail: resultado.mp_status_detail,
       });
@@ -1135,15 +1152,37 @@ async function handler(
     return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
   }
 
-  // RESERVA SÓ DO SEGREDO, E SÓ NESTES DOIS ESTADOS: sem cadastro nenhum
-  // (origem "ambiente") ou cadastro com a chave de cobrança e SEM o segredo
-  // de notificação (origem "lojista" com `segredoWebhook` nulo — o campo é
-  // opcional na tela). Sem esta reserva, notificação LEGÍTIMA viraria 401 e o
-  // pedido pago ficaria "aguardando" até expirar. NUNCA para origem
-  // "indisponivel", que já saiu com 500 logo acima: ali existe segredo do
-  // lojista, ele só não abre, e usar o do ambiente autenticaria pela chave
-  // errada. O TOKEN não tem reserva nenhuma em estado nenhum — consultar (e
-  // cobrar) na conta errada é o erro que esta frente existe para impedir.
+  // RESERVA SÓ DO SEGREDO, E SÓ SEM CADASTRO (frente 8, 29/09/2026 — decisão
+  // do dono, alinhando a notificação à política do PIX da criação): origem
+  // "ambiente" (deploy da plataforma, sem cadastro nenhum) continua usando o
+  // `MP_WEBHOOK_SECRET` do env — ali ele é a chave CERTA por definição. Para
+  // lojista com cadastro e SEM a chave de assinatura própria, o segredo do
+  // ambiente NÃO é mais reserva: a confirmação de pagamento de uma loja não
+  // pode depender de um segredo GLOBAL compartilhado com a plataforma
+  // (decisão do dono no app multi-loja), e o PIX dessa loja nem nasce mais
+  // (gate da frente 3 em criar-pagamento) — as camadas agora dizem o mesmo.
+  //
+  // A justificativa ANTIGA da reserva ("sem ela, notificação legítima viraria
+  // 401 e o pedido expiraria") ficou obsoleta: notificação do lojista é
+  // assinada com a chave do PAINEL DELE e falharia contra o segredo da
+  // plataforma de qualquer jeito — a reserva só "funcionava" quando o painel
+  // da loja era configurado com o segredo da plataforma, o setup errado.
+  //
+  // 500 e não 401/200 pelo mesmo motivo do estado `indisponivel` acima: o
+  // evento FICA na fila do MP, que reenvia — a loja se cura cadastrando a
+  // chave em Ajustes, e o reconciliador (10 min, honra `pago_apos_expirar`)
+  // segue de backstop. Log CURTO, sem segredo nem dado do corpo.
+  if (credenciaisMp.origem === "lojista" && !credenciaisMp.segredoWebhook) {
+    console.error(
+      "webhook-mercadopago: lojista sem chave de assinatura própria — a reserva do ambiente não vale; cadastrar a chave em Ajustes",
+      dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
+    );
+    return json(
+      { error: "Chave de assinatura do webhook não configurada para esta loja." },
+      500,
+    );
+  }
+
   const segredoWebhook = credenciaisMp.segredoWebhook ??
     Deno.env.get("MP_WEBHOOK_SECRET") ?? "";
 
@@ -1391,14 +1430,34 @@ async function handler(
     if (!liberarAVaga && statusBanco === "recusado" && pareceUuid(order.external_reference)) {
       const { data: metodoRow } = await supabase
         .from("marketplace_orders")
-        .select("metodo_online")
+        .select("metodo_online, gateway_payment_id")
         .eq("id", order.external_reference)
         .maybeSingle();
       const metodoGravado = (metodoRow as Record<string, unknown> | null)?.metodo_online;
+      const vagaGravada = (metodoRow as Record<string, unknown> | null)?.gateway_payment_id;
       if (metodoGravado === "credito" || metodoGravado === "debito") {
         console.warn(
           "webhook-mercadopago: recusa de order sem payment_method.type legível — decidida pelo metodo_online gravado no pedido (cartão), liberando a vaga em vez de confirmar_pagamento",
           { idOrder: String(order.id ?? ""), metodoGravado },
+        );
+        liberarAVaga = true;
+      } else if (
+        metodoGravado == null &&
+        typeof vagaGravada === "string" &&
+        vagaEmVerificacao(vagaGravada)
+      ) {
+        // Frente 9 (29/09/2026): o metodo_online NÃO cobre o SENTINELA — ele
+        // deixa a coluna NULL por desenho (fechamento S3: o sentinela nunca
+        // carimba método), então a recusa ilegível de um cartão sob sentinela
+        // caía no caminho de PIX: confirmar_pagamento('recusado') CANCELAVA o
+        // pedido e devolvia o estoque com o cliente na tela de retry (venda
+        // perdida). O sentinela é mecanismo EXCLUSIVO do cartão (Achado B2 —
+        // o PIX não gera sentinela), então vaga sentinela + método
+        // desconhecido decide CARTÃO: liberar a vaga; quem solta o sentinela
+        // de verdade é o resolverVagaEmVerificacao no retry do cliente.
+        console.warn(
+          "webhook-mercadopago: recusa de order sem payment_method.type legível — vaga em SENTINELA (mecanismo exclusivo do cartão), liberando em vez de confirmar_pagamento cancelar o pedido",
+          { idOrder: String(order.id ?? "") },
         );
         liberarAVaga = true;
       }
@@ -1655,6 +1714,21 @@ async function handler(
     const idGravadoParaEstornoStr =
       typeof idGravadoParaEstorno === "string" && idGravadoParaEstorno.length > 0 ? idGravadoParaEstorno : null;
 
+    // O FORMATO do corpo confiável — não a rota da NOTIFICAÇÃO — é o que os
+    // leitores de estorno usam: `registrarDesfechoDoEstorno` deriva
+    // `ehPayments = rota === "payment"` para decidir ONDE os refunds moram
+    // (`corpo.refunds[]` com terminal "approved" no formato Payments;
+    // `transactions[].refunds[]` com terminal "processed" no formato Order)
+    // e de onde vem o valor pago (`transaction_amount` vs
+    // `extrairValorDaOrder`). Quando a guarda abaixo reconsulta a ORDER
+    // gravada, o corpo confiável é uma ORDER: passá-lo com a rota "payment"
+    // da notificação fazia o passo ler o formato errado — campos que uma
+    // ORDER não tem — e um estorno REAL da cobrança gravada, notificado pelo
+    // tópico clássico, nunca entrava no ledger (zero inserts, zero
+    // concluir_estorno): o pedido só virava 'estornado' pela RPC de
+    // pagamento, sem `valor_estornado` nem razão (W9, missão pagamentos,
+    // 28/09/2026).
+    let formatoConfiavelParaEstorno: "payment" | "order" = rota;
     let corpoConfiavelParaEstorno: Record<string, unknown> | null = null;
     if (idGravadoParaEstornoStr !== null && idGravadoParaEstornoStr === idParaRpc) {
       corpoConfiavelParaEstorno = corpoConsultado;
@@ -1681,6 +1755,10 @@ async function handler(
         statusDetailGravado === "partially_refunded" ||
         statusGravado === "charged_back";
       corpoConfiavelParaEstorno = gatilhoNaGravada ? ordemGravadaParaEstorno : null;
+      // O corpo confiável deste ramo é a ORDER reconsultada — os leitores
+      // têm de usar o formato Order, mesmo que a NOTIFICAÇÃO tenha vindo
+      // pelo tópico clássico ("payment").
+      if (corpoConfiavelParaEstorno) formatoConfiavelParaEstorno = "order";
     }
 
     if (!corpoConfiavelParaEstorno) {
@@ -1699,7 +1777,12 @@ async function handler(
       );
     } else {
       try {
-        await registrarDesfechoDoEstorno({ supabase, orderId, rota, corpo: corpoConfiavelParaEstorno });
+        await registrarDesfechoDoEstorno({
+          supabase,
+          orderId,
+          rota: formatoConfiavelParaEstorno,
+          corpo: corpoConfiavelParaEstorno,
+        });
       } catch (erro) {
         console.error(
           "webhook-mercadopago: registrarDesfechoDoEstorno falhou — evento mantido na fila do MP",

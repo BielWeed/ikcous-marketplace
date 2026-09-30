@@ -130,7 +130,9 @@ async function gravarDesfechoDoEstorno(
   if (resultado.tipo === "concluido") {
     const { error } = await supabase.rpc("concluir_estorno", {
       p_refund_id: refundId,
-      p_mp_refund_id: resultado.mp_refund_id,
+      // '' (refund sem id legível na resposta) vira NULL — o COALESCE da RPC
+      // preserva o que já existia (revisão de 29/09).
+      p_mp_refund_id: resultado.mp_refund_id || null,
       p_mp_status: resultado.mp_status,
       p_mp_status_detail: resultado.mp_status_detail,
     });

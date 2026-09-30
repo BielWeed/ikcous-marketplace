@@ -72,6 +72,11 @@
 //       SEM nenhuma forma "na entrega" -> a trigger do invariante recusa
 //       (LOJA_SEM_FORMA_DE_PAGAMENTO) e a edge devolve 409 com recado
 //       amigável, NUNCA o 500 genérico; o PIX continua aceso
+//   C33–C38 (30/09/2026): ligar_pix sem a chave de assinatura do webhook da
+//       PRÓPRIA loja -> 409 e nenhuma escrita; com a chave liga como antes;
+//       salvar a chave depois do 409 destrava sem retestar; desligar_pix segue
+//       livre; a MP_WEBHOOK_SECRET global não conta; registro legado/pela
+//       metade (sem os campos ou sem o iv) também recusa
 //   C32 formas de pagamento por loja (25/09/2026, B2): salvar com credencial
 //       NOVA (desliga o PIX no mesmo update, mp-8) numa loja SEM nenhuma
 //       forma "na entrega" -> mesma recusa, 409 com recado ESPECÍFICO de
@@ -822,6 +827,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -869,6 +875,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -903,6 +910,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1011,6 +1019,191 @@ Deno.test("credenciais-mercado-pago", async (t) => {
         }
     });
 
+    // ── C33–C38 (30/09/2026): o PIX só acende com a CHAVE DE ASSINATURA DO
+    // WEBHOOK da própria loja salva. criar-pagamento já recusa PIX sem ela
+    // (409 pixSemChaveDeAssinatura); acender o interruptor sem a chave é o
+    // cliente escolher PIX e tomar erro no fim da compra.
+    const RECADO_SEM_CHAVE_DE_ASSINATURA =
+        "Cole a Chave de notificações (assinatura secreta do webhook do Mercado Pago) e salve antes de ligar o PIX — sem ela o cliente escolhe PIX e o pagamento é recusado no fim da compra.";
+
+    /** Salva credenciais, testa a conexão (conectado) — deixa pronto para ligar. */
+    async function prepararLojaTestada(
+        cliente: any,
+        segredoDeWebhook?: string,
+    ): Promise<void> {
+        await comFetch(fetchAdminFalso, () =>
+            handler(
+                requisicao({
+                    acao: "salvar",
+                    public_key: PUBLIC_KEY_FALSA,
+                    access_token: TOKEN_FALSO,
+                    ...(segredoDeWebhook
+                        ? { webhook_secret: segredoDeWebhook }
+                        : {}),
+                }),
+                { supabase: cliente },
+            )
+        );
+        const { buscar } = buscarMpFalso(200, {
+            live_mode: true,
+            nickname: "Loja Teste",
+        });
+        await comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ acao: "testar" }), { supabase: cliente, buscar })
+        );
+    }
+
+    await t.step("C33 — ligar_pix sem a chave de assinatura salva -> 409 com recado e NENHUMA escrita", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await prepararLojaTestada(cliente);
+            const upsertsAntes = estado.upserts.length;
+            estado.updatesLoja.length = 0;
+
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 409);
+            const corpo = await resposta.json();
+            assertEquals(corpo.erro, RECADO_SEM_CHAVE_DE_ASSINATURA);
+            // A recusa vem ANTES de qualquer escrita: nem a ficha (o
+            // interruptor), nem o registro (o carimbo de auditoria).
+            assertEquals(estado.updatesLoja.length, 0);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.upserts.length, upsertsAntes);
+            assertEquals(
+                JSON.parse(estado.valor!).pix_ligado_por ?? null,
+                null,
+            );
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C34 — ligar_pix com a chave de assinatura salva liga como antes", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await prepararLojaTestada(cliente, WEBHOOK_FALSO);
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            assertEquals((await resposta.json()).pix_ligado, true);
+            assertEquals(estado.loja.pagamento_online, true);
+            assertEquals(JSON.parse(estado.valor!).pix_ligado_por, ID_ADMIN);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C35 — o caminho do recado funciona: salvar a chave depois do 409 e ligar, sem retestar", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await prepararLojaTestada(cliente);
+            const recusada = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(recusada.status, 409);
+
+            // A tela reenvia a Public Key (a mesma) + a chave nova, sem token:
+            // não é troca de credencial, o teste de conexão continua valendo.
+            const salvou = await comFetch(fetchAdminFalso, () =>
+                handler(
+                    requisicao({
+                        acao: "salvar",
+                        public_key: PUBLIC_KEY_FALSA,
+                        webhook_secret: WEBHOOK_FALSO,
+                    }),
+                    { supabase: cliente },
+                )
+            );
+            assertEquals(salvou.status, 200);
+
+            const ligou = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(ligou.status, 200);
+            assertEquals(estado.loja.pagamento_online, true);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C36 — desligar_pix continua permitido SEM a chave de assinatura", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await prepararLojaTestada(cliente);
+            // PIX já aceso por fora (loja que ligou antes desta regra).
+            estado.loja.pagamento_online = true;
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "desligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 200);
+            assertEquals((await resposta.json()).pix_ligado, false);
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C37 — a chave GLOBAL do ambiente (MP_WEBHOOK_SECRET) não conta: só a da loja", async () => {
+        const desfazerEnv = prepararEnv({
+            MP_WEBHOOK_SECRET: "segredo-global-da-plataforma-1234",
+        });
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await prepararLojaTestada(cliente);
+            const resposta = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(resposta.status, 409);
+            assertEquals(
+                (await resposta.json()).erro,
+                RECADO_SEM_CHAVE_DE_ASSINATURA,
+            );
+            assertEquals(estado.loja.pagamento_online, false);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
+    await t.step("C38 — registro que já existia: sem os campos do webhook, ou só o cifrado sem o iv -> 409", async () => {
+        const desfazerEnv = prepararEnv();
+        const { cliente, estado } = supabaseFalso();
+        try {
+            await prepararLojaTestada(cliente, WEBHOOK_FALSO);
+
+            // (a) Registro gravado ANTES de existir a chave de webhook: os
+            // campos nem existem no JSON (não são null, são ausentes).
+            const completo = JSON.parse(estado.valor!);
+            const legado = { ...completo };
+            delete legado.webhook_cifrado;
+            delete legado.webhook_iv;
+            delete legado.mascara_webhook;
+            estado.valor = JSON.stringify(legado);
+            const semCampos = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(semCampos.status, 409);
+
+            // (b) Registro pela metade: cifrado sem o iv não decifra nada —
+            // mesma noção de "tem chave" que o criar-pagamento usa.
+            estado.valor = JSON.stringify({ ...completo, webhook_iv: null });
+            const semIv = await comFetch(fetchAdminFalso, () =>
+                handler(requisicao({ acao: "ligar_pix" }), { supabase: cliente })
+            );
+            assertEquals(semIv.status, 409);
+            assertEquals(estado.loja.pagamento_online, false);
+            assertEquals(estado.updatesLoja.length, 1 /* só o da 1ª salvar */);
+        } finally {
+            desfazerEnv();
+        }
+    });
+
     await t.step("C21 — ligar_pix publica a Public Key no MESMO update que acende o PIX", async () => {
         const desfazerEnv = prepararEnv();
         const { cliente, estado } = supabaseFalso();
@@ -1021,6 +1214,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1106,6 +1300,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1227,6 +1422,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1270,6 +1466,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1314,6 +1511,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1361,6 +1559,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1424,6 +1623,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
@@ -1471,6 +1671,7 @@ Deno.test("credenciais-mercado-pago", async (t) => {
                         acao: "salvar",
                         public_key: PUBLIC_KEY_FALSA,
                         access_token: TOKEN_FALSO,
+                        webhook_secret: WEBHOOK_FALSO,
                     }),
                     { supabase: cliente },
                 )
