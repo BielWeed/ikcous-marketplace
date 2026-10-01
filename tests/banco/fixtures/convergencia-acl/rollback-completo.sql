@@ -158,11 +158,11 @@ BEGIN
     alvo := f.fn::text;
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, postgres, anon, authenticated, service_role', alvo);
     lista := '{}';
-    IF f.pub THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC', alvo); lista := lista || '=X/postgres'; END IF;
-    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO postgres', alvo); lista := lista || 'postgres=X/postgres';
-    IF f.anon THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO anon', alvo); lista := lista || 'anon=X/postgres'; END IF;
-    IF f.auth THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', alvo); lista := lista || 'authenticated=X/postgres'; END IF;
-    IF sr THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', alvo); lista := lista || 'service_role=X/postgres'; END IF;
+    IF f.pub THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC', alvo); lista := array_append(lista, '=X/postgres'::text); END IF;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO postgres', alvo); lista := array_append(lista, 'postgres=X/postgres'::text);
+    IF f.anon THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO anon', alvo); lista := array_append(lista, 'anon=X/postgres'::text); END IF;
+    IF f.auth THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', alvo); lista := array_append(lista, 'authenticated=X/postgres'::text); END IF;
+    IF sr THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', alvo); lista := array_append(lista, 'service_role=X/postgres'::text); END IF;
     INSERT INTO _rb_esperado VALUES (f.fn, '{' || array_to_string(lista, ',') || '}');
   END LOOP;
 END $$;
