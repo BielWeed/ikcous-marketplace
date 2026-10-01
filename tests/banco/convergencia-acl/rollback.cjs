@@ -371,6 +371,118 @@ async function main() {
             await soltarBanco(bancoDesvio).catch(() => {});
           }
         });
+
+        // Sequência real de produção: as 6 fecham ANTES (pacote pequeno), o
+        // amplo vem depois, e alguém desfaz o amplo. O desfazer não pode
+        // devolver anon/authenticated às 6 funções de dinheiro. Vale também a
+        // aplicação ou o desfazer RECUSAR por guarda própria (RAISE, P0001) sem
+        // gravar nada; erro de outro tipo (sintaxe, tipo) não conta como recusa.
+        await caso(
+          "seis_fechadas_amplo_e_desfazer_do_amplo_nao_reabre_as_6",
+          async () => {
+            const bancoSeq = "acl_seq_seis_amplo";
+            const comBanco = async (fn) => {
+              const c = await conectar(bancoSeq);
+              try {
+                return await fn(c);
+              } finally {
+                await c.end().catch(() => {});
+              }
+            };
+            const foto = () => comBanco(fotografar);
+            const abertasAsSeis = () =>
+              comBanco(async (c) => {
+                const r = await c.query(
+                  `SELECT papel || ' executa ' || sig AS linha
+                     FROM unnest($1::text[]) AS s(sig)
+                    CROSS JOIN unnest(ARRAY['anon','authenticated']) AS pp(papel)
+                    WHERE has_function_privilege(pp.papel, 'public.' || s.sig, 'EXECUTE')
+                    ORDER BY 1`,
+                  [sigsSeis],
+                );
+                return r.rows.map((l) => l.linha);
+              });
+            const recusaPorGuarda = async (erro, fotoAntes, etapa) => {
+              if (erro.code !== "P0001") {
+                throw new Falha(
+                  `${etapa} abortou, mas não por guarda (RAISE): ${erro.code} ${erro.message}`,
+                );
+              }
+              exigirIgual(fotoAntes, await foto(), `${etapa} recusado × antes`);
+              const abertas = await abertasAsSeis();
+              if (abertas.length) {
+                throw new Falha(
+                  `${etapa} recusou, mas as 6 não estão fechadas`,
+                  abertas,
+                );
+              }
+              return `${etapa} recusou sem gravar (${String(erro.message).slice(0, 90)}) e as 6 seguem fechadas`;
+            };
+
+            await clonarBanco(BANCO_ANTES, bancoSeq);
+            try {
+              const erroSeis = await executarSql(
+                bancoSeq,
+                lerFixture("seis-funcoes.sql"),
+              );
+              if (erroSeis) {
+                throw new Falha(
+                  `seis-funcoes.sql abortou no clone do antes: ${erroSeis.message}`,
+                );
+              }
+              const depoisDasSeis = await abertasAsSeis();
+              if (depoisDasSeis.length) {
+                throw new Falha(
+                  "o pacote das 6 não fechou as 6 (prova vazia)",
+                  depoisDasSeis,
+                );
+              }
+
+              const antesDoAmplo = await foto();
+              const erroAmplo = await executarSql(
+                bancoSeq,
+                lerFixture(pacote.aplica),
+              );
+              if (erroAmplo) {
+                return await recusaPorGuarda(
+                  erroAmplo,
+                  antesDoAmplo,
+                  "a aplicação do amplo",
+                );
+              }
+              const depoisDoAmplo = await abertasAsSeis();
+              if (depoisDoAmplo.length) {
+                throw new Falha(
+                  "a aplicação do amplo reabriu as 6",
+                  depoisDoAmplo,
+                );
+              }
+
+              const antesDoDesfazer = await foto();
+              const erroDesfazer = await executarSql(
+                bancoSeq,
+                lerFixture(pacote.desfaz),
+              );
+              if (erroDesfazer) {
+                return await recusaPorGuarda(
+                  erroDesfazer,
+                  antesDoDesfazer,
+                  "o desfazer do amplo",
+                );
+              }
+              const depoisDoDesfazer = await abertasAsSeis();
+              if (depoisDoDesfazer.length) {
+                throw new Falha(
+                  `o desfazer do amplo COMMITOU e reabriu ${depoisDoDesfazer.length} acesso(s) às 6 funções de dinheiro`,
+                  depoisDoDesfazer,
+                );
+              }
+              return "amplo e desfazer do amplo COMMITARAM e as 6 seguem fechadas";
+            } finally {
+              await soltarBanco(bancoSeq).catch(() => {});
+            }
+          },
+        );
       }
 
       // D2. TRAVA DO SERVIDOR no script de desfazer (pacote pequeno), sobre o estado aplicado
