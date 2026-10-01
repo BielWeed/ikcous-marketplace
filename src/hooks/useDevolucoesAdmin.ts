@@ -37,25 +37,6 @@ export const TEXTO_REEMBOLSO_NA_FILA =
   "Devolução concluída. O reembolso ficou registrado e o Mercado Pago é acionado em até 10 minutos.";
 
 // ---------------------------------------------------------------------------
-// Ponte "abrir esta devolução" (card do pedido → tela de Devoluções)
-// ---------------------------------------------------------------------------
-
-// A rota `admin-devolucoes` não recebe id. O card do pedido guarda aqui a
-// devolução que quer ver aberta e a tela a consome UMA vez ao montar. Estado
-// de módulo, não de storage: vale só para a navegação desta aba.
-let devolucaoParaAbrir: string | null = null;
-
-export function pedirParaAbrirDevolucao(id: string): void {
-  devolucaoParaAbrir = id;
-}
-
-export function tomarDevolucaoParaAbrir(): string | null {
-  const id = devolucaoParaAbrir;
-  devolucaoParaAbrir = null;
-  return id;
-}
-
-// ---------------------------------------------------------------------------
 // Lista do painel
 // ---------------------------------------------------------------------------
 

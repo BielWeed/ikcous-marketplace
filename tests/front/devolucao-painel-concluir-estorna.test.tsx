@@ -173,7 +173,7 @@ async function drenar() {
   });
 }
 
-async function montar() {
+async function montar(selectedDevolucaoId?: string | null) {
   const { AdminDevolucoesView } = await import(
     "@/views/admin/AdminDevolucoesView"
   );
@@ -181,6 +181,7 @@ async function montar() {
     raiz.render(
       <AdminDevolucoesView
         onNavigate={onNavigate}
+        selectedDevolucaoId={selectedDevolucaoId}
         active
         onSetDirty={onSetDirty}
         onSetBackOverride={onSetBackOverride}
@@ -329,14 +330,51 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     );
     expect(card?.textContent).toContain("Aguardando a sua resposta");
     await clicar(card?.querySelector("button"));
-    expect(onAbrirDevolucoes).toHaveBeenCalledTimes(1);
+    expect(onAbrirDevolucoes).toHaveBeenCalledExactlyOnceWith("d-1");
 
     // A tela de Devoluções nasce com a ficha pedida já aberta.
-    await montar();
+    await montar("d-1");
     expect(
       hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
     ).not.toBeNull();
     expect(rpc).toHaveBeenCalledWith("devolucao_detalhe", { p_id: "d-1" });
+  });
+
+  it("restaura a ficha só com o id da rota, inclusive após remontar sem memória do pedido", async () => {
+    await montar("d-1");
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).not.toBeNull();
+    await act(async () => raiz.unmount());
+    raiz = createRoot(hospedeiro);
+    rpc.mockClear();
+    await montar("d-1");
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).not.toBeNull();
+    expect(rpc).toHaveBeenCalledWith("devolucao_detalhe", { p_id: "d-1" });
+  });
+
+  it("acompanha a troca de id pela rota e a volta para a lista sem id", async () => {
+    await montar("d-1");
+    await montar("d-2");
+    expect(rpc).toHaveBeenCalledWith("devolucao_detalhe", { p_id: "d-2" });
+    await montar(null);
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).toBeNull();
+  });
+
+  it("abrir pela lista também leva o id à navegação", async () => {
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-devolucoes",
+      "d-1",
+      true,
+    );
   });
 
   it("sem condição do item, não chama a RPC e explica", async () => {
@@ -355,30 +393,89 @@ describe("AdminDevolucoesView — concluir e devolver o dinheiro", () => {
     );
   });
 
-  it("formulário tocado liga onSetDirty; o Voltar do aparelho fecha a ficha", async () => {
+  function botaoFechar() {
+    return hospedeiro.querySelector<HTMLElement>(
+      '[aria-label="Fechar devolução"]',
+    );
+  }
+
+  it("ficha limpa: o Voltar do aparelho fecha a ficha sem perguntar", async () => {
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    const registro = onSetBackOverride.mock.calls
+      .map((c) => c[0])
+      .filter((f): f is () => () => void => typeof f === "function")
+      .at(-1);
+    expect(registro).toBeTruthy();
+    onNavigate.mockClear();
+    await act(async () => {
+      registro?.()();
+    });
+    await drenar();
+    expect(globalThis.confirm).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).toBeNull();
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-devolucoes",
+      undefined,
+      true,
+    );
+  });
+
+  it("formulário tocado liga onSetDirty e solta o Voltar da ficha: quem avisa é o App", async () => {
+    await montar();
+    await clicar(
+      hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
+    );
+    expect(
+      typeof onSetBackOverride.mock.calls.at(-1)?.[0],
+      "ficha limpa registra o Voltar",
+    ).toBe("function");
+    await clicar(botao("Concluir"));
+    await clicar(botao("Nova, sem uso"));
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
+    // Com rascunho, o override não fica registrado: ele só rodaria depois de
+    // o popstate consumir a entrada `?id=`, e cancelar o `confirm` não a
+    // devolveria (o App aplicaria a URL sem id e fecharia a ficha).
+    expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
+  });
+
+  it("Fechar com rascunho confirma antes de descartar", async () => {
     await montar();
     await clicar(
       hospedeiro.querySelector<HTMLElement>('[data-devolucao="d-1"]'),
     );
     await clicar(botao("Concluir"));
     await clicar(botao("Nova, sem uso"));
-    expect(onSetDirty).toHaveBeenLastCalledWith(true);
-
-    const registro = onSetBackOverride.mock.calls
-      .map((c) => c[0])
-      .filter((f): f is () => () => void => typeof f === "function")
-      .at(-1);
-    expect(registro).toBeTruthy();
-    // Com rascunho, o Voltar confirma antes de descartar.
-    await act(async () => {
-      registro?.()();
-    });
-    await drenar();
+    await clicar(botaoFechar());
     expect(globalThis.confirm).toHaveBeenCalled();
     expect(
       hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
     ).toBeNull();
     expect(onSetBackOverride).toHaveBeenLastCalledWith(null);
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    expect(onNavigate).toHaveBeenLastCalledWith(
+      "admin-devolucoes",
+      undefined,
+      true,
+    );
+  });
+
+  it("recusar o descarte mantém a ficha e não navega para uma URL sem id", async () => {
+    await montar("d-1");
+    await clicar(botao("Concluir"));
+    await clicar(botao("Nova, sem uso"));
+    vi.mocked(globalThis.confirm).mockReturnValue(false);
+    onNavigate.mockClear();
+    await clicar(botaoFechar());
+    expect(globalThis.confirm).toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(
+      hospedeiro.querySelector('[data-testid="detalhe-devolucao"]'),
+    ).not.toBeNull();
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
   });
 });
