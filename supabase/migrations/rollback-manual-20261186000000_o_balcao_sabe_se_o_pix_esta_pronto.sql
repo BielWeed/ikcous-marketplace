@@ -1,0 +1,22 @@
+-- ============================================================================
+-- ROLLBACK MANUAL da 20261186000000 — o balcão sabe se o PIX está pronto
+-- ============================================================================
+--
+-- O QUE DESFAZ: só a criação de `public.pix_do_balcao_pronto`. A função é
+-- NOVA; desfazer é derrubar.
+--
+-- O QUE NÃO TOCA: nada das 20261184000000/20261185000000 (funções, gatilhos,
+-- grants) nem dado nenhum.
+--
+-- EFEITO COLATERAL: a ação "prontidao" da edge cobrar-pix-no-balcao passa a
+-- receber PGRST202 e responde "não pronto, banco" — a tela deixa o PIX com QR
+-- indisponível (falha fechada). Nenhuma venda é afetada.
+--
+-- IDEMPOTÊNCIA: `DROP FUNCTION IF EXISTS` com a assinatura completa. Sem
+-- BEGIN/COMMIT (regra da casa).
+--
+-- VERIFICAÇÃO: SELECT count(*) FROM pg_proc WHERE proname = 'pix_do_balcao_pronto';
+--   -- esperado: 0.
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS public.pix_do_balcao_pronto();

@@ -16,6 +16,18 @@
 //   P10 gerar sem credencial → 503 terminal, nada criado
 //   P11 corrida: venda cancelada enquanto a order nascia → cancela a order no MP
 //   P12 venda que já saiu da espera → só a situação, sem tocar no MP
+//
+// PRONTIDÃO (acao "prontidao", sem orderId): a tela pergunta ANTES de criar a
+// venda se este servidor cobra PIX no balcão. Responde 200 { pronto: true } ou
+// 200 { pronto: false, motivo: "banco" | "credencial" }; qualquer dúvida é
+// "não pronto". Nunca lê nem grava pedido, nunca fala com o Mercado Pago.
+//   R1  sem admin → 401 antes de qualquer leitura (banco, credencial, MP)
+//   R2  função de prontidão AUSENTE no banco (PGRST202) → não pronto, "banco"
+//   R3  função devolve falso/nulo, ou o banco responde erro → não pronto, "banco"
+//   R4  sem credencial do MP (ou a leitura dela falha) → não pronto, "credencial"
+//   R5  banco pronto + credencial → pronto (sem orderId no corpo)
+//   R6  em todos os cenários: nenhum acesso a marketplace_orders, nenhum
+//       UPDATE, nenhuma chamada ao MP, nenhum getUserById
 import { assert, assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler } from "./index.ts";
 
@@ -375,4 +387,187 @@ Deno.test("P15 aprovado sem valor legível: confirma pelo status (como webhook e
   const mp = mpFalso({ consultar: () => ok(semValor) });
   await chamar("conferir", { supabase, fetchImpl: mp.fetchImpl });
   assertEquals(estado.rpcs.map((r: any) => r.nome), ["confirmar_pagamento"]);
+});
+
+// ---- PRONTIDÃO --------------------------------------------------------------
+
+const FUNCAO_DE_PRONTIDAO = "pix_do_balcao_pronto";
+
+const RPC_AUSENTE = {
+  data: null,
+  error: {
+    code: "PGRST202",
+    message: `Could not find the function public.${FUNCAO_DE_PRONTIDAO} without parameters in the schema cache`,
+  },
+};
+const RPC_VERDADEIRA = { data: true, error: null };
+
+/** Banco falso da prontidão: registra TUDO o que a edge tocar. */
+function bancoDaProntidao(respostaDaRpc: { data: unknown; error: unknown }) {
+  const estado = {
+    tabelas: [] as string[],
+    updates: 0,
+    rpcs: [] as Array<{ nome: string; args: unknown }>,
+    getUserById: 0,
+  };
+  const supabase = {
+    from(tabela: string) {
+      estado.tabelas.push(tabela);
+      const q: any = {
+        select: () => q,
+        eq: () => q,
+        is: () => q,
+        update: () => {
+          estado.updates++;
+          return q;
+        },
+        maybeSingle: async () => ({ data: null, error: null }),
+      };
+      return q;
+    },
+    rpc: async (nome: string, args: unknown) => {
+      estado.rpcs.push({ nome, args });
+      return respostaDaRpc;
+    },
+    auth: {
+      admin: {
+        getUserById: async () => {
+          estado.getUserById++;
+          return { data: null };
+        },
+      },
+    },
+  };
+  return { supabase, estado };
+}
+
+/** Credencial falsa que conta quantas vezes foi pedida. */
+function credencialFalsa(token: string | null | Error) {
+  const espia = { chamadas: 0 };
+  const tokenDoMercadoPago = async () => {
+    espia.chamadas++;
+    if (token instanceof Error) throw token;
+    return token;
+  };
+  return { tokenDoMercadoPago, espia };
+}
+
+/** Prontidão: corpo SEM orderId. */
+function chamarProntidao(deps: Record<string, unknown>) {
+  return handler(
+    new Request("https://edge/cobrar-pix-no-balcao", {
+      method: "POST",
+      headers: { Authorization: "Bearer token-do-lojista", "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "prontidao" }),
+    }),
+    {
+      verificarAdmin: async () => ADMIN,
+      agora: () => AGORA,
+      ...deps,
+    },
+  );
+}
+
+/** R6: nada de pedido, nada de UPDATE, nada de MP, nada de getUserById. */
+function exigirSemEfeitos(
+  estado: ReturnType<typeof bancoDaProntidao>["estado"],
+  mp: ReturnType<typeof mpFalso>,
+  rotulo: string,
+) {
+  assert(
+    !estado.tabelas.includes("marketplace_orders"),
+    `${rotulo}: a prontidão acessou marketplace_orders (${estado.tabelas.join(", ")})`,
+  );
+  assertEquals(estado.updates, 0, `${rotulo}: a prontidão fez UPDATE`);
+  assertEquals(mp.chamadas.length, 0, `${rotulo}: a prontidão chamou o Mercado Pago`);
+  assertEquals(estado.getUserById, 0, `${rotulo}: a prontidão leu conta de usuário`);
+}
+
+Deno.test("R1 prontidão sem admin → 401 antes de ler banco, credencial ou MP", async () => {
+  const { supabase, estado } = bancoDaProntidao(RPC_VERDADEIRA);
+  const credencial = credencialFalsa("TOKEN-MP");
+  const mp = mpFalso({});
+  const r = await chamarProntidao({
+    supabase,
+    verificarAdmin: async () => null,
+    tokenDoMercadoPago: credencial.tokenDoMercadoPago,
+    fetchImpl: mp.fetchImpl,
+  });
+  assertEquals(r.status, 401);
+  assertEquals(estado.rpcs.length, 0, "consultou o banco antes de conferir o admin");
+  assertEquals(estado.tabelas.length, 0, "leu tabela antes de conferir o admin");
+  assertEquals(credencial.espia.chamadas, 0, "resolveu a credencial antes de conferir o admin");
+  exigirSemEfeitos(estado, mp, "R1");
+});
+
+Deno.test("R2 função de prontidão ausente no banco → não pronto, motivo banco", async () => {
+  const { supabase, estado } = bancoDaProntidao(RPC_AUSENTE);
+  const credencial = credencialFalsa("TOKEN-MP");
+  const mp = mpFalso({});
+  const r = await chamarProntidao({
+    supabase,
+    tokenDoMercadoPago: credencial.tokenDoMercadoPago,
+    fetchImpl: mp.fetchImpl,
+  });
+  assertEquals(r.status, 200);
+  assertEquals(await r.json(), { pronto: false, motivo: "banco" });
+  assertEquals(estado.rpcs.map((c) => c.nome), [FUNCAO_DE_PRONTIDAO]);
+  exigirSemEfeitos(estado, mp, "R2");
+});
+
+Deno.test("R3 função devolve falso/nulo, ou o banco responde erro → não pronto, motivo banco", async () => {
+  for (const [rotulo, resposta] of [
+    ["falso", { data: false, error: null }],
+    ["nulo", { data: null, error: null }],
+    ["texto 'true' não é true", { data: "true", error: null }],
+    ["erro do banco", { data: null, error: { code: "57014", message: "canceling statement due to statement timeout" } }],
+  ] as const) {
+    const { supabase, estado } = bancoDaProntidao(resposta);
+    const credencial = credencialFalsa("TOKEN-MP");
+    const mp = mpFalso({});
+    const r = await chamarProntidao({
+      supabase,
+      tokenDoMercadoPago: credencial.tokenDoMercadoPago,
+      fetchImpl: mp.fetchImpl,
+    });
+    assertEquals(r.status, 200, rotulo);
+    assertEquals(await r.json(), { pronto: false, motivo: "banco" }, rotulo);
+    exigirSemEfeitos(estado, mp, `R3 ${rotulo}`);
+  }
+});
+
+Deno.test("R4 sem credencial do MP (ou leitura dela falhando) → não pronto, motivo credencial", async () => {
+  for (const [rotulo, token] of [
+    ["sem token", null],
+    ["leitura da credencial lança", new Error("registro_ilegivel")],
+  ] as const) {
+    const { supabase, estado } = bancoDaProntidao(RPC_VERDADEIRA);
+    const credencial = credencialFalsa(token);
+    const mp = mpFalso({});
+    const r = await chamarProntidao({
+      supabase,
+      tokenDoMercadoPago: credencial.tokenDoMercadoPago,
+      fetchImpl: mp.fetchImpl,
+    });
+    assertEquals(r.status, 200, rotulo);
+    assertEquals(await r.json(), { pronto: false, motivo: "credencial" }, rotulo);
+    assertEquals(credencial.espia.chamadas, 1, `${rotulo}: a credencial foi consultada`);
+    exigirSemEfeitos(estado, mp, `R4 ${rotulo}`);
+  }
+});
+
+Deno.test("R5 banco pronto + credencial → pronto, sem orderId no corpo", async () => {
+  const { supabase, estado } = bancoDaProntidao(RPC_VERDADEIRA);
+  const credencial = credencialFalsa("TOKEN-MP");
+  const mp = mpFalso({});
+  const r = await chamarProntidao({
+    supabase,
+    tokenDoMercadoPago: credencial.tokenDoMercadoPago,
+    fetchImpl: mp.fetchImpl,
+  });
+  assertEquals(r.status, 200);
+  assertEquals(await r.json(), { pronto: true });
+  assertEquals(estado.rpcs.map((c) => c.nome), [FUNCAO_DE_PRONTIDAO]);
+  assertEquals(credencial.espia.chamadas, 1);
+  exigirSemEfeitos(estado, mp, "R5");
 });
