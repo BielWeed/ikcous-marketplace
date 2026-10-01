@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import {
   IdentityImageError,
   type PrepareIdentityImageOptions,
+  prepareIdentityAppIcons,
   prepareIdentityImage,
 } from "@/lib/prepareIdentityImage";
 import sharp from "sharp";
@@ -123,6 +124,100 @@ async function errorCode(
 }
 
 describe("original preservado", () => {
+  it("gera PNGs 192 e 180 com hashes dos bytes e reaproveita o original 512", async () => {
+    const large = new Uint8Array(
+      await sharp({
+        create: { width: 512, height: 512, channels: 4, background: "red" },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const draws: number[] = [];
+    vi.stubGlobal("document", {
+      createElement: () => {
+        const canvas = {
+          width: 0,
+          height: 0,
+          getContext: () => ({
+            drawImage: (
+              _image: unknown,
+              _x: number,
+              _y: number,
+              width: number,
+            ) => draws.push(width),
+          }),
+          toBlob: (callback: (value: Blob | null) => void) => {
+            void sharp(large)
+              .resize(canvas.width, canvas.height)
+              .png()
+              .toBuffer()
+              .then((bytes) =>
+                callback(
+                  new Blob([new Uint8Array(bytes)], { type: "image/png" }),
+                ),
+              );
+          },
+        };
+        return canvas;
+      },
+    });
+    const icons = await prepareIdentityAppIcons(blob(large), {
+      signal: signal(),
+    });
+    expect(draws).toEqual([192, 180]);
+    expect(icons.icon_512).toBe(icons.maskable_512);
+    expect(new Uint8Array(await icons.icon_512.blob.arrayBuffer())).toEqual(
+      large,
+    );
+    for (const [prepared, size] of [
+      [icons.icon_192, 192],
+      [icons.apple_touch, 180],
+    ] as const) {
+      const bytes = new Uint8Array(await prepared.blob.arrayBuffer());
+      expect(prepared.asset).toMatchObject({
+        width: size,
+        height: size,
+        media_type: "image/png",
+        sha256: hash(bytes),
+        bytes: bytes.length,
+      });
+      expect(await sharp(bytes).metadata()).toMatchObject({
+        width: size,
+        height: size,
+        format: "png",
+      });
+    }
+  });
+
+  it("não deriva ícones de uma imagem com dimensão incorreta", async () => {
+    await expect(
+      prepareIdentityAppIcons(blob(), { signal: signal() }),
+    ).rejects.toMatchObject({ code: "IDENTITY_IMAGE_DIMENSIONS" });
+  });
+
+  it("encerra a geração de ícones se o canvas travar e libera a imagem", async () => {
+    const large = new Uint8Array(
+      await sharp({
+        create: { width: 512, height: 512, channels: 4, background: "red" },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const controller = new AbortController();
+    vi.stubGlobal("document", {
+      createElement: () => ({
+        width: 0,
+        height: 0,
+        getContext: () => ({ drawImage: () => {} }),
+        toBlob: () => controller.abort(),
+      }),
+    });
+    await expect(
+      prepareIdentityAppIcons(blob(large), { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: "IDENTITY_IMAGE_CANCELED" });
+    expect(images.every((image) => image.src === "")).toBe(true);
+  });
+
   it("buffer devolvido por caller nao pode alterar Blob nem hash durante decode", async () => {
     const mutable = new Uint8Array(png);
     const input = blob();

@@ -1,4 +1,5 @@
 import { paymentStatusKey } from "@/components/admin/orders/OrderStatusBadge";
+import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { DevolucaoDoPedidoCard } from "@/components/devolucao/DevolucaoDoPedidoCard";
 import { SolicitarDevolucaoSheet } from "@/components/devolucao/SolicitarDevolucaoSheet";
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
@@ -671,7 +672,12 @@ export function OrderDetailsView({
   return (
     <div className="pb-customer min-h-full bg-zinc-50/50">
       {/* Cabeçalho */}
-      <div className="px-6 pb-2 pt-6">
+      <div
+        className={cn(
+          "px-6 pb-2 pt-6",
+          "lg:mx-auto lg:w-full lg:max-w-[1120px]",
+        )}
+      >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold text-zinc-500">Meu pedido</p>
@@ -723,78 +729,86 @@ export function OrderDetailsView({
         </div>
       </div>
 
-      <div className="mx-auto max-w-2xl space-y-4 px-6 py-4">
-        {/* Cartão de status (hero) */}
-        <motion.div
-          data-testid="cartao-status"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={cn(
-            "relative overflow-hidden rounded-3xl p-5 shadow-sm",
-            order.status === "delivered"
-              ? // BLOQUEIA B2 (revisor Opus, rodada 2, 25/09/2026): o
-                // degradê antigo (emerald-400→600→700) reprovava AA — o
-                // texto sentava sobre o emerald-400 claro, e mesmo o
-                // emerald-600 mede 3,77:1 contra branco (abaixo do mínimo
-                // 4,5:1). emerald-700 já mede 5,48:1; este degradê fica
-                // inteiro em 700-900, nunca mais claro que 700 em ponto
-                // nenhum do cartão.
-                "bg-gradient-to-br from-emerald-700 via-emerald-800 to-emerald-900 text-white"
-              : order.status === "cancelled"
-                ? "border border-red-100 bg-white text-zinc-900"
-                : "bg-gradient-to-br from-zinc-700 via-zinc-900 to-zinc-950 text-white",
-          )}
-        >
-          <div className="flex items-center gap-3.5">
-            <div
-              className={cn(
-                "flex size-12 flex-shrink-0 items-center justify-center rounded-2xl",
-                order.status === "cancelled" ? "bg-red-50" : "bg-white/15",
-              )}
-            >
-              <StatusIcon
+      <div
+        className={cn(
+          "mx-auto max-w-2xl space-y-4 px-6 py-4",
+          "lg:grid lg:max-w-[1120px] lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-6 lg:space-y-0",
+        )}
+      >
+        <div className="space-y-4">
+          {/* Cartão de status (hero) */}
+          <motion.div
+            data-testid="cartao-status"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(
+              "relative overflow-hidden rounded-3xl p-5 shadow-sm",
+              order.status === "delivered"
+                ? // BLOQUEIA B2 (revisor Opus, rodada 2, 25/09/2026): o
+                  // degradê antigo (emerald-400→600→700) reprovava AA — o
+                  // texto sentava sobre o emerald-400 claro, e mesmo o
+                  // emerald-600 mede 3,77:1 contra branco (abaixo do mínimo
+                  // 4,5:1). emerald-700 já mede 5,48:1; este degradê fica
+                  // inteiro em 700-900, nunca mais claro que 700 em ponto
+                  // nenhum do cartão.
+                  "bg-gradient-to-br from-emerald-700 via-emerald-800 to-emerald-900 text-white"
+                : order.status === "cancelled"
+                  ? "border border-red-100 bg-white text-zinc-900"
+                  : "bg-gradient-to-br from-zinc-700 via-zinc-900 to-zinc-950 text-white",
+            )}
+          >
+            <div className="flex items-center gap-3.5">
+              <div
                 className={cn(
-                  "size-5",
-                  order.status === "cancelled" ? "text-red-600" : "text-white",
-                )}
-              />
-            </div>
-            <div className="min-w-0">
-              <h2
-                className={cn(
-                  "text-lg font-black tracking-tight",
-                  order.status === "cancelled" && "text-red-700",
+                  "flex size-12 flex-shrink-0 items-center justify-center rounded-2xl",
+                  order.status === "cancelled" ? "bg-red-50" : "bg-white/15",
                 )}
               >
-                {currentStatus.label}
-              </h2>
-              {order.status !== "cancelled" && (
-                // BLOQUEIA B2: `text-white/80` reprovava AA sobre o
-                // emerald-400/600 antigo do cartão entregue — branco sólido
-                // nunca reprova, em qualquer um dos fundos escuros deste
-                // cartão (dark ou emerald).
-                <p className="mt-0.5 text-[13px] leading-snug text-white">
-                  {statusDescription}
-                </p>
-              )}
+                <StatusIcon
+                  className={cn(
+                    "size-5",
+                    order.status === "cancelled"
+                      ? "text-red-600"
+                      : "text-white",
+                  )}
+                />
+              </div>
+              <div className="min-w-0">
+                <h2
+                  className={cn(
+                    "text-lg font-black tracking-tight",
+                    order.status === "cancelled" && "text-red-700",
+                  )}
+                >
+                  {currentStatus.label}
+                </h2>
+                {order.status !== "cancelled" && (
+                  // BLOQUEIA B2: `text-white/80` reprovava AA sobre o
+                  // emerald-400/600 antigo do cartão entregue — branco sólido
+                  // nunca reprova, em qualquer um dos fundos escuros deste
+                  // cartão (dark ou emerald).
+                  <p className="mt-0.5 text-[13px] leading-snug text-white">
+                    {statusDescription}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Linha do tempo de 4 etapas — some no cancelado, que tem seu
+            {/* Linha do tempo de 4 etapas — some no cancelado, que tem seu
               próprio quadro de aviso logo abaixo. */}
-          {order.status !== "cancelled" && (
-            <div className="mt-5 flex items-start justify-between gap-1">
-              {TIMELINE_STEPS.map((step, i) => {
-                const isPast = timelineIndex > i;
-                const isCurrent = timelineIndex === i;
-                const isLast = i === TIMELINE_STEPS.length - 1;
-                const StepIcon = step.icon;
-                return (
-                  <div
-                    key={step.status}
-                    className="relative flex flex-1 flex-col items-center gap-1.5"
-                  >
-                    {/* Trilha em SEGMENTOS entre nós, nunca uma linha única
+            {order.status !== "cancelled" && (
+              <div className="mt-5 flex items-start justify-between gap-1">
+                {TIMELINE_STEPS.map((step, i) => {
+                  const isPast = timelineIndex > i;
+                  const isCurrent = timelineIndex === i;
+                  const isLast = i === TIMELINE_STEPS.length - 1;
+                  const StepIcon = step.icon;
+                  return (
+                    <div
+                      key={step.status}
+                      className="relative flex flex-1 flex-col items-center gap-1.5"
+                    >
+                      {/* Trilha em SEGMENTOS entre nós, nunca uma linha única
                         atrás deles: o nó pendente é vazado (só borda), e a
                         linha única aparecia cortando o ícone por dentro.
                         Cada segmento vai da borda deste nó à do próximo, com
@@ -802,420 +816,427 @@ export function OrderDetailsView({
                         não encostar nele. Geometria: nó `size-7` (28px,
                         metade 14px) centrado numa coluna `flex-1`; o centro
                         do próximo fica a 100% + 4px (`gap-1`) deste. */}
-                    {!isLast && (
+                      {!isLast && (
+                        <div
+                          aria-hidden
+                          className={cn(
+                            "absolute top-[13px] h-0.5 rounded-full transition-colors duration-700",
+                            isPast ? "bg-white" : "bg-white/20",
+                          )}
+                          style={{
+                            left: "calc(50% + 22px)",
+                            width: "calc(100% + 4px - 44px)",
+                          }}
+                        />
+                      )}
                       <div
-                        aria-hidden
                         className={cn(
-                          "absolute top-[13px] h-0.5 rounded-full transition-colors duration-700",
-                          isPast ? "bg-white" : "bg-white/20",
+                          "flex size-7 items-center justify-center rounded-full transition-colors",
+                          isPast
+                            ? order.status === "delivered"
+                              ? "bg-white text-emerald-700"
+                              : "bg-white text-zinc-900"
+                            : isCurrent
+                              ? "bg-white text-zinc-900 ring-4 ring-white/25"
+                              : "border border-white/25 text-white/40",
                         )}
-                        style={{
-                          left: "calc(50% + 22px)",
-                          width: "calc(100% + 4px - 44px)",
-                        }}
-                      />
-                    )}
-                    <div
-                      className={cn(
-                        "flex size-7 items-center justify-center rounded-full transition-colors",
-                        isPast
-                          ? order.status === "delivered"
-                            ? "bg-white text-emerald-700"
-                            : "bg-white text-zinc-900"
-                          : isCurrent
-                            ? "bg-white text-zinc-900 ring-4 ring-white/25"
-                            : "border border-white/25 text-white/40",
-                      )}
-                    >
-                      {isPast ? (
-                        <Check className="size-3.5" />
-                      ) : (
-                        <StepIcon className="size-3.5" />
-                      )}
+                      >
+                        {isPast ? (
+                          <Check className="size-3.5" />
+                        ) : (
+                          <StepIcon className="size-3.5" />
+                        )}
+                      </div>
+                      <span
+                        className={cn(
+                          "text-center text-[10px] font-semibold leading-none",
+                          isPast || isCurrent ? "text-white" : "text-white/40",
+                        )}
+                      >
+                        {step.label}
+                      </span>
                     </div>
-                    <span
-                      className={cn(
-                        "text-center text-[10px] font-semibold leading-none",
-                        isPast || isCurrent ? "text-white" : "text-white/40",
-                      )}
-                    >
-                      {step.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
 
-          {/* Cancelado: a descrição (cancelledDescription, sem mudar uma
+            {/* Cancelado: a descrição (cancelledDescription, sem mudar uma
               vírgula) vai num quadro de aviso, não sob o título. */}
-          {order.status === "cancelled" && (
-            <div className="mt-4 flex gap-2.5 rounded-2xl bg-red-50 p-3">
-              <Clock className="mt-0.5 size-4 flex-shrink-0 text-red-600" />
-              <p className="text-[13px] leading-relaxed text-red-800">
-                {statusDescription}
-              </p>
-            </div>
-          )}
+            {order.status === "cancelled" && (
+              <div className="mt-4 flex gap-2.5 rounded-2xl bg-red-50 p-3">
+                <Clock className="mt-0.5 size-4 flex-shrink-0 text-red-600" />
+                <p className="text-[13px] leading-relaxed text-red-800">
+                  {statusDescription}
+                </p>
+              </div>
+            )}
 
-          {/* Rastreio (PEDIDO-060, #105).
+            {/* Rastreio (PEDIDO-060, #105).
               Só aparece quando existe código de verdade — ver `codigoDeRastreio`.
               Fica DENTRO do cartão de status porque é a resposta à única
               pergunta que traz o cliente a esta tela: "onde está meu pedido?". */}
-          {codigoDeRastreio && (
-            <div
-              className={cn(
-                "mt-4 flex items-center gap-2 rounded-2xl p-3",
-                order.status === "cancelled" ? "bg-zinc-50" : "bg-white/10",
-              )}
-            >
-              <div className="min-w-0 flex-1">
-                <span
+            {codigoDeRastreio && (
+              <div
+                className={cn(
+                  "mt-4 flex items-center gap-2 rounded-2xl p-3",
+                  order.status === "cancelled" ? "bg-zinc-50" : "bg-white/10",
+                )}
+              >
+                <div className="min-w-0 flex-1">
+                  <span
+                    className={cn(
+                      "block text-[10px] font-semibold",
+                      // BLOQUEIA B2: mesmo motivo do parágrafo de descrição —
+                      // `text-white/60` reprovava AA sobre o cartão entregue.
+                      order.status === "cancelled"
+                        ? "text-zinc-500"
+                        : "text-white",
+                    )}
+                  >
+                    Código de rastreio
+                  </span>
+                  <code
+                    className={cn(
+                      "block truncate font-mono text-xs font-bold tracking-tight",
+                      order.status === "cancelled"
+                        ? "text-zinc-900"
+                        : "text-white",
+                    )}
+                  >
+                    {codigoDeRastreio}
+                  </code>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyTracking}
+                  title="Copiar código de rastreio"
                   className={cn(
-                    "block text-[10px] font-semibold",
-                    // BLOQUEIA B2: mesmo motivo do parágrafo de descrição —
-                    // `text-white/60` reprovava AA sobre o cartão entregue.
+                    "flex size-9 flex-shrink-0 items-center justify-center rounded-xl transition-colors active:scale-95",
                     order.status === "cancelled"
-                      ? "text-zinc-500"
-                      : "text-white",
+                      ? "bg-white text-zinc-500 hover:text-zinc-900"
+                      : // BLOQUEIA B2: ícone em branco sólido — só o fundo
+                        // muda de opacidade no hover, nunca o texto/ícone.
+                        "bg-white/10 text-white hover:bg-white/20",
                   )}
                 >
-                  Código de rastreio
-                </span>
-                <code
+                  {copiedTracking ? (
+                    <Check className="size-4 text-emerald-400" />
+                  ) : (
+                    <Copy className="size-4" />
+                  )}
+                </button>
+                <a
+                  href={`https://linkrastreio.com/?codigo=${encodeURIComponent(codigoDeRastreio)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Rastrear entrega"
                   className={cn(
-                    "block truncate font-mono text-xs font-bold tracking-tight",
+                    "flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-xs font-bold transition-colors active:scale-95",
                     order.status === "cancelled"
-                      ? "text-zinc-900"
-                      : "text-white",
+                      ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                      : "bg-white text-zinc-900 hover:bg-white/90",
                   )}
                 >
-                  {codigoDeRastreio}
-                </code>
+                  <Truck className="size-3.5" />
+                  Rastrear
+                </a>
               </div>
-              <button
-                type="button"
-                onClick={handleCopyTracking}
-                title="Copiar código de rastreio"
-                className={cn(
-                  "flex size-9 flex-shrink-0 items-center justify-center rounded-xl transition-colors active:scale-95",
-                  order.status === "cancelled"
-                    ? "bg-white text-zinc-500 hover:text-zinc-900"
-                    : // BLOQUEIA B2: ícone em branco sólido — só o fundo
-                      // muda de opacidade no hover, nunca o texto/ícone.
-                      "bg-white/10 text-white hover:bg-white/20",
-                )}
-              >
-                {copiedTracking ? (
-                  <Check className="size-4 text-emerald-400" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </button>
-              <a
-                href={`https://linkrastreio.com/?codigo=${encodeURIComponent(codigoDeRastreio)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Rastrear entrega"
-                className={cn(
-                  "flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-xs font-bold transition-colors active:scale-95",
-                  order.status === "cancelled"
-                    ? "bg-zinc-900 text-white hover:bg-zinc-800"
-                    : "bg-white text-zinc-900 hover:bg-white/90",
-                )}
-              >
-                <Truck className="size-3.5" />
-                Rastrear
-              </a>
-            </div>
+            )}
+
+            {/* Espaço reservado: botão "Continuar pagamento Pix" do PR #648 entra aqui */}
+          </motion.div>
+
+          {/* Cartão "O que achou da compra?" — em destaque, redesenho 25/09/2026 */}
+          {mostrarCartaoDeAvaliacao && (
+            <motion.div
+              data-testid="cartao-avaliacao"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50 to-white p-5 shadow-sm"
+            >
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h4 className="text-[15px] font-extrabold tracking-tight text-zinc-900">
+                  O que achou da compra?
+                </h4>
+                <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
+                  {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
+                  avaliados
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                {produtosParaAvaliar.map((item) => {
+                  const avaliado = reviewedProductIds.has(item.productId);
+                  return (
+                    <div
+                      key={item.productId}
+                      className="flex items-start gap-3"
+                    >
+                      <div className="size-14 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="size-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-zinc-900">
+                          {item.name}
+                        </p>
+                        {avaliado ? (
+                          <span className="mt-1.5 inline-flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 duration-300 animate-in fade-in">
+                            <Check className="size-3" />
+                            Avaliado
+                          </span>
+                        ) : (
+                          <div className="mt-1.5 flex gap-1">
+                            {[1, 2, 3, 4, 5].map((nota) => (
+                              <button
+                                key={nota}
+                                type="button"
+                                aria-label={`Dar ${nota} ${nota === 1 ? "estrela" : "estrelas"} para ${item.name}`}
+                                onClick={(e) => {
+                                  avaliarTriggerRef.current = e.currentTarget;
+                                  setReviewingItem({
+                                    productId: item.productId,
+                                    productName: item.name,
+                                    rating: nota,
+                                  });
+                                }}
+                                className="flex size-10 items-center justify-center rounded-lg text-amber-400 transition-transform active:scale-90"
+                              >
+                                <Star className="size-5 fill-amber-400" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {proximoProdutoNaoAvaliado && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    avaliarTriggerRef.current = e.currentTarget;
+                    setReviewingItem({
+                      productId: proximoProdutoNaoAvaliado.productId,
+                      productName: proximoProdutoNaoAvaliado.name,
+                    });
+                  }}
+                  className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98]"
+                >
+                  <Star className="size-4 fill-amber-400 text-amber-400" />
+                  Escrever avaliação
+                </button>
+              )}
+            </motion.div>
           )}
 
-          {/* Espaço reservado: botão "Continuar pagamento Pix" do PR #648 entra aqui */}
-        </motion.div>
+          {/* Devolução/troca em andamento (ou a última) deste pedido: status,
+            protocolo, o que a loja escreveu e a próxima ação do cliente. */}
+          {podeUsarDevolucao && devolucaoDoProduto.atual && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.08 }}
+            >
+              <DevolucaoDoPedidoCard
+                atual={devolucaoDoProduto.atual}
+                anteriores={devolucaoDoProduto.devolucoes.slice(1)}
+                enderecoDaLoja={config.storeAddress ?? null}
+                horarioDaLoja={config.businessHours ?? null}
+                onCancelar={devolucaoDoProduto.cancelar}
+                onInformarEnvio={devolucaoDoProduto.informarEnvio}
+              />
+            </motion.div>
+          )}
 
-        {/* Cartão "O que achou da compra?" — em destaque, redesenho 25/09/2026 */}
-        {mostrarCartaoDeAvaliacao && (
+          {/* Cartão "Itens do pedido" */}
           <motion.div
-            data-testid="cartao-avaliacao"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.05 }}
-            className="rounded-3xl border border-amber-200/60 bg-gradient-to-b from-amber-50 to-white p-5 shadow-sm"
+            transition={{ delay: 0.1 }}
+            className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
           >
-            <div className="mb-4 flex items-center justify-between gap-2">
+            <div className="mb-4 flex items-center justify-between">
               <h4 className="text-[15px] font-extrabold tracking-tight text-zinc-900">
-                O que achou da compra?
+                Itens do pedido
               </h4>
-              <span className="flex-shrink-0 text-xs font-semibold text-zinc-500">
-                {totalProdutosAvaliados} de {produtosParaAvaliar.length}{" "}
-                avaliados
+              <span className="text-xs font-semibold text-zinc-500">
+                {order.items.length}{" "}
+                {order.items.length === 1 ? "item" : "itens"}
               </span>
             </div>
 
             <div className="space-y-4">
-              {produtosParaAvaliar.map((item) => {
-                const avaliado = reviewedProductIds.has(item.productId);
-                return (
-                  <div key={item.productId} className="flex items-start gap-3">
-                    <div className="size-14 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="size-full object-cover"
-                      />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-zinc-900">
-                        {item.name}
-                      </p>
-                      {avaliado ? (
-                        <span className="mt-1.5 inline-flex select-none items-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 duration-300 animate-in fade-in">
-                          <Check className="size-3" />
-                          Avaliado
-                        </span>
-                      ) : (
-                        <div className="mt-1.5 flex gap-1">
-                          {[1, 2, 3, 4, 5].map((nota) => (
-                            <button
-                              key={nota}
-                              type="button"
-                              aria-label={`Dar ${nota} ${nota === 1 ? "estrela" : "estrelas"} para ${item.name}`}
-                              onClick={(e) => {
-                                avaliarTriggerRef.current = e.currentTarget;
-                                setReviewingItem({
-                                  productId: item.productId,
-                                  productName: item.name,
-                                  rating: nota,
-                                });
-                              }}
-                              className="flex size-10 items-center justify-center rounded-lg text-amber-400 transition-transform active:scale-90"
-                            >
-                              <Star className="size-5 fill-amber-400" />
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+              {order.items.map((item: OrderItem, idx: number) => (
+                <div
+                  key={idx}
+                  className={cn(
+                    "group flex items-center gap-3.5",
+                    order.status === "cancelled" && "opacity-60",
+                  )}
+                >
+                  <div className="relative size-14 flex-shrink-0 overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
                   </div>
-                );
-              })}
+                  <div className="flex min-w-0 flex-1 flex-col justify-center">
+                    <h5 className="truncate text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
+                      {item.name}
+                    </h5>
+                    <p className="mt-0.5 text-xs font-medium text-zinc-500">
+                      Qtd. {item.quantity}
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      "flex-shrink-0 text-sm font-bold",
+                      order.status === "cancelled"
+                        ? "text-zinc-500 line-through"
+                        : "text-zinc-900",
+                    )}
+                  >
+                    R$ {item.price.toFixed(2).replace(".", ",")}
+                  </span>
+                </div>
+              ))}
             </div>
-
-            {proximoProdutoNaoAvaliado && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  avaliarTriggerRef.current = e.currentTarget;
-                  setReviewingItem({
-                    productId: proximoProdutoNaoAvaliado.productId,
-                    productName: proximoProdutoNaoAvaliado.name,
-                  });
-                }}
-                className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-zinc-900 text-sm font-bold text-white transition-all active:scale-[0.98]"
-              >
-                <Star className="size-4 fill-amber-400 text-amber-400" />
-                Escrever avaliação
-              </button>
-            )}
           </motion.div>
-        )}
-
-        {/* Devolução/troca em andamento (ou a última) deste pedido: status,
-            protocolo, o que a loja escreveu e a próxima ação do cliente. */}
-        {podeUsarDevolucao && devolucaoDoProduto.atual && (
+        </div>
+        <div className={cn("space-y-4", COLUNA_FIXA_NO_COMPUTADOR)}>
+          {/* Cartão "Resumo" */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.08 }}
+            transition={{ delay: 0.2 }}
+            className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
           >
-            <DevolucaoDoPedidoCard
-              atual={devolucaoDoProduto.atual}
-              anteriores={devolucaoDoProduto.devolucoes.slice(1)}
-              enderecoDaLoja={config.storeAddress ?? null}
-              horarioDaLoja={config.businessHours ?? null}
-              onCancelar={devolucaoDoProduto.cancelar}
-              onInformarEnvio={devolucaoDoProduto.informarEnvio}
-            />
-          </motion.div>
-        )}
-
-        {/* Cartão "Itens do pedido" */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <h4 className="text-[15px] font-extrabold tracking-tight text-zinc-900">
-              Itens do pedido
+            <h4 className="mb-3 text-[15px] font-extrabold tracking-tight text-zinc-900">
+              Resumo
             </h4>
-            <span className="text-xs font-semibold text-zinc-500">
-              {order.items.length} {order.items.length === 1 ? "item" : "itens"}
-            </span>
-          </div>
 
-          <div className="space-y-4">
-            {order.items.map((item: OrderItem, idx: number) => (
-              <div
-                key={idx}
-                className={cn(
-                  "group flex items-center gap-3.5",
-                  order.status === "cancelled" && "opacity-60",
-                )}
-              >
-                <div className="relative size-14 flex-shrink-0 overflow-hidden rounded-2xl border border-zinc-100 bg-zinc-50">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <h5 className="truncate text-sm font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-650">
-                    {item.name}
-                  </h5>
-                  <p className="mt-0.5 text-xs font-medium text-zinc-500">
-                    Qtd. {item.quantity}
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "flex-shrink-0 text-sm font-bold",
-                    order.status === "cancelled"
-                      ? "text-zinc-500 line-through"
-                      : "text-zinc-900",
-                  )}
-                >
-                  R$ {item.price.toFixed(2).replace(".", ",")}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
+                <span>Produtos</span>
+                <span className="font-bold text-zinc-900">
+                  R$ {order.subtotal.toFixed(2).replace(".", ",")}
                 </span>
               </div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Cartão "Resumo" */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
-        >
-          <h4 className="mb-3 text-[15px] font-extrabold tracking-tight text-zinc-900">
-            Resumo
-          </h4>
-
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
-              <span>Produtos</span>
-              <span className="font-bold text-zinc-900">
-                R$ {order.subtotal.toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
-              <span>Frete</span>
-              <span
-                className={cn(
-                  "font-bold",
-                  order.shipping === 0 ? "text-emerald-700" : "text-zinc-900",
-                )}
-              >
-                {order.shipping > 0
-                  ? `R$ ${order.shipping.toFixed(2).replace(".", ",")}`
-                  : "Grátis"}
-              </span>
-            </div>
-            {order.discount > 0 && (
-              <div className="flex items-center justify-between text-[13px] font-bold text-emerald-700">
-                <span>Desconto</span>
-                <span>- R$ {order.discount.toFixed(2).replace(".", ",")}</span>
+              <div className="flex items-center justify-between text-[13px] font-medium text-zinc-600">
+                <span>Frete</span>
+                <span
+                  className={cn(
+                    "font-bold",
+                    order.shipping === 0 ? "text-emerald-700" : "text-zinc-900",
+                  )}
+                >
+                  {order.shipping > 0
+                    ? `R$ ${order.shipping.toFixed(2).replace(".", ",")}`
+                    : "Grátis"}
+                </span>
               </div>
-            )}
-            <div className="my-3 border-t border-dashed border-zinc-200" />
-            <div className="flex items-baseline justify-between">
-              <span className="text-sm font-semibold text-zinc-500">
-                {rotuloDoTotal}
-              </span>
-              <span
-                className={cn(
-                  "text-2xl font-black tracking-tight",
-                  order.status === "cancelled"
-                    ? "text-zinc-500"
-                    : "text-zinc-950",
-                )}
-              >
-                R$ {order.total.toFixed(2).replace(".", ",")}
-              </span>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Cartão de informações: endereço e pagamento */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3 }}
-          className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
-        >
-          {/* Destino */}
-          <div className="flex items-start gap-3">
-            <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-100">
-              <MapPin className="size-4 text-zinc-500" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-zinc-500">
-                {order.retiradaNaLoja
-                  ? "Retirada na loja"
-                  : "Endereço de entrega"}
-              </p>
-              {order.retiradaNaLoja && (
-                // O endereço REAL da loja no momento da compra, e o aviso
-                // neutro — nenhum prazo inventado: a loja confirma quando
-                // o pedido está separado.
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-sm font-bold text-zinc-900">
-                    Retire em: {order.enderecoDeRetirada}
-                  </p>
-                  <p className="text-xs font-medium leading-relaxed text-zinc-500">
-                    Aguarde a confirmação da loja para retirar.
-                  </p>
-                  <p className="pt-1.5 text-xs font-semibold text-zinc-500">
-                    Seu endereço
-                  </p>
+              {order.discount > 0 && (
+                <div className="flex items-center justify-between text-[13px] font-bold text-emerald-700">
+                  <span>Desconto</span>
+                  <span>
+                    - R$ {order.discount.toFixed(2).replace(".", ",")}
+                  </span>
                 </div>
               )}
-              <p className="mt-1 text-sm font-bold text-zinc-900">
-                {order.customer.name}
-              </p>
-              <p className="mt-0.5 text-xs font-medium leading-relaxed text-zinc-500">
-                {order.customer.address}, {order.customer.number}
-                <br />
-                {/* Cidade do PEDIDO, nunca da loja — é o endereço de quem
+              <div className="my-3 border-t border-dashed border-zinc-200" />
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm font-semibold text-zinc-500">
+                  {rotuloDoTotal}
+                </span>
+                <span
+                  className={cn(
+                    "text-2xl font-black tracking-tight",
+                    order.status === "cancelled"
+                      ? "text-zinc-500"
+                      : "text-zinc-950",
+                  )}
+                >
+                  R$ {order.total.toFixed(2).replace(".", ",")}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Cartão de informações: endereço e pagamento */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+            className="rounded-3xl border border-zinc-100 bg-white p-5 shadow-sm"
+          >
+            {/* Destino */}
+            <div className="flex items-start gap-3">
+              <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-100">
+                <MapPin className="size-4 text-zinc-500" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-zinc-500">
+                  {order.retiradaNaLoja
+                    ? "Retirada na loja"
+                    : "Endereço de entrega"}
+                </p>
+                {order.retiradaNaLoja && (
+                  // O endereço REAL da loja no momento da compra, e o aviso
+                  // neutro — nenhum prazo inventado: a loja confirma quando
+                  // o pedido está separado.
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-sm font-bold text-zinc-900">
+                      Retire em: {order.enderecoDeRetirada}
+                    </p>
+                    <p className="text-xs font-medium leading-relaxed text-zinc-500">
+                      Aguarde a confirmação da loja para retirar.
+                    </p>
+                    <p className="pt-1.5 text-xs font-semibold text-zinc-500">
+                      Seu endereço
+                    </p>
+                  </div>
+                )}
+                <p className="mt-1 text-sm font-bold text-zinc-900">
+                  {order.customer.name}
+                </p>
+                <p className="mt-0.5 text-xs font-medium leading-relaxed text-zinc-500">
+                  {order.customer.address}, {order.customer.number}
+                  <br />
+                  {/* Cidade do PEDIDO, nunca da loja — é o endereço de quem
                     comprou. Sem cidade no pedido, mostra só o bairro, sem
                     o "•" solto. */}
-                {order.customer.neighborhood}
-                {order.customer.city && ` • ${order.customer.city}`}
-              </p>
+                  {order.customer.neighborhood}
+                  {order.customer.city && ` • ${order.customer.city}`}
+                </p>
+              </div>
             </div>
-          </div>
 
-          {/* Pagamento */}
-          <div className="mt-4 flex items-start gap-3 border-t border-zinc-100 pt-4">
-            <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-100">
-              <CreditCard className="size-4 text-zinc-500" />
-            </div>
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <p className="text-xs font-semibold text-zinc-500">Pagamento</p>
-              <p className="text-sm font-bold capitalize tracking-tight text-zinc-900">
-                {order.paymentMethod === "card"
-                  ? "Cartão de Crédito"
-                  : order.paymentMethod}
-              </p>
-              <CustomerPaymentBadge
-                paymentStatus={order.paymentStatus}
-                orderStatus={order.status}
-              />
-              {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 3
+            {/* Pagamento */}
+            <div className="mt-4 flex items-start gap-3 border-t border-zinc-100 pt-4">
+              <div className="flex size-9 flex-shrink-0 items-center justify-center rounded-xl bg-zinc-100">
+                <CreditCard className="size-4 text-zinc-500" />
+              </div>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <p className="text-xs font-semibold text-zinc-500">Pagamento</p>
+                <p className="text-sm font-bold capitalize tracking-tight text-zinc-900">
+                  {order.paymentMethod === "card"
+                    ? "Cartão de Crédito"
+                    : order.paymentMethod}
+                </p>
+                <CustomerPaymentBadge
+                  paymentStatus={order.paymentStatus}
+                  orderStatus={order.status}
+                />
+                {/* T7 do plano-mãe de estorno pelo app, corrigido na rodada 3
                   (laudo Opus PR#457, BLOQUEIA A/B): o selo acima é NEUTRO
                   para pago+cancelado (não afirma nem "fale com a loja" nem
                   "volta sozinho" — ele não tem a linha de devolução para
@@ -1223,126 +1244,127 @@ export function OrderDetailsView({
                   de status acima, os dois lendo a MESMA `linhasDevolucao`.
                   Esta linha nunca mostra id do Mercado Pago nem texto
                   técnico de erro (ver `textoDevolucao`). */}
-              {textoDaDevolucao && (
-                <p className="text-xs font-medium leading-relaxed text-zinc-500">
-                  {textoDaDevolucao}
-                </p>
-              )}
+                {textoDaDevolucao && (
+                  <p className="text-xs font-medium leading-relaxed text-zinc-500">
+                    {textoDaDevolucao}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
 
-        {/* Lista de ações */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
-          className="overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-sm"
-        >
-          {lojaTemWhatsappAgora && (
-            <button
-              onClick={handleWhatsAppSupport}
-              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
-            >
-              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-                <MessageCircle className="size-4" />
-              </span>
-              Falar com a loja
-              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
-            </button>
-          )}
+          {/* Lista de ações */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-sm"
+          >
+            {lojaTemWhatsappAgora && (
+              <button
+                onClick={handleWhatsAppSupport}
+                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
+              >
+                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <MessageCircle className="size-4" />
+                </span>
+                Falar com a loja
+                <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+              </button>
+            )}
 
-          {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
+            {/* Laudo 0109 (B2): segunda chance do comprovante — ver o
               comentário do handleResendReceipt. Fora do bloco do cancelar
               de propósito: o reenvio faz sentido em QUALQUER estágio do
               pedido, inclusive entregue ou cancelado. */}
-          <button
-            onClick={handleResendReceipt}
-            disabled={isResendingReceipt}
-            className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
-          >
-            <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
-              {isResendingReceipt ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Mail className="size-4" />
-              )}
-            </span>
-            {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
-            <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
-          </button>
+            <button
+              onClick={handleResendReceipt}
+              disabled={isResendingReceipt}
+              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100 disabled:opacity-50"
+            >
+              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+                {isResendingReceipt ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Mail className="size-4" />
+                )}
+              </span>
+              {isResendingReceipt ? "Reenviando…" : "Reenviar comprovante"}
+              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+            </button>
 
-          {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
+            {/* Devolução ou troca (CDC art. 49 e Decreto 7.962/2013: o cliente
               desiste pelo MESMO canal da compra). A linha só existe quando o
               servidor diz que pode (`devolucao_elegibilidade.pode`); quando
               não pode e ainda não há devolução, o motivo aparece discreto —
               "por que não tenho o botão?" tem resposta na própria tela. */}
-          {podeUsarDevolucao && devolucaoDoProduto.elegibilidade?.pode && (
-            <button
-              type="button"
-              data-testid="acao-solicitar-devolucao"
-              onClick={() => {
-                haptic.light();
-                setPedindoDevolucao(true);
-              }}
-              className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
-            >
-              <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
-                <RotateCcw className="size-4" />
-              </span>
-              Solicitar devolução ou troca
-              <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
-            </button>
-          )}
-          {podeUsarDevolucao &&
-            devolucaoDoProduto.elegibilidade &&
-            !devolucaoDoProduto.elegibilidade.pode &&
-            devolucaoDoProduto.elegibilidade.motivo_bloqueio &&
-            devolucaoDoProduto.devolucoes.length === 0 && (
-              <div
-                data-testid="devolucao-indisponivel"
-                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 last:border-b-0"
+            {podeUsarDevolucao && devolucaoDoProduto.elegibilidade?.pode && (
+              <button
+                type="button"
+                data-testid="acao-solicitar-devolucao"
+                onClick={() => {
+                  haptic.light();
+                  setPedindoDevolucao(true);
+                }}
+                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-zinc-900 transition-colors last:border-b-0 hover:bg-zinc-50 active:bg-zinc-100"
               >
-                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
+                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-700">
                   <RotateCcw className="size-4" />
                 </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-zinc-500">
-                    Devolução ou troca
-                  </span>
-                  <span className="block text-xs leading-snug text-zinc-500">
-                    {devolucaoDoProduto.elegibilidade.motivo_bloqueio}
-                  </span>
-                </span>
-              </div>
+                Solicitar devolução ou troca
+                <ChevronRight className="ml-auto size-4 flex-shrink-0 text-zinc-400" />
+              </button>
             )}
+            {podeUsarDevolucao &&
+              devolucaoDoProduto.elegibilidade &&
+              !devolucaoDoProduto.elegibilidade.pode &&
+              devolucaoDoProduto.elegibilidade.motivo_bloqueio &&
+              devolucaoDoProduto.devolucoes.length === 0 && (
+                <div
+                  data-testid="devolucao-indisponivel"
+                  className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 last:border-b-0"
+                >
+                  <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
+                    <RotateCcw className="size-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-zinc-500">
+                      Devolução ou troca
+                    </span>
+                    <span className="block text-xs leading-snug text-zinc-500">
+                      {devolucaoDoProduto.elegibilidade.motivo_bloqueio}
+                    </span>
+                  </span>
+                </div>
+              )}
 
-          {/* Exige sessão: o convidado chega nesta tela pelo fallback de
+            {/* Exige sessão: o convidado chega nesta tela pelo fallback de
               sessionStorage do loadOrder, e update_order_status_atomic passou a
               recusar chamador sem auth.uid() (PEDIDO-010, #115). Sem esta
               condição o botão continuaria visível e falharia sempre.
               'pending'/'processing'/'shipping': o divisor da regra do
               Gabriel (24/08/2026) é se o produto SAIU, não se foi pago —
               'delivered' fica fora, é devolução, outro assunto. */}
-          {["pending", "processing", "shipping"].includes(order.status) &&
-            user && (
-              <button
-                onClick={handleCancelOrder}
-                disabled={isCancelling}
-                className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
-              >
-                <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
-                  {isCancelling ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <XCircle className="size-4" />
-                  )}
-                </span>
-                {isCancelling ? "Processando" : "Cancelar Pedido"}
-                <ChevronRight className="ml-auto size-4 flex-shrink-0 text-red-200" />
-              </button>
-            )}
-        </motion.div>
+            {["pending", "processing", "shipping"].includes(order.status) &&
+              user && (
+                <button
+                  onClick={handleCancelOrder}
+                  disabled={isCancelling}
+                  className="flex w-full items-center gap-3 border-b border-zinc-100 px-5 py-3.5 text-left text-sm font-semibold text-red-600 transition-colors last:border-b-0 hover:bg-red-50 active:bg-red-100 disabled:opacity-50"
+                >
+                  <span className="flex size-8 flex-shrink-0 items-center justify-center rounded-full bg-red-50 text-red-600">
+                    {isCancelling ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <XCircle className="size-4" />
+                    )}
+                  </span>
+                  {isCancelling ? "Processando" : "Cancelar Pedido"}
+                  <ChevronRight className="ml-auto size-4 flex-shrink-0 text-red-200" />
+                </button>
+              )}
+          </motion.div>
+        </div>
       </div>
 
       {/* Montada enquanto houver elegibilidade (não só enquanto `pode`): ao
@@ -1364,7 +1386,12 @@ export function OrderDetailsView({
       {reviewingItem &&
         typeof document !== "undefined" &&
         createPortal(
-          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in">
+          <div
+            className={cn(
+              "fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm duration-300 animate-in fade-in",
+              "lg:items-center lg:p-6",
+            )}
+          >
             <div
               className="fixed inset-0"
               onClick={fecharAvaliacao}
@@ -1381,7 +1408,10 @@ export function OrderDetailsView({
             <div
               ref={avaliacaoFolhaRef}
               tabIndex={-1}
-              className="relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom"
+              className={cn(
+                "relative z-10 max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-[2.5rem] bg-zinc-50 p-6 shadow-2xl duration-300 animate-in slide-in-from-bottom",
+                "lg:max-w-lg lg:rounded-[2.5rem]",
+              )}
               role="dialog"
               aria-modal="true"
               aria-labelledby="titulo-avaliacao"

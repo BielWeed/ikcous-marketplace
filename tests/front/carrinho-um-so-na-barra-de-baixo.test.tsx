@@ -1,29 +1,6 @@
 // @vitest-environment jsdom
-//
-// Em tela larga a cliente via DOIS carrinhos ao mesmo tempo: um no canto
-// superior direito (Header.tsx, `id="header-cart"`, escondido no celular por
-// `hidden ... md:flex`) e outro na barra de baixo (BottomNav, que em `md`
-// vira uma barra flutuante e NUNCA some). Medido no navegador, em
-// http://localhost:5173, antes do conserto:
-//
-//     largura 1280 -> header_cart visivel em (1176, 6)
-//                     bottom_nav_cart visivel em (663, 716)   -> DOIS
-//     largura  606 -> header_cart escondido                   -> um so
-//
-// O Gabriel decidiu em 24/08/2026: fica so o da barra de baixo.
-//
-// A ARMADILHA QUE VEM JUNTO, e o motivo deste arquivo ter duas metades:
-// `cartAnimation.ts` mirava `#header-cart` sempre que a janela tivesse
-// >= 768px (`const isDesktop = window.innerWidth >= 768`). Apagar o botao do
-// topo sem mexer nela deixaria a animacao de "voar para o carrinho" mirando
-// um elemento que nao existe mais — ela cai no `if (!target)`, escreve um
-// console.warn e NAO ANIMA NADA em tela larga. O defeito trocaria de lugar
-// em vez de sumir.
-//
-// Por isso a assercao da animacao e' sobre o EFEITO no elemento certo (a
-// classe `cart-pop` cai no `#bottom-nav-cart`), com os DOIS elementos
-// presentes no DOM: se ela so checasse "achou algum alvo", o teste passaria
-// com a implementacao velha assim que `#header-cart` existisse.
+// F1.10: sem matchMedia mantém os quatro casos de largura originais no alvo
+// de baixo. Com a consulta de desktop, só o alvo visível do topo recebe o pop.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -117,8 +94,25 @@ describe("a animacao de voar para o carrinho mira a barra de baixo", () => {
     vi.runOnlyPendingTimers();
     vi.useRealTimers();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     definirLargura(larguraOriginal);
     document.body.innerHTML = "";
+  });
+
+  it("com a consulta de desktop ativa, o pop cai só no #header-cart", () => {
+    vi.stubGlobal("matchMedia", (q: string) => ({ matches: q === "(min-width: 1024px)" }));
+    triggerFlyingCartAnimation(origem, "");
+    vi.advanceTimersByTime(760);
+    expect(alvoDoTopo.classList.contains("cart-pop")).toBe(true);
+    expect(alvoDeBaixo.classList.contains("cart-pop")).toBe(false);
+  });
+
+  it("no desktop sem alvo do topo, usa a barra de baixo ainda montada", () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true }));
+    alvoDoTopo.remove();
+    triggerFlyingCartAnimation(origem, "");
+    vi.advanceTimersByTime(760);
+    expect(alvoDeBaixo.classList.contains("cart-pop")).toBe(true);
   });
 
   for (const largura of [1440, 1280, 768, 375]) {

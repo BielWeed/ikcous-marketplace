@@ -61,7 +61,12 @@ const CartItemCard = memo(function CartItemCard({
             "opacity-50",
         )}
       >
-        <div className="relative size-20 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/50 bg-zinc-50 xs:size-24 xs:rounded-2xl">
+        <div
+          className={cn(
+            "relative size-20 flex-shrink-0 overflow-hidden rounded-xl border border-zinc-100/50 bg-zinc-50 xs:size-24 xs:rounded-2xl",
+            "lg:size-24",
+          )}
+        >
           <img
             src={
               item.product.images?.[0] ||
@@ -72,11 +77,21 @@ const CartItemCard = memo(function CartItemCard({
           />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col justify-between py-0">
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 flex-col justify-between py-0",
+            "lg:grid lg:grid-cols-[minmax(0,1fr)_160px] lg:items-center lg:gap-4",
+          )}
+        >
           <div>
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1 space-y-1">
-                <h2 className="line-clamp-1 text-xs font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-950 xs:line-clamp-2 xs:text-sm">
+                <h2
+                  className={cn(
+                    "line-clamp-1 text-xs font-bold leading-tight text-zinc-900 transition-colors group-hover:text-zinc-950 xs:line-clamp-2 xs:text-sm",
+                    "lg:text-base",
+                  )}
+                >
                   {item.product.name}
                 </h2>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -114,7 +129,12 @@ const CartItemCard = memo(function CartItemCard({
             </div>
           </div>
 
-          <div className="mt-auto flex items-end justify-between pt-1">
+          <div
+            className={cn(
+              "mt-auto flex items-end justify-between pt-1",
+              "lg:mt-0 lg:flex-col lg:gap-4 lg:pt-0",
+            )}
+          >
             <div className="flex flex-col justify-end">
               {(() => {
                 const variant = item.variantId
@@ -155,7 +175,12 @@ const CartItemCard = memo(function CartItemCard({
               })()}
             </div>
 
-            <div className="flex origin-bottom-right scale-90 items-center gap-2">
+            <div
+              className={cn(
+                "flex origin-bottom-right scale-90 items-center gap-2",
+                "lg:scale-100",
+              )}
+            >
               <QuantitySelector
                 quantity={item.quantity}
                 maxQuantity={item.product.stock}

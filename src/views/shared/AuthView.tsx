@@ -5,6 +5,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -517,7 +518,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="z-10 flex w-full max-w-[440px] flex-1 flex-col justify-between"
+        className={cn(
+          "z-10 flex w-full max-w-[440px] flex-1 flex-col justify-between",
+          "lg:my-auto lg:flex-none",
+        )}
       >
         <div className="flex flex-1 flex-col justify-center sm:justify-start">
           {/* Header Section - Spaced out on taller screens */}

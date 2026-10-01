@@ -13,6 +13,7 @@ import {
   isViewTransitionSupported,
   useViewTransition,
 } from "@/hooks/useViewTransition";
+import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -110,7 +111,9 @@ export function AdminLayout({
   const [pendingOrdersCount, setPendingOrdersCount] = React.useState(0);
   const [pendingQuestionsCount, setPendingQuestionsCount] = React.useState(0);
   const [pendingReviewsCount, setPendingReviewsCount] = React.useState(0);
-  // Defeito medido em 25/08/2026: quando uma das tres consultas abaixo
+  const [devolucoesSolicitadasCount, setDevolucoesSolicitadasCount] =
+    React.useState(0);
+  // Defeito medido em 25/08/2026: quando uma das consultas abaixo
   // falhava, a contagem dela ficava parada em 0 e o sino apagava — a mesma
   // tela de "nada pendente". Este estado guarda o terceiro caso, que nao e'
   // nem "tem pendencia" nem "nao tem": e' "nao consegui conferir". Ele zera
@@ -140,7 +143,7 @@ export function AdminLayout({
     let timeoutDeRetentativa: ReturnType<typeof setTimeout> | null = null;
     // C4 (laudo novos-ângulos 01/09): uma rajada de eventos de pedido
     // (import, reconciliação, vários pagamentos) chamava fetchInitialCounts
-    // — três consultas — UMA VEZ POR EVENTO. A coalescência agenda a
+    // — consultas de contagem — UMA VEZ POR EVENTO. A coalescência agenda a
     // primeira conferência e absorve as demais da janela: rajada inteira
     // custa UMA conferência. Montagem e retorno de foco continuam
     // imediatos (quem acabou de abrir/voltar precisa do número agora).
@@ -168,7 +171,7 @@ export function AdminLayout({
       // atrasado e não vale mais nada.
       const podeGravar = () => isMounted && rodada === rodadaAtual;
 
-      // Desconhecido nunca e' sucesso: se alguma das tres consultas falhar,
+      // Desconhecido nunca e' sucesso: se alguma das consultas falhar,
       // o sino tem que acender por causa da duvida, mesmo que as contagens
       // que DERAM certo estejam todas zeradas. `falhouAlgumaConsulta` comeca
       // limpo a cada rodada — uma rodada nova que der tudo certo apaga o
@@ -218,6 +221,22 @@ export function AdminLayout({
         } else if (reviewsCount !== null && podeGravar()) {
           setPendingReviewsCount(reviewsCount);
         }
+
+        // Mesmo critério da lista em useAvisosDoLojista: só solicitada
+        // aguarda a resposta da loja. A contagem vem inteira, sem depender
+        // da página retornada. Resposta inválida também é falha da fonte.
+        const { data: devolucoesData, error: devolucoesErr } = await supabase.rpc(
+          "admin_devolucoes_listar",
+          { p_status: "solicitada", p_limite: 1 },
+        );
+        const devolucoes = lerListaAdmin(devolucoesData);
+        if (devolucoesErr || !devolucoes) {
+          falhouAlgumaConsulta = true;
+        } else if (podeGravar()) {
+          setDevolucoesSolicitadasCount(
+            contagemDe(devolucoes.contagem, "solicitada"),
+          );
+        }
       } catch (err) {
         console.error("[AdminLayout] Error fetching initial counts:", err);
         falhouAlgumaConsulta = true;
@@ -250,8 +269,8 @@ export function AdminLayout({
     };
 
     // LIMITACAO CONHECIDA, de proposito: nao ha canal de tempo real para
-    // `reviews`. A contagem de avaliacoes sem resposta so e' lida na busca
-    // inicial e nas revalidacoes de `visibilitychange` — uma avaliacao que
+    // `reviews` nem `devolucoes`. Essas contagens são lidas na busca
+    // inicial e nas revalidacoes de `visibilitychange` — uma pendência que
     // chegue com o painel aberto so acende a bolinha na proxima vez que a
     // aba voltar ao foco. Assinar mais uma tabela mexe na eleicao de lider e
     // no ciclo de vida dos canais, que e' onde moram os defeitos de
@@ -553,7 +572,8 @@ export function AdminLayout({
     naoConseguiuConferirAvisos ||
     pendingOrdersCount > 0 ||
     pendingQuestionsCount > 0 ||
-    pendingReviewsCount > 0;
+    pendingReviewsCount > 0 ||
+    devolucoesSolicitadasCount > 0;
 
   const { isOffline, latency, quality } = useConnectionDiagnostics();
   const [showSyncFlash, setShowSyncFlash] = React.useState(false);

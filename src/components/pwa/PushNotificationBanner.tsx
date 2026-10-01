@@ -117,6 +117,7 @@ export function PushNotificationBanner({
         transition={{ type: "spring", stiffness: 380, damping: 28 }}
         className={cn(
           "fixed left-4 right-4 z-[999] mx-auto max-w-md",
+          "lg:bottom-8 lg:right-8 lg:left-auto lg:mx-0 lg:w-[400px]",
           "bottom-20 md:bottom-6", // Posicionado de forma elegante acima da BottomNav
         )}
       >

@@ -4,6 +4,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import { cn } from "@/lib/utils";
 import { haptic } from "@/utils/haptic";
 import DOMPurify from "dompurify";
 import { motion } from "framer-motion";
@@ -115,13 +116,21 @@ export function AboutStoreView() {
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/40">
-      <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <div
+        className={cn(
+          "mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8",
+          "lg:grid lg:max-w-5xl lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0",
+        )}
+      >
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="flex flex-col items-center gap-1.5 border-b border-zinc-100 pb-5 text-center"
+          className={cn(
+            "flex flex-col items-center gap-1.5 border-b border-zinc-100 pb-5 text-center",
+            "lg:col-span-2",
+          )}
         >
           {/* Título em SVG VETORIAL (pedido do dono, 15/09): nítido em
               qualquer zoom. Aprovado pelo dono SEM a camada dourada de fundo —
@@ -338,7 +347,10 @@ export function AboutStoreView() {
           type="button"
           onClick={falarComALoja}
           aria-label="Falar com a loja no WhatsApp"
-          className="fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95"
+          className={cn(
+            "fixed right-4 z-[115] flex size-14 items-center justify-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/40 transition-transform hover:bg-emerald-700 active:scale-95",
+            "lg:!bottom-8 lg:right-8",
+          )}
           style={{ bottom: "calc(var(--nav-height, 56px) + 20px)" }}
         >
           <IconeWhatsapp className="size-8" />

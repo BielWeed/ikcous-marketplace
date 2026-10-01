@@ -1,6 +1,7 @@
 import { LazyImage } from "@/components/LazyImage";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_GRANDE,
   CLASSE_SELO_DESCONTO,
@@ -46,6 +47,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
   onQuickBuy,
   title = "Super Descontos",
 }: PremiumOffersProps) {
+  const computador = useTelaDeComputador();
   const { config } = useStore();
   // B3 do item 2 da fila (19/09) + T3 (23/09): o selo "Frete Grátis" do
   // herói obedece à MESMA promessa (local + nacional) do ProductCard-520,
@@ -57,6 +59,7 @@ export const PremiumOffers = React.memo(function PremiumOffers({
 
   // Initialize Embla Carousel for featured offers
   const [emblaRef, emblaApi] = useEmblaCarousel({
+    align: computador ? "start" : "center",
     loop: true,
     duration: 35,
     skipSnaps: false,
@@ -132,7 +135,12 @@ export const PremiumOffers = React.memo(function PremiumOffers({
   const sortedOffers = [...offerItems].sort((a, b) => b.discount - a.discount);
 
   return (
-    <div className="relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6">
+    <div
+      className={cn(
+        "relative overflow-hidden bg-gradient-to-b from-zinc-50/20 via-zinc-50/10 to-transparent px-5 py-4 sm:px-6",
+        "lg:px-0 lg:py-10",
+      )}
+    >
       {/* Premium Micro-Dividers */}
       <div className="absolute left-0 top-0 h-px w-full bg-gradient-to-r from-transparent via-zinc-200/20 to-transparent" />
       <div className="absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-zinc-200/10 to-transparent" />
@@ -171,7 +179,10 @@ export const PremiumOffers = React.memo(function PremiumOffers({
             {sortedOffers.map((offer) => (
               <div
                 key={offer.product.id}
-                className="flex min-w-0 flex-[0_0_100%] flex-col p-1.5"
+                className={cn(
+                  "flex min-w-0 flex-[0_0_100%] flex-col p-1.5",
+                  "lg:flex-[0_0_50%]",
+                )}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
               >

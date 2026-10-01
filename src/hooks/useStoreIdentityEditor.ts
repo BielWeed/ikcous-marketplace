@@ -14,6 +14,8 @@ import {
   normalizeSupabaseOrigin,
 } from "@/lib/storeIdentity";
 import {
+  APP_ICON_ROLES,
+  type AppIconRole,
   type IdentityDraftChange,
   type IdentityDraftFields,
   type IdentityEditorDraft,
@@ -52,6 +54,7 @@ interface EditorState {
   progress?: { uploadedBytes: number; totalBytes: number };
 }
 export type IdentityUploadTarget =
+  | { kind: "app-icons" }
   | { kind: "asset"; roles: readonly IdentityAssetRole[] }
   | { kind: "source-add" }
   | { kind: "source-replace"; index: number };
@@ -307,10 +310,68 @@ export function useStoreIdentityEditor(active = true) {
     const op = start("preparing");
     if (!op) return;
     try {
-      const { prepareIdentityImage } = await import(
+      const { prepareIdentityImage, prepareIdentityAppIcons } = await import(
         "@/lib/prepareIdentityImage"
       );
       if (!op.isCurrent()) return;
+      if (target.kind === "app-icons") {
+        const prepared = await prepareIdentityAppIcons(file, {
+          signal: op.options.signal,
+        });
+        if (!op.isCurrent()) return;
+        const candidates = Object.fromEntries(
+          APP_ICON_ROLES.map((role) => {
+            // role belongs to APP_ICON_ROLES.
+            // eslint-disable-next-line security/detect-object-injection
+            const { asset } = prepared[role];
+            return [
+              role,
+              {
+                asset,
+                url: `${op.origin}/storage/v1/object/public/branding/${asset.path}`,
+              },
+            ];
+          }),
+        ) as Record<AppIconRole, VerifiedPublicIdentityAsset>;
+        changeIdentityEditorDraft(
+          before.draft!,
+          { kind: "app-icons", uploaded: candidates },
+          op.origin,
+        );
+        const { uploadIdentityImage } = await import(
+          "@/lib/uploadIdentityImage"
+        );
+        if (!op.isCurrent()) return;
+        publish({ ...model.current, phase: "uploading" });
+        const uploaded = new Map<string, VerifiedPublicIdentityAsset>();
+        for (const role of APP_ICON_ROLES) {
+          // role belongs to APP_ICON_ROLES.
+          // eslint-disable-next-line security/detect-object-injection
+          const image = prepared[role];
+          if (!uploaded.has(image.asset.path)) {
+            uploaded.set(
+              image.asset.path,
+              await uploadIdentityImage(image, op.options),
+            );
+            if (!op.isCurrent()) return;
+          }
+          // role belongs to APP_ICON_ROLES.
+          // eslint-disable-next-line security/detect-object-injection
+          candidates[role] = uploaded.get(image.asset.path)!;
+        }
+        finish({
+          ...before,
+          phase: "editing",
+          draft: changeIdentityEditorDraft(
+            before.draft!,
+            { kind: "app-icons", uploaded: candidates },
+            op.origin,
+          ),
+          message:
+            "Ícones conferidos no rascunho. Salve a identidade para usar esta escolha.",
+        });
+        return;
+      }
       const prepared = await prepareIdentityImage(file, {
         signal: op.options.signal,
       });
