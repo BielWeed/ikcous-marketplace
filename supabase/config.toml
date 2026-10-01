@@ -103,6 +103,13 @@ verify_jwt = false
 [functions."estornar-pagamento"]
 verify_jwt = true
 
+# PIX com QR da tela Vender (frente A, 28/09/2026). Chamada pelo painel do
+# lojista logado: JWT obrigatório no portão E papel de admin conferido dentro
+# da função (app_metadata.role, a mesma fonte de is_admin()). Só cobra venda
+# canal='presencial' + payment_method='online'; nunca mexe em pedido do site.
+[functions."cobrar-pix-no-balcao"]
+verify_jwt = true
+
 # Peça 20 (14/09/2026): o lojista cadastra as chaves DELE do Mercado Pago na
 # tela de Ajustes ("Pagamentos > Mercado Pago"). Chamada pelo painel do
 # lojista logado: verify_jwt = true no portão E porta interna de admin na

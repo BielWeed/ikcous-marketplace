@@ -2244,7 +2244,7 @@ const AdminOrderCard = memo(function AdminOrderCard({
               </span>
               <div className="size-1 rounded-full bg-zinc-800" />
               <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                {rotuloDaFormaDePagamento(order.paymentMethod)}
+                {rotuloDaFormaDePagamento(order)}
               </span>
             </div>
           </div>

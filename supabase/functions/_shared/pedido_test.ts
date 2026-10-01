@@ -116,3 +116,13 @@ Deno.test("montarEndereco devolve vazio quando nao ha fonte", () => {
   assertEquals(montarEndereco(undefined), "");
   assertEquals(montarEndereco({}), "");
 });
+
+Deno.test("rotuloDoPagamento no BALCAO (canal presencial) nao diz 'na entrega' (achado D3, 28/09)", () => {
+  assertEquals(rotuloDoPagamento("cash", null, "presencial"), "Dinheiro");
+  assertEquals(rotuloDoPagamento("card", null, "presencial"), "Cartao na maquininha");
+  assertEquals(rotuloDoPagamento("pix", null, "presencial"), "PIX na chave da loja");
+  assertEquals(rotuloDoPagamento("online", "pix", "presencial"), "PIX com QR no balcao");
+  // sem canal (todo chamador antigo): exatamente o de antes
+  assertEquals(rotuloDoPagamento("cash"), "Dinheiro na entrega");
+  assertEquals(rotuloDoPagamento("cash", null, "online"), "Dinheiro na entrega");
+});

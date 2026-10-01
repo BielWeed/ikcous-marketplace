@@ -130,13 +130,32 @@ async function verificarEstadoFinal(client) {
         WHERE version IN ('20260820000000', '20260820000100')) AS no_ledger
   `);
   const e = rows[0];
-  ok("a v2 existe e devolve jsonb", e.v2_existe === true && e.v2_retorno === "jsonb");
-  ok("so service_role executa a v2", e.v2_servico === true && e.v2_anon === false && e.v2_auth === false);
-  ok("o gatilho on_otp_created_send_email nao existe mais", e.gatilho === false);
-  ok("a funcao handle_new_otp_verification nao existe mais", e.handler === false);
+  ok(
+    "a v2 existe e devolve jsonb",
+    e.v2_existe === true && e.v2_retorno === "jsonb",
+  );
+  ok(
+    "so service_role executa a v2",
+    e.v2_servico === true && e.v2_anon === false && e.v2_auth === false,
+  );
+  ok(
+    "o gatilho on_otp_created_send_email nao existe mais",
+    e.gatilho === false,
+  );
+  ok(
+    "a funcao handle_new_otp_verification nao existe mais",
+    e.handler === false,
+  );
   ok("a v1 continua existindo (caminho de volta)", e.v1_existe === true);
-  ok("nem anon nem authenticated executam a v1", e.v1_anon === false && e.v1_auth === false);
-  ok("as duas migrations estao registradas no ledger", Number(e.no_ledger) === 2, String(e.no_ledger));
+  ok(
+    "nem anon nem authenticated executam a v1",
+    e.v1_anon === false && e.v1_auth === false,
+  );
+  ok(
+    "as duas migrations estao registradas no ledger",
+    Number(e.no_ledger) === 2,
+    String(e.no_ledger),
+  );
 }
 
 async function main() {
@@ -154,7 +173,9 @@ async function main() {
     } finally {
       await client.end();
     }
-    console.log(`\n=== Resultado: ${passes} asseracoes OK, ${falhas} falha(s) ===`);
+    console.log(
+      `\n=== Resultado: ${passes} asseracoes OK, ${falhas} falha(s) ===`,
+    );
     process.exit(falhas === 0 ? 0 : 1);
   }
 
@@ -183,8 +204,14 @@ async function main() {
     console.log(`  v2 existe .................. ${e0.v2_existe}`);
     console.log(`  gatilho on_otp_created ..... ${e0.gatilho}`);
     console.log(`  v1 executavel por anon ..... ${e0.v1_anon}`);
-    ok("a v2 ainda NAO existe (nada foi aplicado antes)", e0.v2_existe === false);
-    ok("o caminho antigo esta de pe (gatilho + EXECUTE da v1)", e0.gatilho && e0.v1_anon);
+    ok(
+      "a v2 ainda NAO existe (nada foi aplicado antes)",
+      e0.v2_existe === false,
+    );
+    ok(
+      "o caminho antigo esta de pe (gatilho + EXECUTE da v1)",
+      e0.gatilho && e0.v1_anon,
+    );
 
     // Um pedido real para exercitar a v2. So leitura: o INSERT do codigo que a
     // funcao faz morre no ROLLBACK junto com o resto.
@@ -226,11 +253,21 @@ async function main() {
        WHERE p.oid = 'public.generate_order_otp_v2(text,text,text)'::regprocedure
     `);
     const d = defA.rows[0];
-    ok("a v2 devolve jsonb (a v1 devolvia boolean)", d.retorno === "jsonb", d.retorno);
+    ok(
+      "a v2 devolve jsonb (a v1 devolvia boolean)",
+      d.retorno === "jsonb",
+      d.retorno,
+    );
     ok("a v2 e SECURITY DEFINER", d.prosecdef === true);
-    ok("anon NAO executa a v2 (ela devolve o codigo em texto claro)", d.anon === false);
+    ok(
+      "anon NAO executa a v2 (ela devolve o codigo em texto claro)",
+      d.anon === false,
+    );
     ok("authenticated NAO executa a v2", d.auth === false);
-    ok("service_role executa a v2 (e quem a edge function usa)", d.servico === true);
+    ok(
+      "service_role executa a v2 (e quem a edge function usa)",
+      d.servico === true,
+    );
 
     titulo("2. Comportamento da v2");
 
@@ -240,7 +277,8 @@ async function main() {
     );
     ok(
       "dados que nao conferem -> ok:false / nao_confere",
-      errado.rows[0].r?.ok === false && errado.rows[0].r?.motivo === "nao_confere",
+      errado.rows[0].r?.ok === false &&
+        errado.rows[0].r?.motivo === "nao_confere",
       JSON.stringify(errado.rows[0].r),
     );
 
@@ -335,10 +373,19 @@ async function main() {
     const f = depois.rows[0];
     ok("o gatilho on_otp_created_send_email sumiu", f.gatilho === false);
     ok("a funcao handle_new_otp_verification sumiu", f.handler === false);
-    ok("a v1 CONTINUA existindo (caminho de volta se o front precisar reverter)", f.v1_existe === true);
-    ok("anon perdeu o EXECUTE da v1 (ninguem grava codigo sem envio)", f.v1_anon === false);
+    ok(
+      "a v1 CONTINUA existindo (caminho de volta se o front precisar reverter)",
+      f.v1_existe === true,
+    );
+    ok(
+      "anon perdeu o EXECUTE da v1 (ninguem grava codigo sem envio)",
+      f.v1_anon === false,
+    );
     ok("authenticated perdeu o EXECUTE da v1", f.v1_auth === false);
-    ok("service_role mantem a v1 (e o que permite reverter)", f.v1_servico === true);
+    ok(
+      "service_role mantem a v1 (e o que permite reverter)",
+      f.v1_servico === true,
+    );
 
     titulo("4. ROLLBACK");
     await q("ROLLBACK");
@@ -376,7 +423,9 @@ async function main() {
     await client.end();
   }
 
-  console.log(`\n=== Resultado: ${passes} asseracoes OK, ${falhas} falha(s) ===`);
+  console.log(
+    `\n=== Resultado: ${passes} asseracoes OK, ${falhas} falha(s) ===`,
+  );
   process.exit(falhas === 0 ? 0 : 1);
 }
 

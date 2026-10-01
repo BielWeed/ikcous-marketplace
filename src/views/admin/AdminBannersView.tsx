@@ -190,7 +190,7 @@ const analyzeImageBrightness = (url: string): Promise<"light" | "dark"> => {
         let count = 0;
         for (let i = 0; i < data.length; i += 4) {
           if (data[i + 3] < 50) continue;
-          const r = data[i] / 255;
+          const r = data.at(i)! / 255;
           const g = data[i + 1] / 255;
           const b = data[i + 2] / 255;
           const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -237,9 +237,9 @@ const extractImageColors = (url: string): Promise<string[]> => {
         const imgData = ctx.getImageData(0, 0, 30, 30);
         const data = imgData.data;
 
-        const colorCounts: { [hex: string]: number } = {};
+        const colorCounts = new Map<string, number>();
         for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
+          const r = data.at(i)!;
           const g = data[i + 1];
           const b = data[i + 2];
           const a = data[i + 3];
@@ -252,11 +252,11 @@ const extractImageColors = (url: string): Promise<string[]> => {
           const toHex = (n: number) =>
             Math.min(255, Math.max(0, n)).toString(16).padStart(2, "0");
           const hex = `#${toHex(qr)}${toHex(qg)}${toHex(qb)}`.toUpperCase();
-          colorCounts[hex] = (colorCounts[hex] || 0) + 1;
+          colorCounts.set(hex, (colorCounts.get(hex) ?? 0) + 1);
         }
 
-        const sortedColors = Object.keys(colorCounts)
-          .map((hex) => ({ hex, count: colorCounts[hex] }))
+        const sortedColors = [...colorCounts.entries()]
+          .map(([hex, count]) => ({ hex, count }))
           .sort((a, b) => b.count - a.count);
 
         const resultColors: string[] = [];
@@ -763,6 +763,8 @@ export const AdminBannersView = memo(function AdminBannersView({
       activeColorElement === "buttonTextColor")
       ? "titleColor"
       : activeColorElement;
+  const { [targetColorEl]: targetColorValue } = formData;
+  const { [activeColorElement]: activeColorValue } = formData;
 
   const colorElements = useMemo(
     () => [
@@ -1797,7 +1799,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       direction === "up" ? currentIndex - 1 : currentIndex + 1;
 
     if (targetIndex >= 0 && targetIndex < bannersInPosition.length) {
-      const targetBanner = bannersInPosition[targetIndex];
+      const targetBanner = bannersInPosition.at(targetIndex)!;
       setIsProcessing(true);
       setActiveAction({ id: banner.id, type: direction });
       try {
@@ -1956,7 +1958,7 @@ export const AdminBannersView = memo(function AdminBannersView({
   return (
     <div
       ref={viewRef}
-      className="relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] pb-admin lg:pb-12 font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white"
+      className="pb-admin relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white lg:pb-12"
     >
       {/* Ambient subtle glow */}
       <div className="pointer-events-none absolute left-1/4 top-0 h-[400px] w-[400px] rounded-full bg-admin-gold/5 blur-[120px]" />
@@ -1965,14 +1967,14 @@ export const AdminBannersView = memo(function AdminBannersView({
       {/* Sticky Desktop Header */}
       {!isDialogOpen && (
         <>
-          <div className="hidden lg:block sticky top-0 z-40 w-full border-b border-white/10 bg-[#09090b]/95 px-3.5 sm:px-5 py-2 shadow-lg backdrop-blur-xl transition-all duration-300">
+          <div className="sticky top-0 z-40 hidden w-full border-b border-white/10 bg-[#09090b]/95 px-3.5 py-2 shadow-lg backdrop-blur-xl transition-all duration-300 sm:px-5 lg:block">
             <div className="mx-auto flex max-w-7xl items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="flex size-7.5 items-center justify-center rounded-lg border border-[#FFBF00]/25 bg-[#FFBF00]/10 text-[#FFBF00] shadow-[0_0_10px_rgba(255,191,0,0.15)] shrink-0">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="size-7.5 flex shrink-0 items-center justify-center rounded-lg border border-[#FFBF00]/25 bg-[#FFBF00]/10 text-[#FFBF00] shadow-[0_0_10px_rgba(255,191,0,0.15)]">
                   <LayoutGrid className="size-3.5" />
                 </div>
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex min-w-0 flex-col">
+                  <div className="flex min-w-0 items-center gap-1.5">
                     {/* Onda 3 da reforma visual (03/09): o título minúsculo
                         (text-xs) virou o AdminPageHeader, igual ao das listas
                         aprovadas; o botão de ajuda continua ao lado. */}
@@ -2007,7 +2009,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   type="button"
                   onClick={() => handleOpenDialog()}
                   disabled={isOffline}
-                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1.5 text-[10px] sm:text-xs font-black uppercase tracking-wider text-black shadow-[0_2px_12px_rgba(255,191,0,0.2)] transition-all duration-300 hover:scale-[1.02] hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+                  className="via-amber-450 group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] to-amber-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-black shadow-[0_2px_12px_rgba(255,191,0,0.2)] transition-all duration-300 hover:scale-[1.02] hover:from-amber-400 hover:to-amber-500 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 sm:text-xs"
                 >
                   <Plus className="size-3 stroke-[3px] transition-transform duration-300 group-hover:rotate-90" />
                   <span>Novo Banner</span>
@@ -2276,16 +2278,16 @@ export const AdminBannersView = memo(function AdminBannersView({
       {isDialogOpen && (
         <div className="relative z-10 mx-auto w-full max-w-2xl space-y-4 overflow-x-hidden px-4 pb-6 pt-0 text-white sm:px-6 sm:pb-8 sm:pt-0 lg:px-8 lg:pb-10 lg:pt-0">
           <div className="pointer-events-none absolute -right-40 -top-40 size-80 rounded-full bg-admin-gold/5 blur-[120px]" />
-          <div className="pointer-events-none absolute bottom-0 -left-40 size-80 rounded-full bg-[#FFBF00]/5 blur-[120px]" />
+          <div className="pointer-events-none absolute -left-40 bottom-0 size-80 rounded-full bg-[#FFBF00]/5 blur-[120px]" />
 
           <div className="w-full space-y-4 sm:space-y-5">
             {/* CABEÇALHO ANCORADO / STICKY COM PRÉ-VISUALIZAÇÃO AO VIVO INTEGRADA */}
-            <div className="sticky top-0 z-40 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 bg-[#09090b] border-b border-white/10 shadow-2xl pt-1.5 pb-2 sm:pb-2.5 space-y-1.5 sm:space-y-2 transition-all duration-300">
+            <div className="sticky top-0 z-40 -mx-4 space-y-1.5 border-b border-white/10 bg-[#09090b] px-4 pb-2 pt-1.5 shadow-2xl transition-all duration-300 sm:-mx-6 sm:space-y-2 sm:px-6 sm:pb-2.5 lg:-mx-8 lg:px-8">
               {/* Cabeçalho Ultra-Compacto em Duas Linhas Independentes (Zero Sobreposição) */}
               <div className="space-y-1.5">
                 {/* Linha 1: Título e Seleção de Modo (Simples / Completo) */}
                 <div className="flex select-none items-center justify-between gap-2 border-b border-white/5 pb-1.5">
-                  <h2 className="flex items-center gap-1.5 text-xs sm:text-sm font-black uppercase italic tracking-wider text-white shrink-0">
+                  <h2 className="flex shrink-0 items-center gap-1.5 text-xs font-black uppercase italic tracking-wider text-white sm:text-sm">
                     <Sparkles className="size-4 shrink-0 text-[#FFBF00] sm:size-5" />
                     <span>
                       {editingBanner ? "Editar Banner" : "Novo Banner"}
@@ -2345,7 +2347,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                 {/* Linha 2: Stepper Horizontal Compacto e Independente (1 Conteúdo | 2 Estilo | 3 Destino) */}
                 {bannerMode === "complete" && (
-                  <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 py-0.5 select-none border-b border-white/5 pb-1.5">
+                  <div className="flex select-none items-center justify-center gap-1.5 border-b border-white/5 py-0.5 pb-1.5 sm:gap-2.5">
                     {[
                       { step: 1, label: "Conteúdo" },
                       { step: 2, label: "Estilo" },
@@ -2412,19 +2414,19 @@ export const AdminBannersView = memo(function AdminBannersView({
               </div>
 
               {/* CARD SUPERIOR: PAINEL DE PRÉ-VISUALIZAÇÃO AO VIVO DO BANNER (ANCORADO / STICKY EM TODOS OS MODOS) */}
-              <div className="space-y-1.5 sm:space-y-2.5 rounded-xl sm:rounded-2xl border border-amber-500/20 bg-zinc-950 p-2 sm:p-3.5 shadow-2xl transition-all duration-300">
+              <div className="space-y-1.5 rounded-xl border border-amber-500/20 bg-zinc-950 p-2 shadow-2xl transition-all duration-300 sm:space-y-2.5 sm:rounded-2xl sm:p-3.5">
                 <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5 sm:pb-2">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Eye className="size-3.5 shrink-0 text-[#FFBF00] animate-pulse" />
-                    <h3 className="text-[10px] sm:text-[11px] font-black uppercase italic tracking-wider text-white truncate">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Eye className="size-3.5 shrink-0 animate-pulse text-[#FFBF00]" />
+                    <h3 className="truncate text-[10px] font-black uppercase italic tracking-wider text-white sm:text-[11px]">
                       <span>Pré-Visualização ao Vivo</span>
-                      <span className="hidden md:inline text-zinc-400 font-semibold normal-case not-italic ml-1">
+                      <span className="ml-1 hidden font-semibold normal-case not-italic text-zinc-400 md:inline">
                         (Como o cliente verá)
                       </span>
                     </h3>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[7px] sm:text-[7.5px] font-black uppercase tracking-wider text-[#FFBF00] whitespace-nowrap">
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <span className="whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wider text-[#FFBF00] sm:text-[7.5px]">
                       <span className="sm:hidden">Ao vivo ⚡</span>
                       <span className="hidden sm:inline">
                         Atualização em Tempo Real ⚡
@@ -2433,7 +2435,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     <button
                       type="button"
                       onClick={() => setIsPreviewCollapsed((prev) => !prev)}
-                      className="flex size-5.5 sm:size-6 items-center justify-center rounded-md sm:rounded-lg border border-white/10 bg-zinc-900 text-zinc-400 transition-all hover:border-amber-400/40 hover:text-white active:scale-95"
+                      className="size-5.5 flex items-center justify-center rounded-md border border-white/10 bg-zinc-900 text-zinc-400 transition-all hover:border-amber-400/40 hover:text-white active:scale-95 sm:size-6 sm:rounded-lg"
                       title={
                         isPreviewCollapsed
                           ? "Expandir pré-visualização"
@@ -2505,7 +2507,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             >
                               {formData.badgeText && (
                                 <span
-                                  className="w-max rounded-md bg-[#FFBF00] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-black shadow-md self-start"
+                                  className="w-max self-start rounded-md bg-[#FFBF00] px-2 py-0.5 text-[8px] font-black uppercase tracking-wider text-black shadow-md"
                                   style={{
                                     alignSelf:
                                       formData.templateType ===
@@ -2676,7 +2678,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             </div>
                           ) : formData.imageUrl ? (
                             <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-inner sm:flex-row sm:items-center">
-                              <div className="flex items-center gap-3 min-w-0">
+                              <div className="flex min-w-0 items-center gap-3">
                                 <div className="relative h-14 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-md">
                                   <img
                                     src={formData.imageUrl}
@@ -2684,18 +2686,18 @@ export const AdminBannersView = memo(function AdminBannersView({
                                     className="size-full object-cover"
                                   />
                                 </div>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-[10px] font-black uppercase italic tracking-wider text-white truncate">
+                                <div className="flex min-w-0 flex-col">
+                                  <span className="truncate text-[10px] font-black uppercase italic tracking-wider text-white">
                                     Imagem Selecionada
                                   </span>
                                   <span className="mt-0.5 flex items-center gap-1.5 text-[8px] font-bold tracking-wider text-emerald-400">
-                                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                                    <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
                                     Carregada com Sucesso
                                   </span>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex shrink-0 items-center gap-2">
                                 <Label
                                   htmlFor="banner-upload"
                                   className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
@@ -2753,7 +2755,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           Ativar)
                         </span>
                         <div className="flex select-none justify-center rounded-2xl border border-white/5 bg-zinc-900/10 py-4">
-                          <div className="isolate bg-zinc-955 relative flex h-64 w-36 flex-col justify-between overflow-hidden rounded-[1.8rem] border-2 border-zinc-700 p-2.5 text-left shadow-2xl">
+                          <div className="bg-zinc-955 relative isolate flex h-64 w-36 flex-col justify-between overflow-hidden rounded-[1.8rem] border-2 border-zinc-700 p-2.5 text-left shadow-2xl">
                             {/* Notch */}
                             <div className="absolute left-1/2 top-0 z-10 h-3 w-16 -translate-x-1/2 rounded-b-lg bg-zinc-700" />
 
@@ -2958,11 +2960,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                     className="space-y-5"
                   >
                     {/* Card 1: Imagem */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
+                    <div className="space-y-2.5 rounded-xl border border-white/5 bg-zinc-900/10 p-2.5 sm:rounded-2xl sm:p-3.5">
                       <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5">
                         <div className="flex items-center gap-1.5">
                           <Upload className="size-3.5 text-[#FFBF00]" />
-                          <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                          <h3 className="text-[10.5px] font-black uppercase italic tracking-wider text-white sm:text-xs">
                             1. Imagem do Banner
                           </h3>
                         </div>
@@ -2992,7 +2994,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </div>
                         ) : formData.imageUrl ? (
                           <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-950/70 p-3 shadow-inner sm:flex-row sm:items-center">
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex min-w-0 items-center gap-3">
                               <div className="relative h-14 w-28 shrink-0 overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-md">
                                 <img
                                   src={formData.imageUrl}
@@ -3000,18 +3002,18 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   className="size-full object-cover"
                                 />
                               </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="text-[10px] font-black uppercase italic tracking-wider text-white truncate">
+                              <div className="flex min-w-0 flex-col">
+                                <span className="truncate text-[10px] font-black uppercase italic tracking-wider text-white">
                                   Imagem Selecionada
                                 </span>
                                 <span className="mt-0.5 flex items-center gap-1.5 text-[8px] font-bold tracking-wider text-emerald-400">
-                                  <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
                                   Carregada com Sucesso
                                 </span>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex shrink-0 items-center gap-2">
                               <Label
                                 htmlFor="banner-upload"
                                 className="cursor-pointer select-none rounded-xl border border-white/10 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-all hover:border-white/20 hover:bg-zinc-800 active:scale-95"
@@ -3053,14 +3055,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                     </div>
 
                     {/* Card 2: Conteúdo Principal */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
+                    <div className="space-y-2.5 rounded-xl border border-white/5 bg-zinc-900/10 p-2.5 sm:rounded-2xl sm:p-3.5">
                       <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
                         <Layout className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                        <h3 className="text-[10.5px] font-black uppercase italic tracking-wider text-white sm:text-xs">
                           2. Textos do Banner
                         </h3>
                       </div>
-                      <div className="flex items-center justify-between rounded-xl border border-white/10 bg-zinc-900/60 p-3 mb-2">
+                      <div className="mb-2 flex items-center justify-between rounded-xl border border-white/10 bg-zinc-900/60 p-3">
                         <div className="space-y-0.5">
                           <Label className="text-xs font-bold text-white">
                             Exibir Textos e Botão Sobrepostos
@@ -3240,15 +3242,15 @@ export const AdminBannersView = memo(function AdminBannersView({
                     className="space-y-6"
                   >
                     {/* CARD 1: TEMAS ESTÉTICOS RÁPIDOS */}
-                    <div className="space-y-2 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
+                    <div className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/10 p-2.5 sm:rounded-2xl sm:p-3.5">
                       <div className="flex select-none items-center justify-between border-b border-white/5 pb-1.5">
                         <div className="flex items-center gap-1.5">
                           <Sparkles className="size-3.5 text-[#FFBF00]" />
-                          <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                          <h3 className="text-[10.5px] font-black uppercase italic tracking-wider text-white sm:text-xs">
                             Temas Estéticos Rápidos
                           </h3>
                         </div>
-                        <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-500 hidden sm:inline">
+                        <span className="hidden text-[8px] font-bold uppercase tracking-wider text-zinc-500 sm:inline">
                           Prontos para usar
                         </span>
                       </div>
@@ -3299,18 +3301,18 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   : "border-white/5 bg-zinc-900/40 hover:border-amber-400/20 hover:bg-zinc-900",
                               )}
                             >
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {/* Swatches de Cores Compactas */}
                                 <div className="flex shrink-0 select-none items-center -space-x-1">
                                   <div
-                                    className="size-2.5 rounded-full border border-white/20 shadow-sm z-2"
+                                    className="z-2 size-2.5 rounded-full border border-white/20 shadow-sm"
                                     style={{
                                       backgroundColor: preset.titleColor,
                                     }}
                                     title={`Título: ${preset.titleColor}`}
                                   />
                                   <div
-                                    className="size-2.5 rounded-full border border-white/20 shadow-sm z-1"
+                                    className="z-1 size-2.5 rounded-full border border-white/20 shadow-sm"
                                     style={{
                                       backgroundColor: preset.buttonBgColor,
                                     }}
@@ -3325,7 +3327,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   />
                                 </div>
 
-                                <div className="flex flex-col min-w-0">
+                                <div className="flex min-w-0 flex-col">
                                   <span
                                     className={cn(
                                       "text-[9px] font-black truncate leading-tight",
@@ -3343,7 +3345,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                               </div>
 
                               {isPresetSelected && (
-                                <span className="text-[9px] font-bold text-[#FFBF00] shrink-0">
+                                <span className="shrink-0 text-[9px] font-bold text-[#FFBF00]">
                                   ✓
                                 </span>
                               )}
@@ -3354,10 +3356,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                     </div>
 
                     {/* CARD 2: MODELO DE LAYOUT E TIPOGRAFIA */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
+                    <div className="space-y-2.5 rounded-xl border border-white/5 bg-zinc-900/10 p-2.5 sm:rounded-2xl sm:p-3.5">
                       <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
                         <SlidersHorizontal className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                        <h3 className="text-[10.5px] font-black uppercase italic tracking-wider text-white sm:text-xs">
                           Disposição do Layout & Estilo da Fonte
                         </h3>
                       </div>
@@ -3448,7 +3450,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   </span>
                                 </div>
 
-                                <p className="text-[7.5px] leading-tight text-zinc-400 truncate w-full">
+                                <p className="w-full truncate text-[7.5px] leading-tight text-zinc-400">
                                   {t.desc}
                                 </p>
                               </button>
@@ -3458,7 +3460,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       {/* Seleção de Tipografia (Fonte) */}
-                      <div className="space-y-1.5 pt-1.5 border-t border-white/5">
+                      <div className="space-y-1.5 border-t border-white/5 pt-1.5">
                         <span className="ml-1 block text-[8.5px] font-black uppercase italic tracking-widest text-zinc-400">
                           Estilo da Fonte (Tipografia)
                         </span>
@@ -3547,10 +3549,10 @@ export const AdminBannersView = memo(function AdminBannersView({
                     </div>
 
                     {/* CARD 3: PERSONALIZAÇÃO DE CORES E FILTRO DE ESCURECIMENTO */}
-                    <div className="space-y-2.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-2.5 sm:p-3.5">
+                    <div className="space-y-2.5 rounded-xl border border-white/5 bg-zinc-900/10 p-2.5 sm:rounded-2xl sm:p-3.5">
                       <div className="flex select-none items-center gap-2 border-b border-white/5 pb-1.5">
                         <SlidersHorizontal className="size-3.5 text-[#FFBF00]" />
-                        <h3 className="text-[10.5px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                        <h3 className="text-[10.5px] font-black uppercase italic tracking-wider text-white sm:text-xs">
                           {hasButtonText
                             ? "Personalização de Cores dos Textos e Botão"
                             : "Personalização de Cores dos Textos e Filtro"}
@@ -3586,7 +3588,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                   {el.label}
                                 </span>
                                 <span
-                                  className="size-3 rounded-full border border-white/20 shadow-inner shrink-0"
+                                  className="size-3 shrink-0 rounded-full border border-white/20 shadow-inner"
                                   style={{ backgroundColor: el.value }}
                                 />
                               </button>
@@ -3598,32 +3600,32 @@ export const AdminBannersView = memo(function AdminBannersView({
                       {/* Painel do Editor de Cor do Elemento Selecionado */}
                       <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-zinc-950/80 p-2.5 duration-200 animate-in fade-in">
                         {/* Linha Principal: Seletor Interativo + Nome + Restaurar */}
-                        <div className="flex select-none items-center justify-between gap-2 rounded-lg bg-zinc-900/60 p-1.5 border border-white/5">
+                        <div className="flex select-none items-center justify-between gap-2 rounded-lg border border-white/5 bg-zinc-900/60 p-1.5">
                           <div className="flex items-center gap-2.5">
                             {/* Círculo Interativo Seletor de Cor Nativo */}
                             <div
-                              className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 shadow-md ring-2 ring-amber-400/30 transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+                              className="relative flex size-7 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-white/20 shadow-md ring-2 ring-amber-400/30 transition-transform hover:scale-110 active:scale-95"
                               title="Clique para escolher uma cor personalizada"
                             >
                               <span
                                 className="absolute inset-0 rounded-full"
                                 style={{
                                   backgroundColor:
-                                    formData[targetColorEl] || "#FFFFFF",
+                                    targetColorValue || "#FFFFFF",
                                 }}
                               />
                               <input
                                 id={targetColorEl}
                                 name={targetColorEl}
                                 type="color"
-                                value={formData[targetColorEl] || "#FFFFFF"}
+                                value={targetColorValue || "#FFFFFF"}
                                 onChange={(e) =>
                                   setFormData((prev) => ({
                                     ...prev,
                                     [targetColorEl]: e.target.value,
                                   }))
                                 }
-                                className="absolute inset-0 size-[150%] -translate-x-[15%] -translate-y-[15%] cursor-pointer opacity-0"
+                                className="absolute inset-0 size-[150%] translate-x-[-15%] translate-y-[-15%] cursor-pointer opacity-0"
                               />
                             </div>
 
@@ -3642,8 +3644,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                                           : "Filtro da Imagem"}
                                 </span>
                               </span>
-                              <span className="text-[7.5px] font-mono text-zinc-400">
-                                {formData[targetColorEl] || "#FFFFFF"}
+                              <span className="font-mono text-[7.5px] text-zinc-400">
+                                {targetColorValue || "#FFFFFF"}
                               </span>
                             </div>
                           </div>
@@ -3658,12 +3660,14 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 buttonTextColor: "#000000",
                                 overlayColor: "#000000",
                               };
+                              const { [targetColorEl]: defaultColor } =
+                                defaults;
                               setFormData((prev) => ({
                                 ...prev,
-                                [targetColorEl]: defaults[targetColorEl],
+                                [targetColorEl]: defaultColor,
                               }));
                             }}
-                            className="cursor-pointer text-[8px] font-extrabold uppercase tracking-wider text-amber-500 hover:text-amber-400 hover:underline transition-colors px-1.5 py-0.5"
+                            className="cursor-pointer px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-amber-500 transition-colors hover:text-amber-400 hover:underline"
                           >
                             Restaurar Padrão
                           </button>
@@ -3671,13 +3675,12 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                         {/* Cores Frequentes */}
                         <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <span className="select-none text-[8px] font-bold uppercase tracking-wider text-zinc-400 shrink-0">
+                          <span className="shrink-0 select-none text-[8px] font-bold uppercase tracking-wider text-zinc-400">
                             Cores Frequentes:
                           </span>
                           <div className="flex select-none flex-wrap gap-1">
                             {presetColors.map((color) => {
-                              const isSelected =
-                                formData[targetColorEl] === color.hex;
+                              const isSelected = targetColorValue === color.hex;
                               return (
                                 <button
                                   key={color.hex}
@@ -3704,13 +3707,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                         {/* Cores da Marca da Loja */}
                         {brandingColors.length > 0 && (
                           <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1.5">
-                            <span className="select-none text-[8px] font-extrabold uppercase tracking-wider text-[#FFBF00] shrink-0">
+                            <span className="shrink-0 select-none text-[8px] font-extrabold uppercase tracking-wider text-[#FFBF00]">
                               Cores da Sua Marca:
                             </span>
                             <div className="flex select-none flex-wrap gap-1">
                               {brandingColors.map((color) => {
                                 const isSelected =
-                                  formData[targetColorEl] === color.hex;
+                                  targetColorValue === color.hex;
                                 return (
                                   <button
                                     key={color.hex}
@@ -3749,7 +3752,7 @@ export const AdminBannersView = memo(function AdminBannersView({
 
                     {/* Controle de Escurecimento do Fundo */}
                     <div className="space-y-2 border-t border-white/5 pt-3">
-                      <div className="flex select-none justify-between items-center">
+                      <div className="flex select-none items-center justify-between">
                         <Label
                           htmlFor="banner-overlay-opacity"
                           className="ml-1 text-[9px] font-black uppercase italic tracking-widest text-zinc-400"
@@ -3823,8 +3826,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           </div>
                           <div className="flex select-none flex-wrap gap-1">
                             {extractedColors.map((color) => {
-                              const isSelected =
-                                formData[activeColorElement] === color;
+                              const isSelected = activeColorValue === color;
                               return (
                                 <button
                                   key={color}
@@ -3851,7 +3853,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     </div>
 
                     {/* CARD 4: GUIA INTELIGENTE DE LEGIBILIDADE E LEITURA FÁCIL (VERSÃO ULTRA COMPACTA) */}
-                    <div className="flex flex-col gap-1.5 rounded-xl border border-white/5 bg-zinc-900/20 p-2 sm:p-2.5 duration-300 animate-in fade-in select-none">
+                    <div className="flex select-none flex-col gap-1.5 rounded-xl border border-white/5 bg-zinc-900/20 p-2 duration-300 animate-in fade-in sm:p-2.5">
                       {/* Cabeçalho Compacto com Diagnóstico Resumido e Ação */}
                       {(() => {
                         const isTitleOk = computedTitleRatio >= 3.0;
@@ -3883,7 +3885,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                             <button
                               type="button"
                               onClick={handleOptimizeContrast}
-                              className="flex cursor-pointer items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[7.5px] font-black uppercase tracking-wider text-[#FFBF00] transition-all hover:bg-[#FFBF00] hover:text-black active:scale-95 ml-auto"
+                              className="ml-auto flex cursor-pointer items-center gap-1 rounded-md border border-amber-400/30 bg-amber-500/15 px-2 py-0.5 text-[7.5px] font-black uppercase tracking-wider text-[#FFBF00] transition-all hover:bg-[#FFBF00] hover:text-black active:scale-95"
                             >
                               <Sparkles className="size-2.5" /> Auto-Ajustar
                               Cores
@@ -3974,7 +3976,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                           Ativar)
                         </span>
                         <div className="flex select-none justify-center rounded-2xl border border-white/5 bg-zinc-900/10 py-4">
-                          <div className="isolate bg-zinc-955 relative flex h-64 w-36 flex-col justify-between overflow-hidden rounded-[1.8rem] border-2 border-zinc-700 p-2.5 text-left shadow-2xl">
+                          <div className="bg-zinc-955 relative isolate flex h-64 w-36 flex-col justify-between overflow-hidden rounded-[1.8rem] border-2 border-zinc-700 p-2.5 text-left shadow-2xl">
                             {/* Notch */}
                             <div className="absolute left-1/2 top-0 z-10 h-3 w-16 -translate-x-1/2 rounded-b-lg bg-zinc-700" />
 
@@ -4124,13 +4126,13 @@ export const AdminBannersView = memo(function AdminBannersView({
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-3.5 rounded-xl sm:rounded-2xl border border-white/5 bg-zinc-900/10 p-3 sm:p-4">
+                    <div className="space-y-3.5 rounded-xl border border-white/5 bg-zinc-900/10 p-3 sm:rounded-2xl sm:p-4">
                       {/* Título Principal do Bloco Único */}
                       <div className="flex select-none flex-col gap-1 border-b border-white/5 pb-2.5">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <ExternalLink className="size-4 text-[#FFBF00]" />
-                            <h3 className="text-[11px] sm:text-xs font-black uppercase italic tracking-wider text-white">
+                            <h3 className="text-[11px] font-black uppercase italic tracking-wider text-white sm:text-xs">
                               3. DESTINO E AÇÃO DO BANNER
                             </h3>
                           </div>
@@ -4183,7 +4185,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                       </div>
 
                       {/* SELETOR DE INTENÇÃO DE DESTINO (SIMPLES E INTUITIVO) */}
-                      <div className="space-y-1.5 select-none">
+                      <div className="select-none space-y-1.5">
                         <Label className="text-[8.5px] font-black uppercase tracking-wider text-amber-400">
                           Escolha a Ação ao Clicar no Banner:
                         </Label>
@@ -4421,7 +4423,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                                 </div>
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5">
-                                    <span className="rounded bg-emerald-500 px-1.5 py-0.2 text-[7.5px] font-black uppercase text-black">
+                                    <span className="py-0.2 rounded bg-emerald-500 px-1.5 text-[7.5px] font-black uppercase text-black">
                                       Vinculado
                                     </span>
                                     <span className="truncate font-mono text-[7.5px] font-bold text-zinc-550">

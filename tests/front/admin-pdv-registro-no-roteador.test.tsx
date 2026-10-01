@@ -572,6 +572,8 @@ describe("AdminPdvView — dirty cai com a venda registrada, mesmo com itens na 
       itens: [itemVendido],
       cliente: { tipo: "sem_cliente" },
       pagamento: "cash",
+      pagamentoConferido: false,
+      pix: null,
       desconto: 0,
       motivoDoDesconto: "",
       chaveDeIdempotencia: "chave-1",

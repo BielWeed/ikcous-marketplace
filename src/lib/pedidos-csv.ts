@@ -2,16 +2,15 @@ import {
   rotuloDoPagamento,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import type { Order as Pedido } from "@/types";
 
-const PAYMENT_METHOD_LABELS = new Map([
-  ["pix", "PIX Instantâneo"],
-  ["card", "Crédito Seguro"],
-  ["cash", "Dinheiro"],
-]);
-
-export function rotuloDaFormaDePagamento(method: string): string {
-  return PAYMENT_METHOD_LABELS.get(method) || "Outro";
+/** A forma do pedido na lista e na planilha — o MESMO rótulo da ficha
+ * (`rotuloDaFormaDoPedido`, achado D4 de 28/09). */
+export function rotuloDaFormaDePagamento(
+  pedido: Pick<Pedido, "paymentMethod" | "metodoOnline" | "canal">,
+): string {
+  return rotuloDaFormaDoPedido(pedido);
 }
 
 const statusPorChave = new Map(Object.entries(statusConfig));
@@ -45,7 +44,7 @@ export function pedidosParaCsv(pedidos: Pedido[]): string {
       escaparCampo(
         (statusPorChave.get(pedido.status) ?? statusConfig.pending).label,
       ),
-      escaparCampo(rotuloDaFormaDePagamento(pedido.paymentMethod)),
+      escaparCampo(rotuloDaFormaDePagamento(pedido)),
       escaparCampo(
         rotuloDoPagamento(pedido.paymentStatus, pedido.status, pedido.canal),
       ),
