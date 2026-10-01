@@ -1,3 +1,7 @@
+import {
+  CONTAINER_DO_COMPUTADOR,
+  TITULO_DE_PAGINA_NO_COMPUTADOR,
+} from "@/components/desktop/medidas";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -8,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { cpfValido, formatarCpf, somenteDigitosDoCpf } from "@/lib/cpf";
 import {
   gravarCpfDaConta,
@@ -15,6 +20,8 @@ import {
   mensagemFalhaCpf,
 } from "@/lib/cpf-da-conta";
 import { supabase } from "@/lib/supabase";
+import { cn } from "@/lib/utils";
+import type { View } from "@/types";
 import {
   PREDEFINED_AVATARS,
   compressImage,
@@ -48,10 +55,30 @@ import {
   UploadCloud,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
-export function AccountSettingsView() {
+const MenuDaConta = lazy(() =>
+  import("@/components/desktop/MenuDaConta").then((m) => ({
+    default: m.MenuDaConta,
+  })),
+);
+
+interface AccountSettingsViewProps {
+  onNavigate?: (view: View, id?: string) => void;
+}
+
+export function AccountSettingsView({
+  onNavigate = () => {},
+}: AccountSettingsViewProps) {
+  const computador = useTelaDeComputador();
   const { user, profile, fetchProfile, updateProfile, updatePassword } =
     useAuth();
   const [loading, setLoading] = useState(false);
@@ -508,8 +535,24 @@ export function AccountSettingsView() {
   if (!user) return null;
 
   return (
-    <div className="pb-customer min-h-full bg-zinc-50/40">
-      <div className="mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div
+      className={cn(
+        "pb-customer min-h-full bg-zinc-50/40",
+        CONTAINER_DO_COMPUTADOR,
+        "lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:content-start lg:items-start lg:gap-8 lg:pt-8",
+      )}
+    >
+      {computador && (
+        <Suspense fallback={null}>
+          <MenuDaConta atual="account-settings" onNavigate={onNavigate} />
+        </Suspense>
+      )}
+      <div
+        className={cn(
+          "mx-auto max-w-md space-y-6 px-4 py-6 sm:px-6 sm:py-8",
+          "lg:w-full lg:min-w-0 lg:max-w-3xl lg:px-0 lg:py-0",
+        )}
+      >
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
@@ -517,7 +560,12 @@ export function AccountSettingsView() {
           transition={{ duration: 0.3 }}
           className="flex flex-col gap-1 border-b border-zinc-100 pb-4 text-center"
         >
-          <h1 className="text-xl font-extrabold tracking-tight text-zinc-900">
+          <h1
+            className={cn(
+              "text-xl font-extrabold tracking-tight text-zinc-900",
+              TITULO_DE_PAGINA_NO_COMPUTADOR,
+            )}
+          >
             Configurações da Conta
           </h1>
           <p className="text-xs text-zinc-500">
@@ -656,9 +704,19 @@ export function AccountSettingsView() {
                   </div>
                 </div>
 
-                <div className="space-y-3.5">
+                <div
+                  className={cn(
+                    "space-y-3.5",
+                    "lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0",
+                  )}
+                >
                   {profileLoadState === "loading" && (
-                    <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-100 bg-zinc-50/50 py-6">
+                    <div
+                      className={cn(
+                        "flex items-center justify-center gap-2 rounded-xl border border-zinc-100 bg-zinc-50/50 py-6",
+                        "lg:col-span-2",
+                      )}
+                    >
                       <Loader2 className="size-4 animate-spin text-zinc-400" />
                       <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
                         Carregando seus dados...
@@ -667,7 +725,12 @@ export function AccountSettingsView() {
                   )}
 
                   {profileLoadState === "error" && (
-                    <div className="flex flex-col items-center gap-2 rounded-xl border border-red-100 bg-red-50/30 p-4 text-center">
+                    <div
+                      className={cn(
+                        "flex flex-col items-center gap-2 rounded-xl border border-red-100 bg-red-50/30 p-4 text-center",
+                        "lg:col-span-2",
+                      )}
+                    >
                       <AlertTriangle className="size-4 text-red-500" />
                       <p className="text-xs font-semibold text-red-700">
                         Não conseguimos carregar seus dados de perfil.
@@ -785,7 +848,10 @@ export function AccountSettingsView() {
                     )}
                   </div>
 
-                  <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
+                  <motion.div
+                    whileTap={{ scale: 0.995 }}
+                    className={cn("pt-1", "lg:col-span-2")}
+                  >
                     <Button
                       onClick={handleUpdateProfile}
                       disabled={loading || profileLoadState !== "loaded"}
@@ -840,7 +906,10 @@ export function AccountSettingsView() {
                 <form
                   onSubmit={handleChangePassword}
                   action="#"
-                  className="space-y-3.5"
+                  className={cn(
+                    "space-y-3.5",
+                    "lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 lg:[&>div:first-child]:col-span-2",
+                  )}
                 >
                   <div className="space-y-1">
                     <label
@@ -927,7 +996,10 @@ export function AccountSettingsView() {
                     </div>
                   </div>
 
-                  <motion.div whileTap={{ scale: 0.995 }} className="pt-1">
+                  <motion.div
+                    whileTap={{ scale: 0.995 }}
+                    className={cn("pt-1", "lg:col-span-2")}
+                  >
                     <Button
                       type="submit"
                       disabled={updatingPassword}

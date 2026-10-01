@@ -1,17 +1,32 @@
+import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
-import type { Address } from "@/types";
+import { cn } from "@/lib/utils";
+import type { Address, View } from "@/types";
 import { MapPin, Sparkles } from "lucide-react";
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
+
+const MenuDaConta = lazy(() =>
+  import("@/components/desktop/MenuDaConta").then((m) => ({
+    default: m.MenuDaConta,
+  })),
+);
 
 interface AddressFormViewProps {
   addressId?: string | null;
   onBack: () => void;
+  onNavigate?: (view: View, id?: string) => void;
 }
 
-export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
+export function AddressFormView({
+  addressId,
+  onBack,
+  onNavigate = () => {},
+}: AddressFormViewProps) {
+  const computador = useTelaDeComputador();
   const { config } = useStore();
   const { addresses, fetchAddresses, addAddress, updateAddress } =
     useAddresses();
@@ -39,8 +54,25 @@ export function AddressFormView({ addressId, onBack }: AddressFormViewProps) {
   };
 
   return (
-    <div className="flex min-h-full flex-col bg-white">
-      <div className="mx-auto max-w-md px-4 py-8">
+    <div
+      className={cn(
+        "flex min-h-full flex-col bg-white",
+        CONTAINER_DO_COMPUTADOR,
+        "lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:content-start lg:items-start lg:gap-8 lg:py-8",
+      )}
+    >
+      {computador && (
+        <Suspense fallback={null}>
+          {/* Os endereços moram em "Minha conta": o formulário marca esse item. */}
+          <MenuDaConta atual="profile" onNavigate={onNavigate} />
+        </Suspense>
+      )}
+      <div
+        className={cn(
+          "mx-auto max-w-md px-4 py-8",
+          "lg:w-full lg:min-w-0 lg:max-w-2xl lg:px-0 lg:py-0",
+        )}
+      >
         {/* Visual Header */}
         <div className="group relative mb-8 overflow-hidden rounded-[2.5rem] bg-zinc-900 p-8 shadow-2xl">
           {/* Decorative elements */}
