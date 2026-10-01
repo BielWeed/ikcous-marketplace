@@ -29,6 +29,9 @@
  *      (COMMITa). Depois: a fotografia INTEIRA é igual à de base -> 84/85 (a
  *      referência, num clone à parte), as 6 voltaram ao texto exato do ACL
  *      aberto, emergência fechada, ausências iguais, funções novas executáveis.
+ *   No pacote amplo roda só a B (aplicar -> 84/85 -> desfazer), e a referência
+ *   é base -> seis-funcoes.sql -> 84/85: o desfazer amplo nunca reabre as 6
+ *   (CI 36932861245), então elas terminam com o texto exato do ACL fechado.
  *
  * Informativo: o ACL final das funções que as duas migrations criam, no clone
  * do banco com o pacote (para registro de quem executa o quê).
@@ -328,12 +331,25 @@ async function ordensDeAplicacao(relator, pacote, { ordemA = true } = {}) {
     }
 
     // ---- B: base -> pacote -> 84/85 -> rollback --------------------------
-    // Referência: base -> 84/85, SEM pacote (o que o rollback tem de devolver).
+    // Referência (o que o rollback tem de devolver): base -> 84/85, SEM pacote.
+    // No amplo, o desfazer nunca reabre as 6 (CI 36932861245): a referência é
+    // base -> seis-funcoes.sql -> 84/85 (as 84/85 não mexem no ACL das 6).
+    const desfazerFechaAsSeis = pacote.id === "amplo";
     await clonarBanco(BANCO_ANTES, BANCO_REFERENCIA);
     let referencia = null;
     const montouRef = await caso(
-      "ordem_B_referencia_base_depois_migrations_84_85_aplica",
+      desfazerFechaAsSeis
+        ? "ordem_B_referencia_base_seis_fechadas_depois_migrations_84_85_aplica"
+        : "ordem_B_referencia_base_depois_migrations_84_85_aplica",
       async () => {
+        if (desfazerFechaAsSeis) {
+          await aplicarPacote(
+            BANCO_REFERENCIA,
+            "seis-funcoes.sql",
+            "public.pagamentos_a_reconciliar()",
+            false,
+          );
+        }
         await aplicarMigrations(BANCO_REFERENCIA);
         referencia = await estadoDe(BANCO_REFERENCIA);
         return contagem(referencia);
@@ -402,15 +418,15 @@ async function ordensDeAplicacao(relator, pacote, { ordemA = true } = {}) {
           );
           const oito = exigirOitoComo(
             await aclDasOito(BANCO_ORDEM_B),
-            PROACL_ABERTA,
+            desfazerFechaAsSeis ? PROACL_FECHADA : PROACL_ABERTA,
             "depois do rollback",
-            true,
+            !desfazerFechaAsSeis,
           );
           const novas = await exigirFuncoesDoBalcao(
             BANCO_ORDEM_B,
             "depois do rollback",
           );
-          return `fotografia INTEIRA == base→84/85 (proacl textual de todas as funções) · ${oito} · ${novas}`;
+          return `fotografia INTEIRA == ${desfazerFechaAsSeis ? "base→6 fechadas→84/85" : "base→84/85"} (proacl textual de todas as funções) · ${oito} · ${novas}`;
         },
       );
     }

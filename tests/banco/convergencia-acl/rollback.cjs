@@ -24,14 +24,18 @@
  *      idêntico ao de antes. service_role e postgres (pg_cron) executam as 6.
  *   C. APLICA DE NOVO: no pequeno recusa na pré-condição sem mudar nada; no
  *      amplo é idempotente (mesma fotografia).
- *   D. DESFAZ: a fotografia fica IDÊNTICA à do antes — função a função, texto a
- *      texto (proacl cru, entradas, grantor); diferença impressa LITERAL. Ausências
- *      do servidor idênticas às de antes. As duas funções de emergência seguem
- *      fechadas; service_role e postgres executam as 6 também depois do rollback.
+ *   D. DESFAZ: a fotografia fica IDÊNTICA à do ALVO — função a função, texto a
+ *      texto (proacl cru, entradas, grantor); diferença impressa LITERAL. Alvo do
+ *      pacote pequeno: o antes. Alvo do amplo: o antes com as 6 fechadas
+ *      EXATAMENTE como seis-funcoes.sql as deixa (montado num clone pelo próprio
+ *      pacote pequeno e conferido: só as 6 mudam) — o desfazer amplo nunca
+ *      reabre as 6 (CI 36932861245). Ausências do servidor idênticas às de
+ *      antes. As duas funções de emergência seguem fechadas; service_role e
+ *      postgres executam as 6 também depois do rollback.
  *   D2. As variantes da A2 aplicadas ao SCRIPT DE DESFAZER (sobre o estado
  *      aplicado): abortam e nada fica gravado.
  *   E. DESFAZ DE NOVO: no pequeno recusa na pré-condição; no amplo idempotente;
- *      em ambos a fotografia continua igual à do antes.
+ *      em ambos a fotografia continua igual à do alvo.
  *
  * USO: PACOTE_ACL=seis|amplo node tests/banco/convergencia-acl/rollback.cjs
  */
@@ -200,6 +204,56 @@ async function main() {
         return `abortou (${erro.message}) e nada ficou gravado — a 1ª guarda a disparar foi '${qual}'`;
       },
     );
+  };
+
+  // Estado que o desfazer tem de devolver. Pacote pequeno: o antes. Pacote
+  // amplo: o antes com as 6 fechadas EXATAMENTE como seis-funcoes.sql as deixa
+  // (o desfazer amplo nunca reabre as 6 — CI 36932861245).
+  let alvoDoDesfazer = antes;
+  if (pacote.id === "amplo") {
+    alvoDoDesfazer = null;
+    await caso(
+      "alvo_do_desfazer_e_o_antes_com_as_6_fechadas_pelo_pacote_pequeno",
+      async () => {
+        const bancoAlvo = "acl_alvo_desfazer";
+        await clonarBanco(BANCO_ANTES, bancoAlvo);
+        try {
+          const erro = await executarSql(
+            bancoAlvo,
+            lerFixture("seis-funcoes.sql"),
+          );
+          if (erro) {
+            throw new Falha(
+              `seis-funcoes.sql abortou no clone do antes: ${erro.message}`,
+            );
+          }
+          const c = await conectar(bancoAlvo);
+          let foto;
+          try {
+            foto = await fotografar(c);
+          } finally {
+            await c.end().catch(() => {});
+          }
+          const ruins = mudancasAlemDasFechadas(antes, foto, sigsSeis);
+          if (ruins.length) {
+            throw new Falha(`${ruins.length} mudança(s) fora das 6`, ruins);
+          }
+          const { soNoA, soNoB } = diferencas(antes, foto);
+          alvoDoDesfazer = foto;
+          return `antes com as 6 fechadas e nada além (${soNoA.length} linhas saíram, ${soNoB.length} entraram)`;
+        } finally {
+          await soltarBanco(bancoAlvo).catch(() => {});
+        }
+      },
+    );
+  }
+  const rotuloDoAlvo =
+    pacote.id === "amplo" ? "do antes com as 6 fechadas" : "do antes";
+  const exigirAlvo = async (rotulo) => {
+    if (!alvoDoDesfazer) {
+      throw new Falha("sem o alvo do desfazer (o caso que o monta falhou)");
+    }
+    exigirIgual(alvoDoDesfazer, await fotografiaDoClone(), rotulo);
   };
 
   await clonarBanco(BANCO_ANTES, BANCO_ROLLBACK);
@@ -511,14 +565,12 @@ async function main() {
       });
       if (desfez) {
         await caso(
-          "depois_do_rollback_a_fotografia_e_IDENTICA_a_do_antes",
+          pacote.id === "amplo"
+            ? "depois_do_rollback_a_fotografia_e_IDENTICA_a_do_antes_com_as_6_fechadas"
+            : "depois_do_rollback_a_fotografia_e_IDENTICA_a_do_antes",
           async () => {
-            exigirIgual(
-              antes,
-              await fotografiaDoClone(),
-              "depois do rollback × antes",
-            );
-            return "função a função, texto a texto (proacl cru, entradas, grantor, efetivo, relações, colunas)";
+            await exigirAlvo(`depois do rollback × alvo (${rotuloDoAlvo})`);
+            return `função a função, texto a texto (proacl cru, entradas, grantor, efetivo, relações, colunas) — alvo: ${rotuloDoAlvo}`;
           },
         );
         await caso(
@@ -578,14 +630,10 @@ async function main() {
           } else if (erro) {
             throw new Falha(`o 2º desfazer abortou: ${erro.message}`);
           }
-          exigirIgual(
-            antes,
-            await fotografiaDoClone(),
-            "depois do 2º desfazer × antes",
-          );
+          await exigirAlvo(`depois do 2º desfazer × alvo (${rotuloDoAlvo})`);
           return pacote.redesfazer === "recusa"
             ? `recusado (${String(erro.message).slice(0, 90)}) e nada mudou`
-            : "idempotente: fotografia segue igual à do antes";
+            : `idempotente: fotografia segue igual à ${rotuloDoAlvo}`;
         });
       }
     }

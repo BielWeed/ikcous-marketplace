@@ -1,6 +1,7 @@
 BEGIN;
 -- Desfaz SO a convergencia. Volta ao estado medido depois da emergencia de 16:28:45Z
 -- (confirmar_pagamento e devolver_uso_cupom continuam fechadas). Grants de coluna e service_role nao mudam no pacote.
+-- As 6 funcoes de dinheiro do seis-funcoes.sql NUNCA reabrem aqui: voltam como o pacote pequeno as deixa.
 CREATE TEMP TABLE _rb_fn (fn regprocedure, pub boolean, anon boolean, auth boolean, apos_anon boolean, apos_auth boolean) ON COMMIT DROP;
 INSERT INTO _rb_fn VALUES
 ('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', false, true, true, false, true),
@@ -20,7 +21,7 @@ INSERT INTO _rb_fn VALUES
 ('public.check_user_confirmation_status(text)', false, true, true, false, false),
 ('public.clean_expired_shipping_quotes()', false, true, true, false, false),
 ('public.clean_old_shipping_logs()', false, true, true, false, false),
-('public.concluir_estorno(uuid,text,text,text)', false, true, true, false, false),
+('public.concluir_estorno(uuid,text,text,text)', false, false, false, false, false),
 ('public.confirmar_retorno_do_produto(uuid)', false, true, true, false, true),
 ('public.create_marketplace_order_v22(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb)', false, true, true, false, false),
 ('public.create_marketplace_order(jsonb,text,uuid,text,text,text,text)', false, true, true, false, false),
@@ -40,11 +41,11 @@ INSERT INTO _rb_fn VALUES
 ('public.devolucao_detalhe(uuid)', false, true, true, false, true),
 ('public.devolucao_elegibilidade(uuid)', false, true, true, false, true),
 ('public.devolucoes_do_pedido(uuid)', false, true, true, false, true),
-('public.devolver_cupons_de_pedidos_mortos()', false, true, true, false, false),
-('public.devolver_estoque(uuid)', false, true, true, false, false),
+('public.devolver_cupons_de_pedidos_mortos()', false, false, false, false, false),
+('public.devolver_estoque(uuid)', false, false, false, false, false),
 ('public.dominio_publico_so_muda_pela_frota()', false, true, true, false, false),
 ('public.ensure_role_protection()', false, true, true, false, false),
-('public.expirar_pedidos_vencidos()', false, true, true, false, false),
+('public.expirar_pedidos_vencidos()', false, false, false, false, false),
 ('public.fin__caixa_calculo(uuid)', false, true, true, false, false),
 ('public.fin__conta_da_forma(text)', false, true, true, false, false),
 ('public.fin__dia(timestamp with time zone)', false, true, true, false, false),
@@ -105,10 +106,10 @@ INSERT INTO _rb_fn VALUES
 ('public.handle_public_profile_sync()', false, true, true, false, false),
 ('public.handle_updated_at()', false, true, true, false, false),
 ('public.informar_envio_devolucao(uuid,text)', false, true, true, false, true),
-('public.liberar_cobranca_do_pedido(uuid,text)', false, true, true, false, false),
+('public.liberar_cobranca_do_pedido(uuid,text)', false, false, false, false, false),
 ('public.liberar_email_de_confirmacao(uuid)', false, true, true, false, false),
 ('public.marca_estorno_direto_do_pedido()', false, true, true, false, false),
-('public.pagamentos_a_reconciliar()', false, true, true, false, false),
+('public.pagamentos_a_reconciliar()', false, false, false, false, false),
 ('public.painel_inicio()', false, true, true, false, true),
 ('public.prevent_role_change()', false, true, true, false, false),
 ('public.read_store_identity()', false, true, true, false, true),
@@ -247,8 +248,8 @@ DO $$ BEGIN
   IF has_function_privilege('authenticated', 'public.clean_expired_shipping_quotes()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: clean_expired_shipping_quotes() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.clean_old_shipping_logs()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: clean_old_shipping_logs() / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.clean_old_shipping_logs()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: clean_old_shipping_logs() / authenticated'; END IF;
-  IF has_function_privilege('anon', 'public.concluir_estorno(uuid,text,text,text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: concluir_estorno(uuid,text,text,text) / anon'; END IF;
-  IF has_function_privilege('authenticated', 'public.concluir_estorno(uuid,text,text,text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: concluir_estorno(uuid,text,text,text) / authenticated'; END IF;
+  IF has_function_privilege('anon', 'public.concluir_estorno(uuid,text,text,text)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: concluir_estorno(uuid,text,text,text) / anon'; END IF;
+  IF has_function_privilege('authenticated', 'public.concluir_estorno(uuid,text,text,text)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: concluir_estorno(uuid,text,text,text) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.confirmar_pagamento(uuid,text,text)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: confirmar_pagamento(uuid,text,text) / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.confirmar_pagamento(uuid,text,text)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: confirmar_pagamento(uuid,text,text) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.confirmar_retorno_do_produto(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: confirmar_retorno_do_produto(uuid) / anon'; END IF;
@@ -293,18 +294,18 @@ DO $$ BEGIN
   IF has_function_privilege('authenticated', 'public.devolucao_elegibilidade(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolucao_elegibilidade(uuid) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.devolucoes_do_pedido(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolucoes_do_pedido(uuid) / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.devolucoes_do_pedido(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolucoes_do_pedido(uuid) / authenticated'; END IF;
-  IF has_function_privilege('anon', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolver_cupons_de_pedidos_mortos() / anon'; END IF;
-  IF has_function_privilege('authenticated', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolver_cupons_de_pedidos_mortos() / authenticated'; END IF;
-  IF has_function_privilege('anon', 'public.devolver_estoque(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolver_estoque(uuid) / anon'; END IF;
-  IF has_function_privilege('authenticated', 'public.devolver_estoque(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: devolver_estoque(uuid) / authenticated'; END IF;
+  IF has_function_privilege('anon', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: devolver_cupons_de_pedidos_mortos() / anon'; END IF;
+  IF has_function_privilege('authenticated', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: devolver_cupons_de_pedidos_mortos() / authenticated'; END IF;
+  IF has_function_privilege('anon', 'public.devolver_estoque(uuid)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: devolver_estoque(uuid) / anon'; END IF;
+  IF has_function_privilege('authenticated', 'public.devolver_estoque(uuid)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: devolver_estoque(uuid) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.devolver_uso_cupom(uuid)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: devolver_uso_cupom(uuid) / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.devolver_uso_cupom(uuid)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: devolver_uso_cupom(uuid) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.dominio_publico_so_muda_pela_frota()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: dominio_publico_so_muda_pela_frota() / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.dominio_publico_so_muda_pela_frota()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: dominio_publico_so_muda_pela_frota() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.ensure_role_protection()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: ensure_role_protection() / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.ensure_role_protection()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: ensure_role_protection() / authenticated'; END IF;
-  IF has_function_privilege('anon', 'public.expirar_pedidos_vencidos()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: expirar_pedidos_vencidos() / anon'; END IF;
-  IF has_function_privilege('authenticated', 'public.expirar_pedidos_vencidos()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: expirar_pedidos_vencidos() / authenticated'; END IF;
+  IF has_function_privilege('anon', 'public.expirar_pedidos_vencidos()', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: expirar_pedidos_vencidos() / anon'; END IF;
+  IF has_function_privilege('authenticated', 'public.expirar_pedidos_vencidos()', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: expirar_pedidos_vencidos() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.f_digitos(text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: f_digitos(text) / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.f_digitos(text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: f_digitos(text) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.f_unaccent(text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: f_unaccent(text) / anon'; END IF;
@@ -451,8 +452,8 @@ DO $$ BEGIN
   IF has_function_privilege('authenticated', 'public.is_admin()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: is_admin() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.is_local_cep(text,text,text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: is_local_cep(text,text,text) / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.is_local_cep(text,text,text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: is_local_cep(text,text,text) / authenticated'; END IF;
-  IF has_function_privilege('anon', 'public.liberar_cobranca_do_pedido(uuid,text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: liberar_cobranca_do_pedido(uuid,text) / anon'; END IF;
-  IF has_function_privilege('authenticated', 'public.liberar_cobranca_do_pedido(uuid,text)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: liberar_cobranca_do_pedido(uuid,text) / authenticated'; END IF;
+  IF has_function_privilege('anon', 'public.liberar_cobranca_do_pedido(uuid,text)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: liberar_cobranca_do_pedido(uuid,text) / anon'; END IF;
+  IF has_function_privilege('authenticated', 'public.liberar_cobranca_do_pedido(uuid,text)', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: liberar_cobranca_do_pedido(uuid,text) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.liberar_email_de_confirmacao(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: liberar_email_de_confirmacao(uuid) / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.liberar_email_de_confirmacao(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: liberar_email_de_confirmacao(uuid) / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.limpar_cotacoes_fora_da_janela()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: limpar_cotacoes_fora_da_janela() / anon'; END IF;
@@ -467,8 +468,8 @@ DO $$ BEGIN
   IF has_function_privilege('authenticated', 'public.notifica_cliente_de_mudanca_de_pagamento()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: notifica_cliente_de_mudanca_de_pagamento() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.notifica_cliente_de_mudanca_de_status()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: notifica_cliente_de_mudanca_de_status() / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.notifica_cliente_de_mudanca_de_status()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: notifica_cliente_de_mudanca_de_status() / authenticated'; END IF;
-  IF has_function_privilege('anon', 'public.pagamentos_a_reconciliar()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: pagamentos_a_reconciliar() / anon'; END IF;
-  IF has_function_privilege('authenticated', 'public.pagamentos_a_reconciliar()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: pagamentos_a_reconciliar() / authenticated'; END IF;
+  IF has_function_privilege('anon', 'public.pagamentos_a_reconciliar()', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: pagamentos_a_reconciliar() / anon'; END IF;
+  IF has_function_privilege('authenticated', 'public.pagamentos_a_reconciliar()', 'EXECUTE') IS DISTINCT FROM false THEN RAISE EXCEPTION 'desfazer: pagamentos_a_reconciliar() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.painel_inicio()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: painel_inicio() / anon'; END IF;
   IF has_function_privilege('authenticated', 'public.painel_inicio()', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: painel_inicio() / authenticated'; END IF;
   IF has_function_privilege('anon', 'public.perfil_publico_avaliacoes(uuid)', 'EXECUTE') IS DISTINCT FROM true THEN RAISE EXCEPTION 'desfazer: perfil_publico_avaliacoes(uuid) / anon'; END IF;
