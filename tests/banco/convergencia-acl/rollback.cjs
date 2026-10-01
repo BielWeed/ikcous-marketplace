@@ -622,6 +622,112 @@ async function main() {
             }
           },
         );
+
+        // No PG 17, GRANT ALL inclui MAINTAIN (docs 17: ddl-priv, sql-grant).
+        // O amplo não tira MAINTAIN, e o desfazer dá GRANT ALL: um REVOKE
+        // MAINTAIN feito depois do amplo não pode ser reaberto por ele. Vale
+        // preservar a revogação (desfazer COMMITA e authenticated segue sem
+        // MAINTAIN direto, com os 7 direitos medidos de volta) OU recusar na
+        // pré-condição (P0001, antes de escrever) com a fotografia — que lista
+        // MAINTAIN na linha REL — idêntica à do estado endurecido.
+        await caso(
+          "desfazer_nao_reabre_maintain_revogado_depois_do_amplo",
+          async () => {
+            const bancoMnt = "acl_rollback_maintain";
+            const diretosDeAuth = async () => {
+              const c = await conectar(bancoMnt);
+              try {
+                const r = await c.query(
+                  `SELECT COALESCE(array_agg(DISTINCT x.privilege_type ORDER BY x.privilege_type), '{}') AS privs
+                     FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) x
+                    WHERE c.oid = 'public.marketplace_orders'::regclass
+                      AND x.grantee = 'authenticated'::regrole`,
+                );
+                return r.rows[0].privs;
+              } finally {
+                await c.end().catch(() => {});
+              }
+            };
+            await clonarBanco(BANCO_ROLLBACK, bancoMnt);
+            try {
+              // CONTROLE: a premissa (MAINTAIN direto sobrevive ao aplicar) é medida, não suposta.
+              const antesDoRevoke = await diretosDeAuth();
+              if (!antesDoRevoke.includes("MAINTAIN")) {
+                throw new Falha(
+                  `premissa falsa: depois do amplo, authenticated não tem MAINTAIN direto em marketplace_orders (tem {${antesDoRevoke.join(",")}}) — escolher outra relação`,
+                );
+              }
+              const cliente = await conectar(bancoMnt);
+              let endurecido;
+              try {
+                await cliente.query(
+                  "REVOKE MAINTAIN ON public.marketplace_orders FROM authenticated",
+                );
+                endurecido = await fotografar(cliente);
+              } finally {
+                await cliente.end().catch(() => {});
+              }
+              if ((await diretosDeAuth()).includes("MAINTAIN")) {
+                throw new Falha(
+                  "o REVOKE de controle não tirou o MAINTAIN (prova vazia)",
+                );
+              }
+
+              const erro = await executarSql(
+                bancoMnt,
+                lerFixture(pacote.desfaz),
+              );
+              const depois = await diretosDeAuth();
+              if (!erro) {
+                if (depois.includes("MAINTAIN")) {
+                  throw new Falha(
+                    `o desfazer amplo COMMITOU e reabriu MAINTAIN de authenticated em marketplace_orders (diretos agora: {${depois.join(",")}})`,
+                  );
+                }
+                const sete = [
+                  "DELETE",
+                  "INSERT",
+                  "REFERENCES",
+                  "SELECT",
+                  "TRIGGER",
+                  "TRUNCATE",
+                  "UPDATE",
+                ];
+                if (depois.join(",") !== sete.join(",")) {
+                  throw new Falha(
+                    `o desfazer COMMITOU sem devolver os 7 direitos medidos (diretos agora: {${depois.join(",")}})`,
+                  );
+                }
+                return `desfazer COMMITOU, devolveu os 7 direitos e preservou a revogação de MAINTAIN ({${depois.join(",")}})`;
+              }
+              const msg = String(erro.message);
+              if (
+                erro.code !== "P0001" ||
+                !msg.includes("pré-condição do desfazer")
+              ) {
+                throw new Falha(
+                  `o desfazer abortou, mas não pela pré-condição: ${erro.code} ${msg}`,
+                );
+              }
+              const leitura = await conectar(bancoMnt);
+              try {
+                exigirIgual(
+                  endurecido,
+                  await fotografar(leitura),
+                  "MAINTAIN revogado depois do desfazer recusado",
+                );
+              } finally {
+                await leitura.end().catch(() => {});
+              }
+              if (depois.includes("MAINTAIN")) {
+                throw new Falha("o MAINTAIN voltou apesar da recusa");
+              }
+              return `recusado na pré-condição (${msg.slice(0, 90)}) e a revogação de MAINTAIN ficou intacta`;
+            } finally {
+              await soltarBanco(bancoMnt).catch(() => {});
+            }
+          },
+        );
       }
 
       // D2. TRAVA DO SERVIDOR no script de desfazer (pacote pequeno), sobre o estado aplicado
