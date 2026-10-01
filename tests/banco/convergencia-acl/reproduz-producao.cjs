@@ -47,6 +47,8 @@ const {
 const GRUPO = "REPRODUZ_PRODUCAO";
 
 async function aplicarSql() {
+  // Caminho fixo da fixture adjacente; a regra não reconhece path.join.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   const sql = fs.readFileSync(
     path.join(__dirname, "reproduz-producao.sql"),
     "utf8",

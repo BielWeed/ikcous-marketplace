@@ -236,6 +236,8 @@ async function bloqueioDoAmplo(c, pacote, sql, params = []) {
   };
 }
 
+// Chaves vêm dos nomes fixos das provas, não de entrada externa.
+// eslint-disable-next-line security/detect-object-injection
 const valoresDe = (nomes) => nomes.map((n) => VALORES[n]);
 
 // ---- Os grupos --------------------------------------------------------------
@@ -297,6 +299,8 @@ async function seisParaOsDoisPapeis(c, item, exigir) {
 }
 
 async function contagem(c, coluna, esperado) {
+  // A coluna é escolhida pelas provas estáticas deste arquivo.
+  // eslint-disable-next-line security/detect-object-injection
   const n = (await medirFuncoes(c)).filter((l) => l[coluna]).length;
   if (n !== esperado) throw new Falha(`${n} funções (esperado ${esperado})`);
   return String(n);
@@ -990,7 +994,9 @@ function construirGrupos(pacote) {
             for (const [rel, papeis] of savy) {
               for (const papel of ["anon", "authenticated"]) {
                 // amplo: o que a Savy mede. seis: produção = os 7 em tudo.
+                // eslint-disable-next-line security/detect-object-injection
                 const esperado = amplo ? (papeis[papel] ?? "") : todos;
+                // eslint-disable-next-line security/detect-object-injection
                 const real = banco.get(rel)?.[papel];
                 if (real === undefined)
                   dif.push(`${rel} / ${papel}: relação não existe no banco`);
@@ -1278,8 +1284,12 @@ async function main() {
   const relator = criarRelator();
   try {
     for (const nome of nomes) {
+      // Os nomes e os bancos são definidos pelos grupos de teste abaixo.
+      // eslint-disable-next-line security/detect-object-injection
       const alvo = grupos[nome].banco;
+      // eslint-disable-next-line security/detect-object-injection
       if (!clientes[alvo]) {
+        // eslint-disable-next-line security/detect-object-injection
         clientes[alvo] = await conectar(
           alvo === "antes" ? BANCO_ANTES : undefined,
         );
@@ -1287,6 +1297,7 @@ async function main() {
     }
     for (const nome of nomes) {
       console.log(`\n=== ${nome} ===`);
+      // eslint-disable-next-line security/detect-object-injection
       await rodarGrupo(nome, grupos[nome], clientes, relator);
       if (nome === "GRANTS_POR_PAPEL" && pacote.id === "amplo") {
         await avisarMaintainResidual(clientes.base, relator);

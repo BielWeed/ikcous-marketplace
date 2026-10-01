@@ -145,10 +145,9 @@ function lerPrincipalAcl() {
     });
 }
 
-/** savy-acl.json: o stdout do CLI traz uma linha de ruído antes do JSON. */
+/** A fixture contém só o JSON; o cabeçalho do CLI foi removido. */
 function lerSavyAcl() {
-  const bruto = lerFixture("savy-acl.json");
-  const json = JSON.parse(bruto.slice(bruto.indexOf("{")));
+  const json = JSON.parse(lerFixture("savy-acl.json"));
   return json.rows;
 }
 

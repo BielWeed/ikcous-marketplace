@@ -346,8 +346,14 @@ async function main() {
             } finally {
               await cliente.end().catch(() => {});
             }
-            const erro = await executarSql(bancoDesvio, lerFixture(pacote.desfaz));
-            if (!erro || !String(erro.message).includes("pré-condição do desfazer")) {
+            const erro = await executarSql(
+              bancoDesvio,
+              lerFixture(pacote.desfaz),
+            );
+            if (
+              !erro ||
+              !String(erro.message).includes("pré-condição do desfazer")
+            ) {
               throw new Falha("o desfazer não recusou a permissão alterada");
             }
             const leitura = await conectar(bancoDesvio);
