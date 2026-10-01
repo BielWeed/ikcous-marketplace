@@ -29,6 +29,8 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
+import { bashMultiplataforma, caminhoPosix } from "./_bash_multiplataforma.ts";
+
 const WORKFLOW = fromFileUrl(
   new URL("../.github/workflows/publicar-functions.yml", import.meta.url),
 );
@@ -80,7 +82,12 @@ function blocoRunDoStep(yaml: string, nomeDoStep: string): string {
   return corpo.map((l) => l.slice(menorRecuo)).join("\n");
 }
 
-/** Roda o bloco de validação como o runner rodaria: bash, na raiz do repo. */
+/**
+ * Roda o bloco de validação como o runner rodaria: bash, na raiz do repo.
+ * O bash vem de `./_bash_multiplataforma.ts` — no Windows o do PATH pode
+ * ser o do WSL, que não recebe as variáveis de ambiente (PROJETO chegava
+ * VAZIO e o bloco morria em "projeto desconhecido").
+ */
 async function validar(
   projeto: string,
   pedidas: string,
@@ -90,7 +97,7 @@ async function validar(
   const yaml = await Deno.readTextFile(WORKFLOW);
   const bloco = blocoRunDoStep(yaml, "Resolve o projeto e valida os nomes");
   const saida = await Deno.makeTempFile({ prefix: "publicar_out_" });
-  const proc = new Deno.Command("bash", {
+  const proc = new Deno.Command(bashMultiplataforma(), {
     args: ["-c", bloco],
     cwd: RAIZ,
     env: {
@@ -98,7 +105,7 @@ async function validar(
       PEDIDAS: pedidas,
       EXPECTED_SHA: expectedSha,
       GITHUB_SHA: actualSha,
-      GITHUB_OUTPUT: saida,
+      GITHUB_OUTPUT: caminhoPosix(saida),
     },
     stdout: "piped",
     stderr: "piped",

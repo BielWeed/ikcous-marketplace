@@ -187,7 +187,7 @@ export function htmlDoPedido(dados: {
   } = dados;
   const total = pedido?.total ?? pedido?.total_amount;
   const frete = pedido?.shipping ?? pedido?.shipping_cost;
-  const pagamento = rotuloDoPagamento(pedido?.payment_method, pedido?.metodo_online);
+  const pagamento = rotuloDoPagamento(pedido?.payment_method, pedido?.metodo_online, canal);
   const loja = String(nomeDaLoja ?? "").trim();
 
   // O canal presencial VEM PRIMEIRO no if: venda de balcao nunca fica

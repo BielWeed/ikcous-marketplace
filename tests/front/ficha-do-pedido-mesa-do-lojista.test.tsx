@@ -401,11 +401,14 @@ describe("ficha do pedido (mesa do lojista) — vocabulário novo", () => {
     }
   });
 
-  it("método cartão na entrega: 'Cartão de crédito' (era 'Rede Crédito')", async () => {
+  // Achado D4 (28/09): "card" é o cartão NA ENTREGA (a maquininha do
+  // entregador) — nem sempre crédito. O rótulo é o único da casa
+  // (`rotuloDaFormaDoPedido`), o mesmo da lista e da planilha.
+  it("método cartão na entrega: 'Cartão na entrega' (era 'Rede Crédito', depois 'Cartão de crédito')", async () => {
     await renderizar(pedidoFake({ paymentMethod: "card" }));
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Cartão de crédito");
+    expect(texto).toContain("Cartão na entrega");
     expect(texto).not.toContain("Rede Crédito");
   });
 });
