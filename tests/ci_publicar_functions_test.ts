@@ -347,11 +347,41 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     assertEquals(r.codigo, 0, r.stderr + r.stdout);
   });
 
-  await t.step("Savy só admite as cinco Functions financeiras", async () => {
-    const r = await validar("savy", "send-push", "a".repeat(40));
-    assertEquals(r.codigo, 1);
-    assertEquals(r.outputs.nomes, undefined);
-  });
+  await t.step(
+    "Savy admite as Functions necessárias ao PIX com QR do balcão",
+    async () => {
+      const r = await validar(
+        "savy",
+        "cobrar-pix-no-balcao send-order-confirmation",
+        "a".repeat(40),
+      );
+      assertEquals(r.codigo, 0, r.stderr + r.stdout);
+      assertEquals(
+        r.outputs.nomes,
+        "cobrar-pix-no-balcao send-order-confirmation",
+      );
+    },
+  );
+
+  await t.step(
+    "Savy mantém a restrição às cinco financeiras e às duas do PIX do balcão",
+    async () => {
+      const r = await validar("savy", "send-push", "a".repeat(40));
+      assertEquals(r.codigo, 1);
+      assertEquals(r.outputs.nomes, undefined);
+    },
+  );
+
+  await t.step(
+    "Almeida não herda a exceção de publicação da Savy",
+    async () => {
+      for (const nome of ["cobrar-pix-no-balcao", "send-order-confirmation"]) {
+        const r = await validar("almeida", nome, "a".repeat(40));
+        assertEquals(r.codigo, 1, `${nome} não deve ser publicado em Almeida`);
+        assertEquals(r.outputs.nomes, undefined);
+      }
+    },
+  );
 
   await t.step(
     "recusa a send-order-whatsapp, despublicada em 11/08/2026",

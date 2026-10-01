@@ -29,10 +29,11 @@
 # principal e por isso usa o mesmo `SUPABASE_ACCESS_TOKEN` — nunca o da Savy.
 # Revogar: na mesma página do Supabase.
 #
-# LOJA CLIENTE (savy | almeida) = mesma disciplina, de propósito: só as cinco
-# Functions financeiras (as do apelido `cobranca`) e `expected_sha` completo,
-# igual ao SHA do run, conferido ANTES do primeiro deploy. Function de dinheiro
-# numa loja de terceiro não sobe de um commit que ninguém aprovou. As outras
+# LOJA CLIENTE (savy | almeida) exige `expected_sha` completo, igual ao SHA do
+# run, conferido ANTES do primeiro deploy. Almeida só admite as cinco Functions
+# financeiras (apelido `cobranca`); Savy também admite as duas Functions do
+# PIX com QR do balcão (`cobrar-pix-no-balcao`, `send-order-confirmation`).
+# Function de dinheiro numa loja de terceiro não sobe de commit não aprovado. As outras
 # lojas clientes (Brand Meliz, Space Loja do Kit) ficam em projetos de contas
 # sem acesso deste token e não têm rota aqui.
 #
@@ -124,10 +125,17 @@ jobs:
               echo "::error::send-order-whatsapp foi despublicada em 11/08/2026 e não volta (DEPLOYMENT.md §2)"; exit 1
             fi
             if [ "$CLIENTE" = "sim" ]; then
-              case "$n" in
-                criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
-                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras"; exit 1 ;;
-              esac
+              if [ "$PROJETO" = "savy" ]; then
+                case "$n" in
+                  criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago|cobrar-pix-no-balcao|send-order-confirmation) ;;
+                  *) echo "::error::Savy só admite cobrança e PIX com QR do balcão"; exit 1 ;;
+                esac
+              else
+                case "$n" in
+                  criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
+                  *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras"; exit 1 ;;
+                esac
+              fi
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then
               echo "::error::não existe supabase/functions/$n/index.ts"; exit 1
