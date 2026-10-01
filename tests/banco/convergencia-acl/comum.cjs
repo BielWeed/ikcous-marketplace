@@ -382,7 +382,7 @@ SELECT linha FROM (
    WHERE n.nspname = 'public'
   UNION ALL
   -- ACL das relacoes (tabelas, views, matviews), por grantee e grantor
-  SELECT 'REL|' || c.relname || '|' || c.relkind
+  SELECT 'REL|' || c.relname || '|' || c.relkind::text
          || '|' || CASE x.grantee WHEN 0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantee) END
          || '|' || CASE x.grantor WHEN 0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantor) END
          || '|' || string_agg(x.privilege_type || CASE WHEN x.is_grantable THEN '+grant' ELSE '' END,
