@@ -1,0 +1,262 @@
+# TESTE DA CONVERGENCIA DE PERMISSOES da loja PRINCIPAL do IKCOUS (01/10/2026).
+#
+# O QUE PROVA. A principal divergiu das migrations na troca de banco de 28/09:
+# anon (visitante) e authenticated (cliente logado) executam funcoes e mexem em
+# tabelas que so o servidor devia alcancar. Dois pacotes de SQL avulso (NAO sao
+# migrations) corrigem isso; este workflow prova cada um num Postgres EFEMERO,
+# SEM tocar banco de loja nenhum:
+#
+#   job seis-funcoes (PRIMARIO)  -> fecha 6 funcoes de pagamento
+#                                   (tests/banco/fixtures/convergencia-acl/seis-funcoes*.sql)
+#   job pacote-amplo (SECUNDARIO) -> convergencia completa ao estado da Savy
+#                                   (convergencia-completa.sql / rollback-completo.sql)
+#
+# Os dois jobs sao INDEPENDENTES (cada um com o seu Postgres): o resultado de um
+# nao bloqueia o do outro. Nenhum `continue-on-error`: job vermelho e vermelho.
+#
+# O QUE CADA JOB FAZ, na ordem (um passo por grupo, para o log ficar legivel):
+#   1. aplica as migrations do zero (como o rpc-ci.yml) e COMPARA o banco migrado
+#      com a producao medida (160 funcoes, 55 relacoes) — diferenca falha listando
+#      nome por nome;
+#   2. REPRODUZ o estado de permissoes da producao (inclusive o proacl textual
+#      das 8 funcoes de pagamento) e tira a FOTOGRAFIA do "antes" + um TEMPLATE;
+#   3. aplica o pacote (tem de COMMITar);
+#   4. provas vivas que ja existem (devolucoes, cartao, financeiro, CRM, CPF,
+#      invariantes do dinheiro) — cada uma no estado "antes" E no depois, e so
+#      falha quem o pacote quebrou;
+#   5. COMPORTAMENTO por papel (anon, authenticated, service_role, postgres) em
+#      transacoes com ROLLBACK: checkout/cartao, PIX online, Meus pedidos/fotos,
+#      painel, webhook/reconciliacao, contagens por papel; CONTROLE no "antes";
+#   6. ROLLBACK: clone do "antes" -> pacote -> desfazer -> fotografia IDENTICA
+#      (inclusive transacao interrompida no meio e rodar duas vezes);
+#   7. PIX_BALCAO: migrations 20261184/20261185 (PR #741) + a prova viva delas.
+#
+# SEGURANCA DE BANCO: a unica DATABASE_URL daqui e o service efemero de cada job.
+# Nenhum secret do repositorio e usado. Toda conexao passa por
+# tests/banco/efemero.cjs, que RECUSA rodar sem CI_BANCO_EFEMERO=1 e com host
+# fora de localhost. Os bancos extras (acl_antes, acl_rollback, acl_pix, prova_*)
+# sao CLONES do efemero, criados e apagados pelo proprio teste.
+#
+# DISPARO: push em branch teste/convergencia-acl-* ou workflow_dispatch.
+# Custo: repo publico + runner padrao = R$ 0; timeout-minutes limita o pior caso.
+
+name: Teste da convergência de permissões (loja principal)
+
+on:
+  push:
+    branches: ["teste/convergencia-acl-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: teste-convergencia-acl-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Mesma versao do rpc-ci.yml (producao roda Node 24.x).
+  NODE_VERSION: "24"
+
+jobs:
+  seis-funcoes:
+    name: "PRIMÁRIO · seis funções de pagamento (Postgres efêmero)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        # PG 17: a versao do projeto (ADR 0003) — mesma imagem do rpc-ci.yml.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # UNICA conexao deste job: o service efemero acima. A trava de
+      # tests/banco/efemero.cjs recusa qualquer outro alvo.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      CI_BANCO_EFEMERO: "1"
+      # Qual pacote este job prova (tests/banco/convergencia-acl/comum.cjs).
+      PACOTE_ACL: seis
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # So pelo pacote `pg` (dependencia do repositorio), como no rpc-ci.yml.
+      - run: npm ci
+      - name: "Provisiona o efêmero (fábrica do Supabase, emulada)"
+        run: node tests/banco/provisionar.cjs
+      - name: "Aplica as migrations do zero"
+        run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      - name: "COMPARAÇÃO · banco migrado × produção (160 funções, 55 relações)"
+        id: comparacao
+        run: node tests/banco/convergencia-acl/comparar-com-producao.cjs
+      - name: "REPRODUZ · estado de permissões da produção de 01/10/2026"
+        id: reproduz
+        run: node tests/banco/convergencia-acl/reproduz-producao.cjs
+      - name: "FOTOGRAFIA do antes + TEMPLATE acl_antes"
+        id: template
+        run: node tests/banco/convergencia-acl/fotografa-e-template.cjs
+      - name: "APLICA · pacote das seis funções (tem de COMMITar)"
+        id: aplica
+        run: node tests/banco/convergencia-acl/aplica-sql.cjs aplicar
+      - name: "PROVA EXISTENTE · devoluções (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs devolucoes-viva
+      - name: "PROVA EXISTENTE · cartão online (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs cartao-online-viva
+      - name: "PROVA EXISTENTE · Financeiro (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs financeiro-viva
+      - name: "PROVA EXISTENTE · CRM e Início (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs crm-inicio-viva
+      - name: "PROVA EXISTENTE · CRM vê todo mundo (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs crm-todos-viva
+      - name: "PROVA EXISTENTE · CPF da janela (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs cpf-da-janela-viva
+      - name: "PROVA EXISTENTE · invariantes do dinheiro (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs invariantes-dinheiro
+      - name: "COMPORTAMENTO · CHECKOUT_CARTAO"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs CHECKOUT_CARTAO
+      - name: "COMPORTAMENTO · PIX_ONLINE"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs PIX_ONLINE
+      - name: "COMPORTAMENTO · MEUS_PEDIDOS_FOTOS"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs MEUS_PEDIDOS_FOTOS
+      - name: "COMPORTAMENTO · PAINEL"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs PAINEL
+      - name: "COMPORTAMENTO · WEBHOOK_RECONCILIACAO"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs WEBHOOK_RECONCILIACAO
+      - name: "COMPORTAMENTO · GRANTS_POR_PAPEL"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs GRANTS_POR_PAPEL
+      - name: "COMPORTAMENTO · CONTROLE (o mesmo teste no estado de antes)"
+        if: ${{ !cancelled() && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs CONTROLE
+      - name: "ROLLBACK · desfazer deixa a fotografia idêntica à do antes"
+        if: ${{ !cancelled() && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/rollback.cjs
+      - name: "PIX_BALCAO · migrations 20261184/20261185 + prova viva"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/pix-balcao.cjs
+
+  pacote-amplo:
+    name: "SECUNDÁRIO · convergência ampla (Postgres efêmero)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    services:
+      postgres:
+        # PG 17: a versao do projeto (ADR 0003) — mesma imagem do rpc-ci.yml.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # UNICA conexao deste job: o service efemero acima. A trava de
+      # tests/banco/efemero.cjs recusa qualquer outro alvo.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      CI_BANCO_EFEMERO: "1"
+      # Qual pacote este job prova (tests/banco/convergencia-acl/comum.cjs).
+      PACOTE_ACL: amplo
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # So pelo pacote `pg` (dependencia do repositorio), como no rpc-ci.yml.
+      - run: npm ci
+      - name: "Provisiona o efêmero (fábrica do Supabase, emulada)"
+        run: node tests/banco/provisionar.cjs
+      - name: "Aplica as migrations do zero"
+        run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      - name: "COMPARAÇÃO · banco migrado × produção (160 funções, 55 relações)"
+        id: comparacao
+        run: node tests/banco/convergencia-acl/comparar-com-producao.cjs
+      - name: "REPRODUZ · estado de permissões da produção de 01/10/2026"
+        id: reproduz
+        run: node tests/banco/convergencia-acl/reproduz-producao.cjs
+      - name: "FOTOGRAFIA do antes + TEMPLATE acl_antes"
+        id: template
+        run: node tests/banco/convergencia-acl/fotografa-e-template.cjs
+      - name: "APLICA · pacote amplo (tem de COMMITar)"
+        id: aplica
+        run: node tests/banco/convergencia-acl/aplica-sql.cjs aplicar
+      - name: "PROVA EXISTENTE · devoluções (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs devolucoes-viva
+      - name: "PROVA EXISTENTE · cartão online (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs cartao-online-viva
+      - name: "PROVA EXISTENTE · Financeiro (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs financeiro-viva
+      - name: "PROVA EXISTENTE · CRM e Início (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs crm-inicio-viva
+      - name: "PROVA EXISTENTE · CRM vê todo mundo (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs crm-todos-viva
+      - name: "PROVA EXISTENTE · CPF da janela (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs cpf-da-janela-viva
+      - name: "PROVA EXISTENTE · invariantes do dinheiro (antes × depois)"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/provas-existentes.cjs invariantes-dinheiro
+      - name: "COMPORTAMENTO · CHECKOUT_CARTAO"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs CHECKOUT_CARTAO
+      - name: "COMPORTAMENTO · PIX_ONLINE"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs PIX_ONLINE
+      - name: "COMPORTAMENTO · MEUS_PEDIDOS_FOTOS"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs MEUS_PEDIDOS_FOTOS
+      - name: "COMPORTAMENTO · PAINEL"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs PAINEL
+      - name: "COMPORTAMENTO · WEBHOOK_RECONCILIACAO"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs WEBHOOK_RECONCILIACAO
+      - name: "COMPORTAMENTO · GRANTS_POR_PAPEL"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs GRANTS_POR_PAPEL
+      - name: "COMPORTAMENTO · CONTROLE (o mesmo teste no estado de antes)"
+        if: ${{ !cancelled() && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/convergencia-acl-viva.cjs CONTROLE
+      - name: "ROLLBACK · desfazer deixa a fotografia idêntica à do antes"
+        if: ${{ !cancelled() && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/rollback.cjs
+      - name: "PIX_BALCAO · migrations 20261184/20261185 + prova viva"
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' && steps.template.outcome == 'success' }}
+        run: node tests/banco/convergencia-acl/pix-balcao.cjs
