@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { GAVETA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import {
   Sheet,
   SheetContent,
@@ -6,6 +7,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { isViewTransitionSupported } from "@/hooks/useViewTransition";
 import {
   CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
@@ -117,6 +119,7 @@ export const ProductCard = memo(function ProductCard({
   showRating,
   promessasDeFrete,
 }: Readonly<ProductCardProps>) {
+  const computador = useTelaDeComputador();
   const instanceId = useId();
   const { prefetchImage } = usePrefetchOnHover();
   // B3 (laudo de acessibilidade, 08/09): o alvo que abre o produto por
@@ -512,7 +515,7 @@ export const ProductCard = memo(function ProductCard({
             className="size-full object-cover transition-transform duration-1000 ease-out group-hover:scale-105"
             priority={priority}
             // Grade de 2 colunas no celular, card fixo a partir do tablet.
-            sizes="(min-width: 640px) 280px, 50vw"
+            sizes="(min-width: 1024px) 260px, (min-width: 640px) 280px, 50vw"
             style={
               shouldApplyTransitionName
                 ? { viewTransitionName: "product-image" }
@@ -521,7 +524,12 @@ export const ProductCard = memo(function ProductCard({
           />
 
           {/* Action Buttons */}
-          <div className="absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100">
+          <div
+            className={cn(
+              "absolute right-3 top-3 flex translate-x-0 flex-col gap-2 opacity-100 transition-all duration-500 ease-out hover-hover:translate-x-12 hover-hover:opacity-0 hover-hover:group-hover:translate-x-0 hover-hover:group-hover:opacity-100",
+              "lg:hover-hover:group-focus-within:translate-x-0 lg:hover-hover:group-focus-within:opacity-100",
+            )}
+          >
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -579,7 +587,10 @@ export const ProductCard = memo(function ProductCard({
                 e.stopPropagation();
                 abrirProduto();
               }}
-              className="line-clamp-2 w-full text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]"
+              className={cn(
+                "line-clamp-2 w-full text-left text-[13px] font-black leading-tight text-slate-900 transition-colors duration-300 group-hover:text-primary sm:text-[14px]",
+                "lg:text-base",
+              )}
             >
               {product.name}
             </button>
@@ -661,6 +672,7 @@ export const ProductCard = memo(function ProductCard({
                 <span
                   className={cn(
                     "mt-1 text-[15px] font-black leading-none tracking-tight",
+                    "lg:text-lg",
                     CLASSE_PRECO_PROMOCIONAL_TEXTO_PEQUENO,
                   )}
                 >
@@ -669,7 +681,12 @@ export const ProductCard = memo(function ProductCard({
               </div>
             ) : (
               <div className="flex flex-col">
-                <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
+                <span
+                  className={cn(
+                    "text-[15px] font-black leading-none tracking-tight text-slate-900",
+                    "lg:text-lg",
+                  )}
+                >
                   {formatCurrency(precoAtual)}
                 </span>
               </div>
@@ -709,6 +726,7 @@ export const ProductCard = memo(function ProductCard({
             disabled={estoqueAtual <= 0 || cartStatus !== "idle"}
             className={cn(
               "w-full py-2 px-3 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 shadow-[0_4px_10px_rgba(24,24,27,0.1)] flex items-center justify-center gap-1.5",
+              "lg:h-12 lg:text-xs",
               estoqueAtual <= 0
                 ? "bg-zinc-100 text-zinc-400 cursor-not-allowed shadow-none"
                 : cartStatus === "success"
@@ -763,11 +781,15 @@ export const ProductCard = memo(function ProductCard({
               protege (o clique nunca sai do body pelo DOM, mas chega aqui
               pela árvore do React). */}
           <SheetContent
-            side="bottom"
+            side={computador ? "right" : "bottom"}
             data-testid="product-card-options-sheet"
             onClick={(e) => e.stopPropagation()}
             showCloseButton={false}
-            className="mx-auto max-h-[88dvh] gap-0 border-t-0 sm:max-w-md sm:rounded-t-3xl"
+            className={
+              computador
+                ? cn(GAVETA_NO_COMPUTADOR)
+                : "mx-auto max-h-[88dvh] gap-0 border-t-0 sm:max-w-md sm:rounded-t-3xl"
+            }
           >
             {/* Alça que FECHA (peça 03, 13/09 — pedido do dono ao vivo):
                 clicar nela fecha a folha; arrastar para baixo também
@@ -905,7 +927,12 @@ export const ProductCard = memo(function ProductCard({
                   </div>
                 ) : (
                   <div className="pt-1">
-                    <span className="text-[15px] font-black leading-none tracking-tight text-slate-900">
+                    <span
+                      className={cn(
+                        "text-[15px] font-black leading-none tracking-tight text-slate-900",
+                        "lg:text-lg",
+                      )}
+                    >
                       {formatCurrency(precoAtual)}
                     </span>
                   </div>

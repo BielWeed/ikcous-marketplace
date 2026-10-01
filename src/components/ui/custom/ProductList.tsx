@@ -1,6 +1,8 @@
+import { GRADE_DE_PRODUTOS_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import { useStore } from "@/contexts/StoreContext";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { cn } from "@/lib/utils";
 import type { Product } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
@@ -148,7 +150,10 @@ export const ProductList = React.memo(function ProductList({
       // no leitor de tela (anti-padrão APG). Visual intacto.
       <div
         role="status"
-        className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4"
+        className={cn(
+          "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4",
+          GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+        )}
       >
         <span className="sr-only">Carregando produtos</span>
         {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
@@ -160,7 +165,12 @@ export const ProductList = React.memo(function ProductList({
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
+      <div
+        className={cn(
+          "grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4",
+          GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+        )}
+      >
         {products.slice(0, visibleCount).map((product, index) => (
           <motion.div
             key={product.id}

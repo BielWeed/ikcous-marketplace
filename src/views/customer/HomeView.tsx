@@ -1,8 +1,10 @@
+import { CONTAINER_DO_COMPUTADOR } from "@/components/desktop/medidas";
 import { BannerCarousel } from "@/components/ui/custom/BannerCarousel";
 import { CategoryFilter } from "@/components/ui/custom/CategoryFilter";
 import { useStore } from "@/contexts/StoreContext";
 import { useBanners } from "@/hooks/useBanners";
 import { useCategories } from "@/hooks/useCategories";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { cn, normalizeText } from "@/lib/utils";
 import { ordenarParaVitrine } from "@/lib/vitrine";
 import type { Product, SortOption, View } from "@/types";
@@ -75,6 +77,7 @@ export const HomeView = React.memo(function HomeView({
   onSortByChange,
   onHeaderDockChange,
 }: HomeViewProps) {
+  const computador = useTelaDeComputador();
   const { config, isLoaded: configLoaded } = useStore();
   const [showSortMenu, setShowSortMenu] = useState(false);
   // Laudo de acessibilidade 05/09 (onda 3, item B5): guarda o botão que abriu
@@ -369,13 +372,19 @@ export const HomeView = React.memo(function HomeView({
       <FreeShippingBlock onNavigate={onNavigate} />
     </InfoBlockCarousel>
   ) : (
-    <div className="relative mt-2 w-full px-4">
+    <div className={cn("relative mt-2 w-full px-4", "lg:px-0")}>
       <div className="h-[74px] w-full animate-pulse rounded-[24px] bg-zinc-100" />
     </div>
   );
 
   return (
-    <div className="pb-customer min-h-full">
+    <div
+      className={cn(
+        "pb-customer min-h-full",
+        CONTAINER_DO_COMPUTADOR,
+        "lg:pt-8",
+      )}
+    >
       {/* Laudo de acessibilidade 05/09 (onda 3, item B1): a home começava em
           h2 — sem h1 nenhum na página, o leitor de tela nunca anuncia o
           nome da loja como título do documento. sr-only: zero pixel muda. */}
@@ -406,7 +415,10 @@ export const HomeView = React.memo(function HomeView({
             <div data-testid="esqueleto-banner" className="mb-2 w-full">
               <div
                 role="status"
-                className="flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-[4/1]"
+                className={cn(
+                  "flex aspect-[2/1] w-full animate-pulse items-center justify-center bg-zinc-100 md:aspect-[4/1]",
+                  "lg:rounded-3xl",
+                )}
                 style={{ minHeight: "200px" }}
               >
                 <span className="sr-only">Carregando banners</span>
@@ -555,10 +567,13 @@ export const HomeView = React.memo(function HomeView({
         ) : null)}
 
       {/* All Products */}
-      <div className="p-3 sm:p-4">
-        <h2 className="mb-8 text-3xl font-black leading-none tracking-tighter text-zinc-900">
-          {searchQuery ? "Resultados da busca" : "Catálogo"}
-        </h2>
+      <div className={cn("p-3 sm:p-4", "lg:px-0 lg:py-10")}>
+        {/* No computador o título mora dentro da barra sticky (spec §3.6). */}
+        {!computador && (
+          <h2 className="mb-8 text-3xl font-black leading-none tracking-tighter text-zinc-900">
+            {searchQuery ? "Resultados da busca" : "Catálogo"}
+          </h2>
+        )}
 
         {/* Sentinel for sticky docking detection */}
         <div
@@ -575,6 +590,11 @@ export const HomeView = React.memo(function HomeView({
               : "border-b border-transparent",
           )}
         >
+          {computador && (
+            <h2 className="pb-3 pt-4 text-3xl font-black leading-none tracking-tighter text-zinc-900">
+              {searchQuery ? "Resultados da busca" : "Catálogo"}
+            </h2>
+          )}
           {/* Interactive Header Bar */}
           <div className="flex items-center gap-3 py-1">
             <div className="min-w-0 flex-1">
@@ -605,12 +625,24 @@ export const HomeView = React.memo(function HomeView({
                       setShowSortMenu(false);
                     }
                   }}
-                  className="flex size-10 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95"
+                  className={cn(
+                    "flex size-10 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-black/10 transition-all hover:bg-primary/90 active:scale-95",
+                    "lg:w-auto lg:gap-2 lg:px-5",
+                  )}
                   aria-expanded={showSortMenu}
                   aria-haspopup="listbox"
                   title="Filtrar e Ordenar"
                 >
                   <SlidersHorizontal className="size-4" />
+                  {computador && (
+                    <span className="lg:text-xs lg:font-bold">
+                      Ordenar:{" "}
+                      {
+                        sortOptions.find((opcao) => opcao.value === sortBy)
+                          ?.label
+                      }
+                    </span>
+                  )}
                 </button>
 
                 {showSortMenu && (
@@ -736,7 +768,12 @@ export const HomeView = React.memo(function HomeView({
           config (business_hours), nada o exibia. Bloco discreto no fim da
           vitrine, só quando a lojista preencheu. */}
       {config.businessHours?.trim() && (
-        <div className="relative z-10 mt-8 rounded-[2rem] border border-zinc-100 bg-zinc-50/50 p-6 text-center">
+        <div
+          className={cn(
+            "relative z-10 mt-8 rounded-[2rem] border border-zinc-100 bg-zinc-50/50 p-6 text-center",
+            "lg:hidden",
+          )}
+        >
           <p className="flex items-center justify-center gap-2 text-sm font-bold text-zinc-700">
             <Clock className="size-4 text-admin-gold" />
             Horário de atendimento
@@ -762,20 +799,30 @@ function SecaoCarrosselEsqueleto() {
   return (
     <div
       data-testid="esqueleto-carrossel"
-      className="overflow-hidden px-5 py-4 sm:px-6"
+      className={cn("overflow-hidden px-5 py-4 sm:px-6", "lg:px-0 lg:py-10")}
     >
       {/* Mesmo header do real: mb-6 + h2 text-3xl leading-[0.9] = 27px. */}
-      <div className="mb-6 flex flex-col">
+      <div
+        className={cn(
+          "mb-6 flex flex-col",
+          "lg:relative lg:min-h-11 lg:justify-center lg:pr-28",
+        )}
+      >
         <Skeleton className="h-[27px] w-56" />
       </div>
       {/* Mesma faixa do real: -mx-6, scroll com pb-2 e padding lateral 24px,
           card w-[260px] com py-2. */}
-      <div className="relative -mx-6">
+      <div className={cn("relative -mx-6", "lg:mx-0")}>
         <div
-          className="flex pb-2"
+          className={cn("flex pb-2", "lg:gap-5 lg:!px-0")}
           style={{ paddingLeft: "24px", paddingRight: "24px" }}
         >
-          <div className="w-[260px] flex-shrink-0 py-2">
+          <div
+            className={cn(
+              "w-[260px] flex-shrink-0 py-2",
+              "lg:w-[calc((100%-60px)/4)] xl:w-[calc((100%-80px)/5)]",
+            )}
+          >
             <ProductCardSkeleton />
           </div>
         </div>
@@ -789,7 +836,10 @@ function SecaoOfertasEsqueleto() {
   return (
     // data-testid: âncora do teste comportamental "sem ofertas → nenhum
     // esqueleto de ofertas montado" (laudo edj3ka, E2) — sem efeito visual.
-    <div data-testid="esqueleto-ofertas" className="px-5 py-4 sm:px-6">
+    <div
+      data-testid="esqueleto-ofertas"
+      className={cn("px-5 py-4 sm:px-6", "lg:px-0 lg:py-10")}
+    >
       {/* Header do real: mb-4 + dot size-2 + h2 text-xl leading-none = 20px. */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-1.5">
@@ -801,7 +851,12 @@ function SecaoOfertasEsqueleto() {
         {/* Mesma moldura do embla real: -mx-1 -my-3 px-1 py-3 + p-1.5. */}
         <div className="-mx-1 -my-3 w-full px-1 py-3">
           <div className="flex">
-            <div className="flex min-w-0 flex-[0_0_100%] flex-col p-1.5">
+            <div
+              className={cn(
+                "flex min-w-0 flex-[0_0_100%] flex-col p-1.5",
+                "lg:flex-[0_0_50%]",
+              )}
+            >
               <HeroOfertaEsqueleto />
             </div>
           </div>
