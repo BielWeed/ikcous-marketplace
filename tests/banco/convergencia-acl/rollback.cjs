@@ -537,6 +537,91 @@ async function main() {
             }
           },
         );
+
+        // Endurecimento de TABELA depois do amplo (ex.: migration futura) não
+        // pode ser desfeito pelo desfazer amplo. O SELECT de authenticated em
+        // marketplace_orders sobrevive ao aplicar (o amplo só tira UPDATE ali)
+        // e o desfazer dá GRANT ALL na tabela. A única coluna com grant próprio
+        // ali é UPDATE (tracking_code, notes), que o REVOKE SELECT não toca —
+        // então a conferência "37 colunas" do desfazer não serve de recusa.
+        // Exigido: recusa na PRÉ-CONDIÇÃO (P0001, antes de escrever) sobre os
+        // grants de tabela, e a fotografia do estado endurecido intacta.
+        await caso(
+          "desfazer_recusa_endurecimento_de_tabela_depois_do_amplo",
+          async () => {
+            const bancoTab = "acl_rollback_tabela";
+            const selectDeAuth = async () => {
+              const c = await conectar(bancoTab);
+              try {
+                const r = await c.query(
+                  "SELECT has_table_privilege('authenticated', 'public.marketplace_orders', 'SELECT') AS pode",
+                );
+                return r.rows[0].pode;
+              } finally {
+                await c.end().catch(() => {});
+              }
+            };
+            await clonarBanco(BANCO_ROLLBACK, bancoTab);
+            try {
+              // CONTROLE: a premissa (o aplicar preserva este SELECT) é medida, não suposta.
+              if (!(await selectDeAuth())) {
+                throw new Falha(
+                  "premissa falsa: depois do amplo, authenticated já não tem SELECT em marketplace_orders — escolher outra permissão",
+                );
+              }
+              const cliente = await conectar(bancoTab);
+              let endurecido;
+              try {
+                await cliente.query(
+                  "REVOKE SELECT ON public.marketplace_orders FROM authenticated",
+                );
+                endurecido = await fotografar(cliente);
+              } finally {
+                await cliente.end().catch(() => {});
+              }
+              if (await selectDeAuth()) {
+                throw new Falha(
+                  "o REVOKE de controle não tirou o SELECT (prova vazia)",
+                );
+              }
+              const erro = await executarSql(
+                bancoTab,
+                lerFixture(pacote.desfaz),
+              );
+              if (!erro) {
+                throw new Falha(
+                  `o desfazer amplo COMMITOU sobre o estado endurecido; SELECT de authenticated em marketplace_orders agora = ${await selectDeAuth()}`,
+                );
+              }
+              const msg = String(erro.message);
+              if (
+                erro.code !== "P0001" ||
+                !msg.includes("pré-condição do desfazer") ||
+                !msg.includes("tabela")
+              ) {
+                throw new Falha(
+                  `o desfazer abortou, mas não pela pré-condição de tabela: ${erro.code} ${msg}`,
+                );
+              }
+              const leitura = await conectar(bancoTab);
+              try {
+                exigirIgual(
+                  endurecido,
+                  await fotografar(leitura),
+                  "endurecido depois do desfazer recusado",
+                );
+              } finally {
+                await leitura.end().catch(() => {});
+              }
+              if (await selectDeAuth()) {
+                throw new Falha("o SELECT voltou apesar da recusa");
+              }
+              return `recusado na pré-condição (${msg.slice(0, 90)}) e o estado endurecido ficou intacto`;
+            } finally {
+              await soltarBanco(bancoTab).catch(() => {});
+            }
+          },
+        );
       }
 
       // D2. TRAVA DO SERVIDOR no script de desfazer (pacote pequeno), sobre o estado aplicado
