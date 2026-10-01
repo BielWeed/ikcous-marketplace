@@ -2,6 +2,7 @@ import { IconeWhatsapp } from "@/components/icons/IconeWhatsapp";
 import { buildIdentity } from "@/config/buildIdentity";
 import { useStore } from "@/contexts/StoreContext";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { haptic } from "@/utils/haptic";
@@ -112,6 +113,240 @@ export function AboutStoreView() {
     );
     haptic.light();
   };
+
+  const computador = useTelaDeComputador();
+  const endereco = config.storeAddress?.trim() || "";
+  const temOndeEstamos = Boolean(local || endereco);
+  const temCartaoDeContato = Boolean(
+    horario || temOndeEstamos || queryMaps || temWhatsapp,
+  );
+  // Grade de 2 colunas só quando os DOIS cartões existem — loja sem
+  // descrição mas com contato (ex.: só WhatsApp/horário) tinha só o `aside`
+  // como filho e a coluna de 380px ficava vazia, mesmo com temCartaoDeContato
+  // sozinho decidindo 2 colunas. Com um só cartão, 1 coluna, e o cartão
+  // sozinho não estica pela largura toda (largura contida em 380px, a mesma
+  // da coluna aprovada, sem inventar medida nova).
+  const doisColunas = Boolean(descricaoHtml) && temCartaoDeContato;
+
+  if (computador) {
+    return (
+      <div className="pb-customer min-h-full bg-zinc-50/40">
+        <div className="mx-auto max-w-5xl space-y-7 px-6 py-10">
+          <motion.header
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-center gap-7 rounded-[28px] bg-zinc-900 p-9 text-white"
+          >
+            <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-3xl bg-white">
+              {logoSrc ? (
+                <img
+                  key={`${logoSelection.revision}:${logoSelection.stage}`}
+                  src={logoSrc}
+                  alt={`Logo da loja ${storeName}`}
+                  onError={logoFalhou}
+                  className="size-full object-contain p-2"
+                />
+              ) : (
+                <span className="text-3xl font-black text-zinc-900">
+                  {inicial}
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-zinc-400">
+                SOBRE A LOJA
+              </p>
+              <h1 className="mt-2 text-[40px] font-black leading-none tracking-tight">
+                {storeName}
+              </h1>
+              <p className="mt-3 text-sm text-zinc-300">
+                A marca por trás deste app.
+              </p>
+            </div>
+          </motion.header>
+
+          <div
+            className={
+              doisColunas
+                ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-7"
+                : "grid grid-cols-1"
+            }
+          >
+            {descricaoHtml && (
+              <motion.section
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.05 }}
+                className="rounded-[28px] border border-zinc-100 bg-white p-8 shadow-sm"
+              >
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
+                  QUEM SOMOS
+                </p>
+                <div
+                  className="mt-5 text-[17px] leading-relaxed text-zinc-600 [&_a]:font-bold [&_a]:text-zinc-900 [&_a]:underline [&_h1]:mt-4 [&_h1]:text-xl [&_h1]:font-black [&_h1]:text-zinc-900 [&_h2]:mt-4 [&_h2]:text-lg [&_h2]:font-black [&_h2]:text-zinc-900 [&_h3]:mt-3 [&_h3]:font-black [&_h3]:text-zinc-900 [&_img]:my-4 [&_img]:w-full [&_img]:rounded-2xl [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-3 [&_strong]:font-bold [&_strong]:text-zinc-800 [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-6"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: o HTML vem do lojista e passa por DOMPurify antes da renderização.
+                  dangerouslySetInnerHTML={{ __html: descricaoHtml }}
+                />
+              </motion.section>
+            )}
+
+            {temCartaoDeContato && (
+              <motion.aside
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+                className={`sticky top-24 rounded-[28px] border border-zinc-100 bg-white p-7 shadow-sm${doisColunas ? "" : " w-full max-w-[380px]"}`}
+              >
+                <h2 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500">
+                  VISITE OU FALE COM A LOJA
+                </h2>
+                <div className="mt-6 space-y-5">
+                  {horario && (
+                    <div className="flex gap-3">
+                      <Clock className="mt-0.5 size-5 shrink-0 text-admin-gold" />
+                      <div>
+                        <p className="text-sm font-black text-zinc-900">
+                          Horário de atendimento
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+                          {horario}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {temOndeEstamos && (
+                    <div className="flex gap-3">
+                      <MapPin className="mt-0.5 size-5 shrink-0 text-admin-gold" />
+                      <div>
+                        <p className="text-sm font-black text-zinc-900">
+                          Onde estamos
+                        </p>
+                        {local && (
+                          <p className="mt-1 text-sm text-zinc-500">{local}</p>
+                        )}
+                        {endereco && (
+                          <p className="mt-1 text-sm leading-relaxed text-zinc-500">
+                            {endereco}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {queryMaps && (
+                    <div className="relative h-[190px] overflow-hidden rounded-2xl border border-zinc-100">
+                      <iframe
+                        title={`Mapa da loja ${storeName}`}
+                        src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        credentialless=""
+                        className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
+                      />
+                      <div className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full drop-shadow-[0_3px_6px_rgba(0,0,0,0.45)]">
+                        <svg
+                          width="60"
+                          height="73"
+                          viewBox="0 0 56 68"
+                          role="img"
+                          aria-label={`Local da loja ${storeName}`}
+                        >
+                          <defs>
+                            <clipPath id="pin-icone-recorte-desktop">
+                              <rect
+                                x="15"
+                                y="15"
+                                width="26"
+                                height="26"
+                                rx="7"
+                              />
+                            </clipPath>
+                          </defs>
+                          <path
+                            d="M28,64 C28,64 12,46.5 12,28 A16,16 0 1,1 44,28 C44,46.5 28,64 28,64 Z"
+                            fill="#18181b"
+                            stroke="#18181b"
+                            strokeWidth="3"
+                            strokeLinejoin="round"
+                          />
+                          <rect
+                            x="13"
+                            y="13"
+                            width="30"
+                            height="30"
+                            rx="9"
+                            fill="#ffffff"
+                          />
+                          <g clipPath="url(#pin-icone-recorte-desktop)">
+                            {iconeDoPin ? (
+                              <image
+                                href={iconeDoPin}
+                                x="15"
+                                y="15"
+                                width="26"
+                                height="26"
+                                preserveAspectRatio="xMidYMid meet"
+                                onError={() => setIconeDoPinFalhou(true)}
+                              />
+                            ) : (
+                              <>
+                                <rect
+                                  x="15"
+                                  y="15"
+                                  width="26"
+                                  height="26"
+                                  fill="#18181b"
+                                />
+                                <text
+                                  x="28"
+                                  y="33"
+                                  textAnchor="middle"
+                                  fontSize="14"
+                                  fontWeight="900"
+                                  fill="#ffffff"
+                                >
+                                  {inicial}
+                                </text>
+                              </>
+                            )}
+                          </g>
+                        </svg>
+                      </div>
+                      <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
+                        Localização aproximada
+                      </p>
+                    </div>
+                  )}
+                  {temWhatsapp && (
+                    <button
+                      type="button"
+                      onClick={falarComALoja}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3.5 text-sm font-black text-white transition-colors hover:bg-emerald-700"
+                    >
+                      <IconeWhatsapp className="size-5" />
+                      Falar no WhatsApp
+                    </button>
+                  )}
+                  {queryMaps && (
+                    <a
+                      href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => haptic.light()}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-300 px-5 py-3.5 text-sm font-black text-zinc-800 transition-colors hover:border-zinc-900"
+                    >
+                      <Navigation className="size-4" />
+                      Abrir no Google Maps
+                    </a>
+                  )}
+                </div>
+              </motion.aside>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-customer min-h-full bg-zinc-50/40">

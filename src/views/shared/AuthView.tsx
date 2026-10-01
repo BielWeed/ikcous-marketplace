@@ -5,6 +5,7 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { cpfValido, formatarCpf } from "@/lib/cpf";
 import { MENSAGEM_ERRO_LOGIN_GENERICA } from "@/lib/mensagens-auth";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { type Variants, motion } from "framer-motion";
 import {
@@ -517,7 +518,10 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="z-10 flex w-full max-w-[440px] flex-1 flex-col justify-between"
+        className={cn(
+          "z-10 flex w-full max-w-[440px] flex-1 flex-col justify-between",
+          "lg:my-auto lg:flex-none",
+        )}
       >
         <div className="flex flex-1 flex-col justify-center sm:justify-start">
           {/* Header Section - Spaced out on taller screens */}
@@ -542,7 +546,7 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
               variants={itemVariants}
               className="mt-2 max-w-[280px] px-4 text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-zinc-500 sm:mt-4 sm:max-w-none sm:text-sm"
             >
-              {viewMode === "login" && subtituloBoasVindas(config.storeName)}
+              {viewMode === "login" && subtituloBoasVindas(config?.storeName)}
               {viewMode === "signup" &&
                 "Inicie sua jornada no marketplace premium."}
               {viewMode === "forgot" &&
@@ -868,9 +872,9 @@ export function AuthView({ onNavigate, onSuccess }: AuthViewProps) {
         >
           <p className="px-4 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-300">
             {/* Sem cidade configurada, mostra só o nome, sem o "•" solto. */}
-            {config.storeName?.trim() || branding.appName}
-            {config.storeCity &&
-              ` • ${config.storeCity}${config.storeState ? `, ${config.storeState}` : ""}`}
+            {config?.storeName?.trim() || branding.appName}
+            {config?.storeCity &&
+              ` • ${config?.storeCity}${config?.storeState ? `, ${config?.storeState}` : ""}`}
           </p>
         </motion.div>
       </motion.div>

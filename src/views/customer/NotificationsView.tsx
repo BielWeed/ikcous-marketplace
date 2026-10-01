@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useNotificationCenter } from "@/contexts/NotificationContextCore";
+import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
@@ -262,7 +263,12 @@ export function NotificationsView({ onNavigate }: NotificationsViewProps) {
   );
 
   return (
-    <div className="pb-customer flex min-h-full flex-col bg-zinc-50/40 dark:bg-zinc-950/40">
+    <div
+      className={cn(
+        "pb-customer flex min-h-full flex-col bg-zinc-50/40 dark:bg-zinc-950/40",
+        "lg:mx-auto lg:w-full lg:max-w-3xl",
+      )}
+    >
       {/* Sticky Header & Filters */}
       <div className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/80 px-4 py-3 backdrop-blur-xl dark:border-zinc-900/60 dark:bg-zinc-950/80">
         <div className="mb-3 flex items-center justify-between gap-4">
