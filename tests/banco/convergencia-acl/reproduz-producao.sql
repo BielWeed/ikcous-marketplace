@@ -98,4 +98,26 @@ BEGIN
 END
 $reproduz_relacoes$;
 
+-- AMBIENTE DO SUPABASE que o provisionador compartilhado nao emula, medido na
+-- principal em 01/10/2026 (independe do pacote: vale no antes E no depois):
+--   * USAGE no schema extensions para anon, authenticated e service_role
+--     (sem ele, UPDATE de rastreio/status cai em 42501 "permission denied for
+--     schema extensions" ja no estado de antes);
+--   * auth.role() lendo o papel do JWT, corpo identico ao da producao (o stub
+--     devolve NULL, e a policy de SELECT de produtos escondia do admin o produto
+--     que ele mesmo desativou).
+GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION auth.role()
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+AS $function$
+  select
+  coalesce(
+    nullif(current_setting('request.jwt.claim.role', true), ''),
+    (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role')
+  )::text
+$function$;
+
 COMMIT;
