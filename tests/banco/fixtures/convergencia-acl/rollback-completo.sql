@@ -140,6 +140,61 @@ CREATE TEMP TABLE _rb_sr_antes ON COMMIT DROP AS
 SELECT p.oid, has_function_privilege('service_role', p.oid, 'EXECUTE') AS pode
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public';
 CREATE TEMP TABLE _rb_esperado (fn regprocedure, acl text) ON COMMIT DROP;
+CREATE TEMP TABLE _rb_tab (rel regclass, papel text, apos text[]) ON COMMIT DROP;
+INSERT INTO _rb_tab VALUES
+('public.analytics_events', 'anon', '{SELECT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER}'::text[]),
+('public.analytics_events', 'authenticated', '{SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER}'::text[]),
+('public.answers_dedup_backup_20260812', 'anon', '{}'::text[]),
+('public.answers_dedup_backup_20260812', 'authenticated', '{}'::text[]),
+('public.assinatura_da_loja', 'anon', '{}'::text[]),
+('public.assinatura_da_loja', 'authenticated', '{SELECT}'::text[]),
+('public.config_pagamento_cartao', 'anon', '{}'::text[]),
+('public.config_pagamento_cartao', 'authenticated', '{}'::text[]),
+('public.devolucao_eventos', 'anon', '{}'::text[]),
+('public.devolucao_eventos', 'authenticated', '{SELECT}'::text[]),
+('public.devolucao_itens', 'anon', '{}'::text[]),
+('public.devolucao_itens', 'authenticated', '{SELECT}'::text[]),
+('public.devolucoes', 'anon', '{}'::text[]),
+('public.devolucoes', 'authenticated', '{SELECT}'::text[]),
+('public.fin_caixa_sessoes', 'anon', '{}'::text[]),
+('public.fin_caixa_sessoes', 'authenticated', '{SELECT}'::text[]),
+('public.fin_categorias', 'anon', '{}'::text[]),
+('public.fin_categorias', 'authenticated', '{SELECT}'::text[]),
+('public.fin_contas', 'anon', '{}'::text[]),
+('public.fin_contas', 'authenticated', '{SELECT}'::text[]),
+('public.fin_lancamentos', 'anon', '{}'::text[]),
+('public.fin_lancamentos', 'authenticated', '{SELECT}'::text[]),
+('public.frota_lojas', 'anon', '{}'::text[]),
+('public.frota_lojas', 'authenticated', '{}'::text[]),
+('public.frota_segredo', 'anon', '{}'::text[]),
+('public.frota_segredo', 'authenticated', '{}'::text[]),
+('public.marketplace_orders', 'anon', '{SELECT,INSERT,DELETE,TRUNCATE,REFERENCES,TRIGGER}'::text[]),
+('public.marketplace_orders', 'authenticated', '{SELECT,INSERT,DELETE,TRUNCATE,REFERENCES,TRIGGER}'::text[]),
+('public.order_refunds', 'anon', '{}'::text[]),
+('public.order_refunds', 'authenticated', '{SELECT}'::text[]),
+('public.politica_devolucao', 'anon', '{SELECT}'::text[]),
+('public.politica_devolucao', 'authenticated', '{SELECT}'::text[]),
+('public.produtos', 'anon', '{REFERENCES}'::text[]),
+('public.produtos', 'authenticated', '{INSERT,UPDATE,DELETE,REFERENCES}'::text[]),
+('public.vw_produtos_admin', 'anon', '{SELECT,REFERENCES}'::text[]),
+('public.vw_produtos_admin', 'authenticated', '{SELECT,INSERT,UPDATE,DELETE,REFERENCES}'::text[]),
+('public.vw_produtos_public', 'anon', '{SELECT,REFERENCES}'::text[]),
+('public.vw_produtos_public', 'authenticated', '{SELECT,REFERENCES}'::text[]),
+('public.vw_questions_public', 'anon', '{SELECT,REFERENCES}'::text[]),
+('public.vw_questions_public', 'authenticated', '{SELECT,REFERENCES}'::text[]),
+('public.vw_reviews_public', 'anon', '{SELECT,REFERENCES}'::text[]),
+('public.vw_reviews_public', 'authenticated', '{SELECT,REFERENCES}'::text[]);
+-- Fotografia dos privilegios DIRETOS de tabela (relacl), lida antes de qualquer escrita.
+CREATE TEMP TABLE _rb_tab_agora ON COMMIT DROP AS
+SELECT t.rel, t.papel,
+       ARRAY(SELECT u FROM unnest(t.apos) u ORDER BY 1) AS apos,
+       ARRAY(SELECT u FROM unnest('{SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER}'::text[]) u ORDER BY 1) AS medido,
+       ARRAY(SELECT DISTINCT x.privilege_type
+               FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) x
+              WHERE c.oid = t.rel AND x.grantee = t.papel::regrole
+                AND x.privilege_type IN ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
+              ORDER BY 1) AS tem
+  FROM _rb_tab t;
 DO $$
 DECLARE
   f record;
@@ -148,6 +203,8 @@ DECLARE
   lista text[];
   aplicado boolean;
   original boolean;
+  tab_aplicado boolean;
+  tab_original boolean;
 BEGIN
   -- Aceita o estado que o pacote deixou ou o estado ja desfeito (idempotencia).
   -- Qualquer mistura de grants de anon/authenticated/PUBLIC recusa antes de escrever.
@@ -166,6 +223,21 @@ BEGIN
     FROM _rb_fn g;
   IF NOT COALESCE(aplicado, false) AND NOT COALESCE(original, false) THEN
     RAISE EXCEPTION 'pré-condição do desfazer: grants das funções mudaram'; END IF;
+  -- Tabelas: mesmo criterio, sobre o privilegio DIRETO (fotografado em _rb_tab_agora).
+  IF (SELECT count(DISTINCT a.rel) FROM _rb_tab_agora a) <> 21 THEN
+    RAISE EXCEPTION 'pré-condição do desfazer: esperava 21 tabelas na guarda'; END IF;
+  SELECT bool_and(a.tem = a.apos), bool_and(a.tem = a.medido)
+    INTO tab_aplicado, tab_original
+    FROM _rb_tab_agora a;
+  IF NOT COALESCE(tab_aplicado, false) AND NOT COALESCE(tab_original, false) THEN
+    RAISE EXCEPTION 'pré-condição do desfazer: grants de tabela mudaram (%)',
+      COALESCE((SELECT string_agg(a.rel::text || '/' || a.papel || ' tem {' || array_to_string(a.tem, ',') || '}', '; '
+                                  ORDER BY a.rel::text, a.papel)
+                  FROM _rb_tab_agora a WHERE a.tem <> a.apos AND a.tem <> a.medido),
+               'mistura de tabelas no estado aplicado e no medido'); END IF;
+  -- Funcoes e tabelas no MESMO estado: as duas aplicadas ou as duas como medido.
+  IF COALESCE(aplicado, false) <> COALESCE(tab_aplicado, false) THEN
+    RAISE EXCEPTION 'pré-condição do desfazer: funções e tabelas em estados diferentes'; END IF;
   FOR f IN SELECT * FROM _rb_fn LOOP
     IF (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = f.fn) <> 'postgres' THEN
       RAISE EXCEPTION 'desfazer: % tem dono diferente de postgres', f.fn; END IF;
