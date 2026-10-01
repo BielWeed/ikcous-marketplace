@@ -22,7 +22,7 @@ const DIR = fromFileUrl(new URL(".", import.meta.url));
 const NOME = "20261185000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql";
 const migration = Deno.readTextFileSync(`${DIR}../supabase/migrations/${NOME}`);
 const rollback = Deno.readTextFileSync(
-  `${DIR}../supabase/migrations/rollback-manual-${NOME}`,
+  `${DIR}../scripts/sql/pix-84-85-revert.sql`,
 );
 const norm = (s) => s.replace(/\s+/g, " ").trim();
 const corpo = norm(

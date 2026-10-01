@@ -1,6 +1,9 @@
 -- ============================================================================
 -- ROLLBACK MANUAL da 20261185000000 — a venda do balcão se anula no mesmo dia
 -- ============================================================================
+-- OBSOLETO: NÃO EXECUTAR ESTE ARQUIVO. Ele não atualiza o ledger nem recusa
+-- anulações já feitas. Use exclusivamente scripts/sql/pix-84-85-revert.sql
+-- pelo workflow rollback-pix-84-85.yml; a verificação deve aprovar o estado.
 --
 -- O QUE DESFAZ: só a criação de `public.anular_venda_presencial`. A função é
 -- NOVA; desfazer é derrubar.
@@ -19,4 +22,6 @@
 --   -- esperado: 0.
 -- ============================================================================
 
-DROP FUNCTION IF EXISTS public.anular_venda_presencial(uuid, text);
+DO $$ BEGIN
+  RAISE EXCEPTION 'Rollback manual obsoleto; use scripts/sql/pix-84-85-revert.sql';
+END $$;

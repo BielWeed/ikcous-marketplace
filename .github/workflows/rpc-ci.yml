@@ -120,5 +120,7 @@ jobs:
       # extrato e o CRM do pedido).
       - name: Prova viva do PIX do balcão (migration 20261184000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/pix-do-balcao-viva.cjs
+      - name: Prova do rollback seguro do PIX do balcão (84/85)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/rollback-pix-84-85-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs
