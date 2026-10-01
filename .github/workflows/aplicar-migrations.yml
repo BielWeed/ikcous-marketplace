@@ -2,8 +2,8 @@ name: Aplicar migrations (Supabase)
 
 # Aplica migrations NO PROJETO ALVO pela API de gestão do Supabase, com a
 # disciplina da casa: para cada arquivo roda primeiro a PROVA
-# (BEGIN; <sql>; ROLLBACK;) e só então o apply; no fim, verifica que as RPCs
-# novas existem e estão alcançáveis por authenticated. Cada projeto usa o
+# (BEGIN; <sql>; ROLLBACK;) e só então o apply com registro no ledger na
+# mesma transação; no fim, verifica RPCs e ledger. Cada projeto usa o
 # mesmo segredo que já publica suas functions; Savy usa o token próprio.
 #
 # Só roda a PEDIDO (workflow_dispatch), nunca em push. A impressão digital do
@@ -147,15 +147,26 @@ jobs:
                 if (!fs.existsSync(caminho)) throw new Error('NÃO EXISTE: ' + caminho);
                 const corpo = fs.readFileSync(caminho, 'utf8');
 
+                const versao = arquivo.slice(0, 14);
+                const nome = arquivo.slice(15, -4);
+                const livre = await sql('ledger antes ' + arquivo,
+                  \`select not exists (select 1 from supabase_migrations.schema_migrations where version = '\${versao}') as ledger_livre\`);
+                exigirTudoVerdadeiro('ledger antes ' + arquivo, livre);
+
                 // 2. PROVA: o arquivo inteiro dentro de BEGIN/ROLLBACK — o
                 // mesmo que o CONTRIBUTING manda rodar à mão antes.
                 console.log('=== PROVA (rollback no fim):', arquivo);
                 await sql('prova ' + arquivo, 'BEGIN;\\n' + corpo + '\\nROLLBACK;');
 
-                // 3. APPLY de verdade.
+                // 3. APPLY e ledger juntos; se um falhar, nada desta migration
+                // é comitado (mesmo padrão de scripts/db-apply.cjs).
                 console.log('=== APLICANDO:', arquivo);
-                await sql('apply ' + arquivo, corpo);
+                await sql('apply ' + arquivo,
+                  \`BEGIN;\\n\${corpo}\\nINSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('\${versao}', '\${nome}');\\nCOMMIT;\`);
                 console.log('=== APLICADA:', arquivo);
+                const gravado = await sql('ledger depois ' + arquivo,
+                  \`select exists (select 1 from supabase_migrations.schema_migrations where version = '\${versao}' and name = '\${nome}') as ledger_gravado\`);
+                exigirTudoVerdadeiro('ledger depois ' + arquivo, gravado);
               }
 
               // 4. VERIFICAÇÃO — só quando houve apply (sem migrations, as
@@ -182,10 +193,14 @@ jobs:
                     exists (select 1 from pg_trigger t
                       where t.tgrelid = 'public.marketplace_orders'::regclass
                         and t.tgname = 'tr_venda_do_balcao_paga_e_entregue'
+                        and t.tgenabled = 'O'
+                        and t.tgfoid = to_regprocedure('public.venda_do_balcao_paga_e_entregue()')
                         and not t.tgisinternal) as gatilho_entrega_84,
                     exists (select 1 from pg_trigger t
                       where t.tgrelid = 'public.marketplace_orders'::regclass
                         and t.tgname = 'tr_venda_do_balcao_guarda_o_status'
+                        and t.tgenabled = 'O'
+                        and t.tgfoid = to_regprocedure('public.venda_do_balcao_guarda_o_status()')
                         and not t.tgisinternal) as gatilho_status_84\`);
                   console.log('VERIFICAÇÃO 84:', pix84);
                   exigirTudoVerdadeiro('verificação 84', pix84);
