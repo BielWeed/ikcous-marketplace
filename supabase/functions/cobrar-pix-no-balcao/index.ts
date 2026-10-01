@@ -29,6 +29,14 @@
  * (o comprovante sai pelo `send-order-confirmation` depois do pago, reservado
  * uma vez só; o webhook continua avisando os admins como sempre).
  *
+ *   prontidao — (sem orderId) a tela pergunta ANTES de criar a venda se este
+ *              servidor cobra PIX no balcão: a função de banco
+ *              `pix_do_balcao_pronto()` diz se as migrations estão lá e, só se
+ *              ela disser true, a credencial do MP é resolvida (sem falar com
+ *              o MP). Responde { pronto: true } ou { pronto: false, motivo:
+ *              "banco" | "credencial" }; erro em qualquer passo é "não
+ *              pronto". Não lê nem grava pedido.
+ *
  * PORTA: `verify_jwt = true` no gateway + papel de admin conferido AQUI pela
  * MESMA fonte que `is_admin()` usa no banco (`app_metadata.role`, lido de
  * `auth.getUser` — nunca do corpo). O cartão continua desligado: esta edge só
@@ -143,6 +151,73 @@ function ehVendaDoBalcaoComQr(pedido: any): boolean {
   return pedido?.canal === "presencial" && pedido?.payment_method === "online";
 }
 
+/** Função de banco (só leitura, só service_role) que diz se as migrations do balcão estão aplicadas. */
+export const FUNCAO_DE_PRONTIDAO = "pix_do_balcao_pronto";
+
+/**
+ * "Este servidor cobra PIX no balcão?" — falha FECHADA em todo passo: a tela
+ * só oferece o PIX com QR com `pronto: true`, e a venda (que reserva estoque)
+ * só nasce depois disso. Ordem: admin → banco → credencial. Nenhum pedido é
+ * lido, nenhuma linha é gravada, o Mercado Pago não é chamado.
+ */
+async function responderProntidao(
+  authorization: string | null,
+  deps: DepsDoPixDoBalcao,
+): Promise<Response> {
+  const verificarAdmin = deps.verificarAdmin ?? verificarAdminReal;
+  const adminId = await verificarAdmin(authorization);
+  if (!adminId) {
+    return json({ error: "Só a loja cobra venda no balcão.", terminal: true }, 401);
+  }
+
+  const naoPronto = (motivo: "banco" | "credencial") => json({ pronto: false, motivo }, 200);
+
+  let supabase: any;
+  if (deps.supabase) {
+    supabase = deps.supabase;
+  } else {
+    try {
+      supabase = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+      );
+    } catch (err) {
+      console.error("cobrar-pix-no-balcao: prontidão sem client do banco", err);
+      return naoPronto("banco");
+    }
+  }
+
+  // Só `true` de verdade conta: função ausente (PGRST202), erro, falso, nulo
+  // ou qualquer outro valor é "o banco não está pronto".
+  let bancoPronto = false;
+  try {
+    const { data, error } = await supabase.rpc(FUNCAO_DE_PRONTIDAO);
+    if (error) {
+      console.warn("cobrar-pix-no-balcao: prontidão do banco indisponível", error.code ?? "sem_codigo");
+    }
+    bancoPronto = !error && data === true;
+  } catch (err) {
+    console.error("cobrar-pix-no-balcao: falha ao consultar a prontidão do banco", err);
+    bancoPronto = false;
+  }
+  if (!bancoPronto) return naoPronto("banco");
+
+  // Credencial: a MESMA resolução da cobrança, só local (registro + cofre),
+  // sem ida ao MP. Erro de leitura também é "não pronto".
+  const tokenDoMp = deps.tokenDoMercadoPago ?? tokenDoMercadoPagoReal;
+  let token: string | null = null;
+  try {
+    token = await tokenDoMp(supabase);
+  } catch {
+    // Mensagem fixa: o erro da resolução pode carregar detalhe da credencial.
+    console.error("cobrar-pix-no-balcao: falha ao resolver a credencial na prontidão");
+    token = null;
+  }
+  if (!token) return naoPronto("credencial");
+
+  return json({ pronto: true }, 200);
+}
+
 export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
@@ -152,6 +227,10 @@ export async function handler(req: Request, deps: DepsDoPixDoBalcao = {}): Promi
     body = await req.json();
   } catch {
     return json({ error: "Corpo inválido." }, 400);
+  }
+  // Prontidão não tem venda: sai ANTES da validação do orderId.
+  if (body?.acao === "prontidao") {
+    return responderProntidao(req.headers.get("Authorization"), deps);
   }
   const acao = body.acao as Acao;
   if (acao !== "gerar" && acao !== "conferir" && acao !== "cancelar") {

@@ -120,5 +120,11 @@ jobs:
       # extrato e o CRM do pedido).
       - name: Prova viva do PIX do balcão (migration 20261184000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/pix-do-balcao-viva.cjs
+      # Migration 20261186000000 (o balcão sabe se o PIX está pronto): a função
+      # que a edge cobrar-pix-no-balcao (acao "prontidao") consulta. CLONE
+      # próprio; toda mutação (REVOKE, gatilho em R/D, DROP) acontece dentro de
+      # BEGIN … ROLLBACK e cada caso confere que voltou.
+      - name: Prova viva da prontidão do PIX do balcão (migration 20261186000000)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pix-prontidao-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs

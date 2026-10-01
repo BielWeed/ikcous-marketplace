@@ -27,7 +27,10 @@ import { ClienteDaVenda } from "@/components/admin/pdv/ClienteDaVenda";
 import type { LinhaDeClienteEncontrado } from "@/components/admin/pdv/ClienteDaVenda";
 import { CupomDaVenda } from "@/components/admin/pdv/CupomDaVenda";
 import type { ProdutoEncontradoNaBusca } from "@/components/admin/pdv/CupomDaVenda";
-import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
+import {
+  FechamentoDaVenda,
+  type ProntidaoDoPixQr,
+} from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { PixDoBalcao } from "@/components/admin/pdv/PixDoBalcao";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
@@ -55,8 +58,17 @@ import type {
 import { supabase } from "@/lib/supabase";
 import type { View } from "@/types";
 import { ScanBarcode } from "lucide-react";
-import { type ReactElement, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
+
+/** Quanto a tela espera a edge responder a prontidão antes de dar "não pronto". */
+const PRAZO_DA_PRONTIDAO_MS = 8_000;
 
 export interface AdminPdvViewProps {
   readonly onNavigate: (view: View, id?: string) => void;
@@ -507,7 +519,73 @@ export function AdminPdvView({
   // ==========================================================================
   const pixQrDisponivel = pagamentoOnlineLigado();
 
+  // PRONTIDÃO (01/10/2026, migration 20261186000000 + acao "prontidao" da
+  // edge): a ficha ligada só MOSTRA a opção; ela habilita quando o servidor
+  // diz `pronto: true`. Qualquer outra coisa — `pronto:false`, 4xx, rede,
+  // resposta estranha ou nada em PRAZO_DA_PRONTIDAO_MS — é "não pronto"
+  // (falha fechada: a venda reserva estoque). Cada consulta ganha um número;
+  // só a MAIS NOVA escreve o estado — resposta antiga que chega atrasada não
+  // reabilita a opção que uma consulta mais nova desligou.
+  const [prontidaoDoPixQr, setProntidaoDoPixQr] =
+    useState<ProntidaoDoPixQr>("conferindo");
+  const rodadaDaProntidaoRef = useRef(0);
+
+  const conferirProntidaoDoPix = useCallback(async (): Promise<boolean> => {
+    const rodada = ++rodadaDaProntidaoRef.current;
+    let pronto = false;
+    let prazo: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const resposta = await Promise.race([
+        (supabase as any).functions.invoke("cobrar-pix-no-balcao", {
+          body: { acao: "prontidao" },
+        }),
+        new Promise<null>((resolver) => {
+          prazo = setTimeout(() => resolver(null), PRAZO_DA_PRONTIDAO_MS);
+        }),
+      ]);
+      pronto = !resposta?.error && resposta?.data?.pronto === true;
+    } catch {
+      pronto = false;
+    } finally {
+      clearTimeout(prazo);
+    }
+    // Uma consulta mais nova começou enquanto esta esperava: esta resposta
+    // não escreve o estado e NÃO autoriza nada — um `true` antigo nunca vale
+    // por cima de uma conferência mais recente.
+    if (rodada !== rodadaDaProntidaoRef.current) return false;
+    setProntidaoDoPixQr(pronto ? "pronto" : "indisponivel");
+    return pronto;
+  }, []);
+
+  const noFechamento = estado.etapa === "fechamento";
+  const prontidaoJaConferidaRef = useRef(false);
+  useEffect(() => {
+    if (!pixQrDisponivel) return;
+    // Ao montar e a cada ENTRADA no fechamento: uma queda passageira não
+    // prende a opção desligada até recarregar a tela. Sair do fechamento não
+    // pergunta nada.
+    if (prontidaoJaConferidaRef.current && !noFechamento) return;
+    prontidaoJaConferidaRef.current = true;
+    void conferirProntidaoDoPix();
+  }, [pixQrDisponivel, noFechamento, conferirProntidaoDoPix]);
+  useEffect(
+    () => () => {
+      // Desmontou: nenhuma resposta em voo escreve mais nada; remontou (o
+      // StrictMode faz isso em desenvolvimento), pergunta de novo.
+      rodadaDaProntidaoRef.current++;
+      prontidaoJaConferidaRef.current = false;
+    },
+    [],
+  );
+
   async function aoGerarPix(): Promise<void> {
+    // TODA tentativa confere a prontidão de novo ANTES da RPC que cria a
+    // venda e reserva o estoque — venda nova (antes de a chave nascer) e
+    // também o retry com chave pendente (a rede caiu no "Gerar PIX"
+    // anterior). Caiu → nenhuma RPC; a opção desliga e a explicação aparece.
+    // A chave pendente FICA (a venda pode já existir): o próximo toque em
+    // "Gerar PIX" confere de novo e, com `true`, recupera com a MESMA chave.
+    if (!(await conferirProntidaoDoPix())) return;
     // A chave nasce ANTES da chamada e vai para o rascunho: se a resposta se
     // perder, o retry usa a MESMA chave e recebe o MESMO pedido.
     const chave = estado.pix?.chave ?? globalThis.crypto.randomUUID();
@@ -691,6 +769,7 @@ export function AdminPdvView({
           aoRegistrarVenda={aoRegistrarVenda}
           limparCupom={limparCupom}
           pixQrDisponivel={pixQrDisponivel}
+          prontidaoDoPixQr={prontidaoDoPixQr}
           aoGerarPix={aoGerarPix}
           caixaAberto={caixaAberto}
         />
