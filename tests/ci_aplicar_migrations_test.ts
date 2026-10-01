@@ -7,10 +7,10 @@
  * 1. Achado #1 da revisão de risco da rodada 2 do conferir-banco-da-loja:
  *    `projeto_ref` como texto livre ia direto para o path da URL, com um
  *    token válido para todos os projetos da conta. O input `projeto_ref`
- *    sumiu; entrou `projeto`, `choice` fechado em loja/sandbox. O trecho de
+ *    sumiu; entrou `projeto`, `choice` fechado em loja/savy/sandbox. O trecho de
  *    resolução do ref — extraído do PRÓPRIO arquivo entre os marcadores
  *    `RESOLVE_REF_INICIO`/`RESOLVE_REF_FIM`, não copiado — recusa qualquer
- *    `PROJETO` que não seja exatamente "loja" ou "sandbox", inclusive os
+ *    `PROJETO` que não seja exatamente um desses destinos, inclusive os
  *    dois payloads que a revisão provou contra um stub: "<ref>/restart#" e
  *    "x/../outroref.../database/query#".
  * 2. Achado de `fix/ci-banco-confere-projeto` (branch `734d4a51`, hoje
@@ -113,29 +113,29 @@ Deno.test("aplicar-migrations.yml — input projeto (achado #1, rodada 2)", asyn
     },
   );
 
-  await t.step("`projeto` é choice fechado em loja/sandbox", () => {
+  await t.step("`projeto` é choice fechado em loja/savy/sandbox", () => {
     assertStringIncludes(yaml, "projeto:");
     assertStringIncludes(yaml, "type: choice");
     assertStringIncludes(
       yaml,
-      "options:\n          - loja\n          - sandbox",
+      "options:\n          - loja\n          - savy\n          - sandbox",
     );
     assertStringIncludes(yaml, "default: loja");
   });
 
   await t.step(
-    "loja e sandbox resolvem para os mesmos refs de publicar-functions.yml",
+    "loja e sandbox resolvem para os refs de publicar-functions.yml",
     () => {
       const trecho = extrairTrechoDeResolucaoDoRef(yaml);
       const loja = avaliarResolucaoDoRef(trecho, "loja");
-      assertEquals(loja.ref, "cafkrminfnokvgjqtkle", loja.saida);
+      assertEquals(loja.ref, "dekxabvqdsuukijblazl", loja.saida);
       const sandbox = avaliarResolucaoDoRef(trecho, "sandbox");
       assertEquals(sandbox.ref, "lofznuxcvezrhxsgjqyg", sandbox.saida);
     },
   );
 
   await t.step(
-    "qualquer coisa fora de loja/sandbox é recusada ANTES de qualquer URL — inclusive os payloads provados contra o stub",
+    "qualquer coisa fora de loja/savy/sandbox é recusada ANTES de qualquer URL — inclusive os payloads provados contra o stub",
     () => {
       const trecho = extrairTrechoDeResolucaoDoRef(yaml);
       for (const malicioso of [
