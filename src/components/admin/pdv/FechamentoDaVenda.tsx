@@ -40,6 +40,9 @@ import {
 } from "lucide-react";
 import { type ReactElement, useEffect, useId, useRef, useState } from "react";
 
+/** Resposta da prontidão do PIX com QR, como a tela a usa. */
+export type ProntidaoDoPixQr = "conferindo" | "pronto" | "indisponivel";
+
 export interface PropsDoFechamentoDaVenda {
   readonly estado: EstadoDaVenda;
   readonly despachar: (acao: AcaoDaVenda) => void;
@@ -53,6 +56,10 @@ export interface PropsDoFechamentoDaVenda {
   /** PIX com QR (Mercado Pago) ligado nesta loja — sem ele a opção nem
    * aparece (decisão da coordenação, 28/09). */
   readonly pixQrDisponivel?: boolean;
+  /** O servidor está pronto para o PIX com QR (a VIEW pergunta à edge). Com a
+   * ficha ligada e sem `"pronto"`, a opção APARECE desabilitada, com a
+   * explicação ligada a ela. Sem a prop: indisponível (falha fechada). */
+  readonly prontidaoDoPixQr?: ProntidaoDoPixQr;
   /** "Gerar PIX": cria a venda à espera do PIX e abre o QR (a VIEW chama a
    * RPC e a edge). Obrigatória quando `pixQrDisponivel`. */
   readonly aoGerarPix?: () => Promise<void>;
@@ -95,6 +102,7 @@ export function FechamentoDaVenda({
   aoRegistrarVenda,
   limparCupom,
   pixQrDisponivel = false,
+  prontidaoDoPixQr = "indisponivel",
   aoGerarPix,
   caixaAberto = null,
 }: PropsDoFechamentoDaVenda): ReactElement {
@@ -137,6 +145,13 @@ export function FechamentoDaVenda({
     setUltimaFalha(null);
   }, [estado.pagamento, estado.desconto, estado.motivoDoDesconto]);
 
+  // "Gerar PIX" em curso — inclui a prontidão que a view repete ANTES de a
+  // venda nascer (até 8 s sem `enviando` no reducer). O ref barra o segundo
+  // toque no mesmo instante; o estado desabilita o botão e troca o rótulo.
+  const [gerandoPix, setGerandoPix] = useState(false);
+  const gerandoPixRef = useRef(false);
+  const idDaProntidao = useId();
+
   const subtotal = subtotalDaVenda(estado.itens);
   const total = totalDaVenda(estado);
   const validacao = vendaPodeSerRegistrada(estado);
@@ -146,12 +161,19 @@ export function FechamentoDaVenda({
   // "Começar uma venda nova" (chave nova) ou entrar de novo na conta.
   const podeTentarDeNovo = ultimaFalha?.podeTentarDeNovo ?? true;
   const ehPixQr = estado.pagamento === "pix_qr";
+  const pixQrPronto = prontidaoDoPixQr === "pronto";
+  // Chave do PIX pendente (a rede caiu no "Gerar PIX" anterior): o cupom
+  // está travado e o retry é a única saída — o botão fica tocável mesmo sem
+  // prontidão, e a VIEW confere a prontidão de novo antes da RPC; só com
+  // `true` o retry avança.
+  const pixPendente = !!estado.pix && !estado.pix.orderId;
   const desabilitado =
     !validacao.ok ||
     estado.enviando ||
+    gerandoPix ||
     isOffline ||
     !podeTentarDeNovo ||
-    (ehPixQr && !aoGerarPix);
+    (ehPixQr && (!aoGerarPix || (!pixQrPronto && !pixPendente)));
   const formasVisiveis = FORMAS_DE_PAGAMENTO.filter(
     (f) => f.valor !== "pix_qr" || pixQrDisponivel,
   );
@@ -170,13 +192,22 @@ export function FechamentoDaVenda({
 
   async function aoClicarRegistrar(): Promise<void> {
     if (desabilitado) return;
+    if (ehPixQr && gerandoPixRef.current) return;
     // PIX com QR: quem despacha `pix_preparado`/`pix_aberto` é a VIEW (ela
     // precisa da chave do PIX para chamar a RPC); o erro volta para cá do
     // mesmo jeito, traduzido pela mesma régua.
     if (!ehPixQr) despachar({ tipo: "envio_iniciado" });
     try {
-      if (ehPixQr && aoGerarPix) await aoGerarPix();
-      else await aoRegistrarVenda();
+      if (ehPixQr && aoGerarPix) {
+        gerandoPixRef.current = true;
+        setGerandoPix(true);
+        try {
+          await aoGerarPix();
+        } finally {
+          gerandoPixRef.current = false;
+          setGerandoPix(false);
+        }
+      } else await aoRegistrarVenda();
     } catch (erro) {
       // Rede caindo, 22023/23505/42501/PGRST202 do servidor — D3 é
       // explícita: RECUSAR, nunca enfileirar. O cupom (e o rascunho) ficam
@@ -194,7 +225,8 @@ export function FechamentoDaVenda({
     }
   }
 
-  const rotuloDoBotao = estado.enviando
+  const ocupado = estado.enviando || (ehPixQr && gerandoPix);
+  const rotuloDoBotao = ocupado
     ? ehPixQr
       ? "Gerando o PIX…"
       : "Registrando…"
@@ -230,26 +262,46 @@ export function FechamentoDaVenda({
         aria-label="Forma de pagamento"
         className="grid grid-cols-2 gap-2"
       >
-        {formasVisiveis.map(({ valor, rotulo, Icone }) => (
-          <button
-            key={valor}
-            type="button"
-            role="radio"
-            aria-checked={estado.pagamento === valor}
-            onClick={() =>
-              despachar({ tipo: "pagamento_escolhido", pagamento: valor })
-            }
-            className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center text-xs font-semibold ${
-              estado.pagamento === valor
-                ? "border-admin-gold bg-admin-gold text-black"
-                : "border-zinc-800 bg-zinc-900 text-zinc-300"
-            }`}
-          >
-            <Icone aria-hidden="true" className="size-5" />
-            {rotulo}
-          </button>
-        ))}
+        {formasVisiveis.map(({ valor, rotulo, Icone }) => {
+          const indisponivel = valor === "pix_qr" && !pixQrPronto;
+          return (
+            <button
+              key={valor}
+              type="button"
+              role="radio"
+              aria-checked={estado.pagamento === valor}
+              disabled={indisponivel}
+              aria-describedby={indisponivel ? idDaProntidao : undefined}
+              onClick={() =>
+                despachar({ tipo: "pagamento_escolhido", pagamento: valor })
+              }
+              className={`flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${
+                estado.pagamento === valor
+                  ? "border-admin-gold bg-admin-gold text-black"
+                  : "border-zinc-800 bg-zinc-900 text-zinc-300"
+              }`}
+            >
+              <Icone aria-hidden="true" className="size-5" />
+              {rotulo}
+            </button>
+          );
+        })}
       </div>
+
+      {pixQrDisponivel && !pixQrPronto && (
+        <p
+          id={idDaProntidao}
+          aria-live="polite"
+          className="flex items-start gap-2 text-xs text-zinc-400"
+        >
+          <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+          {prontidaoDoPixQr === "conferindo"
+            ? "Conferindo se o PIX com QR está pronto nesta loja…"
+            : pixPendente
+              ? 'O PIX com QR ainda não está pronto nesta loja. Toque em "Gerar PIX" de novo daqui a pouco para recuperar este PIX.'
+              : "O PIX com QR ainda não está pronto nesta loja. Por enquanto, use outra forma de pagamento."}
+        </p>
+      )}
 
       {ehPixQr && (
         <p className="text-xs text-zinc-400">
