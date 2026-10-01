@@ -1,0 +1,353 @@
+// @vitest-environment jsdom
+import type { CartItem } from "@/types";
+import { act } from "react";
+import { type Root, createRoot } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { classesDoCelular } from "./classes-do-celular";
+const { mockValidateCoupon } = vi.hoisted(() => ({
+  mockValidateCoupon: vi.fn(),
+}));
+// `selectedShippingOption`/`freteIndefinido` mutáveis por teste (via
+// `vi.hoisted`, porque `vi.mock` é hoisted acima dos imports — mesmo padrão
+// de `mockValidateCoupon`): por padrão simula frete JÁ COTADO (opção
+// selecionada), para os casos que testam o VALOR da entrega. Um caso
+// dedicado zera a opção para provar "a calcular".
+const { mockUseCartOverrides } = vi.hoisted(() => ({
+  mockUseCartOverrides: {
+    selectedShippingOption: { id: "opcao-padrao", name: "Padrão" } as {
+      id: string;
+      name: string;
+    } | null,
+    freteIndefinido: false,
+  },
+}));
+
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: {
+      shippingCoverage: "local",
+      originCep: "38500-000",
+      enableCoupons: true,
+    },
+    isLoaded: true,
+  }),
+}));
+
+vi.mock("@/hooks/useAddresses", () => ({
+  useAddresses: () => ({
+    addresses: [],
+    fetchAddresses: vi.fn(),
+    addAddress: vi.fn(),
+    updateAddress: vi.fn(),
+    loading: false,
+  }),
+}));
+
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({ user: null, profile: null, loading: false }),
+}));
+
+// A barra e o painel são exibidos a partir dos PROPS do componente
+// (propCart etc.), não deste mock — mas o componente sempre chama useCart()
+// para addToCart/selectedShippingOption/shippingCep, então o dublê precisa
+// existir mesmo assim.
+vi.mock("@/hooks/useCart", () => ({
+  useCart: () => ({
+    cart: [],
+    cartTotal: 0,
+    shippingFee: 0,
+    clearCart: vi.fn(),
+    addToCart: vi.fn(),
+    shippingCep: "",
+    setSelectedShippingOption: vi.fn(),
+    setShippingCep: vi.fn(),
+    ...mockUseCartOverrides,
+  }),
+}));
+
+vi.mock("@/hooks/useCoupons", () => ({
+  useCoupons: () => ({ validateCoupon: mockValidateCoupon }),
+}));
+
+vi.mock("@/hooks/useOrders", () => ({
+  useOrders: () => ({ createOrder: vi.fn(), updateOrderStatus: vi.fn() }),
+}));
+
+vi.mock("@/lib/supabase", () => ({ supabase: {} }));
+vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
+vi.mock("canvas-confetti", () => ({ default: vi.fn() }));
+
+// @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
+// dos outros testes de CheckoutView.
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("@/hooks/useDeferredRender", () => ({ useDeferredRender: () => true }));
+
+let root: Root;
+let host: HTMLDivElement;
+let slot: HTMLDivElement;
+const cart: CartItem[] = [
+  {
+    product: {
+      id: "p1",
+      name: "Produto",
+      price: 20,
+      images: [],
+      description: "",
+      category: "geral",
+      stock: 10,
+      sold: 0,
+      isActive: true,
+      isBestseller: false,
+      freeShipping: false,
+      createdAt: "2026-09-28",
+    },
+    quantity: 1,
+  },
+];
+beforeEach(() => {
+  mockUseCartOverrides.selectedShippingOption = null;
+  mockUseCartOverrides.freteIndefinido = true;
+  const storage = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (k: string) => storage.get(k) ?? null,
+    setItem: (k: string, v: string) => storage.set(k, v),
+    removeItem: (k: string) => storage.delete(k),
+  });
+  vi.stubGlobal("matchMedia", undefined);
+  host = document.createElement("div");
+  slot = document.createElement("div");
+  slot.id = "checkout-header-center-slot";
+  document.body.append(host, slot);
+  root = createRoot(host);
+});
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  slot.remove();
+  vi.unstubAllGlobals();
+});
+async function montar(computador = false, onSetBackOverride = vi.fn()) {
+  if (computador)
+    vi.stubGlobal("matchMedia", (q: string) => ({
+      matches: q === "(min-width: 1024px)",
+    }));
+  const { CheckoutView } = await import("@/views/customer/CheckoutView");
+  await act(async () =>
+    root.render(
+      <CheckoutView
+        cart={cart}
+        subtotal={20}
+        shipping={0}
+        total={20}
+        onNavigate={vi.fn()}
+        onSetBackOverride={onSetBackOverride}
+      />,
+    ),
+  );
+}
+it("desktop tem um resumo lateral com itens e a única finalização", async () => {
+  await montar(true);
+  const aside = host.querySelector('aside[aria-label="Resumo do pedido"]');
+  expect(aside).not.toBeNull();
+  expect(aside?.querySelector("li")?.textContent).toContain("Produto");
+  const botoes = document.querySelectorAll('[aria-label="Finalizar pedido"]');
+  expect(botoes).toHaveLength(1);
+  expect(aside?.contains(botoes[0])).toBe(true);
+  expect(aside?.querySelector('[role="alert"]')).not.toBeNull();
+});
+it("celular mantém portal no body, classes do formulário e espaçadores", async () => {
+  await montar();
+  expect(host.querySelector("aside")).toBeNull();
+  const botao = document.querySelector('[aria-label="Finalizar pedido"]');
+  expect(botao).not.toBeNull();
+  expect(host.contains(botao)).toBe(false);
+  const formulario = host.querySelector(".space-y-4.px-3\\.5") as HTMLElement;
+  expect(classesDoCelular(formulario.className)).toBe(
+    "mx-auto w-full max-w-md space-y-4 px-3.5",
+  );
+  expect(formulario.className).toContain("lg:max-w-[1120px]");
+  for (const el of host.querySelectorAll<HTMLElement>(
+    'div[aria-hidden="true"][style*="height"]',
+  ))
+    expect(el.className).toContain("lg:hidden");
+  const gatilho = slot.querySelector("button")!;
+  expect(classesDoCelular(gatilho.className)).toBe(
+    "flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95",
+  );
+  expect(gatilho.className).toContain("lg:hidden");
+});
+
+it("ao reduzir a janela a barra volta ao body sem perder o formulário", async () => {
+  await montar(true);
+  const nome = document.getElementById("checkout-name") as HTMLInputElement;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!.call(nome, "Cliente de teste");
+    nome.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  vi.stubGlobal("matchMedia", undefined);
+  await montar();
+  expect(host.querySelector("aside")).toBeNull();
+  expect(
+    document.querySelectorAll('[aria-label="Finalizar pedido"]'),
+  ).toHaveLength(1);
+  expect(
+    host.contains(document.querySelector('[aria-label="Finalizar pedido"]')),
+  ).toBe(false);
+  expect(document.getElementById("checkout-name")).toBe(nome);
+  expect(nome.value).toBe("Cliente de teste");
+});
+
+it("fecha o painel ao crescer para computador sem voltar ao focar o formulário", async () => {
+  let computador = false;
+  const ouvintes = new Set<() => void>();
+  vi.stubGlobal("matchMedia", () => ({
+    get matches() {
+      return computador;
+    },
+    addEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.add(ouvinte),
+    removeEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.delete(ouvinte),
+  }));
+
+  let override: (() => void) | null = null;
+  const onSetBackOverride = vi.fn((proximo: unknown) => {
+    override =
+      typeof proximo === "function" ? (proximo as () => () => void)() : null;
+  });
+  const voltar = vi.spyOn(globalThis.history, "back").mockImplementation(() => {
+    override?.();
+  });
+  await montar(false, onSetBackOverride);
+
+  await act(async () => {
+    slot.querySelector("button")!.click();
+  });
+  expect(slot.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+    "true",
+  );
+
+  await act(async () => {
+    computador = true;
+    for (const notificar of ouvintes) notificar();
+  });
+  expect(voltar).toHaveBeenCalledTimes(1);
+  expect(slot.querySelector("button")?.getAttribute("aria-expanded")).toBe(
+    "false",
+  );
+
+  await act(async () => {
+    document.getElementById("checkout-name")!.focus();
+  });
+  expect(voltar).toHaveBeenCalledTimes(1);
+});
+
+it("popstate atrasado + largura oscilando + foco no meio: ainda só 1 back(), e a trava é liberada depois", async () => {
+  let computador = false;
+  const ouvintes = new Set<() => void>();
+  vi.stubGlobal("matchMedia", () => ({
+    get matches() {
+      return computador;
+    },
+    addEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.add(ouvinte),
+    removeEventListener: (_evento: string, ouvinte: () => void) =>
+      ouvintes.delete(ouvinte),
+  }));
+
+  // Mesmo dublê do teste acima: guarda o override que a tela registra no App
+  // (`onSetBackOverride(() => handler)`); é o que o `popstate` real chama.
+  let override: (() => void) | null = null;
+  const onSetBackOverride = vi.fn((proximo: unknown) => {
+    override =
+      typeof proximo === "function" ? (proximo as () => () => void)() : null;
+  });
+  // Diferente do teste acima: aqui `history.back()` só ENFILEIRA — não
+  // dispara o `popstate`/override de imediato. É exatamente a folga que o
+  // navegador real tem entre o `back()` assíncrono e o evento chegando, e é
+  // nessa folga que a largura pode oscilar e um campo pode ganhar foco antes
+  // do primeiro fechamento se resolver. Cada item da fila é o EFEITO real do
+  // `back()`: no `popstate` o App lê o override VIGENTE naquele instante e o
+  // chama (`backOverrideRef.current()`), então a fila faz o mesmo ao drenar.
+  const filaDeBack: Array<() => void> = [];
+  const voltar = vi.spyOn(globalThis.history, "back").mockImplementation(() => {
+    filaDeBack.push(() => override?.());
+  });
+  const drenarFila = () =>
+    act(async () => {
+      while (filaDeBack.length > 0) filaDeBack.shift()?.();
+    });
+  const painelAberto = () =>
+    slot.querySelector("button")?.getAttribute("aria-expanded") === "true";
+  // Zera qualquer contagem que tenha sobrado de um teste anterior nesta
+  // mesma suíte (o spy acima é global e nenhum teste deste arquivo chama
+  // `mockRestore`) — sem isto a asserção de "exatamente 1" ficaria
+  // contaminada pelo teste anterior.
+  voltar.mockClear();
+
+  await montar(false, onSetBackOverride);
+
+  await act(async () => {
+    slot.querySelector("button")!.click();
+  });
+  expect(painelAberto()).toBe(true);
+
+  // Oscila computador -> celular -> computador SEM o popstate do primeiro
+  // back() ter chegado (a fila acima ainda não foi drenada).
+  await act(async () => {
+    computador = true;
+    for (const notificar of ouvintes) notificar();
+  });
+  await act(async () => {
+    computador = false;
+    for (const notificar of ouvintes) notificar();
+  });
+  await act(async () => {
+    computador = true;
+    for (const notificar of ouvintes) notificar();
+  });
+
+  // E, no meio dessa folga, a cliente foca um campo do formulário.
+  await act(async () => {
+    document.getElementById("checkout-name")!.focus();
+  });
+
+  expect(voltar).toHaveBeenCalledTimes(1);
+  expect(filaDeBack).toHaveLength(1);
+  // O painel só fecha quando o `popstate` chega — nada o fechou até aqui.
+  expect(painelAberto()).toBe(true);
+
+  // O `popstate` atrasado finalmente chega: o painel fecha de verdade e o
+  // efeito de foco libera a trava (`fechandoPorFocoDoFormularioRef`).
+  await drenarFila();
+  expect(painelAberto()).toBe(false);
+  expect(voltar).toHaveBeenCalledTimes(1);
+
+  // A trava tem que ter sido SOLTA: volta ao celular, reabre o painel e foca
+  // um campo — isso é um fechamento novo e tem que pedir exatamente mais 1
+  // `back()`. Com a trava presa em `true` (liberação apagada), o foco não
+  // chamaria nada e a cliente ficaria com o painel aberto sobre o formulário.
+  await act(async () => {
+    computador = false;
+    for (const notificar of ouvintes) notificar();
+  });
+  await act(async () => {
+    slot.querySelector("button")!.click();
+  });
+  expect(painelAberto()).toBe(true);
+  await act(async () => {
+    document.getElementById("checkout-name")!.focus();
+  });
+  expect(voltar).toHaveBeenCalledTimes(2);
+  expect(filaDeBack).toHaveLength(1);
+
+  await drenarFila();
+  expect(painelAberto()).toBe(false);
+  expect(filaDeBack).toHaveLength(0);
+  expect(voltar).toHaveBeenCalledTimes(2);
+  voltar.mockRestore();
+});

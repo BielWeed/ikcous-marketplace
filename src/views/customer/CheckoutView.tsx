@@ -1,8 +1,10 @@
+import { ConteudoDoResumoDoPedido } from "@/components/checkout/ConteudoDoResumoDoPedido";
 import {
   type CategoriaErroPagamento,
   type MetodoOnline,
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
+import { COLUNA_FIXA_NO_COMPUTADOR } from "@/components/desktop/medidas";
 import {
   IconeCartao,
   IconeDinheiro,
@@ -34,6 +36,7 @@ import {
   mensagemAmigavelErroPedido,
   useOrders,
 } from "@/hooks/useOrders";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { cepEhLocal } from "@/lib/cep-local";
 import {
   criarGerenciadorDeChave,
@@ -64,7 +67,6 @@ import {
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
-import { precoVendido } from "@/lib/preco-vendido";
 import {
   lerRascunhoDoCheckout,
   limparRascunhoDoCheckout,
@@ -494,7 +496,10 @@ function GatilhoDoResumoDoPedido({
       }}
       aria-expanded={isOpen}
       aria-label={compacto ? nomeAcessivelCompleto : undefined}
-      className="flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95"
+      className={cn(
+        "flex min-w-0 max-w-full items-center gap-1 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-zinc-50 active:scale-95",
+        "lg:hidden",
+      )}
     >
       <span className="flex shrink-0 items-center">
         {miniaturas.map((item, indice) => {
@@ -576,6 +581,8 @@ export function CheckoutView({
     isLoaded: storeConfigLoaded,
     refresh: refreshStoreConfig,
   } = useStore();
+  const computador = useTelaDeComputador();
+  const [asideEl, setAsideEl] = useState<HTMLElement | null>(null);
   const [isPresent] = usePresence();
   const isReady = useDeferredRender(380);
   const {
@@ -1578,6 +1585,33 @@ export function CheckoutView({
       hasPushedSummaryPanelState.current = false;
     }
   }, [isSummaryPanelOpen]);
+
+  // O painel existe apenas abaixo de 1024px. Se a janela crescer enquanto
+  // ele está aberto, consome também a entrada virtual que foi empurrada no
+  // histórico; assim o primeiro foco no formulário já visível no computador
+  // não chama `history.back()` e não tira a cliente do checkout.
+  //
+  // Trava de `fechandoPorFocoDoFormularioRef` (a mesma dos outros dois
+  // caminhos de fechamento, que vêm ABAIXO: o toque fora, `pointerdown` em
+  // captura, e o foco de um campo, `onFocusCapture`). Além de "fechando por
+  // foco", aqui a ref também marca "`back()` pendente" do crescimento da
+  // janela: `history.back()` é assíncrono — o `popstate` só chega depois. Sem
+  // a trava, a largura oscilando em torno de 1024px (ou o foco de um campo)
+  // antes desse `popstate` chegar empurrava um SEGUNDO `back()` para a mesma
+  // entrada de histórico, e esse segundo `back()` é quem tira a cliente do
+  // checkout. A trava só volta a `false` no efeito que devolve o foco ao
+  // gatilho (o que roda quando `isSummaryPanelOpen` passa de aberto para
+  // fechado), ou seja, quando o painel fecha de fato.
+  useEffect(() => {
+    if (
+      computador &&
+      isSummaryPanelOpen &&
+      !fechandoPorFocoDoFormularioRef.current
+    ) {
+      fechandoPorFocoDoFormularioRef.current = true;
+      globalThis.history.back();
+    }
+  }, [computador, isSummaryPanelOpen]);
 
   // Handle back button override for address modal
   useEffect(() => {
@@ -2887,7 +2921,12 @@ export function CheckoutView({
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
       // "Seu pedido está reservado…" de ponta a ponta em tela larga.
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+      <div
+        className={cn(
+          "mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4",
+          "lg:max-w-[560px] lg:pt-10",
+        )}
+      >
         <h1 className="text-lg font-bold text-zinc-900">
           Finalize o pagamento
         </h1>
@@ -3492,263 +3531,267 @@ export function CheckoutView({
           de largura enquanto a barra do total ficava com 448px centralizada —
           formulário esticado de ponta a ponta e desalinhado com o próprio
           rodapé. */}
-      <div
-        className="mx-auto w-full max-w-md space-y-4 px-3.5"
-        // D1 refinado: o painel do resumo some quando a pessoa foca um
-        // campo do formulário (teclado do celular aberto + painel aberto =
-        // formulário sem espaço). `onFocusCapture` para pegar o foco de
-        // QUALQUER campo descendente, sem listener por input.
-        onFocusCapture={() => {
-          // Guarda de `fechandoPorFocoDoFormularioRef` (achado 2 do
-          // bloqueante): quando o fechamento já foi disparado pelo
-          // `pointerdown` de fora (efeito abaixo), o próprio toque também
-          // move o foco para o campo em seguida — sem este `if`, os dois
-          // caminhos chamariam `history.back()` na mesma interação e
-          // consumiriam DUAS entradas do histórico (uma a mais que a que o
-          // painel empurrou), jogando a pessoa para fora da tela de
-          // checkout. Fica só para o caso que o toque não cobre: foco por
-          // TECLADO (Tab), sem pointerdown nenhum.
-          if (isSummaryPanelOpen && !fechandoPorFocoDoFormularioRef.current) {
-            fechandoPorFocoDoFormularioRef.current = true;
-            globalThis.history.back();
-          }
-        }}
-      >
-        {/* CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
+      <div className="lg:mx-auto lg:grid lg:w-full lg:max-w-[1120px] lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-8 lg:px-8 lg:pt-6">
+        <div
+          className={cn(
+            "mx-auto w-full max-w-md space-y-4 px-3.5",
+            "lg:min-w-0 lg:max-w-[1120px] lg:px-0",
+          )}
+          // D1 refinado: o painel do resumo some quando a pessoa foca um
+          // campo do formulário (teclado do celular aberto + painel aberto =
+          // formulário sem espaço). `onFocusCapture` para pegar o foco de
+          // QUALQUER campo descendente, sem listener por input.
+          onFocusCapture={() => {
+            // Guarda de `fechandoPorFocoDoFormularioRef` (achado 2 do
+            // bloqueante): quando o fechamento já foi disparado pelo
+            // `pointerdown` de fora (efeito abaixo), o próprio toque também
+            // move o foco para o campo em seguida — sem este `if`, os dois
+            // caminhos chamariam `history.back()` na mesma interação e
+            // consumiriam DUAS entradas do histórico (uma a mais que a que o
+            // painel empurrou), jogando a pessoa para fora da tela de
+            // checkout. Fica só para o caso que o toque não cobre: foco por
+            // TECLADO (Tab), sem pointerdown nenhum.
+            if (isSummaryPanelOpen && !fechandoPorFocoDoFormularioRef.current) {
+              fechandoPorFocoDoFormularioRef.current = true;
+              globalThis.history.back();
+            }
+          }}
+        >
+          {/* CHECKOUT COMPACTO (23/09/2026): "Dados de Identificação" e "Seus
             Endereços" viraram UMA seção — "Seus dados e entrega" — com
             cabeçalho clicável (`aria-expanded`/`aria-controls`) e resumo
             compacto quando os dados estão completos. Nunca dois cartões
             altos independentes (pedido do dono: tela de Finalizar comprida
             demais no celular). */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <button
-            type="button"
-            id="cabecalho-dados-e-entrega"
-            aria-expanded={identificacaoExpandida}
-            aria-controls="secao-dados-e-entrega"
-            onClick={() =>
-              setIdentificacaoAbertaManual(!identificacaoExpandida)
-            }
-            // `min-h-11` = 44px, o piso de alvo de toque do laudo de
-            // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não só
-            // o texto.
-            className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
-          >
-            <span className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <User className="size-4" />
+          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
+            <button
+              type="button"
+              id="cabecalho-dados-e-entrega"
+              aria-expanded={identificacaoExpandida}
+              aria-controls="secao-dados-e-entrega"
+              onClick={() =>
+                setIdentificacaoAbertaManual(!identificacaoExpandida)
+              }
+              // `min-h-11` = 44px, o piso de alvo de toque do laudo de
+              // acessibilidade (03/09) — o cabeçalho inteiro é clicável, não só
+              // o texto.
+              className="flex min-h-11 w-full items-center justify-between gap-2 border-b border-zinc-100/55 bg-zinc-50/40 px-4 py-3 text-left transition-colors hover:bg-zinc-50"
+            >
+              <span className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+                  <User className="size-4" />
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                  Seus dados e entrega
+                </span>
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Seus dados e entrega
-              </span>
-            </span>
-            <ChevronDown
-              aria-hidden="true"
-              className={cn(
-                "size-4 shrink-0 text-zinc-400 transition-transform",
-                identificacaoExpandida && "rotate-180",
-              )}
-            />
-          </button>
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "size-4 shrink-0 text-zinc-400 transition-transform",
+                  identificacaoExpandida && "rotate-180",
+                )}
+              />
+            </button>
 
-          {/* RESUMO COMPACTO: só aparece com a seção recolhida — nunca ao
+            {/* RESUMO COMPACTO: só aparece com a seção recolhida — nunca ao
               mesmo tempo que o formulário aberto, que traz os mesmos dados
               editáveis logo abaixo. */}
-          {!identificacaoExpandida && (
-            <div className="space-y-3 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 space-y-0.5">
-                  {faltaNome ? (
-                    <p
-                      className="text-xs font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-nome"
-                    >
-                      Informe seu nome
-                    </p>
-                  ) : (
-                    <p className="truncate text-sm font-bold text-zinc-800">
-                      {nomeAtual}
-                    </p>
-                  )}
-                  {faltaWhatsapp ? (
-                    <p
-                      className="text-xs font-bold text-red-600"
-                      data-testid="checkout-resumo-falta-whatsapp"
-                    >
-                      Informe seu WhatsApp
-                    </p>
-                  ) : (
-                    <p className="text-xs font-medium text-zinc-500">
-                      {abreviarWhatsapp(whatsappAtual ?? "")}
-                    </p>
-                  )}
-                  {exigeCpfDoDestinatario &&
-                    (faltaCpf ? (
+            {!identificacaoExpandida && (
+              <div className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-0.5">
+                    {faltaNome ? (
                       <p
                         className="text-xs font-bold text-red-600"
-                        data-testid="checkout-resumo-falta-cpf"
+                        data-testid="checkout-resumo-falta-nome"
                       >
-                        Informe o CPF de quem recebe
+                        Informe seu nome
+                      </p>
+                    ) : (
+                      <p className="truncate text-sm font-bold text-zinc-800">
+                        {nomeAtual}
+                      </p>
+                    )}
+                    {faltaWhatsapp ? (
+                      <p
+                        className="text-xs font-bold text-red-600"
+                        data-testid="checkout-resumo-falta-whatsapp"
+                      >
+                        Informe seu WhatsApp
                       </p>
                     ) : (
                       <p className="text-xs font-medium text-zinc-500">
-                        CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                        {abreviarWhatsapp(whatsappAtual ?? "")}
                       </p>
-                    ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIdentificacaoAbertaManual(true)}
-                  className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
-                >
-                  Editar
-                </button>
-              </div>
-              <div className="border-t border-zinc-100/70 pt-3">
-                {user && enderecoEfetivo ? (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="truncate text-xs font-bold uppercase tracking-wide text-zinc-500">
-                        {enderecoEfetivo.name}
-                      </p>
-                      <p className="text-xs font-medium text-zinc-500">
-                        {resumoDoEndereco(enderecoEfetivo)}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setIdentificacaoAbertaManual(true)}
-                      className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
-                    >
-                      Trocar
-                    </button>
+                    )}
+                    {exigeCpfDoDestinatario &&
+                      (faltaCpf ? (
+                        <p
+                          className="text-xs font-bold text-red-600"
+                          data-testid="checkout-resumo-falta-cpf"
+                        >
+                          Informe o CPF de quem recebe
+                        </p>
+                      ) : (
+                        <p className="text-xs font-medium text-zinc-500">
+                          CPF {mascararCpfParaExibicao(cpfAtual ?? "")}
+                        </p>
+                      ))}
                   </div>
-                ) : user ? (
                   <button
                     type="button"
                     onClick={() => setIdentificacaoAbertaManual(true)}
-                    className="text-xs font-bold text-red-600 underline"
-                    data-testid="checkout-resumo-falta-endereco"
+                    className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
                   >
-                    Cadastre um endereço de entrega
+                    Editar
                   </button>
-                ) : enderecoConvidadoCompleto ? (
-                  <p className="text-xs font-medium text-zinc-500">
-                    {resumoDoEndereco({
-                      street: ruaAtual ?? "",
-                      number: numeroAtual ?? "",
-                      neighborhood: bairroAtual ?? "",
-                      city: cidadeAtual ?? "",
-                      state: estadoAtual ?? "",
-                      cep: cepDigitadoNoFormulario ?? "",
-                    })}
-                  </p>
-                ) : (
-                  <p
-                    className="text-xs font-bold text-red-600"
-                    data-testid="checkout-resumo-falta-endereco"
-                  >
-                    Informe o endereço de entrega
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div
-            id="secao-dados-e-entrega"
-            aria-labelledby="cabecalho-dados-e-entrega"
-            hidden={!identificacaoExpandida}
-            className="space-y-4 p-4"
-          >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="checkout-name"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                >
-                  Nome Completo
-                </label>
-                <input
-                  id="checkout-name"
-                  type="text"
-                  autoComplete="name"
-                  {...form.register("name")}
-                  placeholder="Como devemos te chamar?"
-                  // Laudo de acessibilidade 03/09, achado 1: o campo errado
-                  // precisa ser MARCADO (`aria-invalid`) e LIGADO à mensagem
-                  // (`aria-describedby`) — texto vermelho sozinho o leitor de
-                  // tela não anuncia.
-                  aria-invalid={form.formState.errors.name ? true : undefined}
-                  aria-describedby={
-                    form.formState.errors.name
-                      ? "erro-checkout-name"
-                      : undefined
-                  }
-                  className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                />
-                {form.formState.errors.name && (
-                  <p
-                    id="erro-checkout-name"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
-                  >
-                    {form.formState.errors.name.message}
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="checkout-tel"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                >
-                  WhatsApp para Contato
-                </label>
-                <div className="relative">
-                  <Phone
-                    className="absolute left-4 top-1/2 size-4.5 -translate-y-1/2 text-zinc-400"
-                    aria-hidden="true"
-                  />
-                  <Controller
-                    control={form.control}
-                    name="whatsapp"
-                    render={({ field }) => (
-                      <input
-                        id="checkout-tel"
-                        type="tel"
-                        autoComplete="tel"
-                        value={field.value}
-                        onChange={(e) =>
-                          field.onChange(formatWhatsApp(e.target.value))
-                        }
-                        ref={field.ref}
-                        placeholder="(00) 00000-0000"
-                        maxLength={15}
-                        aria-invalid={
-                          form.formState.errors.whatsapp ? true : undefined
-                        }
-                        aria-describedby={
-                          form.formState.errors.whatsapp
-                            ? "erro-checkout-tel"
-                            : undefined
-                        }
-                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                      />
-                    )}
-                  />
                 </div>
-                {form.formState.errors.whatsapp && (
-                  <p
-                    id="erro-checkout-tel"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
-                  >
-                    {form.formState.errors.whatsapp.message}
-                  </p>
-                )}
+                <div className="border-t border-zinc-100/70 pt-3">
+                  {user && enderecoEfetivo ? (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="truncate text-xs font-bold uppercase tracking-wide text-zinc-500">
+                          {enderecoEfetivo.name}
+                        </p>
+                        <p className="text-xs font-medium text-zinc-500">
+                          {resumoDoEndereco(enderecoEfetivo)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIdentificacaoAbertaManual(true)}
+                        className="min-h-11 shrink-0 rounded-xl bg-zinc-100 px-3 text-[11px] font-bold uppercase tracking-wider text-zinc-700 transition-colors hover:bg-zinc-200"
+                      >
+                        Trocar
+                      </button>
+                    </div>
+                  ) : user ? (
+                    <button
+                      type="button"
+                      onClick={() => setIdentificacaoAbertaManual(true)}
+                      className="text-xs font-bold text-red-600 underline"
+                      data-testid="checkout-resumo-falta-endereco"
+                    >
+                      Cadastre um endereço de entrega
+                    </button>
+                  ) : enderecoConvidadoCompleto ? (
+                    <p className="text-xs font-medium text-zinc-500">
+                      {resumoDoEndereco({
+                        street: ruaAtual ?? "",
+                        number: numeroAtual ?? "",
+                        neighborhood: bairroAtual ?? "",
+                        city: cidadeAtual ?? "",
+                        state: estadoAtual ?? "",
+                        cep: cepDigitadoNoFormulario ?? "",
+                      })}
+                    </p>
+                  ) : (
+                    <p
+                      className="text-xs font-bold text-red-600"
+                      data-testid="checkout-resumo-falta-endereco"
+                    >
+                      Informe o endereço de entrega
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026):
+            <div
+              id="secao-dados-e-entrega"
+              aria-labelledby="cabecalho-dados-e-entrega"
+              hidden={!identificacaoExpandida}
+              className="space-y-4 p-4"
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="checkout-name"
+                    className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                  >
+                    Nome Completo
+                  </label>
+                  <input
+                    id="checkout-name"
+                    type="text"
+                    autoComplete="name"
+                    {...form.register("name")}
+                    placeholder="Como devemos te chamar?"
+                    // Laudo de acessibilidade 03/09, achado 1: o campo errado
+                    // precisa ser MARCADO (`aria-invalid`) e LIGADO à mensagem
+                    // (`aria-describedby`) — texto vermelho sozinho o leitor de
+                    // tela não anuncia.
+                    aria-invalid={form.formState.errors.name ? true : undefined}
+                    aria-describedby={
+                      form.formState.errors.name
+                        ? "erro-checkout-name"
+                        : undefined
+                    }
+                    className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                  />
+                  {form.formState.errors.name && (
+                    <p
+                      id="erro-checkout-name"
+                      className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    >
+                      {form.formState.errors.name.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="checkout-tel"
+                    className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                  >
+                    WhatsApp para Contato
+                  </label>
+                  <div className="relative">
+                    <Phone
+                      className="absolute left-4 top-1/2 size-4.5 -translate-y-1/2 text-zinc-400"
+                      aria-hidden="true"
+                    />
+                    <Controller
+                      control={form.control}
+                      name="whatsapp"
+                      render={({ field }) => (
+                        <input
+                          id="checkout-tel"
+                          type="tel"
+                          autoComplete="tel"
+                          value={field.value}
+                          onChange={(e) =>
+                            field.onChange(formatWhatsApp(e.target.value))
+                          }
+                          ref={field.ref}
+                          placeholder="(00) 00000-0000"
+                          maxLength={15}
+                          aria-invalid={
+                            form.formState.errors.whatsapp ? true : undefined
+                          }
+                          aria-describedby={
+                            form.formState.errors.whatsapp
+                              ? "erro-checkout-tel"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 py-3 pl-12 pr-4 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                        />
+                      )}
+                    />
+                  </div>
+                  {form.formState.errors.whatsapp && (
+                    <p
+                      id="erro-checkout-tel"
+                      className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    >
+                      {form.formState.errors.whatsapp.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* CPF DO DESTINATÁRIO (checkout compacto + CPF, 23/09/2026):
                 só aparece quando a modalidade escolhida É transportadora —
                 o Melhor Envio exige `to.document` para emitir a etiqueta
                 nacional; retirada/entrega local nunca pedem CPF. Sem HTML
@@ -3757,86 +3800,89 @@ export function CheckoutView({
                 sugerir um valor de outro campo numérico (telefone, CEP) por
                 heurística errada — pior que não sugerir nada num campo de
                 documento. */}
-            {exigeCpfDoDestinatario && (
-              <div className="border-t border-zinc-100/50 pt-4">
-                <label
-                  htmlFor="checkout-cpf"
-                  className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                >
-                  CPF do Destinatário
-                </label>
-                <Controller
-                  control={form.control}
-                  name="cpf"
-                  render={({ field }) => (
-                    <input
-                      id="checkout-cpf"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={field.value ?? ""}
-                      onChange={(e) =>
-                        field.onChange(formatarCpf(e.target.value).formatado)
-                      }
-                      ref={field.ref}
-                      placeholder="000.000.000-00"
-                      maxLength={14}
-                      aria-invalid={
-                        form.formState.errors.cpf ? true : undefined
-                      }
-                      aria-describedby={
-                        form.formState.errors.cpf
-                          ? "erro-checkout-cpf"
-                          : "ajuda-checkout-cpf"
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                  )}
-                />
-                {form.formState.errors.cpf ? (
-                  <p
-                    id="erro-checkout-cpf"
-                    className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
-                  >
-                    {form.formState.errors.cpf.message}
-                  </p>
-                ) : (
-                  <p
-                    id="ajuda-checkout-cpf"
-                    className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-400"
-                  >
-                    Exigido pela transportadora para emitir a etiqueta de envio.
-                  </p>
-                )}
-                {user && contaTemCpf === false && (
+              {exigeCpfDoDestinatario && (
+                <div className="border-t border-zinc-100/50 pt-4">
                   <label
-                    htmlFor="checkout-salvar-cpf-na-conta"
-                    className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                    htmlFor="checkout-cpf"
+                    className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
                   >
-                    <input
-                      id="checkout-salvar-cpf-na-conta"
-                      type="checkbox"
-                      checked={salvarCpfNaConta}
-                      onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
-                      className="mt-0.5 size-4 shrink-0 accent-zinc-900"
-                    />
-                    <span>Este CPF é meu e quero salvá-lo na minha conta</span>
+                    CPF do Destinatário
                   </label>
-                )}
-              </div>
-            )}
-
-            {/* Guest Address Fields */}
-            {!user && (
-              <div className="space-y-4 border-t border-zinc-100/50 pt-4">
-                <div className="mb-1 flex items-center gap-2">
-                  <MapPin className="size-4 text-zinc-400" />
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    Endereço de Entrega
-                  </span>
+                  <Controller
+                    control={form.control}
+                    name="cpf"
+                    render={({ field }) => (
+                      <input
+                        id="checkout-cpf"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={field.value ?? ""}
+                        onChange={(e) =>
+                          field.onChange(formatarCpf(e.target.value).formatado)
+                        }
+                        ref={field.ref}
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        aria-invalid={
+                          form.formState.errors.cpf ? true : undefined
+                        }
+                        aria-describedby={
+                          form.formState.errors.cpf
+                            ? "erro-checkout-cpf"
+                            : "ajuda-checkout-cpf"
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      />
+                    )}
+                  />
+                  {form.formState.errors.cpf ? (
+                    <p
+                      id="erro-checkout-cpf"
+                      className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    >
+                      {form.formState.errors.cpf.message}
+                    </p>
+                  ) : (
+                    <p
+                      id="ajuda-checkout-cpf"
+                      className="ml-1 mt-1.5 text-[10px] font-medium text-zinc-400"
+                    >
+                      Exigido pela transportadora para emitir a etiqueta de
+                      envio.
+                    </p>
+                  )}
+                  {user && contaTemCpf === false && (
+                    <label
+                      htmlFor="checkout-salvar-cpf-na-conta"
+                      className="ml-1 mt-3 flex cursor-pointer items-start gap-2 text-[11px] font-medium text-zinc-600"
+                    >
+                      <input
+                        id="checkout-salvar-cpf-na-conta"
+                        type="checkbox"
+                        checked={salvarCpfNaConta}
+                        onChange={(e) => setSalvarCpfNaConta(e.target.checked)}
+                        className="mt-0.5 size-4 shrink-0 accent-zinc-900"
+                      />
+                      <span>
+                        Este CPF é meu e quero salvá-lo na minha conta
+                      </span>
+                    </label>
+                  )}
                 </div>
+              )}
 
-                {/* GRADE DE 6 COLUNAS, e o número 6 é o conserto.
+              {/* Guest Address Fields */}
+              {!user && (
+                <div className="space-y-4 border-t border-zinc-100/50 pt-4">
+                  <div className="mb-1 flex items-center gap-2">
+                    <MapPin className="size-4 text-zinc-400" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                      Endereço de Entrega
+                    </span>
+                  </div>
+
+                  {/* GRADE DE 6 COLUNAS, e o número 6 é o conserto.
                     Com `grid-cols-2` cada campo só podia ser metade (151px em
                     375px de tela) ou linha inteira (313px) — e nenhuma dessas
                     duas medidas serve para Cidade (nome médio) nem para Estado
@@ -3867,355 +3913,355 @@ export function CheckoutView({
                     tela não dão mais que isso. Se isso virar problema, o
                     tratamento é outro (rótulo flutuante, quebra em duas linhas),
                     nunca uma quarta contagem de colunas. */}
-                <div className="grid grid-cols-6 gap-3">
-                  {/* Sem variante `md:` em nenhum campo daqui: o container do
+                  <div className="grid grid-cols-6 gap-3">
+                    {/* Sem variante `md:` em nenhum campo daqui: o container do
                       checkout tem `max-w-md` em toda largura, então não existe
                       mais o alargamento que o `md:` compensava — ele só
                       apertaria. */}
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-cep"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      CEP
-                    </label>
-                    <div className="relative">
+                    <div className="col-span-3">
+                      <label
+                        htmlFor="guest-cep"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      >
+                        CEP
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="guest-cep"
+                          {...form.register("cep")}
+                          placeholder="00000-000"
+                          disabled={isSearchingCep}
+                          aria-invalid={
+                            form.formState.errors.cep ? true : undefined
+                          }
+                          aria-describedby={
+                            form.formState.errors.cep
+                              ? "erro-guest-cep"
+                              : undefined
+                          }
+                          className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                          onChange={async (e) => {
+                            const { limpo, formatado } = formatarCep(
+                              e.target.value,
+                            );
+                            form.setValue("cep", formatado, {
+                              shouldValidate: true,
+                            });
+                            localStorage.setItem(
+                              "ikcous_last_shipping_cep",
+                              formatado,
+                            );
+
+                            const isNational =
+                              config.shippingCoverage === "national";
+                            // `limpo.length === 8` é portante, não só filtro
+                            // de busca — ver o comentário equivalente em
+                            // AddressForm.tsx.
+                            if (isNational && limpo.length === 8) {
+                              cepEmBuscaRef.current = limpo;
+                              await buscarCep(limpo);
+                            }
+                          }}
+                        />
+                        {isSearchingCep && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <Loader2 className="size-4 animate-spin text-zinc-400" />
+                          </div>
+                        )}
+                      </div>
+                      {form.formState.errors.cep && (
+                        <p
+                          id="erro-guest-cep"
+                          className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        >
+                          {form.formState.errors.cep.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-3">
+                      <label
+                        htmlFor="guest-number"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      >
+                        Número
+                      </label>
                       <input
-                        id="guest-cep"
-                        {...form.register("cep")}
-                        placeholder="00000-000"
-                        disabled={isSearchingCep}
+                        id="guest-number"
+                        {...form.register("number")}
+                        placeholder="123"
                         aria-invalid={
-                          form.formState.errors.cep ? true : undefined
+                          form.formState.errors.number ? true : undefined
                         }
                         aria-describedby={
-                          form.formState.errors.cep
-                            ? "erro-guest-cep"
+                          form.formState.errors.number
+                            ? "erro-guest-number"
                             : undefined
                         }
                         className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                        onChange={async (e) => {
-                          const { limpo, formatado } = formatarCep(
-                            e.target.value,
-                          );
-                          form.setValue("cep", formatado, {
-                            shouldValidate: true,
-                          });
-                          localStorage.setItem(
-                            "ikcous_last_shipping_cep",
-                            formatado,
-                          );
-
-                          const isNational =
-                            config.shippingCoverage === "national";
-                          // `limpo.length === 8` é portante, não só filtro
-                          // de busca — ver o comentário equivalente em
-                          // AddressForm.tsx.
-                          if (isNational && limpo.length === 8) {
-                            cepEmBuscaRef.current = limpo;
-                            await buscarCep(limpo);
-                          }
-                        }}
                       />
-                      {isSearchingCep && (
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <Loader2 className="size-4 animate-spin text-zinc-400" />
-                        </div>
+                      {form.formState.errors.number && (
+                        <p
+                          id="erro-guest-number"
+                          className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        >
+                          {form.formState.errors.number.message}
+                        </p>
                       )}
                     </div>
-                    {form.formState.errors.cep && (
-                      <p
-                        id="erro-guest-cep"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                    <div className="col-span-6">
+                      <label
+                        htmlFor="guest-street"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
                       >
-                        {form.formState.errors.cep.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-number"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Número
-                    </label>
-                    <input
-                      id="guest-number"
-                      {...form.register("number")}
-                      placeholder="123"
-                      aria-invalid={
-                        form.formState.errors.number ? true : undefined
-                      }
-                      aria-describedby={
-                        form.formState.errors.number
-                          ? "erro-guest-number"
-                          : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.number && (
-                      <p
-                        id="erro-guest-number"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        Rua
+                      </label>
+                      <input
+                        id="guest-street"
+                        {...form.register("street")}
+                        placeholder="Nome da rua"
+                        aria-invalid={
+                          form.formState.errors.street ? true : undefined
+                        }
+                        aria-describedby={
+                          form.formState.errors.street
+                            ? "erro-guest-street"
+                            : undefined
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      />
+                      {form.formState.errors.street && (
+                        <p
+                          id="erro-guest-street"
+                          className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        >
+                          {form.formState.errors.street.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-6">
+                      <label
+                        htmlFor="guest-neighborhood"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
                       >
-                        {form.formState.errors.number.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-6">
-                    <label
-                      htmlFor="guest-street"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Rua
-                    </label>
-                    <input
-                      id="guest-street"
-                      {...form.register("street")}
-                      placeholder="Nome da rua"
-                      aria-invalid={
-                        form.formState.errors.street ? true : undefined
-                      }
-                      aria-describedby={
-                        form.formState.errors.street
-                          ? "erro-guest-street"
-                          : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.street && (
-                      <p
-                        id="erro-guest-street"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        Bairro
+                      </label>
+                      <input
+                        id="guest-neighborhood"
+                        {...form.register("neighborhood")}
+                        placeholder="Seu bairro"
+                        aria-invalid={
+                          form.formState.errors.neighborhood ? true : undefined
+                        }
+                        aria-describedby={
+                          form.formState.errors.neighborhood
+                            ? "erro-guest-neighborhood"
+                            : undefined
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      />
+                      {form.formState.errors.neighborhood && (
+                        <p
+                          id="erro-guest-neighborhood"
+                          className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        >
+                          {form.formState.errors.neighborhood.message}
+                        </p>
+                      )}
+                    </div>
+                    <div className="col-span-3">
+                      <label
+                        htmlFor="guest-city"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
                       >
-                        {form.formState.errors.street.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-6">
-                    <label
-                      htmlFor="guest-neighborhood"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Bairro
-                    </label>
-                    <input
-                      id="guest-neighborhood"
-                      {...form.register("neighborhood")}
-                      placeholder="Seu bairro"
-                      aria-invalid={
-                        form.formState.errors.neighborhood ? true : undefined
-                      }
-                      aria-describedby={
-                        form.formState.errors.neighborhood
-                          ? "erro-guest-neighborhood"
-                          : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                    {form.formState.errors.neighborhood && (
-                      <p
-                        id="erro-guest-neighborhood"
-                        className="ml-1 mt-1.5 text-[10px] font-bold uppercase text-red-500"
+                        Cidade
+                      </label>
+                      <input
+                        id="guest-city"
+                        {...form.register("city")}
+                        placeholder="Cidade"
+                        // Sem mensagem renderizada para este campo, mas o erro
+                        // existe no schema (convidado): `aria-invalid` + foco
+                        // do handler anunciam o problema (laudo 03/09, achado 1).
+                        aria-invalid={
+                          form.formState.errors.city ? true : undefined
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      />
+                    </div>
+                    <div className="col-span-3">
+                      <label
+                        htmlFor="guest-state"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
                       >
-                        {form.formState.errors.neighborhood.message}
-                      </p>
-                    )}
-                  </div>
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-city"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Cidade
-                    </label>
-                    <input
-                      id="guest-city"
-                      {...form.register("city")}
-                      placeholder="Cidade"
-                      // Sem mensagem renderizada para este campo, mas o erro
-                      // existe no schema (convidado): `aria-invalid` + foco
-                      // do handler anunciam o problema (laudo 03/09, achado 1).
-                      aria-invalid={
-                        form.formState.errors.city ? true : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <label
-                      htmlFor="guest-state"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Estado
-                    </label>
-                    <input
-                      id="guest-state"
-                      {...form.register("state")}
-                      maxLength={2}
-                      placeholder={
-                        config.shippingCoverage === "national" ? "UF" : "MG"
-                      }
-                      aria-invalid={
-                        form.formState.errors.state ? true : undefined
-                      }
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
-                  </div>
-                  <div className="col-span-6">
-                    <label
-                      htmlFor="guest-complement"
-                      className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
-                    >
-                      Complemento (Opcional)
-                    </label>
-                    <input
-                      id="guest-complement"
-                      {...form.register("complement")}
-                      placeholder="Apto, Bloco, Fundos, etc."
-                      className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
-                    />
+                        Estado
+                      </label>
+                      <input
+                        id="guest-state"
+                        {...form.register("state")}
+                        maxLength={2}
+                        placeholder={
+                          config.shippingCoverage === "national" ? "UF" : "MG"
+                        }
+                        aria-invalid={
+                          form.formState.errors.state ? true : undefined
+                        }
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      />
+                    </div>
+                    <div className="col-span-6">
+                      <label
+                        htmlFor="guest-complement"
+                        className="mb-1.5 ml-1 block text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                      >
+                        Complemento (Opcional)
+                      </label>
+                      <input
+                        id="guest-complement"
+                        {...form.register("complement")}
+                        placeholder="Apto, Bloco, Fundos, etc."
+                        className="w-full rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-zinc-900 focus:bg-white"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Saved Addresses (Logged In Only) — mesma seção "Seus dados e
+              {/* Saved Addresses (Logged In Only) — mesma seção "Seus dados e
                 entrega" (23/09/2026): era um segundo cartão alto e
                 independente; agora vive dentro do MESMO corpo, atrás do
                 mesmo resumo/cabeçalho. */}
-            {user && (
-              <div className="space-y-3 border-t border-zinc-100/50 pt-4">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="size-4 text-zinc-400" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                      Endereço de Entrega
-                    </span>
+              {user && (
+                <div className="space-y-3 border-t border-zinc-100/50 pt-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="size-4 text-zinc-400" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                        Endereço de Entrega
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setEditingAddressId(null);
+                        setIsAddressModalOpen(true);
+                      }}
+                      className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
+                    >
+                      <Plus className="size-3" /> Novo
+                    </Button>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setEditingAddressId(null);
-                      setIsAddressModalOpen(true);
-                    }}
-                    className="flex h-11 items-center gap-1 rounded-xl bg-primary px-3 text-[11px] font-bold uppercase tracking-wider text-white transition-all hover:opacity-90"
-                  >
-                    <Plus className="size-3" /> Novo
-                  </Button>
+                  {addressesLoading ? (
+                    // Laudo de acessibilidade 03/09, achado 12: o carregamento
+                    // dos endereços era silêncio para leitor de tela —
+                    // role="status" + sr-only anunciam sem mudar o visual.
+                    <div
+                      role="status"
+                      className="flex min-h-[112px] flex-col items-center justify-center py-8"
+                    >
+                      <span className="sr-only">Carregando endereços</span>
+                      <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                        Sincronizando endereços...
+                      </p>
+                    </div>
+                  ) : (
+                    <AddressList
+                      addresses={addresses}
+                      selectable
+                      selectedId={selectedAddressId || undefined}
+                      onSelect={(endereco) => {
+                        handleSelectAddress(endereco);
+                        // Escolheu um endereço da lista: recolhe de volta ao
+                        // resumo, já com o novo endereço — mesmo gesto de
+                        // "Trocar" da ShippingCalculator em `modoResumo`, logo
+                        // abaixo (consistência entre as duas seções que
+                        // aprenderam a resumir). REVISÃO DO DONO (23/09/2026):
+                        // recolhe SEMPRE, mesmo se o endereço novo for de
+                        // transportadora e o CPF ainda faltar — o resumo
+                        // recolhido avisa a pendência (data-testid
+                        // `checkout-resumo-falta-cpf`) em vez de forçar a
+                        // seção aberta; quem quer corrigir toca em "Editar".
+                        setIdentificacaoAbertaManual(false);
+                      }}
+                      onEdit={handleEditAddress}
+                    />
+                  )}
                 </div>
-                {addressesLoading ? (
-                  // Laudo de acessibilidade 03/09, achado 12: o carregamento
-                  // dos endereços era silêncio para leitor de tela —
-                  // role="status" + sr-only anunciam sem mudar o visual.
-                  <div
-                    role="status"
-                    className="flex min-h-[112px] flex-col items-center justify-center py-8"
-                  >
-                    <span className="sr-only">Carregando endereços</span>
-                    <div className="border-3 mb-3 size-6 animate-spin rounded-full border-zinc-100 border-t-primary" />
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                      Sincronizando endereços...
-                    </p>
-                  </div>
-                ) : (
-                  <AddressList
-                    addresses={addresses}
-                    selectable
-                    selectedId={selectedAddressId || undefined}
-                    onSelect={(endereco) => {
-                      handleSelectAddress(endereco);
-                      // Escolheu um endereço da lista: recolhe de volta ao
-                      // resumo, já com o novo endereço — mesmo gesto de
-                      // "Trocar" da ShippingCalculator em `modoResumo`, logo
-                      // abaixo (consistência entre as duas seções que
-                      // aprenderam a resumir). REVISÃO DO DONO (23/09/2026):
-                      // recolhe SEMPRE, mesmo se o endereço novo for de
-                      // transportadora e o CPF ainda faltar — o resumo
-                      // recolhido avisa a pendência (data-testid
-                      // `checkout-resumo-falta-cpf`) em vez de forçar a
-                      // seção aberta; quem quer corrigir toca em "Editar".
-                      setIdentificacaoAbertaManual(false);
-                    }}
-                    onEdit={handleEditAddress}
-                  />
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Frete do destino de entrega: cota sozinho pelo endereço
+          {/* Frete do destino de entrega: cota sozinho pelo endereço
             escolhido (logado) ou pelo CEP completo do formulário
             (convidado). Trocar/adicionar/editar endereço acima troca o
             destino — a cotação anterior cai na hora e a nova sai sozinha. */}
-        {cart.length > 0 && (
-          <ShippingCalculator
-            key={user?.id ?? "convidado"}
-            cart={cart}
-            selectedOption={selectedShippingOption}
-            selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
-            onSelectOption={setSelectedShippingOption}
-            onCepValidated={registrarCepCotado}
-            cepDestino={cepDoDestinoDaCotacao}
-            cepDaSelecao={shippingCep}
-            destino={
-              enderecoEfetivo
-                ? {
-                    apelido: enderecoEfetivo.name,
-                    resumo: resumoDoEndereco(enderecoEfetivo),
-                  }
-                : null
-            }
-            mensagemSemDestino={
-              user
-                ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
-                : "Preencha o CEP de entrega acima para calcular o frete."
-            }
-            onStatusChange={setStatusDoFrete}
-            forcarNovaCotacaoEm={forcarNovaCotacaoEm}
-            // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
-            // escolhida atrás de "Trocar" — o carrinho (outro consumidor
-            // deste MESMO componente) não passa a prop e continua mostrando
-            // a lista inteira, sem nenhuma mudança de comportamento.
-            modoResumo
-          />
-        )}
+          {cart.length > 0 && (
+            <ShippingCalculator
+              key={user?.id ?? "convidado"}
+              cart={cart}
+              selectedOption={selectedShippingOption}
+              selecaoEscolhidaPelaCliente={freteEscolhidoPelaCliente}
+              onSelectOption={setSelectedShippingOption}
+              onCepValidated={registrarCepCotado}
+              cepDestino={cepDoDestinoDaCotacao}
+              cepDaSelecao={shippingCep}
+              destino={
+                enderecoEfetivo
+                  ? {
+                      apelido: enderecoEfetivo.name,
+                      resumo: resumoDoEndereco(enderecoEfetivo),
+                    }
+                  : null
+              }
+              mensagemSemDestino={
+                user
+                  ? "Cadastre ou escolha um endereço de entrega acima para calcular o frete."
+                  : "Preencha o CEP de entrega acima para calcular o frete."
+              }
+              onStatusChange={setStatusDoFrete}
+              forcarNovaCotacaoEm={forcarNovaCotacaoEm}
+              // CHECKOUT COMPACTO (23/09/2026): só o CHECKOUT resume a opção
+              // escolhida atrás de "Trocar" — o carrinho (outro consumidor
+              // deste MESMO componente) não passa a prop e continua mostrando
+              // a lista inteira, sem nenhuma mudança de comportamento.
+              modoResumo
+            />
+          )}
 
-        {/* Coupon */}
-        {config.enableCoupons && (
+          {/* Coupon */}
+          {config.enableCoupons && (
+            <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
+              <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
+                <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+                  <Tag className="size-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
+                  Vantagem Exclusiva
+                </span>
+              </div>
+              <div className="p-4">
+                <CouponInput
+                  onApply={handleApplyCoupon}
+                  onRemove={handleRemoveCoupon}
+                  appliedCoupon={appliedCoupon}
+                  error={couponError}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Payment Method */}
           <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
             <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
               <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <Tag className="size-4" />
+                <CreditCard className="size-4" />
               </div>
               <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Vantagem Exclusiva
+                Meio de Pagamento
               </span>
             </div>
-            <div className="p-4">
-              <CouponInput
-                onApply={handleApplyCoupon}
-                onRemove={handleRemoveCoupon}
-                appliedCoupon={appliedCoupon}
-                error={couponError}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Payment Method */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-              <CreditCard className="size-4" />
-            </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-              Meio de Pagamento
-            </span>
-          </div>
-          {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
+            {/* Laudo de acessibilidade 03/09, achado 3: as opções de pagamento
               são uma escolha ÚNICA, mas nada anunciava qual estava marcada —
               o "check" era só um desenho. `radiogroup` + `radio` com
               `aria-checked` dá o estado ao leitor de tela.
@@ -4223,22 +4269,22 @@ export function CheckoutView({
               só, misturando "pagar agora" com "pagar na entrega" — dois
               subgrupos rotulados dentro do MESMO `radiogroup` (a escolha
               continua sendo uma só; só o agrupamento visual é novo). */}
-          <div
-            role="radiogroup"
-            aria-label="Meio de pagamento"
-            className="space-y-4 p-4"
-          >
-            {opcoesNoApp.length > 0 && (
-              <div className="space-y-2.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                  No app
-                </span>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {opcoesNoApp.map(renderOpcaoDePagamento)}
+            <div
+              role="radiogroup"
+              aria-label="Meio de pagamento"
+              className="space-y-4 p-4"
+            >
+              {opcoesNoApp.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                    No app
+                  </span>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {opcoesNoApp.map(renderOpcaoDePagamento)}
+                  </div>
                 </div>
-              </div>
-            )}
-            {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
+              )}
+              {/* REGRA DO FRETE × PAGAMENTO (dono, 21/09/2026): envio por
                 transportadora exige pagamento antecipado — o grupo "Na
                 entrega" só some quando o frete escolhido É transportadora
                 (qualquer id ≠ "local-delivery"). Sem opção NENHUMA
@@ -4251,111 +4297,136 @@ export function CheckoutView({
                 pagamento online ligado é o PIX no app (auto-selecionado
                 pelo efeito da transição); sem ele, NÃO existe fallback "na
                 entrega" — o bloqueio é a regra e o texto diz por quê. */}
-            {selectedShippingOption && !ehEntregaLocal && (
-              <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
-                {pagamentoOnlineLigado()
-                  ? cartaoDisponivel
-                    ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
-                    : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
-                  : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
-              </p>
-            )}
-            {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o grupo "Na
+              {selectedShippingOption && !ehEntregaLocal && (
+                <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
+                  {pagamentoOnlineLigado()
+                    ? cartaoDisponivel
+                      ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
+                      : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                    : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
+                </p>
+              )}
+              {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o grupo "Na
                 entrega/retirada" some INTEIRO quando a loja desligou as
                 três — nunca um radiogroup vazio sem explicação. Convidado
                 (pagamento pelo app EXIGE conta, P6) vê o aviso de login no
                 lugar; cliente logado com o PIX ligado já vê o grupo "No
                 app" acima e não precisa de aviso extra. */}
-            {(!selectedShippingOption || ehEntregaLocal) &&
-              opcoesNaEntrega.length > 0 && (
-                <div className="space-y-2.5">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                    {ehRetirada ? "Na retirada" : "Na entrega"}
-                  </span>
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+              {(!selectedShippingOption || ehEntregaLocal) &&
+                opcoesNaEntrega.length > 0 && (
+                  <div className="space-y-2.5">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                      {ehRetirada ? "Na retirada" : "Na entrega"}
+                    </span>
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {opcoesNaEntrega.map(renderOpcaoDePagamento)}
+                    </div>
                   </div>
-                </div>
-              )}
-            {(!selectedShippingOption || ehEntregaLocal) &&
-              opcoesNaEntrega.length === 0 &&
-              !user && (
-                <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                  <p className="text-[11px] font-bold leading-snug text-amber-700">
-                    Para comprar nesta loja, entre na sua conta — o pagamento é
-                    feito pelo app
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      haptic.light();
-                      onNavigate("auth");
-                    }}
-                    className="flex min-h-[40px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
-                  >
-                    Entrar ou criar conta
-                  </button>
-                </div>
-              )}
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-          <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-            <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-              <FileText className="size-4" />
+                )}
+              {(!selectedShippingOption || ehEntregaLocal) &&
+                opcoesNaEntrega.length === 0 &&
+                !user && (
+                  <div className="flex flex-col items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                    <p className="text-[11px] font-bold leading-snug text-amber-700">
+                      Para comprar nesta loja, entre na sua conta — o pagamento
+                      é feito pelo app
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptic.light();
+                        onNavigate("auth");
+                      }}
+                      className="flex min-h-[40px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
+                    >
+                      Entrar ou criar conta
+                    </button>
+                  </div>
+                )}
             </div>
-            <label
-              htmlFor="order-notes"
-              className="text-[11px] font-bold uppercase tracking-wider text-zinc-500"
-            >
-              Notas Adicionais (Opcional)
-            </label>
           </div>
-          <div className="p-4">
-            <textarea
-              id="order-notes"
-              name="order_notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
-              rows={2}
-              className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white"
-              autoComplete="off"
-            />
-          </div>
-        </div>
 
-        {/* Location Notice — exige cobertura LOCAL porque a frase afirma
+          {/* Notes */}
+          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
+            <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
+              <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
+                <FileText className="size-4" />
+              </div>
+              <label
+                htmlFor="order-notes"
+                className="text-[11px] font-bold uppercase tracking-wider text-zinc-500"
+              >
+                Notas Adicionais (Opcional)
+              </label>
+            </div>
+            <div className="p-4">
+              <textarea
+                id="order-notes"
+                name="order_notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Ex: Deixar na portaria, campainha estragada, etc..."
+                rows={2}
+                className="w-full resize-none rounded-xl border-2 border-transparent bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-800 outline-none transition-all focus:border-primary focus:bg-white"
+                autoComplete="off"
+              />
+            </div>
+          </div>
+
+          {/* Location Notice — exige cobertura LOCAL porque a frase afirma
             EXCLUSIVIDADE de entrega na cidade (#525): com cobertura
             nacional ela seria falsa — a loja entrega para o país, não só
             para a sede. Some por inteiro quando a loja não configurou
             cidade. Este aviso é sobre a loja, não sobre o cliente. */}
-        {config.storeCity && config.shippingCoverage === "local" && (
-          <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
-            <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
-              <MapPin className="size-16 text-zinc-500" />
-            </div>
-            <div className="relative z-10 flex items-start gap-3">
-              <div className="mt-0.5 shrink-0">
-                <AlertCircle className="size-5 text-zinc-500" />
+          {config.storeCity && config.shippingCoverage === "local" && (
+            <div className="group relative overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50 p-4 text-slate-800 shadow-md">
+              <div className="absolute right-0 top-0 rotate-12 p-4 opacity-5 transition-transform duration-700 group-hover:rotate-0">
+                <MapPin className="size-16 text-zinc-500" />
               </div>
-              <div>
-                <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
-                  Aviso de Região
-                </h4>
-                <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
-                  Nossos serviços de entrega estão ativos exclusivamente em{" "}
-                  <span className="font-black text-slate-900">
-                    {config.storeCity}
-                    {config.storeState ? `, ${config.storeState}` : ""}
-                  </span>
-                  .
-                </p>
+              <div className="relative z-10 flex items-start gap-3">
+                <div className="mt-0.5 shrink-0">
+                  <AlertCircle className="size-5 text-zinc-500" />
+                </div>
+                <div>
+                  <h4 className="mb-1 text-xs font-bold uppercase tracking-wider text-slate-900">
+                    Aviso de Região
+                  </h4>
+                  <p className="text-[10px] font-medium uppercase leading-relaxed tracking-tight text-slate-500">
+                    Nossos serviços de entrega estão ativos exclusivamente em{" "}
+                    <span className="font-black text-slate-900">
+                      {config.storeCity}
+                      {config.storeState ? `, ${config.storeState}` : ""}
+                    </span>
+                    .
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+        </div>
+
+        {computador && (
+          <aside
+            ref={setAsideEl}
+            aria-label="Resumo do pedido"
+            className={cn(
+              COLUNA_FIXA_NO_COMPUTADOR,
+              "lg:rounded-2xl lg:border lg:border-zinc-100 lg:bg-white lg:px-4 lg:pt-5 lg:shadow-sm",
+            )}
+          >
+            <h2 className="lg:mb-5 lg:text-lg lg:font-bold lg:tracking-tight lg:text-zinc-900">
+              Resumo do pedido
+            </h2>
+            <ConteudoDoResumoDoPedido
+              cart={cart}
+              subtotal={subtotal}
+              shipping={shipping}
+              discount={discount}
+              economiaDoFrete={economiaDoFrete}
+              semFreteSelecionado={semFreteSelecionado}
+              totalExibido={totalExibido}
+            />
+          </aside>
         )}
       </div>
 
@@ -4389,12 +4460,12 @@ export function CheckoutView({
           Se a barra crescer de novo (nova linha, mais um selo, aviso novo),
           remedir do mesmo jeito antes de só somar um número por adivinhação. */}
       <div
-        className="hidden md:block"
+        className={cn("hidden md:block", "lg:hidden")}
         style={{ height: "200px" }}
         aria-hidden="true"
       />
       <div
-        className="block md:hidden"
+        className={cn("block md:hidden", "lg:hidden")}
         style={{ height: "calc(196px + var(--safe-area-bottom, 0px))" }}
         aria-hidden="true"
       />
@@ -4421,7 +4492,7 @@ export function CheckoutView({
                 visualmente o gatilho "ver mais"/"ver menos" que mora DENTRO
                 do header. */}
             <AnimatePresence>
-              {isSummaryPanelOpen && (
+              {isSummaryPanelOpen && !computador && (
                 <motion.div
                   key="checkout-summary-backdrop"
                   initial={{ opacity: 0 }}
@@ -4454,7 +4525,7 @@ export function CheckoutView({
               }}
             >
               <AnimatePresence>
-                {isSummaryPanelOpen && (
+                {isSummaryPanelOpen && !computador && (
                   <motion.div
                     key="checkout-summary-panel"
                     initial={{ y: -12, opacity: 0 }}
@@ -4494,176 +4565,73 @@ export function CheckoutView({
                       </button>
                     </div>
 
-                    {/* Sem botão de editar e sem link para o carrinho —
-                        voltar ao carrinho apaga o endereço já digitado
-                        (ver AGENTS.md/comentários do checkout), e este
-                        painel existe justamente para conferir sem sair
-                        da tela. */}
-                    <ul className="space-y-3">
-                      {cart.map((item) => {
-                        // Mesma fórmula de CartContext.tsx (cartTotal) —
-                        // não uma conta nova. Laudo 31/08 (menor E): a
-                        // regra única mora em preco-vendido.ts — `||`
-                        // cobrava o preço cheio de variação com override
-                        // ZERO.
-                        const precoUnitario = precoVendido(
-                          item.product,
-                          item.product.variants?.find(
-                            (v) => v.id === item.variantId,
-                          ),
-                        );
-
-                        return (
-                          <li
-                            key={`${item.product.id}-${item.variantId ?? ""}`}
-                            className="flex items-center gap-3"
-                          >
-                            <img
-                              src={item.product.images?.[0]}
-                              alt=""
-                              className="size-12 shrink-0 rounded-xl border border-zinc-100 bg-zinc-50 object-cover"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium text-zinc-800">
-                                {item.product.name}
-                              </p>
-                              {item.variantNames && (
-                                <p className="truncate text-[11px] text-zinc-400">
-                                  {item.variantNames}
-                                </p>
-                              )}
-                            </div>
-                            <span className="shrink-0 text-xs font-semibold text-zinc-600">
-                              {item.quantity} × R${" "}
-                              {precoUnitario.toFixed(2).replace(".", ",")}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
-
-                    {/* Sticky no fundo do painel (ponto de revisão de
-                        02/09/2026): com carrinho grande a lista rola
-                        DEBAIXO deste bloco e o Total nunca mais sai da
-                        tela. O `-mx-4 px-4` estende o fundo branco por
-                        toda a largura do painel (que agora só tem `px-4
-                        pt-3`), para nada aparecer na fresta do padding. */}
-                    <div className="sticky bottom-0 -mx-4 mt-3 space-y-1.5 border-t border-zinc-100 bg-white px-4 py-3 text-xs">
-                      <div className="flex items-center justify-between text-zinc-500">
-                        <span>Subtotal</span>
-                        <span>R$ {subtotal.toFixed(2).replace(".", ",")}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-zinc-500">
-                        <span>Entrega</span>
-                        <span>
-                          {/* 🔴 Sem cotação válida para o endereço atual
-                              (`semFreteSelecionado`): "a calcular", NUNCA
-                              um valor antigo do carrinho — mesma família da
-                              peça reprovada do lote C (frete cotado para A
-                              não vale para B). Isto é só exibição; a
-                              cotação/recotação em si não muda aqui. */}
-                          {semFreteSelecionado ? (
-                            "a calcular"
-                          ) : shipping > 0 && economiaDoFrete > 0 ? (
-                            // T3 (23/09): opção NACIONAL com desconto da loja
-                            // mas NÃO grátis (`precoCheio > price`, e o preço
-                            // final continua positivo) — mesmo padrão visual
-                            // do card do ShippingCalculator: cheio riscado
-                            // (= shipping + economiaDoFrete, a fonte é a
-                            // PRÓPRIA opção, nunca recalculada aqui) + final.
-                            <>
-                              <span className="mr-1 text-zinc-300 line-through">
-                                R${" "}
-                                {(shipping + economiaDoFrete)
-                                  .toFixed(2)
-                                  .replace(".", ",")}
-                              </span>
-                              R$ {shipping.toFixed(2).replace(".", ",")}
-                            </>
-                          ) : shipping > 0 ? (
-                            `R$ ${shipping.toFixed(2).replace(".", ",")}`
-                          ) : economiaDoFrete > 0 ? (
-                            // Frete grátis COM economia conhecida (pedido do
-                            // Gabriel, 12/09/2026): mostra o valor riscado
-                            // para explicar a pílula da barra de baixo — o
-                            // Total não muda (o frete grátis já entra como 0).
-                            <>
-                              <span className="mr-1 text-zinc-300 line-through">
-                                R${" "}
-                                {economiaDoFrete.toFixed(2).replace(".", ",")}
-                              </span>
-                              Grátis
-                            </>
-                          ) : (
-                            "Grátis"
-                          )}
-                        </span>
-                      </div>
-                      {discount > 0 && (
-                        <div className="flex items-center justify-between text-red-500">
-                          <span>Desconto</span>
-                          <span>
-                            -R$ {discount.toFixed(2).replace(".", ",")}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between pt-1 text-sm font-black text-zinc-900">
-                        <span>Total</span>
-                        <span>
-                          {/* Achado 1 do bloqueante: mesma regra da linha de
-                              Entrega — sem cotação válida não existe total
-                              fechado. */}
-                          {totalExibido === null
-                            ? "a calcular"
-                            : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
-                        </span>
-                      </div>
-                    </div>
+                    <ConteudoDoResumoDoPedido
+                      cart={cart}
+                      subtotal={subtotal}
+                      shipping={shipping}
+                      discount={discount}
+                      economiaDoFrete={economiaDoFrete}
+                      semFreteSelecionado={semFreteSelecionado}
+                      totalExibido={totalExibido}
+                    />
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-
-            <AnimatePresence>
-              {isPresent && isReady && (
-                // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
-                // DENTRO — é como o carrinho (CartFooterSummary) e os favoritos
-                // (FavoritesView) fazem, e a separação não é estética: o
-                // framer-motion escreve `transform: translateY(...)` inline no
-                // elemento que anima, e isso SOBRESCREVE o `md:-translate-x-1/2`
-                // do Tailwind. Com as duas coisas no mesmo elemento (como estava
-                // aqui), a centralização de md morria em silêncio: medido em
-                // 17/08/2026 numa janela de 1280px, a barra ficava em 640–1088px
-                // em vez de 416–864px — meia tela à direita do formulário.
-                //
-                // `bottom-docked-navigation` cola a barra na navegação inferior,
-                // como o carrinho, o produto e os favoritos já faziam. Esta barra
-                // usava uma `bottom-safe-navigation` — a mesma conta mais 12px —
-                // e era o único uso dela no app: aqueles 12px não eram respiro,
-                // eram uma fresta por onde o formulário rolando aparecia entre as
-                // duas barras (medido no mesmo dia: barra terminando em 736px,
-                // navegação começando em 747px, com um campo cinza à mostra no
-                // meio). A classe foi removida de `src/index.css` junto com este
-                // uso, para ninguém reabrir a fresta escolhendo o nome que soa
-                // mais seguro.
-                <div className="bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2">
-                  {/* O PAINEL DE RESUMO SAIU DAQUI (D1 refinado, 12/09/2026):
+          </>,
+          document.body,
+        )}
+      {typeof document !== "undefined" &&
+        document.body &&
+        createPortal(
+          <AnimatePresence>
+            {isPresent && isReady && (
+              // POSICIONAMENTO NO DIV DE FORA, ANIMAÇÃO NO motion.div DE
+              // DENTRO — é como o carrinho (CartFooterSummary) e os favoritos
+              // (FavoritesView) fazem, e a separação não é estética: o
+              // framer-motion escreve `transform: translateY(...)` inline no
+              // elemento que anima, e isso SOBRESCREVE o `md:-translate-x-1/2`
+              // do Tailwind. Com as duas coisas no mesmo elemento (como estava
+              // aqui), a centralização de md morria em silêncio: medido em
+              // 17/08/2026 numa janela de 1280px, a barra ficava em 640–1088px
+              // em vez de 416–864px — meia tela à direita do formulário.
+              //
+              // `bottom-docked-navigation` cola a barra na navegação inferior,
+              // como o carrinho, o produto e os favoritos já faziam. Esta barra
+              // usava uma `bottom-safe-navigation` — a mesma conta mais 12px —
+              // e era o único uso dela no app: aqueles 12px não eram respiro,
+              // eram uma fresta por onde o formulário rolando aparecia entre as
+              // duas barras (medido no mesmo dia: barra terminando em 736px,
+              // navegação começando em 747px, com um campo cinza à mostra no
+              // meio). A classe foi removida de `src/index.css` junto com este
+              // uso, para ninguém reabrir a fresta escolhendo o nome que soa
+              // mais seguro.
+              <div
+                className={cn(
+                  "bottom-docked-navigation fixed inset-x-0 z-[110] md:bottom-[104px] md:left-1/2 md:right-auto md:w-full md:max-w-md md:-translate-x-1/2",
+                  "lg:static lg:inset-auto lg:w-full lg:max-w-none lg:translate-x-0",
+                )}
+              >
+                {/* O PAINEL DE RESUMO SAIU DAQUI (D1 refinado, 12/09/2026):
                       ele subia ACIMA desta barra; agora mora num container
                       próprio, ancorado logo abaixo da barra SUPERIOR (ver o
                       bloco `checkout-summary-panel` mais acima, antes deste
                       `AnimatePresence`). Este container hospeda só a barra
                       do total. */}
-                  <motion.div
-                    initial={{ y: "100%", opacity: 0.5 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: "100%", opacity: 0 }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60"
-                  >
-                    {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
+                <motion.div
+                  initial={computador ? false : { y: "100%", opacity: 0.5 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={computador ? { opacity: 0 } : { y: "100%", opacity: 0 }}
+                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  className={cn(
+                    "w-full rounded-t-2xl border-t border-zinc-100 bg-white/95 p-3 px-4 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] backdrop-blur-xl md:rounded-b-none md:rounded-t-2xl md:border-x md:border-b-0 md:border-t md:border-zinc-200/60",
+                    "lg:rounded-none lg:border-0 lg:bg-transparent lg:px-0 lg:pb-5 lg:shadow-none lg:backdrop-blur-none",
+                  )}
+                >
+                  {/* `max-w-md` (não `max-w-screen-md`) para o total e o botão
                         ficarem na mesma coluna dos cards do formulário. */}
-                    <div className="mx-auto flex max-w-md items-center justify-between gap-2">
-                      {/* Pedido do Gabriel (12/09/2026, D1 refinado): a
+                  <div className="mx-auto flex max-w-md items-center justify-between gap-2">
+                    {/* Pedido do Gabriel (12/09/2026, D1 refinado): a
                           barra de baixo perde "1x maleta..." e "Inclui R$ X
                           de entrega" (foram para o painel/gatilho de cima) e
                           fica só com SUBTOTAL (produtos) e TOTAL (produtos +
@@ -4671,15 +4639,18 @@ export function CheckoutView({
                           o botão. Não é mais um botão — o "ver mais" que
                           abria o resumo agora mora no gatilho do topo
                           (`GatilhoDoResumoDoPedido`, portado para o Header). */}
-                      <div className="flex min-w-0 flex-1 flex-col justify-center gap-0.5">
-                        <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
-                          <span>Subtotal</span>
-                          <span>
-                            R$ {subtotal.toFixed(2).replace(".", ",")}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
-                          {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
+                    <div
+                      className={cn(
+                        "flex min-w-0 flex-1 flex-col justify-center gap-0.5",
+                        "lg:hidden",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                        <span>Subtotal</span>
+                        <span>R$ {subtotal.toFixed(2).replace(".", ",")}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-sm font-black text-zinc-900">
+                        {/* AJUSTE da re-revisão (Opus, medido a 320/360/375px
                               com o CSS real): quem cede espaço é a PALAVRA
                               "Total" (`min-w-0 truncate`), nunca um número.
                               Truncar a pílula mostrava dinheiro pela metade
@@ -4687,304 +4658,301 @@ export function CheckoutView({
                               a pílula e o valor do total ficam inteiros
                               (`shrink-0 whitespace-nowrap`). A 375px nada
                               muda: "Total" aparece inteiro. */}
-                          <span className="flex min-w-0 items-center gap-1">
-                            <span className="min-w-0 truncate whitespace-nowrap">
-                              Total
-                            </span>
-                            {/* Pedido do Gabriel (12/09/2026): pílula
+                        <span className="flex min-w-0 items-center gap-1">
+                          <span className="min-w-0 truncate whitespace-nowrap">
+                            Total
+                          </span>
+                          {/* Pedido do Gabriel (12/09/2026): pílula
                                 compacta com a ECONOMIA (cupom + o que o
                                 frete grátis deixou de cobrar) — nunca a
                                 porcentagem nem o código do cupom, só o
                                 valor. Some quando não há economia nenhuma;
                                 não altera `totalExibido` (o desconto já
                                 está embutido nele). */}
-                            {economiaTotal > 0 && (
-                              <span
-                                className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
-                                aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
-                              >
-                                -R$ {economiaTotal.toFixed(2).replace(".", ",")}
-                              </span>
-                            )}
-                          </span>
-                          <span className="shrink-0 whitespace-nowrap">
-                            {/* Achado 1 do bloqueante (12/09/2026): mesmo
+                          {economiaTotal > 0 && (
+                            <span
+                              className="shrink-0 whitespace-nowrap rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600"
+                              aria-label={`Desconto de R$ ${economiaTotal.toFixed(2).replace(".", ",")}`}
+                            >
+                              -R$ {economiaTotal.toFixed(2).replace(".", ",")}
+                            </span>
+                          )}
+                        </span>
+                        <span className="shrink-0 whitespace-nowrap">
+                          {/* Achado 1 do bloqueante (12/09/2026): mesmo
                                 valor do painel (`totalExibido`) — sem
                                 cotação válida a barra de baixo não pode
                                 fechar um total que ainda vai mudar. */}
-                            {totalExibido === null
-                              ? "a calcular"
-                              : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
-                          </span>
-                        </div>
+                          {totalExibido === null
+                            ? "a calcular"
+                            : `R$ ${totalExibido.toFixed(2).replace(".", ",")}`}
+                        </span>
                       </div>
+                    </div>
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptic.medium();
+                        void handleSubmitEvent().catch((error: unknown) => {
+                          // Protege também as exceções ANTES do try da RPC
+                          // (ex.: Web Crypto ou sessionStorage indisponível).
+                          setIsSubmitting(false);
+                          travaDeEnvioRef.current.liberar();
+                          console.error("Falha inesperada no checkout:", error);
+                          const saida = decidirSaidaDoCheckout(error);
+                          setRecusaDoUltimoClique(saida);
+                          toast.error(`Falha no Pedido: ${saida.mensagem}`);
+                        });
+                      }}
+                      disabled={botaoFinalizarDesabilitado}
+                      // Texto visível compacto ("Finalizar", não "Finalizar
+                      // Pedido") pedido pelo Gabriel (12/09/2026) — o nome
+                      // completo ocupava espaço demais ao lado do bloco de
+                      // totais. `aria-label` mantém o nome completo para
+                      // quem usa leitor de tela; o `sr-only` " Pedido"
+                      // completa o `textContent` do botão (compatível com
+                      // toda suíte que já procurava "Finalizar Pedido" por
+                      // texto) sem ocupar um pixel a mais na tela.
+                      aria-label="Finalizar pedido"
+                      className={cn(
+                        "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
+                        "lg:w-full",
+                        botaoFinalizarDesabilitado
+                          ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
+                          : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
+                      )}
+                    >
+                      {isSubmitting ? (
+                        <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+                      ) : (
+                        <>
+                          <span>Finalizar</span>
+                          <span className="sr-only"> Pedido</span>
+                          <ArrowLeft className="size-4 rotate-180" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {!semFreteSelecionado &&
+                    !isOffline &&
+                    !pagamentoIncompativel &&
+                    !isSubmitting &&
+                    pendenciaDeIdentificacao && (
+                      <button
+                        type="button"
+                        data-testid="checkout-pendencia-identificacao"
+                        onClick={() => {
+                          flushSync(() => setIdentificacaoAbertaManual(true));
+                          const campoPendente = faltaNome
+                            ? "checkout-name"
+                            : faltaWhatsapp
+                              ? "checkout-tel"
+                              : faltaCpf
+                                ? "checkout-cpf"
+                                : null;
+                          if (campoPendente)
+                            document.getElementById(campoPendente)?.focus();
+                          else
+                            document
+                              .getElementById("cabecalho-dados-e-entrega")
+                              ?.scrollIntoView?.({
+                                behavior: "smooth",
+                                block: "start",
+                              });
+                        }}
+                        className="mx-auto mt-1.5 flex max-w-md items-center gap-1.5 text-left text-[11px] font-bold text-red-600 underline underline-offset-2"
+                      >
+                        <AlertCircle className="size-3.5 shrink-0" />
+                        {pendenciaDeIdentificacao}
+                      </button>
+                    )}
+                  {semFreteSelecionado && (
+                    // Motivo visível: botão apagado sem explicação faz a
+                    // pessoa desistir sem saber por quê. Cenário real: a
+                    // loja não configurou de onde despacha, a cotação de
+                    // frete recusa, e sem este aviso o cliente só via um
+                    // botão cinza sem saber que precisa voltar ao
+                    // carrinho e calcular o frete.
+                    // Laudo de acessibilidade 03/09, achado 9: este aviso
+                    // RECUSA o pagamento — role="alert" fala na hora,
+                    // padrão da casa (SaidaDaRecusa.tsx:82).
+                    <p
+                      role="alert"
+                      className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                    >
+                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                      {semFreteSelecionado &&
+                      ctxFreteIndefinido &&
+                      !config.originCep?.trim()
+                        ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
+                        : freteEmCotacao
+                          ? "Calculando o frete do endereço de entrega..."
+                          : cepDoDestinoDaCotacao
+                            ? "Escolha uma opção de frete para continuar"
+                            : "Informe o endereço de entrega para calcular o frete"}
+                    </p>
+                  )}
+                  {!semFreteSelecionado &&
+                    pagamentoIncompativel &&
+                    paymentMethod === "online" &&
+                    ehEntregaLocal && (
+                      // O quarto motivo visível de botão apagado
+                      // (regra do dono, 21/09/2026): "online" ficou
+                      // selecionado e a loja derrubou a flag no meio da
+                      // sessão — estado STALE que a guarda
+                      // `pagamentoIncompativelComFrete` tranca. Sem esta
+                      // linha, entrega local + stale era botão cinza sem
+                      // explicação nenhuma (o aviso do grupo de pagamento
+                      // só existe para transportadora). Mesmo padrão dos
+                      // avisos acima: role="alert" fala na hora.
+                      <p
+                        role="alert"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                      >
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                        Pagamento pelo app indisponível — escolha um meio de
+                        pagamento na entrega
+                      </p>
+                    )}
+                  {!semFreteSelecionado &&
+                    !isOffline &&
+                    !pagamentoIncompativel &&
+                    formaDePagamentoDesligada &&
+                    // 🔴 CORRIGIDO na revisão Opus do commit 085282c3
+                    // (anotação 2): sem esta guarda, um convidado numa
+                    // loja só-pelo-app (nenhuma forma na entrega) via
+                    // ESTE aviso ("escolha outra na lista acima") AO
+                    // MESMO TEMPO do aviso de login — mas não existe
+                    // lista nenhuma para escolher (o grupo "Na
+                    // entrega/retirada" some inteiro nesse estado, ver
+                    // `opcoesNaEntrega.length === 0` abaixo), e os dois
+                    // avisos mandavam a pessoa em direções opostas.
+                    !(opcoesNaEntrega.length === 0 && !user) && (
+                      // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o
+                      // efeito de fallback (mais acima) já resolve o
+                      // caminho feliz sozinho — este aviso só aparece na
+                      // corrida residual (a loja desligou a forma ENTRE a
+                      // tela filtrar e o clique chegar) ou quando não
+                      // sobra para onde cair (mesmo espírito dos avisos
+                      // acima: botão apagado sem explicação faz a pessoa
+                      // desistir sem saber por quê).
+                      <p
+                        role="alert"
+                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                      >
+                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                        Esta forma de pagamento não está disponível — escolha
+                        outra na lista acima
+                      </p>
+                    )}
+                  {!semFreteSelecionado && isOffline && (
+                    // Mesmo padrão do aviso de frete acima: botão apagado
+                    // sem explicação faz a pessoa achar que travou de
+                    // verdade, em vez de só estar esperando a rede voltar.
+                    // Achado offline (15/09/2026): cliente no metrô perde
+                    // a conexão e via só um botão cinza, sem nenhuma pista
+                    // de que o motivo era a própria rede — e não o pedido.
+                    // `!semFreteSelecionado` evita empilhar dois avisos de
+                    // motivos diferentes ao mesmo tempo; o de frete já é
+                    // acionável primeiro (escolher frete não depende de
+                    // rede) e o texto seria confuso lado a lado.
+                    <p
+                      role="alert"
+                      className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                    >
+                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                      Sem conexão — nada foi enviado. Aguarde a internet voltar
+                      para finalizar
+                    </p>
+                  )}
+                  {convidadoForaDaCidade && (
+                    // Motivo visível da regra do convidado (decisão do
+                    // Gabriel, 30/08/2026): entrega para fora da cidade é
+                    // só com conta — sem cadastro não há como acompanhar
+                    // o pedido. Botão apagado SEM este aviso virava
+                    // desistência silenciosa.
+                    //
+                    // Compactado (02/09/2026): bloco mais enxuto (p-2.5,
+                    // gaps menores) com a AÇÃO como botão de 44px — em
+                    // telas estreitas como 375px o flex-wrap empilha o
+                    // botão na linha de baixo (~265px de título + ~200px
+                    // de botão não cabem nos ~343px úteis); em telas
+                    // largas título e botão dividem a primeira linha.
+                    // O bloco encolhe de ~137px para ~120px de altura e
+                    // cresce menos para cima sobre o formulário.
+                    <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
+                      <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-600">
+                        <AlertCircle className="size-3.5 shrink-0" />
+                        Entrega fora da cidade é só com conta
+                      </p>
                       <button
                         type="button"
                         onClick={() => {
-                          haptic.medium();
-                          void handleSubmitEvent().catch((error: unknown) => {
-                            // Protege também as exceções ANTES do try da RPC
-                            // (ex.: Web Crypto ou sessionStorage indisponível).
-                            setIsSubmitting(false);
-                            travaDeEnvioRef.current.liberar();
-                            console.error(
-                              "Falha inesperada no checkout:",
-                              error,
-                            );
-                            const saida = decidirSaidaDoCheckout(error);
-                            setRecusaDoUltimoClique(saida);
-                            toast.error(`Falha no Pedido: ${saida.mensagem}`);
-                          });
+                          haptic.light();
+                          onNavigate("auth");
                         }}
-                        disabled={botaoFinalizarDesabilitado}
-                        // Texto visível compacto ("Finalizar", não "Finalizar
-                        // Pedido") pedido pelo Gabriel (12/09/2026) — o nome
-                        // completo ocupava espaço demais ao lado do bloco de
-                        // totais. `aria-label` mantém o nome completo para
-                        // quem usa leitor de tela; o `sr-only` " Pedido"
-                        // completa o `textContent` do botão (compatível com
-                        // toda suíte que já procurava "Finalizar Pedido" por
-                        // texto) sem ocupar um pixel a mais na tela.
-                        aria-label="Finalizar pedido"
-                        className={cn(
-                          "h-12 px-3 transition-all duration-300 active:scale-[0.98] flex items-center justify-center gap-1.5 rounded-2xl uppercase tracking-wider font-bold text-xs shrink-0 shadow-lg",
-                          botaoFinalizarDesabilitado
-                            ? "bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200 shadow-none"
-                            : "bg-primary text-white hover:bg-primary/90 shadow-black/10",
-                        )}
+                        className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
                       >
-                        {isSubmitting ? (
-                          <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-white" />
-                        ) : (
-                          <>
-                            <span>Finalizar</span>
-                            <span className="sr-only"> Pedido</span>
-                            <ArrowLeft className="size-4 rotate-180" />
-                          </>
-                        )}
+                        Entrar ou criar conta
                       </button>
+                      <p className="w-full text-center text-[11px] leading-snug text-zinc-500">
+                        Crie sua conta para receber em outro CEP — assim você
+                        também acompanha seu pedido por aqui.
+                      </p>
                     </div>
-                    {!semFreteSelecionado &&
-                      !isOffline &&
-                      !pagamentoIncompativel &&
-                      !isSubmitting &&
-                      pendenciaDeIdentificacao && (
-                        <button
-                          type="button"
-                          data-testid="checkout-pendencia-identificacao"
-                          onClick={() => {
-                            flushSync(() => setIdentificacaoAbertaManual(true));
-                            const campoPendente = faltaNome
-                              ? "checkout-name"
-                              : faltaWhatsapp
-                                ? "checkout-tel"
-                                : faltaCpf
-                                  ? "checkout-cpf"
-                                  : null;
-                            if (campoPendente)
-                              document.getElementById(campoPendente)?.focus();
-                            else
-                              document
-                                .getElementById("cabecalho-dados-e-entrega")
-                                ?.scrollIntoView?.({
-                                  behavior: "smooth",
-                                  block: "start",
-                                });
-                          }}
-                          className="mx-auto mt-1.5 flex max-w-md items-center gap-1.5 text-left text-[11px] font-bold text-red-600 underline underline-offset-2"
-                        >
-                          <AlertCircle className="size-3.5 shrink-0" />
-                          {pendenciaDeIdentificacao}
-                        </button>
-                      )}
-                    {semFreteSelecionado && (
-                      // Motivo visível: botão apagado sem explicação faz a
-                      // pessoa desistir sem saber por quê. Cenário real: a
-                      // loja não configurou de onde despacha, a cotação de
-                      // frete recusa, e sem este aviso o cliente só via um
-                      // botão cinza sem saber que precisa voltar ao
-                      // carrinho e calcular o frete.
-                      // Laudo de acessibilidade 03/09, achado 9: este aviso
-                      // RECUSA o pagamento — role="alert" fala na hora,
-                      // padrão da casa (SaidaDaRecusa.tsx:82).
-                      <p
-                        role="alert"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
-                      >
-                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        {semFreteSelecionado &&
-                        ctxFreteIndefinido &&
-                        !config.originCep?.trim()
-                          ? "A loja ainda está configurando o frete — fale com a loja para combinar a entrega"
-                          : freteEmCotacao
-                            ? "Calculando o frete do endereço de entrega..."
-                            : cepDoDestinoDaCotacao
-                              ? "Escolha uma opção de frete para continuar"
-                              : "Informe o endereço de entrega para calcular o frete"}
-                      </p>
-                    )}
-                    {!semFreteSelecionado &&
-                      pagamentoIncompativel &&
-                      paymentMethod === "online" &&
-                      ehEntregaLocal && (
-                        // O quarto motivo visível de botão apagado
-                        // (regra do dono, 21/09/2026): "online" ficou
-                        // selecionado e a loja derrubou a flag no meio da
-                        // sessão — estado STALE que a guarda
-                        // `pagamentoIncompativelComFrete` tranca. Sem esta
-                        // linha, entrega local + stale era botão cinza sem
-                        // explicação nenhuma (o aviso do grupo de pagamento
-                        // só existe para transportadora). Mesmo padrão dos
-                        // avisos acima: role="alert" fala na hora.
-                        <p
-                          role="alert"
-                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
-                        >
-                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                          Pagamento pelo app indisponível — escolha um meio de
-                          pagamento na entrega
-                        </p>
-                      )}
-                    {!semFreteSelecionado &&
-                      !isOffline &&
-                      !pagamentoIncompativel &&
-                      formaDePagamentoDesligada &&
-                      // 🔴 CORRIGIDO na revisão Opus do commit 085282c3
-                      // (anotação 2): sem esta guarda, um convidado numa
-                      // loja só-pelo-app (nenhuma forma na entrega) via
-                      // ESTE aviso ("escolha outra na lista acima") AO
-                      // MESMO TEMPO do aviso de login — mas não existe
-                      // lista nenhuma para escolher (o grupo "Na
-                      // entrega/retirada" some inteiro nesse estado, ver
-                      // `opcoesNaEntrega.length === 0` abaixo), e os dois
-                      // avisos mandavam a pessoa em direções opostas.
-                      !(opcoesNaEntrega.length === 0 && !user) && (
-                        // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): o
-                        // efeito de fallback (mais acima) já resolve o
-                        // caminho feliz sozinho — este aviso só aparece na
-                        // corrida residual (a loja desligou a forma ENTRE a
-                        // tela filtrar e o clique chegar) ou quando não
-                        // sobra para onde cair (mesmo espírito dos avisos
-                        // acima: botão apagado sem explicação faz a pessoa
-                        // desistir sem saber por quê).
-                        <p
-                          role="alert"
-                          className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
-                        >
-                          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                          Esta forma de pagamento não está disponível — escolha
-                          outra na lista acima
-                        </p>
-                      )}
-                    {!semFreteSelecionado && isOffline && (
-                      // Mesmo padrão do aviso de frete acima: botão apagado
-                      // sem explicação faz a pessoa achar que travou de
-                      // verdade, em vez de só estar esperando a rede voltar.
-                      // Achado offline (15/09/2026): cliente no metrô perde
-                      // a conexão e via só um botão cinza, sem nenhuma pista
-                      // de que o motivo era a própria rede — e não o pedido.
-                      // `!semFreteSelecionado` evita empilhar dois avisos de
-                      // motivos diferentes ao mesmo tempo; o de frete já é
-                      // acionável primeiro (escolher frete não depende de
-                      // rede) e o texto seria confuso lado a lado.
-                      <p
-                        role="alert"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
-                      >
-                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        Sem conexão — nada foi enviado. Aguarde a internet
-                        voltar para finalizar
-                      </p>
-                    )}
-                    {convidadoForaDaCidade && (
-                      // Motivo visível da regra do convidado (decisão do
-                      // Gabriel, 30/08/2026): entrega para fora da cidade é
-                      // só com conta — sem cadastro não há como acompanhar
-                      // o pedido. Botão apagado SEM este aviso virava
-                      // desistência silenciosa.
-                      //
-                      // Compactado (02/09/2026): bloco mais enxuto (p-2.5,
-                      // gaps menores) com a AÇÃO como botão de 44px — em
-                      // telas estreitas como 375px o flex-wrap empilha o
-                      // botão na linha de baixo (~265px de título + ~200px
-                      // de botão não cabem nos ~343px úteis); em telas
-                      // largas título e botão dividem a primeira linha.
-                      // O bloco encolhe de ~137px para ~120px de altura e
-                      // cresce menos para cima sobre o formulário.
-                      <div className="mx-auto mt-1.5 flex max-w-md flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5">
-                        <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase text-amber-600">
-                          <AlertCircle className="size-3.5 shrink-0" />
-                          Entrega fora da cidade é só com conta
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            haptic.light();
-                            onNavigate("auth");
-                          }}
-                          className="flex min-h-[44px] items-center rounded-lg border border-primary/40 bg-primary/10 px-4 text-[11px] font-black uppercase tracking-widest text-primary transition-colors hover:bg-primary/20"
-                        >
-                          Entrar ou criar conta
-                        </button>
-                        <p className="w-full text-center text-[11px] leading-snug text-zinc-500">
-                          Crie sua conta para receber em outro CEP — assim você
-                          também acompanha seu pedido por aqui.
-                        </p>
-                      </div>
-                    )}
-                    {aguardandoConferenciaDaRecusa && (
-                      // A única porta de saída daqui era o "X" de 16px no
-                      // painel abaixo (aria-label "Fechar o aviso"), sem
-                      // nenhum texto ligando "fechar o aviso" a "o botão
-                      // volta". O painel já explica O PROBLEMA (a frase do
-                      // banco); esta linha explica só COMO DESTRAVAR o
-                      // botão — mesmo espírito do aviso de frete acima.
-                      //
-                      // `conferir_antes` reúne DOIS casos (recusaDoPedido.ts:
-                      // 141-169), não um: erro sem código reconhecível, onde
-                      // a resposta pode não ter chegado e ninguém sabe se o
-                      // pedido existe; e um P0001 cujo texto nenhuma regra
-                      // prevista casa, onde a resposta CHEGOU e o
-                      // `RAISE EXCEPTION` garante que o pedido não nasceu —
-                      // a trava aí é conservadora de propósito, não por
-                      // falta de prova. Nos dois, a frase não manda
-                      // "conferir sua lista de pedidos": quem compra sem
-                      // conta não tem, aqui, nem o id do pedido nem o
-                      // comprovante que o "Ver meus pedidos" exige
-                      // (OrderSearch.tsx:80-85) — mandar conferir algo
-                      // impossível só empurrava para "então fecha e tenta de
-                      // novo", que é o pedido em dobro que esta trava existe
-                      // para evitar. Por isso a frase não afirma nenhum
-                      // estado de tela: só instrui a saída, para quem já tem
-                      // certeza.
-                      <p
-                        data-testid="aviso-como-destravar-finalizar"
-                        className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
-                      >
-                        <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                        Só feche o aviso abaixo se tiver certeza de que o pedido
-                        não foi criado
-                      </p>
-                    )}
-                    {recusaDoUltimoClique && (
-                      // Fica ao lado do botão que acabou de falhar, de
-                      // propósito: é onde a pessoa está olhando no instante da
-                      // recusa. O toast avisa; este painel é o que dá a saída.
-                      <div className="mx-auto max-w-md">
-                        <SaidaDaRecusa
-                          recusa={recusaDoUltimoClique}
-                          onAgir={agirNaRecusa}
-                          onFechar={() => setRecusaDoUltimoClique(null)}
-                        />
-                      </div>
-                    )}
-                  </motion.div>
-                </div>
-              )}
-            </AnimatePresence>
-          </>,
-          document.body,
+                  )}
+                  {aguardandoConferenciaDaRecusa && (
+                    // A única porta de saída daqui era o "X" de 16px no
+                    // painel abaixo (aria-label "Fechar o aviso"), sem
+                    // nenhum texto ligando "fechar o aviso" a "o botão
+                    // volta". O painel já explica O PROBLEMA (a frase do
+                    // banco); esta linha explica só COMO DESTRAVAR o
+                    // botão — mesmo espírito do aviso de frete acima.
+                    //
+                    // `conferir_antes` reúne DOIS casos (recusaDoPedido.ts:
+                    // 141-169), não um: erro sem código reconhecível, onde
+                    // a resposta pode não ter chegado e ninguém sabe se o
+                    // pedido existe; e um P0001 cujo texto nenhuma regra
+                    // prevista casa, onde a resposta CHEGOU e o
+                    // `RAISE EXCEPTION` garante que o pedido não nasceu —
+                    // a trava aí é conservadora de propósito, não por
+                    // falta de prova. Nos dois, a frase não manda
+                    // "conferir sua lista de pedidos": quem compra sem
+                    // conta não tem, aqui, nem o id do pedido nem o
+                    // comprovante que o "Ver meus pedidos" exige
+                    // (OrderSearch.tsx:80-85) — mandar conferir algo
+                    // impossível só empurrava para "então fecha e tenta de
+                    // novo", que é o pedido em dobro que esta trava existe
+                    // para evitar. Por isso a frase não afirma nenhum
+                    // estado de tela: só instrui a saída, para quem já tem
+                    // certeza.
+                    <p
+                      data-testid="aviso-como-destravar-finalizar"
+                      className="mx-auto mt-1.5 flex max-w-md items-start gap-1.5 text-[11px] font-bold uppercase text-red-500"
+                    >
+                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                      Só feche o aviso abaixo se tiver certeza de que o pedido
+                      não foi criado
+                    </p>
+                  )}
+                  {recusaDoUltimoClique && (
+                    // Fica ao lado do botão que acabou de falhar, de
+                    // propósito: é onde a pessoa está olhando no instante da
+                    // recusa. O toast avisa; este painel é o que dá a saída.
+                    <div className="mx-auto max-w-md">
+                      <SaidaDaRecusa
+                        recusa={recusaDoUltimoClique}
+                        onAgir={agirNaRecusa}
+                        onFechar={() => setRecusaDoUltimoClique(null)}
+                      />
+                    </div>
+                  )}
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          computador && asideEl ? asideEl : document.body,
         )}
     </div>
   );
@@ -5041,7 +5009,12 @@ function SuccessView({
   };
 
   return (
-    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+    <div
+      className={cn(
+        "pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center",
+        "lg:mx-auto lg:my-10 lg:min-h-0 lg:w-full lg:max-w-[560px] lg:rounded-3xl lg:border lg:border-zinc-100 lg:py-12 lg:shadow-sm",
+      )}
+    >
       <div className="group relative mb-12">
         <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-emerald-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
         <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-emerald-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
@@ -5125,7 +5098,12 @@ function PagamentoConfirmadoView({
   onNavigate,
 }: Readonly<PagamentoConfirmadoViewProps>) {
   return (
-    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+    <div
+      className={cn(
+        "pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center",
+        "lg:mx-auto lg:my-10 lg:min-h-0 lg:w-full lg:max-w-[560px] lg:rounded-3xl lg:border lg:border-zinc-100 lg:py-12 lg:shadow-sm",
+      )}
+    >
       <div className="group relative mb-12">
         <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-emerald-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
         <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-emerald-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
@@ -5233,7 +5211,12 @@ function PagamentoForaDoPrazoView({
   };
 
   return (
-    <div className="pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center">
+    <div
+      className={cn(
+        "pb-customer flex min-h-full flex-col items-center justify-center bg-white px-6 text-center",
+        "lg:mx-auto lg:my-10 lg:min-h-0 lg:w-full lg:max-w-[560px] lg:rounded-3xl lg:border lg:border-zinc-100 lg:py-12 lg:shadow-sm",
+      )}
+    >
       <div className="group relative mb-12">
         <div className="absolute inset-0 scale-[2.5] rounded-2xl bg-amber-100 opacity-30 blur-3xl transition-opacity duration-1000 group-hover:opacity-50" />
         <div className="relative flex size-32 items-center justify-center rounded-2xl border-4 border-white bg-amber-50 shadow-2xl transition-transform duration-700 group-hover:scale-110">
@@ -5303,7 +5286,12 @@ function AddressSelectionView({
   onCancel,
 }: Readonly<AddressSelectionViewProps>) {
   return (
-    <div className="min-h-screen bg-white pb-16 duration-500 animate-in slide-in-from-right">
+    <div
+      className={cn(
+        "min-h-screen bg-white pb-16 duration-500 animate-in slide-in-from-right",
+        "lg:mx-auto lg:my-10 lg:min-h-0 lg:w-full lg:max-w-[560px] lg:rounded-3xl lg:border lg:border-zinc-100 lg:py-12 lg:shadow-sm",
+      )}
+    >
       <div className="mx-auto max-w-md p-4">
         <div className="group relative mb-5 overflow-hidden rounded-2xl bg-primary p-5 shadow-lg">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 size-32 rounded-full bg-white/5 blur-2xl transition-colors group-hover:bg-white/10" />
