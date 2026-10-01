@@ -4,23 +4,45 @@ O que sobe: as migrations `20261184000000_o_pix_do_balcao_abre_na_hora.sql` e
 `20261185000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql`, a edge nova `cobrar-pix-no-balcao`
 e o front da tela Vender. Plano: [2026-09-28-balcao-pix-no-balcao.md](../superpowers/plans/2026-09-28-balcao-pix-no-balcao.md).
 
-**Só o dono aplica.** Nada disto foi aplicado em banco nenhum pela sessão que escreveu.
+**Só publicar após decisão do dono.** Esta preparação não aplica migrations, não publica
+functions e não faz cobrança real. O último CI do PR #741 (01/10) ainda achou as duas
+RPCs ausentes no banco ativo da IKCOUS; a prova em Postgres efêmero passou.
+
+| Destino no workflow | Projeto Supabase | Segredo usado pelo Actions |
+|---|---|---|
+| `loja` (IKCOUS) | `dekxabvqdsuukijblazl` | `SUPABASE_ACCESS_TOKEN` |
+| `savy` | `gnjsrucsmjkajijrakzr` | `SUPABASE_ACCESS_TOKEN_SAVY` |
+
+O projeto `cafkrminfnokvgjqtkle` é o antigo e não deve receber esta release.
+Nos dois workflows, selecione a branch que contém o commit aprovado; na Savy,
+preencha `expected_sha` com os 40 caracteres do commit selecionado. O run deve
+mostrar o mesmo `GITHUB_SHA` antes de qualquer operação.
 
 ## 0. Pré-requisitos (conferir antes)
 
-- As migrations **75–78** (PR #666) já estão aplicadas e conferidas na loja — a 84 grava
+- Em **IKCOUS e Savy**, confira por leitura do catálogo as migrations **74–83** e os
+  objetos dos quais 84/85 dependem. Um run de 28/09 registrou 74–83 na Savy,
+  mas não prova o estado no dia da publicação. A 84 grava
   `metodo_online` (coluna da 76) e usa `forma_de_pagamento_aceita` (74); a 85 usa a
   `devolver_estoque` da 75 e a tabela `devolucoes`. Sem elas, a aplicação falha no primeiro uso.
-- O PIX do site funciona na loja (credencial do Mercado Pago cadastrada e `pagamento_online`
-  ligado): o PIX com QR do balcão usa a MESMA conta e o MESMO webhook.
+- O PIX do site funciona em cada loja (credencial do Mercado Pago cadastrada e
+  `pagamento_online` ligado): o PIX com QR do balcão usa a conta e o webhook
+  daquela loja.
 - O cartão continua **desligado** — nada aqui liga cartão.
 
 ## 1. Ordem de publicação (fixa)
 
+Faça os passos 1–4 primeiro na IKCOUS (`projeto=loja`) e depois na Savy
+(`projeto=savy`, com `expected_sha` exato). Confira o ref e o SHA no run antes
+de aceitar seu resultado. Não avance para o front enquanto qualquer loja estiver
+sem a edge ou sem as duas RPCs.
+
 1. **Migration 84** — Actions → *Aplicar migrations (Supabase)* → Run workflow, na branch que já contém o
-   arquivo; `migracoes` = `20261184000000_o_pix_do_balcao_abre_na_hora.sql`, `projeto` = `loja`.
-   O workflow prova em `BEGIN/ROLLBACK` e aplica.
-2. **Conferir a 84** (SQL Editor ou *Conferir banco da loja*):
+   arquivo; `migracoes` = `20261184000000_o_pix_do_balcao_abre_na_hora.sql`.
+   O workflow prova em `BEGIN/ROLLBACK` e aplica no projeto selecionado.
+2. **Conferir a 84** no SQL Editor do **mesmo ref** selecionado na tabela acima.
+   Não use *Conferir banco da loja*: esse verificador ainda aponta `loja` para
+   o projeto antigo e não oferece Savy nem as consultas da 84/85.
    ```sql
    SELECT p.proname, p.prosecdef, p.proconfig FROM pg_proc p
     WHERE p.proname IN ('iniciar_venda_presencial_pix', 'venda_do_balcao_paga_e_entregue');
@@ -30,22 +52,31 @@ e o front da tela Vender. Plano: [2026-09-28-balcao-pix-no-balcao.md](../superpo
    -- esperado: 2 linhas
    SELECT has_function_privilege('anon', 'public.iniciar_venda_presencial_pix(jsonb, uuid, uuid, text, text, numeric, text)', 'EXECUTE');
    -- esperado: false
+   SELECT has_function_privilege('authenticated', 'public.iniciar_venda_presencial_pix(jsonb, uuid, uuid, text, text, numeric, text)', 'EXECUTE');
+   -- esperado: true
    ```
-3. **Migration 85** — mesmo workflow, `migracoes` =
+3. **Migration 85** — mesmo workflow e mesmo projeto, `migracoes` =
    `20261185000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql`. Conferir:
    ```sql
    SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'anular_venda_presencial';
    -- esperado: true, {"search_path=pg_catalog, pg_temp"}
+   SELECT has_function_privilege('anon', 'public.anular_venda_presencial(uuid, text)', 'EXECUTE'),
+          has_function_privilege('authenticated', 'public.anular_venda_presencial(uuid, text)', 'EXECUTE');
+   -- esperado: false, true
    ```
-4. **Edge** — Actions → *Publicar edge functions (Supabase)* → `functions` = `cobrar-pix-no-balcao`,
-   `projeto` = `loja`. (Ela NÃO está no atalho "cobranca": publique pelo nome.) Conferir no
-   painel do Supabase que ela aparece com **Verify JWT ligado** (vem do `supabase/config.toml`).
-   A edge `send-order-confirmation` também mudou (texto do comprovante no balcão) — publique-a
-   junto: `functions` = `cobrar-pix-no-balcao send-order-confirmation`. O mesmo `_shared` é usado
+   Se o workflow falhar **depois** de mostrar `APLICADA`, o banco pode já ter
+   recebido o DDL. Confira os objetos e os grants no mesmo ref antes de tentar
+   novamente; não trate o run vermelho como rollback automático.
+4. **Edge** — Actions → *Publicar edge functions (Supabase)* → `functions` = `cobrar-pix-no-balcao send-order-confirmation`,
+   no mesmo `projeto`. (Elas NÃO estão no atalho "cobranca": publique pelos nomes.) Conferir no
+   painel do Supabase que `cobrar-pix-no-balcao` aparece com **Verify JWT ligado**
+   (vem do `supabase/config.toml`).
+   A edge `send-order-confirmation` também mudou (texto do comprovante no balcão). O mesmo `_shared` é usado
    pelo `webhook-mercadopago` e pelo `reconciliar-pagamentos`: republicá-los não é obrigatório
    (a mudança só troca o rótulo do e-mail do balcão), mas é o jeito de o e-mail do PIX com QR
    confirmado pelo webhook também dizer "no balcão".
-5. **Front** — o deploy normal da Vercel, por último. Sem a 84 no ar, "Gerar PIX" mostra
+5. **Front** — o deploy normal da Vercel, por último, após conferir ambos os destinos.
+   Sem a 84 no ar, "Gerar PIX" mostra
    "O balcão ainda não está liberado neste servidor"; dinheiro, PIX na chave e maquininha
    continuam funcionando.
 
@@ -62,14 +93,22 @@ e o front da tela Vender. Plano: [2026-09-28-balcao-pix-no-balcao.md](../superpo
 5. Registre uma venda em dinheiro e, no recibo, *Anular venda* com um motivo: estoque de volta,
    pedido Cancelado/Estornado, e o esperado do caixa (Financeiro › Caixa) volta ao que era.
 
-## 3. Rollback
+## 3. Rollback e gatilhos de parada
+
+Pare a promoção se o QR não for emitido com as credenciais configuradas, se um
+pagamento confirmado não atualizar o pedido/estoque, ou se a verificação das RPCs,
+grants e JWT não bater com o esperado. Registre os pedidos em aberto antes de
+reverter qualquer componente.
 
 - Front: redeploy do anterior na Vercel.
-- Edge: republicar a versão anterior de `send-order-confirmation`; `cobrar-pix-no-balcao` pode
-  ficar (sem a tela, ninguém a chama) ou ser removida no painel.
-- Migrations: `rollback-manual-20261185000000_…sql` e depois `rollback-manual-20261184000000_…sql`
-  (pelo mesmo workflow). Vendas já feitas continuam válidas; um PIX pago depois do rollback da
-  84 fica "pendente/pago" e precisa ser marcado entregue à mão.
+- Edge: republicar a versão anterior de `send-order-confirmation`; sem a tela nova,
+  `cobrar-pix-no-balcao` fica sem chamadas normais. Em falha financeira, confira
+  também `webhook-mercadopago` e `reconciliar-pagamentos` antes de reverter qualquer um.
+- Banco: **não remover a 84 enquanto houver QR pendente** — um PIX pago depois
+  perderia a entrega automática. Primeiro resolva/cancele os pedidos em aberto.
+  Só se a remoção for necessária e revisada, aplicar os rollback-manual da 85 e
+  depois da 84 no mesmo destino, verificando cada etapa. Vendas já feitas
+  continuam fatos; pagamento tardio após a remoção requer tratamento manual.
 
 ## 4. Riscos conhecidos
 
