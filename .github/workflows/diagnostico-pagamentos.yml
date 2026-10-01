@@ -8,24 +8,27 @@
 #       constante do repositório); presença NÃO comprova validade.
 #   (4) GERAÇÃO: sem binário — matriz por migration do PR #666 + prova de
 #       SCHEMA independente do ledger (devolucoes/config_pagamento_cartao),
-#       porque aplicar-migrations.yml NÃO grava o ledger.
+#       porque execuções antigas de aplicar-migrations.yml não gravavam o ledger.
 #
 # Garantias: SQL SOMENTE pelo endpoint oficial /database/query/read-only
 # (escopo database_read; a API recusa escrita nele por construção); token só
 # como env, nunca impresso; corpos de function → só booleans (indício);
 # sem deploy/DDL/compra. Arquivo de incidente.
+# preflight_pix: IKCOUS fixa; ledger 74–85 e dependências por SQL read-only,
+# lista de backups por GET. Listar backup NÃO prova que pode ser restaurado.
 name: Diagnóstico de pagamentos (somente leitura)
 on:
   workflow_dispatch:
     inputs:
       modo:
-        description: "Diagnóstico completo ou somente booleans do cofre (sem valores)"
+        description: "Diagnóstico completo, flags do cofre ou preflight PIX IKCOUS"
         type: choice
         required: true
         default: completo
         options:
           - completo
           - booleans
+          - preflight_pix
       projeto:
         description: "Destino fechado da leitura booleana"
         type: choice
@@ -40,6 +43,22 @@ concurrency:
   group: diagnostico-pagamentos
   cancel-in-progress: false
 jobs:
+  preflight_pix:
+    if: inputs.modo == 'preflight_pix'
+    name: Preflight PIX IKCOUS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Consulta ledger, catálogo e backup sem alterar o projeto
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          PROJETO: ${{ inputs.projeto }}
+        run: node scripts/diagnostico-pix-preflight.cjs
+
   diagnostico:
     if: inputs.modo == 'completo'
     runs-on: ubuntu-latest
@@ -83,15 +102,15 @@ jobs:
               catch { falhas++; console.log(`::error::consulta falhou (${op})`); return null; }
             };
 
-            // (4) Matriz de migrations do PR #666 — INDÍCIO (o workflow atual
-            // de aplicação não grava o ledger; a prova concreta é o schema).
+            // (4) Matriz de migrations do PR #666 — INDÍCIO (execuções antigas
+            // de aplicação não gravavam o ledger; a prova concreta é o schema).
             // WHERE version IN: sem LIMIT/ORDER — só as 6 procuradas.
             const DO_PR_666 = ["20261175000000", "20261176000000", "20261177000000", "20261178000000", "20261179000000", "20261180000000"];
             const listaMigs = DO_PR_666.map((v) => `$$${v}$$`).join(", ");
             const migs = await sql(`SELECT version FROM supabase_migrations.schema_migrations WHERE version IN (${listaMigs})`, "migrations");
             if (migs) {
               const vistas = new Set(migs.map((m) => String(m.version)));
-              console.log("== [INDÍCIO] Migrations do PR #666 no ledger (aplicar-migrations NÃO grava ledger) ==");
+              console.log("== [INDÍCIO] Migrations do PR #666 no ledger (apply antigo não gravava ledger) ==");
               let n = 0;
               for (const v of DO_PR_666) { const tem = vistas.has(v); if (tem) n++; console.log(`- ${v}: ${tem ? "no ledger" : "ausente no ledger"}`); }
               console.log(`ledger: ${n}/${DO_PR_666.length}`);
