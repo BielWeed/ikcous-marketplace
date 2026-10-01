@@ -330,6 +330,43 @@ async function main() {
           : "idempotente: mesma fotografia";
       });
 
+      // Um grant surgido depois da aplicação não pode ser apagado pelo desfazer.
+      if (pacote.id === "amplo") {
+        await caso("desfazer_recusa_desvio_de_permissao", async () => {
+          const bancoDesvio = "acl_rollback_desvio";
+          await clonarBanco(BANCO_ROLLBACK, bancoDesvio);
+          try {
+            const cliente = await conectar(bancoDesvio);
+            let desviado;
+            try {
+              await cliente.query(
+                "GRANT EXECUTE ON FUNCTION public.check_is_admin() TO anon",
+              );
+              desviado = await fotografar(cliente);
+            } finally {
+              await cliente.end().catch(() => {});
+            }
+            const erro = await executarSql(bancoDesvio, lerFixture(pacote.desfaz));
+            if (!erro || !String(erro.message).includes("pré-condição do desfazer")) {
+              throw new Falha("o desfazer não recusou a permissão alterada");
+            }
+            const leitura = await conectar(bancoDesvio);
+            try {
+              exigirIgual(
+                desviado,
+                await fotografar(leitura),
+                "desvio depois do rollback recusado",
+              );
+            } finally {
+              await leitura.end().catch(() => {});
+            }
+            return "desvio recusado sem gravar alterações";
+          } finally {
+            await soltarBanco(bancoDesvio).catch(() => {});
+          }
+        });
+      }
+
       // D2. TRAVA DO SERVIDOR no script de desfazer (pacote pequeno), sobre o estado aplicado
       if (pacote.id === "seis") {
         await variantesDaTrava(pacote.desfaz, depois, "desfazer: ", "desfazer");
