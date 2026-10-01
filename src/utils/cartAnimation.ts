@@ -1,11 +1,10 @@
+import { ehTelaDeComputador } from "@/hooks/useTelaDeComputador";
+
 /**
  * Triggers a premium 60fps flying thumbnail animation towards the cart target in the UI.
  *
- * O alvo e' SEMPRE `#bottom-nav-cart`, em qualquer largura. Ate 24/08/2026 ela
- * mirava `#header-cart` acima de 768px, mas o carrinho do topo saiu do Header
- * naquele dia (em tela larga apareciam dois carrinhos ao mesmo tempo). Mirar o
- * elemento removido cairia no `if (!target)` abaixo: aviso no console e
- * NENHUMA animacao justamente nas telas grandes.
+ * O computador usa o carrinho do topo; abaixo de 1024px, o da barra de baixo.
+ * Enquanto o cabeçalho lazy carrega, a barra ainda montada serve de fallback.
  */
 export function triggerFlyingCartAnimation(
   startElement: HTMLElement,
@@ -14,7 +13,9 @@ export function triggerFlyingCartAnimation(
   if (typeof window === "undefined") return;
 
   const targetId = "bottom-nav-cart";
-  const target = document.getElementById(targetId);
+  const target =
+    (ehTelaDeComputador() && document.getElementById("header-cart")) ||
+    document.getElementById(targetId);
 
   if (!target) {
     console.warn(
