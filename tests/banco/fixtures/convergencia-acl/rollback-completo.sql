@@ -1,138 +1,171 @@
 BEGIN;
 -- Desfaz SO a convergencia. Volta ao estado medido depois da emergencia de 16:28:45Z
 -- (confirmar_pagamento e devolver_uso_cupom continuam fechadas). Grants de coluna e service_role nao mudam no pacote.
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_decidir(uuid,boolean,text,timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_liberar_vinculo_reverso(uuid,boolean) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_reemitir_reembolso(uuid,boolean) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_registrar(uuid,text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_devolucao_reprovar(uuid,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.admin_devolucoes_listar(text,text,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.answer_question_atomic(uuid,text,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.answer_question_atomic(uuid,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.assinatura_da_loja_ler() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.branding_a5_track_revision() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.buscar_por_codigo_barras(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.cancelar_devolucao(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.check_is_admin() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.check_user_confirmation_status(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.clean_expired_shipping_quotes() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.clean_old_shipping_logs() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.concluir_estorno(uuid,text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.confirmar_retorno_do_produto(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.create_marketplace_order_v22(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.create_marketplace_order(jsonb,text,uuid,text,text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.crm__clientes_rfm(timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.crm__nunca_comprou(timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.crm__pedidos_nao_pagos(timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.crm__vendas(timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.crm_clientes(text,text,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.crm_visao(date,date) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.decrement_stock(uuid,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao__entregue_em(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao__hoje() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao__metodos(text,text,boolean,text[],text[]) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao__modalidade(text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao__registrar_evento(uuid,text,text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao_avisa_o_cliente() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao_detalhe(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucao_elegibilidade(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolucoes_do_pedido(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolver_cupons_de_pedidos_mortos() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.devolver_estoque(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.dominio_publico_so_muda_pela_frota() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.ensure_role_protection() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.expirar_pedidos_vencidos() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__caixa_calculo(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__conta_da_forma(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__dia(timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__forma_do_pedido(text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__hoje() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__movimentos(date,date) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin__saldos() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_caixa_abrir(numeric,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_caixa_atual() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_caixa_fechar(numeric,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_caixa_historico(integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_caixa_movimentar(text,numeric,text,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_categoria_salvar(jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_categorias_listar() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_conta_salvar(jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_contas_listar() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_dre(date,date) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_extrato(date,date,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_lancamento_baixar(uuid,date,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_lancamento_cancelar(uuid,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_lancamento_salvar(jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_previstos(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.fin_resumo(date,date) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.generate_order_otp_v1(text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.generate_order_otp_v2(text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_active_products_internal() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_analytics_v2(integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_customers_paged(text,text,text,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_dashboard_stats() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_dashboard_summary() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_executive_summary() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_list_paginated(text,integer,integer,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_orders_cancelados_recentes(integer,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_products_paged(text,text,text,text,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_questions_paged(text,text,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_reviews_paged(text,text,integer,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_admin_user_detail(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_category_analytics(timestamp with time zone,timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_category_sales(text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_coupon_stats() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_customer_intelligence() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_inventory_health() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_my_complete_profile() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_my_cpf() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_orders_by_whatsapp_v3(text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_product_optimization_data() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_product_stats() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_products_with_variants() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_retention_analytics() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_retention_rate() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_sales_analytics(timestamp with time zone,timestamp with time zone) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.get_segmented_push_targets(text,numeric,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handle_default_address() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handle_new_user() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handle_order_item_stock() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handle_profile_role_sync_to_auth() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handle_public_profile_sync() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handle_updated_at() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.informar_envio_devolucao(uuid,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.liberar_cobranca_do_pedido(uuid,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.liberar_email_de_confirmacao(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.marca_estorno_direto_do_pedido() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.pagamentos_a_reconciliar() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.painel_inicio() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.prevent_role_change() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.read_store_identity() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_vor_action(text,jsonb,jsonb,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.registrar_estorno_manual(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.registrar_pagamento_recebido(uuid,boolean) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.reivindicar_email_de_confirmacao(uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.reorder_banners_atomic(text,uuid,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.reply_review_atomic(uuid,text,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.reply_review_atomic(uuid,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.resolver_loja(text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.salvar_config_pagamento_cartao(boolean,boolean,integer) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.salvar_politica_de_devolucao(jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.save_store_identity(text,jsonb,jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.set_my_cpf(text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[]) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.solicitar_estorno(uuid,numeric,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.store_config_exige_forma_de_pagamento() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.swap_banner_order(uuid,uuid) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.sync_cart_atomic(jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.tr_prevent_role_change() TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.update_my_profile_secure(text,text,text,text) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.update_order_status_atomic(uuid,text,text,boolean) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.upsert_store_config(jsonb) TO anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.validate_coupon_secure(text,numeric) TO anon, authenticated;
+CREATE TEMP TABLE _rb_fn (fn regprocedure, pub boolean, anon boolean, auth boolean) ON COMMIT DROP;
+INSERT INTO _rb_fn VALUES
+('public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)', false, true, true),
+('public.admin_devolucao_decidir(uuid,boolean,text,timestamp with time zone)', false, true, true),
+('public.admin_devolucao_liberar_vinculo_reverso(uuid,boolean)', false, true, true),
+('public.admin_devolucao_reemitir_reembolso(uuid,boolean)', false, true, true),
+('public.admin_devolucao_registrar(uuid,text,text,text)', false, true, true),
+('public.admin_devolucao_reprovar(uuid,text)', false, true, true),
+('public.admin_devolucoes_listar(text,text,integer,integer)', false, true, true),
+('public.answer_question_atomic(uuid,text,uuid)', false, true, true),
+('public.answer_question_atomic(uuid,text)', false, true, true),
+('public.assinatura_da_loja_ler()', false, true, true),
+('public.branding_a5_track_revision()', false, true, true),
+('public.buscar_por_codigo_barras(text)', false, true, true),
+('public.cancelar_devolucao(uuid)', false, true, true),
+('public.check_is_admin()', false, true, true),
+('public.check_user_confirmation_status(text)', false, true, true),
+('public.clean_expired_shipping_quotes()', false, true, true),
+('public.clean_old_shipping_logs()', false, true, true),
+('public.concluir_estorno(uuid,text,text,text)', false, true, true),
+('public.confirmar_retorno_do_produto(uuid)', false, true, true),
+('public.create_marketplace_order_v22(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb)', false, true, true),
+('public.create_marketplace_order(jsonb,text,uuid,text,text,text,text)', false, true, true),
+('public.crm__clientes_rfm(timestamp with time zone)', false, true, true),
+('public.crm__nunca_comprou(timestamp with time zone)', false, true, true),
+('public.crm__pedidos_nao_pagos(timestamp with time zone)', false, true, true),
+('public.crm__vendas(timestamp with time zone)', false, true, true),
+('public.crm_clientes(text,text,integer,integer)', false, true, true),
+('public.crm_visao(date,date)', false, true, true),
+('public.decrement_stock(uuid,integer)', false, true, true),
+('public.devolucao__entregue_em(uuid)', false, true, true),
+('public.devolucao__hoje()', false, true, true),
+('public.devolucao__metodos(text,text,boolean,text[],text[])', false, true, true),
+('public.devolucao__modalidade(text,text)', false, true, true),
+('public.devolucao__registrar_evento(uuid,text,text,text,text)', false, true, true),
+('public.devolucao_avisa_o_cliente()', false, true, true),
+('public.devolucao_detalhe(uuid)', false, true, true),
+('public.devolucao_elegibilidade(uuid)', false, true, true),
+('public.devolucoes_do_pedido(uuid)', false, true, true),
+('public.devolver_cupons_de_pedidos_mortos()', false, true, true),
+('public.devolver_estoque(uuid)', false, true, true),
+('public.dominio_publico_so_muda_pela_frota()', false, true, true),
+('public.ensure_role_protection()', false, true, true),
+('public.expirar_pedidos_vencidos()', false, true, true),
+('public.fin__caixa_calculo(uuid)', false, true, true),
+('public.fin__conta_da_forma(text)', false, true, true),
+('public.fin__dia(timestamp with time zone)', false, true, true),
+('public.fin__forma_do_pedido(text,text)', false, true, true),
+('public.fin__hoje()', false, true, true),
+('public.fin__movimentos(date,date)', false, true, true),
+('public.fin__saldos()', false, true, true),
+('public.fin_caixa_abrir(numeric,uuid)', false, true, true),
+('public.fin_caixa_atual()', false, true, true),
+('public.fin_caixa_fechar(numeric,text)', false, true, true),
+('public.fin_caixa_historico(integer)', false, true, true),
+('public.fin_caixa_movimentar(text,numeric,text,uuid)', false, true, true),
+('public.fin_categoria_salvar(jsonb)', false, true, true),
+('public.fin_categorias_listar()', false, true, true),
+('public.fin_conta_salvar(jsonb)', false, true, true),
+('public.fin_contas_listar()', false, true, true),
+('public.fin_dre(date,date)', false, true, true),
+('public.fin_extrato(date,date,uuid)', false, true, true),
+('public.fin_lancamento_baixar(uuid,date,uuid)', false, true, true),
+('public.fin_lancamento_cancelar(uuid,text)', false, true, true),
+('public.fin_lancamento_salvar(jsonb)', false, true, true),
+('public.fin_previstos(text)', false, true, true),
+('public.fin_resumo(date,date)', false, true, true),
+('public.generate_order_otp_v1(text,text,text)', false, true, true),
+('public.generate_order_otp_v2(text,text,text)', false, true, true),
+('public.get_active_products_internal()', false, true, true),
+('public.get_admin_analytics_v2(integer)', false, true, true),
+('public.get_admin_customers_paged(text,text,text,integer,integer)', false, true, true),
+('public.get_admin_dashboard_stats()', false, true, true),
+('public.get_admin_dashboard_summary()', false, true, true),
+('public.get_admin_executive_summary()', false, true, true),
+('public.get_admin_list_paginated(text,integer,integer,text,text)', false, true, true),
+('public.get_admin_orders_cancelados_recentes(integer,integer,integer)', false, true, true),
+('public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)', false, true, true),
+('public.get_admin_products_paged(text,text,text,text,integer,integer)', false, true, true),
+('public.get_admin_questions_paged(text,text,integer,integer)', false, true, true),
+('public.get_admin_reviews_paged(text,text,integer,integer)', false, true, true),
+('public.get_admin_user_detail(uuid)', false, true, true),
+('public.get_category_analytics(timestamp with time zone,timestamp with time zone)', false, true, true),
+('public.get_category_sales(text,text)', false, true, true),
+('public.get_coupon_stats()', false, true, true),
+('public.get_customer_intelligence()', false, true, true),
+('public.get_inventory_health()', false, true, true),
+('public.get_my_complete_profile()', false, true, true),
+('public.get_my_cpf()', false, true, true),
+('public.get_orders_by_whatsapp_v3(text,text,text)', false, true, true),
+('public.get_product_optimization_data()', false, true, true),
+('public.get_product_stats()', false, true, true),
+('public.get_products_with_variants()', false, true, true),
+('public.get_retention_analytics()', false, true, true),
+('public.get_retention_rate()', false, true, true),
+('public.get_sales_analytics(timestamp with time zone,timestamp with time zone)', false, true, true),
+('public.get_segmented_push_targets(text,numeric,integer)', false, true, true),
+('public.handle_default_address()', false, true, true),
+('public.handle_new_user()', false, true, true),
+('public.handle_order_item_stock()', false, true, true),
+('public.handle_profile_role_sync_to_auth()', false, true, true),
+('public.handle_public_profile_sync()', false, true, true),
+('public.handle_updated_at()', false, true, true),
+('public.informar_envio_devolucao(uuid,text)', false, true, true),
+('public.liberar_cobranca_do_pedido(uuid,text)', false, true, true),
+('public.liberar_email_de_confirmacao(uuid)', false, true, true),
+('public.marca_estorno_direto_do_pedido()', false, true, true),
+('public.pagamentos_a_reconciliar()', false, true, true),
+('public.painel_inicio()', false, true, true),
+('public.prevent_role_change()', false, true, true),
+('public.read_store_identity()', false, true, true),
+('public.record_vor_action(text,jsonb,jsonb,text)', false, true, true),
+('public.registrar_estorno_manual(uuid)', false, true, true),
+('public.registrar_pagamento_recebido(uuid,boolean)', false, true, true),
+('public.registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)', false, true, true),
+('public.reivindicar_email_de_confirmacao(uuid)', false, true, true),
+('public.reorder_banners_atomic(text,uuid,uuid)', false, true, true),
+('public.reply_review_atomic(uuid,text,uuid)', false, true, true),
+('public.reply_review_atomic(uuid,text)', false, true, true),
+('public.resolver_loja(text,text)', false, true, true),
+('public.salvar_config_pagamento_cartao(boolean,boolean,integer)', false, true, true),
+('public.salvar_politica_de_devolucao(jsonb)', false, true, true),
+('public.save_store_identity(text,jsonb,jsonb)', false, true, true),
+('public.set_my_cpf(text)', false, true, true),
+('public.solicitar_devolucao(uuid,jsonb,text,text,text,text,text[])', false, true, true),
+('public.solicitar_estorno(uuid,numeric,text)', false, true, true),
+('public.store_config_exige_forma_de_pagamento()', false, true, true),
+('public.swap_banner_order(uuid,uuid)', false, true, true),
+('public.sync_cart_atomic(jsonb)', false, true, true),
+('public.tr_prevent_role_change()', false, true, true),
+('public.update_my_profile_secure(text,text,text,text)', false, true, true),
+('public.update_order_status_atomic(uuid,text,text,boolean)', false, true, true),
+('public.upsert_store_config(jsonb)', false, true, true),
+('public.validate_coupon_secure(text,numeric)', false, true, true);
+CREATE TEMP TABLE _rb_sr_antes ON COMMIT DROP AS
+SELECT p.oid, has_function_privilege('service_role', p.oid, 'EXECUTE') AS pode
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public';
+CREATE TEMP TABLE _rb_esperado (fn regprocedure, acl text) ON COMMIT DROP;
+DO $$
+DECLARE
+  f record;
+  sr boolean;
+  alvo text;
+  lista text[];
+BEGIN
+  FOR f IN SELECT * FROM _rb_fn LOOP
+    IF (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = f.fn) <> 'postgres' THEN
+      RAISE EXCEPTION 'desfazer: % tem dono diferente de postgres', f.fn; END IF;
+    IF EXISTS (SELECT 1 FROM pg_proc p, aclexplode(p.proacl) x
+                WHERE p.oid = f.fn AND x.grantee <> 0
+                  AND pg_get_userbyid(x.grantee) NOT IN ('postgres', 'anon', 'authenticated', 'service_role')) THEN
+      RAISE EXCEPTION 'desfazer: % tem grantee fora do conhecido', f.fn; END IF;
+    sr := EXISTS (SELECT 1 FROM pg_proc p, aclexplode(p.proacl) x
+                   WHERE p.oid = f.fn AND x.grantee = 'service_role'::regrole AND x.privilege_type = 'EXECUTE');
+    alvo := f.fn::text;
+    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, postgres, anon, authenticated, service_role', alvo);
+    lista := '{}';
+    IF f.pub THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO PUBLIC', alvo); lista := lista || '=X/postgres'; END IF;
+    EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO postgres', alvo); lista := lista || 'postgres=X/postgres';
+    IF f.anon THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO anon', alvo); lista := lista || 'anon=X/postgres'; END IF;
+    IF f.auth THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', alvo); lista := lista || 'authenticated=X/postgres'; END IF;
+    IF sr THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role', alvo); lista := lista || 'service_role=X/postgres'; END IF;
+    INSERT INTO _rb_esperado VALUES (f.fn, '{' || array_to_string(lista, ',') || '}');
+  END LOOP;
+END $$;
 GRANT ALL ON public.analytics_events TO anon, authenticated;
 GRANT ALL ON public.answers_dedup_backup_20260812 TO anon, authenticated;
 GRANT ALL ON public.assinatura_da_loja TO anon, authenticated;
@@ -530,6 +563,11 @@ DO $$ BEGIN
   IF NOT has_table_privilege('anon', 'public.vw_questions_public', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') OR NOT has_table_privilege('authenticated', 'public.vw_questions_public', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'desfazer: tabela vw_questions_public'; END IF;
   IF NOT has_table_privilege('anon', 'public.vw_questions_with_answers_count', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') OR NOT has_table_privilege('authenticated', 'public.vw_questions_with_answers_count', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'desfazer: tabela vw_questions_with_answers_count'; END IF;
   IF NOT has_table_privilege('anon', 'public.vw_reviews_public', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') OR NOT has_table_privilege('authenticated', 'public.vw_reviews_public', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') THEN RAISE EXCEPTION 'desfazer: tabela vw_reviews_public'; END IF;
+  IF EXISTS (SELECT 1 FROM _rb_esperado e JOIN pg_proc p ON p.oid = e.fn WHERE p.proacl::text IS DISTINCT FROM e.acl) THEN
+    RAISE EXCEPTION 'desfazer: proacl fora da ordem medida em %', (SELECT string_agg(e.fn::text, ', ') FROM _rb_esperado e JOIN pg_proc p ON p.oid = e.fn WHERE p.proacl::text IS DISTINCT FROM e.acl); END IF;
+  IF (SELECT count(*) FROM _rb_esperado) <> 132 THEN RAISE EXCEPTION 'desfazer: esperava 132 funcoes reconstruidas'; END IF;
+  IF EXISTS (SELECT 1 FROM _rb_sr_antes s WHERE has_function_privilege('service_role', s.oid, 'EXECUTE') IS DISTINCT FROM s.pode) THEN
+    RAISE EXCEPTION 'desfazer: service_role mudou'; END IF;
   IF (SELECT count(DISTINCT (c.relname, a.attname)) FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND a.attacl IS NOT NULL AND a.attnum > 0) <> 37 THEN RAISE EXCEPTION 'desfazer: grants de coluna'; END IF;
 END $$;
 COMMIT;

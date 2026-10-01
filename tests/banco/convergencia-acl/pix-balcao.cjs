@@ -229,7 +229,7 @@ async function exigirFuncoesDoBalcao(banco, rotulo) {
  * passo de montagem falha, os casos que dependem dele não rodam (a falha do
  * passo já está registrada).
  */
-async function ordensDeAplicacao(relator, pacote) {
+async function ordensDeAplicacao(relator, pacote, { ordemA = true } = {}) {
   const sigsSeis = SEIS.map((s) => s.sig);
   const caso = async (nome, corpo) => {
     try {
@@ -243,86 +243,88 @@ async function ordensDeAplicacao(relator, pacote) {
 
   try {
     // ---- A: base -> 84/85 -> pacote --------------------------------------
-    await clonarBanco(BANCO_ANTES, BANCO_ORDEM_A);
-    let antesDoPacote = null;
-    const montouA = await caso(
-      "ordem_A_base_depois_migrations_84_85_aplicam",
-      async () => {
-        await aplicarMigrations(BANCO_ORDEM_A);
-        antesDoPacote = await estadoDe(BANCO_ORDEM_A);
-        // CONTROLE: antes do pacote as funções do balcão já executam e as 6
-        // estão abertas com o texto exato — sem isto, "depois" não prova nada.
-        const novas = await exigirFuncoesDoBalcao(
-          BANCO_ORDEM_A,
-          "antes do pacote (controle)",
-        );
-        exigirOitoComo(
-          await aclDasOito(BANCO_ORDEM_A),
-          PROACL_ABERTA,
-          "antes do pacote (controle)",
-          true,
-        );
-        return `${contagem(antesDoPacote)} · ${novas}`;
-      },
-    );
-    const aplicouA =
-      montouA &&
-      (await caso(
-        "ordem_A_pacote_seis_commita_depois_das_migrations",
+    if (ordemA) {
+      await clonarBanco(BANCO_ANTES, BANCO_ORDEM_A);
+      let antesDoPacote = null;
+      const montouA = await caso(
+        "ordem_A_base_depois_migrations_84_85_aplicam",
         async () => {
-          await aplicarPacote(
-            BANCO_ORDEM_A,
-            pacote.aplica,
-            pacote.sentinela,
-            false,
-          );
-          return `${pacote.aplica} COMMITOU`;
-        },
-      ));
-    if (aplicouA) {
-      await caso(
-        "ordem_A_as_6_fechadas_so_elas_mudaram_balcao_e_emergencia_intactos",
-        async () => {
-          const depois = await estadoDe(BANCO_ORDEM_A);
-          console.log(
-            `  ordem A: antes do pacote — ${contagem(antesDoPacote)}`,
-          );
-          console.log(`  ordem A: depois do pacote — ${contagem(depois)}`);
-          // anon e authenticated perdem EXATAMENTE as 6 (6 + 6 pares).
-          if (
-            antesDoPacote.anon - depois.anon !== 6 ||
-            antesDoPacote.auth - depois.auth !== 6
-          ) {
-            throw new Falha(
-              `anon/authenticated deveriam perder exatamente 6 funções cada (anon ${antesDoPacote.anon}→${depois.anon}, authenticated ${antesDoPacote.auth}→${depois.auth})`,
-            );
-          }
-          const ruins = mudancasAlemDasFechadas(
-            antesDoPacote.foto,
-            depois.foto,
-            sigsSeis,
-          );
-          if (ruins.length) {
-            throw new Falha(`${ruins.length} mudança(s) fora das 6`, ruins);
-          }
-          const oito = exigirOitoComo(
-            await aclDasOito(BANCO_ORDEM_A),
-            PROACL_FECHADA,
-            "depois do pacote",
-            false,
-          );
+          await aplicarMigrations(BANCO_ORDEM_A);
+          antesDoPacote = await estadoDe(BANCO_ORDEM_A);
+          // CONTROLE: antes do pacote as funções do balcão já executam e as 6
+          // estão abertas com o texto exato — sem isto, "depois" não prova nada.
           const novas = await exigirFuncoesDoBalcao(
             BANCO_ORDEM_A,
-            "depois do pacote",
+            "antes do pacote (controle)",
           );
-          exigirAusenciasIguais(
-            antesDoPacote.ausencias,
-            depois.ausencias,
-            "ordem A: depois do pacote × logo depois das migrations",
+          exigirOitoComo(
+            await aclDasOito(BANCO_ORDEM_A),
+            PROACL_ABERTA,
+            "antes do pacote (controle)",
+            true,
           );
-          return `6 fechadas e só elas (anon ${antesDoPacote.anon}→${depois.anon}, authenticated ${antesDoPacote.auth}→${depois.auth}) · ${novas} · ${oito} · ${depois.ausencias.length} ausência(s) do servidor, lista idêntica`;
+          return `${contagem(antesDoPacote)} · ${novas}`;
         },
       );
+      const aplicouA =
+        montouA &&
+        (await caso(
+          "ordem_A_pacote_seis_commita_depois_das_migrations",
+          async () => {
+            await aplicarPacote(
+              BANCO_ORDEM_A,
+              pacote.aplica,
+              pacote.sentinela,
+              false,
+            );
+            return `${pacote.aplica} COMMITOU`;
+          },
+        ));
+      if (aplicouA) {
+        await caso(
+          "ordem_A_as_6_fechadas_so_elas_mudaram_balcao_e_emergencia_intactos",
+          async () => {
+            const depois = await estadoDe(BANCO_ORDEM_A);
+            console.log(
+              `  ordem A: antes do pacote — ${contagem(antesDoPacote)}`,
+            );
+            console.log(`  ordem A: depois do pacote — ${contagem(depois)}`);
+            // anon e authenticated perdem EXATAMENTE as 6 (6 + 6 pares).
+            if (
+              antesDoPacote.anon - depois.anon !== 6 ||
+              antesDoPacote.auth - depois.auth !== 6
+            ) {
+              throw new Falha(
+                `anon/authenticated deveriam perder exatamente 6 funções cada (anon ${antesDoPacote.anon}→${depois.anon}, authenticated ${antesDoPacote.auth}→${depois.auth})`,
+              );
+            }
+            const ruins = mudancasAlemDasFechadas(
+              antesDoPacote.foto,
+              depois.foto,
+              sigsSeis,
+            );
+            if (ruins.length) {
+              throw new Falha(`${ruins.length} mudança(s) fora das 6`, ruins);
+            }
+            const oito = exigirOitoComo(
+              await aclDasOito(BANCO_ORDEM_A),
+              PROACL_FECHADA,
+              "depois do pacote",
+              false,
+            );
+            const novas = await exigirFuncoesDoBalcao(
+              BANCO_ORDEM_A,
+              "depois do pacote",
+            );
+            exigirAusenciasIguais(
+              antesDoPacote.ausencias,
+              depois.ausencias,
+              "ordem A: depois do pacote × logo depois das migrations",
+            );
+            return `6 fechadas e só elas (anon ${antesDoPacote.anon}→${depois.anon}, authenticated ${antesDoPacote.auth}→${depois.auth}) · ${novas} · ${oito} · ${depois.ausencias.length} ausência(s) do servidor, lista idêntica`;
+          },
+        );
+      }
     }
 
     // ---- B: base -> pacote -> 84/85 -> rollback --------------------------
@@ -485,7 +487,11 @@ async function main() {
     nomeDoBancoBase(),
   );
 
-  if (pacote.id === "seis") await ordensDeAplicacao(relator, pacote);
+  // Pacote amplo: só a ordem B (aplicar -> 84/85 -> desfazer). A ordem A
+  // (84/85 -> aplicar) não vale para ele: as contagens finais do amplo são as
+  // da Savy medidas ANTES das 84/85 (27/95), então depois delas o pacote tem de
+  // ser REGERADO com a Savy medida de novo — não se afrouxa a contagem aqui.
+  await ordensDeAplicacao(relator, pacote, { ordemA: pacote.id === "seis" });
 
   resumir(`Permissões (${pacote.id}) — PIX_BALCAO`, relator.resultado);
   console.log(
