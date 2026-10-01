@@ -1,9 +1,16 @@
+import {
+  COLUNA_FIXA_NO_COMPUTADOR,
+  CONTAINER_DO_COMPUTADOR,
+  GAVETA_NO_COMPUTADOR,
+  TITULO_DE_PAGINA_NO_COMPUTADOR,
+} from "@/components/desktop/medidas";
 import { useStore } from "@/contexts/StoreContext";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useAuth } from "@/hooks/useAuth";
 import { useCart } from "@/hooks/useCart";
 import { useOrders } from "@/hooks/useOrders";
 import { useProducts } from "@/hooks/useProducts";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import {
   enderecoDeEntregaEfetivo,
   resumoDoEndereco,
@@ -211,6 +218,7 @@ export function CartView({
 }: CartViewProps & {
   onAddToCart?: (product: Product, quantity?: number) => void;
 }) {
+  const computador = useTelaDeComputador();
   const { config } = useStore();
   const { getFreeShippingEligibleProducts } = useProducts();
   const {
@@ -609,13 +617,29 @@ export function CartView({
           sr-only: zero pixel muda. Rodada 2 (Codex, 08/09, item 4): com
           initialTab="orders" a tela visível é "Meus Pedidos", mas o h1
           continuava dizendo "Carrinho" — agora acompanha a aba ativa. */}
-      <h1 className="sr-only">
-        {activeTab === "orders" ? "Meus Pedidos" : "Carrinho"}
-      </h1>
+      <div
+        className={cn(
+          CONTAINER_DO_COMPUTADOR,
+          TITULO_DE_PAGINA_NO_COMPUTADOR,
+          "lg:py-8 lg:font-black lg:text-zinc-950 lg:[&>h1]:not-sr-only",
+        )}
+      >
+        <h1 className="sr-only">
+          {activeTab === "orders" ? "Meus Pedidos" : "Carrinho"}
+        </h1>
+      </div>
       {/* Tab Switcher Premium */}
-      <div className="sticky top-[-2px] z-50 flex flex-col gap-2 border-b border-zinc-100 bg-white/80 px-4 py-2 backdrop-blur-md xs:gap-4 xs:px-6 xs:pb-2.5 xs:pt-3">
+      <div
+        className={cn(
+          "sticky top-[-2px] z-50 flex flex-col gap-2 border-b border-zinc-100 bg-white/80 px-4 py-2 backdrop-blur-md xs:gap-4 xs:px-6 xs:pb-2.5 xs:pt-3",
+          CONTAINER_DO_COMPUTADOR,
+        )}
+      >
         <div
-          className="relative flex overflow-hidden rounded-2xl bg-zinc-100/50 p-1"
+          className={cn(
+            "relative flex overflow-hidden rounded-2xl bg-zinc-100/50 p-1",
+            "lg:max-w-[360px]",
+          )}
           role="tablist"
         >
           <motion.div
@@ -673,7 +697,12 @@ export function CartView({
         </div>
       </div>
 
-      <div className="relative flex w-full flex-1 flex-col overflow-hidden">
+      <div
+        className={cn(
+          "relative flex w-full flex-1 flex-col overflow-hidden",
+          "lg:overflow-visible",
+        )}
+      >
         <AnimatePresence mode="wait" initial={false} custom={tabDirection}>
           {activeTab === "cart" ? (
             <motion.div
@@ -697,7 +726,12 @@ export function CartView({
                   <EmptyCart onNavigate={onNavigate} />
                 </div>
               ) : (
-                <div className="mx-auto flex w-full max-w-7xl flex-col items-stretch gap-8 px-4 pb-6 pt-2 xs:px-6 lg:flex-row lg:items-start lg:px-8 lg:py-6">
+                <div
+                  className={cn(
+                    "mx-auto flex w-full max-w-7xl flex-col items-stretch gap-8 px-4 pb-6 pt-2 xs:px-6 lg:flex-row lg:items-start lg:px-8 lg:py-6",
+                    CONTAINER_DO_COMPUTADOR,
+                  )}
+                >
                   {/* Coluna Esquerda: Itens, Frete Grátis e Checkout Convidado */}
                   <div className="w-full min-w-0 flex-1 space-y-6">
                     <CartItemsList
@@ -809,9 +843,13 @@ export function CartView({
                           onOpenChange={setEscolhendoEndereco}
                         >
                           <SheetContent
-                            side="bottom"
+                            side={computador ? "right" : "bottom"}
                             data-testid="seletor-endereco-entrega"
-                            className="mx-auto max-h-[85dvh] gap-0 rounded-t-3xl sm:max-w-md"
+                            className={
+                              computador
+                                ? GAVETA_NO_COMPUTADOR
+                                : "mx-auto max-h-[85dvh] gap-0 rounded-t-3xl sm:max-w-md"
+                            }
                             // A folha abre por ESTADO (sem SheetTrigger): o
                             // Radix não tem gatilho para devolver o foco e
                             // ele cairia no body. Volta ao "Trocar" — exceto
@@ -1028,7 +1066,12 @@ export function CartView({
                   </div>
 
                   {/* Coluna Direita: Resumo do Pedido (Desktop Only) */}
-                  <div className="sticky top-24 hidden w-full shrink-0 space-y-6 rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.02)] lg:block lg:w-[380px]">
+                  <div
+                    className={cn(
+                      "sticky top-24 hidden w-full shrink-0 space-y-6 rounded-[2.5rem] border border-zinc-100 bg-white p-6 shadow-[0_10px_40px_rgba(0,0,0,0.02)] lg:block lg:w-[380px]",
+                      COLUNA_FIXA_NO_COMPUTADOR,
+                    )}
+                  >
                     <div>
                       <h3 className="mb-1 text-lg font-black uppercase tracking-tight text-zinc-950">
                         Resumo do Pedido
@@ -1176,7 +1219,11 @@ export function CartView({
                 x: { ease: [0.16, 1, 0.3, 1], duration: 0.38 },
                 opacity: { duration: 0.2 },
               }}
-              className="flex w-full flex-1 flex-col px-6 pb-6 pt-0"
+              className={cn(
+                "flex w-full flex-1 flex-col px-6 pb-6 pt-0",
+                CONTAINER_DO_COMPUTADOR,
+                "lg:pt-6",
+              )}
             >
               {orderViewMode === "guest" && (
                 <OrderSearch
@@ -1299,6 +1346,7 @@ export function CartView({
                 style={{
                   height: "calc(80px + var(--safe-area-bottom, 0px))",
                 }}
+                className="lg:hidden"
                 aria-hidden="true"
               />
             </motion.div>

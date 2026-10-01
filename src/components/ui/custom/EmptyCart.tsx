@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
@@ -12,7 +13,10 @@ export function EmptyCart({ onNavigate }: EmptyCartProps) {
     <motion.div
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="flex h-full flex-col items-center justify-center px-10 text-center"
+      className={cn(
+        "flex h-full flex-col items-center justify-center px-10 text-center",
+        "lg:mx-auto lg:max-w-xl lg:py-16",
+      )}
     >
       <div className="relative mb-8">
         <motion.div
