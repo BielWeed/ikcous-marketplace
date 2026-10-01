@@ -151,18 +151,18 @@ BEGIN
   -- Aceita o estado que o pacote deixou ou o estado ja desfeito (idempotencia).
   -- Qualquer mistura de grants de anon/authenticated/PUBLIC recusa antes de escrever.
   SELECT bool_and(
-           has_function_privilege('anon', f.fn, 'EXECUTE') IS NOT DISTINCT FROM f.apos_anon
-           AND has_function_privilege('authenticated', f.fn, 'EXECUTE') IS NOT DISTINCT FROM f.apos_auth
+           has_function_privilege('anon', g.fn, 'EXECUTE') IS NOT DISTINCT FROM g.apos_anon
+           AND has_function_privilege('authenticated', g.fn, 'EXECUTE') IS NOT DISTINCT FROM g.apos_auth
            AND NOT EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) x
-                            WHERE p.oid = f.fn AND x.grantee = 0 AND x.privilege_type = 'EXECUTE')),
+                            WHERE p.oid = g.fn AND x.grantee = 0 AND x.privilege_type = 'EXECUTE')),
          bool_and(
-           has_function_privilege('anon', f.fn, 'EXECUTE') IS NOT DISTINCT FROM f.anon
-           AND has_function_privilege('authenticated', f.fn, 'EXECUTE') IS NOT DISTINCT FROM f.auth
+           has_function_privilege('anon', g.fn, 'EXECUTE') IS NOT DISTINCT FROM g.anon
+           AND has_function_privilege('authenticated', g.fn, 'EXECUTE') IS NOT DISTINCT FROM g.auth
            AND (EXISTS (SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) x
-                         WHERE p.oid = f.fn AND x.grantee = 0 AND x.privilege_type = 'EXECUTE'))
-               IS NOT DISTINCT FROM f.pub)
+                         WHERE p.oid = g.fn AND x.grantee = 0 AND x.privilege_type = 'EXECUTE'))
+               IS NOT DISTINCT FROM g.pub)
     INTO aplicado, original
-    FROM _rb_fn f;
+    FROM _rb_fn g;
   IF NOT COALESCE(aplicado, false) AND NOT COALESCE(original, false) THEN
     RAISE EXCEPTION 'pré-condição do desfazer: grants das funções mudaram'; END IF;
   FOR f IN SELECT * FROM _rb_fn LOOP
