@@ -1,6 +1,6 @@
 // @ts-nocheck
-// O PIX DO BALCÃO ABRE NA HORA — prova offline do par 20261184000000 +
-// rollback (frente A, docs/superpowers/plans/2026-09-28-balcao-pix-no-balcao.md).
+// O PIX DO BALCÃO ABRE NA HORA — prova offline da 20261184000000 e do
+// rollback conjunto 84/85 (frente A, docs/superpowers/plans/2026-09-28-balcao-pix-no-balcao.md).
 //
 // O DEFEITO QUE ESTE TESTE FIXA: "PIX na hora" gravava a venda JÁ PAGA no
 // clique (20261162000000:386), sem cobrança nenhuma. A RPC nova faz o pedido
@@ -30,7 +30,7 @@ const DIR = fromFileUrl(new URL(".", import.meta.url));
 const NOME = "20261184000000_o_pix_do_balcao_abre_na_hora.sql";
 const migration = Deno.readTextFileSync(`${DIR}../supabase/migrations/${NOME}`);
 const rollback = Deno.readTextFileSync(
-  `${DIR}../supabase/migrations/rollback-manual-${NOME}`,
+  `${DIR}../scripts/sql/pix-84-85-revert.sql`,
 );
 
 const norm = (s) => s.replace(/\s+/g, " ").trim();
@@ -295,13 +295,13 @@ Deno.test("a migration NAO recria as vizinhas do dinheiro", () => {
 Deno.test("rollback: derruba gatilho e as duas funcoes pela assinatura completa, sem recriar nada", () => {
   assertStringIncludes(
     rollbackN,
-    "DROP TRIGGER IF EXISTS tr_venda_do_balcao_paga_e_entregue ON public.marketplace_orders;",
+    "DROP TRIGGER tr_venda_do_balcao_paga_e_entregue ON public.marketplace_orders;",
   );
   assertStringIncludes(
     rollbackN,
-    "DROP FUNCTION IF EXISTS public.venda_do_balcao_paga_e_entregue();",
+    "DROP FUNCTION public.venda_do_balcao_paga_e_entregue();",
   );
-  assertStringIncludes(rollbackN, `DROP FUNCTION IF EXISTS ${ASSINATURA};`);
+  assertStringIncludes(rollbackN, `DROP FUNCTION ${ASSINATURA};`);
   const limpo = removerRuido(rollback);
   assert(!/CREATE\s+(?:FUNCTION|TRIGGER|OR\s+REPLACE)/i.test(limpo));
 });
@@ -341,10 +341,10 @@ Deno.test("guarda do status: só a loja com sessão; PIX aguardando não avança
   );
   assertStringIncludes(
     rollbackN,
-    "DROP TRIGGER IF EXISTS tr_venda_do_balcao_guarda_o_status ON public.marketplace_orders;",
+    "DROP TRIGGER tr_venda_do_balcao_guarda_o_status ON public.marketplace_orders;",
   );
   assertStringIncludes(
     rollbackN,
-    "DROP FUNCTION IF EXISTS public.venda_do_balcao_guarda_o_status();",
+    "DROP FUNCTION public.venda_do_balcao_guarda_o_status();",
   );
 });

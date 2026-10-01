@@ -1,6 +1,9 @@
 -- ============================================================================
 -- ROLLBACK MANUAL da 20261184000000 — o PIX do balcão abre na hora
 -- ============================================================================
+-- OBSOLETO: NÃO EXECUTAR ESTE ARQUIVO. Ele não atualiza o ledger nem recusa
+-- pedidos criados. Use exclusivamente scripts/sql/pix-84-85-revert.sql pelo
+-- workflow rollback-pix-84-85.yml; a verificação deve aprovar o estado.
 --
 -- O QUE ESTE ARQUIVO DESFAZ: os gatilhos `tr_venda_do_balcao_paga_e_entregue`
 -- e `tr_venda_do_balcao_guarda_o_status`, as funções deles e
@@ -25,8 +28,7 @@
 -- IDEMPOTÊNCIA: `DROP ... IF EXISTS` — rodar duas vezes dá o mesmo estado.
 -- Assinatura completa no DROP FUNCTION (evita derrubar sobrecarga errada).
 --
--- COMO APLICAR: pelo workflow `aplicar-migrations.yml` (ou `psql -1`). Sem
--- `BEGIN`/`COMMIT` de nível superior neste arquivo (regra da casa).
+-- ESTE ARQUIVO FOI DESATIVADO. O workflow antigo não aceita rollback.
 --
 -- VERIFICAÇÃO pós-rollback:
 --   SELECT count(*) FROM pg_trigger WHERE tgname IN ('tr_venda_do_balcao_paga_e_entregue', 'tr_venda_do_balcao_guarda_o_status');
@@ -35,8 +37,6 @@
 --   -- esperado: 0.
 -- ============================================================================
 
-DROP TRIGGER IF EXISTS tr_venda_do_balcao_guarda_o_status ON public.marketplace_orders;
-DROP FUNCTION IF EXISTS public.venda_do_balcao_guarda_o_status();
-DROP TRIGGER IF EXISTS tr_venda_do_balcao_paga_e_entregue ON public.marketplace_orders;
-DROP FUNCTION IF EXISTS public.venda_do_balcao_paga_e_entregue();
-DROP FUNCTION IF EXISTS public.iniciar_venda_presencial_pix(jsonb, uuid, uuid, text, text, numeric, text);
+DO $$ BEGIN
+  RAISE EXCEPTION 'Rollback manual obsoleto; use scripts/sql/pix-84-85-revert.sql';
+END $$;

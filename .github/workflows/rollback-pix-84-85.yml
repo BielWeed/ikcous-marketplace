@@ -1,0 +1,45 @@
+name: Rollback PIX do balcão (84/85)
+
+# Uso excepcional, sob demanda. O SQL recusa pedidos PIX de balcão e anulações
+# já feitos; o workflow nunca aceita arquivo SQL ou ref de projeto livre.
+on:
+  workflow_dispatch:
+    inputs:
+      projeto:
+        description: "Destino fechado"
+        required: true
+        type: choice
+        options: [loja, savy, sandbox]
+      expected_sha:
+        description: "SHA completo do commit aprovado, igual ao SHA deste run"
+        required: true
+        type: string
+      confirmacao:
+        description: "Digite ROLLBACK_PIX_84_85 após conferir o backup e o alvo"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: banco-da-loja
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Guardar, desfazer e conferir na mesma transação
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets[inputs.projeto == 'savy' && 'SUPABASE_ACCESS_TOKEN_SAVY' || 'SUPABASE_ACCESS_TOKEN'] }}
+          PROJETO: ${{ inputs.projeto }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          CONFIRMACAO: ${{ inputs.confirmacao }}
+        run: node scripts/rollback-pix-84-85.cjs
