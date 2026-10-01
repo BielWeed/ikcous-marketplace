@@ -1,3 +1,8 @@
+import {
+  CONTAINER_DO_COMPUTADOR,
+  GAVETA_NO_COMPUTADOR,
+  GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+} from "@/components/desktop/medidas";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/ui/custom/ProductCard";
 import { Input } from "@/components/ui/input";
@@ -14,7 +19,9 @@ import { useFavorites } from "@/hooks/useFavorites";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useProducts } from "@/hooks/useProducts";
 import { useSearch } from "@/hooks/useSearch";
+import { useTelaDeComputador } from "@/hooks/useTelaDeComputador";
 import { promessasDeFrete } from "@/lib/estrategias-de-frete";
+import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import {
   ArrowLeft,
@@ -87,6 +94,7 @@ export const SearchView = React.memo(function SearchView({
   onQueryChange,
 }: SearchViewProps) {
   const { config } = useStore();
+  const computador = useTelaDeComputador();
   // B3 do item 2 da fila (19/09): o selo "Frete Grátis" do card obedece ao
   // preset da LOJA (ProductCard-520), derivado do MESMO config que já
   // alimentava `showRating` — mesmo padrão do ProductView.
@@ -223,8 +231,18 @@ export const SearchView = React.memo(function SearchView({
   return (
     <div className="pb-customer min-h-full bg-white selection:bg-black selection:text-white">
       {/* Premium Sticky Search Header */}
-      <div className="sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl">
-        <div className="mx-auto max-w-7xl space-y-4 p-4">
+      <div
+        className={cn(
+          "sticky top-[-2px] z-50 border-b border-zinc-100 bg-white/90 backdrop-blur-2xl",
+          "lg:top-6",
+        )}
+      >
+        <div
+          className={cn(
+            "mx-auto max-w-7xl space-y-4 p-4",
+            CONTAINER_DO_COMPUTADOR,
+          )}
+        >
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
@@ -248,10 +266,14 @@ export const SearchView = React.memo(function SearchView({
                 </button>
               </SheetTrigger>
               <SheetContent
-                side="bottom"
-                className="max-h-[90vh] overflow-y-auto rounded-t-[3rem] p-8"
+                side={computador ? "right" : "bottom"}
+                className={
+                  computador
+                    ? cn(GAVETA_NO_COMPUTADOR, "lg:overflow-y-auto")
+                    : "max-h-[90vh] overflow-y-auto rounded-t-[3rem] p-8"
+                }
               >
-                <SheetHeader className="mb-8">
+                <SheetHeader className={cn("mb-8", "lg:px-8 lg:pt-8")}>
                   <div className="flex items-center justify-between">
                     <SheetTitle className="text-2xl font-black tracking-tighter">
                       Refinar Busca
@@ -267,7 +289,7 @@ export const SearchView = React.memo(function SearchView({
                   </div>
                 </SheetHeader>
 
-                <div className="space-y-8 pb-10">
+                <div className={cn("space-y-8 pb-10", "lg:px-8 lg:pb-8")}>
                   <div>
                     <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-zinc-400">
                       Categorias
@@ -345,7 +367,9 @@ export const SearchView = React.memo(function SearchView({
       </div>
 
       {/* Content Area */}
-      <div className="mx-auto max-w-7xl px-4 py-8">
+      <div
+        className={cn("mx-auto max-w-7xl px-4 py-8", CONTAINER_DO_COMPUTADOR)}
+      >
         {filteredProducts.length > 0 ? (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
@@ -356,7 +380,12 @@ export const SearchView = React.memo(function SearchView({
                 </h2>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+            <div
+              className={cn(
+                "grid grid-cols-2 gap-6 lg:grid-cols-4",
+                GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+              )}
+            >
               {filteredProducts.slice(0, visibleCount).map((product, index) => (
                 <div
                   key={product.id}
@@ -428,7 +457,12 @@ export const SearchView = React.memo(function SearchView({
                   Trending na {config.storeName?.trim() || branding.appName}
                 </h3>
               </div>
-              <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+              <div
+                className={cn(
+                  "grid grid-cols-2 gap-6 lg:grid-cols-4",
+                  GRADE_DE_PRODUTOS_NO_COMPUTADOR,
+                )}
+              >
                 {trendingProducts.map((product) => (
                   <ProductCard
                     key={product.id}
