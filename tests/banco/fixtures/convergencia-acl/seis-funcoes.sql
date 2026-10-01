@@ -19,9 +19,9 @@ CREATE TEMP TABLE _sr_ausente_antes ON COMMIT DROP AS
 -- anon/authenticated: fotografia (papel, função) em vez de contagem fixa — a régua não envelhece
 -- quando uma migration nova cria função (ex.: 20261184/85 do PIX do balcão).
 CREATE TEMP TABLE _au_antes ON COMMIT DROP AS
-  SELECT r.papel, p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(papel)
-   WHERE n.nspname = 'public' AND has_function_privilege(r.papel, p.oid, 'EXECUTE');
+  SELECT pp.papel, p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   CROSS JOIN (VALUES ('anon'), ('authenticated')) AS pp(papel)
+   WHERE n.nspname = 'public' AND has_function_privilege(pp.papel, p.oid, 'EXECUTE');
 
 DO $$
 DECLARE r record;
@@ -76,9 +76,9 @@ BEGIN
       'public.expirar_pedidos_vencidos()','public.devolver_cupons_de_pedidos_mortos()']::regprocedure[])::oid AS oid),
   esperado AS (SELECT papel, oid FROM _au_antes WHERE oid NOT IN (SELECT oid FROM seis)),
   atual AS (
-    SELECT r.papel, p.oid FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
-     CROSS JOIN (VALUES ('anon'), ('authenticated')) AS r(papel)
-     WHERE ns.nspname = 'public' AND has_function_privilege(r.papel, p.oid, 'EXECUTE'))
+    SELECT pp.papel, p.oid FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+     CROSS JOIN (VALUES ('anon'), ('authenticated')) AS pp(papel)
+     WHERE ns.nspname = 'public' AND has_function_privilege(pp.papel, p.oid, 'EXECUTE'))
   SELECT count(*) INTO n FROM ((SELECT * FROM atual EXCEPT SELECT * FROM esperado)
                      UNION ALL (SELECT * FROM esperado EXCEPT SELECT * FROM atual)) d;
   IF n <> 0 THEN RAISE EXCEPTION 'anon/authenticated mudaram além das 6 (% pares papel×função)', n; END IF;
