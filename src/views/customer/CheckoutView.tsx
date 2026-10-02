@@ -3037,6 +3037,7 @@ export function CheckoutView({
         {estadoDoCartao.estado === "carregando" && (
           <p
             role="status"
+            aria-live="polite"
             className="flex items-center gap-2 text-sm text-zinc-600"
           >
             <Loader2 className="size-4 animate-spin" />
@@ -3045,7 +3046,7 @@ export function CheckoutView({
         )}
         {estadoDoCartao.estado === "erro" && (
           <>
-            <p className="text-sm font-medium text-amber-800">
+            <p role="alert" className="text-sm font-medium text-amber-800">
               Não foi possível conferir se o cartão está disponível agora.
             </p>
             <Button
@@ -3397,6 +3398,7 @@ export function CheckoutView({
           // nunca é substituída por isto.
           <p
             role="status"
+            aria-live="polite"
             className="flex items-center gap-2 text-sm text-zinc-600"
           >
             <Loader2 className="size-4 animate-spin" />
@@ -3408,7 +3410,7 @@ export function CheckoutView({
           // para PIX continua só pelos caminhos seguros do PagamentoOnline,
           // depois de montado.
           <div className="space-y-3">
-            <p className="text-sm font-medium text-amber-800">
+            <p role="alert" className="text-sm font-medium text-amber-800">
               Não foi possível conferir o pagamento com cartão agora.
             </p>
             <Button
@@ -4497,6 +4499,7 @@ export function CheckoutView({
                   {estadoDoCartao.estado === "carregando" && (
                     <div
                       role="status"
+                      aria-live="polite"
                       className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
                     >
                       <Loader2 className="size-4 shrink-0 animate-spin" />
@@ -4504,11 +4507,10 @@ export function CheckoutView({
                     </div>
                   )}
                   {estadoDoCartao.estado === "erro" && (
-                    <div
-                      role="status"
-                      className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
-                    >
-                      <span>Cartão: não foi possível conferir agora.</span>
+                    <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600">
+                      <span role="alert">
+                        Cartão: não foi possível conferir agora.
+                      </span>
                       <button
                         type="button"
                         onClick={() => estadoDoCartao.tentarDeNovo()}

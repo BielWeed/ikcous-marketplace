@@ -687,4 +687,57 @@ describe("CheckoutView — a config do cartao tem estado: carregando, erro e des
       expect(criarPagamento).not.toHaveBeenCalled();
     });
   });
+
+  // ── ACESSIBILIDADE ───────────────────────────────────────────────────────
+  // Revisão independente (02/10/2026): o leitor de tela precisa OUVIR a
+  // troca. "Carregando" mora numa região viva educada; a falha é
+  // `role="alert"`, que o leitor anuncia assim que o elemento entra na tela —
+  // um `<p>` comum (ou um `role="status"` que já nasce preenchido) passava em
+  // silêncio.
+
+  describe("acessibilidade dos indicadores do cartão", () => {
+    const vivoEducado = (texto: string) =>
+      [
+        ...hospedeiro.querySelectorAll('[role="status"][aria-live="polite"]'),
+      ].some((e) => e.textContent?.includes(texto));
+    const alerta = (texto: string) =>
+      [...hospedeiro.querySelectorAll('[role="alert"]')].some((e) =>
+        e.textContent?.includes(texto),
+      );
+
+    it("retomada com forma desconhecida: carregando em região viva educada; a falha é anunciada como alerta", async () => {
+      pedido("ped-a-01");
+      const resolver = leituraAdiada();
+      await retomar("ped-a-01");
+      expect(vivoEducado(CARREGANDO_RETOMADA)).toBe(true);
+      expect(alerta(ERRO_RETOMADA)).toBe(false);
+
+      await soltar(resolver, { data: null, error: { message: "sem rede" } });
+      expect(alerta(ERRO_RETOMADA)).toBe(true);
+    });
+
+    it("pedido de cartão conhecido: carregando em região viva educada; a falha é anunciada como alerta", async () => {
+      pedido("ped-a-02", {
+        metodo_online: "credito",
+        gateway_payment_id: "ORD-MORTA",
+      });
+      const resolver = leituraAdiada();
+      await retomar("ped-a-02");
+      expect(vivoEducado(CARREGANDO_CARTAO_DO_PEDIDO)).toBe(true);
+      expect(alerta(ERRO_CARTAO_DO_PEDIDO)).toBe(false);
+
+      await soltar(resolver, { data: null, error: { message: "sem rede" } });
+      expect(alerta(ERRO_CARTAO_DO_PEDIDO)).toBe(true);
+    });
+
+    it("checkout normal: carregando em região viva educada; a falha é anunciada como alerta", async () => {
+      const resolver = leituraAdiada();
+      await montarCheckoutNormal();
+      expect(vivoEducado(CARTAO_CARREGANDO)).toBe(true);
+      expect(alerta(CARTAO_ERRO)).toBe(false);
+
+      await soltar(resolver, { data: null, error: { message: "sem rede" } });
+      expect(alerta(CARTAO_ERRO)).toBe(true);
+    });
+  });
 });
