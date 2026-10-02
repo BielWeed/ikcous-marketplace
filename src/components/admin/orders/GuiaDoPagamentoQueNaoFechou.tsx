@@ -22,9 +22,11 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *     (webhook-mercadopago/index.ts, bloco "ADOÇÃO") e `confirmar_pagamento`
  *     grava `pago_apos_expirar` para `aguardando` + `cancelled` ou para
  *     `expirado` (20260901000000) — e o push ao admin sai com o título
- *     "Pagamento fora do fluxo". A reconciliação também confirma, mas SEM
- *     push (reconciliar-pagamentos/index.ts, "SEM PUSH AQUI") — por isso
- *     "pode receber".
+ *     "Pagamento fora do fluxo". A reconciliação também confirma e, desde o
+ *     C-D (20261190000000), manda o mesmo título só quando
+ *     `confirmar_pagamento` devolve `pago_apos_expirar`, com falha do push só
+ *     no log (reconciliar-pagamentos/index.ts, "PUSH AO ADMIN") — por isso
+ *     "pode receber", nunca "vai receber".
  *   - Sem cobrança, a varredura cancela sozinha e devolve o estoque
  *     (`expirar_pedidos_vencidos`, 20261186000000). O prazo NÃO entra no
  *     texto: depende de qual versão da varredura está no banco da loja.
@@ -37,9 +39,11 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *     (OrderDetail.tsx, `podeAvancar`) e o aviso "não pode prosseguir".
  *   - Aprovado no MP NÃO garante "Pago" no app (revisão financeira do C7):
  *     cartão capturado atrás do sentinela com valor divergente do pedido não
- *     é adotado (reconciliar-pagamentos/index.ts:508-518), e a reconciliação
- *     só olha a janela `expires_at > now() - interval '24 hours'` com
- *     `LIMIT 100` (20261010000000). Se a varredura cancelar o pedido nesse
+ *     é adotado (reconciliar-pagamentos/index.ts, "VALOR divergente — não
+ *     adotado"), e a reconciliação só olha o cartão até 14 dias depois do
+ *     prazo (PIX e método vazio, 24 h) com `LIMIT 100` (20261190000000).
+ *     Depois disso, ou com o valor divergente, nada é reconhecido sozinho.
+ *     Se a varredura cancelar o pedido nesse
  *     caso, o `payment_status` fica `expirado` — fora do balde de estorno
  *     (AdminOrdersView.tsx:204-224, `baldeDeEstorno` exige pago/
  *     pago_apos_expirar/recebido_na_entrega), fora do aviso de cancelados
