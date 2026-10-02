@@ -94,7 +94,6 @@ import {
   montarCorpoCartaoOrders,
   montarCorpoPixOrders,
   montarSentinela,
-  PREFIXO_VAGA_EM_VERIFICACAO,
   MOTIVO_RECUSA_DADOS_DO_CARTAO,
   motivoDaRecusa,
   motivoDaRecusaDoErro,
@@ -548,6 +547,13 @@ function limiteInferiorDaTentativa(pedido: { updated_at?: unknown; created_at?: 
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+// C3 (02/10/2026): `expires_at + 24 h` — a janela em que a
+// 20261186000000_cartao_em_analise_segura_a_expiracao.sql segura um pedido
+// com cartão em verificação antes de o relógio cancelá-lo. É a data que o
+// contrato `sem_registro` (desenho A1, 4.2) devolve em
+// `canceladoAutomaticamenteAte`.
+const JANELA_DO_CARTAO_EM_VERIFICACAO_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Resolve um SENTINELA (`vagaEmVerificacao`) por FATO, nunca por relógio
  * (Ponto 1, 4ª revisão de risco, 26/09/2026 — substitui `sentinelaExpirado`/
@@ -596,17 +602,19 @@ async function resolverVagaEmVerificacao(args: {
   // não a cada reconsulta.
   idSentinela: string;
   fetchImpl?: typeof fetch;
-}): Promise<{ ok: true; order: Record<string, unknown> | null } | { ok: false }> {
+}): Promise<{ ok: true; order: Record<string, unknown> | null } | { ok: false; buscaFalhou: boolean }> {
   const busca = await buscarOrdersDoPedido({
     token: args.token,
     pedidoId: args.pedidoId,
     desde: args.desde,
     fetchImpl: args.fetchImpl,
   });
-  if (!busca.ok) return { ok: false };
+  // `buscaFalhou` (C3, 02/10/2026): separa "o MP não respondeu" (contrato
+  // `verificacao: "indisponivel"`) de "respondeu e nada decide" (`sem_registro`).
+  if (!busca.ok) return { ok: false, buscaFalhou: true };
   const limiteInferiorMs = limiteInferiorDoSentinela(args.idSentinela);
   const resolucao = resolverSentinela(busca.orders, limiteInferiorMs);
-  if (resolucao === null) return { ok: false };
+  if (resolucao === null) return { ok: false, buscaFalhou: false };
   if (resolucao.acao === "liberar") return { ok: true, order: null };
   return { ok: true, order: resolucao.order };
 }
@@ -1220,16 +1228,11 @@ async function handler(
     }
   }
 
-  // Achado da 7ª rodada de risco (26/09/2026, item R6-P5): o valor que a
-  // gravação da vaga (o sentinela, ou a cobrança final) tem que ENCONTRAR
-  // para poder escrever — `null` no fluxo normal ("criar" desde o início, ou
-  // a vaga acabou de ser liberada aqui embaixo); a STRING do sentinela
-  // quando este pedido está RETENTANDO a criação de cartão sobre um
-  // sentinela da PRÓPRIA tentativa atual (não resolvido pela busca — ver o
-  // ramo abaixo). Sem isto, um cartão retry cuja 1ª chamada nunca chegou ao
-  // MP (rede antes do MP, ou um 429) ficava preso em "aguardando" até
-  // `expires_at`, mesmo sem NENHUMA order no MP — a busca do Ponto 1/B1
-  // nunca encontra nada para resolver, porque não existe order nenhuma.
+  // O valor que a gravação final da vaga tem que ENCONTRAR para poder
+  // escrever: `null` até a reserva do cartão (mais abaixo) gravar o
+  // sentinela DESTA chamada. C3 (veredito A2, achado H1d, 02/10/2026): a
+  // reconsulta nunca mais o preenche com um sentinela pré-existente — o
+  // re-POST sobre ele foi removido (ver o ramo do sentinela, abaixo).
   let vagaEsperadaNaGravacao: string | null = null;
 
   if (decisao.acao === "reconsultar") {
@@ -1397,25 +1400,16 @@ async function handler(
       // order de cartão encontrada ainda): não muda nada — `sentinelaNaVaga`
       // continua `true`, `sentinelaResolvidoParaLiberar` continua `false`.
 
-      // Achado da 7ª rodada de risco (26/09/2026, item R6-P5): um PIX pedido
-      // sobre um cartão AINDA em verificação nunca pode virar um 200 sem QR,
-      // e continua bloqueado — mas um CARTÃO NOVO (o cliente digitou o
-      // cartão de novo, um retry de verdade) não pode ficar preso em
-      // "aguardando" para sempre só porque a busca não resolveu: se a 1ª
-      // tentativa desta MESMA chave nunca chegou ao MP (rede antes de sair
-      // desta function, ou um 4xx definitivo que a Orders API respondeu sem
-      // criar nada — Achado da 7ª rodada, `!r.ok` mais abaixo), NADA vai
-      // aparecer na busca do Ponto 1/B1 — a vaga ficaria presa até
-      // `expires_at` à toa. Retenta a CRIAÇÃO com a MESMA chave de
-      // idempotência (`chaveDeIdempotencia` não muda: `tentativas_de_
-      // pagamento` só avança quando a vaga é liberada, e ela não foi) —
-      // `vagaEsperadaNaGravacao` troca o WHERE de "vaga livre" (`.is(null)`)
-      // por "ainda é ESTE sentinela" (`.eq(sentinela)`) em toda gravação da
-      // criação, mais abaixo. O MP decide sozinho o resto: corpo IGUAL ao da
-      // tentativa perdida → devolve a mesma order (replay); corpo DIFERENTE
-      // (token novo, o caso comum) → 409 `idempotency_key_already_used`
-      // (mantém o MESMO sentinela, resposta "aguardando" de sempre); nunca
-      // tentou → cria de verdade.
+      // C3 (veredito A2 do revisor financeiro, item 1 — achado H1d,
+      // 02/10/2026): sentinela que a busca não resolveu NUNCA leva a um POST
+      // — nem PIX nem cartão. O antigo re-POST "carimbado" (mesma chave,
+      // token novo) contava com o MP reter a chave e devolver 409 para corpo
+      // diferente; a doc online da Orders API não promete janela nenhuma de
+      // retenção. Se o MP já esqueceu a chave, o token novo virava uma
+      // SEGUNDA cobrança válida ao lado da 1ª (duas capturas). Custo aceito
+      // pelo revisor: a 1ª chamada que nunca chegou ao MP (zero orders) deixa
+      // o pedido em `sem_registro` até o admin agir ou o cancelamento
+      // automático da 20261186 — nunca libera por busca vazia.
       if (sentinelaNaVaga && !sentinelaResolvidoParaLiberar) {
         if (metodo === "pix") {
           // Achado B3 (revisão do checkout front, 26/09/2026): `cartaoEmAnalise`
@@ -1429,30 +1423,35 @@ async function handler(
             409,
           );
         }
-        // Revisão de risco de 30/09/2026 (IMPORTANTE 1): a premissa acima
-        // ("a chave não muda: a vaga não foi liberada") QUEBRA quando o
-        // sentinela foi gravado com a chave de uma tentativa que já avançou —
-        // a troca PIX -> sentinela pode ocupar a vaga depois de a notificação
-        // do cancelamento do PIX ter chamado `liberar_cobranca_do_pedido`
-        // (que soma `tentativas_de_pagamento`), e a vaga fica com
-        // `verificando:<pedido>:c<n>` enquanto a chave atual já é `c<n+1>`.
-        // Recriar aqui usaria `c<n+1>`: o MP não tem como deduplicar contra
-        // a cobrança ambígua `c<n>`, e as DUAS podem ser capturadas (o
-        // revisor reproduziu). Com a chave divergente, NÃO chama o MP:
-        // responde o MESMO "aguardando" do 409 de idempotência sobre o
-        // sentinela — o webhook, a busca do Ponto 1 ou a reconciliação
-        // resolvem a cobrança `c<n>`; sem desfecho, a reserva expira.
-        if (!sentinelaDaChave(idGatewayReconsulta, await chaveDeIdempotencia(pedido, "cartao"))) {
+        // Cartão: o contrato `verificacao` do desenho A1 (4.2) — o mesmo que
+        // o modo `verificar` (C2) e o front reutilizam. Nada de
+        // `statusPagamento: "aguardando"`: sem order confirmada, "em análise
+        // pelo banco" seria promessa falsa. Vale também para o sentinela de
+        // uma chave ANTERIOR (revisão de 30/09, IMPORTANTE 1: recriar com a
+        // chave atual não deduplica contra a `c<n>` ambígua).
+        if (!resolucao.ok && resolucao.buscaFalhou) {
           console.warn(
-            "criar-pagamento: sentinela com chave de tentativa anterior — retry do cartão não cria cobrança nova",
+            "criar-pagamento: cartão sobre sentinela com a busca do MP falhando — nenhum POST",
             { orderId: pedido.id },
           );
-          return json(
-            { paymentId: null, statusPagamento: "aguardando", expiraEm: pedido.expires_at },
-            200,
-          );
+          return json({ error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" }, 503);
         }
-        vagaEsperadaNaGravacao = idGatewayReconsulta;
+        console.warn(
+          "criar-pagamento: cartão sobre sentinela sem desfecho na busca — nenhum POST, sem_registro",
+          { orderId: pedido.id, chaveAtual: sentinelaDaChave(idGatewayReconsulta, await chaveDeIdempotencia(pedido, "cartao")) },
+        );
+        const prazoDoPedidoMs = Date.parse(String(pedido.expires_at ?? ""));
+        return json(
+          {
+            verificacao: "sem_registro",
+            paymentId: null,
+            expiraEm: pedido.expires_at,
+            canceladoAutomaticamenteAte: Number.isFinite(prazoDoPedidoMs)
+              ? new Date(prazoDoPedidoMs + JANELA_DO_CARTAO_EM_VERIFICACAO_MS).toISOString()
+              : undefined,
+          },
+          200,
+        );
       }
     }
 
@@ -2351,10 +2350,8 @@ async function handler(
     // vaga livre num pedido ainda 'aguardando'. Quem chega depois (PIX ou
     // outro cartão) cai no sentinela da reconsulta — bloqueado até a busca,
     // o webhook ou a reconciliação convergirem na MESMA order. Sem reserva,
-    // NENHUM POST: nada foi cobrado. Retry sobre o sentinela da MESMA chave
-    // (`vagaEsperadaNaGravacao` preenchido pela reconsulta) não regrava —
-    // o limite inferior da primeira gravação é o que vale (achado #1, 8ª
-    // rodada).
+    // NENHUM POST: nada foi cobrado. Sobre um sentinela já existente não
+    // há POST nenhum (C3, achado H1d): a reconsulta responde antes.
     if (vagaEsperadaNaGravacao === null) {
       const sentinelaDaReserva = montarSentinela(
         `${await chaveDeIdempotencia(pedido, "cartao")}:${carimboDoPost()}`,
@@ -2428,37 +2425,12 @@ async function handler(
       vagaEsperadaNaGravacao = sentinelaDaReserva;
       sentinelaDestaChamada = true;
     } else {
-      // Retry sobre o sentinela da MESMA chave (a reconsulta não resolveu):
-      // carimba ANTES do POST, por CAS, preservando a chave e o limite
-      // inferior gravados na primeira vez (achado #1 da 8ª rodada). Perdeu o
-      // CAS (outra aba carimbou, ou o webhook/a busca já trocaram pelo id
-      // real) → nenhum POST; o retry seguinte relê. Este carimbo NÃO faz
-      // desta chamada a dona da reserva: um 4xx sem prova continua sem
-      // soltar nada (a regra de sempre para sentinela pré-existente).
-      const sentinelaAnterior = vagaEsperadaNaGravacao;
-      const chaveAtual = await chaveDeIdempotencia(pedido, "cartao");
-      const limiteAnterior = limiteInferiorDoSentinela(sentinelaAnterior);
-      const carimbado = limiteAnterior === null
-        ? `${PREFIXO_VAGA_EM_VERIFICACAO}${chaveAtual}:${carimboDoPost()}`
-        : montarSentinela(`${chaveAtual}:${carimboDoPost()}`, limiteAnterior);
-      const { data: carimbou, error: erroCarimbo } = await supabase
-        .from("marketplace_orders")
-        .update({ gateway_payment_id: carimbado })
-        .eq("id", pedido.id)
-        .eq("gateway_payment_id", sentinelaAnterior)
-        .select("id")
-        .maybeSingle();
-      if (erroCarimbo) {
-        console.error(
-          "criar-pagamento: falha ao carimbar o sentinela antes do retry do cartão — nada foi enviado ao MP",
-          { orderId: pedido.id, erro: erroCarimbo },
-        );
-        return json({ error: "Não foi possível iniciar o pagamento. Tente de novo em instantes." }, 503);
-      }
-      if (!carimbou) {
-        return json({ error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true }, 409);
-      }
-      vagaEsperadaNaGravacao = carimbado;
+      // C3 (veredito A2, item 1 — achado H1d, 02/10/2026): inalcançável. O
+      // re-POST "carimbado" sobre o sentinela foi removido — a reconsulta,
+      // acima, responde `sem_registro`/`indisponivel` sem POST e nunca
+      // preenche `vagaEsperadaNaGravacao`. Fica como trava: sem a reserva
+      // desta chamada, NENHUM POST.
+      return json({ error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true }, 409);
     }
 
     const r = await criarOrder({
