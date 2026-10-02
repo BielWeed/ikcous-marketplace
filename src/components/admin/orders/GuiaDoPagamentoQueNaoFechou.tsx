@@ -40,9 +40,11 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *   - Aprovado no MP NÃO garante "Pago" no app (revisão financeira do C7):
  *     cartão capturado atrás do sentinela com valor divergente do pedido não
  *     é adotado (reconciliar-pagamentos/index.ts, "VALOR divergente — não
- *     adotado"), e a reconciliação só olha o cartão até 14 dias depois do
- *     prazo (PIX e método vazio, 24 h) com `LIMIT 100` (20261190000000).
- *     Depois disso, ou com o valor divergente, nada é reconhecido sozinho.
+ *     adotado"), e a reconciliação só olha até 14 dias depois do prazo o
+ *     cartão ou o sentinela `verificando:` (os outros, PIX incluído, 24 h),
+ *     com `LIMIT 100` (20261190000000). Depois disso, ou com o valor
+ *     divergente, a RECONCILIAÇÃO não reconhece sozinha — o webhook atrasado
+ *     ainda pode adotar (CAS sem janela; ver o item D2 abaixo).
  *     Se a varredura cancelar o pedido nesse
  *     caso, o `payment_status` fica `expirado` — fora do balde de estorno
  *     (AdminOrdersView.tsx:204-224, `baldeDeEstorno` exige pago/
