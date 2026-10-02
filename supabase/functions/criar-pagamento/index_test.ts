@@ -2746,7 +2746,21 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // true`), e o que perde porque a tentativa AVANÇOU responde o 409
   // recuperável "O pagamento deste pedido mudou em outra aba. Tente de
   // novo." (identificador já conhecido). 53 + 2 = 55.
-  assertEquals(achados, 55);
+  //
+  // 56, não mais 55: A3.2 (02/10/2026, auditoria "estados B") — o cartão
+  // que perde a gravação porque a notificação soltou a vaga e AVANÇOU a
+  // tentativa durante o POST, com o GET dizendo que a order ainda está viva,
+  // responde o 409 "Seu cartão pode ter sido cobrado…" (identificador já
+  // conhecido, com `terminal: true`). 55 + 1 = 56.
+  //
+  // 58, não mais 56: veredito A2 (revisor financeiro, 02/10/2026) — o
+  // pedido CANCELADO com a tentativa avançada e a order morta responde o 409
+  // terminal "Este pedido foi cancelado." (8b), e o desafio 3DS que perde a
+  // vaga e é cancelado no MP responde o 409 recuperável "Não foi possível
+  // confirmar a cobrança." (8c) — os dois identificadores já conhecidos. O
+  // "pode ter sido cobrado" do A3.2 continua UM ponto de retorno (agora
+  // dentro de `respostaSemRegistro`). 56 + 2 = 58.
+  assertEquals(achados, 58);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -2786,6 +2800,10 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
 //       migration 80, adendo à 8ª rodada) com a order `processed`/
 //       `processing` — MESMA mensagem do N7 (ponto 5), ponto de retorno
 //       diferente.
+//   12. A3.2 (02/10/2026): a gravação perdeu porque a notificação soltou a
+//       vaga e avançou a tentativa durante o POST, e o GET diz que a order
+//       desta chamada ainda está VIVA — sem registro no pedido, MESMA
+//       mensagem do N7 (ponto 5), ponto de retorno diferente.
 // Este teste prova as DUAS metades por RASTREAMENTO DE FONTE (mesmo
 // mecanismo do teste "achados", acima), não por cenário a cenário, para
 // pegar um json(...) novo com a flag fora do contrato, ou um dos onze que
@@ -2801,7 +2819,7 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
     ["Há um pagamento com cartão em análise para este pedido.", 409], // 1 e 2
     ["r.erro", 502], // 3 — reconsulta da vaga (`consultarOrder`) falhou
     ["erroOriginal", 502], // 4 — criação ambígua (respostaCartaoAmbiguoNaCriacao)
-    ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5 e 11 — N7 e achado A (migration 80)
+    ["Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.", 409], // 5, 11 e 12 — N7, achado A (migration 80) e A3.2
     ["O prazo para pagar este pedido acabou.", 409], // 6 e 8 — sempre 409, com terminal:true junto
     ["Este pedido já tem uma cobrança gerada.", 409], // 7, 9 e 10 (achado #4b, 8ª rodada, acrescenta o 10)
     ["Não foi possível confirmar a cobrança.", 409], // 9 (releitura sem causa conhecida)
@@ -2830,8 +2848,8 @@ Deno.test("cartaoEmAnalise: true aparece SÓ nos pontos de retorno onde um cart�
 
   assertEquals(
     comOFlag,
-    12,
-    "o campo tem que aparecer em exatamente doze pontos de retorno (11 lugares; 'Há um pagamento...' aparece em 2) — ver a lista no comentário acima",
+    13,
+    "o campo tem que aparecer em exatamente treze pontos de retorno (12 lugares; 'Há um pagamento...' aparece em 2) — ver a lista no comentário acima",
   );
 });
 
@@ -8153,3 +8171,427 @@ for (
     assertEquals(db.linha.gateway_payment_id, null);
   });
 }
+
+// A3.2 (auditoria "estados B", 02/10/2026): o cartão reserva o sentinela c0,
+// o MP responde 201 `processing`, e ANTES da gravação final a notificação de
+// recusa solta o sentinela pela RPC (vaga NULL, tentativa 0 -> 1). A gravação
+// final `.eq(sentinela)` não acha linha e a releitura vê a vaga livre — a
+// adoção não pode gravar ali a order de uma tentativa que o pedido já
+// abandonou. O 201 desta chamada é a FOTO do instante da criação; o que vale
+// depois é o GET da order.
+const ID_CARTAO_DO_POST = "ORDTST02CARTAODOPOSTA32000000";
+
+function cartaoComEscritaDuranteOPost(
+  durante: (db: ReturnType<typeof bancoComEstado>, order: Record<string, unknown>) => void | Promise<void>,
+  opts: {
+    criadaComo?: [string, string];
+    consultaFalha?: boolean;
+    // Escrita no banco no instante do GET da order (entre o GET e o CAS).
+    aoConsultar?: (db: ReturnType<typeof bancoComEstado>) => void;
+  } = {},
+) {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const base = mpVivo();
+  const consultas: string[] = [];
+  let primeiroCartao = true;
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    if (verbo === "POST" && url.endsWith("/v1/orders") && primeiroCartao) {
+      const corpo = JSON.parse(String(init?.body));
+      const tipo = String(
+        ((corpo.transactions?.payments?.[0]?.payment_method ?? {}) as Record<string, unknown>).type ?? "",
+      );
+      if (tipo !== "bank_transfer") {
+        primeiroCartao = false;
+        const [status, detalhe] = opts.criadaComo ?? ["processing", "in_process"];
+        const o = orderAvulsa(ID_CARTAO_DO_POST, tipo, status, detalhe);
+        if (status === "action_required") {
+          const pm = ((o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>)[0]
+            .payment_method as Record<string, unknown>;
+          pm.transaction_security = { url: URL_DESAFIO };
+        }
+        base.orders.push(o);
+        base.posts.push({ tipo, chave: (init?.headers as Record<string, string>)["X-Idempotency-Key"] });
+        // A resposta é a foto do instante da criação; o que muda depois
+        // (recusa, liberação) só aparece no GET.
+        const resposta = JSON.stringify(o);
+        await durante(db, o);
+        return new Response(resposta, { status: 201 });
+      }
+    }
+    if (verbo === "GET" && url.includes(`/v1/orders/${ID_CARTAO_DO_POST}`)) {
+      consultas.push(ID_CARTAO_DO_POST);
+      opts.aoConsultar?.(db);
+      if (opts.consultaFalha) return new Response(JSON.stringify({ message: "internal_error" }), { status: 500 });
+    }
+    return base.fn(url, init);
+  };
+  return { db, mp: { ...base, fn } as MpVivo, consultas };
+}
+
+// A notificação de recusa: a order morre no MP e a RPC REAL do banco com
+// estado solta o sentinela por casamento exato (vaga NULL, tentativa + 1).
+const recusaSoltaPelaRpc =
+  (morte: [string, string] | null) => async (db: ReturnType<typeof bancoComEstado>, o: Record<string, unknown>) => {
+    if (morte) {
+      o.status = morte[0];
+      o.status_detail = morte[1];
+    }
+    await db.rpc("liberar_cobranca_do_pedido", { p_order_id: UUID, p_gateway_payment_id: db.linha.gateway_payment_id });
+  };
+
+for (
+  const caso of [
+    { morte: ["failed", "rejected_by_issuer"] as [string, string], motivo: "O banco emissor recusou o pagamento." },
+    { morte: ["expired", "expired"] as [string, string], motivo: "Pagamento recusado. Tente outro cartão ou pague com PIX." },
+    { morte: ["canceled", "canceled"] as [string, string], motivo: "Pagamento recusado. Tente outro cartão ou pague com PIX." },
+  ]
+) {
+  Deno.test(`A3.2: a recusa (${caso.morte.join(":")}) solta o sentinela pela RPC entre o 201 'processing' e a gravação -> NÃO adota a order morta; recusa recuperável, sem 'em análise'; o PIX seguinte funciona`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp, consultas } = cartaoComEscritaDuranteOPost(recusaSoltaPelaRpc(caso.morte));
+    const avisos: unknown[] = [];
+    const r = await emSilencio(() => chamar(db, mp, corpoCartao(), avisos));
+
+    assertEquals(db.linha.tentativas_de_pagamento, 1, "o cenário tem de ter avançado a tentativa");
+    assertEquals(db.linha.gateway_payment_id, null, "a vaga foi ocupada pela order JÁ RECUSADA");
+    assertEquals(db.linha.metodo_online === "credito", false, "a forma de uma order morta foi carimbada");
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, {
+      paymentId: null,
+      statusPagamento: "recusado",
+      motivoRecusa: caso.motivo,
+      podeTentarDeNovo: true,
+      expiraEm: "2099-01-01T00:00:00.000Z",
+    });
+    assertEquals(consultas.length, 1, "a verdade da order sai do GET, não da foto do 201");
+    assertEquals(db.chamadasRpc.length, 1, "só a notificação mexeu na tentativa — nada por inferência");
+    assertEquals(mp.posts.length, 1, "nenhum POST novo");
+    assertEquals(mp.cancelamentos.length, 0);
+    assertEquals(avisos.length, 0, "recusa confirmada não é caso para acordar o admin");
+
+    const pix = await emSilencio(() => chamar(db, mp, PEDIDO_PIX));
+    assertEquals(pix.status, 200, JSON.stringify(pix.corpo));
+    assertEquals(typeof pix.corpo.qrCode, "string");
+    assertEquals(db.linha.gateway_payment_id, pixVivos(mp)[0].id);
+  });
+}
+
+// Veredito A2 (revisor financeiro, 02/10/2026, itens 8 e 8a): o GET provou
+// vida — ou não provou nada, mas o 201 já provou que a order EXISTE. Nos dois
+// casos o registro é recuperável: adota por CAS (vaga livre, 'aguardando',
+// não cancelado, SEM o filtro de tentativa) e responde com o `paymentId`.
+for (
+  const caso of [
+    {
+      nome: "VIVA (processing:in_process)",
+      criadaComo: ["processing", "in_process"] as [string, string],
+      morte: null as [string, string] | null,
+      consultaFalha: false,
+      status: "aguardando",
+      desafio: undefined as unknown,
+    },
+    {
+      nome: "VIVA no desafio 3DS (action_required:pending_challenge)",
+      criadaComo: ["action_required", "pending_challenge"] as [string, string],
+      morte: null as [string, string] | null,
+      consultaFalha: false,
+      status: "aguardando",
+      desafio: { url: URL_DESAFIO } as unknown,
+    },
+    {
+      nome: "já CAPTURADA (processed:accredited)",
+      criadaComo: ["processing", "in_process"] as [string, string],
+      morte: ["processed", "accredited"] as [string, string] | null,
+      consultaFalha: false,
+      status: "pago",
+      desafio: undefined as unknown,
+    },
+    {
+      nome: "GET que FALHA (500) — 8a",
+      criadaComo: ["processing", "in_process"] as [string, string],
+      morte: ["failed", "rejected_by_issuer"] as [string, string] | null,
+      consultaFalha: true,
+      status: "aguardando",
+      desafio: undefined as unknown,
+    },
+    {
+      nome: "par que o servidor não conhece — 8a",
+      criadaComo: ["processing", "in_process"] as [string, string],
+      morte: ["processing", "detalhe_novo_desconhecido"] as [string, string] | null,
+      consultaFalha: false,
+      status: "aguardando",
+      desafio: undefined as unknown,
+    },
+  ]
+) {
+  Deno.test(`A3.2 (veredito A2): tentativa avançou e o GET dá ${caso.nome} -> ADOTA na vaga livre (sem o filtro de tentativa) e responde 200 com o paymentId; nada cancelado, sem alerta`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp, consultas } = cartaoComEscritaDuranteOPost(recusaSoltaPelaRpc(caso.morte), {
+      criadaComo: caso.criadaComo,
+      consultaFalha: caso.consultaFalha,
+    });
+    const avisos: unknown[] = [];
+    const r = await emSilencio(() => chamar(db, mp, corpoCartao(), avisos));
+
+    assertEquals(db.linha.tentativas_de_pagamento, 1, "o cenário tem de ter avançado a tentativa");
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, {
+      paymentId: ID_CARTAO_DO_POST,
+      statusPagamento: caso.status,
+      expiraEm: "2099-01-01T00:00:00.000Z",
+      ...(caso.desafio ? { desafio3ds: caso.desafio } : {}),
+    });
+    assertEquals(db.linha.gateway_payment_id, ID_CARTAO_DO_POST, "a cobrança viva ficou sem registro no pedido");
+    assertEquals(db.linha.metodo_online, "credito");
+    assertEquals(db.linha.parcelas, 3);
+    assertEquals(consultas.length, 1);
+    assertEquals(avisos.length, 0, "com registro, quem fecha é o webhook — não o admin");
+    assertEquals(mp.cancelamentos.length, 0);
+    assertEquals(mp.posts.length, 1, "nenhum POST novo");
+    assertEquals(db.chamadasRpc.length, 1, "a tentativa só andou pela notificação");
+  });
+}
+
+// Veredito A2 (itens 8 e 8c): o CAS da adoção do ramo "viva" PERDE — outra
+// aba ocupou a vaga, ou o pedido foi cancelado, entre o GET e o CAS.
+for (
+  const caso of [
+    {
+      nome: "um PIX de outra aba ocupa a vaga",
+      escrita: (d: ReturnType<typeof bancoComEstado>) => {
+        d.linha.gateway_payment_id = "ORDTST02PIXDEOUTRAABA00000000";
+        d.linha.metodo_online = "pix";
+      },
+      vagaFinal: "ORDTST02PIXDEOUTRAABA00000000" as string | null,
+    },
+    {
+      nome: "o pedido é CANCELADO",
+      escrita: (d: ReturnType<typeof bancoComEstado>) => {
+        d.linha.status = "cancelled";
+      },
+      vagaFinal: null as string | null,
+    },
+  ]
+) {
+  Deno.test(`A3.2 (veredito A2, 8): order VIVA em análise e ${caso.nome} entre o GET e o CAS -> não grava por cima, NÃO cancela (processing não cancela), alerta + 409 terminal 'pode ter sido cobrado'`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp } = cartaoComEscritaDuranteOPost(recusaSoltaPelaRpc(null), { aoConsultar: caso.escrita });
+    const avisos: unknown[] = [];
+    const r = await emSilencio(() => chamar(db, mp, corpoCartao(), avisos));
+
+    assertEquals(db.linha.gateway_payment_id, caso.vagaFinal, "o CAS gravou por cima");
+    assertEquals(db.linha.metodo_online === "credito", false);
+    assertEquals(r.status, 409, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, {
+      error: "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+      terminal: true,
+      cartaoEmAnalise: true,
+    });
+    assertEquals(titulosDosAvisos(avisos).filter((t) => t.includes("sem registro no pedido")).length, 1);
+    assertEquals(mp.cancelamentos.length, 0, "processing não se cancela");
+    assertEquals(mp.posts.length, 1);
+  });
+
+  Deno.test(`A3.2 (veredito A2, 8c): order VIVA no desafio 3DS e ${caso.nome} entre o GET e o CAS -> o desafio confirmado pelo GET é CANCELADO (ramo cancelavel); sem alerta, 409 recuperável`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp } = cartaoComEscritaDuranteOPost(recusaSoltaPelaRpc(null), {
+      criadaComo: ["action_required", "pending_challenge"],
+      aoConsultar: caso.escrita,
+    });
+    const avisos: unknown[] = [];
+    const r = await emSilencio(() => chamar(db, mp, corpoCartao(), avisos));
+
+    assertEquals(db.linha.gateway_payment_id, caso.vagaFinal, "o CAS gravou por cima");
+    assertEquals(mp.cancelamentos, [ID_CARTAO_DO_POST], "o desafio sem registro ficaria vivo no MP");
+    assertEquals(r.status, 409, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { error: "Não foi possível confirmar a cobrança." });
+    assertEquals(avisos.length, 0, "cancelado no MP: nada a conferir");
+    assertEquals(mp.posts.length, 1);
+  });
+}
+
+Deno.test("A3.2 (veredito A2, 8c): desafio 3DS vivo, CAS perdido e o MP NÃO cancela -> alerta + 409 terminal 'pode ter sido cobrado'", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp: base } = cartaoComEscritaDuranteOPost(recusaSoltaPelaRpc(null), {
+    criadaComo: ["action_required", "pending_challenge"],
+    aoConsultar: (d) => {
+      d.linha.gateway_payment_id = "ORDTST02PIXDEOUTRAABA00000000";
+    },
+  });
+  const cancelamentos: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    if (init?.method === "POST" && url.includes("/cancel")) {
+      cancelamentos.push(url);
+      return new Response(JSON.stringify({ message: "internal_error" }), { status: 500 });
+    }
+    return base.fn(url, init);
+  };
+  const avisos: unknown[] = [];
+  const r = await emSilencio(() => chamar(db, { ...base, fn } as MpVivo, corpoCartao(), avisos));
+
+  assertEquals(cancelamentos.length, 1);
+  assertEquals(r.status, 409, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, {
+    error: "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+    terminal: true,
+    cartaoEmAnalise: true,
+  });
+  assertEquals(titulosDosAvisos(avisos).filter((t) => t.includes("sem registro no pedido")).length, 1);
+  assertEquals(db.linha.gateway_payment_id, "ORDTST02PIXDEOUTRAABA00000000");
+});
+
+// Veredito A2 (item 8b): pedido CANCELADO com a tentativa avançada — o GET
+// decide; nunca adota em pedido cancelado.
+for (
+  const caso of [
+    {
+      nome: "MORTA",
+      morte: ["failed", "rejected_by_issuer"] as [string, string] | null,
+      consultaFalha: false,
+      corpo: { error: "Este pedido foi cancelado.", terminal: true } as Record<string, unknown>,
+      avisos: 0,
+    },
+    {
+      nome: "VIVA",
+      morte: null as [string, string] | null,
+      consultaFalha: false,
+      corpo: {
+        error: "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+        terminal: true,
+        cartaoEmAnalise: true,
+      } as Record<string, unknown>,
+      avisos: 1,
+    },
+    {
+      nome: "DESCONHECIDA (GET 500)",
+      morte: ["failed", "rejected_by_issuer"] as [string, string] | null,
+      consultaFalha: true,
+      corpo: {
+        error: "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+        terminal: true,
+        cartaoEmAnalise: true,
+      } as Record<string, unknown>,
+      avisos: 1,
+    },
+  ]
+) {
+  Deno.test(`A3.2 (veredito A2, 8b): pedido CANCELADO e a tentativa avançou durante o POST, order ${caso.nome} -> nunca adota; ${caso.corpo.error}`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp, consultas } = cartaoComEscritaDuranteOPost(async (d, o) => {
+      d.linha.status = "cancelled";
+      await recusaSoltaPelaRpc(caso.morte)(d, o);
+    }, { consultaFalha: caso.consultaFalha });
+    const avisos: unknown[] = [];
+    const r = await emSilencio(() => chamar(db, mp, corpoCartao(), avisos));
+
+    assertEquals(db.linha.tentativas_de_pagamento, 1);
+    assertEquals(db.linha.gateway_payment_id, null, "adotou num pedido cancelado");
+    assertEquals(db.linha.metodo_online === "credito", false);
+    assertEquals(r.status, 409, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, caso.corpo);
+    assertEquals(consultas.length, 1);
+    assertEquals(titulosDosAvisos(avisos).filter((t) => t.includes("sem registro no pedido")).length, caso.avisos);
+    assertEquals(avisos.length, caso.avisos);
+    assertEquals(mp.cancelamentos.length, 0);
+    assertEquals(mp.posts.length, 1);
+  });
+}
+
+Deno.test("A3.2 (veredito A2, mutante B1x): tentativa IGUAL, vaga anulada e o pedido CANCELADO durante o POST -> a adoção NUNCA grava num pedido cancelado; resposta terminal", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp } = cartaoComEscritaDuranteOPost((d) => {
+    d.linha.gateway_payment_id = null;
+    d.linha.status = "cancelled";
+  });
+  const r = await emSilencio(() => chamar(db, mp, corpoCartao()));
+
+  assertEquals(db.linha.tentativas_de_pagamento, 0);
+  assertEquals(db.linha.gateway_payment_id, null, "a adoção gravou num pedido cancelado");
+  assertEquals(db.linha.metodo_online === "credito", false);
+  assertEquals(r.status, 409, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.terminal, true);
+  assertEquals(r.corpo.paymentId, undefined);
+  assertEquals(mp.posts.length, 1);
+});
+
+Deno.test("A3.2 (controle): a vaga é anulada SEM a tentativa avançar entre o 201 e a gravação -> a adoção continua como hoje (200, id real na vaga, crédito), sem GET e sem aviso", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp, consultas } = cartaoComEscritaDuranteOPost((d) => {
+    d.linha.gateway_payment_id = null;
+  });
+  const avisos: unknown[] = [];
+  const r = await emSilencio(() => chamar(db, mp, corpoCartao(), avisos));
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.paymentId, ID_CARTAO_DO_POST);
+  assertEquals(r.corpo.statusPagamento, "aguardando");
+  assertEquals(db.linha.gateway_payment_id, ID_CARTAO_DO_POST);
+  assertEquals(db.linha.metodo_online, "credito");
+  assertEquals(db.linha.parcelas, 3);
+  assertEquals(db.linha.tentativas_de_pagamento, 0);
+  assertEquals(consultas.length, 0, "a adoção normal não precisa consultar o MP");
+  assertEquals(avisos.length, 0);
+  assertEquals(mp.cancelamentos.length, 0);
+  assertEquals(db.chamadasRpc.length, 0);
+});
+
+Deno.test("A3.2 (concorrência): a releitura vê a vaga livre na MESMA tentativa, e a notificação de recusa avança a tentativa ENTRE a releitura e o CAS da adoção -> o CAS perde, nada é gravado, e a resposta é a recusa que o GET confirma", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  let postou = false;
+  const { db, mp, consultas } = cartaoComEscritaDuranteOPost((d, o) => {
+    // Vaga anulada sem a RPC (a tentativa continua 0) — a releitura verá a
+    // vaga livre na mesma tentativa, e a order já morreu no MP.
+    d.linha.gateway_payment_id = null;
+    o.status = "failed";
+    o.status_detail = "rejected_by_issuer";
+    postou = true;
+  });
+  type Leitura = { eq: (c: string, v: unknown) => { maybeSingle: () => Promise<unknown> } };
+  let liberouEntreReleituraECas = false;
+  const comNotificacaoNoMeio = {
+    ...db,
+    from(tabela: string) {
+      const original = db.from(tabela) as Record<string, unknown>;
+      if (tabela !== "marketplace_orders") return original;
+      return {
+        ...original,
+        select(cols: string) {
+          const leitura = (original.select as (c: string) => Leitura)(cols);
+          return {
+            eq(c: string, v: unknown) {
+              const filtrada = leitura.eq(c, v);
+              return {
+                async maybeSingle() {
+                  const foto = await filtrada.maybeSingle();
+                  if (postou && !liberouEntreReleituraECas) {
+                    liberouEntreReleituraECas = true;
+                    // A RPC REAL do banco com estado: recusa contada com a
+                    // vaga livre -> tentativa 0 -> 1, DEPOIS da foto lida.
+                    await db.rpc("liberar_cobranca_do_pedido", { p_order_id: UUID, p_gateway_payment_id: null });
+                  }
+                  return foto;
+                },
+              };
+            },
+          };
+        },
+      };
+    },
+  };
+  const avisos: unknown[] = [];
+  const r = await emSilencio(() => chamar(comNotificacaoNoMeio, mp, corpoCartao(), avisos));
+
+  assertEquals(liberouEntreReleituraECas, true, "o cenário tem de ter rodado a notificação depois da releitura");
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
+  assertEquals(db.linha.gateway_payment_id, null, "o CAS da adoção gravou por cima da tentativa nova");
+  assertEquals(db.linha.metodo_online === "credito", false);
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.statusPagamento, "recusado");
+  assertEquals(r.corpo.podeTentarDeNovo, true);
+  assertEquals(r.corpo.cartaoEmAnalise, undefined);
+  assertEquals(consultas.length, 1);
+  assertEquals(mp.cancelamentos.length, 0);
+  assertEquals(mp.posts.length, 1);
+  assertEquals(avisos.length, 0);
+});

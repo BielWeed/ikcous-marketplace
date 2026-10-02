@@ -2969,7 +2969,32 @@ async function handler(
           : null;
       const vagaDestaChave = idOcupanteAgora === null ||
         sentinelaDaChave(idOcupanteAgora, await chaveDeIdempotencia(pedido, "cartao"));
-      if (vagaDestaChave && atual?.payment_status === "aguardando") {
+      // A3.2 (auditoria "estados B", 02/10/2026): vaga LIVRE não prova que é
+      // desta chave. Quem solta pela RPC (`liberar_cobranca_do_pedido`, por
+      // recusa/morte provada na notificação) SOMA a tentativa — a order desta
+      // chamada é de uma tentativa que o pedido já abandonou, e adotá-la
+      // gravava uma order RECUSADA com `metodo_online` de cartão: "em
+      // análise" para um cartão já recusado, sem cancelar nem pagar PIX. O
+      // mesmo filtro da reserva e da rede de segurança
+      // (`registrarCartaoEmVerificacao`, revisão financeira achado 1).
+      const tentativaBrutaDoCartao = Number(pedido.tentativas_de_pagamento);
+      const tentativaDaChaveDoCartao = Number.isInteger(tentativaBrutaDoCartao) && tentativaBrutaDoCartao >= 0
+        ? tentativaBrutaDoCartao
+        : 0;
+      // Veredito A2 (8b): o pedido CANCELADO com a tentativa avançada também
+      // entra aqui — o GET decide a resposta, e a adoção nunca roda nele.
+      const tentativaAvancouComVagaLivre = (linha: Record<string, unknown> | null | undefined): boolean => {
+        if (!linha || linha.payment_status !== "aguardando") return false;
+        if ((linha.gateway_payment_id ?? null) !== null) return false;
+        const tentativaNaLinha = Number(linha.tentativas_de_pagamento);
+        return (Number.isInteger(tentativaNaLinha) && tentativaNaLinha >= 0 ? tentativaNaLinha : 0) !==
+          tentativaDaChaveDoCartao;
+      };
+      let linhaComTentativaAvancada: Record<string, unknown> | null =
+        tentativaAvancouComVagaLivre(atual as Record<string, unknown> | null)
+          ? atual as Record<string, unknown>
+          : null;
+      if (!linhaComTentativaAvancada && vagaDestaChave && atual?.payment_status === "aguardando") {
         const valoresAdocao: Record<string, unknown> = {
           gateway_payment_id: idGateway,
           metodo_online: metodoOnline,
@@ -2982,7 +3007,10 @@ async function handler(
           .update(valoresAdocao)
           .eq("id", pedido.id)
           .eq("payment_status", "aguardando")
-          .neq("status", "cancelled");
+          .neq("status", "cancelled")
+          // A3.2: a notificação pode soltar e somar a tentativa ENTRE a
+          // releitura e este CAS — perdeu, relê abaixo.
+          .eq("tentativas_de_pagamento", tentativaDaChaveDoCartao);
         adocao = idOcupanteAgora === null
           ? adocao.is("gateway_payment_id", null)
           : adocao.eq("gateway_payment_id", idOcupanteAgora);
@@ -2997,6 +3025,164 @@ async function handler(
             200,
           );
         }
+        // A3.2: perdeu o CAS — relê para saber se foi a tentativa que avançou
+        // no meio. Releitura que falha não decide nada: segue o tratamento de
+        // corrida perdida de antes (conservador).
+        const { data: depoisDoCas, error: erroDepoisDoCas } = await supabase
+          .from("marketplace_orders")
+          .select("payment_status, gateway_payment_id, status, tentativas_de_pagamento")
+          .eq("id", pedido.id)
+          .maybeSingle();
+        if (!erroDepoisDoCas && tentativaAvancouComVagaLivre(depoisDoCas as Record<string, unknown> | null)) {
+          linhaComTentativaAvancada = depoisDoCas as Record<string, unknown>;
+        }
+      }
+      if (linhaComTentativaAvancada) {
+        // A3.2: nunca solta a vaga, nunca mexe na tentativa, nunca cria order
+        // nova. O GET (leitura) da order desta chamada decide; o 201 é a foto
+        // de antes da notificação.
+        const consultaDaOrder = await consultarOrder({
+          token: mpToken,
+          orderId: idGateway,
+          fetchImpl: deps.fetchImpl,
+          corpoNoLog: false,
+        });
+        const ordemConsultada = consultaDaOrder.ok && String(consultaDaOrder.order?.id ?? "") === idGateway
+          ? consultaDaOrder.order as Record<string, unknown>
+          : null;
+        const statusConsultado = ordemConsultada
+          ? mapearStatusOrder(String(ordemConsultada.status ?? ""), String(ordemConsultada.status_detail ?? ""))
+          : null;
+        const orderMorta = statusConsultado === "recusado" || statusConsultado === "expirado";
+        // Sem registro no pedido e sem prova de morte: avisa o admin e
+        // responde a MESMA coisa que `cartao_orfao`, mais abaixo — "pode ter
+        // sido cobrado" é verdade para `processing`, `action_required` e
+        // `processed`, e `terminal` + `cartaoEmAnalise` impedem uma segunda
+        // cobrança (novo cartão ou PIX) por cima de uma que ainda pode
+        // capturar.
+        const respostaSemRegistro = async (motivoLog: string) => {
+          console.error(
+            `criar-pagamento: cartão desta chamada sem registro no pedido — ${motivoLog}`,
+            { orderId: pedido.id, idOrder: idGateway, statusConsultado, consultaOk: consultaDaOrder.ok },
+          );
+          const alertarSemRegistro = deps.alertarAdminCartaoOrfao ?? alertarAdminCartaoOrfaoReal;
+          await comTempoLimite(
+            alertarSemRegistro({
+              supabase,
+              orderId: pedido.id,
+              idOrderOrfa: idGateway,
+              aviso: {
+                title: "Cartão em verificação sem registro no pedido",
+                body: `${descricaoDoPedido(pedido.id)} · confira no painel do Mercado Pago se o cartão foi cobrado`,
+              },
+            }),
+            5000,
+          );
+          return json(
+            {
+              error: "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.",
+              terminal: true,
+              cartaoEmAnalise: true,
+            },
+            409,
+          );
+        };
+        // Veredito A2 (8b): pedido cancelado — nunca adota. Morta: a mesma
+        // resposta terminal de `podeCobrar` para pedido cancelado, sem
+        // alerta (nada foi cobrado). Viva ou desconhecida: alerta.
+        if (linhaComTentativaAvancada.status === "cancelled") {
+          if (orderMorta) {
+            console.warn(
+              "criar-pagamento: pedido cancelado e cartão recusado durante a criação — nada adotado",
+              { orderId: pedido.id, idOrder: idGateway },
+            );
+            return json({ error: "Este pedido foi cancelado.", terminal: true }, 409);
+          }
+          return await respostaSemRegistro("pedido cancelado com a tentativa avançada durante a criação");
+        }
+        if (orderMorta) {
+          // Morta no MP: a MESMA resposta da recusa do cartão, recuperável e
+          // sem `cartaoEmAnalise` — a vaga já está livre (a notificação
+          // soltou) e o próximo cartão sai com a chave nova.
+          console.warn(
+            "criar-pagamento: cartão recusado depois do 201 — a notificação já soltou a vaga e avançou a tentativa; nada adotado",
+            { orderId: pedido.id, idOrder: idGateway },
+          );
+          return json(
+            {
+              paymentId: null,
+              statusPagamento: "recusado",
+              motivoRecusa: motivoDaRecusa(ordemConsultada),
+              podeTentarDeNovo: true,
+              expiraEm: pedido.expires_at,
+            },
+            200,
+          );
+        }
+        // Veredito A2 (8 e 8a): VIVA pelo GET — ou o GET não provou nada, mas
+        // o 201 já provou que a order existe. O registro é recuperável:
+        // adota na vaga LIVRE por CAS, SEM o filtro de tentativa (ele existe
+        // para não adotar order morta, e a morte já foi descartada acima).
+        const valoresAdocaoVerificada: Record<string, unknown> = {
+          gateway_payment_id: idGateway,
+          metodo_online: metodoOnline,
+          parcelas: parcelasGravadas,
+          updated_at: new Date().toISOString(),
+        };
+        if (expiresAtNovo) valoresAdocaoVerificada.expires_at = expiresAtNovo;
+        const { data: adotadaPeloGet } = await supabase
+          .from("marketplace_orders")
+          .update(valoresAdocaoVerificada)
+          .eq("id", pedido.id)
+          .eq("payment_status", "aguardando")
+          .neq("status", "cancelled")
+          .is("gateway_payment_id", null)
+          .select("id, expires_at")
+          .maybeSingle();
+        if (adotadaPeloGet) {
+          // Status e desafio do GET (a verdade de agora); sem GET legível,
+          // os da criação.
+          const urlDoDesafioConsultado = ordemConsultada ? extrairDesafio3ds(ordemConsultada) : null;
+          const desafioDaResposta = ordemConsultada
+            ? (urlDoDesafioConsultado ? { url: urlDoDesafioConsultado } : undefined)
+            : desafio3ds;
+          console.warn(
+            "criar-pagamento: cartão vivo adotado na vaga livre depois de a tentativa avançar durante a criação (veredito A2)",
+            { orderId: pedido.id, idOrder: idGateway, statusConsultado, consultaOk: consultaDaOrder.ok },
+          );
+          return json(
+            {
+              paymentId: idGateway,
+              statusPagamento: statusConsultado ?? statusCru,
+              expiraEm: adotadaPeloGet.expires_at,
+              desafio3ds: desafioDaResposta,
+            },
+            200,
+          );
+        }
+        // Veredito A2 (8c): perdeu o CAS (outra cobrança na vaga, ou o pedido
+        // saiu de 'aguardando'/foi cancelado). Desafio 3DS CONFIRMADO pelo
+        // GET (`action_required`/`created`, nada capturado): a mesma lógica
+        // do ramo `cancelavel`, mais abaixo — cancela; sucesso não acorda o
+        // admin. Fora disso (ou o MP não cancelou): alerta.
+        const statusBrutoConsultado = ordemConsultada ? String(ordemConsultada.status ?? "") : "";
+        if (statusBrutoConsultado === "action_required" || statusBrutoConsultado === "created") {
+          const cancelamentoDoDesafio = await cancelarOrder({
+            token: mpToken,
+            orderId: idGateway,
+            chaveIdempotencia: `cancelar:${idGateway}`,
+            fetchImpl: deps.fetchImpl,
+          });
+          if (cancelamentoDoDesafio.ok && orderCancelada(cancelamentoDoDesafio.order)) {
+            console.warn(
+              "criar-pagamento: cartao_orfao evitado — o desafio 3DS que perdeu a vaga depois de a tentativa avançar foi cancelado no MP",
+              { orderId: pedido.id, idOrderOrfa: idGateway },
+            );
+            return json({ error: "Não foi possível confirmar a cobrança." }, 409);
+          }
+          return await respostaSemRegistro("o desafio 3DS perdeu a vaga e o MP não o cancelou");
+        }
+        return await respostaSemRegistro("a cobrança viva perdeu a vaga depois de a tentativa avançar");
       }
     }
 
