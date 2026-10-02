@@ -652,6 +652,43 @@ O cartão só liga quando **todos** os itens abaixo passarem num pedido de teste
 vale para a loja inteira, porque preview e produção leem a mesma linha. Durante o teste, o
 cartão aparece para todo cliente, então faça em horário sem movimento.
 
+### Primeiro ensaio: ambiente isolado (revisão 01/10/2026)
+
+**Não use o preview atual para ligar cartão enquanto ele apontar para o banco da loja.**
+O destino `projeto = sandbox` ainda aparece no workflow antigo, mas a [consulta somente
+leitura de 01/10/2026](https://github.com/BielWeed/ikcous-marketplace/actions/runs/36949823569)
+recebeu HTTP 404 (`Resource has been removed`). Esse projeto não serve para o ensaio;
+um projeto de teste ativo e separado precisa ser identificado ou preparado primeiro.
+Mesmo um sandbox ativo não prova, sozinho, que o preview, as Edge Functions e as
+credenciais do Mercado Pago estejam isolados.
+Reativar o banco original da IKCOUS também não o transforma em sandbox: ele pode
+voltar a receber pedidos reais. Enquanto a volta ao original não estiver conferida
+(dados recentes, front, functions, webhook, cron e segredos), não ligue cartão em
+nenhum dos dois bancos da loja.
+Antes de qualquer pedido de teste:
+
+1. Confirme a identidade e o estado do projeto de teste escolhido. Só depois faça a
+   conferência somente leitura nele e confirme que o schema e as functions necessários
+   ao cartão estão presentes. Não aplique migrations por inferência nem use o ref antigo.
+2. Confirme que uma prévia do front aponta **somente** para esse sandbox e que nenhum
+   domínio ou alias de clientes aponta para a prévia de ensaio.
+3. Configure no sandbox, e só nele, a Public Key e o Access Token retirados da aba
+   **Credenciais de teste** da aplicação no Mercado Pago, além do e-mail de comprador de
+   teste exigido pela Orders API. Confira a origem no painel do MP: o prefixo `APP_USR`
+   também aparece em credencial de produção e não distingue os ambientes.
+4. Ligue crédito (e débito, se for testar) **somente no sandbox**, pelo painel ligado
+   àquele projeto. Comece com o teto de 1 parcela. Confirme por leitura, nos projetos
+   **original e novo** da loja, que crédito e débito continuam desligados em ambos.
+   Se o original ainda não puder ser lido, adie o ensaio até a reativação e conferência.
+5. Rode os cenários da seção “Testar” abaixo no sandbox, acompanhando pedido, webhook
+   e estoque ali. Se qualquer isolamento ou contrato da API real não puder ser
+   comprovado, mantenha o cartão desligado na loja.
+
+Os caminhos de troca temporária das credenciais da **loja** ou de cobrança com cartão
+**real** descritos em “Preparar a loja” são etapas separadas, com efeito sobre PIX ou dinheiro.
+Não os execute como atalho para o primeiro ensaio isolado. A validação no sandbox também
+não substitui a conferência final do domínio e da configuração que serão publicados.
+
 **O que muda no PIX (achado B, revisão de risco da migration 80, 26/09/2026 — registro, sem
 código de cartão envolvido)**: `podeCobrar` (`criar-pagamento/index.ts`) passou a recusar,
 terminal, qualquer pedido com `status = 'cancelled'` — inclusive PIX, que já está em produção.
@@ -673,7 +710,8 @@ ao admin — não é bloqueado, nem devia ser (é dinheiro de verdade entrando).
 "Cancelar pedido" tira o botão de gerar/reabrir o QR na tela, mas não assuma que um QR já copiado
 parou de funcionar no banco do cliente.
 
-**Preparar**
+**Preparar a loja — somente depois do ensaio isolado**
+
 - [ ] A migration **20261180000000** (`cliente_nao_cancela_com_cartao_vivo`, achado
   independente de risco de 26/09/2026) está aplicada. Sem ela, o cliente pode cancelar um
   pedido cuja cobrança de cartão ainda pode ser aprovada pelo banco — o estoque volta, e se o
