@@ -643,7 +643,17 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
     expect(confirmarRetornoDoProdutoMock).toHaveBeenCalledWith("ped-clique");
   });
 
-  it("o texto NUNCA promete estorno automático — manda o lojista ao painel do Mercado Pago", async () => {
+  // L3e (lacunas de pagamento, 02/10/2026): este teste dizia "o texto NUNCA
+  // promete estorno automático" — premissa que deixou de ser verdade em
+  // 07/09/2026 (cancelar pedido pago e não enviado grava a devolução em
+  // order_refunds e o cron a pede ao Mercado Pago sozinho). A frase que ele
+  // protegia ("esta tela não devolve dinheiro nenhum") mandava devolver por
+  // fora e pagava o cliente duas vezes. O que continua valendo, e é o que
+  // ele prende agora: a tela não afirma devolução em andamento para um
+  // pedido SEM linha em curso, e o caso manual continua sendo do lojista.
+  // (O lado em curso está em
+  // painel-devolver-agora-desconta-estorno-em-curso.test.tsx.)
+  it("pedido sem estorno em curso: a tela não diz que ESTE pedido está sendo devolvido, e o caso manual segue com o lojista", async () => {
     mockPedidosCancelados = [
       pedidoFake({
         id: "ped-honesto",
@@ -662,8 +672,11 @@ describe("AdminOrdersView — os dois baldes de estorno na tela", () => {
 
     const texto = hospedeiro.textContent || "";
     expect(texto).toContain("Mercado Pago");
-    expect(texto).not.toMatch(/estorno automático/i);
-    expect(texto).not.toMatch(/o app (devolve|estorna)/i);
+    expect(texto).not.toContain("não devolve dinheiro nenhum");
+    expect(texto).toContain("Os outros dependem de você");
+    expect(
+      hospedeiro.querySelector('[data-testid="estorno-em-curso"]'),
+    ).toBeNull();
   });
 
   it("nenhum pedido cancelado e pago: nenhum balde aparece", async () => {

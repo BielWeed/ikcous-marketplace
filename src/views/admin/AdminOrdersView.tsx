@@ -34,6 +34,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import {
+  type EstornoEmCurso,
+  useEstornosEmCursoDosPedidos,
+} from "@/hooks/useEstornosEmCursoDosPedidos";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
@@ -48,7 +52,10 @@ import { mapOrderFromDB } from "@/lib/mappers";
 import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
-import { valorDevolverAgora } from "@/lib/valor-devolver-agora";
+import {
+  valorDevolverAgora,
+  valorDevolverAgoraDescontandoLedger,
+} from "@/lib/valor-devolver-agora";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type {
   CanalDaVenda,
@@ -470,6 +477,19 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       pedidosCancelados.filter((o) => baldeDeEstorno(o) === "devolver_agora"),
     [pedidosCancelados],
   );
+  // L3e' (lacunas de pagamento, 02/10/2026): o estorno que o Mercado Pago
+  // JÁ está fazendo em cada pedido do balde (linhas solicitado/
+  // em_processamento de order_refunds). Sem isto, "Devolver agora" pedia o
+  // total enquanto o app já devolvia — e quem devolvia por fora pagava duas
+  // vezes. Só leitura; ver o hook. Rodada 4: o hook recebe os PEDIDOS (id
+  // + valorEstornado) — a leitura vale só para o retrato da lista em que foi
+  // feita, e expõe `recarregar` (abrir o painel) e `conferirAgora` (o
+  // "Já estornei" decide com leitura fresca).
+  const estornos = useEstornosEmCursoDosPedidos(pedidosParaDevolverAgora, {
+    // G1 (rodada 2): a releitura periódica só com a tela de pedidos ativa.
+    ativo: Boolean(active),
+  });
+  const estornosEmCurso = estornos.porPedido;
   const [confirmandoRetornoId, setConfirmandoRetornoId] = useState<
     string | null
   >(null);
@@ -793,6 +813,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // sempre. A RPC no servidor é guarda de admin; o confirm aqui evita
   // registrar por engano um estorno que ainda não aconteceu.
   const [estornandoId, setEstornandoId] = useState<string | null>(null);
+  // Rodada 4 (F2c): enquanto a leitura FRESCA do pedido não volta, o botão
+  // mostra "Conferindo…" e fica desligado. O ref barra o clique duplo no
+  // mesmo tick (o estado só chega ao DOM no próximo render).
+  const [conferindoEstornoId, setConferindoEstornoId] = useState<string | null>(
+    null,
+  );
+  const conferindoEstornoRef = useRef(false);
   const registrarEstornoFeito = async (pedido: {
     id: string;
     total?: number | null;
@@ -808,14 +835,81 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     valorDevolvidoPorDevolucao?: number;
     valorEstornado?: number;
   }) => {
-    const valor = valorDevolverAgora(pedido).toLocaleString("pt-BR", {
-      minimumFractionDigits: 2,
-    });
+    if (conferindoEstornoRef.current) return;
+    const reais = (v: number) =>
+      v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+    // Rodada 4 (F2c): o ponto de DECISÃO nunca usa a leitura da lista —
+    // uma devolução que começou depois dela (card "Devolver", outro admin)
+    // não muda marketplace_orders e não teria como aparecer. Leitura fresca
+    // deste pedido; falha ou prazo estourado = "não conferido", que cai na
+    // pergunta do estado desconhecido (rodada 3).
+    conferindoEstornoRef.current = true;
+    setConferindoEstornoId(pedido.id);
+    let ledger: EstornoEmCurso;
+    try {
+      ledger = await estornos.conferirAgora(pedido.id);
+    } finally {
+      conferindoEstornoRef.current = false;
+      setConferindoEstornoId(null);
+    }
+    // A lista acompanha o que acabou de ser lido.
+    estornos.recarregar();
+    const conferido = ledger.tipo === "conferido" ? ledger : null;
+    // O que falta devolver SEM descontar o que está em curso (mas já sem o
+    // que o MP concluiu depois do retrato da lista, rodada 2/R2): é o valor
+    // que o lojista precisa ter devolvido por fora para "Já estornei" ser
+    // verdade, porque o registro marca o pedido INTEIRO como devolvido.
+    const devidoSemDescontarEmCurso = conferido
+      ? valorDevolverAgoraDescontandoLedger(pedido, {
+          emCurso: 0,
+          concluido: conferido.concluido,
+        })
+      : valorDevolverAgora(pedido);
+    const valor = reais(devidoSemDescontarEmCurso);
     const cliente = pedido.customer?.name || "o cliente";
-    const pergunta =
-      pedido.canal === "presencial"
-        ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
-        : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    // L3e' rodada 2 (R1, revisão do front): com devolução em curso pelo MP,
+    // "Já estornei" marca o pedido INTEIRO como estornado. Antes da
+    // migration C-S (20261189) o servidor aceita e a linha `solicitado` é
+    // recusada pela guarda do executor — um pedido de R$100 com R$30 em
+    // curso, confirmado por quem só devolveu R$70 por fora, deixava o
+    // cliente com R$70. Depois da C-S, `solicitado` vira `recusado` e
+    // `em_processamento` faz o servidor RECUSAR o registro. O texto abaixo é
+    // verdadeiro nos dois mundos: "pode ser cancelada", "pode recusar", "ou o
+    // cliente pode receber as duas" (POST já saído antes da C-S).
+    let pergunta: string;
+    if (conferido && conferido.emCurso > 0) {
+      const emCurso = reais(conferido.emCurso);
+      const descontado = valorDevolverAgoraDescontandoLedger(pedido, conferido);
+      // "o app pediu" só quando nenhuma parte veio do próprio MP
+      // (`solicitado_por = 'sistema'`, contestação): aí só o genérico é
+      // verdade.
+      const quemPediu =
+        conferido.sistema > 0
+          ? `O Mercado Pago tem uma devolução ou disputa em andamento de R$ ${emCurso} neste pedido.`
+          : `O app já pediu ao Mercado Pago a devolução de R$ ${emCurso} deste pedido.`;
+      // Rodada 4 (F1, revisão financeira): linha TRAVADA (5+ tentativas) não
+      // é "dinheiro voltando" — o próprio cron grava "não consegui confirmar
+      // … confira no painel do MP". Mandar "esperar terminar" deixava o
+      // cliente sem nada quando o MP nunca recebeu o pedido.
+      const seDevolveuMenos =
+        conferido.semConfirmacao > 0
+          ? `Não consegui confirmar a devolução de R$ ${reais(conferido.semConfirmacao)} pelo Mercado Pago. Confira no painel do Mercado Pago antes de confirmar ou de devolver por outro meio.`
+          : descontado > 0
+            ? `Se você devolveu só R$ ${reais(descontado)} (ou nada), toque em Cancelar e espere a devolução do Mercado Pago terminar; depois confirme.`
+            : "Se você não devolveu nada por fora, toque em Cancelar: o dinheiro já está voltando pelo Mercado Pago.";
+      pergunta = `ATENÇÃO: ${quemPediu}\n\nSe você confirmar e o registro for aceito, o pedido inteiro passa a contar como devolvido, e essa devolução do Mercado Pago pode ser cancelada. Se ela já estiver saindo, o app pode recusar o registro — ou o cliente pode receber as duas.\n\nConfirme só se você já devolveu a ${cliente}, por fora (PIX, dinheiro ou painel do Mercado Pago), o valor TOTAL de R$ ${valor}. ${seDevolveuMenos}`;
+    } else if (!conferido) {
+      // Rodada 3: estado DESCONHECIDO (leitura pendente ou falha) — é
+      // exatamente quando o lojista não tem como saber se o MP já está
+      // devolvendo. Nada de promessa: só o que não deu para conferir, onde
+      // conferir, e o valor TOTAL que o registro marca como devolvido.
+      pergunta = `ATENÇÃO: Não consegui conferir agora se o Mercado Pago já está devolvendo parte deste pedido. Antes de confirmar, abra o painel do Mercado Pago e veja se há devolução em andamento — se houver, toque em Cancelar.\n\nConfirme só se você já devolveu a ${cliente}, por fora (PIX, dinheiro ou painel do Mercado Pago), o valor TOTAL de R$ ${valor}.\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    } else {
+      pergunta =
+        pedido.canal === "presencial"
+          ? `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no balcão?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`
+          : `Confirma que você JÁ devolveu R$ ${valor} para ${cliente} no painel do Mercado Pago?\n\nIsso marca o pedido como estornado e o remove da lista "Devolver agora".`;
+    }
     if (!globalThis.confirm(pergunta)) {
       return;
     }
@@ -824,7 +918,25 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       const { error } = await supabase.rpc("registrar_estorno_manual", {
         p_order_id: pedido.id,
       });
-      if (error) throw error;
+      if (error) {
+        // R4 (B1b): a recusa de NEGÓCIO do servidor (SQLSTATE 22023) chega
+        // com texto leigo escrito para o lojista — "o Mercado Pago já está
+        // devolvendo… faça-a pelo painel do Mercado Pago, nunca por outro
+        // caminho" (C-S, 20261189) ou "não tem mais nada a devolver"
+        // (20261176). Trocar isso por "Tente de novo" empurrava o lojista
+        // a pagar por fora. O resto (rede, permissão) segue genérico.
+        if (
+          (error as { code?: string }).code === "22023" &&
+          typeof error.message === "string" &&
+          error.message.trim() !== ""
+        ) {
+          console.error("Estorno manual recusado pelo servidor:", error);
+          toast.error(error.message);
+          await fetchPedidosCancelados().catch(() => {});
+          return;
+        }
+        throw error;
+      }
       toast.success("Estorno registrado — o pedido saiu da lista.");
       await fetchPedidosCancelados().catch(() => {});
     } catch (e) {
@@ -1375,6 +1487,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 avisoPagoAposCancelado={avisoPagoAposCancelado}
                 pedidosEsperandoRetorno={pedidosEsperandoRetorno}
                 pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+                estornosEmCurso={estornosEmCurso}
                 incompleto={pedidosCanceladosIncompleto}
                 foraDaJanela={canceladosForaDaJanela}
                 onIncluirAntigos={() => {
@@ -1383,6 +1496,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 confirmandoRetornoId={confirmandoRetornoId}
                 onConfirmarRetorno={handleConfirmarRetorno}
                 estornandoId={estornandoId}
+                conferindoEstornoId={conferindoEstornoId}
+                onAbrir={estornos.recarregar}
                 onRegistrarEstorno={registrarEstornoFeito}
                 onVerPedidos={irParaPedidosCancelados}
               />

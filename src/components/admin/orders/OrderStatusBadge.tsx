@@ -246,8 +246,11 @@ interface PaymentStatusBadgeProps {
  * DEPOIS foi cancelado — produzível hoje pelo botão "Cancelar Pedido" da
  * tela do cliente, que aparece para todo pedido pendente sem olhar o
  * pagamento. Sem isso, o painel mostrava "Pago" verde comum para um pedido
- * em que o dinheiro está com a loja, o estoque já voltou à prateleira e não
- * existe estorno automático em lugar nenhum deste app.
+ * em que o dinheiro pode ainda estar com a loja e o estoque já voltou à
+ * prateleira. (Desde 07/09/2026 o cancelamento de pedido pago e ainda não
+ * enviado pede a devolução ao Mercado Pago sozinho — linha em
+ * `order_refunds`; o rótulo continua valendo até o estorno concluir, quando
+ * `payment_status` vira 'estornado'.)
  *
  * Mesma família visual de `pago_apos_expirar` (dinheiro fora do fluxo, cores
  * reaproveitadas dali) — a causa é o espelho uma da outra: aqui o pedido

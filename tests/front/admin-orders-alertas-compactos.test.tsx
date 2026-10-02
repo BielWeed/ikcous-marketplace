@@ -259,8 +259,11 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     expect(hospedeiro.textContent).not.toContain(
       "O dinheiro entrou e o pedido está cancelado",
     );
+    // L3e (02/10/2026): a frase do balde de estorno mudou ("esta tela não
+    // devolve dinheiro nenhum" era falsa) — a sonda acompanha a frase nova,
+    // senão esta asserção passaria vazia para sempre.
     expect(hospedeiro.textContent).not.toContain(
-      "esta tela não devolve dinheiro nenhum",
+      "Os pedidos marcados com “Devolução em andamento”",
     );
   });
 

@@ -2996,8 +2996,10 @@ export function useOrders(
    * devolve o item ao estoque; sem ele, a mercadoria fica fora do catálogo
    * para sempre — a migration tirou o retorno automático que existia antes.
    *
-   * Não move dinheiro nenhum: o app não estorna sozinho. Isto só marca que a
-   * MERCADORIA voltou — quem governa o card de mercadoria é
+   * Não move dinheiro nenhum: isto só marca que a MERCADORIA voltou (a
+   * devolução do dinheiro, quando existe, anda por `order_refunds` — o
+   * cancelamento de pedido pago e não enviado a pede ao Mercado Pago
+   * sozinho desde 07/09/2026) — quem governa o card de mercadoria é
    * `precisaConfirmarRetornoDoProduto` (AdminOrdersView.tsx), não
    * `baldeDeEstorno` (achado da revisão de 26/08/2026, rodada 4: a versão
    * anterior deste comentário estava errada duas vezes — o card some por
