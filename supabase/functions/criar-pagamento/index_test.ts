@@ -1387,9 +1387,14 @@ Deno.test("handler: pedido sem cobrança existente cria uma nova e grava gateway
   // "aguardando" por "pago", ou "gateway_payment_id" por outra coluna,
   // deixava a suíte verde: a mutação só quebra o encadeamento se o nome do
   // MÉTODO sumir (.is deixa de existir), não se o valor mudar.
+  // Frente B (02/10/2026): o WHERE do PIX passou a ser o CAS completo —
+  // não cancelado e a MESMA tentativa da chave (`pedidoBase` sem a coluna
+  // vale 0, a mesma normalização da chave de idempotência).
   assertEquals(registro.filtrosUpdate, [
     ["id", UUID],
     ["payment_status", "aguardando"],
+    ["status<>", "cancelled"],
+    ["tentativas_de_pagamento", 0],
     ["gateway_payment_id", null],
   ]);
 });
@@ -2734,7 +2739,14 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // 53, não mais 52: a reserva perdida com a vaga AINDA livre (tentativa
   // avançada em outra aba) responde "O pagamento deste pedido mudou em
   // outra aba. Tente de novo." — entrada nova na lista acima.
-  assertEquals(achados, 53);
+  //
+  // 55, não mais 53: Frente B (02/10/2026, auditoria "estados A") — o PIX
+  // que perde a gravação final porque o pedido foi CANCELADO durante o POST
+  // responde o 409 terminal "Este pedido foi cancelado." (leva `terminal:
+  // true`), e o que perde porque a tentativa AVANÇOU responde o 409
+  // recuperável "O pagamento deste pedido mudou em outra aba. Tente de
+  // novo." (identificador já conhecido). 53 + 2 = 55.
+  assertEquals(achados, 55);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -7943,3 +7955,201 @@ Deno.test("revisão financeira (sobrevivente M12): um PIX ocupa a vaga ENTRE a l
   assertEquals(db.linha.gateway_payment_id, idPix, "a reocupação sobrescreveu um PIX cujo QR já saiu");
   assertEquals(titulosDosAvisos(avisos).filter((t) => t.includes("sem registro no pedido")).length, 1);
 });
+
+// --- Frente B (02/10/2026): PIX entregue para pedido cancelado durante o POST
+//
+// Auditoria "estados A": o cliente (ou o admin) cancela o pedido ENQUANTO o
+// POST do PIX está no ar. `update_order_status_atomic` grava só `status =
+// 'cancelled'` (payment_status segue 'aguardando'), e a gravação final do PIX
+// não filtrava `status` — o handler gravava o PIX e devolvia 200 com QR
+// pagável de um pedido cancelado. Intercalação DETERMINÍSTICA: a escrita do
+// outro ator roda dentro do POST mockado (`aoPostarPix`), depois de o MP criar
+// a order e antes de a resposta voltar.
+
+function pixComEscritaDuranteOPost(
+  tentativas: number,
+  escrever: (db: ReturnType<typeof bancoComEstado>) => void | Promise<void>,
+  opts: { cancelamentoFalha?: boolean } = {},
+) {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: tentativas }));
+  let jaEscreveu = false;
+  const mp = mpVivo({
+    cancelamentoFalha: opts.cancelamentoFalha,
+    aoPostarPix: async () => {
+      if (jaEscreveu) return;
+      jaEscreveu = true;
+      await escrever(db);
+    },
+  });
+  return { db, mp };
+}
+
+for (
+  const ator of [
+    {
+      nome: "CLIENTE",
+      // RPC do cliente: só `status` (e nada de payment_status/vaga).
+      cancelar: (l: Record<string, unknown>) => {
+        l.status = "cancelled";
+      },
+    },
+    {
+      nome: "ADMIN",
+      // RPC do admin: a MESMA escrita (`SET status, updated_at`), pelo ramo
+      // `v_is_admin` — payment_status continua 'aguardando'.
+      cancelar: (l: Record<string, unknown>) => {
+        l.status = "cancelled";
+        l.updated_at = "2026-10-02T10:05:00.000Z";
+      },
+    },
+  ]
+) {
+  Deno.test(`Frente B: pedido cancelado pelo ${ator.nome} DURANTE o POST do PIX -> 409 terminal 'Este pedido foi cancelado.', QR nunca sai, o PIX criado é cancelado no MP e a vaga fica livre`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp } = pixComEscritaDuranteOPost(0, (d) => ator.cancelar(d.linha));
+    const r = await emSilencio(() => chamar(db, mp, PEDIDO_PIX));
+
+    assertEquals(mp.orders.length, 1, "o POST chegou a criar a order");
+    assertEquals(r.status, 409, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { error: "Este pedido foi cancelado.", terminal: true });
+    assertEquals(r.corpo.qrCode, undefined, "QR pagável de pedido cancelado");
+    assertEquals(db.linha.status, "cancelled");
+    assertEquals(db.linha.gateway_payment_id, null, "o PIX foi gravado num pedido cancelado");
+    assertEquals(db.linha.metodo_online, undefined, "a forma foi carimbada num pedido cancelado");
+    assertEquals(mp.cancelamentos, [mp.orders[0].id], "o PIX recém-criado tem de ser cancelado no MP");
+    assertEquals(pixVivos(mp).length, 0, "PIX vivo e pagável de um pedido cancelado");
+  });
+}
+
+Deno.test("Frente B: pedido cancelado DURANTE o POST e o MP NÃO cancela o PIX (5xx) -> o QR continua sem sair, 409 terminal, e a falha fica no log", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp } = pixComEscritaDuranteOPost(0, (d) => {
+    d.linha.status = "cancelled";
+  }, { cancelamentoFalha: true });
+  const logs: unknown[][] = [];
+  const erro = console.error;
+  const aviso = console.warn;
+  console.error = (...a: unknown[]) => logs.push(a);
+  console.warn = () => {};
+  let r: { status: number; corpo: Record<string, unknown> };
+  try {
+    r = await chamar(db, mp, PEDIDO_PIX);
+  } finally {
+    console.error = erro;
+    console.warn = aviso;
+  }
+
+  assertEquals(r.status, 409, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { error: "Este pedido foi cancelado.", terminal: true });
+  assertEquals(r.corpo.qrCode, undefined);
+  assertEquals(db.linha.gateway_payment_id, null);
+  assertEquals(mp.cancelamentos, [mp.orders[0].id], "o cancelamento foi tentado");
+  assertEquals(
+    logs.some((a) => String(a[0]).includes("PIX que perdeu a vaga NÃO foi cancelado")),
+    true,
+    "a falha do cancelamento fica registrada",
+  );
+});
+
+Deno.test("Frente B: a tentativa AVANÇOU durante o POST do PIX (outra aba soltou a vaga) -> não grava, QR desta chamada não sai, o PIX da chave velha é cancelado, 409 recuperável; o retry sai com a chave nova", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp } = pixComEscritaDuranteOPost(0, async (d) => {
+    // A RPC REAL do banco com estado: recusa de cartão de outra aba contada
+    // com a vaga livre (`p_gateway_payment_id: null`) -> tentativa 0 -> 1.
+    await d.rpc("liberar_cobranca_do_pedido", { p_order_id: UUID, p_gateway_payment_id: null });
+  });
+  const r = await emSilencio(() => chamar(db, mp, PEDIDO_PIX));
+
+  assertEquals(db.linha.tentativas_de_pagamento, 1, "o cenário tem de ter avançado a tentativa");
+  assertEquals(r.status, 409, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.error, "O pagamento deste pedido mudou em outra aba. Tente de novo.");
+  assertEquals(r.corpo.terminal, undefined, "é recuperável: o retry relê a tentativa nova");
+  assertEquals(r.corpo.qrCode, undefined, "QR de uma chave que o pedido já abandonou");
+  assertEquals(db.linha.gateway_payment_id, null, "a chave velha não pode ocupar a vaga da tentativa nova");
+  assertEquals(mp.cancelamentos, [mp.orders[0].id], "o PIX da chave velha ficaria vivo e sem registro");
+
+  const retry = await emSilencio(() => chamar(db, mp, PEDIDO_PIX));
+  assertEquals(retry.status, 200, JSON.stringify(retry.corpo));
+  assertEquals(typeof retry.corpo.qrCode, "string");
+  assertEquals(mp.posts.map((p) => p.chave), [UUID, `${UUID}:1`]);
+  assertEquals(db.linha.gateway_payment_id, mp.orders[1].id);
+  assertEquals(retry.corpo.paymentId, mp.orders[1].id);
+  assertEquals(pixVivos(mp).length, 1, "só o PIX da tentativa nova fica vivo");
+});
+
+for (const tentativas of [0, 3]) {
+  Deno.test(`Frente B (controle): nada muda durante o POST do PIX (tentativa ${tentativas}) -> 200 com QR, MESMA chave de sempre, gravado, nada cancelado`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, mp } = pixComEscritaDuranteOPost(tentativas, () => {});
+    const r = await emSilencio(() => chamar(db, mp, PEDIDO_PIX));
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(typeof r.corpo.qrCode, "string");
+    assertEquals(r.corpo.paymentId, mp.orders[0].id);
+    assertEquals(mp.posts.map((p) => p.chave), [tentativas === 0 ? UUID : `${UUID}:${tentativas}`]);
+    assertEquals(db.linha.gateway_payment_id, mp.orders[0].id);
+    assertEquals(db.linha.metodo_online, "pix");
+    assertEquals(mp.cancelamentos.length, 0);
+  });
+}
+
+Deno.test("Frente B: outra aba gravou o MESMO PIX e o pedido foi cancelado durante o POST -> 409 terminal sem QR; a order registrada na vaga não é cancelada por esta chamada", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  let abaB: { status: number; corpo: Record<string, unknown> } | null = null;
+  let primeira = true;
+  const mp: MpVivo = mpVivo({
+    aoPostarPix: async () => {
+      if (!primeira) return;
+      primeira = false;
+      abaB = await chamar(db, mp, PEDIDO_PIX);
+      db.linha.status = "cancelled";
+    },
+  });
+  const abaA = await emSilencio(() => chamar(db, mp, PEDIDO_PIX));
+
+  assertEquals((abaB as unknown as { status: number }).status, 200, "a aba B gravou antes do cancelamento");
+  assertEquals(mp.orders.length, 1);
+  assertEquals(abaA.status, 409, JSON.stringify(abaA.corpo));
+  assertEquals(abaA.corpo, { error: "Este pedido foi cancelado.", terminal: true });
+  assertEquals(db.linha.gateway_payment_id, mp.orders[0].id, "o registro da cobrança na vaga continua");
+  assertEquals(mp.cancelamentos.length, 0, "a cobrança REGISTRADA não é desta chamada desfazer");
+});
+
+for (
+  const caso of [
+    {
+      nome: "cancelado ANTES",
+      linha: { status: "cancelled" },
+      auth: DONO_LOGADO,
+      esperado: { status: 409, corpo: { error: "Este pedido foi cancelado.", terminal: true } },
+    },
+    {
+      nome: "já pago",
+      linha: { payment_status: "pago" },
+      auth: DONO_LOGADO,
+      esperado: { status: 409, corpo: { error: "Este pedido não está aguardando pagamento.", terminal: true } },
+    },
+    {
+      nome: "de outro dono",
+      linha: {},
+      auth: "9f9f9f9f-1111-2222-3333-444455556666",
+      esperado: { status: 404, corpo: { error: "Pedido não encontrado.", terminal: true } },
+    },
+  ]
+) {
+  Deno.test(`Frente B (inalterado): PIX de pedido ${caso.nome} -> ${caso.esperado.status} sem nenhum POST, vaga intacta`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, ...caso.linha }));
+    const mp = mpVivo();
+    const r = await emSilencio(() =>
+      handler(requisicao(PEDIDO_PIX, montarToken(caso.auth)), { supabase: db as never, fetchImpl: mp.fn as typeof fetch })
+    );
+
+    assertEquals(r.status, caso.esperado.status);
+    assertEquals(await r.json(), caso.esperado.corpo);
+    assertEquals(mp.posts.length, 0);
+    assertEquals(mp.cancelamentos.length, 0);
+    assertEquals(db.linha.gateway_payment_id, null);
+  });
+}

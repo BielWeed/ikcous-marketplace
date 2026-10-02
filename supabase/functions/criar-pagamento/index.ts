@@ -2668,12 +2668,33 @@ async function handler(
   };
   if (expiresAtNovo) valoresUpdate.expires_at = expiresAtNovo;
 
+  // Frente B (02/10/2026, auditoria "estados A"): a tentativa que gerou a
+  // chave de idempotência do PIX desta chamada (`pedido` não muda entre
+  // `chaveDeIdempotencia(pedido, "pix")` e aqui) — mesma normalização da
+  // chave e da reserva do cartão.
+  const tentativaBrutaDoPix = Number(pedido.tentativas_de_pagamento);
+  const tentativaDaChavePix = Number.isInteger(tentativaBrutaDoPix) && tentativaBrutaDoPix >= 0 ? tentativaBrutaDoPix : 0;
+
   let updateDaVaga = supabase
     .from("marketplace_orders")
     .update(valoresUpdate)
     .eq("id", pedido.id);
   if (metodo !== "cartao") {
-    updateDaVaga = updateDaVaga.eq("payment_status", "aguardando");
+    // Frente B (02/10/2026, auditoria "estados A"): o PIX grava por CAS sobre
+    // TUDO que a decisão de criar leu — o mesmo WHERE da reserva do cartão.
+    // `status <> 'cancelled'`: o cancelamento (cliente OU admin, pela
+    // `update_order_status_atomic`) grava só `status` e deixa
+    // `payment_status = 'aguardando'`; sem este filtro, um cancelamento
+    // durante o POST gravava o PIX e entregava QR pagável de pedido
+    // cancelado. A tentativa: se `liberar_cobranca_do_pedido` avançou a
+    // tentativa durante o POST, a chave desta order já é velha — gravá-la
+    // poria na vaga uma cobrança de uma tentativa que o pedido abandonou.
+    // Perdeu por qualquer um: o tratamento da corrida perdida, abaixo,
+    // cancela este PIX no MP e o QR nunca sai.
+    updateDaVaga = updateDaVaga
+      .eq("payment_status", "aguardando")
+      .neq("status", "cancelled")
+      .eq("tentativas_de_pagamento", tentativaDaChavePix);
   }
   // Achado da 7ª rodada de risco (26/09/2026): o WHERE da vaga segue
   // `vagaEsperadaNaGravacao` — `.is(null)` no fluxo normal; `.eq(sentinela)`
@@ -2829,9 +2850,12 @@ async function handler(
     // OCUPANTE desta corrida é um cartão vivo — mesmo quando `metodo` desta
     // chamada é PIX (`cartaoAmbiguoAposCorrida`, abaixo, só existe para
     // `metodo === "cartao"`).
+    // `status` e `tentativas_de_pagamento` (Frente B, 02/10/2026): dizem POR
+    // QUE o CAS do PIX perdeu — pedido cancelado durante o POST, ou tentativa
+    // avançada por outra aba (ver `pixDePedidoCanceladoNoMeio`, abaixo).
     const { data: atual, error: erroReleituraAposCorrida } = await supabase
       .from("marketplace_orders")
-      .select("payment_status, gateway_payment_id, metodo_online")
+      .select("payment_status, gateway_payment_id, metodo_online, status, tentativas_de_pagamento")
       .eq("id", pedido.id)
       .maybeSingle();
     if (erroReleituraAposCorrida) {
@@ -2859,12 +2883,39 @@ async function handler(
     // esta MESMA order e a grava. Releitura que falhou → não sabe → nada.
     // Cancelamento negado/sem resposta: o QR nunca saiu daqui e o PIX
     // expira sozinho no prazo pedido ao MP (30 min) — fica no log com o id.
+    //
+    // Frente B (02/10/2026, auditoria "estados A"): duas causas a mais, as
+    // duas com a vaga LIVRE (o "retry com a MESMA chave grava" de cima não
+    // vale para elas):
+    // - pedido CANCELADO durante o POST (`status = 'cancelled'` com
+    //   `payment_status` ainda 'aguardando' — a escrita do cliente e a do
+    //   admin): nenhum retry vai gravar este PIX, e vivo ele é um QR pagável
+    //   de pedido cancelado. Cancela e responde 409 terminal.
+    // - tentativa AVANÇADA durante o POST (`liberar_cobranca_do_pedido` de
+    //   outra aba): a chave desta order é de uma tentativa abandonada — o
+    //   retry usa a chave nova e nunca a reencontra. Cancela e responde
+    //   409 recuperável.
+    // A MESMA order já gravada na vaga (outra aba convergiu antes do
+    // cancelamento) é cobrança REGISTRADA: não é desta chamada desfazer.
+    const pixDePedidoCanceladoNoMeio = metodo === "pix" &&
+      !erroReleituraAposCorrida &&
+      atual?.payment_status === "aguardando" &&
+      atual?.status === "cancelled";
+    const tentativaNoBanco = Number(atual?.tentativas_de_pagamento);
+    const pixDeTentativaAbandonada = metodo === "pix" &&
+      !erroReleituraAposCorrida &&
+      !pixDePedidoCanceladoNoMeio &&
+      atual?.payment_status === "aguardando" &&
+      (atual?.gateway_payment_id ?? null) === null &&
+      (Number.isInteger(tentativaNoBanco) && tentativaNoBanco >= 0 ? tentativaNoBanco : 0) !== tentativaDaChavePix;
+    const vagaComOutraCobranca = typeof atual?.gateway_payment_id === "string" &&
+      atual.gateway_payment_id.length > 0 &&
+      atual.gateway_payment_id !== idGateway;
     if (
       metodo === "pix" &&
       !erroReleituraAposCorrida &&
-      typeof atual?.gateway_payment_id === "string" &&
-      atual.gateway_payment_id.length > 0 &&
-      atual.gateway_payment_id !== idGateway
+      (vagaComOutraCobranca ||
+        ((pixDePedidoCanceladoNoMeio || pixDeTentativaAbandonada) && (atual?.gateway_payment_id ?? null) === null))
     ) {
       const cancelamentoDoPixPerdedor = await cancelarOrder({
         token: mpToken,
@@ -2872,17 +2923,37 @@ async function handler(
         chaveIdempotencia: `cancelar:${idGateway}`,
         fetchImpl: deps.fetchImpl,
       });
+      const causaDaPerda = pixDePedidoCanceladoNoMeio
+        ? "pedido cancelado durante a criação"
+        : pixDeTentativaAbandonada
+        ? "tentativa avançou durante a criação"
+        : "outra cobrança na vaga";
       if (cancelamentoDoPixPerdedor.ok && orderCancelada(cancelamentoDoPixPerdedor.order)) {
         console.warn(
-          "criar-pagamento: PIX que perdeu a vaga para outra cobrança foi cancelado no MP (QR nunca entregue)",
-          { orderId: pedido.id, idPixCancelado: idGateway, ocupante: atual.gateway_payment_id },
+          vagaComOutraCobranca && !pixDePedidoCanceladoNoMeio
+            ? "criar-pagamento: PIX que perdeu a vaga para outra cobrança foi cancelado no MP (QR nunca entregue)"
+            : `criar-pagamento: PIX que perdeu a vaga (${causaDaPerda}) foi cancelado no MP (QR nunca entregue)`,
+          { orderId: pedido.id, idPixCancelado: idGateway, ocupante: atual?.gateway_payment_id ?? null },
         );
       } else {
         console.error(
           "criar-pagamento: PIX que perdeu a vaga NÃO foi cancelado no MP — QR nunca entregue, expira no prazo do MP",
-          { orderId: pedido.id, idPix: idGateway, ocupante: atual.gateway_payment_id },
+          { orderId: pedido.id, idPix: idGateway, ocupante: atual?.gateway_payment_id ?? null, causa: causaDaPerda },
         );
       }
+    }
+    // Frente B (02/10/2026): o pedido foi cancelado (cliente ou admin)
+    // enquanto o POST deste PIX estava no ar — a MESMA resposta terminal que
+    // `podeCobrar` dá quando o cancelamento vem antes. QR nunca sai, com ou
+    // sem o cancelamento no MP ter dado certo (a falha fica no log acima).
+    if (pixDePedidoCanceladoNoMeio) {
+      return json({ error: "Este pedido foi cancelado.", terminal: true }, 409);
+    }
+    // Frente B (02/10/2026): a tentativa avançou durante o POST e a vaga
+    // está livre — a MESMA resposta recuperável da reserva do cartão que
+    // perde pela tentativa: o retry relê a tentativa e cria com a chave nova.
+    if (pixDeTentativaAbandonada) {
+      return json({ error: "O pagamento deste pedido mudou em outra aba. Tente de novo." }, 409);
     }
 
     // BLINDAGEM (02/10/2026): o CARTÃO desta chamada perdeu a gravação, mas a
