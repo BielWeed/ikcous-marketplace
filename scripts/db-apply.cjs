@@ -2391,6 +2391,39 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O AVISO DE COBRANÇA DUPLICADA SAI UMA VEZ, E QUEM CHEGA JUNTO ESPERA O
+  // RESULTADO DA OUTRA ENTREGA (aviso de dinheiro ao admin; 02/10/2026,
+  // migration 20261191000000; a entrega não é garantida — os limites estão no
+  // cabeçalho da migration): a reserva com
+  // prazo que o webhook chama antes do push "Cobrança de cartão duplicada?",
+  // e o confirmar/liberar que ele chama depois.
+  "20261191000000_aviso_de_cobranca_duplicada_sai_uma_vez.sql": [
+    {
+      funcao: "reservar_aviso_ao_lojista",
+      esperado: [
+        // Sem o prazo, ou a reserva morta nunca mais avisa (aviso perdido),
+        // ou duas entregas avisam juntas; sem `enviado = false`, o aviso
+        // entregue volta a cada 2 minutos.
+        "WHERE a.enviado = false",
+        "AND a.reservado_em < now() - interval '2 minutes';",
+        // Os três estados (rodada 3): quem não pegou a vaga sabe se espera
+        // ('em_envio') ou se o aviso já saiu ('enviado').
+        "RETURN 'reservado';",
+        "RETURN 'em_envio';",
+      ],
+    },
+    {
+      funcao: "confirmar_aviso_ao_lojista",
+      esperado: ["SET enviado = true"],
+    },
+    {
+      funcao: "liberar_aviso_ao_lojista",
+      esperado: [
+        // Nunca apaga aviso já entregue.
+        "AND enviado = false;",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

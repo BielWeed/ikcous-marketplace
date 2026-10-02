@@ -196,11 +196,29 @@ const json = (corpo: unknown, status = 200) =>
  * esta função roda, e uma falha de push não pode virar 500 — isso faria o MP
  * reenviar um evento que já foi tratado com sucesso, e reprocessar a RPC de
  * novo só para cair em 'ja_pago'. Só loga.
+ *
+ * C-P (02/10/2026): o miolo mora em `disparoPushContadoReal`, que devolve
+ * QUANTAS inscrições receberam o push — o aviso de cobrança duplicada precisa
+ * disso para só dar a reserva por gasta quando o push CHEGOU. Esta função
+ * mantém a assinatura e o comportamento de sempre (mesmos logs, nunca lança,
+ * devolve void) para os outros pushes deste arquivo.
  */
 async function disparoPushReal(args: {
   supabase: ReturnType<typeof createClient>;
   aviso: { title: string; body: string; url: string };
 }): Promise<void> {
+  await disparoPushContadoReal(args);
+}
+
+/**
+ * O miolo de `disparoPushReal`, devolvendo quantas inscrições receberam o
+ * push (`resumir(itens).enviados`). 0 quando não há admin, não há inscrição,
+ * nenhuma entrega deu certo ou algo lançou (logado, nunca sobe).
+ */
+async function disparoPushContadoReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  aviso: { title: string; body: string; url: string };
+}): Promise<number> {
   const { supabase, aviso } = args;
   try {
     const { data: admins, error: erroAdmins } = await supabase
@@ -212,7 +230,7 @@ async function disparoPushReal(args: {
     const ids = (admins ?? []).map((a: any) => a.id);
     if (ids.length === 0) {
       console.warn("webhook-mercadopago: nenhum admin cadastrado, aviso de pagamento sem destino");
-      return;
+      return 0;
     }
 
     const { data: inscricoes, error: erroInscricoes } = await supabase
@@ -223,7 +241,7 @@ async function disparoPushReal(args: {
 
     if (!inscricoes || inscricoes.length === 0) {
       console.warn("webhook-mercadopago: nenhum admin inscrito para push");
-      return;
+      return 0;
     }
 
     const vapidKeys = await carregarChavesVapid(
@@ -248,9 +266,141 @@ async function disparoPushReal(args: {
     console.log(
       `webhook-mercadopago: aviso de pagamento → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
     );
+    return resumo.enviados;
   } catch (erro) {
     console.error("webhook-mercadopago: falha ao disparar push de pagamento", erro);
+    return 0;
   }
+}
+
+/**
+ * C-P (02/10/2026) — pausas da reconsulta de quem encontra o aviso
+ * 'em_envio' (outra entrega da MESMA order está com a reserva). Três
+ * reconsultas, pausas crescentes: 8 s é a SOMA DAS PAUSAS, não um prazo. O
+ * tempo real desta etapa é pausas + até 4 chamadas de reserva (+ confirmar
+ * ou liberar) + o push (teto de 5 s na resposta); as RPCs são aguardadas sem
+ * tempo-limite próprio, então não há latência garantida. A soma foi escolhida
+ * para deixar folga aos 22 s que o MP dá para o 200/201, junto com o resto do
+ * handler (consulta ao MP, leituras).
+ */
+const PAUSAS_DO_AVISO_EM_ENVIO_MS = [1000, 2500, 4500];
+
+const dormirDeVerdade = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * C-P (02/10/2026) — o push "Cobrança de cartão duplicada?" sai UMA vez por
+ * (pedido, order do MP), sem gastar a vez quando o push não chega. Sem a
+ * reserva ele saía a cada ENTREGA: o MP manda uma notificação por
+ * atualização da order mais os reenvios, e este handler relê o estado ATUAL
+ * — três entregas da mesma order aprovada divergente davam três pushes iguais
+ * (W7).
+ *
+ * A reserva é um PRAZO (migration 20261191000000), não uma trava definitiva.
+ * `reservar_aviso_ao_lojista` devolve:
+ *   'reservado' → a vaga é desta chamada: o push sai por
+ *      `disparoPushContadoReal` (diz quantas inscrições o receberam); chegou a
+ *      ≥ 1 → `confirmar_aviso_ao_lojista`; não chegou a ninguém (erro, nenhum
+ *      admin inscrito, nenhuma entrega) → `liberar_aviso_ao_lojista`;
+ *   'enviado' → já entregue: nada a fazer;
+ *   'em_envio' → outra entrega está avisando AGORA. Esta NÃO supõe sucesso
+ *      ("singleflight"): espera o RESULTADO da dona reconsultando
+ *      (`PAUSAS_DO_AVISO_EM_ENVIO_MS`, a própria reserva toma posse se a dona
+ *      liberou ou se o prazo venceu). Virou 'reservado' → faz o push como a
+ *      dona faria; virou 'enviado' → nada; continuou 'em_envio' → devolve
+ *      "pendente", e quem chama responde NÃO-2xx para o MP reentregar (~15 min
+ *      depois, quando o prazo de 2 min já venceu ou o aviso já saiu).
+ * Confirmar/liberar rodam quando o push TERMINA, mesmo depois do teto de 5 s
+ * da resposta (`comTempoLimite` mantém o isolado vivo com `waitUntil`); se o
+ * isolado morrer antes, o prazo de 2 minutos solta a chave sozinho. Falha de
+ * confirmar/liberar só loga — o prazo cobre.
+ *
+ * A chave é a MESMA nos dois ramos que avisam (S5, a adoção que perdeu a
+ * corrida, e o `cartao_divergente`): é o mesmo fato e o mesmo texto, e o S5
+ * numa entrega costuma virar o ramo divergente na reentrega seguinte. Outra
+ * order aprovada no mesmo pedido é outra chave — avisa de novo.
+ *
+ * FALHA ABERTA: erro da RPC, exceção, função ausente (edge publicada antes da
+ * migration) ou valor desconhecido → avisa mesmo assim, sem confirmar/liberar
+ * (a vaga não é desta chamada) — perder um aviso de dinheiro é pior que
+ * repetir um. O `console.error` do `cartao_divergente` continua saindo em
+ * TODA entrega.
+ *
+ * LIMITES (já existiam antes da C-P) — a entrega NÃO é garantida: a dona da
+ * reserva cujo push não chega a ninguém libera e responde 200; na falha
+ * aberta, o push que não chega a ninguém também não se repete nesta entrega.
+ * Nos dois casos, só uma nova notificação do MP para a mesma order tenta de
+ * novo.
+ */
+async function avisarCobrancaDuplicadaUmaVez(args: {
+  supabase: ReturnType<typeof createClient>;
+  enviarPushContado: typeof disparoPushContadoReal;
+  dormir: (ms: number) => Promise<void>;
+  orderId: string;
+  idOrder: string;
+  aviso: { title: string; body: string; url: string };
+}): Promise<"ok" | "pendente"> {
+  const { supabase, enviarPushContado, dormir, orderId, idOrder, aviso } = args;
+  const chave = `cartao_divergente:${orderId}:${idOrder}`;
+
+  // null = a reserva falhou (falha aberta: avisa sem prazo)
+  const reservar = async (): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.rpc("reservar_aviso_ao_lojista", { p_chave: chave });
+      if (error) throw error;
+      if (data === "reservado" || data === "em_envio" || data === "enviado") return data;
+      throw new Error(`reservar_aviso_ao_lojista devolveu valor desconhecido: ${String(data)}`);
+    } catch (erro) {
+      console.error(
+        "webhook-mercadopago: reservar_aviso_ao_lojista falhou — avisa mesmo assim (falha aberta)",
+        { orderId, idOrder, erro },
+      );
+      return null;
+    }
+  };
+
+  let estado = await reservar();
+  for (const pausa of PAUSAS_DO_AVISO_EM_ENVIO_MS) {
+    if (estado !== "em_envio") break;
+    await dormir(pausa);
+    estado = await reservar();
+  }
+  if (estado === "enviado") {
+    console.warn(
+      "webhook-mercadopago: aviso de cobrança duplicada já entregue — push não repetido",
+      { orderId, idOrder },
+    );
+    return "ok";
+  }
+  if (estado === "em_envio") {
+    console.warn(
+      "webhook-mercadopago: aviso de cobrança duplicada continua em envio por outra entrega — pedindo reentrega ao MP",
+      { orderId, idOrder },
+    );
+    return "pendente";
+  }
+  const reservaDestaChamada = estado === "reservado";
+
+  const desfecho = (async () => {
+    let entregues = 0;
+    try {
+      entregues = await enviarPushContado({ supabase, aviso });
+    } catch (erro) {
+      console.error("webhook-mercadopago: push de cobrança duplicada falhou", { orderId, idOrder, erro });
+    }
+    if (!reservaDestaChamada) return;
+    const rpc = entregues > 0 ? "confirmar_aviso_ao_lojista" : "liberar_aviso_ao_lojista";
+    try {
+      const { error } = await supabase.rpc(rpc, { p_chave: chave });
+      if (error) throw error;
+    } catch (erro) {
+      console.error(
+        `webhook-mercadopago: ${rpc} falhou — a reserva expira sozinha em 2 minutos`,
+        { orderId, idOrder, erro },
+      );
+    }
+  })();
+  await comTempoLimite(desfecho, 5000);
+  return "ok";
 }
 
 /**
@@ -1043,6 +1193,10 @@ async function handler(
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
     enviarPush?: typeof disparoPushReal;
+    // C-P: o push do aviso de cobrança duplicada, que diz quantas inscrições o receberam.
+    enviarPushContado?: typeof disparoPushContadoReal;
+    // C-P rodada 3: a espera da reconsulta do aviso 'em_envio' (injetável no teste).
+    dormir?: (ms: number) => Promise<void>;
     enviarComprovante?: typeof dispararComprovanteReal;
     enviarAvisoAtrasado?: typeof dispararAvisoDePagamentoAtrasadoReal;
   } = {},
@@ -2119,10 +2273,27 @@ async function handler(
             body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
             url: "/admin-orders",
           };
-          await comTempoLimite(
-            (deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoDivergenteAposCorrida }),
-            5000,
-          );
+          // C-P: uma vez por (pedido, order); quem chega junto espera o resultado
+          // da outra entrega — ver `avisarCobrancaDuplicadaUmaVez` (e os limites lá).
+          // Rodada 3: "pendente" = outra entrega segue com a reserva depois da
+          // espera; 503 faz o MP reentregar. O que rodou até aqui é idempotente
+          // (leituras, consulta GET ao MP, a adoção CAS que não casou) e o que
+          // fica para a reentrega é `confirmar_pagamento`, que daria 'divergente'
+          // (só lê).
+          const avisoS5 = await avisarCobrancaDuplicadaUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+            dormir: deps.dormir ?? dormirDeVerdade,
+            orderId,
+            idOrder: idParaRpc,
+            aviso: avisoDivergenteAposCorrida,
+          });
+          if (avisoS5 === "pendente") {
+            return json(
+              { error: "Aviso de cobrança duplicada em envio por outra entrega — reentregue." },
+              503,
+            );
+          }
         }
       }
     } else if (idGravadoAtualStr !== idParaRpc) {
@@ -2142,7 +2313,23 @@ async function handler(
         body: `${numeroDoPedido(orderId)} · confira o painel do Mercado Pago`,
         url: "/admin-orders",
       };
-      await comTempoLimite((deps.enviarPush ?? disparoPushReal)({ supabase, aviso: avisoDivergente }), 5000);
+      // C-P: uma vez por (pedido, order); quem chega junto espera o resultado
+      // da outra entrega — ver `avisarCobrancaDuplicadaUmaVez` (e os limites lá).
+      // Rodada 3: "pendente" → 503 (ver o ramo S5, acima: mesma auditoria).
+      const avisoDv = await avisarCobrancaDuplicadaUmaVez({
+        supabase,
+        enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+        dormir: deps.dormir ?? dormirDeVerdade,
+        orderId,
+        idOrder: idParaRpc,
+        aviso: avisoDivergente,
+      });
+      if (avisoDv === "pendente") {
+        return json(
+          { error: "Aviso de cobrança duplicada em envio por outra entrega — reentregue." },
+          503,
+        );
+      }
     }
   }
 
