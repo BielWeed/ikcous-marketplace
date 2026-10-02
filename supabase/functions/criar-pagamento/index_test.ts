@@ -3800,6 +3800,113 @@ Deno.test("handler cartão: parcelas acima do teto da loja -> 400 recuperável; 
   assertEquals(mpNoTeto.criacoes().length, 1);
 });
 
+// --- contrato "forma de cartão desligada" (01/10/2026) ------------------------
+//
+// O 409 do portão ganha `codigo: "CARTAO_FORMA_DESLIGADA"` para a tela trocar
+// a configuração e oferecer PIX pela guarda da vaga — SEM afirmar ausência de
+// cobrança: o portão roda ANTES do ramo "reconsultar", então ele só garante
+// que ESTA chamada não tocou o MP nem a vaga. Por isso nada de `semCobranca`,
+// `terminal` ou `cartaoEmAnalise` no corpo.
+
+const CODIGO_FORMA_DESLIGADA = "CARTAO_FORMA_DESLIGADA";
+
+/** O corpo do 409 do portão: código exato e NENHUMA afirmação sobre cobrança. */
+function exigirCorpoDeFormaDesligada(corpo: Record<string, unknown>) {
+  assertEquals(corpo.error, "Esta forma de pagamento não está disponível nesta loja.");
+  assertEquals(corpo.codigo, CODIGO_FORMA_DESLIGADA);
+  assertEquals("semCobranca" in corpo, false, "o portão não sabe se o pedido tem cobrança");
+  assertEquals("terminal" in corpo, false, "forma desligada é recuperável (o cliente paga com PIX)");
+  assertEquals("cartaoEmAnalise" in corpo, false, "o portão não consultou a vaga");
+}
+
+for (
+  const caso of [
+    { nome: "crédito desligado", cenario: { configCartao: { credito: false, debito: true, parcelas_max: 12 } }, tipo: "credit_card" },
+    { nome: "débito desligado", cenario: { configCartao: { credito: true, debito: false, parcelas_max: 12 } }, tipo: "debit_card" },
+    { nome: "linha de config ausente", cenario: { configCartao: null }, tipo: "credit_card" },
+    { nome: "falha ao LER a config", cenario: { erroConfigCartao: { message: "timeout" } }, tipo: "credit_card" },
+  ]
+) {
+  Deno.test(`contrato forma desligada: ${caso.nome} -> 409 com codigo ${CODIGO_FORMA_DESLIGADA}, sem afirmar cobrança, zero MP e zero UPDATE`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao(caso.cenario);
+    const mp = fetchMP({});
+
+    const resposta = await handler(
+      requisicao(corpoCartao({ paymentTypeId: caso.tipo }), montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: mp.fn },
+    );
+
+    assertEquals(resposta.status, 409);
+    exigirCorpoDeFormaDesligada(await resposta.json());
+    assertEquals(mp.chamadas.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+    assertEquals(chamadasRpc.length, 0);
+  });
+}
+
+Deno.test("contrato forma desligada: pedido com cartão ANTERIOR em análise (processing) na vaga -> o mesmo 409 com código, sem consultar o MP e com a cobrança intacta; o PIX seguinte continua barrado pela guarda da vaga", async () => {
+  // Cobrança anterior registrada: a vaga tem a order de cartão viva.
+  const pedidoComCartaoVivo = pedidoBase({
+    user_id: DONO_LOGADO,
+    gateway_payment_id: ORDER_CARTAO_NA_VAGA,
+    metodo_online: "credito",
+    parcelas: 3,
+  });
+  const configDesligada = { credito: false, debito: false, parcelas_max: 12 };
+
+  const cartao = cenarioCartao({ pedido: pedidoComCartaoVivo, configCartao: configDesligada });
+  const mpCartao = fetchMP({});
+  const respostaCartao = await handler(
+    requisicao(corpoCartao(), montarToken(DONO_LOGADO)),
+    { supabase: cartao.supabase, fetchImpl: mpCartao.fn },
+  );
+
+  assertEquals(respostaCartao.status, 409);
+  exigirCorpoDeFormaDesligada(await respostaCartao.json());
+  // O portão vem ANTES do ramo "reconsultar": nem a consulta da vaga sai.
+  assertEquals(mpCartao.chamadas.length, 0);
+  assertEquals(cartao.registro.chamadasUpdate, 0, "a cobrança registrada fica intacta");
+  assertEquals(cartao.chamadasRpc.length, 0, "nenhuma liberação da vaga");
+
+  // CONTROLE (guarda existente): o PIX pedido para ESTE pedido consulta a
+  // vaga, vê o cartão em análise e recusa — nunca cria uma segunda cobrança.
+  const pix = cenarioCartao({ pedido: pedidoComCartaoVivo, configCartao: configDesligada });
+  const mpPix = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("processing", "in_process", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+  const respostaPix = await handler(
+    requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)),
+    { supabase: pix.supabase, fetchImpl: mpPix.fn },
+  );
+  const corpoPix = await respostaPix.json();
+
+  assertEquals(respostaPix.status, 409);
+  assertEquals(corpoPix.error, "Há um pagamento com cartão em análise para este pedido.");
+  assertEquals(corpoPix.cartaoEmAnalise, true);
+  assertEquals(corpoPix.codigo, undefined, "a guarda da vaga não é o portão da forma");
+  assertEquals(mpPix.criacoes().length, 0);
+  assertEquals(mpPix.cancelamentos().length, 0);
+  assertEquals(pix.registro.chamadasUpdate, 0);
+  assertEquals(pix.chamadasRpc.length, 0);
+});
+
+Deno.test("contrato forma desligada, CONTROLE: o 400 de parcelamento acima do teto NÃO leva o código", async () => {
+  const { supabase, registro } = cenarioCartao({ configCartao: { credito: true, debito: true, parcelas_max: 3 } });
+  const mp = fetchMP({});
+
+  const resposta = await handler(
+    requisicao(corpoCartao({ parcelas: 4 }), montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 400);
+  assertEquals(corpo.error, "Esse parcelamento não está disponível nesta loja.");
+  assertEquals(corpo.codigo, undefined);
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
 Deno.test("handler cartão: débito com loja de teto 1 e 6 parcelas pedidas passa (débito não parcela) e vai com installments 1", async () => {
   const { supabase, registro } = cenarioCartao({ configCartao: { credito: false, debito: true, parcelas_max: 1 } });
   const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processing", "in_process", { tipo: "debit_card" }) } });

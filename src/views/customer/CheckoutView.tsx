@@ -3264,6 +3264,8 @@ export function CheckoutView({
             metodo={metodoDoPedido}
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
+            cobrancaIncerta={pedidoTemCobrancaIncerta}
+            onVerMeusPedidos={() => onNavigate("orders")}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
             //

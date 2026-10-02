@@ -462,6 +462,30 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 
+  it("ao remontar depois de erro ambíguo, passa a cobrança incerta e a saída para Meus pedidos à tela online", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+    expect(pagamentoOnlineProps.at(-1)!.cobrancaIncerta).toBe(false);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Erro de infraestrutura (502).", "recuperavel");
+    });
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Tentar de novo")!.click();
+    });
+
+    expect(pagamentoOnlineProps.at(-1)!.cobrancaIncerta).toBe(true);
+    await act(async () => {
+      (pagamentoOnlineProps.at(-1)!.onVerMeusPedidos as () => void)();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("orders");
+  });
+
   // B1, rodada 2 (achado BLOQUEANTE, dinheiro) — Caso A da revisão: a
   // resposta TERMINAL "Seu cartão pode ter sido cobrado…" (achado N7) não
   // pode ganhar "Pagar com PIX" — o cartão pode já estar cobrado, e um PIX

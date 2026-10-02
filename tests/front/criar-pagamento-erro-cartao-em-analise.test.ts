@@ -134,3 +134,123 @@ describe("useOrders/criarPagamento propaga o campo cartaoEmAnalise do 409 (B3)",
     expect(erroCapturado.cartaoEmAnalise).not.toBe(true);
   });
 });
+
+/**
+ * Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão de
+ * `criar-pagamento` carrega `codigo: "CARTAO_FORMA_DESLIGADA"` — e SÓ isso. O
+ * código não afirma ausência de cobrança (o portão roda antes do ramo
+ * "reconsultar" da edge); serve para a tela trocar a configuração e oferecer
+ * PIX pela guarda da vaga. `criarPagamento` transporta o código no Error
+ * somente quando é o literal EXATO — qualquer outra coisa fica `undefined`
+ * (falha fechada, mesma régua estrita de `terminal`/`cartaoEmAnalise`).
+ */
+const CODIGO_FORMA_DESLIGADA = "CARTAO_FORMA_DESLIGADA";
+const MENSAGEM_FORMA_DESLIGADA =
+  "Esta forma de pagamento não está disponível nesta loja.";
+const ARGS_CARTAO = {
+  orderId: "ped-1",
+  metodo: "cartao" as const,
+  token: "tok",
+  paymentMethodId: "master",
+  paymentTypeId: "credit_card" as const,
+  parcelas: 1,
+  documento: { type: "CPF", number: "12345678909" },
+};
+
+type Origem = "error.context.json()" | "data.error";
+
+/** A resposta do invoke com o corpo da edge na origem pedida. */
+function respostaDoInvoke(origem: Origem, corpo: Record<string, unknown>) {
+  return origem === "error.context.json()"
+    ? { data: null, error: erroDeInvokeComCorpo(corpo) }
+    : { data: corpo, error: null };
+}
+
+async function erroDeCriarPagamento(
+  origem: Origem,
+  corpo: Record<string, unknown>,
+): Promise<any> {
+  vi.mocked(supabase.functions.invoke).mockResolvedValue(
+    respostaDoInvoke(origem, corpo) as any,
+  );
+  // React é dublado neste arquivo; useOrders roda como função síncrona nos testes.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { criarPagamento } = useOrders(false, true);
+  try {
+    await criarPagamento(ARGS_CARTAO as any);
+  } catch (err) {
+    return err;
+  }
+  throw new Error("criarPagamento devia ter lançado");
+}
+
+const ORIGENS: Origem[] = ["error.context.json()", "data.error"];
+
+describe("useOrders/criarPagamento transporta Error.codigo só para o literal CARTAO_FORMA_DESLIGADA", () => {
+  beforeEach(() => {
+    vi.mocked(supabase.functions.invoke).mockReset();
+  });
+
+  it.each(ORIGENS)(
+    "%s: codigo exato vira Error.codigo, com a mensagem e terminal/cartaoEmAnalise falsos preservados",
+    async (origem) => {
+      const erro = await erroDeCriarPagamento(origem, {
+        error: MENSAGEM_FORMA_DESLIGADA,
+        codigo: CODIGO_FORMA_DESLIGADA,
+      });
+
+      expect(erro).toBeInstanceOf(Error);
+      expect(erro.message).toBe(MENSAGEM_FORMA_DESLIGADA);
+      expect(erro.codigo).toBe(CODIGO_FORMA_DESLIGADA);
+      // O código NÃO é afirmação sobre cobrança: nada é inventado.
+      expect(erro.terminal).toBe(false);
+      expect(erro.cartaoEmAnalise).toBe(false);
+      expect("semCobranca" in erro).toBe(false);
+    },
+  );
+
+  it.each(ORIGENS)(
+    "%s: o código não apaga terminal/cartaoEmAnalise que vieram no MESMO corpo",
+    async (origem) => {
+      const erro = await erroDeCriarPagamento(origem, {
+        error: MENSAGEM_FORMA_DESLIGADA,
+        codigo: CODIGO_FORMA_DESLIGADA,
+        terminal: true,
+        cartaoEmAnalise: true,
+      });
+
+      expect(erro.codigo).toBe(CODIGO_FORMA_DESLIGADA);
+      expect(erro.terminal).toBe(true);
+      expect(erro.cartaoEmAnalise).toBe(true);
+    },
+  );
+
+  const NAO_SAO_O_CODIGO: ReadonlyArray<[string, Record<string, unknown>]> = [
+    ["ausente", {}],
+    ["outro texto", { codigo: "OUTRO_CODIGO" }],
+    ["minúsculas", { codigo: "cartao_forma_desligada" }],
+    ["com espaço", { codigo: ` ${CODIGO_FORMA_DESLIGADA} ` }],
+    ["número", { codigo: 1 }],
+    ["booleano", { codigo: true }],
+    ["lista com o literal", { codigo: [CODIGO_FORMA_DESLIGADA] }],
+    ["objeto", { codigo: { valor: CODIGO_FORMA_DESLIGADA } }],
+    ["null", { codigo: null }],
+  ];
+
+  for (const origem of ORIGENS) {
+    it.each(NAO_SAO_O_CODIGO)(
+      `${origem}: codigo %s -> Error.codigo indefinido (falha fechada)`,
+      async (_rotulo, extra) => {
+        const erro = await erroDeCriarPagamento(origem, {
+          error: MENSAGEM_FORMA_DESLIGADA,
+          ...extra,
+        });
+
+        expect(erro).toBeInstanceOf(Error);
+        expect(erro.codigo).toBeUndefined();
+        // A MESMA frase sem o código não vira código: nada se deduz do texto.
+        expect(erro.message).toBe(MENSAGEM_FORMA_DESLIGADA);
+      },
+    );
+  }
+});

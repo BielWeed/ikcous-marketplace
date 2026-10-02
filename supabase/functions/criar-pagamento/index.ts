@@ -1192,7 +1192,16 @@ async function handler(
     const formaLigada = configCartao !== null &&
       (dadosCartao.paymentTypeId === "credit_card" ? configCartao.credito : configCartao.debito);
     if (!formaLigada) {
-      return json({ error: "Esta forma de pagamento não está disponível nesta loja." }, 409);
+      // Contrato "forma de cartão desligada" (01/10/2026): o `codigo` deixa a
+      // tela trocar a configuração e oferecer PIX pela guarda da vaga. NÃO
+      // afirma ausência de cobrança — este portão roda ANTES do ramo
+      // "reconsultar"; só garante que ESTA chamada não tocou o MP nem a vaga.
+      // Por isso, de propósito, sem `semCobranca`, `terminal` ou
+      // `cartaoEmAnalise`.
+      return json(
+        { error: "Esta forma de pagamento não está disponível nesta loja.", codigo: "CARTAO_FORMA_DESLIGADA" },
+        409,
+      );
     }
     if (dadosCartao.parcelas > configCartao.parcelasMax) {
       return json({ error: "Esse parcelamento não está disponível nesta loja." }, 400);
