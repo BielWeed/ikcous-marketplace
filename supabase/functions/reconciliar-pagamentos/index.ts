@@ -798,8 +798,11 @@ async function handler(
       // decidem como para qualquer outro candidato. Order viva (em análise),
       // morta ou busca inconclusiva: fica como estava (ignorado) — liberar
       // a vaga ou esperar a análise continua com quem já decide isso hoje.
-      // Sem push aqui (ver "SEM PUSH AQUI" no cabeçalho): o aviso ao admin
-      // já saiu uma vez, na escrita do sentinela.
+      // Nenhum push NESTE passo: o aviso da cobrança em dúvida já saiu uma
+      // vez, na escrita do sentinela. Adotado aqui, o candidato segue o laço
+      // e, se `confirmar_pagamento` devolver `pago_apos_expirar`, ganha o
+      // push "Pagamento fora do fluxo" como qualquer outro (ver "PUSH AO
+      // ADMIN" no cabeçalho).
       if (vagaEmVerificacao(candidato.gateway_payment_id)) {
         const idAdotado = await adotarCartaoCapturadoDoSentinela({
           supabase,
