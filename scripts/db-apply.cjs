@@ -2322,6 +2322,32 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O CARTÃO EM ANÁLISE SEGURA A EXPIRAÇÃO (dinheiro; 02/10/2026, migration
+  // 20261186000000): a varredura não cancela pedido cujo cartão o banco ainda
+  // pode aprovar (sentinela `verificando:` ou vaga de crédito/débito) enquanto
+  // o pedido estiver dentro da janela de 24 h da reconciliação.
+  "20261186000000_cartao_em_analise_segura_a_expiracao.sql": [
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // As guardas que a 20260901000000 já tinha têm de sobreviver ao
+        // REPLACE: sem elas a varredura alcançaria pedido pago ou cancelado.
+        "WHERE payment_status = 'aguardando'",
+        "AND status = 'pending'",
+        // O predicado novo, amarrado como UM bloco (do teto de 24 h ao
+        // SKIP LOCKED): se alguém tirar o COALESCE, trocar a lista do IN ou
+        // soltar o OR, esta string contígua deixa de casar. Sem o COALESCE,
+        // `NOT (NULL)` é NULL e o pedido sem `metodo_online` some da varredura.
+        "AND (\n                expires_at <= now() - interval '24 hours'\n                OR NOT COALESCE(\n                     gateway_payment_id LIKE 'verificando:%'\n                     OR (\n                          gateway_payment_id IS NOT NULL\n                          AND metodo_online IN ('credito', 'debito')\n                        ),\n                     false\n                   )\n              )\n        FOR UPDATE SKIP LOCKED",
+        // O laço que devolve o estoque e grava expirado/cancelled continua o
+        // mesmo (a única mudança é QUAIS pedidos entram nele).
+        `PERFORM public.devolver_estoque(v_pedido.id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'expirado',`,
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

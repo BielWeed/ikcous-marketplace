@@ -51,6 +51,14 @@
  *       da 75, nem o da própria 80) e espera a recusa
  *       `B1_BASELINE_DIVERGENT` — dentro de BEGIN/ROLLBACK, para não deixar
  *       o corpo divergente vazar para as provas seguintes deste arquivo.
+ *   (x) migration 20261186000000 (02/10/2026, dinheiro): a varredura
+ *       `expirar_pedidos_vencidos` não cancela pedido cujo cartão o banco
+ *       ainda pode aprovar (vaga de crédito/débito ou sentinela
+ *       `verificando:`) enquanto a janela de 24 h da reconciliação vale; PIX
+ *       e cartão acima do teto expiram e devolvem o estoque
+ *       (`devolver_estoque` REAL, produto de fixture). (x2) recusa libera a
+ *       vaga e a varredura expira; aprovação tardia vira 'pago'. (xp)
+ *       preflight B1_BASELINE_DIVERGENT da 86.
  *
  * USO: node tests/banco/cartao-online-viva.cjs (depois de provisionar.cjs e
  * aplicar-migrations.cjs, como no rpc-ci.yml)
@@ -577,6 +585,267 @@ PROVAS.push({
     } finally {
       // Nunca deixa o corpo divergente vazar para as provas seguintes deste
       // arquivo (elas leem update_order_status_atomic de verdade).
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
+// (x) expirar_pedidos_vencidos / 20261186000000 — a varredura não cancela
+// pedido cujo cartão o banco ainda pode aprovar. Usa o `devolver_estoque`
+// REAL (estoque de produto de fixture) e a cadeia REAL de migrations.
+const CAMINHO_MIGRATION_86 = path.join(
+  __dirname,
+  "..",
+  "..",
+  "supabase",
+  "migrations",
+  "20261186000000_cartao_em_analise_segura_a_expiracao.sql",
+);
+
+const IDS_X = {
+  pix: [
+    "4ccccccc-0000-0000-0000-0000000000a1",
+    "4aaaaaaa-0000-0000-0000-0000000000a1",
+  ],
+  credito: [
+    "4ccccccc-0000-0000-0000-0000000000a2",
+    "4aaaaaaa-0000-0000-0000-0000000000a2",
+  ],
+  sentinela: [
+    "4ccccccc-0000-0000-0000-0000000000a3",
+    "4aaaaaaa-0000-0000-0000-0000000000a3",
+  ],
+  teto: [
+    "4ccccccc-0000-0000-0000-0000000000a4",
+    "4aaaaaaa-0000-0000-0000-0000000000a4",
+  ],
+  recusado: [
+    "4ccccccc-0000-0000-0000-0000000000a5",
+    "4aaaaaaa-0000-0000-0000-0000000000a5",
+  ],
+  aprovado: [
+    "4ccccccc-0000-0000-0000-0000000000a6",
+    "4aaaaaaa-0000-0000-0000-0000000000a6",
+  ],
+};
+const ESTOQUE_INICIAL_X = 10;
+const QTD_X = 3;
+
+async function criarPedidoComEstoque(
+  cliente,
+  [pedidoId, produtoId],
+  { metodo, vaga, vencidoHaMinutos },
+) {
+  await cliente.query(
+    `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+     VALUES ($1, 'Produto Expiracao', 10.00, 25.00, $2, true, false)`,
+    [produtoId, ESTOQUE_INICIAL_X],
+  );
+  await cliente.query(
+    `INSERT INTO public.marketplace_orders
+       (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
+        payment_method, payment_status, expires_at, metodo_online, gateway_payment_id)
+     VALUES ($1, $2, 'Cliente Expiracao', '{}'::jsonb, 75, 75, 'pending', 'online',
+             'online', 'aguardando', now() - make_interval(mins => $5::int), $3, $4)`,
+    [pedidoId, U_CLIENTE, metodo, vaga, vencidoHaMinutos],
+  );
+  await cliente.query(
+    `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price)
+     VALUES ($1, $2, 'Produto Expiracao', $3, 25.00)`,
+    [pedidoId, produtoId, QTD_X],
+  );
+}
+
+async function estoqueDoProduto(cliente, produtoId) {
+  const r = await cliente.query(
+    "SELECT estoque FROM public.produtos WHERE id = $1",
+    [produtoId],
+  );
+  return Number(r.rows[0].estoque);
+}
+
+async function estadoDoPedido(cliente, id) {
+  const r = await cliente.query(
+    "SELECT status, payment_status FROM public.marketplace_orders WHERE id = $1",
+    [id],
+  );
+  return r.rows[0];
+}
+
+async function expirarPedidosVencidos(cliente) {
+  const r = await cliente.query(
+    "SELECT public.expirar_pedidos_vencidos() AS n",
+  );
+  return Number(r.rows[0].n);
+}
+
+PROVAS.push({
+  nome: "(x) a varredura (20261186000000) não cancela cartão vivo dentro de 24 h; PIX e o teto expiram como sempre",
+  corpo: async (cliente) => {
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, $2, '{}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_CLIENTE, "cliente-expiracao@cartao.teste"],
+    );
+
+    // a: PIX vencido há 31 min — expira e devolve o estoque (comportamento de
+    // sempre; o PIX do balcão, 20261184000000, depende disto).
+    await criarPedidoComEstoque(cliente, IDS_X.pix, {
+      metodo: "pix",
+      vaga: "ORD-EXP-PIX",
+      vencidoHaMinutos: 31,
+    });
+    // c: crédito com vaga (cartão em análise), vencido há 31 min — NÃO expira.
+    await criarPedidoComEstoque(cliente, IDS_X.credito, {
+      metodo: "credito",
+      vaga: "ORD-EXP-CREDITO",
+      vencidoHaMinutos: 31,
+    });
+    // e: sentinela com metodo_online NULL, vencido há 31 min — NÃO expira.
+    await criarPedidoComEstoque(cliente, IDS_X.sentinela, {
+      metodo: null,
+      vaga: "verificando:exp-prova",
+      vencidoHaMinutos: 31,
+    });
+    // g: crédito com vaga vencido há 24 h + 1 min — passou do teto, expira.
+    await criarPedidoComEstoque(cliente, IDS_X.teto, {
+      metodo: "credito",
+      vaga: "ORD-EXP-TETO",
+      vencidoHaMinutos: 24 * 60 + 1,
+    });
+
+    const expirados = await expirarPedidosVencidos(cliente);
+    assert.equal(expirados, 2, "só o PIX e o cartão acima do teto expiram");
+
+    assert.deepEqual(await estadoDoPedido(cliente, IDS_X.pix[0]), {
+      status: "cancelled",
+      payment_status: "expirado",
+    });
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.pix[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+      "a: o estoque do PIX vencido voltou",
+    );
+
+    for (const alvo of [IDS_X.credito, IDS_X.sentinela]) {
+      assert.deepEqual(
+        await estadoDoPedido(cliente, alvo[0]),
+        { status: "pending", payment_status: "aguardando" },
+        "c/e: cartão possivelmente vivo segue pendente",
+      );
+      assert.equal(
+        await estoqueDoProduto(cliente, alvo[1]),
+        ESTOQUE_INICIAL_X,
+        "c/e: o estoque do cartão vivo NÃO voltou para a prateleira",
+      );
+    }
+
+    assert.deepEqual(await estadoDoPedido(cliente, IDS_X.teto[0]), {
+      status: "cancelled",
+      payment_status: "expirado",
+    });
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.teto[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+      "g: passou do teto de 24 h, o estoque voltou",
+    );
+
+    // Segunda varredura: nada novo (e nenhum estoque devolvido de novo).
+    assert.equal(await expirarPedidosVencidos(cliente), 0);
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.pix[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(x2) cartão vivo vencido: recusa libera a vaga e a varredura expira; aprovação vira 'pago', não 'pago_apos_expirar'",
+  corpo: async (cliente) => {
+    // Recusado: o cartão estava vivo (a varredura o poupou), o banco recusou,
+    // `liberar_cobranca_do_pedido` zera a vaga -> na PRÓXIMA varredura o
+    // pedido expira e o estoque volta.
+    await criarPedidoComEstoque(cliente, IDS_X.recusado, {
+      metodo: "credito",
+      vaga: "ORD-EXP-RECUSADO",
+      vencidoHaMinutos: 31,
+    });
+    assert.equal(await expirarPedidosVencidos(cliente), 0);
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.recusado[1]),
+      ESTOQUE_INICIAL_X,
+    );
+    assert.equal(
+      await liberar(cliente, IDS_X.recusado[0], "ORD-EXP-RECUSADO"),
+      true,
+    );
+    assert.equal(await expirarPedidosVencidos(cliente), 1);
+    assert.deepEqual(await estadoDoPedido(cliente, IDS_X.recusado[0]), {
+      status: "cancelled",
+      payment_status: "expirado",
+    });
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.recusado[1]),
+      ESTOQUE_INICIAL_X + QTD_X,
+    );
+
+    // Aprovado: o banco aprovou DEPOIS dos 30 min. Como a varredura poupou o
+    // pedido, ele ainda é aguardando/pending e `confirmar_pagamento` grava
+    // 'pago' — o dinheiro entra com pedido, o estoque continua reservado.
+    await criarPedidoComEstoque(cliente, IDS_X.aprovado, {
+      metodo: "credito",
+      vaga: "ORD-EXP-APROVADO",
+      vencidoHaMinutos: 31,
+    });
+    assert.equal(await expirarPedidosVencidos(cliente), 0);
+    const r = await cliente.query(
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
+      [IDS_X.aprovado[0], "ORD-EXP-APROVADO"],
+    );
+    assert.equal(r.rows[0].r, "pago");
+    assert.equal(
+      (await estadoDoPedido(cliente, IDS_X.aprovado[0])).payment_status,
+      "pago",
+    );
+    assert.equal(
+      await estoqueDoProduto(cliente, IDS_X.aprovado[1]),
+      ESTOQUE_INICIAL_X,
+      "pedido pago mantém a reserva",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(xp) preflight da 20261186000000: reaplicar sobre o corpo vivo passa; sobre corpo divergente recusa B1_BASELINE_DIVERGENT",
+  corpo: async (cliente) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_MIGRATION_86 é constante do próprio teste (path.join de literais).
+    const sql86 = fs.readFileSync(CAMINHO_MIGRATION_86, "utf8");
+    const prosrc = async () =>
+      (
+        await cliente.query(
+          "SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure('public.expirar_pedidos_vencidos()')",
+        )
+      ).rows[0].prosrc;
+
+    await cliente.query("BEGIN");
+    try {
+      // 1. A cadeia do zero deixou o corpo desta migration: reaplicar o ARQUIVO
+      // inteiro passa pelo preflight (o hash embutido é o md5 real do prosrc).
+      const antes = await prosrc();
+      await cliente.query(sql86);
+      assert.equal(await prosrc(), antes, "reaplicar é idempotente");
+
+      // 2. Corpo divergente: recusa, e o corpo divergente continua vivo.
+      await cliente.query(`
+        CREATE OR REPLACE FUNCTION public.expirar_pedidos_vencidos()
+        RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+        AS $divergente$ BEGIN RETURN 0; END; $divergente$;
+      `);
+      await cliente.query("SAVEPOINT antes_da_86");
+      await assert.rejects(() => cliente.query(sql86), /B1_BASELINE_DIVERGENT/);
+      await cliente.query("ROLLBACK TO SAVEPOINT antes_da_86");
+      assert.match(await prosrc(), /RETURN 0;/);
+    } finally {
       await cliente.query("ROLLBACK");
     }
   },
