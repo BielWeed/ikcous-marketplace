@@ -562,14 +562,29 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
     expect(criarPagamento).toHaveBeenCalledTimes(1);
   });
 
-  for (const [rotulo, campos] of [
-    ["pedido cancelado (status cancelled)", { status: "cancelled" }],
+  // Lacuna L1 (02/10/2026): estes dois casos eram CONTROLES "fora do
+  // escopo" do C6 — prendiam a tela em "Confirmando com o banco…" quando a
+  // vaga solta vinha com o pedido já fechado (a lacuna L1, provada em
+  // lacuna-l1-soltura-expiracao.test.tsx). A inversão é o desenho, não um
+  // afrouxamento: o que estes testes protegiam continua aqui — nada que
+  // cobra ("Tentar outro cartão"/"Pagar com PIX"), nenhum POST novo, nunca
+  // "não foi aprovado" nem "nada foi cobrado". O que muda é só a frase: a
+  // tentativa morta por prova (vaga solta pela RPC, que só solta pedido
+  // `aguardando`) num pedido que fechou depois vira o terminal honesto, em
+  // `role="alert"`.
+  for (const [rotulo, campos, frase] of [
+    [
+      "pedido cancelado (status cancelled)",
+      { status: "cancelled" },
+      "O pagamento com cartão não foi concluído, e este pedido foi cancelado.",
+    ],
     [
       "pagamento expirado (payment_status expirado)",
       { payment_status: "expirado" },
+      "O pagamento com cartão não foi concluído, e o prazo para pagar este pedido acabou.",
     ],
   ] as const) {
-    it(`CONTROLE (fora do escopo, sem recusa): vaga vazia com ${rotulo} não oferece outro cartão`, async () => {
+    it(`vaga vazia com ${rotulo}: o terminal honesto em alerta — sem outro cartão, sem PIX, sem POST novo`, async () => {
       await retomar();
       await enviarCartaoQueCaiNo3ds();
       await concluirDesafio();
@@ -578,8 +593,14 @@ describe("C6/P1 — recusa depois do 3DS: a vaga solta tem de virar recusa visí
       linha = { ...linha, ...campos };
       await verificacaoPeriodica();
 
-      expect(hospedeiro.textContent).not.toContain(NAO_CONCLUIDO);
+      expect(hospedeiro.textContent).not.toContain(CONFIRMANDO);
+      expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+        frase,
+      );
+      expect(hospedeiro.textContent).not.toContain("não foi aprovado");
+      expect(hospedeiro.textContent).not.toMatch(/nada foi cobrado/i);
       expect(botaoExato("Tentar outro cartão")).toBeUndefined();
+      expect(botaoExato("Pagar com PIX")).toBeUndefined();
       expect(criarPagamento).toHaveBeenCalledTimes(1);
     });
   }

@@ -188,6 +188,15 @@ const MENSAGEM_CARTAO_EM_ANALISE_409 =
 const MENSAGEM_CARTAO_TALVEZ_COBRADO_409 =
   "Seu cartão pode ter sido cobrado; a loja vai conferir e confirmar o pedido em breve.";
 
+// Lacuna L1 (02/10/2026): a tentativa de cartão morreu por prova (vaga solta
+// pela RPC) e o pedido fechou depois. "Não foi concluído", nunca "não foi
+// aprovado" (o 3DS só vencido também solta a vaga — veredito A2, item 4), e
+// nunca "nada foi cobrado".
+const MENSAGEM_CARTAO_NAO_CONCLUIDO_PRAZO_ACABOU =
+  "O pagamento com cartão não foi concluído, e o prazo para pagar este pedido acabou.";
+const MENSAGEM_CARTAO_NAO_CONCLUIDO_PEDIDO_CANCELADO =
+  "O pagamento com cartão não foi concluído, e este pedido foi cancelado.";
+
 interface CheckoutFormValues {
   name: string;
   whatsapp: string;
@@ -678,11 +687,14 @@ export function CheckoutView({
         setStatusPagamentoPix("fora-do-prazo");
       } else if (
         pedidoAtualizado.gateway_payment_id === null &&
-        cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id
+        (cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id ||
+          cartaoEncerradoRef.current?.orderId === pedidoAtualizado.id)
       ) {
         // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
         // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
         // decide é uma leitura NOVA da vaga (`verificarPagamento`).
+        // Lacuna L1b: a tentativa que o C6 já encerrou também pede a leitura
+        // — é ela que descobre o pedido fechado depois da recusa.
         lerAVagaAgoraRef.current?.();
       }
     },
@@ -1140,6 +1152,11 @@ export function CheckoutView({
     categoria: CategoriaErroPagamento;
     cartaoEmAnalise: boolean;
     semCobranca: boolean;
+    // Lacuna L1 (02/10/2026): o erro que NASCE de uma leitura do banco (sem
+    // toque nenhum do cliente) troca a tela sozinho — ele vai num
+    // `role="alert"` para o leitor de tela anunciar a troca. Os outros erros
+    // seguem como sempre foram.
+    anunciar?: boolean;
   } | null>(null);
   // Achado 1 (BLOQUEANTE, rodada 3 da revisão de risco pré-publicação,
   // 26/09/2026): `cartaoEmAnalise` acima é julgado POR ERRO — a sequência que
@@ -1197,10 +1214,36 @@ export function CheckoutView({
   );
   // A verificação periódica, para o realtime pedir UMA leitura agora.
   const lerAVagaAgoraRef = useRef<(() => void) | null>(null);
+  // ── Lacuna L1 (02/10/2026): soltura da vaga e DEPOIS o pedido fechado ───
+  // A tentativa que a leitura da vaga já encerrou (C6). Depois da recusa, a
+  // tela do cartão desarma a tentativa (a etapa "recusado" não está em
+  // `ETAPAS_COM_CARTAO_EM_CURSO`), mas a recusa continua na tela com "Tentar
+  // outro cartão"/"Pagar com PIX" — se o pedido fechar em seguida, os dois só
+  // levariam a 409 terminal (L1b). Este ref deixa a leitura reconhecer que a
+  // vaga vazia de um pedido fechado é a MESMA tentativa provada morta. Sai de
+  // cena quando a tentativa muda (outro token armado) ou quando o cliente
+  // troca para o PIX.
+  const cartaoEncerradoRef = useRef<CartaoEmCurso | null>(null);
+  // Espelho da marca de cobrança incerta (`pedidoComCobrancaIncerta`, acima)
+  // para a verificação periódica, que vive fora do render. Pedido com
+  // cobrança incerta nunca ganha "não foi concluído" pela leitura da vaga:
+  // existe uma tentativa cujo desfecho a tela NÃO conhece.
+  const pedidoComCobrancaIncertaRef = useRef<string | null>(null);
+  useEffect(() => {
+    pedidoComCobrancaIncertaRef.current = pedidoComCobrancaIncerta;
+  }, [pedidoComCobrancaIncerta]);
   const registrarCartaoEmCurso = useCallback((cartao: CartaoEmCurso | null) => {
     cartaoEmCursoRef.current = cartao
       ? { ...cartao, desdeLeitura: leiturasDaVagaRef.current }
       : null;
+    if (
+      cartao &&
+      cartaoEncerradoRef.current !== null &&
+      (cartaoEncerradoRef.current.orderId !== cartao.orderId ||
+        cartaoEncerradoRef.current.paymentId !== cartao.paymentId)
+    ) {
+      cartaoEncerradoRef.current = null;
+    }
     // Higiene: uma tentativa NOVA (outro pedido ou outro token) tira de
     // cena a marca da anterior. A garantia não é esta linha — é o token na
     // comparação da tela do cartão —, mas a marca velha não fica rodando.
@@ -2165,10 +2208,71 @@ export function CheckoutView({
         data.status === "pending" &&
         data.gateway_payment_id === null
       ) {
+        cartaoEncerradoRef.current = {
+          orderId: cartao.orderId,
+          paymentId: cartao.paymentId,
+        };
         setCartaoEncerrado({
           orderId: cartao.orderId,
           paymentId: cartao.paymentId,
         });
+      }
+
+      // Lacuna L1 (02/10/2026): a tentativa terminou sem pagamento e DEPOIS
+      // o pedido fechou — a varredura `expirar_pedidos_vencidos` (20261186)
+      // grava `expirado`/`cancelled` sem tocar a vaga, ou o pedido foi
+      // cancelado. Sem esta regra a tela ficava presa em "Confirmando com o
+      // banco…" (a regra do C6, acima, exige `aguardando` + `pending`).
+      //
+      // Por que isto PROVA que o cartão morreu antes do fechamento: só a RPC
+      // `liberar_cobranca_do_pedido` esvazia a vaga, por prova, e ela EXIGE
+      // `payment_status = 'aguardando'` (20261176000000) — depois de expirado
+      // ninguém esvazia. A expiração e o cancelamento não tocam a vaga, e o
+      // cartão VIVO segura a expiração (20261186) com o id NA vaga: nunca
+      // casa com vaga vazia.
+      //
+      // As guardas, juntas:
+      // - a tentativa é DESTE pedido e esta leitura saiu depois do aviso dela
+      //   (a MESMA cerca do C6 — mantida mesmo sendo redundante aqui: uma
+      //   leitura velha não vê `expirado` de um pedido que ainda aceitou o
+      //   cartão), OU é a tentativa que o C6 já encerrou (L1b);
+      // - vaga vazia de fato (`null`; ausente não conta);
+      // - pedido fechado: `expirado`, ou `aguardando` + `cancelled`;
+      // - o pedido NÃO tem cobrança incerta (houve tentativa de desfecho
+      //   desconhecido: a tela não afirma nada sobre ela).
+      // O texto nunca diz "nada foi cobrado" — a prova é sobre ESTA
+      // tentativa, não sobre o que o banco mostra ao cliente. E a verificação
+      // continua: um `pago_apos_expirar` tardio ainda troca a tela (acima).
+      const tentativaProvada =
+        (cartao !== null &&
+          cartao.orderId === orderId &&
+          leitura > cartao.desdeLeitura) ||
+        cartaoEncerradoRef.current?.orderId === orderId;
+      const expirou = data.payment_status === "expirado";
+      const cancelado =
+        data.payment_status === "aguardando" && data.status === "cancelled";
+      if (
+        tentativaProvada &&
+        data.gateway_payment_id === null &&
+        (expirou || cancelado) &&
+        pedidoComCobrancaIncertaRef.current !== orderId
+      ) {
+        setErroPagamento((atual) =>
+          // O terminal que já está na tela GANHA (revisão financeira do
+          // desenho L1): um 409 "pode ter sido cobrado", ou qualquer outra
+          // frase definitiva da edge, nunca vira "não foi concluído".
+          atual?.categoria === "terminal"
+            ? atual
+            : {
+                mensagem: expirou
+                  ? MENSAGEM_CARTAO_NAO_CONCLUIDO_PRAZO_ACABOU
+                  : MENSAGEM_CARTAO_NAO_CONCLUIDO_PEDIDO_CANCELADO,
+                categoria: "terminal",
+                cartaoEmAnalise: false,
+                semCobranca: false,
+                anunciar: true,
+              },
+        );
       }
 
       // Os outros dois status terminais não têm tela própria aqui — só
@@ -3423,7 +3527,10 @@ export function CheckoutView({
           <div className="space-y-3 rounded-2xl border border-red-100 bg-red-50 p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-5 shrink-0 text-red-500" />
-              <p className="text-sm font-medium text-red-700">
+              <p
+                role={erroPagamento.anunciar ? "alert" : undefined}
+                className="text-sm font-medium text-red-700"
+              >
                 {erroPagamento.mensagem}
               </p>
             </div>
@@ -3639,6 +3746,9 @@ export function CheckoutView({
             cartaoEncerrado={cartaoEncerrado}
             onTrocarParaPix={(cartaoAindaVivo) => {
               if (cartaoAindaVivo) setPedidoComCobrancaIncerta(orderId);
+              // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
+              // de cena, e a vaga passa a ser de outra cobrança.
+              cartaoEncerradoRef.current = null;
               setMetodoDoPedido("pix");
             }}
             // C5 (front B2): resposta do cartão sem order confirmada — a
