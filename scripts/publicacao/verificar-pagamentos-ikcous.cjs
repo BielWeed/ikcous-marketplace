@@ -171,6 +171,32 @@ async function verificar({ token, fetchImpl = fetch } = {}) {
   return {
     projeto: REF,
     somenteLeitura: true,
+    diagnostico: {
+      funcoes: funcoes.map((r) => ({
+        chave:
+          r.chave === "liberar" || r.chave === "expirar" ? r.chave : "invalida",
+        corpo_md5: /^[a-f0-9]{32}$/.test(r.corpo_md5) ? r.corpo_md5 : null,
+        anon_executa:
+          typeof r.anon_executa === "boolean" ? r.anon_executa : null,
+        authenticated_executa:
+          typeof r.authenticated_executa === "boolean"
+            ? r.authenticated_executa
+            : null,
+        service_executa:
+          typeof r.service_executa === "boolean" ? r.service_executa : null,
+      })),
+      config: config.map((r) => ({
+        id: r.id === 1 ? 1 : null,
+        credito: typeof r.credito === "boolean" ? r.credito : null,
+        debito: typeof r.debito === "boolean" ? r.debito : null,
+        parcelas_max:
+          Number.isInteger(r.parcelas_max) &&
+          r.parcelas_max >= 1 &&
+          r.parcelas_max <= 12
+            ? r.parcelas_max
+            : null,
+      })),
+    },
     checks,
     ok: checks.every((c) => c.ok),
   };
