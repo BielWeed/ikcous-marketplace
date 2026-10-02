@@ -193,5 +193,5 @@ jobs:
           node-version: "20"
       - name: Conferir banco do site publicado sem alterar dados
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
         run: node scripts/publicacao/verificar-pagamentos-ikcous.cjs --site-publicado-caf
