@@ -114,8 +114,21 @@ vi.mock("@/hooks/useConfigDoCartao", async () => {
 
 // O "banco": UMA linha. `maybeSingle` (retomada) e `single` (verificação
 // periódica) tiram uma FOTO da linha no instante da CHAMADA — como uma
-// leitura real.
+// leitura real. `seguraProximaLeitura` deixa a próxima leitura `single` em
+// voo até o teste soltar (a janela entre a marca e o commit, no fim).
 let linha: Record<string, unknown> = {};
+let leituraSegurada: { soltar: () => void } | null = null;
+let seguraProximaLeitura = false;
+// Respostas da edge que ficam EM VOO no teste. O PIX guarda a promessa em
+// voo num cache POR PEDIDO (`dispararPagamentoPix`, PagamentoOnline): sem
+// soltá-la no fim, o teste seguinte reaproveitaria o PIX do anterior e não
+// faria o POST dele.
+let emVoo: Array<() => void> = [];
+function respostaEmVoo(): Promise<never> {
+  return new Promise((_resolver, rejeitar) => {
+    emVoo.push(() => rejeitar(new Error("fim do teste")));
+  });
+}
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: () => ({
@@ -123,7 +136,18 @@ vi.mock("@/lib/supabase", () => ({
         eq: () => ({
           maybeSingle: () =>
             Promise.resolve({ data: { ...linha }, error: null }),
-          single: () => Promise.resolve({ data: { ...linha }, error: null }),
+          single: () => {
+            const foto = { ...linha };
+            if (!seguraProximaLeitura) {
+              return Promise.resolve({ data: foto, error: null });
+            }
+            seguraProximaLeitura = false;
+            return new Promise((resolve) => {
+              leituraSegurada = {
+                soltar: () => resolve({ data: foto, error: null }),
+              };
+            });
+          },
           in: () => Promise.resolve({ data: [], error: null }),
         }),
       }),
@@ -189,6 +213,8 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
     onNavigate.mockClear();
     eventoDeRealtime = null;
     configDoCartao = CREDITO_1X;
+    leituraSegurada = null;
+    seguraProximaLeitura = false;
     // Retomada de cartão conhecido, vaga vazia: abre o formulário direto.
     linha = {
       id: PEDIDO,
@@ -220,7 +246,13 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
     raiz = createRoot(hospedeiro);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    const soltar = emVoo;
+    emVoo = [];
+    await act(async () => {
+      for (const f of soltar) f();
+      await esperarMicrotarefas();
+    });
     act(() => {
       raiz.unmount();
     });
@@ -645,7 +677,7 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
       new Error("Não foi possível gerar a cobrança."),
     );
     // A verificação do C5 consulta uma vez ao abrir: fica em voo.
-    criarPagamento.mockImplementationOnce(() => new Promise(() => {}));
+    criarPagamento.mockImplementationOnce(respostaEmVoo);
     await submeterNoBrick({});
     expect(hospedeiro.textContent).toContain("Situação do pagamento");
 
@@ -664,7 +696,7 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
     await verificacaoPeriodica();
     esperarRecusaVisivel();
 
-    criarPagamento.mockImplementationOnce(() => new Promise(() => {}));
+    criarPagamento.mockImplementationOnce(respostaEmVoo);
     await act(async () => {
       botaoExato("Pagar com PIX")?.click();
     });
@@ -693,5 +725,201 @@ describe("Lacuna L1 — soltura da vaga seguida da expiração do pedido", () =>
 
     esperarPedidoFechadoVisivel(PRAZO_ACABOU);
     expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Endurecimento A1.1 (revisões do commit 879a08b7) ─────────────────────
+  // (1) TODO caminho para o PIX tira a recusa do cartão de cena — não só o
+  // `onTrocarParaPix` da tela do cartão. Sem isso, com a vaga do PIX solta e
+  // o pedido fechado, a tela do PIX ganhava "O pagamento com cartão não foi
+  // concluído…". (2) A marca de cobrança incerta vale para a leitura no
+  // MESMO instante em que é gravada, não um commit depois.
+
+  /**
+   * O PIX que o cliente pediu fica em voo e só falha quando o teste manda
+   * (erro sem corpo: recuperável, sem sinal) — é a falha que mostra, na caixa
+   * vermelha, se o pedido está MARCADO com cobrança incerta.
+   */
+  function pixQueFalhaDepois() {
+    let falhar: () => void = () => {};
+    criarPagamento.mockImplementationOnce(
+      () =>
+        new Promise((_resolver, rejeitar) => {
+          falhar = () =>
+            rejeitar(new Error("Não foi possível gerar a cobrança."));
+          // Se o teste cair antes de `falhar`, o fim do teste solta o PIX
+          // (o cache por pedido não vaza para o teste seguinte).
+          emVoo.push(() => rejeitar(new Error("fim do teste")));
+        }),
+    );
+    return async () => {
+      await act(async () => {
+        falhar();
+      });
+      await esvaziar();
+    };
+  }
+
+  /**
+   * A marca de cobrança incerta do pedido, vista pelo cliente: com ela, a
+   * caixa vermelha de um erro recuperável NÃO oferece "Cancelar pedido" (o
+   * cartão pode ter sido cobrado); sem ela, oferece.
+   */
+  function esperarPedidoMarcadoComCobrancaIncerta() {
+    expect(hospedeiro.textContent).toContain(
+      "Não foi possível gerar a cobrança.",
+    );
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some((b) =>
+        b.textContent?.includes("Cancelar pedido"),
+      ),
+      "o pedido deveria estar MARCADO com cobrança incerta (sem 'Cancelar pedido')",
+    ).toBe(false);
+  }
+
+  /** O PIX que o cliente pediu fica em voo; o pedido fecha; uma leitura. */
+  async function pixEmVooEPedidoFecha() {
+    expect(criarPagamento.mock.calls.at(-1)?.[0]).toEqual({
+      orderId: PEDIDO,
+      metodo: "pix",
+    });
+    expirarOPedido();
+    await verificacaoPeriodica();
+  }
+
+  it("CAMINHO PARA O PIX — caixa vermelha: depois da recusa do C6, outro cartão falha LOCALMENTE (sem POST) e o cliente toca 'Pagar com PIX' da caixa — o pedido fechado não ganha a frase do cartão por cima do PIX", async () => {
+    await recusaDoC6EOutroCartao();
+    await submeterNoBrick({ token: "" });
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+
+    criarPagamento.mockImplementationOnce(respostaEmVoo);
+    await act(async () => {
+      botaoExato("Pagar com PIX")?.click();
+    });
+    await esvaziar();
+    await pixEmVooEPedidoFecha();
+
+    expect(hospedeiro.textContent).not.toContain(FRASE_L1);
+  });
+
+  // GUARDAS DE REGRESSÃO (revisões da A1.1): nestes dois caminhos a frase do
+  // cartão já não aparece HOJE por causa da MARCA de cobrança incerta (a
+  // guarda `pedidoComCobrancaIncertaRef` da regra L1) — a limpeza de
+  // `cartaoEncerradoRef` ali é defesa em profundidade, e tirá-la sozinha não
+  // derruba estes testes (só junto com a guarda: mutantes DUPLO H2/H3). O que
+  // eles prendem é o PORQUÊ: o pedido ESTÁ marcado no ponto do PIX.
+  it("GUARDA DE REGRESSÃO — verificação (P2/C6): hoje coberto pela marca de cobrança incerta — outro cartão volta ambíguo, a verificação acha o 3DS vivo, o cliente toca 'Pagar com PIX', e o pedido fechado não ganha a frase do cartão por cima do PIX", async () => {
+    await recusaDoC6EOutroCartao();
+    criarPagamento.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Há um pagamento com cartão em análise para este pedido."),
+        { terminal: false, cartaoEmAnalise: true },
+      ),
+    );
+    criarPagamento.mockResolvedValueOnce({
+      verificacao: "desafio3ds",
+      paymentId: "ORD01JL1NOVA",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: PRAZO_FUTURO,
+    });
+    await submeterNoBrick({});
+    expect(criarPagamento.mock.calls.at(-1)?.[0]).toEqual({
+      orderId: PEDIDO,
+      metodo: "verificar",
+    });
+    expect(hospedeiro.textContent).toContain("Situação do pagamento");
+
+    const pixFalha = pixQueFalhaDepois();
+    await act(async () => {
+      botaoExato("Pagar com PIX")?.click();
+    });
+    await esvaziar();
+    await pixEmVooEPedidoFecha();
+
+    expect(hospedeiro.textContent).not.toContain(FRASE_L1);
+    // O PORQUÊ: o pedido está marcado com cobrança incerta neste ponto.
+    await pixFalha();
+    esperarPedidoMarcadoComCobrancaIncerta();
+  });
+
+  it("GUARDA DE REGRESSÃO — escolha da forma: hoje coberto pela marca de cobrança incerta — outro cartão volta ambíguo, a verificação prova a vaga livre, o cliente escolhe 'Pagar com PIX', e o pedido fechado não ganha a frase do cartão por cima do PIX", async () => {
+    await recusaDoC6EOutroCartao();
+    criarPagamento.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Há um pagamento com cartão em análise para este pedido."),
+        { terminal: false, cartaoEmAnalise: true },
+      ),
+    );
+    criarPagamento.mockResolvedValueOnce({
+      verificacao: "livre",
+      paymentId: null,
+      expiraEm: PRAZO_FUTURO,
+    });
+    await submeterNoBrick({});
+    expect(hospedeiro.textContent).toContain(
+      "Como você quer pagar este pedido?",
+    );
+
+    const pixFalha = pixQueFalhaDepois();
+    await act(async () => {
+      botaoExato("Pagar com PIX")?.click();
+    });
+    await esvaziar();
+    await pixEmVooEPedidoFecha();
+
+    expect(hospedeiro.textContent).not.toContain(FRASE_L1);
+    // O PORQUÊ: o pedido está marcado com cobrança incerta neste ponto.
+    await pixFalha();
+    esperarPedidoMarcadoComCobrancaIncerta();
+  });
+
+  it("JANELA DO COMMIT (revisão financeira): a marca de cobrança incerta é gravada e, ANTES do commit do React, termina uma leitura com vaga vazia e pedido expirado — a leitura já vê a marca e NÃO afirma 'não foi concluído'", async () => {
+    await recusaDoC6EOutroCartao();
+    // A leitura sai com o pedido já expirado e a vaga vazia, e fica em voo.
+    expirarOPedido();
+    seguraProximaLeitura = true;
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(leituraSegurada).not.toBeNull();
+
+    // Outro cartão volta SEM resposta (a edge pode ter cobrado): a marca é
+    // gravada no `onErro`. No MESMO ato — antes de o React fazer o commit —
+    // a leitura segurada termina.
+    criarPagamento.mockRejectedValueOnce(
+      new Error("Não foi possível gerar a cobrança."),
+    );
+    criarPagamento.mockImplementationOnce(respostaEmVoo);
+    const chamada = create.mock.calls.at(-1);
+    if (!chamada) throw new Error("O formulário do cartão não foi criado.");
+    const { callbacks } = chamada[2];
+    await act(async () => {
+      callbacks.onReady();
+    });
+    await act(async () => {
+      try {
+        await callbacks.onSubmit(
+          {
+            token: "tok-teste",
+            issuer_id: "25",
+            payment_method_id: "master",
+            transaction_amount: 120,
+            installments: 1,
+            payer: {
+              email: "cliente@exemplo.com",
+              identification: { type: "CPF", number: "11144477735" },
+            },
+          },
+          { paymentTypeId: "credit_card" },
+        );
+      } catch {
+        // O Brick recebe o relançamento; o que importa é a tela.
+      }
+      leituraSegurada?.soltar();
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+    await esvaziar();
+
+    expect(hospedeiro.textContent).not.toContain(FRASE_L1);
+    expect(hospedeiro.textContent).toContain("Situação do pagamento");
   });
 });

@@ -1221,14 +1221,37 @@ export function CheckoutView({
   // outro cartão"/"Pagar com PIX" — se o pedido fechar em seguida, os dois só
   // levariam a 409 terminal (L1b). Este ref deixa a leitura reconhecer que a
   // vaga vazia de um pedido fechado é a MESMA tentativa provada morta. Sai de
-  // cena quando a tentativa muda (outro token armado) ou quando o cliente
-  // troca para o PIX.
+  // cena quando a tentativa muda (outro token armado) ou em QUALQUER troca
+  // para o PIX (A1.1, revisão do front) — sem isso, com a vaga do PIX solta e
+  // o pedido fechado, a tela do PIX ganharia a frase do CARTÃO:
+  // - NECESSÁRIA na tela do cartão (`onTrocarParaPix`) e na caixa vermelha:
+  //   ali o pedido pode não ter marca de cobrança incerta, e só a limpeza
+  //   impede a frase (testes "TROCA PARA O PIX" e "CAMINHO PARA O PIX —
+  //   caixa vermelha");
+  // - DEFESA EM PROFUNDIDADE na verificação (`pagarComPixDepoisDaVerificacao`)
+  //   e na escolha da forma (`escolherFormaDaRetomada`): hoje esses caminhos
+  //   só chegam com o pedido JÁ marcado com cobrança incerta, e a guarda da
+  //   marca na regra L1 já impede a frase (testes "GUARDA DE REGRESSÃO"). A
+  //   limpeza passa a ser necessária se alguém afrouxar essa guarda ou criar
+  //   um caminho até a escolha da forma sem marcar o pedido.
   const cartaoEncerradoRef = useRef<CartaoEmCurso | null>(null);
   // Espelho da marca de cobrança incerta (`pedidoComCobrancaIncerta`, acima)
   // para a verificação periódica, que vive fora do render. Pedido com
   // cobrança incerta nunca ganha "não foi concluído" pela leitura da vaga:
   // existe uma tentativa cujo desfecho a tela NÃO conhece.
+  //
+  // A1.1 (revisão financeira): o espelho é gravado NO MESMO PONTO da marca
+  // (`marcarCobrancaIncerta`), não num efeito — o efeito roda um commit
+  // depois, e uma leitura que terminasse entre a marca e o commit ainda via
+  // o pedido sem marca (prova: teste "JANELA DO COMMIT" em
+  // lacuna-l1-soltura-expiracao.test.tsx). O efeito fica só como rede: se
+  // algum caminho futuro gravar o estado sem passar por
+  // `marcarCobrancaIncerta`, o espelho ainda alcança o estado no commit.
   const pedidoComCobrancaIncertaRef = useRef<string | null>(null);
+  const marcarCobrancaIncerta = useCallback((pedido: string) => {
+    pedidoComCobrancaIncertaRef.current = pedido;
+    setPedidoComCobrancaIncerta(pedido);
+  }, []);
   useEffect(() => {
     pedidoComCobrancaIncertaRef.current = pedidoComCobrancaIncerta;
   }, [pedidoComCobrancaIncerta]);
@@ -1440,7 +1463,9 @@ export function CheckoutView({
   const pagarComPixDepoisDaVerificacao = () => {
     const pedido = retomarPedidoId ?? orderId;
     if (!pedido) return;
-    setPedidoComCobrancaIncerta(pedido);
+    marcarCobrancaIncerta(pedido);
+    // A1.1: a tela agora é do PIX — a recusa do cartão sai de cena.
+    cartaoEncerradoRef.current = null;
     setAvisoDaRetomada(null);
     setRetomadaBloqueadaPorSentinela(false);
     setCobrancaEmDuvida(null);
@@ -1458,6 +1483,8 @@ export function CheckoutView({
   const escolherFormaDaRetomada = (metodo: MetodoOnline) => {
     const pedidoDaEscolha = retomarPedidoId ?? orderId;
     if (!pedidoDaEscolha) return;
+    // A1.1: escolher o PIX tira a recusa do cartão de cena.
+    if (metodo === "pix") cartaoEncerradoRef.current = null;
     setMetodoDoPedido(metodo);
     setRetomadaEscolhendoForma(false);
     setOrderId(pedidoDaEscolha);
@@ -3569,6 +3596,9 @@ export function CheckoutView({
               !pedidoTemCobrancaIncerta && (
                 <Button
                   onClick={() => {
+                    // A1.1: a tela agora é do PIX — a recusa do cartão sai
+                    // de cena.
+                    cartaoEncerradoRef.current = null;
                     setMetodoDoPedido("pix");
                     setErroPagamento(null);
                     setErroCancelamento(null);
@@ -3745,7 +3775,7 @@ export function CheckoutView({
             onCartaoEmCurso={registrarCartaoEmCurso}
             cartaoEncerrado={cartaoEncerrado}
             onTrocarParaPix={(cartaoAindaVivo) => {
-              if (cartaoAindaVivo) setPedidoComCobrancaIncerta(orderId);
+              if (cartaoAindaVivo) marcarCobrancaIncerta(orderId);
               // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
               // de cena, e a vaga passa a ser de outra cobrança.
               cartaoEncerradoRef.current = null;
@@ -3755,7 +3785,7 @@ export function CheckoutView({
             // cobrança fica incerta POR PEDIDO (mesma regra do erro ambíguo)
             // e a tela vira a verificação a partir dessa resposta.
             onCobrancaEmDuvida={(pontoDePartida) => {
-              setPedidoComCobrancaIncerta(orderId);
+              marcarCobrancaIncerta(orderId);
               setCobrancaEmDuvida({ pontoDePartida });
             }}
             onErro={(msg, categoria, sinal) => {
@@ -3783,7 +3813,7 @@ export function CheckoutView({
               // comentário grande de `pedidoTemCobrancaIncerta`, acima).
               // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
               // seja incerto.
-              if (cartaoTalvezEmCurso) setPedidoComCobrancaIncerta(orderId);
+              if (cartaoTalvezEmCurso) marcarCobrancaIncerta(orderId);
 
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do
