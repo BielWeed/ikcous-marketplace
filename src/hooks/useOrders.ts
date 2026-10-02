@@ -465,7 +465,30 @@ export type ArgsCriarPagamento =
       parcelas: number;
       documento: { type: "CPF" | "CNPJ"; number: string };
       email?: string;
+    }
+  // C4 (M1, 02/10/2026): a CONSULTA sem cobrança — a edge só lê o Mercado
+  // Pago (GET/busca) e só escreve por CAS ou pela RPC de liberação; nunca
+  // POST de cobrança, nunca cancelamento. Sem token, sem documento, sem
+  // corpo de cartão. A resposta 200 carrega `verificacao` (abaixo).
+  | {
+      orderId: string;
+      metodo: "verificar";
     };
+
+/**
+ * C4 (M1, 02/10/2026): o conjunto fechado do campo `verificacao` que a
+ * consulta `metodo: "verificar"` devolve num 200 (desenho A1 §4.2, corrigido
+ * pelo veredito A2). `indisponivel` NÃO está aqui: ele vem num 503, e chega
+ * à tela como erro não terminal.
+ */
+export type EstadoDaVerificacao =
+  | "livre"
+  | "recusado"
+  | "pix"
+  | "pago"
+  | "desafio3ds"
+  | "em_analise"
+  | "sem_registro";
 
 /**
  * Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão de
@@ -518,6 +541,14 @@ export type RespostaCriarPagamento = {
   // (reserva vencida, limite de tentativas) — a tela não oferece outro
   // cartão nem PIX.
   podeTentarDeNovo?: boolean;
+  // C4 (M1): só na resposta da consulta `metodo: "verificar"`. ATENÇÃO: nela
+  // `paymentId` pode vir `null` (vaga vazia ou com sentinela) — quem lê esta
+  // resposta (`VerificacaoDoPagamento`) trata o corpo como desconhecido e
+  // valida campo a campo, nunca confia no tipo acima.
+  verificacao?: EstadoDaVerificacao;
+  // Só em `sem_registro`: a data real do cancelamento automático
+  // (`expires_at + 24 h`).
+  canceladoAutomaticamenteAte?: string;
 };
 
 /** Argumentos de uma chamada de `loadOrders`, guardados para poder repeti-la. */

@@ -4,6 +4,10 @@ import {
   PagamentoOnline,
 } from "@/components/checkout/PagamentoOnline";
 import {
+  type DesfechoQueLiberaARetomada,
+  VerificacaoDoPagamento,
+} from "@/components/checkout/VerificacaoDoPagamento";
+import {
   IconeCartao,
   IconeDinheiro,
   IconePix,
@@ -1233,11 +1237,16 @@ export function CheckoutView({
         // legítimo nunca carrega sentinela). Montar pagamento aqui
         // dispararia criar-pagamento PIX que a edge leria como troca de
         // método — cancelando cobrança de cartão que pode estar viva.
-        // Nada monta até o estado resolver (o cliente volta aos pedidos e
-        // reabre a retomada depois).
+        // Nada monta enquanto a dúvida durar. C4 (M1, 02/10/2026): no lugar
+        // da tela parada (que prometia "daqui a alguns minutos" sem nada
+        // resolver o sentinela), a `VerificacaoDoPagamento` pede à edge a
+        // CONSULTA sem cobrança e mostra o que ela responde; se a vaga
+        // deixar de estar em dúvida, `liberarRetomadaDepoisDaVerificacao`
+        // leva à escolha da forma.
         const gateway = (data as { gateway_payment_id?: unknown })
           .gateway_payment_id;
         if (typeof gateway === "string" && gateway.startsWith("verificando:")) {
+          setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
           setRetomadaBloqueadaPorSentinela(true);
           return;
         }
@@ -1289,6 +1298,26 @@ export function CheckoutView({
   const [retomadaSemPagamentoPendente, setRetomadaSemPagamentoPendente] =
     useState(false);
   const [retomadaEscolhendoForma, setRetomadaEscolhendoForma] = useState(false);
+  // C4 (M1): a consulta do cartão em dúvida provou que a vaga não está mais
+  // em dúvida (vazia, cartão morto, ou PIX). A retomada vai para a ESCOLHA da
+  // forma — nunca monta pagamento sozinha (nenhuma cobrança sem toque); o
+  // cartão morto ganha o aviso dele em cima das formas. "Não foi concluído",
+  // nunca "não foi aprovado": o `recusado` da consulta inclui o desafio 3DS
+  // que só EXPIROU (canceled/expired), e a tela não distingue os dois
+  // (veredito A2, item 4).
+  const [avisoDaRetomada, setAvisoDaRetomada] = useState<string | null>(null);
+  const liberarRetomadaDepoisDaVerificacao = useCallback(
+    (verificacao: DesfechoQueLiberaARetomada) => {
+      setAvisoDaRetomada(
+        verificacao === "recusado"
+          ? "O pagamento com cartão não foi concluído."
+          : null,
+      );
+      setRetomadaBloqueadaPorSentinela(false);
+      setRetomadaEscolhendoForma(true);
+    },
+    [],
+  );
   // A escolha do cliente na retomada de forma desconhecida liga o pagamento
   // do pedido retomado — o mesmo trio que o efeito de leitura liga quando a
   // forma é conhecida.
@@ -2959,11 +2988,13 @@ export function CheckoutView({
     "",
   );
   const lojaTemWhatsappNoCheckout = lojaTemWhatsapp(config.whatsappNumber);
-  const handleFalarComALojaSobreCartao = () => {
+  // C4 (M1): o pedido vem por parâmetro — na retomada do cartão em dúvida o
+  // `orderId` ainda não foi ligado (nada monta), e o pedido é o retomado.
+  const falarComALojaSobreCartao = (idDoPedido: string) => {
     if (!lojaTemWhatsappNoCheckout) return;
     let phone = numeroLimpoDoCheckout;
     if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
-    const mensagem = `Olá! Meu pedido #${orderId.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const mensagem = `Olá! Meu pedido #${idDoPedido.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -2974,26 +3005,21 @@ export function CheckoutView({
     // "globalThis.open" fora daqui) ficam de fora do escopo desta rodada.
     globalThis.open(url, "_blank", "noopener,noreferrer");
   };
+  const handleFalarComALojaSobreCartao = () =>
+    falarComALojaSobreCartao(orderId);
 
-  if (retomadaBloqueadaPorSentinela) {
+  if (retomadaBloqueadaPorSentinela && retomarPedidoId) {
     return (
-      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
-        <h1 className="text-lg font-bold text-zinc-900">
-          Pagamento em verificação
-        </h1>
-        <p className="text-sm text-zinc-600">
-          O pagamento deste pedido está em análise com o banco. Nada precisa ser
-          feito agora: daqui a alguns minutos, abra "Ver meus pedidos" e retome
-          o pagamento — ele continua de onde parou quando o banco decidir.
-        </p>
-        <Button
-          onClick={() => onNavigate("orders")}
-          variant="outline"
-          className="w-full rounded-xl"
-        >
-          Ver meus pedidos
-        </Button>
-      </div>
+      <VerificacaoDoPagamento
+        orderId={retomarPedidoId}
+        onVerMeusPedidos={() => onNavigate("orders")}
+        onFalarComALoja={
+          lojaTemWhatsappNoCheckout
+            ? () => falarComALojaSobreCartao(retomarPedidoId)
+            : undefined
+        }
+        onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
+      />
     );
   }
 
@@ -3024,6 +3050,14 @@ export function CheckoutView({
         <h1 className="text-lg font-bold text-zinc-900">
           Como você quer pagar este pedido?
         </h1>
+        {/* `role="alert"`, não `status`: o aviso nasce JUNTO com a troca
+            de tela, já preenchido — uma região `status` montada cheia não é
+            anunciada pelo leitor de tela (mesmo defeito do dd346db4). */}
+        {avisoDaRetomada && (
+          <p role="alert" className="text-sm font-medium text-red-700">
+            {avisoDaRetomada}
+          </p>
+        )}
         <p className="text-sm text-zinc-600">
           Nada é cobrado até você escolher e confirmar o pagamento.
         </p>
