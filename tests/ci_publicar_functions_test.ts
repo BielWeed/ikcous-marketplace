@@ -562,7 +562,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
       ];
       let anterior = -1;
       for (const nome of nomes) {
-        const inicio = yaml.indexOf("name: " + nome);
+        const inicio = yaml.indexOf(`name: ${nome}`);
         assert(inicio > anterior && inicio >= 0, nome);
         anterior = inicio;
         const proximo = yaml.indexOf("\n      - ", inicio + 1);
@@ -584,7 +584,7 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
         "Publica, uma function por vez, sempre pelo nome",
         "Lista o que ficou publicado",
       ]) {
-        const inicio = yaml.indexOf("name: " + nome + "\n");
+        const inicio = yaml.indexOf(`name: ${nome}\n`);
         const proximo = yaml.indexOf("\n      - ", inicio + 1);
         const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
         assertStringIncludes(
