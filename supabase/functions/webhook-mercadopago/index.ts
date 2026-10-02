@@ -2046,6 +2046,10 @@ async function handler(
         : tipoCartaoAdotado === "debit_card"
           ? "debito"
           : null;
+      // INVARIANTE DA VAGA: só a RPC `liberar_cobranca_do_pedido` esvazia a
+      // vaga, e só por prova ou cancelamento confirmado. Esta adoção é CAS —
+      // TROCA o valor antigo (NULL ou o sentinela, conferido no WHERE abaixo)
+      // pelo id da order, nunca grava NULL. Mantém assim.
       let queryAdocao = supabase
         .from("marketplace_orders")
         .update({

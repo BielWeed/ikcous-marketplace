@@ -2366,6 +2366,31 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // A RECONCILIAÇÃO ALCANÇA O CARTÃO TARDIO (dinheiro; 02/10/2026, migration
+  // 20261190000000): janela de 14 dias SÓ para o cartão possivelmente vivo
+  // (D2), rodízio pela tabela de visitas (D3) e a cobrança terminal no MP
+  // fora da fila — mais o carimbo que a edge chama no fim de cada ciclo.
+  "20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Sem a janela longa o cartão aprovado dias depois some da fila (D2).
+        "o.expires_at > now() - interval '14 days'",
+        // Sem a marca POR COBRANÇA, ou a terminal fica sendo consultada por
+        // 14 dias, ou (pior) uma cobrança NOVA na vaga fica escondida.
+        "AND (v.cobranca_terminal IS NULL OR v.cobranca_terminal <> o.gateway_payment_id)",
+        // Sem o rodízio o LIMIT 100 volta a matar o candidato velho (D3).
+        "ORDER BY (o.status = 'pending') DESC, v.visitado_em ASC NULLS FIRST, o.expires_at DESC",
+      ],
+    },
+    {
+      funcao: "marcar_visitas_da_reconciliacao",
+      esperado: [
+        // O carimbo do rodízio, ordenado (dois ciclos sobrepostos sem deadlock).
+        "ON CONFLICT (order_id) DO UPDATE SET visitado_em = EXCLUDED.visitado_em;",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
