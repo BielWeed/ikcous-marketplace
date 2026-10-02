@@ -44,6 +44,19 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *     pago_apos_expirar/recebido_na_entrega), fora do aviso de cancelados
  *     (AlertasCancelados.tsx:274-312 e 379-397) e sem o quadro de devolução
  *     (OrderDetail.tsx:1604-1610). Por isso o passo 2 manda devolver no MP.
+ *   - D2 (lacunas, mesmo lançamento; PLANO-LACUNAS item 5): a janela do
+ *     cartão na reconciliação passa a 14 dias, e o webhook atrasado já
+ *     adotava antes. Então a cobrança que o app "não reconheceu" PODE ser
+ *     reconhecida depois e virar `pago_apos_expirar` — e aí o pedido entra em
+ *     "Estorno devido" com "Devolver R$ …". O passo 2 diz "ainda" e "pode",
+ *     verdade antes e depois do D2, e leva o MESMO aviso do caso 2: registrar
+ *     em "Anotações internas", não devolver depois de enviar, e "Já estornei"
+ *     para o que já foi devolvido no painel do MP.
+ *   - B1 (lacunas): cancelar pedido PAGO e não enviado faz o app pedir a
+ *     devolução ao MP sozinho. O caso 1 é pedido AGUARDANDO (não pago) e o
+ *     caso 2 é pagamento que chegou DEPOIS do cancelamento — nos dois, nenhuma
+ *     linha automática nasce, e o "Nada é devolvido sozinho" (só no caso 2)
+ *     continua verdade.
  *   - Depois de ENVIAR um `pago_apos_expirar`, o pedido segue cancelado e
  *     pago: continua em "Estorno devido" (AlertasCancelados.tsx:379-397) e a
  *     ficha continua com "Devolver R$ …" (OrderDetail.tsx:1604-1610). O
@@ -87,11 +100,19 @@ export function GuiaDoPagamentoQueNaoFechou() {
             Achou o pagamento aprovado ou em análise? Não cancele. O app confere
             com o Mercado Pago sozinho: quando o banco confirmar, o pedido vira
             “{pago}”, ou “{pagoForaDoFluxoCurto}” se a confirmação chegar depois
-            do prazo (veja abaixo). Se o app cancelar o pedido mesmo com o
-            pagamento aprovado no Mercado Pago, ele não reconheceu essa
-            cobrança: o dinheiro está na sua conta, mas aqui não aparece aviso
-            nem botão de devolução. Devolva direto no painel do Mercado Pago, ou
-            combine o envio com o cliente.
+            do prazo (veja abaixo). Se o pedido for cancelado mesmo com o
+            pagamento aprovado no Mercado Pago, o app ainda não reconheceu essa
+            cobrança: o dinheiro está na sua conta, mas aqui pode não aparecer
+            aviso nem botão de devolução — ou o pedido pode virar “
+            {pagoForaDoFluxoCurto}” mais tarde, quando o app reconhecer. Devolva
+            direto no painel do Mercado Pago, ou combine o envio com o cliente.
+            Nos dois casos, escreva em “Anotações internas” da ficha o que foi
+            feito (por exemplo: produto enviado em [data], combinado com o
+            cliente, não devolver). Se o pedido aparecer depois em “Estorno
+            devido” com o botão “Devolver R$ …”: se você enviou o produto, não
+            toque nele: depois de enviar, devolver é perder o produto e o
+            dinheiro; se você já devolveu pelo painel do Mercado Pago, toque em
+            “Já estornei no Mercado Pago”.
           </li>
           <li>
             Não achou nada? Pode esperar: se nenhuma cobrança aparecer, o app

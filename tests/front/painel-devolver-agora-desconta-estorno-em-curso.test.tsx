@@ -803,8 +803,116 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
       });
 
       expect(botaoJaEstornei()!.textContent?.trim()).toBe("Conferindo…");
-      expect(botaoJaEstornei()!.disabled).toBe(true);
+      // B1c (revisão do front): `aria-disabled` + `aria-busy`, NÃO
+      // `disabled` — o botão desligado perde o foco do teclado.
+      expect(botaoJaEstornei()!.disabled).toBe(false);
+      expect(botaoJaEstornei()!.getAttribute("aria-disabled")).toBe("true");
+      expect(botaoJaEstornei()!.getAttribute("aria-busy")).toBe("true");
+      // ...e o "Conferindo…" é dito na região viva do pedido.
+      expect(
+        hospedeiro.querySelector(
+          '[data-testid="devolver-agora-item-ped-espera"] [data-testid="avisos-do-estorno"]',
+        )?.textContent,
+      ).toContain("Conferindo este pedido no Mercado Pago");
       expect(confirmSpy).not.toHaveBeenCalled();
+
+      // Clique de novo enquanto confere: nada (nenhuma leitura nova).
+      const leiturasAntes = consultasOrderRefunds.length;
+      await act(async () => {
+        botaoJaEstornei()!.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+      });
+      expect(consultasOrderRefunds.length).toBe(leiturasAntes);
+      expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it("B1c: a tela deixa de estar ativa DURANTE a leitura fresca — a pergunta não abre e nada é registrado", async () => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          observe() {}
+          unobserve() {}
+          disconnect() {}
+        },
+      );
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }));
+      confirmSpy.mockImplementation(() => true);
+      mockPedidosCancelados = [pedidoCanceladoPago({ id: "ped-saiu" })];
+      // As leituras da lista respondem na hora; a partir do clique, a
+      // leitura (a fresca do "Já estornei") fica na mão do teste.
+      let segurar = false;
+      let liberarFresca: ((r: RespostaFake) => void) | null = null;
+      RESPONDER = () =>
+        segurar
+          ? new Promise<RespostaFake>((resolve) => {
+              liberarFresca = resolve;
+            })
+          : Promise.resolve({ data: [], error: null });
+
+      const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+      await act(async () => {
+        raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
+      });
+      const alavanca = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[data-testid="alertas-cancelados-alavanca"]',
+      )!;
+      await act(async () => {
+        alavanca.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      await esperarConferido("ped-saiu");
+      // Deixa assentar a releitura de abrir o painel.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+
+      segurar = true;
+      await act(async () => {
+        botaoJaEstornei()!.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+      });
+      await esperarAte(() => liberarFresca !== null);
+      expect(botaoJaEstornei()!.textContent?.trim()).toBe("Conferindo…");
+
+      // O lojista saiu da tela de pedidos enquanto a leitura voava.
+      await act(async () => {
+        raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={false} />);
+      });
+      segurar = false;
+      await act(async () => {
+        liberarFresca!({ data: [], error: null });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      });
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      // Com a tela ativa a view chama outras RPCs; a que importa é esta.
+      expect(rpcMock).not.toHaveBeenCalledWith(
+        "registrar_estorno_manual",
+        expect.anything(),
+      );
+      // Abandonado sem registrar: o botão volta ao normal para outro toque.
+      await esperarAte(
+        () =>
+          botaoJaEstornei()?.textContent?.trim() ===
+          "Já estornei no Mercado Pago",
+      );
     });
 
     it("R1: R$ 30 em curso num pedido de R$ 100 — pede confirmação do TOTAL (R$ 100) e manda esperar quem devolveu só R$ 70", async () => {

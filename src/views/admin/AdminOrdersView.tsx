@@ -820,6 +820,20 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     null,
   );
   const conferindoEstornoRef = useRef(false);
+  // B1c (revisão do front): quantas vezes a tela DEIXOU de estar ativa (ou
+  // desmontou). O "Já estornei" guarda o número no clique; se mudou durante
+  // a leitura fresca, a pergunta não abre — o lojista saiu da tela, e um
+  // `confirm` sobre outra tela registraria às cegas. Ele toca de novo.
+  const desativacoesDaTelaRef = useRef(0);
+  useEffect(() => {
+    if (!active) desativacoesDaTelaRef.current += 1;
+  }, [active]);
+  useEffect(
+    () => () => {
+      desativacoesDaTelaRef.current += 1;
+    },
+    [],
+  );
   const registrarEstornoFeito = async (pedido: {
     id: string;
     total?: number | null;
@@ -845,6 +859,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // pergunta do estado desconhecido (rodada 3).
     conferindoEstornoRef.current = true;
     setConferindoEstornoId(pedido.id);
+    const desativacoesNoClique = desativacoesDaTelaRef.current;
     let ledger: EstornoEmCurso;
     try {
       ledger = await estornos.conferirAgora(pedido.id);
@@ -852,6 +867,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       conferindoEstornoRef.current = false;
       setConferindoEstornoId(null);
     }
+    // B1c: a tela deixou de estar ativa durante a leitura — abandona sem
+    // perguntar e sem registrar.
+    if (desativacoesDaTelaRef.current !== desativacoesNoClique) return;
     // A lista acompanha o que acabou de ser lido.
     estornos.recarregar();
     const conferido = ledger.tipo === "conferido" ? ledger : null;

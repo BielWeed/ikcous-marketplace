@@ -189,7 +189,16 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain(
       "o pedido vira “Pago”, ou “Pago fora do fluxo” se a confirmação chegar depois do prazo",
     );
-    expect(texto).toContain("ele não reconheceu essa cobrança");
+    // B2 (D2): com a janela do cartão em 14 dias, a cobrança que o app "não
+    // reconheceu" pode ser reconhecida DEPOIS (vira "Pago fora do fluxo") —
+    // "ainda", e "pode não aparecer", são verdade antes e depois do D2.
+    expect(texto).toContain("o app ainda não reconheceu essa cobrança");
+    expect(texto).toContain(
+      "aqui pode não aparecer aviso nem botão de devolução",
+    );
+    expect(texto).toContain(
+      "ou o pedido pode virar “Pago fora do fluxo” mais tarde, quando o app reconhecer",
+    );
     expect(texto).toContain("Devolva direto no painel do Mercado Pago");
     expect(texto).toContain("não cancela nada no Mercado Pago");
     // A ponte para o caso 2, sem espaço sobrando dentro das aspas (o rótulo
@@ -197,6 +206,52 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain(
       "vira “Pago fora do fluxo — precisa de atenção” (veja abaixo)",
     );
+  });
+
+  // B2 (PLANO-LACUNAS item 5, mesmo lançamento do D2): o passo 2 do caso 1
+  // ganha o MESMO aviso do caso 2. Depois do D2 (janela de 14 dias para o
+  // cartão), a cobrança aprovada depois de cancelar/expirar chega como "Pago
+  // fora do fluxo" — e o pedido aparece em "Estorno devido" com "Devolver R$
+  // …". Quem já ENVIOU o produto por causa do passo 2 tem de saber que não é
+  // para tocar ali; e o registro tem de estar na ficha.
+  it("B2: caso 1, passo 2 — mesmo aviso do caso 2 (Anotações internas; não devolver depois de enviar; já devolvido = “Já estornei”)", async () => {
+    await textoDoGuia();
+    const listas = hospedeiro.querySelectorAll("ol");
+    expect(listas.length).toBe(2);
+    const passo2 = (
+      listas.item(0).querySelectorAll("li").item(1).textContent ?? ""
+    ).replace(/\s+/g, " ");
+    expect(passo2).toContain("escreva em “Anotações internas” da ficha");
+    expect(passo2).toContain(
+      "produto enviado em [data], combinado com o cliente, não devolver",
+    );
+    expect(passo2).toContain(
+      "Se o pedido aparecer depois em “Estorno devido” com o botão “Devolver R$ …”",
+    );
+    expect(passo2).toContain(
+      "se você enviou o produto, não toque nele: depois de enviar, devolver é perder o produto e o dinheiro",
+    );
+    expect(passo2).toContain(
+      "se você já devolveu pelo painel do Mercado Pago, toque em “Já estornei no Mercado Pago”",
+    );
+    expect(promessasDeDevolucaoSozinha(passo2)).toEqual([]);
+  });
+
+  // B1 × guia: cancelar pedido PAGO e não enviado faz o app pedir a
+  // devolução ao MP sozinho. O caso 1 é um pedido AGUARDANDO (não pago), e
+  // o "Nada é devolvido sozinho" só pode estar no caso 2 (pago_apos_expirar:
+  // o cancelamento aconteceu ANTES do dinheiro, então nenhuma linha
+  // automática nasce — update_order_status_atomic só a grava na transição
+  // para cancelled com pago).
+  it("B1 × guia: 'Nada é devolvido sozinho' só aparece no caso 2, nunca no caso 1 (pedido aguardando)", async () => {
+    await textoDoGuia();
+    const cartoes = hospedeiro.querySelectorAll("div.rounded-2xl");
+    expect(cartoes.length).toBe(2);
+    const caso1 = cartoes.item(0).textContent ?? "";
+    const caso2 = cartoes.item(1).textContent ?? "";
+    expect(caso1).toContain("“Aguardando pagamento”");
+    expect(caso1).not.toMatch(/Nada é devolvido sozinho/i);
+    expect(caso2).toContain("Nada é devolvido sozinho");
   });
 
   it("caso 2 (pago fora do fluxo): usa o rótulo REAL do selo e diz que nada é devolvido sozinho", async () => {

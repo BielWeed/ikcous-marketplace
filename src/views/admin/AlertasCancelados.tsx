@@ -484,6 +484,14 @@ export function AlertasCancelados({
                             região que já nasce com conteúdo. Releitura igual
                             não re-renderiza (mesmaLeitura), então não inunda. */}
                         <div role="status" data-testid="avisos-do-estorno">
+                          {/* B1c: o "Conferindo…" do botão também é DITO —
+                              o botão mantém o foco, e a região viva anuncia. */}
+                          {conferindoEstornoId === pedido.id && (
+                            <span className="sr-only">
+                              Conferindo este pedido no Mercado Pago antes de
+                              perguntar…
+                            </span>
+                          )}
                           {/* L3e' rodada 2: um aviso por ORIGEM do dinheiro em
                             curso, cada um dizendo só o que é verdade dele —
                             "o app pediu" só quando o app pediu; a linha do
@@ -559,11 +567,20 @@ export function AlertasCancelados({
                           sempre. A confirmação evita registrar por engano. */}
                         <button
                           type="button"
-                          disabled={
-                            estornandoId === pedido.id ||
-                            conferindoEstornoId === pedido.id
+                          // B1c (revisão do front): enquanto confere, o botão
+                          // NÃO usa `disabled` (tiraria o foco do teclado):
+                          // aria-disabled + aria-busy, e o clique volta cedo.
+                          disabled={estornandoId === pedido.id}
+                          aria-disabled={
+                            conferindoEstornoId === pedido.id ? true : undefined
                           }
-                          onClick={() => onRegistrarEstorno(pedido)}
+                          aria-busy={
+                            conferindoEstornoId === pedido.id ? true : undefined
+                          }
+                          onClick={() => {
+                            if (conferindoEstornoId === pedido.id) return;
+                            onRegistrarEstorno(pedido);
+                          }}
                           className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                         >
                           {conferindoEstornoId === pedido.id
