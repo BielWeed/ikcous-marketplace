@@ -6,7 +6,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { createHash } = require("node:crypto");
-const REF = "dekxabvqdsuukijblazl";
+// Modo fechado de conferencia: CAF foi observado no bundle publico do site.
+// Nunca recebe ref livre, URL ou SQL de caller.
+const PUBLICADO =
+  require.main === module && process.argv[2] === "--site-publicado-caf";
+const REF = PUBLICADO ? "cafkrminfnokvgjqtkle" : "dekxabvqdsuukijblazl";
 const ENDPOINT = `https://api.supabase.com/v1/projects/${REF}/database/query/read-only`;
 const ROOT = path.resolve(__dirname, "../..");
 
