@@ -340,12 +340,16 @@ describe("C6/P2 — verificação em desafio3ds (order confirmada) oferece 'Paga
   });
 
   it("VERMELHO (na sessão): erro ambíguo do cartão abre a verificação, que acha o 3DS vivo; 'Pagar com PIX' troca para PIX, limpa o erro e marca a cobrança incerta", async () => {
-    // Retomada de cartão conhecido (vaga com a order): monta o pagamento
-    // em modo cartão — aqui o dublê, que devolve o erro ambíguo.
+    // Retomada de cartão conhecido: monta o pagamento em modo cartão — aqui
+    // o dublê, que devolve o erro ambíguo.
+    // Lacuna L2 (02/10/2026): vaga VAZIA — com o id real da order na vaga a
+    // retomada passa pela consulta `verificar` (nunca o formulário do cartão
+    // sobre uma cobrança possivelmente viva). Este andaime só precisa do
+    // formulário montado; a vaga não muda o que ele prova.
     await retomar({
       total: 149.9,
       metodo_online: "credito",
-      gateway_payment_id: "ORD-3DS-VIVA",
+      gateway_payment_id: null,
       payment_status: "aguardando",
       status: "pending",
     });

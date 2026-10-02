@@ -389,9 +389,12 @@ describe("CheckoutView — retomar pagamento respeita a forma do pedido", () => 
   // ── 2. Cartão conhecido ──────────────────────────────────────────────────
 
   it("cartão conhecido (credito, cobrança anterior recusada): abre o cartão direto, sem escolher e sem PIX", async () => {
+    // Lacuna L2: a cobrança anterior recusada JÁ foi solta (vaga vazia) — com
+    // o id ainda na vaga, a retomada consulta antes (ver
+    // lacuna-l2-reload-3ds-id-real.test.tsx).
     pedido("ped-r-05", {
       metodo_online: "credito",
-      gateway_payment_id: "ORD-MORTA",
+      gateway_payment_id: null,
     });
     await retomar("ped-r-05");
 
@@ -402,9 +405,11 @@ describe("CheckoutView — retomar pagamento respeita a forma do pedido", () => 
   });
 
   it("cartão conhecido: o envio vai à edge como cartão; em análise NÃO oferece 'Pagar com PIX' nem 'Cancelar pedido'", async () => {
+    // Lacuna L2: vaga vazia — com o id real na vaga, a retomada consulta
+    // antes de abrir qualquer formulário.
     pedido("ped-r-06", {
       metodo_online: "credito",
-      gateway_payment_id: "ORD-VIVA",
+      gateway_payment_id: null,
     });
     criarPagamento.mockRejectedValueOnce(
       erroDaEdge("Seu cartão está em análise.", { cartaoEmAnalise: true }),
@@ -454,9 +459,11 @@ describe("CheckoutView — retomar pagamento respeita a forma do pedido", () => 
 
   it("débito conhecido: também abre o cartão, nunca PIX", async () => {
     mockConfigDoCartao = { credito: true, debito: true, parcelasMax: 1 };
+    // Lacuna L2: vaga vazia (com o id real na vaga, o débito também passa
+    // pela consulta — ver lacuna-l2-reload-3ds-id-real.test.tsx).
     pedido("ped-r-08", {
       metodo_online: "debito",
-      gateway_payment_id: "ORD-X",
+      gateway_payment_id: null,
     });
     await retomar("ped-r-08");
 

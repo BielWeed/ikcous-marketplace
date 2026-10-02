@@ -1397,6 +1397,37 @@ export function CheckoutView({
         }
         setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
         const metodo = (data as { metodo_online?: unknown }).metodo_online;
+        // Lacuna L2 (02/10/2026): reload no meio do 3DS (ou do "em análise")
+        // com o id REAL da order de cartão na vaga. Antes, a retomada abria o
+        // FORMULÁRIO do cartão: o desafio só voltava se o cliente digitasse o
+        // cartão de novo (token novo; o servidor, ramo d, devolvia o MESMO
+        // desafio), o formulário não tinha saída para o PIX, e depois de
+        // `expires_at` o POST batia no 409 terminal de `podeCobrar` — o 3DS
+        // que o banco ainda podia aprovar (a 20261186 segura o pedido por até
+        // 24 h) nunca mais aparecia. Agora vai para a MESMA verificação do
+        // sentinela: UMA consulta `verificar` (só GET no MP; nunca POST de
+        // cobrança), com a cadência do C4, o desafio com "Pagar com PIX" antes
+        // do prazo (C6), "em análise" só com order, e a escolha da forma
+        // quando a consulta prova a vaga morta/livre.
+        //
+        // Só `aguardando` + `pending` (o domínio do `verificar`; fora dele a
+        // edge responde 409 terminal e a retomada de hoje já trata). Vaga
+        // VAZIA continua abrindo o formulário (nada a consultar).
+        //
+        // PORTÃO DE PUBLICAÇÃO: só em loja cujo `criar-pagamento` já aceita
+        // `verificar` (C2 no ar, medido loja a loja). Sem o C2 a consulta volta
+        // 400 e a tela fica em "indisponível" — perde a saída de hoje
+        // (redigitar o cartão), sem risco de dinheiro.
+        if (
+          (metodo === "credito" || metodo === "debito") &&
+          typeof gateway === "string" &&
+          gateway !== "" &&
+          statusPagamento === "aguardando" &&
+          status === "pending"
+        ) {
+          setRetomadaBloqueadaPorSentinela(true);
+          return;
+        }
         if (metodo === "credito" || metodo === "debito") {
           setMetodoDoPedido("cartao");
         } else if (metodo !== "pix") {
@@ -1421,6 +1452,9 @@ export function CheckoutView({
   // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
   // método retoma o da última tentativa quando legível. O gateway_payment_id
   // entra para reconhecer o SENTINELA de cartão (gate no efeito acima).
+  // Lacuna L2: o nome ficou do C4, mas o estado liga a VERIFICAÇÃO da
+  // retomada nos dois casos — sentinela, ou id real de cartão em
+  // `aguardando`/`pending`.
   const [retomadaBloqueadaPorSentinela, setRetomadaBloqueadaPorSentinela] =
     useState(false);
   const [retomadaSemPagamentoPendente, setRetomadaSemPagamentoPendente] =

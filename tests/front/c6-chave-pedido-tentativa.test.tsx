@@ -165,7 +165,11 @@ beforeEach(() => {
     total: 120,
     status: "pending",
     payment_status: "aguardando",
-    gateway_payment_id: "ORD01JC6CHAVE",
+    // Lacuna L2 (02/10/2026): vaga VAZIA — com o id real da order na vaga a
+    // retomada passa pela consulta `verificar` (nunca o formulário do cartão
+    // sobre uma cobrança possivelmente viva). Este andaime só precisa do
+    // formulário montado; a vaga não muda o que ele prova.
+    gateway_payment_id: null,
     metodo_online: "credito",
     tentativas_de_pagamento: 0,
     expires_at: PRAZO_FUTURO,

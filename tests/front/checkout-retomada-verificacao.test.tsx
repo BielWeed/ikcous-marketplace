@@ -101,7 +101,6 @@ vi.mock("@/hooks/useConfigDoCartao", async () => {
   return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
 });
 let montagensDoPagamento = 0;
-let propsDoPagamento: Record<string, unknown> | null = null;
 vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => {
   const real =
     await importOriginal<
@@ -109,9 +108,8 @@ vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => {
     >();
   return {
     ...real,
-    PagamentoOnline: (props: Record<string, unknown>) => {
+    PagamentoOnline: () => {
       montagensDoPagamento += 1;
-      propsDoPagamento = props;
       return null;
     },
   };
@@ -132,7 +130,6 @@ describe("CheckoutView — retomada com cartão em dúvida passa pela consulta",
     criarPagamento.mockReset();
     onNavigate.mockReset();
     montagensDoPagamento = 0;
-    propsDoPagamento = null;
     whatsappDaLoja = "34999998888";
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -331,18 +328,19 @@ describe("CheckoutView — retomada com cartão em dúvida passa pela consulta",
     expect(montagensDoPagamento).toBeGreaterThan(0);
   });
 
-  // Revisão do C4, item 5 (decisão do coordenador, 02/10/2026): o cartão com
-  // id REAL na vaga (reload no meio do 3DS, cartão em análise) FICA FORA da
-  // consulta — este teste PRENDE o comportamento de hoje. Na montagem nada
-  // chama a edge (nem `verificar`, nem `cartao`); a tela é a do cartão
-  // (PagamentoOnline em modo "cartao" → formulário; o formulário real e o
-  // reenvio que devolve o MESMO desafio estão em
-  // checkout-retomada-forma-do-pedido.test.tsx). Ali o servidor reaproveita
-  // a vaga (mesmo desafio / em análise / pago) e o 3DS vivo mantém a saída
-  // "Pagar com PIX" do ramo (f) — a consulta não oferece PIX no desafio
-  // (isso é do C6), por isso este caso não passa por ela.
+  // INVERTIDO pela lacuna L2 (02/10/2026). O C4 (item 5) deixou o cartão com
+  // id REAL na vaga FORA da consulta por dois motivos que caíram:
+  // - "a consulta não oferece PIX no desafio" — o C6 deu "Pagar com PIX" à
+  //   VerificacaoDoPagamento no desafio com order confirmada;
+  // - o formulário do cartão era a saída — mas ele não tinha PIX, pedia o
+  //   cartão de novo (token novo) só para o servidor devolver o MESMO
+  //   desafio, e depois de `expires_at` batia no 409 terminal de
+  //   `podeCobrar` com o 3DS ainda aprovável (prova em
+  //   lacuna-l2-reload-3ds-id-real.test.tsx).
+  // Agora: UMA consulta `verificar` na montagem, o desafio na tela, e nada
+  // de pagamento montado (nenhum formulário sobre uma cobrança talvez viva).
   for (const metodo_online of ["credito", "debito"]) {
-    it(`reload com cartão de id REAL na vaga (${metodo_online}, aguardando): nenhuma chamada à edge na montagem, tela do cartão, nada da VerificacaoDoPagamento`, async () => {
+    it(`reload com cartão de id REAL na vaga (${metodo_online}, aguardando): UMA consulta 'verificar' na montagem, o desafio na VerificacaoDoPagamento, nenhum pagamento montado`, async () => {
       criarPagamento.mockResolvedValue({
         verificacao: "desafio3ds",
         paymentId: "ORD-3DS-VIVA",
@@ -356,21 +354,21 @@ describe("CheckoutView — retomada com cartão em dúvida passa pela consulta",
         payment_status: "aguardando",
         status: "pending",
       });
-      expect(criarPagamento).not.toHaveBeenCalled();
-      expect(montagensDoPagamento).toBeGreaterThan(0);
-      expect(propsDoPagamento?.metodo).toBe("cartao");
-      expect(propsDoPagamento?.orderId).toBe(PEDIDO);
-      expect(hospedeiro.textContent).toContain("Finalize o pagamento");
-      for (const daVerificacao of [
-        "Situação do pagamento",
-        "Consultando o pagamento com o banco",
-        "Não conseguimos confirmar",
+      expect(criarPagamento).toHaveBeenCalledTimes(1);
+      expect(criarPagamento.mock.calls[0][0]).toEqual({
+        orderId: PEDIDO,
+        metodo: "verificar",
+      });
+      expect(montagensDoPagamento).toBe(0);
+      expect(hospedeiro.textContent).toContain("Situação do pagamento");
+      expect(hospedeiro.textContent).toContain(
         "Seu banco pediu uma confirmação de segurança",
-      ]) {
-        expect(hospedeiro.textContent).not.toContain(daVerificacao);
-      }
-      expect(botao("Verificar de novo")).toBeUndefined();
-      expect(hospedeiro.querySelector("iframe")).toBeNull();
+      );
+      expect(hospedeiro.textContent).not.toContain("Finalize o pagamento");
+      expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
+        "https://www.mercadopago.com.br/3ds/x",
+      );
+      expect(botao("Pagar com PIX")).toBeDefined();
     });
   }
 });

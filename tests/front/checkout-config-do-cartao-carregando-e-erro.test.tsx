@@ -537,8 +537,11 @@ describe("CheckoutView — a config do cartao tem estado: carregando, erro e des
   // config não está pronta, o CheckoutView NÃO monta o PagamentoOnline.
 
   describe("retomada com cartão JÁ conhecido (metodo_online = credito)", () => {
+    // Lacuna L2 (02/10/2026): vaga VAZIA (a cobrança anterior já foi solta) —
+    // com o id real da order na vaga, a retomada consulta antes (`verificar`)
+    // e não chega à config do cartão. O que estes testes provam é a config.
     const pedidoDeCartao = (id: string) =>
-      pedido(id, { metodo_online: "credito", gateway_payment_id: "ORD-MORTA" });
+      pedido(id, { metodo_online: "credito", gateway_payment_id: null });
 
     it("config CARREGANDO: indicador no lugar do pagamento — sem Brick, sem edge, sem 'não está disponível', sem PIX de saída; resolvida, o Brick monta com crédito", async () => {
       pedidoDeCartao("ped-k-01");
@@ -717,9 +720,10 @@ describe("CheckoutView — a config do cartao tem estado: carregando, erro e des
     });
 
     it("pedido de cartão conhecido: carregando em região viva educada; a falha é anunciada como alerta", async () => {
+      // Lacuna L2: vaga vazia (ver `pedidoDeCartao`, acima).
       pedido("ped-a-02", {
         metodo_online: "credito",
-        gateway_payment_id: "ORD-MORTA",
+        gateway_payment_id: null,
       });
       const resolver = leituraAdiada();
       await retomar("ped-a-02");
