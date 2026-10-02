@@ -10,6 +10,7 @@ import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
+import { GuiaDoPagamentoQueNaoFechou } from "@/components/admin/orders/GuiaDoPagamentoQueNaoFechou";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
   OrderStatusBadge,
@@ -2099,6 +2100,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               </li>
             </ul>
           </div>
+
+          <GuiaDoPagamentoQueNaoFechou />
         </div>
       </AdminHelpModal>
     </div>
