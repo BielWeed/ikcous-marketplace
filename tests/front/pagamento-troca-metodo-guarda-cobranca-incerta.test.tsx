@@ -168,4 +168,91 @@ describe("PagamentoOnline — a troca cartão→PIX não esconde a cobrança em 
     // `false` continua sendo o verdadeiro aqui.
     expect(onTrocarParaPix).toHaveBeenCalledWith(false);
   });
+
+  // Contrato "forma de cartão desligada" (01/10/2026): com cobrança incerta
+  // NESTE pedido (`pedidoTemCobrancaIncerta` do CheckoutView, ex.: 502
+  // ambíguo de um cartão anterior), o fallback NÃO pode ser a porta dos fundos
+  // que a caixa âmbar fecha — nada de PIX nem "Cancelar pedido". A saída útil
+  // é "Ver meus pedidos", a mesma da caixa âmbar.
+  function botoes(texto: string) {
+    return [...hospedeiro.querySelectorAll("button")].filter((b) =>
+      b.textContent?.includes(texto),
+    );
+  }
+
+  function exigirFallbackSemPixNemCancelar() {
+    expect(hospedeiro.textContent).toContain("não está disponível");
+    expect(hospedeiro.textContent).toContain("em análise pelo banco");
+    expect(botoes("Pagar com PIX")).toHaveLength(0);
+    expect(hospedeiro.textContent).not.toContain("Pagar com PIX");
+    expect(hospedeiro.textContent).not.toContain("Cancelar pedido");
+  }
+
+  it("cobrança incerta e a config some com o cartão EM CENA: sem PIX, sem Cancelar — 'Ver meus pedidos' é a saída", async () => {
+    const onTrocarParaPix = vi.fn();
+    const onVerMeusPedidos = vi.fn();
+    function Pai({ config }: { config: ConfigDoCartao | null }) {
+      const [metodo, setMetodo] = useState<MetodoOnline>("cartao");
+      const props = {
+        orderId: "ped-3",
+        valor: 100,
+        metodo,
+        configDoCartao: config,
+        cobrancaIncerta: true,
+        onVerMeusPedidos,
+        onTrocarParaPix: (cartaoAindaVivo: boolean) => {
+          onTrocarParaPix(cartaoAindaVivo);
+          setMetodo("pix");
+        },
+        onErro: () => {},
+      };
+      return <PagamentoOnline {...props} />;
+    }
+
+    await act(async () => {
+      raiz.render(<Pai config={CONFIG_DO_CARTAO} />);
+    });
+    expect(hospedeiro.textContent).toContain("Pagamento com cartão");
+
+    await act(async () => {
+      raiz.render(<Pai config={null} />);
+    });
+    exigirFallbackSemPixNemCancelar();
+
+    const verPedidos = botoes("Ver meus pedidos");
+    expect(verPedidos).toHaveLength(1);
+    await clicar(verPedidos[0]);
+
+    expect(onVerMeusPedidos).toHaveBeenCalledTimes(1);
+    expect(onTrocarParaPix).not.toHaveBeenCalled();
+    expect(criarPagamento).not.toHaveBeenCalled();
+  });
+
+  it("cobrança incerta e a config ausente DESDE O INÍCIO (remontagem do pedido): também sem PIX nem Cancelar", async () => {
+    const onTrocarParaPix = vi.fn();
+    const onVerMeusPedidos = vi.fn();
+    const props = {
+      orderId: "ped-4",
+      valor: 50,
+      metodo: "cartao" as const,
+      configDoCartao: null,
+      cobrancaIncerta: true,
+      onVerMeusPedidos,
+      onTrocarParaPix,
+      onErro: () => {},
+    };
+
+    await act(async () => {
+      raiz.render(<PagamentoOnline {...props} />);
+    });
+    exigirFallbackSemPixNemCancelar();
+
+    const verPedidos = botoes("Ver meus pedidos");
+    expect(verPedidos).toHaveLength(1);
+    await clicar(verPedidos[0]);
+
+    expect(onVerMeusPedidos).toHaveBeenCalledTimes(1);
+    expect(onTrocarParaPix).not.toHaveBeenCalled();
+    expect(criarPagamento).not.toHaveBeenCalled();
+  });
 });

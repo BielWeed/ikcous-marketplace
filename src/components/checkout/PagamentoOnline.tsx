@@ -3,7 +3,11 @@ import type {
   RespostaCriarPagamento,
 } from "@/hooks/useOrders";
 import { useOrders } from "@/hooks/useOrders";
-import { type ConfigDoCartao, cartaoLigado } from "@/lib/config-do-cartao";
+import {
+  type ConfigDoCartao,
+  cartaoLigado,
+  esquecerConfigDoCartao,
+} from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
@@ -387,7 +391,9 @@ export function PagamentoOnline({
   metodo = "pix",
   configDoCartao = null,
   emailDoPagador,
+  cobrancaIncerta = false,
   onTrocarParaPix,
+  onVerMeusPedidos,
 }: {
   orderId: string;
   valor: number;
@@ -400,12 +406,23 @@ export function PagamentoOnline({
   metodo?: MetodoOnline;
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
+  cobrancaIncerta?: boolean;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
+  onVerMeusPedidos?: () => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
+  const [cartaoDesligadoPeloServidor, setCartaoDesligadoPeloServidor] =
+    useState(false);
+  useEffect(() => {
+    setCartaoDesligadoPeloServidor(false);
+  }, [orderId]);
+  const avisarFormaDesligada = () => {
+    esquecerConfigDoCartao();
+    setCartaoDesligadoPeloServidor(true);
+  };
   const pagarComPix = (cartaoAindaVivo: boolean) => {
     setTrocouParaPix(true);
     onTrocarParaPix?.(cartaoAindaVivo);
@@ -425,6 +442,7 @@ export function PagamentoOnline({
   const cartaoEmCena =
     metodo === "cartao" &&
     !trocouParaPix &&
+    !cartaoDesligadoPeloServidor &&
     !!configDoCartao &&
     cartaoLigado(configDoCartao);
   const [cartaoEsteveEmCena, setCartaoEsteveEmCena] = useState(false);
@@ -433,7 +451,11 @@ export function PagamentoOnline({
   }, [cartaoEmCena]);
 
   if (metodo === "cartao" && !trocouParaPix) {
-    if (configDoCartao && cartaoLigado(configDoCartao)) {
+    if (
+      !cartaoDesligadoPeloServidor &&
+      configDoCartao &&
+      cartaoLigado(configDoCartao)
+    ) {
       return (
         <PagamentoComCartao
           orderId={orderId}
@@ -441,6 +463,7 @@ export function PagamentoOnline({
           config={configDoCartao}
           emailDoPagador={emailDoPagador}
           onErro={onErro}
+          onFormaDesligada={avisarFormaDesligada}
           onPagarComPix={pagarComPix}
         />
       );
@@ -453,13 +476,31 @@ export function PagamentoOnline({
         <p className="text-sm text-zinc-700">
           O pagamento com cartão não está disponível nesta loja agora.
         </p>
-        <button
-          type="button"
-          onClick={() => pagarComPix(cartaoEsteveEmCena)}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-        >
-          Pagar com PIX
-        </button>
+        {cobrancaIncerta ? (
+          <>
+            <p className="text-sm text-amber-800">
+              Uma tentativa anterior pode estar em análise pelo banco. Acompanhe
+              o pedido antes de tentar outra forma de pagamento.
+            </p>
+            {onVerMeusPedidos && (
+              <button
+                type="button"
+                onClick={onVerMeusPedidos}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+              >
+                Ver meus pedidos
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => pagarComPix(cartaoEsteveEmCena)}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Pagar com PIX
+          </button>
+        )}
       </div>
     );
   }

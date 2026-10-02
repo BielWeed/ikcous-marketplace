@@ -468,6 +468,26 @@ export type ArgsCriarPagamento =
     };
 
 /**
+ * Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão de
+ * `criar-pagamento` carrega `codigo: "CARTAO_FORMA_DESLIGADA"`. O código NÃO
+ * afirma ausência de cobrança (o portão roda antes do ramo "reconsultar" da
+ * edge) — serve só para a tela trocar a configuração e oferecer PIX pela
+ * guarda da vaga.
+ */
+export type CodigoDoErroDePagamento = "CARTAO_FORMA_DESLIGADA";
+
+/**
+ * Só o literal EXATO vira código; qualquer outra coisa (ausente, outro texto,
+ * caixa ou espaço diferentes, outro tipo) é `undefined` — falha fechada, a
+ * mesma régua estrita de `terminal`/`cartaoEmAnalise`.
+ */
+function codigoDoErroDePagamento(
+  valor: unknown,
+): CodigoDoErroDePagamento | undefined {
+  return valor === "CARTAO_FORMA_DESLIGADA" ? valor : undefined;
+}
+
+/**
  * O que a edge devolve num 200/201 — PIX e cartão falam a mesma resposta; os
  * campos de cada meio são opcionais.
  */
@@ -3396,6 +3416,7 @@ export function useOrders(
         // MESMA regra estrita do `terminal`: só `true` booleano conta, falha
         // fechada em qualquer outra coisa (campo ausente, string "true").
         let cartaoEmAnalise = false;
+        let codigo: CodigoDoErroDePagamento | undefined;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
@@ -3403,13 +3424,19 @@ export function useOrders(
           if (typeof corpo?.cartaoEmAnalise === "boolean") {
             cartaoEmAnalise = corpo.cartaoEmAnalise;
           }
+          codigo = codigoDoErroDePagamento(corpo?.codigo);
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw Object.assign(new Error(mensagem), { terminal, cartaoEmAnalise });
+        throw Object.assign(new Error(mensagem), {
+          terminal,
+          cartaoEmAnalise,
+          ...(codigo ? { codigo } : {}),
+        });
       }
       if (data?.error) {
+        const codigo = codigoDoErroDePagamento((data as any).codigo);
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
         // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
         // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
@@ -3422,6 +3449,7 @@ export function useOrders(
           cartaoEmAnalise:
             typeof (data as any).cartaoEmAnalise === "boolean" &&
             (data as any).cartaoEmAnalise,
+          ...(codigo ? { codigo } : {}),
         });
       }
       return data as RespostaCriarPagamento;
