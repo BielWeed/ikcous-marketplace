@@ -1029,9 +1029,16 @@ export function CheckoutView({
   // Toda seleção AUTOMÁTICA de "online" (transportadora, fallback da loja)
   // volta para PIX — cartão só por escolha explícita do cliente.
   const [metodoOnline, setMetodoOnline] = useState<MetodoOnline>("pix");
-  // `null` = cartão NÃO oferecido (carregando, desligado, leitura falhou ou
-  // loja sem Public Key) — falha fechada, ver useConfigDoCartao.
-  const configDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  // A config do cartão tem ESTADO (carregando | erro | pronto) — ver
+  // useConfigDoCartao. `configDoCartao` só existe em "pronto": `null` aqui
+  // significa "sem cartão para oferecer AGORA" e continua sendo o que o
+  // PagamentoOnline recebe enquanto a config não está pronta (carregando ou
+  // erro), como sempre recebeu. Quem decide o que MOSTRAR enquanto não está
+  // pronto é `estadoDoCartao`: lista parcial nunca se apresenta como final, e
+  // erro de leitura nunca se apresenta como "cartão desligado".
+  const estadoDoCartao = useConfigDoCartao(pagamentoOnlineLigado());
+  const configDoCartao =
+    estadoDoCartao.estado === "pronto" ? estadoDoCartao.config : null;
   const cartaoDisponivel = pagamentoOnlineLigado() && configDoCartao !== null;
   const metodoOnlineEfetivo: MetodoOnline =
     paymentMethod === "online" && metodoOnline === "cartao" && cartaoDisponivel
@@ -3020,7 +3027,36 @@ export function CheckoutView({
         <p className="text-sm text-zinc-600">
           Nada é cobrado até você escolher e confirmar o pagamento.
         </p>
-        {cartaoDisponivel && configDoCartao && (
+        {/* A lista de formas SÓ aparece quando a config do cartão está
+            pronta: com ela ainda carregando, "Pagar com PIX" sozinho
+            pareceria a lista final (bug do teste real da 1.5.14/1.5.15). Em
+            erro, a frase diz a verdade — não deu para conferir — em vez de
+            fingir "cartão desligado"; o PIX não depende dessa leitura e fica
+            como opção explícita. Nenhum caminho cobra sozinho: PIX e cartão
+            só com toque. */}
+        {estadoDoCartao.estado === "carregando" && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Carregando formas de pagamento…
+          </p>
+        )}
+        {estadoDoCartao.estado === "erro" && (
+          <>
+            <p className="text-sm font-medium text-amber-800">
+              Não foi possível conferir se o cartão está disponível agora.
+            </p>
+            <Button
+              onClick={() => estadoDoCartao.tentarDeNovo()}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
+          </>
+        )}
+        {configDoCartao && (
           <Button
             onClick={() => escolherFormaDaRetomada("cartao")}
             className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
@@ -3028,13 +3064,15 @@ export function CheckoutView({
             {rotuloDaOpcaoDeCartao(configDoCartao)}
           </Button>
         )}
-        <Button
-          onClick={() => escolherFormaDaRetomada("pix")}
-          variant="outline"
-          className="w-full rounded-xl"
-        >
-          Pagar com PIX
-        </Button>
+        {estadoDoCartao.estado !== "carregando" && (
+          <Button
+            onClick={() => escolherFormaDaRetomada("pix")}
+            variant="outline"
+            className="w-full rounded-xl"
+          >
+            Pagar com PIX
+          </Button>
+        )}
       </div>
     );
   }
@@ -3347,6 +3385,38 @@ export function CheckoutView({
                 {erroCancelamento}
               </p>
             )}
+          </div>
+        ) : metodoDoPedido === "cartao" &&
+          estadoDoCartao.estado === "carregando" ? (
+          // Pedido de CARTÃO com a config ainda no ar: o PagamentoOnline
+          // recebe `null` e diria "o pagamento com cartão não está
+          // disponível nesta loja agora" — frase de cartão desligado de
+          // verdade, dita a quem só está esperando a leitura. Nada monta
+          // (nem Brick, nem edge) até a config estar pronta. Só ocupa o
+          // MOMENTO de montar: uma caixa de erro já aberta (ramos acima)
+          // nunca é substituída por isto.
+          <p
+            role="status"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Carregando o pagamento com cartão…
+          </p>
+        ) : metodoDoPedido === "cartao" && estadoDoCartao.estado === "erro" ? (
+          // Leitura falhada NÃO é cartão desligado: o cartão pode estar ligado
+          // e até em análise. Sem PIX automático aqui — a troca explícita
+          // para PIX continua só pelos caminhos seguros do PagamentoOnline,
+          // depois de montado.
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-amber-800">
+              Não foi possível conferir o pagamento com cartão agora.
+            </p>
+            <Button
+              onClick={() => estadoDoCartao.tentarDeNovo()}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
           </div>
         ) : (
           <PagamentoOnline
@@ -4418,6 +4488,36 @@ export function CheckoutView({
                 </span>
                 <div className="grid grid-cols-1 gap-2.5">
                   {opcoesNoApp.map(renderOpcaoDePagamento)}
+                  {/* O cartão pelo app depende de uma leitura: enquanto ela
+                      não responde, a opção aparece como "carregando" (em vez
+                      de sumir, o que faria a lista parcial parecer final); se
+                      falhou, diz isso e deixa tentar de novo — erro não é
+                      "cartão desligado". Não é uma forma escolhível (não é
+                      `radio`): só vira opção quando a config está pronta. */}
+                  {estadoDoCartao.estado === "carregando" && (
+                    <div
+                      role="status"
+                      className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
+                    >
+                      <Loader2 className="size-4 shrink-0 animate-spin" />
+                      Cartão: carregando…
+                    </div>
+                  )}
+                  {estadoDoCartao.estado === "erro" && (
+                    <div
+                      role="status"
+                      className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 p-3.5 text-xs font-bold uppercase tracking-wider text-zinc-600"
+                    >
+                      <span>Cartão: não foi possível conferir agora.</span>
+                      <button
+                        type="button"
+                        onClick={() => estadoDoCartao.tentarDeNovo()}
+                        className="rounded-lg border border-zinc-900 px-3 py-1.5 text-xs font-bold normal-case tracking-normal text-zinc-900 active:scale-[0.98]"
+                      >
+                        Tentar de novo
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -4437,9 +4537,14 @@ export function CheckoutView({
             {selectedShippingOption && !ehEntregaLocal && (
               <p className="text-[11px] font-medium normal-case leading-normal tracking-normal text-zinc-600">
                 {pagamentoOnlineLigado()
-                  ? cartaoDisponivel
-                    ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
-                    : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
+                  ? estadoDoCartao.estado !== "pronto"
+                    ? // Config do cartão ainda carregando ou com leitura
+                      // falhada: o checkout NÃO sabe quais formas existem,
+                      // então não afirma "só PIX" nem que o cartão está lá.
+                      "Envio por transportadora exige pagamento antecipado — as formas de pagamento disponíveis aparecem abaixo."
+                    : cartaoDisponivel
+                      ? "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o pagamento pelo app aqui."
+                      : "Envio por transportadora exige pagamento antecipado — por isso só oferecemos o PIX no app aqui."
                   : "Envio por transportadora exige pagamento antecipado, e esta loja não recebe pagamento pelo app. Fale com a loja para combinar a entrega."}
               </p>
             )}

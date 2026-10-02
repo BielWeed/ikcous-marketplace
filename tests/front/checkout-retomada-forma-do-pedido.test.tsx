@@ -109,9 +109,10 @@ vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 const CREDITO_1X = { credito: true, debito: false, parcelasMax: 1 };
 let mockConfigDoCartao: typeof CREDITO_1X | null = CREDITO_1X;
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => mockConfigDoCartao,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { estadoPronto } = await import("./duble-use-config-do-cartao");
+  return { useConfigDoCartao: () => estadoPronto(mockConfigDoCartao) };
+});
 
 // O "banco": a linha de cada pedido, lida pela retomada (`maybeSingle`) e
 // pela verificação periódica da tela (`single`).

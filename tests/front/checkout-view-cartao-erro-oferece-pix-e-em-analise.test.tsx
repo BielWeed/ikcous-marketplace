@@ -192,9 +192,10 @@ let mockConfigDoCartao: ConfigDoCartao | null = {
   debito: true,
   parcelasMax: 6,
 };
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => mockConfigDoCartao,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { estadoPronto } = await import("./duble-use-config-do-cartao");
+  return { useConfigDoCartao: () => estadoPronto(mockConfigDoCartao) };
+});
 
 // Achado 1, rodada 6: mutável — nenhum teste existente até aqui CLICA em
 // "Cancelar pedido" (só confere presença/ausência do botão), então o padrão

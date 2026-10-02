@@ -144,9 +144,10 @@ vi.mock("@/hooks/useOrders", async (importOriginal) => {
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
 
 const mockConfigDoCartao = { credito: true, debito: false, parcelasMax: 6 };
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => mockConfigDoCartao,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { estadoPronto } = await import("./duble-use-config-do-cartao");
+  return { useConfigDoCartao: () => estadoPronto(mockConfigDoCartao) };
+});
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {

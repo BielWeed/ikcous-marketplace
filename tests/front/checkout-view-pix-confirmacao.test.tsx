@@ -246,9 +246,12 @@ vi.mock("@/components/checkout/PagamentoOnline", () => ({
 // montar (useConfigDoCartao) — uma consulta que não é do polling que este
 // arquivo conta em `fromSpy`. A leitura tem suíte própria
 // (config-do-cartao.test.ts); aqui o cartão fica simplesmente desligado.
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => null,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
 // dos outros arquivos desta pasta.
