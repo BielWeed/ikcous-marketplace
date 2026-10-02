@@ -184,7 +184,7 @@ describe("classificarRespostaCartao — sem order confirmada, nunca 'em análise
       classificarRespostaCartao(
         comoResposta({ ...AGUARDANDO_SEM_ORDER, paymentId: "ORD-VIVA-1" }),
       ),
-    ).toEqual({ tipo: "em-analise" });
+    ).toEqual({ tipo: "em-analise", paymentId: "ORD-VIVA-1" });
   });
 
   it("CONTROLE: recusa sem paymentId continua recusa (prova que não houve cobrança) — e pago decide pelo status", () => {

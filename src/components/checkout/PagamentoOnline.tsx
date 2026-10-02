@@ -13,7 +13,7 @@ import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { PagamentoComCartao } from "./PagamentoComCartao";
+import { type CartaoEmCurso, PagamentoComCartao } from "./PagamentoComCartao";
 import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
 
 // O carregador do SDK mora em módulo próprio desde o cartão (26/09/2026) —
@@ -397,6 +397,8 @@ export function PagamentoOnline({
   onTrocarParaPix,
   onVerMeusPedidos,
   onCobrancaEmDuvida,
+  onCartaoEmCurso,
+  cartaoEncerrado,
 }: {
   orderId: string;
   valor: number;
@@ -417,6 +419,9 @@ export function PagamentoOnline({
   onVerMeusPedidos?: () => void;
   // C5 (front B2): repassado à tela do cartão — ver `PagamentoComCartao`.
   onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
+  // C6 (P1): repassados à tela do cartão — ver `CartaoEmCurso`.
+  onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
+  cartaoEncerrado?: CartaoEmCurso | null;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
   // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
@@ -487,6 +492,8 @@ export function PagamentoOnline({
           onFormaDesligada={avisarFormaDesligada}
           onPagarComPix={pagarComPix}
           onCobrancaEmDuvida={onCobrancaEmDuvida}
+          onCartaoEmCurso={onCartaoEmCurso}
+          cartaoEncerrado={cartaoEncerrado}
         />
       );
     }

@@ -967,7 +967,11 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       await vi.advanceTimersByTimeAsync(10_000);
     });
 
-    expect(selectSpy).toHaveBeenCalledWith("payment_status, expires_at");
+    // C6 (P1, 02/10/2026): a vaga e o status entram na mesma leitura — é por
+    // ela que a recusa depois do 3DS aparece (vaga solta por prova).
+    expect(selectSpy).toHaveBeenCalledWith(
+      "payment_status, expires_at, gateway_payment_id, status",
+    );
     expect(eqSpy).toHaveBeenCalledWith("id", "ped-999");
   });
 

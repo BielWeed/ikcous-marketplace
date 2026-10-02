@@ -278,7 +278,7 @@ describe("classificarRespostaCartao — o que a tela faz com a resposta 200", ()
     ).toEqual({ tipo: "aprovado" });
     expect(
       classificarRespostaCartao({ ...base, statusPagamento: "aguardando" }),
-    ).toEqual({ tipo: "em-analise" });
+    ).toEqual({ tipo: "em-analise", paymentId: "pay-1" });
   });
 
   it("aguardando com desafio3ds do Mercado Pago → desafio com a URL", () => {
@@ -290,7 +290,7 @@ describe("classificarRespostaCartao — o que a tela faz com a resposta 200", ()
         statusPagamento: "aguardando",
         desafio3ds: { url },
       }),
-    ).toEqual({ tipo: "desafio", url });
+    ).toEqual({ tipo: "desafio", url, paymentId: "pay-1" });
   });
 
   it("desafio com URL fora do Mercado Pago NÃO vira iframe — erro recuperável, semCobranca (a edge cancela a vaga ao pedir PIX)", () => {

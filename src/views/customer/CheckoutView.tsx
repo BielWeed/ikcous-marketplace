@@ -1,3 +1,4 @@
+import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
   type CategoriaErroPagamento,
   type MetodoOnline,
@@ -675,6 +676,14 @@ export function CheckoutView({
         setStatusPagamentoPix("confirmado");
       } else if (pedidoAtualizado.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
+      } else if (
+        pedidoAtualizado.gateway_payment_id === null &&
+        cartaoEmCursoRef.current?.orderId === pedidoAtualizado.id
+      ) {
+        // C6 (P1): a vaga vazia no realtime é só uma DICA — o evento pode
+        // ser a soltura de uma tentativa ANTERIOR chegando atrasada. Quem
+        // decide é uma leitura NOVA da vaga (`verificarPagamento`).
+        lerAVagaAgoraRef.current?.();
       }
     },
   });
@@ -1158,11 +1167,53 @@ export function CheckoutView({
   // analise.test.tsx`, teste "(d)", que prova ISOLAMENTO ENTRE SESSÕES de
   // checkout (dois `<CheckoutView>` distintos), não a transição de `orderId`
   // dentro de um mount só.
-  const [pedidoTemCobrancaIncerta, setPedidoTemCobrancaIncerta] =
-    useState(false);
-  useEffect(() => {
-    setPedidoTemCobrancaIncerta(false);
-  }, [orderId]);
+  //
+  // C6 (P2, 02/10/2026): o efeito de reset por `orderId` deixou de ser morto
+  // — e passou a APAGAR a marca. A saída "Pagar com PIX" da verificação, na
+  // retomada, marca o pedido e liga `orderId` ("" → pedido) no MESMO toque;
+  // o efeito rodava depois e zerava a marca, e "Cancelar pedido" voltava
+  // sobre um cartão 3DS que podia estar vivo. Agora a marca guarda O PEDIDO a
+  // que pertence (o mesmo desenho de `recusas`, em PagamentoOnline): vale só
+  // para ele, e um pedido diferente nasce sem marca sem precisar de efeito.
+  const [pedidoComCobrancaIncerta, setPedidoComCobrancaIncerta] = useState<
+    string | null
+  >(null);
+  const pedidoTemCobrancaIncerta =
+    orderId !== "" && pedidoComCobrancaIncerta === orderId;
+  // ── C6 (P1, achado B1, 02/10/2026): a recusa DEPOIS do 3DS aparece ──────
+  // A tentativa de cartão em curso (avisada pela tela do cartão, só com o
+  // token de cerca — o `paymentId` da resposta 200) e o número da leitura da
+  // vaga em que o aviso chegou. Ref, não estado: só a verificação periódica
+  // lê, e o aviso não muda nada na tela.
+  const leiturasDaVagaRef = useRef(0);
+  const cartaoEmCursoRef = useRef<
+    (CartaoEmCurso & { readonly desdeLeitura: number }) | null
+  >(null);
+  // A leitura da vaga provou que a tentativa terminou sem pagamento — a tela
+  // do cartão vira a recusa "não foi concluído" (chave pedido + token de
+  // cerca: a marca de uma order nunca encerra outra).
+  const [cartaoEncerrado, setCartaoEncerrado] = useState<CartaoEmCurso | null>(
+    null,
+  );
+  // A verificação periódica, para o realtime pedir UMA leitura agora.
+  const lerAVagaAgoraRef = useRef<(() => void) | null>(null);
+  const registrarCartaoEmCurso = useCallback((cartao: CartaoEmCurso | null) => {
+    cartaoEmCursoRef.current = cartao
+      ? { ...cartao, desdeLeitura: leiturasDaVagaRef.current }
+      : null;
+    // Higiene: uma tentativa NOVA (outro pedido ou outro token) tira de
+    // cena a marca da anterior. A garantia não é esta linha — é o token na
+    // comparação da tela do cartão —, mas a marca velha não fica rodando.
+    if (cartao) {
+      setCartaoEncerrado((atual) =>
+        atual !== null &&
+        (atual.orderId !== cartao.orderId ||
+          atual.paymentId !== cartao.paymentId)
+          ? null
+          : atual,
+      );
+    }
+  }, []);
   // C5 (front B2, 02/10/2026): o POST de cartão DESTA sessão voltou sem order
   // confirmada (`sem_registro`, `aguardando` sem `paymentId`, 503
   // `indisponivel`) — a tela vira a verificação do C4 a partir dessa
@@ -1336,6 +1387,26 @@ export function CheckoutView({
     },
     [],
   );
+  // C6 (P2, 02/10/2026): "Pagar com PIX" da verificação com o 3DS de order
+  // CONFIRMADA (`paymentId` do GET) — a mesma troca da tela do cartão da
+  // sessão, com o cartão VIVO no toque: a marca de cobrança incerta é do
+  // PEDIDO (nunca "Cancelar pedido" enquanto o servidor não provar o fim do
+  // cartão). Só o toque liga o PIX: o PagamentoComPix faz o POST ao montar,
+  // e o servidor (ramo f) cancela o 3DS no MP antes de criar o PIX, ou
+  // responde 409 `cartaoEmAnalise` (caixa âmbar, "Tentar de novo" por toque).
+  const pagarComPixDepoisDaVerificacao = () => {
+    const pedido = retomarPedidoId ?? orderId;
+    if (!pedido) return;
+    setPedidoComCobrancaIncerta(pedido);
+    setAvisoDaRetomada(null);
+    setRetomadaBloqueadaPorSentinela(false);
+    setCobrancaEmDuvida(null);
+    setErroPagamento(null);
+    setErroCancelamento(null);
+    setMetodoDoPedido("pix");
+    setOrderId(pedido);
+    setAguardandoPagamento(true);
+  };
   // A escolha do cliente na retomada de forma desconhecida liga o pagamento
   // do pedido retomado — o mesmo trio que o efeito de leitura liga quando a
   // forma é conhecida.
@@ -2043,9 +2114,12 @@ export function CheckoutView({
         return;
       }
 
+      // C6 (P1): o número desta leitura sai ANTES do `await` — é a cerca
+      // contra a leitura que saiu antes do aviso da tentativa e chega depois.
+      const leitura = ++leiturasDaVagaRef.current;
       const { data, error } = await supabase
         .from("marketplace_orders")
-        .select("payment_status, expires_at")
+        .select("payment_status, expires_at, gateway_payment_id, status")
         .eq("id", orderId)
         .single();
 
@@ -2060,6 +2134,41 @@ export function CheckoutView({
       if (data.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
         return;
+      }
+
+      // C6 (P1, achado B1): a tentativa de cartão terminou sem pagamento.
+      //
+      // INVARIANTE de que esta regra depende (mudança obrigatória 3 do
+      // revisor financeiro): só a RPC `liberar_cobranca_do_pedido` esvazia a
+      // vaga (`gateway_payment_id`), e só por prova (order recusada,
+      // cancelada ou expirada no Mercado Pago) ou por cancelamento confirmado
+      // (o ramo f do `criar-pagamento`, que o cliente pediu ao tocar "Pagar
+      // com PIX"). Qualquer escrita futura que esvazie a vaga por outro
+      // motivo QUEBRA esta regra: a tela mostraria "não foi concluído" — e
+      // ofereceria outro cartão ou PIX — para um cartão que pode estar vivo.
+      //
+      // Por isso a regra exige as quatro coisas juntas:
+      // - a tentativa armada é DESTE pedido (chave pedido + token de cerca);
+      // - esta leitura SAIU depois do aviso da tentativa — o servidor grava a
+      //   order na vaga ANTES de responder o 200 com o `paymentId`, então só
+      //   uma leitura posterior ao aviso prova que a vaga foi esvaziada
+      //   depois da order (cerca: a leitura velha nunca encerra nada);
+      // - o pedido ainda espera pagamento (`aguardando` + `pending`) — vaga
+      //   vazia num pedido expirado ou cancelado não é recusa;
+      // - a vaga está vazia de fato (`null`; ausente não conta).
+      const cartao = cartaoEmCursoRef.current;
+      if (
+        cartao !== null &&
+        cartao.orderId === orderId &&
+        leitura > cartao.desdeLeitura &&
+        data.payment_status === "aguardando" &&
+        data.status === "pending" &&
+        data.gateway_payment_id === null
+      ) {
+        setCartaoEncerrado({
+          orderId: cartao.orderId,
+          paymentId: cartao.paymentId,
+        });
       }
 
       // Os outros dois status terminais não têm tela própria aqui — só
@@ -2135,9 +2244,17 @@ export function CheckoutView({
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
     }
+    // C6 (P1): o realtime pede uma leitura avulsa — mesmas guardas, não conta
+    // como tick do teto.
+    const lerAgora = () => {
+      verificarPagamento();
+    };
+    lerAVagaAgoraRef.current = lerAgora;
 
     return () => {
       parado = true;
+      if (lerAVagaAgoraRef.current === lerAgora)
+        lerAVagaAgoraRef.current = null;
       clearInterval(intervalId);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", aoVoltarAFicarVisivel);
@@ -3040,6 +3157,7 @@ export function CheckoutView({
             : undefined
         }
         onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
+        onPagarComPix={pagarComPixDepoisDaVerificacao}
       />
     );
   }
@@ -3187,6 +3305,7 @@ export function CheckoutView({
               : undefined
           }
           onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
+          onPagarComPix={pagarComPixDepoisDaVerificacao}
           pontoDePartida={verificacaoNaSessao.pontoDePartida}
         />
       );
@@ -3516,15 +3635,17 @@ export function CheckoutView({
             // chegava com `metodoDoPedido` já em "pix" — fora do alcance da
             // regra "sem sinal em modo cartão é incerto" — e "Cancelar
             // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
+            onCartaoEmCurso={registrarCartaoEmCurso}
+            cartaoEncerrado={cartaoEncerrado}
             onTrocarParaPix={(cartaoAindaVivo) => {
-              if (cartaoAindaVivo) setPedidoTemCobrancaIncerta(true);
+              if (cartaoAindaVivo) setPedidoComCobrancaIncerta(orderId);
               setMetodoDoPedido("pix");
             }}
             // C5 (front B2): resposta do cartão sem order confirmada — a
             // cobrança fica incerta POR PEDIDO (mesma regra do erro ambíguo)
             // e a tela vira a verificação a partir dessa resposta.
             onCobrancaEmDuvida={(pontoDePartida) => {
-              setPedidoTemCobrancaIncerta(true);
+              setPedidoComCobrancaIncerta(orderId);
               setCobrancaEmDuvida({ pontoDePartida });
             }}
             onErro={(msg, categoria, sinal) => {
@@ -3552,7 +3673,7 @@ export function CheckoutView({
               // comentário grande de `pedidoTemCobrancaIncerta`, acima).
               // Nunca desmarcado aqui, mesmo que ESTE erro em particular não
               // seja incerto.
-              if (cartaoTalvezEmCurso) setPedidoTemCobrancaIncerta(true);
+              if (cartaoTalvezEmCurso) setPedidoComCobrancaIncerta(orderId);
 
               setErroPagamento((atual) =>
                 // Achado 3 da revisão do CHECKOUT-050 (#194): a doc do

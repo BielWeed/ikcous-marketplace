@@ -49,9 +49,11 @@ let hospedeiro: HTMLDivElement;
 const onVerMeusPedidos = vi.fn();
 const onFalarComALoja = vi.fn();
 const onRetomadaLiberada = vi.fn();
+const onPagarComPix = vi.fn();
 
 beforeEach(() => {
   criarPagamento.mockReset();
+  onPagarComPix.mockReset();
   onVerMeusPedidos.mockReset();
   onFalarComALoja.mockReset();
   onRetomadaLiberada.mockReset();
@@ -77,7 +79,7 @@ async function esvaziar() {
   }
 }
 
-function elemento(props: { comWhatsapp?: boolean } = {}) {
+function elemento(props: { comWhatsapp?: boolean; comPix?: boolean } = {}) {
   return (
     <VerificacaoDoPagamento
       orderId={PEDIDO}
@@ -86,12 +88,13 @@ function elemento(props: { comWhatsapp?: boolean } = {}) {
         props.comWhatsapp === false ? undefined : onFalarComALoja
       }
       onRetomadaLiberada={onRetomadaLiberada}
+      onPagarComPix={props.comPix ? onPagarComPix : undefined}
     />
   );
 }
 
 async function montar(
-  props: { comWhatsapp?: boolean; estrito?: boolean } = {},
+  props: { comWhatsapp?: boolean; estrito?: boolean; comPix?: boolean } = {},
 ) {
   await act(async () => {
     raiz.render(
@@ -423,22 +426,27 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
     expect(onRetomadaLiberada).not.toHaveBeenCalled();
   });
 
-  it("desafio3ds com URL do Mercado Pago: abre o desafio (iframe) sem formulário de cartão e sem PIX; o 'concluído' do banco não dispara consulta sozinho", async () => {
+  // C6 (P2, 02/10/2026): a regra do C4 ("com o quadro aberto, nada que o
+  // desmonte") vale para o que REMONTA o quadro — "Verificar de novo" e outro
+  // cartão. "Pagar com PIX" SAI do quadro de propósito (o ramo f do servidor
+  // cancela o 3DS confirmado antes de criar o PIX), e só existe com a order
+  // confirmada (`paymentId`), antes do prazo e quando o pai sabe trocar.
+  it("desafio3ds com URL do Mercado Pago: abre o desafio (iframe) sem formulário de cartão, com 'Pagar com PIX' (order confirmada, antes do prazo); o 'concluído' do banco não dispara consulta sozinho", async () => {
     criarPagamento.mockResolvedValue({
       verificacao: "desafio3ds",
       paymentId: "ORD-3DS-1",
       desafio3ds: { url: URL_DO_DESAFIO },
       expiraEm: PRAZO_FUTURO,
     });
-    await montar();
+    await montar({ comPix: true });
     expect(regiaoStatus()?.textContent).toContain(
       "Seu banco pediu uma confirmação de segurança para este pagamento.",
     );
     const quadro = hospedeiro.querySelector("iframe");
     expect(quadro?.getAttribute("src")).toBe(URL_DO_DESAFIO);
-    // Com o quadro do banco aberto, nada que o desmonte: nem PIX, nem outro
-    // cartão, nem "Verificar de novo" (revisão do C4, item 4).
-    expect(botoes()).toEqual(["Ver meus pedidos"]);
+    // Com o quadro do banco aberto, nada que o REMONTE: nem outro cartão,
+    // nem "Verificar de novo" (revisão do C4, item 4). O PIX sai dele.
+    expect(botoes()).toEqual(["Pagar com PIX", "Ver meus pedidos"]);
 
     // Mensagem de origem estranha: ignorada.
     await act(async () => {
@@ -465,8 +473,97 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
       "Confirmação enviada ao banco. Toque em “Verificar de novo” para ver a resposta.",
     );
     // Depois do "concluído", o botão que o texto promete existe.
-    expect(botoes()).toEqual(["Verificar de novo", "Ver meus pedidos"]);
+    expect(botoes()).toEqual([
+      "Pagar com PIX",
+      "Verificar de novo",
+      "Ver meus pedidos",
+    ]);
     expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(onPagarComPix).not.toHaveBeenCalled();
+  });
+
+  it("CONTROLE: desafio3ds sem o pai saber trocar (sem onPagarComPix) — só 'Ver meus pedidos', como no C4", async () => {
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-1",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: PRAZO_FUTURO,
+    });
+    await montar();
+    expect(hospedeiro.querySelector("iframe")).not.toBeNull();
+    expect(botoes()).toEqual(["Ver meus pedidos"]);
+  });
+
+  for (const expiraEm of [PRAZO_VENCIDO, null, "", "nao-e-data"]) {
+    it(`CONTROLE: desafio3ds com expiraEm ${JSON.stringify(expiraEm)} (vencido ou ilegível) — o desafio fica, o PIX não aparece`, async () => {
+      criarPagamento.mockResolvedValue({
+        verificacao: "desafio3ds",
+        paymentId: "ORD-3DS-1",
+        desafio3ds: { url: URL_DO_DESAFIO },
+        expiraEm,
+      });
+      await montar({ comPix: true });
+      expect(hospedeiro.querySelector("iframe")).not.toBeNull();
+      expect(botao("Pagar com PIX")).toBeUndefined();
+    });
+  }
+
+  it("desafio3ds: o toque em 'Pagar com PIX' chama o pai UMA vez (toque duplo incluso) e a verificação não faz POST nenhum", async () => {
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-1",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: PRAZO_FUTURO,
+    });
+    await montar({ comPix: true });
+    const alvo = botao("Pagar com PIX");
+    await act(async () => {
+      alvo?.click();
+      alvo?.click();
+    });
+    expect(onPagarComPix).toHaveBeenCalledTimes(1);
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  it("desafio3ds: o botão SOME no instante do prazo (um timer que só esconde, nunca consulta) e o quadro fica", async () => {
+    vi.useFakeTimers();
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-1",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: new Date(Date.now() + 60_000).toISOString(),
+    });
+    await montar({ comPix: true });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_000);
+    });
+    expect(botao("Pagar com PIX")).toBeDefined();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
+    expect(botao("Pagar com PIX")).toBeUndefined();
+    expect(hospedeiro.querySelector("iframe")?.getAttribute("src")).toBe(
+      URL_DO_DESAFIO,
+    );
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+  });
+
+  it("desafio3ds: toque DEPOIS do prazo com o timer atrasado (aba em segundo plano) não chama o pai", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-1",
+      desafio3ds: { url: URL_DO_DESAFIO },
+      expiraEm: new Date(Date.now() + 60 * 60_000).toISOString(),
+    });
+    await montar({ comPix: true });
+    const alvo = botao("Pagar com PIX");
+    expect(alvo).toBeDefined();
+    vi.setSystemTime(Date.now() + 2 * 60 * 60_000);
+    await act(async () => {
+      alvo?.click();
+    });
+    expect(onPagarComPix).not.toHaveBeenCalled();
   });
 
   it("desafio3ds: passados os 30 s com o quadro do banco aberto, 'Verificar de novo' continua escondido (tocar remontaria o quadro); depois do 'concluído' ele aparece já liberado e consulta", async () => {
@@ -534,6 +631,22 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
     expect(hospedeiro.querySelector("iframe")).toBeNull();
     expect(texto()).toContain("não pôde ser aberta aqui");
     expect(botoes()).toEqual(["Verificar de novo", "Ver meus pedidos"]);
+  });
+
+  it("desafio3ds com URL fora do Mercado Pago, com o pai sabendo trocar: o PIX é a saída (a order existe e o servidor cancela o 3DS)", async () => {
+    criarPagamento.mockResolvedValue({
+      verificacao: "desafio3ds",
+      paymentId: "ORD-3DS-2",
+      desafio3ds: { url: "https://golpe.example/3ds" },
+      expiraEm: PRAZO_FUTURO,
+    });
+    await montar({ comPix: true });
+    expect(hospedeiro.querySelector("iframe")).toBeNull();
+    expect(botoes()).toEqual([
+      "Pagar com PIX",
+      "Verificar de novo",
+      "Ver meus pedidos",
+    ]);
   });
 
   for (const verificacao of ["livre", "recusado", "pix"] as const) {
