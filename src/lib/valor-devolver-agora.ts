@@ -1,4 +1,12 @@
 /**
+ * L3e' rodada 2 (G3): o MESMO termo literal no texto do balde e no aviso de
+ * cada pedido — o lojista leigo procura a frase exata que leu em cima.
+ * B2b: o guia do pagamento que não fechou (GuiaDoPagamentoQueNaoFechou) cita
+ * o mesmo termo, por isso ele mora aqui e não na view.
+ */
+export const TERMO_EM_ANDAMENTO = "Devolução em andamento";
+
+/**
  * Achado 1 da revisão de risco de 26/09/2026 (rodada 2, sobre as migrations
  * de devolução/financeiro que corrigiram a rodada 1).
  *

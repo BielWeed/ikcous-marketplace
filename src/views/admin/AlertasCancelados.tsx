@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import type { EstornoEmCurso } from "@/hooks/useEstornosEmCursoDosPedidos";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import {
+  TERMO_EM_ANDAMENTO,
   devolvidoPeloMercadoPagoForaDaLista,
   valorDevolverAgora,
   valorDevolverAgoraDescontandoLedger,
@@ -38,12 +39,6 @@ import { useEffect, useRef, useState } from "react";
 /** Valor em reais no formato da lista ("1.234,50"). */
 const reais = (valor: number) =>
   valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
-
-/**
- * L3e' rodada 2 (G3): o MESMO termo literal no texto do balde e no aviso de
- * cada pedido — o lojista leigo procura a frase exata que leu em cima.
- */
-const TERMO_EM_ANDAMENTO = "Devolução em andamento";
 
 interface PedidoDaLista {
   id: string;
@@ -558,7 +553,7 @@ export function AlertasCancelados({
                             >
                               Não deu para conferir se o Mercado Pago já está
                               devolvendo este pedido. Abra o pedido antes de
-                              devolver por fora.
+                              enviar o produto ou de devolver por fora.
                             </span>
                           )}
                         </div>

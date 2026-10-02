@@ -868,8 +868,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       setConferindoEstornoId(null);
     }
     // B1c: a tela deixou de estar ativa durante a leitura — abandona sem
-    // perguntar e sem registrar.
-    if (desativacoesDaTelaRef.current !== desativacoesNoClique) return;
+    // perguntar e sem registrar. B2b: e AVISA — o toque não pode sumir em
+    // silêncio. O <Toaster /> é global (App.tsx), então o aviso aparece na
+    // tela para onde ele foi; por isso nomeia "Pedidos". 10 s porque ele
+    // está lendo outra coisa; o sonner pausa o tempo com a aba do navegador
+    // escondida.
+    if (desativacoesDaTelaRef.current !== desativacoesNoClique) {
+      toast.info(
+        "Conferência interrompida: nada foi registrado. Para registrar o estorno, volte em “Pedidos” e toque de novo em “Já estornei no Mercado Pago”.",
+        { duration: 10_000 },
+      );
+      return;
+    }
     // A lista acompanha o que acabou de ser lido.
     estornos.recarregar();
     const conferido = ledger.tipo === "conferido" ? ledger : null;

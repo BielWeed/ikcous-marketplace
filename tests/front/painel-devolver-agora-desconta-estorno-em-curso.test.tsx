@@ -95,11 +95,12 @@ vi.mock("@/lib/supabase", () => ({
 
 const toastErrorMock = vi.fn();
 const toastSuccessMock = vi.fn();
+const toastInfoMock = vi.fn();
 vi.mock("sonner", () => ({
   toast: Object.assign(vi.fn(), {
     error: (...args: unknown[]) => toastErrorMock(...args),
     success: (...args: unknown[]) => toastSuccessMock(...args),
-    info: vi.fn(),
+    info: (...args: unknown[]) => toastInfoMock(...args),
     warning: vi.fn(),
     message: vi.fn(),
     loading: vi.fn(),
@@ -206,6 +207,7 @@ function reiniciarDubles() {
   rpcMock.mockReset();
   toastErrorMock.mockReset();
   toastSuccessMock.mockReset();
+  toastInfoMock.mockReset();
 }
 
 describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L3e')", () => {
@@ -542,6 +544,11 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
 
     const aviso = avisoDoPedido("ped-erro", "estorno-nao-conferido")!;
     expect(aviso.textContent).toMatch(/não deu para conferir/i);
+    // B2b rodada 2: a devolução automática pode estar andando sem aviso —
+    // o aviso manda abrir o pedido antes de ENVIAR, não só antes de devolver.
+    expect(aviso.textContent).toContain(
+      "Abra o pedido antes de enviar o produto ou de devolver por fora.",
+    );
     expect(aviso!.closest('[role="status"]')?.getAttribute("data-testid")).toBe(
       "avisos-do-estorno",
     );
@@ -907,6 +914,11 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
         "registrar_estorno_manual",
         expect.anything(),
       );
+      // B2b: abandonar não é silencioso — o aviso fica para quando ele voltar.
+      expect(toastInfoMock).toHaveBeenCalledWith(
+        "Conferência interrompida: nada foi registrado. Para registrar o estorno, volte em “Pedidos” e toque de novo em “Já estornei no Mercado Pago”.",
+        { duration: 10_000 },
+      );
       // Abandonado sem registrar: o botão volta ao normal para outro toque.
       await esperarAte(
         () =>
@@ -1005,6 +1017,13 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
       expect(pergunta).not.toContain("ATENÇÃO");
       // Conferido e sem nada em curso: nenhum aviso de "não conferi" (sem ruído).
       expect(pergunta).not.toContain("Não consegui conferir");
+      // B2b: a tela seguiu ativa — o aviso de "conferência interrompida" é
+      // só do abandono, nunca do caminho normal.
+      expect(
+        toastInfoMock.mock.calls.filter((c) =>
+          String(c[0]).includes("Conferência interrompida"),
+        ),
+      ).toEqual([]);
     });
 
     // Rodada 3: no estado DESCONHECIDO (leitura pendente ou falha) o lojista

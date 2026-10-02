@@ -1,3 +1,4 @@
+import { TERMO_EM_ANDAMENTO } from "@/lib/valor-devolver-agora";
 import { getPaymentStatusConfig } from "./OrderStatusBadge";
 
 /**
@@ -57,6 +58,41 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *     caso 2 é pagamento que chegou DEPOIS do cancelamento — nos dois, nenhuma
  *     linha automática nasce, e o "Nada é devolvido sozinho" (só no caso 2)
  *     continua verdade.
+ *   - B2b (revisão do front + financeira):
+ *       - “Devolver R$ …” mora na FICHA do pedido, no quadro "Devolução de
+ *         dinheiro" (EstornoCard). A lista "Estorno devido" → "Devolver
+ *         agora" só tem "Já estornei no Mercado Pago". O passo diz onde fica
+ *         cada um, como o caso 2.
+ *       - A corrida: cancelar no instante em que o webhook confirma faz o
+ *         cancelamento pegar o pedido JÁ pago, e `update_order_status_atomic`
+ *         grava a devolução automática (20261180000000). O pedido aparece em
+ *         "Estorno devido" com o aviso `TERMO_EM_ANDAMENTO` (AlertasCancelados)
+ *         — e quem leu "combine o envio" não pode enviar. O termo é a MESMA
+ *         constante que a lista desenha.
+ *       - "pode virar" no passo do cancelamento antecipado: cobrança de valor
+ *         divergente nunca é adotada (ver o item "Aprovado no MP" acima).
+ *       - O passo antigo (~8 frases num item só) virou sub-lista: uma coisa
+ *         por linha.
+ *       - Rodada 2 (revisão financeira): a FALTA do aviso não prova que o app
+ *         não reconheceu a cobrança. Com a leitura da lista pendente
+ *         ("Conferindo se o Mercado Pago já está devolvendo…") ou falha
+ *         ("Não deu para conferir…"), a devolução automática pode estar
+ *         andando sem aviso; e a que CONCLUIU tira o pedido de "Estorno
+ *         devido" (`baldeDeEstorno`: nada mais a devolver) e grava o selo
+ *         "Estornado" (`concluir_estorno`). Por isso o ramo "não reconheceu"
+ *         exige o pedido FORA de "Estorno devido" E o selo de pagamento sem
+ *         "Pago…" (Pago, Pago e cancelado, Pago fora do fluxo) nem
+ *         "Estornado" — o selo de quem o app não reconheceu continua
+ *         "Aguardando pagamento" ou "Expirado". "Combine o envio" só vale
+ *         nesse ramo.
+ *       - Rodada 3 (revisão financeira): "Estornado" NÃO prova que o dinheiro
+ *         voltou ao cliente. O mapeamento do MP põe TODO chargeback em
+ *         `estornado` (_shared/mercadopago.ts: `charged_back` clássico e
+ *         `charged_back:in_process/settled/reimbursed`), e o webhook grava
+ *         isso até em pedido aguardando/expirado e cancelado
+ *         (20260901000000) — o caso 1. Em `reimbursed` a loja ganhou a
+ *         disputa e o dinheiro ficou com ELA. Por isso a linha manda conferir
+ *         no painel do MP antes de enviar.
  *   - Depois de ENVIAR um `pago_apos_expirar`, o pedido segue cancelado e
  *     pago: continua em "Estorno devido" (AlertasCancelados.tsx:379-397) e a
  *     ficha continua com "Devolver R$ …" (OrderDetail.tsx:1604-1610). O
@@ -74,6 +110,9 @@ export function GuiaDoPagamentoQueNaoFechou() {
   // O rótulo curto é o que o card da lista mostra ("Pago fora do fluxo").
   const pagoForaDoFluxoCurto =
     configPagoForaDoFluxo.shortLabel ?? configPagoForaDoFluxo.label;
+  const configEstornado = getPaymentStatusConfig("estornado");
+  // O card da lista mostra o curto; o rótulo longo começa com ele.
+  const estornado = configEstornado.shortLabel ?? configEstornado.label;
 
   return (
     <div className="space-y-3">
@@ -100,19 +139,62 @@ export function GuiaDoPagamentoQueNaoFechou() {
             Achou o pagamento aprovado ou em análise? Não cancele. O app confere
             com o Mercado Pago sozinho: quando o banco confirmar, o pedido vira
             “{pago}”, ou “{pagoForaDoFluxoCurto}” se a confirmação chegar depois
-            do prazo (veja abaixo). Se o pedido for cancelado mesmo com o
-            pagamento aprovado no Mercado Pago, o app ainda não reconheceu essa
-            cobrança: o dinheiro está na sua conta, mas aqui pode não aparecer
-            aviso nem botão de devolução — ou o pedido pode virar “
-            {pagoForaDoFluxoCurto}” mais tarde, quando o app reconhecer. Devolva
-            direto no painel do Mercado Pago, ou combine o envio com o cliente.
-            Nos dois casos, escreva em “Anotações internas” da ficha o que foi
-            feito (por exemplo: produto enviado em [data], combinado com o
-            cliente, não devolver). Se o pedido aparecer depois em “Estorno
-            devido” com o botão “Devolver R$ …”: se você enviou o produto, não
-            toque nele: depois de enviar, devolver é perder o produto e o
-            dinheiro; se você já devolveu pelo painel do Mercado Pago, toque em
-            “Já estornei no Mercado Pago”.
+            do prazo (veja abaixo).
+          </li>
+          <li>
+            Se o pedido for cancelado mesmo assim, com o pagamento aprovado no
+            Mercado Pago:
+            <ul className="mt-1 list-inside list-disc space-y-1 pl-3">
+              <li>
+                Se o pedido aparecer em “Estorno devido” com o aviso “
+                {TERMO_EM_ANDAMENTO}”, o Mercado Pago já está devolvendo o
+                dinheiro ao cliente (ou analisando uma disputa): não envie o
+                produto nem devolva por outro meio. Se o aviso disser “sem
+                confirmação”, confira antes no painel do Mercado Pago.
+              </li>
+              <li>
+                Se o aviso for “Conferindo se o Mercado Pago já está
+                devolvendo…” ou “Não deu para conferir…”, a devolução pode já
+                estar a caminho: não envie o produto nem devolva por outro meio
+                até o aviso mudar — ou abra o pedido e veja o quadro “Devolução
+                de dinheiro”.
+              </li>
+              <li>
+                Se o selo de pagamento do pedido mostrar “{estornado}”, o
+                Mercado Pago registrou uma devolução ou uma contestação
+                (chargeback) desse pagamento: não envie o produto antes de
+                conferir no painel do Mercado Pago se o dinheiro voltou ao
+                cliente.
+              </li>
+              <li>
+                Se o pedido não aparecer em “Estorno devido” e o selo de
+                pagamento dele não começar com “{pago}” nem com “{estornado}”, o
+                app ainda não reconheceu essa cobrança: o dinheiro está na sua
+                conta, mas aqui pode não aparecer aviso nem botão de devolução —
+                ou o pedido pode virar “{pagoForaDoFluxoCurto}” mais tarde,
+                quando o app reconhecer.
+              </li>
+              <li>
+                Só nesse caso, devolva direto no painel do Mercado Pago, ou
+                combine o envio com o cliente.
+              </li>
+              <li>
+                Tanto se você devolveu quanto se enviou, escreva em “Anotações
+                internas” da ficha o que foi feito (por exemplo: produto enviado
+                em [data], combinado com o cliente, não devolver).
+              </li>
+              <li>
+                Se você enviou o produto e a ficha do pedido passar a mostrar
+                “Devolver R$ …”, no quadro “Devolução de dinheiro”, não toque
+                nele: depois de enviar, devolver é perder o produto e o
+                dinheiro.
+              </li>
+              <li>
+                Se você já devolveu pelo painel do Mercado Pago e o pedido
+                aparecer em “Estorno devido”, toque em “Já estornei no Mercado
+                Pago”, na lista “Devolver agora”.
+              </li>
+            </ul>
           </li>
           <li>
             Não achou nada? Pode esperar: se nenhuma cobrança aparecer, o app
@@ -121,7 +203,7 @@ export function GuiaDoPagamentoQueNaoFechou() {
           <li>
             Se você cancelar antes disso: cancelar aqui devolve o estoque, mas
             não cancela nada no Mercado Pago. Se o banco aprovar o cartão
-            depois, o dinheiro entra mesmo assim e o pedido vira “
+            depois, o dinheiro entra mesmo assim e o pedido pode virar “
             {pagoForaDoFluxo}” (veja abaixo).
           </li>
         </ol>

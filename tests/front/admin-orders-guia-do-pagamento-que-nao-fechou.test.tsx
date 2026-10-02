@@ -93,6 +93,7 @@ const FONTES = import.meta.glob<string>(
     "/supabase/functions/webhook-mercadopago/index.ts",
     "/src/views/admin/AdminProductFormView.tsx",
     "/src/components/admin/orders/OrderDetail.tsx",
+    "/src/lib/valor-devolver-agora.ts",
   ],
   { query: "?raw", import: "default", eager: true },
 );
@@ -199,12 +200,14 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain(
       "ou o pedido pode virar “Pago fora do fluxo” mais tarde, quando o app reconhecer",
     );
-    expect(texto).toContain("Devolva direto no painel do Mercado Pago");
+    expect(texto).toContain("devolva direto no painel do Mercado Pago");
     expect(texto).toContain("não cancela nada no Mercado Pago");
     // A ponte para o caso 2, sem espaço sobrando dentro das aspas (o rótulo
     // vem numa expressão JSX quebrada de linha).
     expect(texto).toContain(
-      "vira “Pago fora do fluxo — precisa de atenção” (veja abaixo)",
+      // B2b (revisão financeira): "PODE virar" — cobrança de valor
+      // diferente do pedido nunca é adotada.
+      "o pedido pode virar “Pago fora do fluxo — precisa de atenção” (veja abaixo)",
     );
   });
 
@@ -218,23 +221,83 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     await textoDoGuia();
     const listas = hospedeiro.querySelectorAll("ol");
     expect(listas.length).toBe(2);
-    const passo2 = (
-      listas.item(0).querySelectorAll("li").item(1).textContent ?? ""
-    ).replace(/\s+/g, " ");
+    // B2b: o que era UM item de ~8 frases virou um item com sub-lista —
+    // leigo lê uma coisa por linha.
+    const subLista = listas.item(0).querySelector("ul");
+    expect(
+      subLista,
+      "sub-lista do cancelado com pagamento aprovado",
+    ).toBeTruthy();
+    const itens = Array.from(subLista!.querySelectorAll("li")).map((li) =>
+      (li.textContent ?? "").replace(/\s+/g, " ").trim(),
+    );
+    const passo2 = itens.join(" ");
     expect(passo2).toContain("escreva em “Anotações internas” da ficha");
+    // B2b rodada 3 (revisão do front): "Nos dois casos" logo depois de "Só
+    // nesse caso" confundia — os dois casos são devolver ou enviar.
+    expect(passo2).not.toContain("Nos dois casos");
+    expect(passo2).toContain(
+      "Tanto se você devolveu quanto se enviou, escreva em “Anotações internas” da ficha",
+    );
     expect(passo2).toContain(
       "produto enviado em [data], combinado com o cliente, não devolver",
     );
+    // B2b (revisão do front): o “Devolver R$ …” mora na FICHA do pedido
+    // (quadro “Devolução de dinheiro”), não na lista “Estorno devido” — que
+    // só tem “Já estornei no Mercado Pago”.
     expect(passo2).toContain(
-      "Se o pedido aparecer depois em “Estorno devido” com o botão “Devolver R$ …”",
+      "a ficha do pedido passar a mostrar “Devolver R$ …”, no quadro “Devolução de dinheiro”, não toque nele: depois de enviar, devolver é perder o produto e o dinheiro",
     );
+    expect(passo2).not.toMatch(/“Estorno devido” com o botão “Devolver/);
     expect(passo2).toContain(
-      "se você enviou o produto, não toque nele: depois de enviar, devolver é perder o produto e o dinheiro",
+      "toque em “Já estornei no Mercado Pago”, na lista “Devolver agora”",
     );
-    expect(passo2).toContain(
-      "se você já devolveu pelo painel do Mercado Pago, toque em “Já estornei no Mercado Pago”",
+    // B2b (revisão financeira): a corrida — cancelou no instante em que o
+    // webhook confirmou, e o servidor já criou a devolução automática.
+    expect(itens.at(0)).toContain(
+      "Se o pedido aparecer em “Estorno devido” com o aviso “Devolução em andamento”, o Mercado Pago já está devolvendo o dinheiro ao cliente (ou analisando uma disputa): não envie o produto nem devolva por outro meio",
+    );
+    // B2b rodada 2 (revisão financeira): a FALTA do aviso não prova que o
+    // app não reconheceu a cobrança. Com a leitura pendente ou falha, a
+    // devolução automática pode estar andando sem aviso nenhum na tela.
+    expect(itens.at(1)).toContain(
+      "Se o aviso for “Conferindo se o Mercado Pago já está devolvendo…” ou “Não deu para conferir…”, a devolução pode já estar a caminho: não envie o produto nem devolva por outro meio até o aviso mudar — ou abra o pedido e veja o quadro “Devolução de dinheiro”",
+    );
+    // A devolução automática que CONCLUIU tira o pedido de "Estorno devido"
+    // (nada mais a devolver) e o selo vira "Estornado" — sem isto, "não
+    // aparece em Estorno devido" voltaria a mandar combinar o envio.
+    // B2b rodada 3 (revisão financeira): o MP transforma TODO chargeback em
+    // `estornado` (_shared/mercadopago.ts, charged_back e
+    // charged_back:in_process/settled/reimbursed) — em `reimbursed` a loja
+    // ganhou a disputa e o dinheiro ficou com ELA. "Estornado" não prova que
+    // o dinheiro voltou ao cliente: manda conferir no painel do MP.
+    const linhaEstornado = itens.at(2) ?? "";
+    expect(linhaEstornado).toContain(
+      "Se o selo de pagamento do pedido mostrar “Estornado”, o Mercado Pago registrou uma devolução ou uma contestação (chargeback) desse pagamento: não envie o produto antes de conferir no painel do Mercado Pago se o dinheiro voltou ao cliente",
+    );
+    expect(linhaEstornado).not.toContain("já voltou ao cliente");
+    expect(passo2).not.toContain("já voltou ao cliente");
+    // O ramo "não reconheceu" depende do pedido FORA de "Estorno devido" e do
+    // selo — nunca da ausência do aviso.
+    expect(passo2).not.toContain("Sem esse aviso");
+    const naoReconheceu = itens.findIndex((i) =>
+      i.includes("o app ainda não reconheceu essa cobrança"),
+    );
+    expect(itens.at(naoReconheceu)).toContain(
+      "Se o pedido não aparecer em “Estorno devido” e o selo de pagamento dele não começar com “Pago” nem com “Estornado”, o app ainda não reconheceu essa cobrança",
+    );
+    // "combine o envio" só existe na linha logo abaixo, presa a ESSE caso.
+    const combine = itens.filter((i) => i.includes("combine o envio"));
+    expect(combine).toHaveLength(1);
+    expect(itens.at(naoReconheceu + 1)).toMatch(
+      /^Só nesse caso, devolva direto no painel do Mercado Pago, ou combine o envio com o cliente\./,
     );
     expect(promessasDeDevolucaoSozinha(passo2)).toEqual([]);
+    // Uma coisa por linha: nenhum item da sub-lista passa de 2 frases.
+    for (const item of itens) {
+      const frases = item.split(/[.!?](?:\s|$)/).filter((f) => f.trim());
+      expect(frases.length, item).toBeLessThanOrEqual(2);
+    }
   });
 
   // B1 × guia: cancelar pedido PAGO e não enviado faz o app pedir a
@@ -310,6 +373,29 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
         rotulo: "Anotações internas",
         arquivo: "src/components/admin/orders/OrderDetail.tsx",
       },
+      // B2b: o termo do aviso por pedido na lista "Devolver agora" — o guia
+      // e a lista importam a MESMA constante, e a lista a desenha.
+      {
+        rotulo: 'TERMO_EM_ANDAMENTO = "Devolução em andamento"',
+        arquivo: "src/lib/valor-devolver-agora.ts",
+      },
+      {
+        rotulo: "{TERMO_EM_ANDAMENTO}",
+        arquivo: "src/views/admin/AlertasCancelados.tsx",
+      },
+      {
+        rotulo: "{TERMO_EM_ANDAMENTO} sem confirmação",
+        arquivo: "src/views/admin/AlertasCancelados.tsx",
+      },
+      // B2b rodada 2: os dois avisos do estado desconhecido da lista.
+      {
+        rotulo: "Conferindo se o Mercado Pago já está devolvendo…",
+        arquivo: "src/views/admin/AlertasCancelados.tsx",
+      },
+      {
+        rotulo: "Não deu para conferir se o Mercado Pago já está",
+        arquivo: "src/views/admin/AlertasCancelados.tsx",
+      },
       // o push ao admin quando confirmar_pagamento devolve pago_apos_expirar
       {
         rotulo: 'title: "Pagamento fora do fluxo"',
@@ -331,6 +417,13 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain("“Já estornei no Mercado Pago”");
     expect(texto).toContain("“Estorno devido”");
     expect(texto).toContain("“Anotações internas”");
+    expect(texto).toContain("“Devolução em andamento”");
+    expect(texto).toContain(
+      "“Conferindo se o Mercado Pago já está devolvendo…”",
+    );
+    expect(texto).toContain("“Não deu para conferir…”");
+    // Rótulos de selo vêm do config do selo (não de cópia).
+    expect(texto).toContain("“Estornado”");
     expect(texto).toContain("“Pagamento fora do fluxo”");
     expect(texto).toContain("“Quantidade em Estoque”");
   });
