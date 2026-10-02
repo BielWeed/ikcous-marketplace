@@ -18,6 +18,7 @@ import type {
   SinalDeErroPagamento,
 } from "./PagamentoOnline";
 import { comTempoLimite } from "./PagamentoOnline";
+import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -81,7 +82,15 @@ export type ResultadoDoCartao =
   // não carrega `semCobranca` nem sinal nenhum. `tipoRecusado` é o tipo que
   // ESTA chamada enviou: a tela tira só ele, sem esconder o outro tipo que
   // ainda está ligado (ex.: só o débito desligado no meio do pagamento).
-  | { readonly tipo: "forma-desligada"; readonly tipoRecusado: TipoDeCartao };
+  | { readonly tipo: "forma-desligada"; readonly tipoRecusado: TipoDeCartao }
+  // C5 (front B2, 02/10/2026): a resposta voltou SEM order confirmada e nada
+  // prova que não houve cobrança. Nunca "em análise" (isso exige
+  // `paymentId`), nunca PIX nem outro cartão: o pai abre a verificação do C4
+  // a partir desta resposta.
+  | {
+      readonly tipo: "em-duvida";
+      readonly pontoDePartida: PontoDePartidaDaVerificacao;
+    };
 
 /** O literal do contrato — o mesmo que `useOrders` transporta em `Error.codigo`. */
 const CODIGO_FORMA_DESLIGADA = "CARTAO_FORMA_DESLIGADA";
@@ -96,10 +105,21 @@ const MENSAGEM_FORMA_DESLIGADA =
 type EtapaDoCartao =
   | { readonly tipo: "formulario" }
   | { readonly tipo: "confirmando-desafio" }
-  | Exclude<ResultadoDoCartao, { tipo: "erro" } | { tipo: "forma-desligada" }>;
+  | Exclude<
+      ResultadoDoCartao,
+      { tipo: "erro" } | { tipo: "forma-desligada" } | { tipo: "em-duvida" }
+    >;
 
 const MOTIVO_PADRAO_DA_RECUSA =
   "O banco recusou este cartão. Tente outro cartão ou pague com PIX.";
+
+/**
+ * C5: o que vai para o `onErro` de um pai que ainda não sabe abrir a
+ * verificação (`onCobrancaEmDuvida` ausente) — com o sinal
+ * `cartaoEmAnalise`, que nunca oferece PIX nem "Cancelar pedido".
+ */
+const MENSAGEM_COBRANCA_EM_DUVIDA =
+  "Não conseguimos confirmar com o banco se o pagamento com cartão deste pedido foi feito.";
 
 /**
  * B2 da revisão de risco pré-publicação (26/09/2026): a tela "em análise"
@@ -295,14 +315,40 @@ export function montarCorpoDoCartao({
  * cartão só emite "pago" | "aguardando" | "recusado"; qualquer outra coisa é
  * falha TERMINAL (nunca sucesso silencioso — mesma rede de segurança do PIX,
  * CHECKOUT-080).
+ *
+ * C5 (front B2, 02/10/2026): "em análise" SÓ com `paymentId` não vazio — a
+ * order existe. Sem ela, a resposta é `em-duvida` (ver `ResultadoDoCartao`):
+ * o `sem_registro` do C3 decide antes de qualquer status, e o `aguardando`
+ * sem order (409 de chave já usada no MP) é o mesmo estado sem a data.
  */
 export function classificarRespostaCartao(
   r: RespostaCriarPagamento,
 ): ResultadoDoCartao {
+  const temOrder = textoNaoVazio(r?.paymentId) !== null;
+  if (r?.verificacao === "sem_registro") {
+    const cancelamento = textoNaoVazio(r.canceladoAutomaticamenteAte);
+    return {
+      tipo: "em-duvida",
+      pontoDePartida: cancelamento
+        ? {
+            verificacao: "sem_registro",
+            canceladoAutomaticamenteAte: cancelamento,
+          }
+        : { verificacao: "sem_registro" },
+    };
+  }
+
   if (r?.statusPagamento === "pago") return { tipo: "aprovado" };
 
   if (r?.statusPagamento === "aguardando") {
-    if (!r.desafio3ds) return { tipo: "em-analise" };
+    if (!r.desafio3ds) {
+      return temOrder
+        ? { tipo: "em-analise" }
+        : {
+            tipo: "em-duvida",
+            pontoDePartida: { verificacao: "sem_registro" },
+          };
+    }
     if (urlDoDesafioValida(r.desafio3ds.url)) {
       return { tipo: "desafio", url: r.desafio3ds.url };
     }
@@ -402,6 +448,16 @@ export function classificarRespostaCartao(
   // podia estar vivo). `sinal: "cartaoEmAnalise"` joga para a caixa âmbar
   // com "Tentar de novo" — seguro, porque a nova tentativa converge pela
   // MESMA branch (d): nunca uma segunda cobrança.
+  //
+  // C5: sem `paymentId` nem isso — nada diz que existe order, e nada prova
+  // que não existe. Em dúvida, com a verificação começando de "não foi
+  // possível consultar".
+  if (!temOrder) {
+    return {
+      tipo: "em-duvida",
+      pontoDePartida: { verificacao: "indisponivel" },
+    };
+  }
   return {
     tipo: "erro",
     mensagem: "Não foi possível confirmar o pagamento.",
@@ -458,6 +514,17 @@ export async function enviarPagamentoComCartao({
     // não traz sinal mais forte — `terminal` ou `cartaoEmAnalise` vencem
     // (prioridade de segurança: nunca rebaixar um cartão em análise ou um
     // fim de linha para "forma desligada").
+    //
+    // C5: o 503 `verificacao: "indisponivel"` do C3 — a edge não conseguiu
+    // conferir uma cobrança em dúvida. Nunca "tente de novo com o cartão"
+    // (token novo sobre a dúvida): a verificação, que só consulta. O
+    // `terminal` vence, como em toda a cadeia.
+    if (err?.verificacao === "indisponivel" && err?.terminal !== true) {
+      return {
+        tipo: "em-duvida",
+        pontoDePartida: { verificacao: "indisponivel" },
+      };
+    }
     if (
       err?.codigo === CODIGO_FORMA_DESLIGADA &&
       err?.terminal !== true &&
@@ -601,6 +668,7 @@ export function PagamentoComCartao({
   onErro,
   onFormaDesligada,
   onPagarComPix,
+  onCobrancaEmDuvida,
 }: {
   orderId: string;
   valor: number;
@@ -626,6 +694,10 @@ export function PagamentoComCartao({
   // cartão vivo). Só a tela "recusado" chama com `false`: o banco já
   // respondeu que o cartão morreu.
   onPagarComPix: (cartaoAindaVivo: boolean) => void;
+  // C5: a resposta voltou sem order confirmada (`em-duvida`) — o pai abre a
+  // verificação a partir dela. Ausente: cai no `onErro` com o sinal
+  // `cartaoEmAnalise` (falha fechada: nunca PIX, nunca "Cancelar pedido").
+  onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
@@ -641,9 +713,11 @@ export function PagamentoComCartao({
   // não pode desmontar o Brick com o cliente no meio da digitação.
   const onErroRef = useRef(onErro);
   const onFormaDesligadaRef = useRef(onFormaDesligada);
+  const onCobrancaEmDuvidaRef = useRef(onCobrancaEmDuvida);
   useEffect(() => {
     onErroRef.current = onErro;
     onFormaDesligadaRef.current = onFormaDesligada;
+    onCobrancaEmDuvidaRef.current = onCobrancaEmDuvida;
   });
   const montadoRef = useRef(false);
   useEffect(() => {
@@ -708,6 +782,19 @@ export function PagamentoComCartao({
             onErroRef.current(MENSAGEM_FORMA_DESLIGADA, "recuperavel");
           }
           throw new Error(MENSAGEM_FORMA_DESLIGADA);
+        }
+        if (resultado.tipo === "em-duvida") {
+          if (onCobrancaEmDuvidaRef.current) {
+            onCobrancaEmDuvidaRef.current(resultado.pontoDePartida);
+          } else {
+            onErroRef.current(
+              MENSAGEM_COBRANCA_EM_DUVIDA,
+              "recuperavel",
+              "cartaoEmAnalise",
+            );
+          }
+          // Relança para o Brick sair do "processando" (mesmo motivo do erro).
+          throw new Error(MENSAGEM_COBRANCA_EM_DUVIDA);
         }
         if (resultado.tipo === "erro") {
           if (resultado.sinal) {

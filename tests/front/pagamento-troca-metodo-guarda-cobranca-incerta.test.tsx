@@ -186,7 +186,11 @@ describe("PagamentoOnline — a troca cartão→PIX não esconde a cobrança em 
   // checkout-view-cartao-forma-desligada.test.tsx.
   function exigirFallbackSemPixNemErro(onErro: ReturnType<typeof vi.fn>) {
     expect(hospedeiro.textContent).toContain("não está disponível");
-    expect(hospedeiro.textContent).toContain("em análise pelo banco");
+    // C5 (front B2): sem order conhecida, nunca "em análise".
+    expect(hospedeiro.textContent).toContain(
+      "Não conseguimos confirmar se uma tentativa anterior com cartão foi cobrada.",
+    );
+    expect(hospedeiro.textContent).not.toMatch(/em análise/i);
     expect(botoes("Pagar com PIX")).toHaveLength(0);
     expect(hospedeiro.textContent).not.toContain("Pagar com PIX");
     expect(onErro).not.toHaveBeenCalled();

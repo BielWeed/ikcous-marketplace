@@ -5,6 +5,7 @@ import {
 } from "@/components/checkout/PagamentoOnline";
 import {
   type DesfechoQueLiberaARetomada,
+  type PontoDePartidaDaVerificacao,
   VerificacaoDoPagamento,
 } from "@/components/checkout/VerificacaoDoPagamento";
 import {
@@ -1162,6 +1163,16 @@ export function CheckoutView({
   useEffect(() => {
     setPedidoTemCobrancaIncerta(false);
   }, [orderId]);
+  // C5 (front B2, 02/10/2026): o POST de cartão DESTA sessão voltou sem order
+  // confirmada (`sem_registro`, `aguardando` sem `paymentId`, 503
+  // `indisponivel`) — a tela vira a verificação do C4 a partir dessa
+  // resposta, em vez de "em análise pelo banco". Os erros ambíguos do cartão
+  // (sinal `cartaoEmAnalise`, ou sem sinal em modo cartão) vão para a MESMA
+  // verificação pelo `erroPagamento` — ver `verificacaoNaSessao`, no ramo do
+  // pagamento.
+  const [cobrancaEmDuvida, setCobrancaEmDuvida] = useState<{
+    readonly pontoDePartida: PontoDePartidaDaVerificacao;
+  } | null>(null);
   // CHECKOUT-070 (#197): saída para pagamento falho. `isCancelandoPedido`
   // trava o botão contra clique repetido (cancelar duas vezes bateria na
   // guarda de status da RPC, mas evitar a segunda viagem de rede evita até
@@ -1305,6 +1316,10 @@ export function CheckoutView({
   // nunca "não foi aprovado": o `recusado` da consulta inclui o desafio 3DS
   // que só EXPIROU (canceled/expired), e a tela não distingue os dois
   // (veredito A2, item 4).
+  //
+  // C5: a MESMA saída para a verificação aberta dentro da sessão (POST de
+  // cartão em dúvida) — a dúvida e o erro dela saem de cena, e o cliente
+  // escolhe a forma: nada cobra sozinho (o PIX nasceria ao montar).
   const [avisoDaRetomada, setAvisoDaRetomada] = useState<string | null>(null);
   const liberarRetomadaDepoisDaVerificacao = useCallback(
     (verificacao: DesfechoQueLiberaARetomada) => {
@@ -1314,6 +1329,9 @@ export function CheckoutView({
           : null,
       );
       setRetomadaBloqueadaPorSentinela(false);
+      setCobrancaEmDuvida(null);
+      setErroPagamento(null);
+      setErroCancelamento(null);
       setRetomadaEscolhendoForma(true);
     },
     [],
@@ -1321,11 +1339,14 @@ export function CheckoutView({
   // A escolha do cliente na retomada de forma desconhecida liga o pagamento
   // do pedido retomado — o mesmo trio que o efeito de leitura liga quando a
   // forma é conhecida.
+  // C5: na sessão (verificação depois de um POST em dúvida) o pedido é o
+  // `orderId` que já está ligado.
   const escolherFormaDaRetomada = (metodo: MetodoOnline) => {
-    if (!retomarPedidoId) return;
+    const pedidoDaEscolha = retomarPedidoId ?? orderId;
+    if (!pedidoDaEscolha) return;
     setMetodoDoPedido(metodo);
     setRetomadaEscolhendoForma(false);
-    setOrderId(retomarPedidoId);
+    setOrderId(pedidoDaEscolha);
     setAguardandoPagamento(true);
   };
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
@@ -3137,6 +3158,40 @@ export function CheckoutView({
       );
     }
 
+    // C5 (front B2, 02/10/2026): cobrança de cartão em DÚVIDA nesta sessão —
+    // nenhuma order confirmada chegou à tela, então nada de "em análise pelo
+    // banco", e nada de "Tentar de novo" (o Brick pediria o cartão de novo:
+    // token novo sobre a dúvida). A verificação do C4 só consulta
+    // (`metodo: "verificar"`), sem PIX, sem cancelar, sem cartão novo:
+    // - resposta do POST sem order (`cobrancaEmDuvida`): começa por ela;
+    // - erro ambíguo do cartão (o mesmo `cartaoEmAnalise` que abria a caixa
+    //   âmbar, em modo cartão e não terminal): uma consulta ao abrir.
+    // Terminal fica na caixa âmbar de sempre (a frase da edge). Em modo PIX
+    // (a saída A2 com o cartão vivo) também: lá "Tentar de novo" é o mesmo
+    // pedido de PIX que a edge só atende quando cancela o cartão.
+    const verificacaoNaSessao =
+      cobrancaEmDuvida ??
+      (metodoDoPedido === "cartao" &&
+      erroPagamento?.cartaoEmAnalise === true &&
+      erroPagamento.categoria !== "terminal"
+        ? { pontoDePartida: undefined }
+        : null);
+    if (verificacaoNaSessao) {
+      return (
+        <VerificacaoDoPagamento
+          orderId={orderId}
+          onVerMeusPedidos={() => onNavigate("orders")}
+          onFalarComALoja={
+            lojaTemWhatsappNoCheckout
+              ? handleFalarComALojaSobreCartao
+              : undefined
+          }
+          onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
+          pontoDePartida={verificacaoNaSessao.pontoDePartida}
+        />
+      );
+    }
+
     return (
       // Mesma coluna do formulário (`mx-auto max-w-md`): sem ela, o cliente
       // saía de uma tela de 448px de largura e caía numa que esticava o texto
@@ -3179,10 +3234,13 @@ export function CheckoutView({
                 aria-hidden="true"
                 className="mt-0.5 size-5 shrink-0 text-amber-600"
               />
+              {/* C5 (front B2): sem order confirmada na tela, nunca "em
+                  análise pelo banco". O não terminal só chega aqui em modo
+                  PIX (em modo cartão a dúvida é a verificação, acima). */}
               <p className="text-sm font-medium text-amber-800">
                 {erroPagamento.categoria === "terminal"
                   ? erroPagamento.mensagem
-                  : "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui."}
+                  : "Não conseguimos confirmar se a tentativa de pagamento com cartão deste pedido foi cobrada. Para não cobrar duas vezes, o PIX só é gerado depois dessa confirmação."}
               </p>
             </div>
             {erroPagamento.categoria === "terminal" ? (
@@ -3225,27 +3283,11 @@ export function CheckoutView({
                 <p className="text-xs text-amber-700">
                   Se nada mudar em alguns minutos, toque em Tentar de novo.
                 </p>
-                {/* Achado 4, rodada 4: em modo cartão, "Tentar de novo" pede
-                    o cartão de NOVO (o Brick remonta do zero) — sem isto, a
-                    caixa parecia exigir digitar o cartão outra vez só para
-                    "conferir", quando a verificação periódica e o tempo
-                    real já cobrem isso sozinhos.
-                    Achado 1, rodada 5 (addendum): a frase antiga dizia "use
-                    só se quiser tentar outro cartão" — mas enquanto o
-                    PRIMEIRO cartão ainda está vivo (em análise, branch (d) da
-                    edge), um cartão DIFERENTE cai na mesma branch e recebe o
-                    MESMO status "em análise". Prometer que trocar de cartão
-                    muda o resultado é falso nesse caso — a frase agora não
-                    promete nada sobre o resultado, só explica o que o botão
-                    faz. */}
-                {metodoDoPedido === "cartao" && (
-                  <p className="text-xs text-amber-700">
-                    Você não precisa fazer nada agora: esta tela muda sozinha
-                    quando o banco decidir. "Tentar de novo" confere com o banco
-                    de novo; se o cartão ainda estiver em análise, a resposta
-                    será a mesma.
-                  </p>
-                )}
+                {/* C5 (front B2): a explicação do "Tentar de novo" em modo
+                    cartão (achado 4, rodada 4; achado 1, rodada 5) saiu com o
+                    modo cartão — ele não chega mais a esta caixa: pedir o
+                    cartão de novo sobre uma cobrança em dúvida é o que a
+                    verificação, acima, substitui. */}
                 <Button
                   onClick={() => {
                     setErroPagamento(null);
@@ -3477,6 +3519,13 @@ export function CheckoutView({
             onTrocarParaPix={(cartaoAindaVivo) => {
               if (cartaoAindaVivo) setPedidoTemCobrancaIncerta(true);
               setMetodoDoPedido("pix");
+            }}
+            // C5 (front B2): resposta do cartão sem order confirmada — a
+            // cobrança fica incerta POR PEDIDO (mesma regra do erro ambíguo)
+            // e a tela vira a verificação a partir dessa resposta.
+            onCobrancaEmDuvida={(pontoDePartida) => {
+              setPedidoTemCobrancaIncerta(true);
+              setCobrancaEmDuvida({ pontoDePartida });
             }}
             onErro={(msg, categoria, sinal) => {
               // Achados 1 e 2, rodada 3 da revisão de risco pré-publicação

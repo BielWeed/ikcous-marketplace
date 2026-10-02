@@ -412,10 +412,18 @@ describe("CheckoutView — retomar pagamento respeita a forma do pedido", () => 
     await retomar("ped-r-06");
     await enviarCartao();
 
-    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    // C5 (front B2): a dúvida vira a verificação do C4 — UMA consulta
+    // `verificar` (só leitura) depois do POST de cartão, nunca um segundo
+    // POST de cartão nem PIX.
+    expect(criarPagamento).toHaveBeenCalledTimes(2);
     const corpo = criarPagamento.mock.calls[0][0];
     expect(corpo.orderId).toBe("ped-r-06");
     expect(corpo.metodo).not.toBe("pix");
+    expect(criarPagamento.mock.calls[1][0]).toEqual({
+      orderId: "ped-r-06",
+      metodo: "verificar",
+    });
+    expect(hospedeiro.textContent).not.toMatch(/em análise/i);
     expect(botaoQueContem("Pagar com PIX")).toBeUndefined();
     expect(botaoQueContem(CANCELAR)).toBeUndefined();
   });

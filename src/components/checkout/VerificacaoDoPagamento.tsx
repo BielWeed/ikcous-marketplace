@@ -60,7 +60,29 @@ export const TEMPO_LIMITE_DA_VERIFICACAO_MS = 35_000;
 /** O que a vaga virou quando deixou de estar em dúvida. */
 export type DesfechoQueLiberaARetomada = "livre" | "recusado" | "pix";
 
+/**
+ * C5 (front B2, 02/10/2026): a verificação aberta DENTRO da sessão, logo
+ * depois de um POST de cartão que voltou SEM order confirmada. A resposta
+ * desse POST já é a primeira consulta: a tela começa por ela, sem chamar a
+ * edge sozinha, e a espera do botão conta a partir de agora — "Verificar de
+ * novo" segue a mesma cadência (30 s, no máximo 5) e só usa `verificar`.
+ * - `sem_registro`: o 200 do C3 (com a data real do cancelamento automático)
+ *   ou o `aguardando` sem `paymentId` (sem data — a tela não inventa uma).
+ * - `indisponivel`: o 503 do C3, ou o 200 sem status conhecido e sem order.
+ */
+export type PontoDePartidaDaVerificacao =
+  | {
+      readonly verificacao: "sem_registro";
+      readonly canceladoAutomaticamenteAte?: string;
+    }
+  | { readonly verificacao: "indisponivel" };
+
 type Situacao =
+  // C5 (revisão, a11y): o primeiro quadro de uma verificação aberta com
+  // ponto de partida — a região de status nasce montada e VAZIA, e o ponto de
+  // partida entra logo depois (o leitor de tela só anuncia mudança em região
+  // que já existia). Sem texto, sem botão.
+  | { readonly tipo: "abrindo" }
   | { readonly tipo: "consultando" }
   | { readonly tipo: "sem_registro"; readonly cancelamento: string | null }
   | { readonly tipo: "indisponivel" }
@@ -146,6 +168,17 @@ export function situacaoDaResposta(
   }
 }
 
+function situacaoDoPontoDePartida(
+  ponto: PontoDePartidaDaVerificacao,
+): Situacao {
+  return ponto.verificacao === "sem_registro"
+    ? {
+        tipo: "sem_registro",
+        cancelamento: dataEHora(ponto.canceladoAutomaticamenteAte),
+      }
+    : { tipo: "indisponivel" };
+}
+
 /** Erro da consulta: só `terminal: true` literal é terminal. */
 function situacaoDoErro(erro: unknown): Situacao {
   const e = erro as { terminal?: unknown; message?: unknown } | null;
@@ -176,25 +209,40 @@ export function VerificacaoDoPagamento({
   onVerMeusPedidos,
   onFalarComALoja,
   onRetomadaLiberada,
+  pontoDePartida,
 }: Readonly<{
   orderId: string;
   onVerMeusPedidos: () => void;
   // Ausente = loja sem WhatsApp configurado: o botão não aparece.
   onFalarComALoja?: () => void;
   onRetomadaLiberada: (verificacao: DesfechoQueLiberaARetomada) => void;
+  // C5: presente = a resposta do POST de cartão já foi a primeira consulta
+  // (ver `PontoDePartidaDaVerificacao`). Lido só na montagem.
+  pontoDePartida?: PontoDePartidaDaVerificacao;
 }>) {
   const { criarPagamento } = useOrders(false, false);
-  const [situacao, setSituacao] = useState<Situacao>({ tipo: "consultando" });
+  // Com ponto de partida, o primeiro quadro é "abrindo" (região vazia); o
+  // efeito de montagem, abaixo, aplica o ponto de partida.
+  const [situacao, setSituacao] = useState<Situacao>(() =>
+    pontoDePartida ? { tipo: "abrindo" } : { tipo: "consultando" },
+  );
+  // Lido só na montagem (o pai não troca o ponto de partida de uma tela já
+  // aberta; trocar exigiria remontar).
+  const pontoDePartidaRef = useRef(pontoDePartida);
   const [toques, setToques] = useState(0);
   // Quando a espera do botão termina (início da última consulta + intervalo).
-  const [liberaBotaoEm, setLiberaBotaoEm] = useState<number | null>(null);
+  // Com ponto de partida, a "última consulta" foi o POST que acabou de voltar.
+  const [liberaBotaoEm, setLiberaBotaoEm] = useState<number | null>(() =>
+    pontoDePartida ? Date.now() + INTERVALO_ENTRE_VERIFICACOES_MS : null,
+  );
   const [botaoEmEspera, setBotaoEmEspera] = useState(true);
   // Só a resposta da consulta MAIS RECENTE desta montagem pinta a tela.
   const sequenciaRef = useRef(0);
   const montadoRef = useRef(false);
   // A consulta automática é UMA por montagem — o StrictMode remonta o efeito
   // (monta, desmonta, monta) com as mesmas refs, e o segundo passe não chama.
-  const jaConsultouRef = useRef(false);
+  // Com ponto de partida, NENHUMA: a resposta do POST já foi a consulta.
+  const jaConsultouRef = useRef(pontoDePartida !== undefined);
 
   const consultar = useCallback(() => {
     sequenciaRef.current += 1;
@@ -216,6 +264,17 @@ export function VerificacaoDoPagamento({
         if (nova.tipo === "liberada") onRetomadaLiberada(nova.verificacao);
       });
   }, [criarPagamento, orderId, onRetomadaLiberada]);
+
+  // C5 (revisão, a11y): o ponto de partida entra DEPOIS do primeiro commit,
+  // sem chamar a edge. Só sai de "abrindo": o StrictMode roda isto duas vezes
+  // e a segunda não muda nada.
+  useEffect(() => {
+    const ponto = pontoDePartidaRef.current;
+    if (!ponto) return;
+    setSituacao((atual) =>
+      atual.tipo === "abrindo" ? situacaoDoPontoDePartida(ponto) : atual,
+    );
+  }, []);
 
   useEffect(() => {
     montadoRef.current = true;

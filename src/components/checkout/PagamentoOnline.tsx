@@ -14,6 +14,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { PagamentoComCartao } from "./PagamentoComCartao";
+import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
 
 // O carregador do SDK mora em módulo próprio desde o cartão (26/09/2026) —
 // ver o comentário lá. Reexportado para quem já o importava daqui.
@@ -395,6 +396,7 @@ export function PagamentoOnline({
   cobrancaIncerta = false,
   onTrocarParaPix,
   onVerMeusPedidos,
+  onCobrancaEmDuvida,
 }: {
   orderId: string;
   valor: number;
@@ -413,6 +415,8 @@ export function PagamentoOnline({
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
   onVerMeusPedidos?: () => void;
+  // C5 (front B2): repassado à tela do cartão — ver `PagamentoComCartao`.
+  onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
   // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
@@ -482,6 +486,7 @@ export function PagamentoOnline({
           onErro={onErro}
           onFormaDesligada={avisarFormaDesligada}
           onPagarComPix={pagarComPix}
+          onCobrancaEmDuvida={onCobrancaEmDuvida}
         />
       );
     }
@@ -495,9 +500,11 @@ export function PagamentoOnline({
         </p>
         {cobrancaIncerta ? (
           <>
+            {/* C5 (front B2): sem order conhecida aqui, nunca "em análise". */}
             <p className="text-sm text-amber-800">
-              Uma tentativa anterior pode estar em análise pelo banco. Acompanhe
-              o pedido antes de tentar outra forma de pagamento.
+              Não conseguimos confirmar se uma tentativa anterior com cartão foi
+              cobrada. Acompanhe o pedido antes de tentar outra forma de
+              pagamento.
             </p>
             {onVerMeusPedidos && (
               <button

@@ -511,11 +511,28 @@ function codigoDoErroDePagamento(
 }
 
 /**
+ * C5 (front B2, 02/10/2026): o 503 `{ error, verificacao: "indisponivel" }`
+ * da edge (cartão sobre sentinela com a busca do MP falhando, e a consulta
+ * `metodo: "verificar"` que não conseguiu ler) — a cobrança está em DÚVIDA,
+ * não "falhou": a tela não pode pedir o cartão de novo. Só o literal exato
+ * conta (mesma régua estrita de `terminal`/`cartaoEmAnalise`/`codigo`).
+ */
+export type VerificacaoDoErroDePagamento = "indisponivel";
+
+function verificacaoDoErroDePagamento(
+  valor: unknown,
+): VerificacaoDoErroDePagamento | undefined {
+  return valor === "indisponivel" ? valor : undefined;
+}
+
+/**
  * O que a edge devolve num 200/201 — PIX e cartão falam a mesma resposta; os
  * campos de cada meio são opcionais.
  */
 export type RespostaCriarPagamento = {
-  paymentId: string;
+  // `null` é real: a recusa do cartão, a consulta `verificar` e o
+  // `sem_registro` do C3 voltam sem order (C5: "em análise" só COM order).
+  paymentId: string | null;
   // CHECKOUT-080 (#213): renomeado de `status` — o campo agora fala o
   // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/
   // 'expirado'/'estornado'), não mais o vocabulário clássico do MP, e
@@ -3448,6 +3465,7 @@ export function useOrders(
         // fechada em qualquer outra coisa (campo ausente, string "true").
         let cartaoEmAnalise = false;
         let codigo: CodigoDoErroDePagamento | undefined;
+        let verificacao: VerificacaoDoErroDePagamento | undefined;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
@@ -3456,6 +3474,7 @@ export function useOrders(
             cartaoEmAnalise = corpo.cartaoEmAnalise;
           }
           codigo = codigoDoErroDePagamento(corpo?.codigo);
+          verificacao = verificacaoDoErroDePagamento(corpo?.verificacao);
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
@@ -3464,10 +3483,14 @@ export function useOrders(
           terminal,
           cartaoEmAnalise,
           ...(codigo ? { codigo } : {}),
+          ...(verificacao ? { verificacao } : {}),
         });
       }
       if (data?.error) {
         const codigo = codigoDoErroDePagamento((data as any).codigo);
+        const verificacao = verificacaoDoErroDePagamento(
+          (data as any).verificacao,
+        );
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
         // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
         // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
@@ -3481,6 +3504,7 @@ export function useOrders(
             typeof (data as any).cartaoEmAnalise === "boolean" &&
             (data as any).cartaoEmAnalise,
           ...(codigo ? { codigo } : {}),
+          ...(verificacao ? { verificacao } : {}),
         });
       }
       return data as RespostaCriarPagamento;

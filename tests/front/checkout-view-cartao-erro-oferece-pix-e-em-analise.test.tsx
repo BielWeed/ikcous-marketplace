@@ -56,6 +56,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigDoCartao } from "@/lib/config-do-cartao";
 
 const createOrder = vi.fn().mockResolvedValue({ id: "ped-999" });
+// C5 (front B2): a dúvida do cartão abre a verificação de VERDADE, que
+// consulta por `criarPagamento({ orderId, metodo: "verificar" })`.
+const criarPagamento = vi.fn();
 const updateOrderStatus = vi.fn().mockResolvedValue(undefined);
 const onNavigate = vi.fn();
 const onSetBackOverride = vi.fn();
@@ -181,7 +184,10 @@ vi.mock("@/hooks/useCoupons", () => ({
 // pela asserção.
 vi.mock("@/hooks/useOrders", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/hooks/useOrders")>();
-  return { ...real, useOrders: () => ({ createOrder, updateOrderStatus }) };
+  return {
+    ...real,
+    useOrders: () => ({ createOrder, updateOrderStatus, criarPagamento }),
+  };
 });
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
@@ -225,7 +231,11 @@ vi.mock("@/lib/flags", () => ({
   lerFlagPagamentoOnline: (v: string | undefined) => v === "true",
 }));
 
-vi.mock("@/components/checkout/PagamentoOnline", () => ({
+// O resto do módulo fica REAL (C5): a verificação usa o `comTempoLimite`.
+vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/checkout/PagamentoOnline")
+  >()),
   PagamentoOnline: (props: Record<string, unknown>) => {
     pagamentoOnlineProps.push(props);
     return null;
@@ -267,6 +277,10 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   beforeEach(() => {
     createOrder.mockClear();
     createOrder.mockResolvedValue({ id: "ped-999" });
+    // Padrão: a consulta da verificação fica no ar (a tela mostra
+    // "consultando"); quem precisa de um desfecho sobrescreve.
+    criarPagamento.mockReset();
+    criarPagamento.mockReturnValue(new Promise(() => {}));
     updateOrderStatus.mockReset();
     updateOrderStatus.mockResolvedValue(undefined);
     onNavigate.mockClear();
@@ -369,6 +383,60 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     });
   }
 
+  // C5 (front B2, 02/10/2026): em modo cartão, o erro ambíguo NÃO abre mais
+  // a caixa âmbar "Seu cartão está em análise pelo banco" com "Tentar de
+  // novo" — aquele botão pedia o cartão de NOVO (token novo) sobre uma
+  // cobrança em dúvida, e a frase prometia uma análise sem order nenhuma. A
+  // dúvida abre a verificação do C4 (uma consulta `verificar`, só leitura).
+  // Para seguir as sequências das rodadas 3 e 4 (um erro DEPOIS da dúvida,
+  // no mesmo pedido), a consulta prova a vaga livre e o cliente ESCOLHE o
+  // cartão de novo; o marcador por pedido continua valendo dali em diante.
+  const VAGA_LIVRE = {
+    verificacao: "livre",
+    paymentId: null,
+    expiraEm: "2999-01-01T00:00:00.000Z",
+  };
+
+  async function esvaziar() {
+    for (let i = 0; i < 6; i++) {
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+    }
+  }
+
+  /** A dúvida virou a verificação: nada que cobra, cancela ou promete. */
+  function exigirVerificacaoSemSaidaQueCobra() {
+    expect(hospedeiro.textContent).toContain("Situação do pagamento");
+    expect(hospedeiro.textContent).not.toMatch(/em análise/i);
+    for (const proibido of [
+      "Pagar com PIX",
+      "Cancelar pedido e voltar ao carrinho",
+      "Tentar de novo",
+      "Tentar outro cartão",
+    ]) {
+      expect(botaoPorTexto(hospedeiro, proibido)).toBeUndefined();
+    }
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(criarPagamento.mock.calls[0][0]).toEqual({
+      orderId: "ped-999",
+      metodo: "verificar",
+    });
+  }
+
+  /** A consulta provou a vaga livre: o cliente escolhe o cartão de novo. */
+  async function voltarAoCartaoPelaVerificacao() {
+    await esvaziar();
+    expect(hospedeiro.textContent).toContain(
+      "Como você quer pagar este pedido?",
+    );
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Cartão de crédito ou débito")!.click();
+    });
+    await esvaziar();
+    expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("cartao");
+  }
+
   // Teste (c) da rodada 3: falha de montagem NA PRIMEIRA tentativa — nada
   // foi postado ainda, o marcador `pedidoTemCobrancaIncerta` está no
   // padrão (`false`) e "Pagar com PIX" continua oferecido normalmente.
@@ -410,9 +478,16 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   // numa validação local (`semCobranca` correto PARA ESTE erro) — mas
   // "Pagar com PIX" não pode reaparecer, porque a vaga da PRIMEIRA cobrança
   // ambígua ainda pode virar aprovada.
-  it("(a) 502 ambíguo, depois 'Tentar de novo', depois falha semCobranca: 'Pagar com PIX' NUNCA reaparece neste pedido", async () => {
+  it("(a) 502 ambíguo, depois a verificação (vaga livre) e o cartão escolhido de novo, depois falha semCobranca: 'Pagar com PIX' NUNCA reaparece neste pedido", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
+    // A consulta fica no ar até o passo 2 — o passo 1 olha a tela da dúvida.
+    let responderConsulta: (corpo: unknown) => void = () => {};
+    criarPagamento.mockReturnValueOnce(
+      new Promise((resolve) => {
+        responderConsulta = resolve;
+      }),
+    );
 
     // 1. 502 ambíguo do POST de cartão (sem sinal) — marca o pedido.
     await act(async () => {
@@ -427,13 +502,14 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(
       botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
     ).toBeUndefined();
+    exigirVerificacaoSemSaidaQueCobra();
 
-    // 2. "Tentar de novo" — limpa a caixa de erro, remonta <PagamentoOnline>
-    // (mocado: só mais uma entrada em pagamentoOnlineProps).
-    const tentar = botaoPorTexto(hospedeiro, "Tentar de novo")!;
+    // 2. C5: a verificação prova a vaga livre e o cliente escolhe o cartão
+    // de novo (antes: "Tentar de novo" na caixa âmbar).
     await act(async () => {
-      tentar.click();
+      responderConsulta(VAGA_LIVRE);
     });
+    await voltarAoCartaoPelaVerificacao();
     expect(hospedeiro.textContent).not.toContain(
       "Se nada mudar em alguns minutos",
     );
@@ -467,6 +543,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
     expect(pagamentoOnlineProps.at(-1)!.cobrancaIncerta).toBe(false);
+    criarPagamento.mockResolvedValueOnce(VAGA_LIVRE);
 
     await act(async () => {
       (
@@ -476,9 +553,8 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
         ) => void
       )("Erro de infraestrutura (502).", "recuperavel");
     });
-    await act(async () => {
-      botaoPorTexto(hospedeiro, "Tentar de novo")!.click();
-    });
+    // C5: a remontagem vem da verificação (vaga livre -> cartão escolhido).
+    await voltarAoCartaoPelaVerificacao();
 
     expect(pagamentoOnlineProps.at(-1)!.cobrancaIncerta).toBe(true);
     await act(async () => {
@@ -551,7 +627,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   // só "Tentar de novo", nunca PIX nem Cancelar. A rodada 2 deixava esse
   // caso na caixa vermelha com "Cancelar pedido" disponível — reproduzido:
   // cancelar aí e o Mercado Pago aprovar depois vira `pago_apos_expirar`.
-  it("B1, Caso B: 502 ambíguo do POST de cartão (sem sinal) cai na caixa âmbar — só 'Tentar de novo', nunca PIX nem Cancelar", async () => {
+  it("B1, Caso B: 502 ambíguo do POST de cartão (sem sinal) abre a verificação (C5) — nunca PIX, Cancelar ou o cartão de novo", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -564,14 +640,8 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       )("Erro de infraestrutura (502).", "recuperavel");
     });
 
-    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
-    expect(
-      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
-    ).toBeUndefined();
-    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
-    expect(hospedeiro.textContent).toContain(
-      "Se nada mudar em alguns minutos, toque em Tentar de novo.",
-    );
+    await esvaziar();
+    exigirVerificacaoSemSaidaQueCobra();
   });
 
   it("B1: em modo PIX, a caixa de erro NÃO ganha o botão 'Pagar com PIX' (já está em PIX)", async () => {
@@ -618,7 +688,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 
-  it("B3: 409 com sinal 'cartaoEmAnalise' esconde 'Cancelar pedido' e 'Pagar com PIX', mas oferece 'Tentar de novo'", async () => {
+  it("B3: 409 com sinal 'cartaoEmAnalise' esconde 'Cancelar pedido' e 'Pagar com PIX' e abre a verificação (C5)", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -636,31 +706,16 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       );
     });
 
-    expect(
-      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
-    ).toBeUndefined();
-    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
-    expect(hospedeiro.textContent).toContain(
-      "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui.",
-    );
-    // Reforço da rodada 2: "Tentar de novo" re-pede a MESMA cobrança — a
-    // edge responde o mesmo 409 enquanto o cartão vive, ou libera o caminho
-    // (pago/PIX) quando ele já não vive mais (achado B2, "webhook soltou a
-    // vaga mas a tela nunca reconsulta").
-    const tentar = botaoPorTexto(hospedeiro, "Tentar de novo");
-    expect(tentar).toBeDefined();
-
-    await act(async () => {
-      tentar!.click();
-    });
-    // Erro limpo — a tela volta a montar <PagamentoOnline> (mocado, mais uma
-    // entrada em pagamentoOnlineProps) em vez da caixa âmbar.
-    expect(hospedeiro.textContent).not.toContain(
-      "Seu cartão está em análise pelo banco",
-    );
+    // C5 (front B2): em modo cartão, sem order na tela, nada de "em
+    // análise" nem de "Tentar de novo" (o cartão de novo): a verificação,
+    // que consulta a vaga ATUAL (e devolve a escolha da forma quando ela
+    // deixou de estar em dúvida — o caso do achado B2 que o "Tentar de
+    // novo" resolvia).
+    await esvaziar();
+    exigirVerificacaoSemSaidaQueCobra();
   });
 
-  it("B3: MESMO sem o sinal (edge antiga), a mensagem exata já basta como reserva — e 'Tentar de novo' aparece", async () => {
+  it("B3: MESMO sem o sinal (edge antiga), a mensagem exata já basta como reserva — e abre a verificação (C5)", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -676,14 +731,8 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       );
     });
 
-    expect(
-      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
-    ).toBeUndefined();
-    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
-    expect(hospedeiro.textContent).toContain(
-      "Seu cartão está em análise pelo banco. Aguarde a resposta; você será avisado aqui.",
-    );
-    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+    await esvaziar();
+    exigirVerificacaoSemSaidaQueCobra();
   });
 
   // Rodada 3 (achado 2): a rodada 2 tinha um "controle" aqui com um erro
@@ -891,7 +940,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   // mapear o status), então a tela vai para a caixa âmbar com "Tentar de
   // novo", nunca "Cancelar pedido" sobre um cartão que pode ter sido
   // aprovado.
-  it("R3: primeiro erro do cartão = status desconhecido (sinal 'cartaoEmAnalise') -> caixa âmbar, nunca 'Cancelar pedido'", async () => {
+  it("R3: primeiro erro do cartão = status desconhecido (sinal 'cartaoEmAnalise') -> verificação (C5), nunca 'Cancelar pedido'", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
 
@@ -909,11 +958,8 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       );
     });
 
-    expect(
-      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
-    ).toBeUndefined();
-    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
-    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+    await esvaziar();
+    exigirVerificacaoSemSaidaQueCobra();
   });
 
   // RODADA 4 — achado 4: a caixa N7 (terminal, cartão pode ter sido
@@ -997,6 +1043,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     mockWhatsappNumber = "34999998888";
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
+    criarPagamento.mockResolvedValueOnce(VAGA_LIVRE);
 
     // 1. Erro ambíguo — marca o pedido.
     await act(async () => {
@@ -1007,9 +1054,8 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
         ) => void
       )("Falha ao falar com o gateway.", "recuperavel");
     });
-    await act(async () => {
-      botaoPorTexto(hospedeiro, "Tentar de novo")!.click();
-    });
+    // C5: do erro ambíguo à tela do cartão de novo pela verificação.
+    await voltarAoCartaoPelaVerificacao();
 
     // 2. Erro terminal comum (sem sinal) — o marcador continua de pé.
     await act(async () => {
@@ -1046,6 +1092,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   it("achado 4, controle: terminal DEPOIS de um erro ambíguo, SEM WhatsApp configurado, fecha em 'Ver meus pedidos' (achado 1, rodada 8)", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
+    criarPagamento.mockResolvedValueOnce(VAGA_LIVRE);
 
     await act(async () => {
       (
@@ -1055,9 +1102,8 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
         ) => void
       )("Falha ao falar com o gateway.", "recuperavel");
     });
-    await act(async () => {
-      botaoPorTexto(hospedeiro, "Tentar de novo")!.click();
-    });
+    // C5: do erro ambíguo à tela do cartão de novo pela verificação.
+    await voltarAoCartaoPelaVerificacao();
     await act(async () => {
       (
         pagamentoOnlineProps.at(-1)!.onErro as (
@@ -1084,7 +1130,7 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
   // caixa âmbar remonta o Brick (pede o cartão de NOVO) — sem aviso, parecia
   // que era preciso digitar tudo de novo só para "conferir", quando a
   // verificação periódica já cobre isso sozinha.
-  it("achado 4: caixa âmbar em modo cartão explica que a tela muda sozinha, sem forçar redigitar o cartão", async () => {
+  it("achado 4 + C5: em modo cartão o erro ambíguo não pede para redigitar o cartão — abre a verificação", async () => {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await chegarNoPagamentoComCartao(CheckoutView);
     expect(pagamentoOnlineProps.at(-1)!.metodo).toBe("cartao");
@@ -1098,20 +1144,14 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
       )("Erro de infraestrutura (502).", "recuperavel");
     });
 
-    expect(hospedeiro.textContent).toContain(
+    // C5 (front B2): o modo cartão não chega mais à caixa âmbar — nada de
+    // explicar um "Tentar de novo" que pedia o cartão de novo: a dúvida é a
+    // verificação, que só consulta.
+    await esvaziar();
+    exigirVerificacaoSemSaidaQueCobra();
+    expect(hospedeiro.textContent).not.toContain(
       "Você não precisa fazer nada agora",
     );
-    // Achado 1, rodada 5 (addendum): a frase não pode prometer que trocar de
-    // cartão muda o resultado — enquanto o primeiro cartão está vivo, um
-    // cartão diferente cai na MESMA branch (d) da edge e recebe o MESMO "em
-    // análise". A frase nova só explica o que o botão faz, sem previsão.
-    expect(hospedeiro.textContent).toContain(
-      '"Tentar de novo" confere com o banco de novo',
-    );
-    expect(hospedeiro.textContent).not.toContain(
-      "use só se quiser tentar outro cartão",
-    );
-    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 
   // Em modo PIX, a explicação de "redigitar o cartão" não faz sentido — a
@@ -1146,9 +1186,12 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
 
     // Confirma que chegou mesmo na caixa âmbar (senão a ausência do aviso
     // não provaria nada).
+    // C5 (front B2): sem order na tela, a caixa não promete "em análise".
     expect(hospedeiro.textContent).toContain(
-      "Seu cartão está em análise pelo banco",
+      "Não conseguimos confirmar se a tentativa de pagamento com cartão deste pedido foi cobrada.",
     );
+    expect(hospedeiro.textContent).not.toMatch(/em análise/i);
+    expect(criarPagamento).not.toHaveBeenCalled();
     expect(hospedeiro.textContent).not.toContain(
       "Você não precisa fazer nada agora",
     );

@@ -400,20 +400,41 @@ describe("CheckoutView + PagamentoOnline de verdade — forma de cartão desliga
     expect(botaoPorTexto(CANCELAR)).toBeUndefined();
   });
 
-  it("com cobrança incerta (502 ambíguo antes): 'Tentar de novo' -> forma desligada -> só 'Ver meus pedidos', nunca PIX nem 'Cancelar pedido'", async () => {
+  // C5 (front B2, 02/10/2026): o 502 ambíguo não oferece mais "Tentar de
+  // novo" (o cartão de novo, token novo, sobre a dúvida) — abre a verificação
+  // do C4. O caminho até a forma desligada com a cobrança incerta passa a ser:
+  // consulta que prova a vaga livre -> o cliente ESCOLHE o cartão -> forma
+  // desligada. A regra por pedido continua: nunca PIX nem "Cancelar pedido".
+  it("com cobrança incerta (502 ambíguo antes): verificação -> vaga livre -> cartão escolhido -> forma desligada -> só 'Ver meus pedidos', nunca PIX nem 'Cancelar pedido'", async () => {
     criarPagamento
       .mockRejectedValueOnce(erroDaEdge("Erro de infraestrutura (502)."))
+      .mockResolvedValueOnce({
+        verificacao: "livre",
+        paymentId: null,
+        expiraEm: "2999-01-01T00:00:00.000Z",
+      })
       .mockRejectedValueOnce(erroDaEdge(MENSAGEM_FORMA, { codigo: CODIGO }));
     await chegarNoPagamentoComCartao();
 
     await enviarCartao();
+    for (let i = 0; i < 4; i++) {
+      await act(async () => {
+        await esperarMicrotarefas();
+      });
+    }
     expect(botaoPorTexto(CANCELAR)).toBeUndefined();
-    await clicar("Tentar de novo");
+    expect(botaoPorTexto("Tentar de novo")).toBeUndefined();
+    expect(criarPagamento).toHaveBeenCalledTimes(2);
+    expect(criarPagamento.mock.calls[1][0]).toEqual({
+      orderId: "ped-777",
+      metodo: "verificar",
+    });
+    await clicar("Cartão de crédito");
     expect(create).toHaveBeenCalledTimes(2);
 
     await enviarCartao();
 
-    expect(criarPagamento).toHaveBeenCalledTimes(2);
+    expect(criarPagamento).toHaveBeenCalledTimes(3);
     expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
     expect(botaoPorTexto("Pagar com PIX")).toBeUndefined();
     expect(botaoPorTexto(CANCELAR)).toBeUndefined();
@@ -421,6 +442,6 @@ describe("CheckoutView + PagamentoOnline de verdade — forma de cartão desliga
     await clicar("Ver meus pedidos");
 
     expect(onNavigate).toHaveBeenCalledWith("orders");
-    expect(criarPagamento).toHaveBeenCalledTimes(2);
+    expect(criarPagamento).toHaveBeenCalledTimes(3);
   });
 });

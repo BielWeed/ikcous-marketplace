@@ -1616,7 +1616,11 @@ describe("forma de cartão desligada no meio do pagamento — integração da te
       expect(create).toHaveBeenCalledTimes(1);
       expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
       // Diz ao cliente POR QUE não há outra forma agora — sem beco mudo.
-      expect(hospedeiro.textContent).toContain("em análise pelo banco");
+      // C5 (front B2): sem order conhecida, nunca "em análise".
+      expect(hospedeiro.textContent).toContain(
+        "Não conseguimos confirmar se uma tentativa anterior com cartão foi cobrada.",
+      );
+      expect(hospedeiro.textContent).not.toMatch(/em análise/i);
       expect(botoes("Pagar com PIX")).toHaveLength(0);
       expect(hospedeiro.textContent).not.toContain("Pagar com PIX");
 
@@ -1715,7 +1719,11 @@ describe("forma de cartão desligada no meio do pagamento — integração da te
       expect(onErro).not.toHaveBeenCalled();
       expect(create).toHaveBeenCalledTimes(2);
       expect(hospedeiro.textContent).toContain(AVISO_INDISPONIVEL);
-      expect(hospedeiro.textContent).toContain("em análise pelo banco");
+      // C5 (front B2): sem order conhecida, nunca "em análise".
+      expect(hospedeiro.textContent).toContain(
+        "Não conseguimos confirmar se uma tentativa anterior com cartão foi cobrada.",
+      );
+      expect(hospedeiro.textContent).not.toMatch(/em análise/i);
       expect(botoes("Pagar com PIX")).toHaveLength(0);
 
       const verPedidos = botoes("Ver meus pedidos");
