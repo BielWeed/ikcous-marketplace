@@ -67,6 +67,7 @@ on:
           - 5a-antes-da-79-e-80
           - 6a-conferir-79-a-82
           - 7a-conferir-83
+          - 8a-comparar-pedidos-originais
           - backups
       projeto:
         description: "Projeto de destino: loja ou sandbox (nunca texto livre — achado da rodada 2)"
