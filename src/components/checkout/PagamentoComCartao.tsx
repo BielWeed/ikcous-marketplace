@@ -74,12 +74,29 @@ export type ResultadoDoCartao =
       // `SinalDeErroPagamento`. Ausente = falha fechada, o CheckoutView não
       // oferece PIX nem some com "Cancelar pedido".
       readonly sinal?: SinalDeErroPagamento;
-    };
+    }
+  // Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão da
+  // edge (`codigo: "CARTAO_FORMA_DESLIGADA"`). NÃO afirma ausência de
+  // cobrança — o portão roda antes do ramo "reconsultar" da edge —, por isso
+  // não carrega `semCobranca` nem sinal nenhum. `tipoRecusado` é o tipo que
+  // ESTA chamada enviou: a tela tira só ele, sem esconder o outro tipo que
+  // ainda está ligado (ex.: só o débito desligado no meio do pagamento).
+  | { readonly tipo: "forma-desligada"; readonly tipoRecusado: TipoDeCartao };
+
+/** O literal do contrato — o mesmo que `useOrders` transporta em `Error.codigo`. */
+const CODIGO_FORMA_DESLIGADA = "CARTAO_FORMA_DESLIGADA";
+
+/**
+ * O que a tela mostra para a forma desligada ENQUANTO ela é tratada como o
+ * erro recuperável de antes: a MESMA frase da edge, que era o `err.message`.
+ */
+const MENSAGEM_FORMA_DESLIGADA =
+  "Esta forma de pagamento não está disponível nesta loja.";
 
 type EtapaDoCartao =
   | { readonly tipo: "formulario" }
   | { readonly tipo: "confirmando-desafio" }
-  | Exclude<ResultadoDoCartao, { tipo: "erro" }>;
+  | Exclude<ResultadoDoCartao, { tipo: "erro" } | { tipo: "forma-desligada" }>;
 
 const MOTIVO_PADRAO_DA_RECUSA =
   "O banco recusou este cartão. Tente outro cartão ou pague com PIX.";
@@ -436,6 +453,21 @@ export async function enviarPagamentoComCartao({
     // cobranças vivas quando o front oferecia PIX cegamente aqui). Só
     // `cartaoEmAnalise`, quando a edge confirma isso explicitamente no corpo
     // do erro — nunca PIX nem "Cancelar pedido" nesse caso.
+    //
+    // Forma de cartão desligada: só com o código EXATO e quando o MESMO erro
+    // não traz sinal mais forte — `terminal` ou `cartaoEmAnalise` vencem
+    // (prioridade de segurança: nunca rebaixar um cartão em análise ou um
+    // fim de linha para "forma desligada").
+    if (
+      err?.codigo === CODIGO_FORMA_DESLIGADA &&
+      err?.terminal !== true &&
+      err?.cartaoEmAnalise !== true
+    ) {
+      return {
+        tipo: "forma-desligada",
+        tipoRecusado: montagem.corpo.paymentTypeId,
+      };
+    }
     return {
       tipo: "erro",
       mensagem: err?.message ?? "Não foi possível gerar a cobrança.",
@@ -567,6 +599,7 @@ export function PagamentoComCartao({
   config,
   emailDoPagador,
   onErro,
+  onFormaDesligada,
   onPagarComPix,
 }: {
   orderId: string;
@@ -579,6 +612,7 @@ export function PagamentoComCartao({
     categoria: CategoriaErroPagamento,
     sinal?: SinalDeErroPagamento,
   ) => void;
+  onFormaDesligada?: (tipoRecusado: TipoDeCartao) => void;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // `cartaoAindaVivo` diz ao CheckoutView se a cobrança de cartão pode
   // AINDA existir no momento da troca — antes de qualquer erro do PIX
@@ -606,8 +640,10 @@ export function PagamentoComCartao({
   // PagamentoOnline): a identidade de `onErro` muda a cada render do pai e
   // não pode desmontar o Brick com o cliente no meio da digitação.
   const onErroRef = useRef(onErro);
+  const onFormaDesligadaRef = useRef(onFormaDesligada);
   useEffect(() => {
     onErroRef.current = onErro;
+    onFormaDesligadaRef.current = onFormaDesligada;
   });
   const montadoRef = useRef(false);
   useEffect(() => {
@@ -662,6 +698,17 @@ export function PagamentoComCartao({
           criarPagamento,
         });
         if (!montadoRef.current) return;
+        if (resultado.tipo === "forma-desligada") {
+          // O pai atualiza a opção de pagamento sem transformar o código em
+          // uma afirmação de que não há cobrança. Chamadores antigos seguem
+          // pelo erro conservador até passarem o callback novo.
+          if (onFormaDesligadaRef.current) {
+            onFormaDesligadaRef.current(resultado.tipoRecusado);
+          } else {
+            onErroRef.current(MENSAGEM_FORMA_DESLIGADA, "recuperavel");
+          }
+          throw new Error(MENSAGEM_FORMA_DESLIGADA);
+        }
         if (resultado.tipo === "erro") {
           if (resultado.sinal) {
             onErroRef.current(

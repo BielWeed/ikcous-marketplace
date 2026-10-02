@@ -3,7 +3,12 @@ import type {
   RespostaCriarPagamento,
 } from "@/hooks/useOrders";
 import { useOrders } from "@/hooks/useOrders";
-import { type ConfigDoCartao, cartaoLigado } from "@/lib/config-do-cartao";
+import {
+  type ConfigDoCartao,
+  type TipoDeCartao,
+  cartaoLigado,
+  esquecerConfigDoCartao,
+} from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
@@ -387,7 +392,9 @@ export function PagamentoOnline({
   metodo = "pix",
   configDoCartao = null,
   emailDoPagador,
+  cobrancaIncerta = false,
   onTrocarParaPix,
+  onVerMeusPedidos,
 }: {
   orderId: string;
   valor: number;
@@ -400,12 +407,40 @@ export function PagamentoOnline({
   metodo?: MetodoOnline;
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
+  cobrancaIncerta?: boolean;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
   onTrocarParaPix?: (cartaoAindaVivo: boolean) => void;
+  onVerMeusPedidos?: () => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
+  // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
+  // tipo recusado sai da config da tela: o outro, se ainda ligado, continua
+  // (ex.: a lojista desligou só o débito). Sem tipo nenhum sobrando, cai na
+  // tela de "cartão indisponível" abaixo, com as mesmas regras de sempre.
+  // As recusas carregam o pedido a que pertencem: o render de um pedido novo
+  // NUNCA usa recusas do anterior — nem no primeiro quadro (um efeito de
+  // "zerar" só roda depois dele).
+  const [recusas, setRecusas] = useState<{
+    readonly orderId: string;
+    readonly tipos: readonly TipoDeCartao[];
+  }>({ orderId, tipos: [] });
+  const tiposRecusados = recusas.orderId === orderId ? recusas.tipos : [];
+  const avisarFormaDesligada = (tipoRecusado: TipoDeCartao) => {
+    esquecerConfigDoCartao();
+    setRecusas((atual) => {
+      const tipos = atual.orderId === orderId ? atual.tipos : [];
+      return tipos.includes(tipoRecusado)
+        ? atual
+        : { orderId, tipos: [...tipos, tipoRecusado] };
+    });
+  };
+  const configEfetiva: ConfigDoCartao | null = configDoCartao && {
+    ...configDoCartao,
+    credito: configDoCartao.credito && !tiposRecusados.includes("credit_card"),
+    debito: configDoCartao.debito && !tiposRecusados.includes("debit_card"),
+  };
   const pagarComPix = (cartaoAindaVivo: boolean) => {
     setTrocouParaPix(true);
     onTrocarParaPix?.(cartaoAindaVivo);
@@ -425,22 +460,27 @@ export function PagamentoOnline({
   const cartaoEmCena =
     metodo === "cartao" &&
     !trocouParaPix &&
-    !!configDoCartao &&
-    cartaoLigado(configDoCartao);
+    !!configEfetiva &&
+    cartaoLigado(configEfetiva);
   const [cartaoEsteveEmCena, setCartaoEsteveEmCena] = useState(false);
   useEffect(() => {
     if (cartaoEmCena) setCartaoEsteveEmCena(true);
   }, [cartaoEmCena]);
 
   if (metodo === "cartao" && !trocouParaPix) {
-    if (configDoCartao && cartaoLigado(configDoCartao)) {
+    if (configEfetiva && cartaoLigado(configEfetiva)) {
       return (
         <PagamentoComCartao
+          // Cada recusa remonta o formulário do zero, só com o que sobrou. O
+          // pedido entra na chave: trocar de pedido desmonta o formulário do
+          // anterior, e uma resposta atrasada dele não chega a este.
+          key={`${orderId}|${tiposRecusados.join(",")}`}
           orderId={orderId}
           valor={valor}
-          config={configDoCartao}
+          config={configEfetiva}
           emailDoPagador={emailDoPagador}
           onErro={onErro}
+          onFormaDesligada={avisarFormaDesligada}
           onPagarComPix={pagarComPix}
         />
       );
@@ -453,13 +493,31 @@ export function PagamentoOnline({
         <p className="text-sm text-zinc-700">
           O pagamento com cartão não está disponível nesta loja agora.
         </p>
-        <button
-          type="button"
-          onClick={() => pagarComPix(cartaoEsteveEmCena)}
-          className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
-        >
-          Pagar com PIX
-        </button>
+        {cobrancaIncerta ? (
+          <>
+            <p className="text-sm text-amber-800">
+              Uma tentativa anterior pode estar em análise pelo banco. Acompanhe
+              o pedido antes de tentar outra forma de pagamento.
+            </p>
+            {onVerMeusPedidos && (
+              <button
+                type="button"
+                onClick={onVerMeusPedidos}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+              >
+                Ver meus pedidos
+              </button>
+            )}
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => pagarComPix(cartaoEsteveEmCena)}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Pagar com PIX
+          </button>
+        )}
       </div>
     );
   }

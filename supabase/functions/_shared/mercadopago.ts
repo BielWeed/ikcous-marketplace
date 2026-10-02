@@ -807,6 +807,34 @@ export function montarSentinela(chave: string, limiteInferiorMs: number): string
 }
 
 /**
+ * Chave de idempotência da tentativa de CARTÃO atual de um pedido —
+ * `<pedido>:c<tentativas_de_pagamento>` (Achado A1: o token não entra).
+ * Fonte única: `chaveDeIdempotencia` (criar-pagamento) e o fallback de
+ * liberação do sentinela (webhook-mercadopago) montam a chave por aqui.
+ */
+export function chaveDoCartaoDaTentativa(pedidoId: string, tentativasDePagamento: unknown): string {
+  const bruto = Number(tentativasDePagamento);
+  const tentativas = Number.isInteger(bruto) && bruto >= 0 ? bruto : 0;
+  return `${pedidoId}:c${tentativas}`;
+}
+
+/**
+ * `true` quando `idGateway` é o SENTINELA gravado para esta MESMA chave de
+ * idempotência — `verificando:<chave>` (formato antigo) ou
+ * `verificando:<chave>:<ms>` (`montarSentinela`). O `:` depois da chave é o
+ * que separa `c1` de `c10`. Revisões de risco de 30/09/2026: um sentinela de
+ * chave ANTERIOR (a tentativa já avançou) nunca é recriado nem liberado pela
+ * busca — o limite inferior dele pode enxergar só a order morta de uma
+ * tentativa posterior, e liberar abriria um POST com chave nova ao lado da
+ * cobrança ambígua ainda não indexada (duas capturas).
+ */
+export function sentinelaDaChave(idGateway: unknown, chave: string): boolean {
+  if (typeof idGateway !== "string") return false;
+  const prefixo = `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}`;
+  return idGateway === prefixo || idGateway.startsWith(`${prefixo}:`);
+}
+
+/**
  * Lê de volta o LIMITE INFERIOR gravado por `montarSentinela` (achado B1).
  * `null` quando `idGateway` não é sequer um sentinela, OU quando é um
  * sentinela no formato ANTIGO (gravado antes desta rodada — pré-existentes
