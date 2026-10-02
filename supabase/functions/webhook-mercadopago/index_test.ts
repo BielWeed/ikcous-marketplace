@@ -228,6 +228,10 @@ function clienteFalso(opts: {
   // de colunas. `erroFrom` (acima) falharia TODA leitura, inclusive a que lê
   // o pedido no começo do handler — cedo demais para provar isto.
   falharLeituraGatewayPaymentId?: number;
+  // Revisão de risco de 30/09/2026 (4ª rodada, MENOR 1): falha a leitura
+  // `created_at, tentativas_de_pagamento` do fallback do sentinela — sem a
+  // tentativa atual, o fallback não pode soltar a vaga.
+  falharLeituraDaTentativa?: boolean;
   // Achado S5/W4 (3ª revisão de risco, 26/09/2026): simula uma corrida —
   // dispara logo DEPOIS da leitura ÚNICA (`select("total, total_amount,
   // gateway_payment_id")`, index.ts:1753-1757) que precede a decisão de
@@ -486,6 +490,9 @@ function clienteFalso(opts: {
                       );
               return {
                 maybeSingle: async () => {
+                  if (opts.falharLeituraDaTentativa && colunasPedidas.has("tentativas_de_pagamento")) {
+                    return { data: null, error: { message: "statement timeout" } };
+                  }
                   if (colunas.trim() === "gateway_payment_id" && falhasLeituraGatewayRestantes > 0) {
                     falhasLeituraGatewayRestantes--;
                     return { data: null, error: { message: "statement timeout" } };
@@ -4740,6 +4747,82 @@ Deno.test("cartão — Achado S1 (W5): recusa de order AMBÍGUA sobre um pedido 
   });
 });
 
+// Revisão de risco de 30/09/2026 (3ª rodada, MENOR 1): o MESMO cenário do
+// S1, mas o sentinela é de uma tentativa ANTERIOR (`c0` com a tentativa já
+// em 2). A busca só enxerga a order MORTA de uma tentativa posterior; a
+// `c0` ambígua pode ainda não estar indexada — soltar a vaga abriria um
+// cartão novo (chave `c2`) ao lado dela. O fallback NÃO solta.
+Deno.test("cartão — recusa com o sentinela de uma tentativa ANTERIOR na vaga -> a busca manda liberar, mas o fallback NÃO solta (chave diverge da tentativa atual)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinela = montarSentinela(`${UUID_PEDIDO}:c0`, Date.now() - 5 * 60_000);
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinela, tentativas_de_pagamento: 2 };
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false, true] });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemRecusada = {
+    ...orderDoMp("failed", "cc_rejected_other_reason", "credit_card"),
+    date_created: new Date().toISOString(),
+  };
+  const fetchImpl = async (url: string) =>
+    url.includes("/v1/orders?")
+      ? new Response(JSON.stringify({ results: [ordemRecusada] }), { status: 200 })
+      : new Response(JSON.stringify(ordemRecusada), { status: 200 });
+
+  const console_warn = console.warn;
+  console.warn = () => {};
+  let corpo: unknown;
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+    assertEquals(resposta.status, 200);
+    corpo = await resposta.json();
+  } finally {
+    console.warn = console_warn;
+  }
+
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(registro.chamadasRpc.length, 0);
+  // Só a 1ª tentativa (pelo id do MP) — o fallback pelo sentinela não roda.
+  assertEquals(registro.chamadasLiberar.length, 1);
+  assertEquals(registro.chamadasLiberar[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_gateway_payment_id: ID_ORDER_CARTAO_MP,
+  });
+});
+
+Deno.test("cartão — leitura da tentativa atual FALHA no fallback do sentinela -> NÃO solta a vaga (sem a tentativa, não dá para saber se o sentinela é da tentativa atual)", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const sentinela = montarSentinela(`${UUID_PEDIDO}:c0`, Date.now() - 5 * 60_000);
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinela, tentativas_de_pagamento: 0 };
+  const supabase = clienteFalso({ pedido, registro, liberarResultados: [false, true], falharLeituraDaTentativa: true });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const ordemRecusada = {
+    ...orderDoMp("failed", "cc_rejected_other_reason", "credit_card"),
+    date_created: new Date().toISOString(),
+  };
+  const fetchImpl = async (url: string) =>
+    url.includes("/v1/orders?")
+      ? new Response(JSON.stringify({ results: [ordemRecusada] }), { status: 200 })
+      : new Response(JSON.stringify(ordemRecusada), { status: 200 });
+
+  const console_warn = console.warn;
+  const console_error = console.error;
+  console.warn = () => {};
+  console.error = () => {};
+  let corpo: unknown;
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+    assertEquals(resposta.status, 200);
+    corpo = await resposta.json();
+  } finally {
+    console.warn = console_warn;
+    console.error = console_error;
+  }
+
+  assertEquals(corpo, { ok: true, resultado: "nada_a_liberar" });
+  assertEquals(registro.chamadasLiberar.length, 1);
+});
+
 // Q2 (4ª revisão de risco, 26/09/2026, harness ponta a ponta do 4º revisor):
 // a recusa ATRASADA (ou reenviada) da tentativa c0 NÃO pode soltar o
 // sentinela da tentativa c1 — que a busca confirma AINDA ESTAR EM ANÁLISE no
@@ -4751,7 +4834,10 @@ Deno.test("cartão — Q2: recusa ATRASADA da tentativa ANTERIOR (c0) NÃO solta
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
   const idOrderC1 = "ORDCARTAO2KZZ4D94WC79335A68CZ5N";
   const sentinelaC1 = `verificando:${UUID_PEDIDO}:c1`;
-  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1 };
+  // `tentativas_de_pagamento: 1` — o sentinela `c1` é o da tentativa ATUAL;
+  // sem isto a chave atual seria `c0` e a regra da chave anterior barraria o
+  // fallback antes de a busca importar (4ª revisão de risco, 30/09/2026).
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1, tentativas_de_pagamento: 1 };
   // Só UMA liberação chega a acontecer (a 1ª, pelo id do MP — que nunca bate
   // com o sentinela) — o fallback não deve tentar uma 2ª vez.
   const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });
@@ -4795,7 +4881,10 @@ Deno.test("cartão — Q2b: cancelamento ATRASADO de um PIX ANTIGO (troca PIX→
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
   const sentinelaC1 = `verificando:${UUID_PEDIDO}:c1`;
-  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1 };
+  // `tentativas_de_pagamento: 1` — o sentinela `c1` é o da tentativa ATUAL;
+  // sem isto a chave atual seria `c0` e a regra da chave anterior barraria o
+  // fallback antes de a busca importar (4ª revisão de risco, 30/09/2026).
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1, tentativas_de_pagamento: 1 };
   const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });
   const idPixAntigo = "ORDPIXANTIGO1KZZ4D94WC79335A6";
   const req = await requisicaoAssinada(idPixAntigo, { corpoExtra: { type: "order" } });
@@ -4851,7 +4940,10 @@ Deno.test("cartão — Q3-webhook (B1): recusa ATRASADA de c0 (criada ~1s ANTES 
   const registro = { chamadasRpc: [], chamadasLiberar: [] };
   const limiteInferiorC1Ms = Date.now();
   const sentinelaC1 = montarSentinela(`${UUID_PEDIDO}:c1`, limiteInferiorC1Ms);
-  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1 };
+  // `tentativas_de_pagamento: 1` — o sentinela `c1` é o da tentativa ATUAL;
+  // sem isto a chave atual seria `c0` e a regra da chave anterior barraria o
+  // fallback antes de a busca importar (4ª revisão de risco, 30/09/2026).
+  const pedido = { id: UUID_PEDIDO, total: 149.9, gateway_payment_id: sentinelaC1, tentativas_de_pagamento: 1 };
   // Só a 1ª tentativa de liberar (pelo id do MP, que é o de c0 — nunca bate
   // com o sentinela de c1) — o fallback não deve conseguir soltar.
   const supabase = clienteFalso({ pedido, registro, liberarResultados: [false] });

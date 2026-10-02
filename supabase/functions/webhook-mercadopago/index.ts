@@ -81,6 +81,7 @@ import {
   avaliarAssinatura,
   buscarOrdersDoPedido,
   camposDaAssinatura,
+  chaveDoCartaoDaTentativa,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
@@ -92,6 +93,7 @@ import {
   parcelasDaOrder,
   recusaLiberaAVaga,
   resolverSentinela,
+  sentinelaDaChave,
   tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
@@ -1601,7 +1603,7 @@ async function handler(
           // cru) decide, e o sentinela NUNCA solta às cegas.
           const { data: linhaComCriacao, error: erroLeituraCriacao } = await supabase
             .from("marketplace_orders")
-            .select("created_at")
+            .select("created_at, tentativas_de_pagamento")
             .eq("id", orderId)
             .maybeSingle();
           if (erroLeituraCriacao) {
@@ -1623,7 +1625,23 @@ async function handler(
           // recalculada aqui.
           const limiteInferiorMs = limiteInferiorDoSentinela(idNaVaga);
           const resolucao = busca.ok ? resolverSentinela(busca.orders, limiteInferiorMs) : null;
-          if (resolucao?.acao === "liberar") {
+          // Revisão de risco de 30/09/2026 (3ª rodada, MENOR 1): MESMA regra
+          // do Ponto 1 no criar-pagamento — um sentinela com a chave de uma
+          // tentativa ANTERIOR (`c<n>` com `tentativas_de_pagamento` já em
+          // n+1) nunca solta pela busca: o limite inferior dele é o instante
+          // da tentativa n, e a janela pode trazer só a order MORTA de uma
+          // tentativa POSTERIOR enquanto a `c<n>` ambígua ainda não foi
+          // indexada — liberar abriria um cartão novo (chave nova) ao lado
+          // dela. Sem a leitura (erro acima), não dá para saber: não solta.
+          const chaveDaTentativaAtual = erroLeituraCriacao
+            ? null
+            : chaveDoCartaoDaTentativa(
+              orderId,
+              (linhaComCriacao as Record<string, unknown> | null)?.tentativas_de_pagamento,
+            );
+          const sentinelaDaTentativaAtual =
+            chaveDaTentativaAtual !== null && sentinelaDaChave(idNaVaga, chaveDaTentativaAtual);
+          if (resolucao?.acao === "liberar" && sentinelaDaTentativaAtual) {
             const { data: liberouSentinela, error: erroLiberarSentinela } = await supabase.rpc(
               "liberar_cobranca_do_pedido",
               { p_order_id: orderId, p_gateway_payment_id: idNaVaga },
@@ -1632,8 +1650,8 @@ async function handler(
             liberou = liberouSentinela === true;
           } else {
             console.warn(
-              "webhook-mercadopago: recusa/cancelamento não amarrado ao sentinela (Ponto 2) — busca não confirmou que todas as orders de cartão do pedido estão mortas, sentinela mantido",
-              { orderId, idOrder: idParaRpc, sentinela: idNaVaga, buscaOk: busca.ok },
+              "webhook-mercadopago: recusa/cancelamento não amarrado ao sentinela (Ponto 2) — busca não confirmou que todas as orders de cartão do pedido estão mortas (ou o sentinela é de tentativa anterior), sentinela mantido",
+              { orderId, idOrder: idParaRpc, sentinela: idNaVaga, buscaOk: busca.ok, sentinelaDaTentativaAtual },
             );
           }
         }
