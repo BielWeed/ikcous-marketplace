@@ -2348,6 +2348,24 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // "JÁ ESTORNEI" FECHA A CORRIDA COM O CRON (dinheiro; 02/10/2026, migration
+  // 20261189000000): o registro manual trava as linhas vivas do ledger antes
+  // do pedido e leva a linha `solicitado` a `recusado` — as marcas do cron e
+  // da edge (UPDATE condicional por status) passam a achar 0 linhas e o
+  // estorno não é POSTADO em cima da devolução feita por fora.
+  "20261189000000_ja_estornei_fecha_a_corrida_com_o_cron.sql": [
+    {
+      funcao: "registrar_estorno_manual",
+      esperado: [
+        // A pré-trava das linhas vivas (ordem linha -> pedido, a mesma de
+        // concluir_estorno): sem ela a marca do cron não espera o clique.
+        "FOR UPDATE OF viva;",
+        // A linha que ninguém pediu ao MP ainda sai da fila: sem isto a marca
+        // condicional do cron ainda casa e o POST sai com a leitura velha.
+        "ultimo_erro = 'A loja registrou a devolução feita fora do app'",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {
