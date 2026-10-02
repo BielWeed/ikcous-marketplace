@@ -1211,7 +1211,9 @@ export function CheckoutView({
     // dispara).
     supabase
       .from("marketplace_orders")
-      .select("total, metodo_online, gateway_payment_id")
+      .select(
+        "total, metodo_online, gateway_payment_id, payment_status, status",
+      )
       .eq("id", retomarPedidoId)
       .maybeSingle()
       .then(({ data }) => {
@@ -1232,10 +1234,37 @@ export function CheckoutView({
           setRetomadaBloqueadaPorSentinela(true);
           return;
         }
+        // Pedido que já não espera pagamento (pago, cancelado, expirado — a
+        // lista de pedidos pode estar desatualizada): nada monta, nada chama
+        // a edge. Só valores CONHECIDOS bloqueiam; campo ausente segue para a
+        // edge, que recusa o que não é cobrável.
+        const { status, payment_status: statusPagamento } = data as {
+          status?: unknown;
+          payment_status?: unknown;
+        };
+        if (
+          (typeof status === "string" && status !== "pending") ||
+          (typeof statusPagamento === "string" &&
+            statusPagamento !== "aguardando" &&
+            statusPagamento !== "recusado")
+        ) {
+          setRetomadaSemPagamentoPendente(true);
+          return;
+        }
         setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
         const metodo = (data as { metodo_online?: unknown }).metodo_online;
         if (metodo === "credito" || metodo === "debito") {
           setMetodoDoPedido("cartao");
+        } else if (metodo !== "pix") {
+          // Bug do teste real da 1.5.14 (02/10/2026): `metodo_online` só é
+          // gravado junto da cobrança, então pedido de cartão cujo formulário
+          // não enviou nada chega aqui com NULL. Assumir "pix" montava o
+          // PagamentoComPix, que CRIA a cobrança PIX na montagem — o cliente
+          // que escolheu cartão caía no QR Code. Forma desconhecida não
+          // monta nada: o cliente escolhe (tela abaixo), e só o toque dele
+          // liga o pagamento.
+          setRetomadaEscolhendoForma(true);
+          return;
         }
         setOrderId(retomarPedidoId);
         setAguardandoPagamento(true);
@@ -1250,6 +1279,19 @@ export function CheckoutView({
   // entra para reconhecer o SENTINELA de cartão (gate no efeito acima).
   const [retomadaBloqueadaPorSentinela, setRetomadaBloqueadaPorSentinela] =
     useState(false);
+  const [retomadaSemPagamentoPendente, setRetomadaSemPagamentoPendente] =
+    useState(false);
+  const [retomadaEscolhendoForma, setRetomadaEscolhendoForma] = useState(false);
+  // A escolha do cliente na retomada de forma desconhecida liga o pagamento
+  // do pedido retomado — o mesmo trio que o efeito de leitura liga quando a
+  // forma é conhecida.
+  const escolherFormaDaRetomada = (metodo: MetodoOnline) => {
+    if (!retomarPedidoId) return;
+    setMetodoDoPedido(metodo);
+    setRetomadaEscolhendoForma(false);
+    setOrderId(retomarPedidoId);
+    setAguardandoPagamento(true);
+  };
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -2943,6 +2985,55 @@ export function CheckoutView({
           className="w-full rounded-xl"
         >
           Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
+
+  if (retomadaSemPagamentoPendente) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Este pedido não está aguardando pagamento
+        </h1>
+        <p className="text-sm text-zinc-600">
+          Ele já foi pago, cancelado ou o prazo para pagar acabou. Abra "Ver
+          meus pedidos" para conferir a situação dele.
+        </p>
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
+
+  if (retomadaEscolhendoForma) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Como você quer pagar este pedido?
+        </h1>
+        <p className="text-sm text-zinc-600">
+          Nada é cobrado até você escolher e confirmar o pagamento.
+        </p>
+        {cartaoDisponivel && configDoCartao && (
+          <Button
+            onClick={() => escolherFormaDaRetomada("cartao")}
+            className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+          >
+            {rotuloDaOpcaoDeCartao(configDoCartao)}
+          </Button>
+        )}
+        <Button
+          onClick={() => escolherFormaDaRetomada("pix")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Pagar com PIX
         </Button>
       </div>
     );
