@@ -1142,6 +1142,14 @@ type ResultadoOrder =
  * corpo inteiro da recusa traz a order com o pagador (e-mail, CPF), que não
  * pode parar no log da função.
  */
+function mascararDetalheDoErro(texto: string): string {
+  return texto
+    .replace(/"[^"]*"|'[^']*'|`[^`]*`/g, "<valor>")
+    .replace(/[^\s<>]+@[^\s<>]+/g, "<email>")
+    .replace(/\d{3,}/g, "<n>")
+    .slice(0, 200);
+}
+
 function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): string {
   if (!corpo) return "(corpo não-JSON)";
   const erros = Array.isArray(corpo.errors) ? corpo.errors : [];
@@ -1152,8 +1160,23 @@ function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): strin
     ? corpo.data as Record<string, unknown>
     : undefined;
   const pagamento = primeiroPagamentoDaOrder(data);
+  // `details`/`message` dizem QUAL campo o MP recusou (03/10/2026: um 400
+  // `property_value` nos campos de antifraude só mostrava o código, sem o
+  // campo). Podem citar o valor recusado: o que estiver entre aspas, e-mail e
+  // sequência de 3+ dígitos saem mascarados; o caminho do campo fica.
+  const detalhes = erros
+    .flatMap((e) => {
+      if (!e || typeof e !== "object") return [];
+      const { details, message } = e as Record<string, unknown>;
+      const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
+      return [...lista, message];
+    })
+    .filter((d): d is string => typeof d === "string" && d.length > 0)
+    .map(mascararDetalheDoErro)
+    .slice(0, 6);
   return JSON.stringify({
     codigos,
+    ...(detalhes.length > 0 ? { detalhes } : {}),
     status: typeof data?.status === "string" ? data.status : undefined,
     status_detail: typeof data?.status_detail === "string" ? data.status_detail : undefined,
     pagamento_status_detail: typeof pagamento?.status_detail === "string"
