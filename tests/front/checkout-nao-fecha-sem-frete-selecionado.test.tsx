@@ -24,6 +24,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
 const createOrder = vi.fn().mockResolvedValue({ id: "ped-frete-1" });
 const onNavigate = vi.fn();
@@ -213,6 +214,9 @@ describe("CheckoutView — não fecha pedido sem opção de frete selecionada", 
     mockShippingFee = 15;
     mockSelectedShippingOption = null;
     const armazem = new Map<string, string>();
+    // Desde o #761 o CEP de 8 dígitos dispara a busca em toda loja: sem dublê,
+    // o teste iria à rede de verdade (ver duble-busca-de-cep.ts).
+    pararABuscaDeCep();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
