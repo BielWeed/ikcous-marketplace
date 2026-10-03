@@ -152,13 +152,19 @@ function avaliar(resultados, hashes) {
     "config de cartao singleton",
     config.length === 1 && config[0].id === 1,
   );
+  // 03/10/2026, autorizado pelo dono: a blindagem está no ar e crédito,
+  // débito e teto de parcelas passaram a ser escolha dele pelo painel. A trava
+  // deixa de exigir o estado da fase de blindagem (crédito, sem débito, 1x) e
+  // confere só que a config é VÁLIDA. Teste: ci_verificar_pagamentos_config_cartao_test.ts.
   conferir(
-    "credito ligado, debito desligado, 1 parcela",
+    "config de cartao valida (uma linha, booleanos, 1 a 12 parcelas)",
     config.length === 1 &&
       config[0].id === 1 &&
-      config[0].credito === true &&
-      config[0].debito === false &&
-      config[0].parcelas_max === 1,
+      typeof config[0].credito === "boolean" &&
+      typeof config[0].debito === "boolean" &&
+      Number.isInteger(config[0].parcelas_max) &&
+      config[0].parcelas_max >= 1 &&
+      config[0].parcelas_max <= 12,
   );
   return checks;
 }
