@@ -46,8 +46,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 type FetchResolver = (data: unknown) => void;
 
+// Genérico de propósito: a busca percorre mais de um provedor (ViaCEP,
+// OpenCEP, AwesomeAPI) e todos levam o CEP de 8 dígitos na URL.
 function extrairCep(url: string): string {
-  return /viacep\.com\.br\/ws\/(\d+)\/json/.exec(url)?.[1] ?? "";
+  return /(\d{8})/.exec(url)?.[1] ?? "";
 }
 
 /** Componente sonda: só existe para montar o hook e expor o estado no DOM. */
@@ -165,7 +167,7 @@ describe("useBuscaCep", () => {
     expect(buscando()).toBe("false");
   });
 
-  it("CEP inexistente: emite toast.error e não chama aoEncontrar", async () => {
+  it("CEP inexistente: só quando TODOS os provedores dizem que não existe, emite toast.error e não chama aoEncontrar", async () => {
     const { toast } = await import("sonner");
     const aoEncontrar = vi.fn();
 
@@ -176,12 +178,28 @@ describe("useBuscaCep", () => {
     act(() => {
       clicar("buscar-01310100");
     });
-    pendentes.get("01310100")!({ erro: true });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    // ViaCEP (200 com erro), OpenCEP (404 com error), AwesomeAPI (404 com
+    // not_found): cada resposta abre a tentativa seguinte, que registra um
+    // novo resolvedor para o mesmo CEP em `pendentes`.
+    const naoExiste = [
+      { erro: "true" },
+      { error: true },
+      { code: "not_found" },
+    ];
+    for (const [i, corpo] of naoExiste.entries()) {
+      // Só o último "não existe" encerra a busca: antes dele o hook ainda
+      // não pode ter reclamado de CEP errado.
+      expect(toast.error).not.toHaveBeenCalled();
+      pendentes.get("01310100")!(corpo);
+      await act(async () => {
+        for (let t = 0; t < 10; t++) await Promise.resolve();
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(
+        Math.min(i + 2, naoExiste.length),
+      );
+    }
 
+    expect(toast.error).toHaveBeenCalledTimes(1);
     expect(toast.error).toHaveBeenCalledWith("CEP não encontrado");
     expect(aoEncontrar).not.toHaveBeenCalled();
     expect(buscando()).toBe("false");
@@ -297,7 +315,7 @@ describe("useBuscaCep", () => {
     expect(buscando()).toBe("false");
   });
 
-  it("#185 timeout: estoura em 8000ms, aborta a requisição e avisa o usuário", async () => {
+  it("#185 timeout: estoura o teto de 8000ms, aborta as requisições e avisa o usuário", async () => {
     const abortadas: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -329,7 +347,10 @@ describe("useBuscaCep", () => {
       await vi.advanceTimersByTimeAsync(TIMEOUT_BUSCA_CEP_MS);
     });
 
-    expect(abortadas).toEqual(["01310100"]);
+    // Os três provedores penduram: o 1º e o 2º estouram a própria tentativa
+    // (3 s cada) e o 3º é cortado pelo teto geral — as três requisições
+    // são abortadas, nenhuma fica pendurada.
+    expect(abortadas).toEqual(["01310100", "01310100", "01310100"]);
     expect(toast.error).toHaveBeenCalledWith(
       "A busca de CEP demorou demais. Preencha o endereço manualmente.",
     );
