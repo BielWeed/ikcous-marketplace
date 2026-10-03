@@ -465,6 +465,11 @@ export type ArgsCriarPagamento =
       parcelas: number;
       documento: { type: "CPF" | "CNPJ"; number: string };
       email?: string;
+      // Device ID do comprador (03/10/2026, antifraude do Mercado Pago): o
+      // valor de `window.MP_DEVICE_SESSION_ID`, já validado no formato. A edge
+      // o manda como `X-meli-session-id` e IGNORA o que vier fora do formato.
+      // Omitido quando a coleta não terminou — nunca vazio.
+      device_id?: string;
     }
   // C4 (M1, 02/10/2026): a CONSULTA sem cobrança — a edge só lê o Mercado
   // Pago (GET/busca) e só escreve por CAS ou pela RPC de liberação; nunca

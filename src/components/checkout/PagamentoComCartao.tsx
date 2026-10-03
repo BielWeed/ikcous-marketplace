@@ -19,6 +19,11 @@ import type {
 } from "./PagamentoOnline";
 import { comTempoLimite } from "./PagamentoOnline";
 import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
+import {
+  carregarDeviceIdMercadoPago,
+  deviceIdValido,
+  lerDeviceIdDoMercadoPago,
+} from "./device-id-mercado-pago";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -279,11 +284,15 @@ export function montarCorpoDoCartao({
   dados,
   adicionais,
   config,
+  deviceId,
 }: {
   orderId: string;
   dados: DadosDoCartaoDoBrick | null | undefined;
   adicionais: DadosAdicionaisDoBrick | null | undefined;
   config: ConfigDoCartao;
+  // Device ID do comprador (antifraude do MP; ver `device-id-mercado-pago.ts`).
+  // Opcional: ausente ou fora do formato SAI DO CORPO — nunca bloqueia nada.
+  deviceId?: string | null;
 }): { ok: true; corpo: CorpoDoCartao } | { ok: false; mensagem: string } {
   const token = textoNaoVazio(dados?.token);
   const paymentMethodId = textoNaoVazio(dados?.payment_method_id);
@@ -358,6 +367,8 @@ export function montarCorpoDoCartao({
       parcelas,
       documento: { type: tipoDoDocumento, number: numeroDoDocumento },
       ...(email ? { email } : {}),
+      // snake_case de propósito: é o nome que a edge `criar-pagamento` lê.
+      ...(deviceIdValido(deviceId) ? { device_id: deviceId } : {}),
     },
   };
 }
@@ -532,14 +543,22 @@ export async function enviarPagamentoComCartao({
   adicionais,
   config,
   criarPagamento,
+  deviceId,
 }: {
   orderId: string;
   dados: DadosDoCartaoDoBrick | null | undefined;
   adicionais: DadosAdicionaisDoBrick | null | undefined;
   config: ConfigDoCartao;
   criarPagamento: CriarPagamento;
+  deviceId?: string | null;
 }): Promise<ResultadoDoCartao> {
-  const montagem = montarCorpoDoCartao({ orderId, dados, adicionais, config });
+  const montagem = montarCorpoDoCartao({
+    orderId,
+    dados,
+    adicionais,
+    config,
+    deviceId,
+  });
   if (!montagem.ok) {
     // `semCobranca`: a validação é LOCAL — nenhum POST chegou à edge (achado
     // B1, rodada 2 da revisão de risco pré-publicação). Seguro oferecer PIX.
@@ -638,6 +657,13 @@ export function montarBrickDeCartao({
 
   (async () => {
     try {
+      // Device ID do antifraude (03/10/2026): o security.js do MP entra AGORA,
+      // em paralelo com o SDK — só quando o cartão vai ser montado (lazy; o
+      // PIX e o boot do app não pagam por isso). Não se espera por ele: a
+      // coleta é assíncrona, o valor é lido no envio (`onEnviar`) e a falta
+      // dele nunca bloqueia o Brick nem o pagamento (o loader nunca lança).
+      carregarDeviceIdMercadoPago();
+
       // Com prazo: a carga do SDK é a fase do "Carregando o formulário do
       // cartão..." — estourou, a falha de montagem de abaixo é o caminho que
       // o componente já tem para SDK que não carrega (ver
@@ -833,6 +859,9 @@ export function PagamentoComCartao({
           adicionais,
           config: configDoBrick,
           criarPagamento,
+          // Lido NO ENVIO: a coleta do security.js é assíncrona e termina
+          // enquanto o cliente digita; ausente, o pagamento segue sem ele.
+          deviceId: lerDeviceIdDoMercadoPago(),
         });
         if (!montadoRef.current) return;
         if (resultado.tipo === "forma-desligada") {
