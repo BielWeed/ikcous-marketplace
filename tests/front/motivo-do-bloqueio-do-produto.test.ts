@@ -3,7 +3,10 @@
 // AdminProductFormView; a tela é testada em
 // admin-product-form-variacao-sku-e-publicar-diz-o-que-falta.test.tsx. Aqui,
 // só a frase.
-import { motivoDoBloqueioDoProduto } from "@/utils/motivo-do-bloqueio-do-produto";
+import {
+  motivoDoBloqueioDoProduto,
+  motivoDoEnvioDeFotos,
+} from "@/utils/motivo-do-bloqueio-do-produto";
 import { describe, expect, it } from "vitest";
 
 const completo = {
@@ -58,6 +61,24 @@ describe("motivoDoBloqueioDoProduto", () => {
   it("nem falta nem erro conhecido: ainda assim devolve uma frase (nunca vazio)", () => {
     expect(motivoDoBloqueioDoProduto(completo, false, false)).toBe(
       "Para publicar, confira os campos do formulário.",
+    );
+  });
+});
+
+describe("motivoDoEnvioDeFotos", () => {
+  it("diz a foto da vez dentro do lote", () => {
+    expect(motivoDoEnvioDeFotos({ atual: 2, total: 3 }, false)).toBe(
+      "Enviando fotos… (2 de 3). O botão libera quando terminar.",
+    );
+  });
+
+  it("sem progresso conhecido ainda diz que está enviando", () => {
+    expect(motivoDoEnvioDeFotos(null, false)).toMatch(/^Enviando fotos/);
+  });
+
+  it("envio do recorte tem frase própria", () => {
+    expect(motivoDoEnvioDeFotos({ atual: 1, total: 1 }, true)).toMatch(
+      /foto ajustada/,
     );
   });
 });

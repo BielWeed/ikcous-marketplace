@@ -395,10 +395,16 @@ function traduzirRecusaConhecida(error: unknown): string | null {
   }
 
   // `fetch` sem resposta: Chrome "Failed to fetch", Firefox "NetworkError…",
-  // Safari "Load failed". É TypeError sem `code` — texto de servidor nunca
-  // chega aqui como TypeError.
+  // Safari "Load failed". O que chega aqui NÃO é um TypeError: o `.catch` do
+  // postgrest-js (2.110.1, PostgrestBuilder.then) engole a exceção do fetch e
+  // devolve `{ message: "TypeError: Failed to fetch", details: <stack>,
+  // hint: "", code: "" }` — objeto simples, que `instanceof TypeError` nunca
+  // pega. Por isso a detecção é pelo TEXTO, com `code` vazio: erro de servidor
+  // sempre traz `code` (SQLSTATE ou PGRST…), então um texto de banco que só
+  // pareça rede não é confundido. O TypeError cru (de código nosso) cai na
+  // mesma regra, pois também só tem `message`.
   if (
-    error instanceof TypeError &&
+    !detalhes.code &&
     /failed to fetch|networkerror|load failed|network request failed/i.test(
       textoOriginal,
     )
@@ -876,6 +882,10 @@ export function useProducts({ autoFetch = true } = {}) {
           // produto existe, mas o lojista precisa saber que a grade ficou
           // para trás (o toast de erro acima já disse; o de sucesso cala).
           let variantesFalharam = false;
+          // Quando a grade falha, quem chamou precisa saber (o produto existe,
+          // mas está sem variação) para NÃO dar "Salvo" nem sair da tela, e
+          // para tentar de novo SEM criar outro produto.
+          let gradeNaoSalva: { motivo: string | null } | undefined;
 
           if (productData.variants && productData.variants.length > 0) {
             const variantsToInsert = productData.variants.map((v) => ({
@@ -908,6 +918,7 @@ export function useProducts({ autoFetch = true } = {}) {
               // o motivo a lojista cadastra de novo a mesma grade e bate na
               // mesma parede.
               const motivo = traduzirRecusaConhecida(varErr);
+              gradeNaoSalva = { motivo };
               toast.error(
                 `O produto foi criado, mas as VARIAÇÕES não foram salvas.${
                   motivo ? ` ${motivo}` : ""
@@ -941,7 +952,11 @@ export function useProducts({ autoFetch = true } = {}) {
           if (!variantesFalharam) {
             toast.success("Produto cadastrado com sucesso!");
           }
-          return newProduct;
+          return (
+            gradeNaoSalva
+              ? { ...newProduct, variantesNaoSalvas: gradeNaoSalva }
+              : newProduct
+          ) as Product & { variantesNaoSalvas?: { motivo: string | null } };
         }
       } catch (err: any) {
         console.error("Error adding product:", err);

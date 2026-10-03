@@ -41,3 +41,22 @@ export function motivoDoBloqueioDoProduto(
   }
   return `Para ${verbo}, confira os campos do formulário.`;
 }
+
+/**
+ * A frase de quando o botão está desligado porque há foto subindo. Sem ela o
+ * botão ficava cinza sem explicação enquanto a compressão/o upload rodavam
+ * (relato de cliente em rede lenta, 03/10/2026). `progresso` é a foto da vez
+ * dentro do lote ("1 de 2"); `ajustando` é o envio do recorte de uma foto.
+ */
+export function motivoDoEnvioDeFotos(
+  progresso: { atual: number; total: number } | null,
+  ajustando: boolean,
+): string {
+  if (ajustando) {
+    return "Enviando a foto ajustada… O botão libera quando terminar.";
+  }
+  if (!progresso) {
+    return "Enviando fotos… O botão libera quando terminar.";
+  }
+  return `Enviando fotos… (${progresso.atual} de ${progresso.total}). O botão libera quando terminar.`;
+}

@@ -191,6 +191,42 @@ describe("mensagemAmigavelErroProduto -- recusas que a lojista não conseguia le
       ),
     ).toBe(frase);
   });
+
+  it("falta de internet no FORMATO REAL do postgrest-js 2.110.1: objeto simples, não TypeError", () => {
+    // O `.catch` do postgrest-js (PostgrestBuilder.then, dist/index.mjs ~l.326)
+    // NÃO relança o TypeError do fetch: devolve `{ error: { message:
+    // "<name>: <message>", details: <stack>, hint: "", code: "" } }`. Um
+    // `instanceof TypeError` nunca enxerga isso -- foi o furo da 1a versão.
+    const frase =
+      "Sem conexão com a internet. Confira a conexão e tente salvar de novo.";
+    const erroDoPostgrest = {
+      message: "TypeError: Failed to fetch",
+      details:
+        "TypeError: Failed to fetch\n    at fetch (https://loja.exemplo/assets/index.js:1:1)",
+      hint: "",
+      code: "",
+    };
+    expect(mensagemAmigavelErroProduto(erroDoPostgrest, "cadastrar")).toBe(
+      frase,
+    );
+    expect(
+      mensagemAmigavelErroProduto(
+        { ...erroDoPostgrest, message: "TypeError: Load failed" },
+        "atualizar",
+      ),
+    ).toBe(frase);
+  });
+
+  it("texto de servidor que só PARECE rede (tem code) não vira 'sem conexão'", () => {
+    expect(
+      mensagemAmigavelErroProduto(
+        { code: "XX000", message: "failed to fetch tuple from relation" },
+        "atualizar",
+      ),
+    ).toBe(
+      "Não foi possível atualizar o produto agora. Confira os dados e tente novamente.",
+    );
+  });
 });
 
 describe("useProducts.addProduct -- SKU de variação conferido ANTES de gravar o produto", () => {
@@ -385,6 +421,118 @@ describe("useProducts.addProduct -- SKU de variação conferido ANTES de gravar 
     expect(frase).toMatch(/VARIA..ES n.o foram salvas/);
     // ...e agora diz por quê.
     expect(frase).toContain(MSG_SKU_REPETIDO_NO_BANCO);
+  });
+});
+
+describe("useProducts.addProduct -- avisa quem chamou que a grade ficou para trás", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+  let apiRef: ApiUseProducts | undefined;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mock.fetchProductsContext.mockResolvedValue(undefined);
+    mock.chamadas.length = 0;
+    mock.resultados = {};
+    apiRef = undefined;
+    consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(false);
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => {
+      raiz.unmount();
+    });
+    hospedeiro.remove();
+    consoleErrorSpy.mockRestore();
+  });
+
+  async function cadastrar(variants: unknown[]) {
+    await act(async () => {
+      raiz.render(
+        <Sonda
+          onReady={(api) => {
+            apiRef = api;
+          }}
+        />,
+      );
+    });
+    let resultado: any;
+    await act(async () => {
+      resultado = await apiRef!.addProduct({
+        name: "Camiseta",
+        description: "Algodão",
+        price: 50,
+        stock: 2,
+        images: [] as string[],
+        variants,
+      } as any);
+    });
+    return resultado;
+  }
+
+  const umaVariante = [
+    {
+      id: "temp-1",
+      productId: "",
+      name: "Tamanho",
+      value: "P",
+      stockIncrement: 1,
+      active: true,
+    },
+  ];
+
+  it("insert da grade falhou: devolve o produto CRIADO marcado como 'grade não salva', com o motivo", async () => {
+    mock.resultados["vw_produtos_admin:insert"] = {
+      data: { id: "prod-novo" },
+      error: null,
+    };
+    mock.resultados["product_variants:insert"] = {
+      data: null,
+      error: {
+        code: "23505",
+        message:
+          'duplicate key value violates unique constraint "product_variants_sku_key"',
+      },
+    };
+    const criado = await cadastrar(umaVariante);
+
+    // O produto existe (quem chama precisa do id para NÃO criar de novo)...
+    expect(criado?.id).toBe("prod-novo");
+    // ...e a grade ficou para trás, com a frase que a lojista deve ler.
+    expect(criado?.variantesNaoSalvas).toEqual({
+      motivo: MSG_SKU_REPETIDO_NO_BANCO,
+    });
+  });
+
+  it("falha da grade sem causa conhecida: marca do mesmo jeito, motivo null", async () => {
+    mock.resultados["vw_produtos_admin:insert"] = {
+      data: { id: "prod-novo" },
+      error: null,
+    };
+    mock.resultados["product_variants:insert"] = {
+      data: null,
+      error: { code: "23514", message: "check constraint violated" },
+    };
+    const criado = await cadastrar(umaVariante);
+
+    expect(criado?.variantesNaoSalvas).toEqual({ motivo: null });
+  });
+
+  it("tudo gravado: o retorno NÃO traz a marca (quem só confere `id` não muda)", async () => {
+    mock.resultados["vw_produtos_admin:insert"] = {
+      data: { id: "prod-novo" },
+      error: null,
+    };
+    mock.resultados["product_variants:insert"] = { data: [], error: null };
+    const criado = await cadastrar(umaVariante);
+
+    expect(criado?.id).toBe("prod-novo");
+    expect(criado?.variantesNaoSalvas).toBeUndefined();
   });
 });
 
