@@ -116,3 +116,5 @@ jobs:
         run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs
+      - name: Prova viva da migration de formas de pagamento por loja
+        run: node tests/banco/formas-de-pagamento-viva.cjs
