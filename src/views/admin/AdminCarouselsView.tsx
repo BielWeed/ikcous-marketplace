@@ -1,6 +1,13 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -16,7 +23,6 @@ import {
   Eye,
   EyeOff,
   Flame,
-  GripVertical,
   HelpCircle,
   Layers,
   Package,
@@ -47,6 +53,48 @@ interface AdminCarouselsViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
 }
+
+/**
+ * Identidade visual por tipo de vitrine — SÓ apresentação (redesenho da
+ * peça-22). A cor do tipo mora no chip do ícone, na trilha à esquerda do
+ * card e no rótulo; o card em si é neutro, para a lista não virar sopa de
+ * tinta. Nada aqui muda dados nem comportamento: os ids seguem os mesmos.
+ */
+const IDENTIDADE_DA_VITRINE = {
+  new_arrivals: {
+    badge: "Lançamentos",
+    chip: "border-[#FFBF00]/25 bg-[#FFBF00]/10 text-[#FFBF00]",
+    trilha: "bg-[#FFBF00]/70",
+    texto: "text-[#FFBF00]",
+    icon: <Sparkles className="size-5" />,
+  },
+  offers: {
+    badge: "Ofertas",
+    chip: "border-rose-500/25 bg-rose-500/10 text-rose-400",
+    trilha: "bg-rose-500/70",
+    texto: "text-rose-400",
+    icon: <Flame className="size-5 fill-rose-500/20" />,
+  },
+  bestsellers: {
+    badge: "Destaques",
+    chip: "border-amber-400/25 bg-amber-400/10 text-amber-300",
+    trilha: "bg-amber-400/70",
+    texto: "text-amber-300",
+    icon: <Zap className="size-5" />,
+  },
+  custom: {
+    badge: "Customizada",
+    chip: "border-purple-500/25 bg-purple-500/10 text-purple-300",
+    trilha: "bg-purple-500/70",
+    texto: "text-purple-300",
+    icon: <Layers className="size-5" />,
+  },
+} as const;
+
+type IdDaVitrine = keyof typeof IDENTIDADE_DA_VITRINE;
+
+const identidadeDaVitrine = (id: string) =>
+  IDENTIDADE_DA_VITRINE[id as IdDaVitrine] ?? IDENTIDADE_DA_VITRINE.custom;
 
 export const AdminCarouselsView = memo(function AdminCarouselsView({
   onNavigate: _onNavigate,
@@ -381,14 +429,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   ]);
 
   return (
-    <div className="relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] pb-admin font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
+    <div className="pb-admin relative h-auto w-full max-w-full overflow-x-hidden bg-[#09090b] font-sans text-zinc-400 selection:bg-admin-gold/30 selection:text-white">
       {/* Ambient background */}
       <div className="pointer-events-none absolute left-1/3 top-0 h-[250px] w-[250px] rounded-full bg-admin-gold/5 blur-[90px]" />
 
       {/* Sticky Desktop Header */}
-      <div className="hidden lg:block sticky top-0 z-40 w-full border-b border-white/10 bg-[#09090b]/95 px-3 py-1.5 shadow-md backdrop-blur-md">
+      <div className="sticky top-0 z-40 hidden w-full border-b border-white/10 bg-[#09090b]/95 px-3 py-1.5 shadow-md backdrop-blur-md lg:block">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
             <div className="flex size-6 items-center justify-center rounded-md border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
               <Layers className="size-3" />
             </div>
@@ -400,305 +448,189 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <button
               type="button"
               onClick={handleResetDefaultVitrines}
-              className="flex items-center gap-1 rounded-xl border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-bold text-zinc-400 hover:border-amber-500/40 hover:text-amber-400 transition-colors"
+              className="flex h-7 items-center gap-1.5 rounded-lg border border-white/10 bg-zinc-900 px-2.5 text-[10px] font-bold text-zinc-400 transition-colors hover:border-amber-500/40 hover:text-amber-400"
               title="Restaurar Vitrines Padrão"
             >
-              <RotateCcw className="size-2.5" /> Restaurar Padrão
+              <RotateCcw className="size-3" /> Restaurar Padrão
             </button>
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
-              className="flex size-5 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:border-[#FFBF00]/40 hover:text-[#FFBF00]"
+              className="flex size-7 items-center justify-center rounded-lg border border-white/10 bg-zinc-900 text-zinc-400 transition-colors hover:border-[#FFBF00]/40 hover:text-[#FFBF00]"
               title="Ajuda"
             >
-              <HelpCircle className="size-3" />
+              <HelpCircle className="size-3.5" />
             </button>
           </div>
         </div>
       </div>
 
-      <div className="relative z-10 mx-auto max-w-5xl space-y-3 p-2.5 sm:p-4">
-        {/* Top Micro Stats Bar + Quick Action Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-zinc-950/80 p-2 text-[10px] backdrop-blur-md shadow-sm">
-          {/* Stats Chips */}
-          <div className="flex items-center gap-1.5">
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-zinc-900/80 border border-white/5">
-              <Eye className="size-3 text-emerald-400 shrink-0" />
-              <span className="font-mono font-bold text-white">
+      <div className="relative z-10 mx-auto max-w-5xl space-y-4 p-3 sm:p-4">
+        {/* Resumo + ação principal — tipografia no lugar de chips */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <Eye className="size-4 shrink-0 text-emerald-400" />
+              <span className="font-mono text-sm font-black text-white">
                 {activeVitrinesCount}/{homeSections.length}
               </span>
-              <span className="hidden sm:inline text-zinc-400">Ativas</span>
+              <span className="text-xs text-zinc-400">no ar</span>
             </div>
-
-            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-zinc-900/80 border border-white/5">
-              <Package className="size-3 text-[#FFBF00] shrink-0" />
-              <span className="font-mono font-bold text-white">
+            <span aria-hidden="true" className="h-4 w-px bg-white/10" />
+            <div className="flex items-center gap-1.5">
+              <Package className="size-4 shrink-0 text-[#FFBF00]" />
+              <span className="font-mono text-sm font-black text-white">
                 ~{totalProductsInActiveVitrines}
               </span>
-              <span className="hidden sm:inline text-zinc-400">Produtos</span>
+              <span className="text-xs text-zinc-400">produtos</span>
             </div>
           </div>
 
-          {/* Action Buttons: Add Vitrine + Reset */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setShowAddVitrineModal(true)}
-              className="flex items-center gap-1 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00]/15 px-2.5 py-1 font-mono text-[9px] font-black text-[#FFBF00] hover:bg-[#FFBF00]/25 transition-all shadow-xs active:scale-95"
+              className="flex h-9 items-center gap-1.5 rounded-xl bg-[#FFBF00] px-3.5 text-xs font-black text-black shadow-md shadow-[#FFBF00]/20 transition-all hover:bg-amber-400 active:scale-95"
             >
-              <Plus className="size-3" />+ Nova Vitrine
+              <Plus className="size-4" /> Nova Vitrine
             </button>
-
+            {/* No celular não há cabeçalho sticky: Restaurar e Ajuda moram
+                aqui, junto da ação principal. No desktop ficam no topo. */}
             <button
               type="button"
               onClick={handleResetDefaultVitrines}
-              className="sm:hidden flex items-center justify-center size-6 rounded-xl border border-white/10 bg-zinc-900 text-zinc-400"
+              className="flex size-9 items-center justify-center rounded-xl border border-white/10 bg-zinc-950/60 text-zinc-400 transition-colors hover:border-amber-500/40 hover:text-amber-400 lg:hidden"
               title="Restaurar Vitrines Padrão"
             >
-              <RotateCcw className="size-3" />
+              <RotateCcw className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHelpModal(true)}
+              className="flex size-9 items-center justify-center rounded-xl border border-white/10 bg-zinc-950/60 text-zinc-400 transition-colors hover:border-[#FFBF00]/40 hover:text-[#FFBF00] lg:hidden"
+              title="Ajuda"
+            >
+              <HelpCircle className="size-4" />
             </button>
           </div>
         </div>
 
-        {/* Vitrines Cards Section */}
-        <div className="space-y-2">
-          {/* Header Line */}
-          <div className="flex items-center justify-between px-1 text-[11px] font-black uppercase tracking-wider text-white">
-            <div className="flex items-center gap-1.5">
-              <Edit className="size-3 text-[#FFBF00]" />
-              <span>Gerenciador de Vitrines ({homeSections.length})</span>
-            </div>
-            <span className="text-[9px] font-normal normal-case text-zinc-500">
-              Clique em "Produtos" para selecionar
+        {/* Gerenciador */}
+        <div className="space-y-3">
+          <div className="flex items-baseline justify-between gap-2 px-0.5">
+            <h2 className="text-[11px] font-black uppercase tracking-widest text-white">
+              Gerenciador de Vitrines
+              <span className="text-zinc-500"> ({homeSections.length})</span>
+            </h2>
+            <span className="hidden text-[10px] text-zinc-600 sm:block">
+              Toque em "Selecionar Produtos" para escolher
             </span>
           </div>
 
           {/* Vitrines Cards List */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             {homeSections.map((sec, index) => {
               const previewItems = previewProducts[sec.id] || [];
-              const isNew = sec.id === "new_arrivals";
-              const isOffers = sec.id === "offers";
-              const isBestsellers = sec.id === "bestsellers";
               const curatedCount = sec.productIds?.length ?? 0;
-
-              // Theme styling per section
-              const theme = isNew
-                ? {
-                    badgeText: "Lançamentos",
-                    badgeClass:
-                      "bg-[#FFBF00]/15 text-[#FFBF00] border-[#FFBF00]/30",
-                    glowClass:
-                      "from-[#FFBF00]/10 via-zinc-950/90 to-zinc-950 border-[#FFBF00]/25",
-                    icon: <Sparkles className="size-3 text-[#FFBF00]" />,
-                  }
-                : isOffers
-                  ? {
-                      badgeText: "Ofertas",
-                      badgeClass:
-                        "bg-rose-500/15 text-rose-400 border-rose-500/30",
-                      glowClass:
-                        "from-rose-500/10 via-zinc-950/90 to-zinc-950 border-rose-500/25",
-                      icon: (
-                        <Flame className="size-3 text-rose-500 fill-rose-500/20" />
-                      ),
-                    }
-                  : isBestsellers
-                    ? {
-                        badgeText: "Destaques",
-                        badgeClass:
-                          "bg-amber-400/15 text-amber-300 border-amber-400/30",
-                        glowClass:
-                          "from-amber-500/10 via-zinc-950/90 to-zinc-950 border-amber-500/25",
-                        icon: <Zap className="size-3 text-amber-400" />,
-                      }
-                    : {
-                        badgeText: "Customizada",
-                        badgeClass:
-                          "bg-purple-500/15 text-purple-300 border-purple-500/30",
-                        glowClass:
-                          "from-purple-500/10 via-zinc-950/90 to-zinc-950 border-purple-500/25",
-                        icon: <Layers className="size-3 text-purple-400" />,
-                      };
+              const identidade = identidadeDaVitrine(sec.id);
 
               return (
-                <div
+                <article
                   key={sec.id}
                   className={cn(
-                    "group relative overflow-hidden rounded-2xl border bg-gradient-to-r p-2.5 shadow-md backdrop-blur-md transition-all duration-200",
-                    theme.glowClass,
+                    "group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-zinc-900/40 shadow-lg backdrop-blur-md transition-all duration-200",
                     !sec.active &&
-                      "opacity-55 saturate-50 hover:opacity-100 hover:saturate-100",
+                      "opacity-60 saturate-50 hover:opacity-100 hover:saturate-100",
                   )}
                 >
-                  <div className="flex flex-col gap-2">
-                    {/* Top Row inside Card: Badges + Action Buttons */}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <GripVertical className="size-3.5 text-zinc-600 shrink-0" />
+                  {/* trilha de identidade — a cor do tipo mora aqui e no chip */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "absolute inset-y-0 left-0 w-1",
+                      sec.active ? identidade.trilha : "bg-zinc-700",
+                    )}
+                  />
 
-                        <span className="rounded-md border border-white/10 bg-zinc-900/90 px-1.5 py-0.5 font-mono text-[9px] font-black text-white shrink-0">
-                          #{index + 1}
-                        </span>
+                  <div className="space-y-3 p-3 pl-4 sm:p-4 sm:pl-5">
+                    {/* identidade: tipo + nome + estado */}
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "flex size-10 shrink-0 items-center justify-center rounded-xl border",
+                          sec.active
+                            ? identidade.chip
+                            : "border-white/10 bg-zinc-900 text-zinc-500",
+                        )}
+                      >
+                        {identidade.icon}
+                      </div>
 
-                        <span
-                          className={cn(
-                            "flex items-center gap-1 rounded-md border px-1.5 py-0.5 font-mono text-[8px] font-black uppercase tracking-wider shrink-0",
-                            theme.badgeClass,
-                          )}
-                        >
-                          {theme.icon}
-                          {theme.badgeText}
-                        </span>
-
-                        {/* Max items limit selector */}
-                        <div className="flex items-center gap-1 rounded-md border border-white/10 bg-zinc-900 px-1.5 py-0.5 text-[8px] font-bold text-zinc-400 shrink-0">
-                          <span>Max:</span>
-                          <select
-                            value={sec.maxItems ?? 6}
-                            onChange={(e) =>
-                              handleUpdateMaxItems(
-                                sec.id,
-                                Number(e.target.value),
-                              )
-                            }
-                            className="bg-transparent text-white font-mono font-bold focus:outline-none cursor-pointer pr-1"
+                      <div className="min-w-0 flex-1">
+                        <div className="relative">
+                          <LocalBufferedInput
+                            id={`vitrine-title-${sec.id}`}
+                            name="title"
+                            value={sec.title || ""}
+                            onFlush={(val) => handleRenameSection(sec.id, val)}
+                            placeholder="Título da vitrine"
+                            useShadcn={true}
+                            className="h-9 rounded-lg border-white/5 bg-black/20 pl-2.5 pr-8 text-[15px] font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00]/60 focus:ring-1 focus:ring-[#FFBF00]"
+                          />
+                          <Edit className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-zinc-600" />
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2 pl-0.5">
+                          <span className="font-mono text-[10px] font-black text-zinc-500">
+                            #{index + 1}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[10px] font-black uppercase tracking-widest",
+                              sec.active ? identidade.texto : "text-zinc-500",
+                            )}
                           >
-                            <option
-                              value={4}
-                              className="bg-zinc-900 text-white"
-                            >
-                              4
-                            </option>
-                            <option
-                              value={6}
-                              className="bg-zinc-900 text-white"
-                            >
-                              6
-                            </option>
-                            <option
-                              value={8}
-                              className="bg-zinc-900 text-white"
-                            >
-                              8
-                            </option>
-                            <option
-                              value={10}
-                              className="bg-zinc-900 text-white"
-                            >
-                              10
-                            </option>
-                          </select>
+                            {identidade.badge}
+                          </span>
                         </div>
                       </div>
 
-                      {/* Right Cluster: Delete Custom + Visibility Switch + Reorder */}
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        {/* Delete Custom Section Button */}
-                        {sec.isCustom && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteVitrine(sec.id)}
-                            className="flex size-6 items-center justify-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 active:scale-95 transition-colors"
-                            title="Excluir Vitrine"
-                          >
-                            <Trash2 className="size-3" />
-                          </button>
-                        )}
-
-                        {/* Visibility Switch */}
-                        <div className="flex items-center gap-1 bg-zinc-900/80 px-1.5 py-0.5 rounded-xl border border-white/5">
-                          <span className="text-[8px] font-bold uppercase tracking-wider text-zinc-400">
-                            {sec.active ? (
-                              <span className="text-emerald-400 flex items-center gap-0.5">
-                                <Eye className="size-2.5" /> Exibir
-                              </span>
-                            ) : (
-                              <span className="text-zinc-500 flex items-center gap-0.5">
-                                <EyeOff className="size-2.5" /> Ocultar
-                              </span>
-                            )}
-                          </span>
-                          <Switch
-                            checked={sec.active}
-                            onCheckedChange={() =>
-                              handleToggleSectionActive(sec.id)
-                            }
-                            className="scale-75 origin-right data-[state=checked]:bg-[#FFBF00]"
-                          />
-                        </div>
-
-                        {/* Reorder Buttons */}
-                        <div className="flex items-center gap-0.5 bg-zinc-900/90 p-0.5 rounded-xl border border-white/10">
-                          <button
-                            type="button"
-                            onClick={() => moveSection(index, "up")}
-                            disabled={index === 0}
-                            className="flex size-6 items-center justify-center rounded-lg border border-white/5 bg-zinc-800 text-zinc-300 transition-colors hover:bg-[#FFBF00]/20 hover:text-[#FFBF00] active:scale-95 disabled:pointer-events-none disabled:opacity-20"
-                            title="Subir"
-                          >
-                            <ArrowUp className="size-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => moveSection(index, "down")}
-                            disabled={index === homeSections.length - 1}
-                            className="flex size-6 items-center justify-center rounded-lg border border-white/5 bg-zinc-800 text-zinc-300 transition-colors hover:bg-[#FFBF00]/20 hover:text-[#FFBF00] active:scale-95 disabled:pointer-events-none disabled:opacity-20"
-                            title="Descer"
-                          >
-                            <ArrowDown className="size-3" />
-                          </button>
-                        </div>
+                      {/* estado — o primeiro olhar responde: está no ar? */}
+                      <div className="flex shrink-0 flex-col items-center gap-1 pt-0.5">
+                        <Switch
+                          checked={sec.active}
+                          onCheckedChange={() =>
+                            handleToggleSectionActive(sec.id)
+                          }
+                          className="scale-125 data-[state=checked]:bg-emerald-500"
+                        />
+                        <span
+                          className={cn(
+                            "flex items-center gap-0.5 text-[9px] font-black uppercase tracking-wider",
+                            sec.active ? "text-emerald-400" : "text-zinc-500",
+                          )}
+                        >
+                          {sec.active ? (
+                            <Eye className="size-3" />
+                          ) : (
+                            <EyeOff className="size-3" />
+                          )}
+                          {sec.active ? "Exibir" : "Ocultar"}
+                        </span>
                       </div>
                     </div>
 
-                    {/* Bottom Row inside Card: Editable Title Input + Manual Curation Button + Mini Avatars */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      {/* Title Input */}
-                      <div className="relative flex-1">
-                        <LocalBufferedInput
-                          id={`vitrine-title-${sec.id}`}
-                          name="title"
-                          value={sec.title || ""}
-                          onFlush={(val) => handleRenameSection(sec.id, val)}
-                          placeholder="Título da vitrine"
-                          useShadcn={true}
-                          className="h-8 rounded-xl border-white/10 bg-zinc-900/90 pl-2.5 pr-8 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00]/50 focus:ring-1 focus:ring-[#FFBF00]"
-                        />
-                        <Edit className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
-                      </div>
-
-                      {/* Manual Curation Trigger Button */}
-                      <button
-                        type="button"
-                        onClick={() => setCurationSectionId(sec.id)}
-                        className={cn(
-                          "flex items-center gap-1.5 h-8 px-2.5 rounded-xl border font-mono text-[9px] font-bold transition-all shrink-0 active:scale-95",
-                          curatedCount > 0
-                            ? "bg-[#FFBF00]/15 border-[#FFBF00]/40 text-[#FFBF00] hover:bg-[#FFBF00]/25"
-                            : "bg-zinc-900/90 border-white/10 text-zinc-300 hover:border-white/20 hover:text-white",
-                        )}
-                        title="Selecionar produtos manualmente para esta vitrine"
-                      >
-                        <Package className="size-3" />
-                        <span>
-                          {curatedCount > 0
-                            ? `Curadoria (${curatedCount})`
-                            : "Selecionar Produtos"}
-                        </span>
-                      </button>
-
-                      {/* Product Mini Avatars */}
-                      <div className="flex items-center gap-1 shrink-0 overflow-x-auto py-0.5">
+                    {/* a vitrine em si: a prévia dos produtos */}
+                    <div className="flex items-center rounded-xl border border-white/5 bg-black/30 p-2">
+                      <div className="scrollbar-thin flex flex-1 items-center gap-1.5 overflow-x-auto py-0.5">
                         {previewItems.length === 0 ? (
-                          <span className="text-[9px] text-zinc-600 italic">
-                            Sem produtos
+                          <span className="flex items-center gap-1.5 px-1 py-1.5 text-[10px] italic text-zinc-600">
+                            <Tag className="size-3" /> Sem produtos
                           </span>
                         ) : (
                           previewItems.map((prod) => (
                             <div
                               key={prod.id}
-                              className="relative size-6 shrink-0 rounded-md border border-white/10 bg-zinc-900 overflow-hidden"
+                              className="size-10 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-900"
                               title={`${prod.name} - R$ ${prod.price.toFixed(2)}`}
                             >
                               {prod.images?.[0] ? (
@@ -709,7 +641,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                                 />
                               ) : (
                                 <div className="flex size-full items-center justify-center text-zinc-600">
-                                  <Tag className="size-2.5" />
+                                  <Tag className="size-3.5" />
                                 </div>
                               )}
                             </div>
@@ -717,8 +649,119 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         )}
                       </div>
                     </div>
+
+                    {/* ações: curadoria numa linha; ordem, limite e exclusão
+                        na outra — cada controle no seu lugar, sem quebra surpresa */}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setCurationSectionId(sec.id)}
+                        className={cn(
+                          "flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border text-xs font-bold transition-all active:scale-[0.98] sm:w-auto",
+                          curatedCount > 0
+                            ? "border-[#FFBF00]/40 bg-[#FFBF00]/15 text-[#FFBF00] hover:bg-[#FFBF00]/25"
+                            : "border-white/10 bg-zinc-950/60 text-zinc-200 hover:border-white/20 hover:text-white",
+                        )}
+                        title="Selecionar produtos manualmente para esta vitrine"
+                      >
+                        <Package className="size-3.5" />
+                        <span>
+                          {curatedCount > 0
+                            ? `Curadoria (${curatedCount})`
+                            : "Selecionar Produtos"}
+                        </span>
+                      </button>
+
+                      <div className="flex items-center justify-between gap-2 sm:justify-end">
+                        {/* ordem na Home */}
+                        <div className="flex items-center gap-0.5 rounded-xl border border-white/10 bg-black/30 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => moveSection(index, "up")}
+                            disabled={index === 0}
+                            className="flex h-8 w-9 items-center justify-center rounded-lg text-zinc-300 transition-colors hover:bg-[#FFBF00]/15 hover:text-[#FFBF00] active:scale-95 disabled:pointer-events-none disabled:opacity-20"
+                            title="Subir"
+                          >
+                            <ArrowUp className="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveSection(index, "down")}
+                            disabled={index === homeSections.length - 1}
+                            className="flex h-8 w-9 items-center justify-center rounded-lg text-zinc-300 transition-colors hover:bg-[#FFBF00]/15 hover:text-[#FFBF00] active:scale-95 disabled:pointer-events-none disabled:opacity-20"
+                            title="Descer"
+                          >
+                            <ArrowDown className="size-4" />
+                          </button>
+                        </div>
+
+                        {/* limite por vitrine */}
+                        <div className="flex h-9 items-center gap-1 rounded-xl border border-white/10 bg-black/30 pl-2 pr-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500">
+                            Máx
+                          </span>
+                          <Select
+                            value={String(sec.maxItems ?? 6)}
+                            onValueChange={(valor) =>
+                              handleUpdateMaxItems(sec.id, Number(valor))
+                            }
+                          >
+                            <SelectTrigger
+                              size="sm"
+                              aria-label={`Máximo de produtos em ${sec.title}`}
+                              className="h-7 gap-0.5 rounded-lg border-white/10 bg-transparent pl-1.5 pr-1 font-mono text-xs font-bold text-white shadow-none hover:bg-white/5 focus-visible:ring-1 data-[size=sm]:h-7"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent
+                              position="popper"
+                              align="end"
+                              sideOffset={6}
+                              className="border-white/10 bg-zinc-950/95 backdrop-blur-md"
+                            >
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="4"
+                              >
+                                4
+                              </SelectItem>
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="6"
+                              >
+                                6
+                              </SelectItem>
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="8"
+                              >
+                                8
+                              </SelectItem>
+                              <SelectItem
+                                className="rounded-lg font-mono text-xs font-bold text-zinc-300 focus:bg-white/10 focus:text-white"
+                                value="10"
+                              >
+                                10
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* exclusão: só vitrine customizada tem */}
+                        {sec.isCustom && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteVitrine(sec.id)}
+                            className="flex size-9 items-center justify-center rounded-xl border border-rose-500/25 bg-rose-500/10 text-rose-400 transition-colors hover:bg-rose-500/20 active:scale-95"
+                            title="Excluir Vitrine"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
@@ -727,31 +770,31 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
       {/* Modal 1: Adicionar Nova Vitrine Customizada */}
       {showAddVitrineModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md space-y-4 rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm duration-200 animate-in fade-in">
+          <div className="w-full max-w-md space-y-4 rounded-3xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-8 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
                   <Plus className="size-4" />
                 </div>
-                <h3 className="text-xs font-black uppercase tracking-wider text-white">
-                  Criar Nova Vitrine Personalizada
+                <h3 className="text-sm font-black uppercase tracking-wide text-white">
+                  Nova Vitrine
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddVitrineModal(false)}
-                className="flex size-6 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
+                className="flex size-8 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 transition-colors hover:text-white"
               >
-                <X className="size-3.5" />
+                <X className="size-4" />
               </button>
             </div>
 
             <div className="space-y-3">
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <label
                   htmlFor="titulo-da-nova-vitrine"
-                  className="text-[10px] font-bold uppercase tracking-wider text-zinc-400"
+                  className="text-[10px] font-black uppercase tracking-wider text-zinc-400"
                 >
                   Título da Vitrine
                 </label>
@@ -761,14 +804,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                   value={newVitrineTitle}
                   onChange={(e) => setNewVitrineTitle(e.target.value)}
                   placeholder="Ex: Kits Especiais de Beleza"
-                  className="h-10 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00] focus:outline-none"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-zinc-900 px-3 text-sm font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00] focus:outline-none"
                 />
               </div>
 
               {/* Suggestions */}
-              <div className="space-y-1">
-                <span className="text-[9px] font-bold text-zinc-500 uppercase">
-                  Sugestões rápidas:
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">
+                  Sugestões rápidas
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {[
@@ -782,7 +825,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       key={sug}
                       type="button"
                       onClick={() => setNewVitrineTitle(sug)}
-                      className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 text-[9px] font-medium text-zinc-300 hover:border-[#FFBF00]/40 hover:text-[#FFBF00] transition-colors"
+                      className="rounded-lg border border-white/10 bg-zinc-900 px-2.5 py-1.5 text-[11px] font-medium text-zinc-300 transition-colors hover:border-[#FFBF00]/40 hover:text-[#FFBF00]"
                     >
                       + {sug}
                     </button>
@@ -791,18 +834,18 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+            <div className="flex items-center justify-end gap-2 border-t border-white/10 pt-3">
               <button
                 type="button"
                 onClick={() => setShowAddVitrineModal(false)}
-                className="h-9 px-4 rounded-xl border border-white/10 bg-zinc-900 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
+                className="h-10 rounded-xl border border-white/10 bg-zinc-900 px-4 text-xs font-bold text-zinc-300 hover:bg-zinc-800"
               >
                 Cancelar
               </button>
               <button
                 type="button"
                 onClick={handleAddCustomVitrine}
-                className="h-9 px-4 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] text-xs font-black text-black hover:bg-amber-400 transition-all shadow-md active:scale-95"
+                className="h-10 rounded-xl bg-[#FFBF00] px-5 text-xs font-black text-black shadow-md transition-all hover:bg-amber-400 active:scale-95"
               >
                 Criar Vitrine
               </button>
@@ -813,21 +856,21 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
 
       {/* Modal 2: Seleção Manual de Produtos (Curadoria) */}
       {activeCurationSection && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-xl max-h-[85vh] flex flex-col rounded-3xl border border-[#FFBF00]/30 bg-zinc-950 p-4 sm:p-5 shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm duration-200 animate-in fade-in sm:p-4">
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-zinc-950 p-4 shadow-2xl sm:p-5">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-3 shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="flex size-7 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 pb-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-[#FFBF00]/30 bg-[#FFBF00]/10 text-[#FFBF00]">
                   <Package className="size-4" />
                 </div>
-                <div>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-white">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black uppercase tracking-wide text-white">
                     Curadoria de Produtos
                   </h3>
-                  <p className="text-[10px] text-zinc-400">
+                  <p className="truncate text-[11px] text-zinc-400">
                     Vitrine:{" "}
-                    <span className="text-[#FFBF00] font-bold">
+                    <span className="font-bold text-[#FFBF00]">
                       {activeCurationSection.title}
                     </span>
                   </p>
@@ -836,22 +879,22 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               <button
                 type="button"
                 onClick={() => setCurationSectionId(null)}
-                className="flex size-6 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 hover:text-white"
+                className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-zinc-900 text-zinc-400 transition-colors hover:text-white"
               >
-                <X className="size-3.5" />
+                <X className="size-4" />
               </button>
             </div>
 
             {/* Search input */}
-            <div className="py-3 shrink-0">
+            <div className="shrink-0 py-3">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-zinc-500" />
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
                 <input
                   type="text"
                   value={searchCurationQuery}
                   onChange={(e) => setSearchCurationQuery(e.target.value)}
                   placeholder="Buscar produto por nome ou categoria..."
-                  className="h-9 w-full rounded-xl border border-white/10 bg-zinc-900 pl-9 pr-8 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00] focus:outline-none"
+                  className="h-10 w-full rounded-xl border border-white/10 bg-zinc-900 pl-9 pr-8 text-xs font-bold text-white placeholder-zinc-600 focus:border-[#FFBF00] focus:outline-none"
                 />
                 {searchCurationQuery && (
                   <button
@@ -866,14 +909,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
 
             {/* Counter bar */}
-            <div className="flex items-center justify-between text-[10px] font-bold text-zinc-400 pb-2 border-b border-white/5 shrink-0">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/5 pb-2 text-[10px] font-bold text-zinc-400">
               {isManualCurated ? (
                 <span className="text-[#FFBF00]">
                   {activeCurationSection.productIds?.length} produto(s)
                   selecionado(s) manualmente
                 </span>
               ) : (
-                <span className="text-amber-400 flex items-center gap-1">
+                <span className="flex items-center gap-1 text-amber-400">
                   <Sparkles className="size-3 shrink-0" />
                   Modo Automático: {activeCurationProductIds.length} produto(s)
                   pré-selecionados (Em exibição)
@@ -893,15 +936,15 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       false,
                     )
                   }
-                  className="text-rose-400 hover:underline text-[9px]"
+                  className="shrink-0 text-[10px] font-bold text-rose-400 hover:underline"
                 >
-                  Resetar Seleção (Voltar pro Automático)
+                  Resetar (voltar pro automático)
                 </button>
               )}
             </div>
 
             {/* Products Selection List */}
-            <div className="flex-1 overflow-y-auto py-2 space-y-1.5 scrollbar-thin">
+            <div className="scrollbar-thin flex-1 space-y-1.5 overflow-y-auto py-2">
               {filteredCurationProducts.length === 0 ? (
                 <div className="py-8 text-center text-xs text-zinc-500">
                   Nenhum produto encontrado na busca.
@@ -921,15 +964,15 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         )
                       }
                       className={cn(
-                        "w-full flex items-center justify-between p-2 rounded-xl border text-left transition-all",
+                        "flex w-full items-center justify-between gap-2 rounded-xl border p-2.5 text-left transition-all",
                         isSelected
-                          ? "bg-[#FFBF00]/15 border-[#FFBF00]/50 text-white"
-                          : "bg-zinc-900/60 border-white/5 hover:border-white/20 text-zinc-300",
+                          ? "border-[#FFBF00]/50 bg-[#FFBF00]/15 text-white"
+                          : "border-white/5 bg-zinc-900/60 text-zinc-300 hover:border-white/20",
                       )}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="flex min-w-0 items-center gap-2.5">
                         {/* Image Avatar */}
-                        <div className="size-8 rounded-lg border border-white/10 overflow-hidden bg-zinc-800 shrink-0">
+                        <div className="size-10 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-zinc-800">
                           {prod.images?.[0] ? (
                             <img
                               src={prod.images[0]}
@@ -938,25 +981,25 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                             />
                           ) : (
                             <div className="flex size-full items-center justify-center text-zinc-600">
-                              <Tag className="size-3" />
+                              <Tag className="size-3.5" />
                             </div>
                           )}
                         </div>
 
                         {/* Details */}
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs font-bold truncate text-white">
+                        <div className="flex min-w-0 flex-col">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[13px] font-bold text-white">
                               {prod.name}
                             </span>
                             {!isManualCurated && isSelected && (
-                              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold text-amber-300 border border-amber-500/30">
+                              <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/20 px-1.5 py-0.5 text-[8px] font-bold text-amber-300">
                                 Automático
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-[9px] text-zinc-400 font-mono">
-                            <span className="text-[#FFBF00] font-bold">
+                          <div className="flex items-center gap-2 font-mono text-[10px] text-zinc-400">
+                            <span className="font-bold text-[#FFBF00]">
                               R$ {prod.price.toFixed(2)}
                             </span>
                             <span>• {prod.category}</span>
@@ -967,13 +1010,13 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                       {/* Checkbox indicator */}
                       <div
                         className={cn(
-                          "flex size-5 items-center justify-center rounded-lg border transition-all shrink-0 ml-2",
+                          "ml-2 flex size-6 shrink-0 items-center justify-center rounded-lg border transition-all",
                           isSelected
                             ? "border-[#FFBF00] bg-[#FFBF00] text-black"
                             : "border-zinc-700 bg-zinc-900 text-transparent",
                         )}
                       >
-                        <Check className="size-3 stroke-[3]" />
+                        <Check className="size-3.5 stroke-[3]" />
                       </div>
                     </button>
                   );
@@ -982,11 +1025,11 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end pt-3 border-t border-white/10 shrink-0">
+            <div className="flex shrink-0 items-center justify-end border-t border-white/10 pt-3">
               <button
                 type="button"
                 onClick={() => setCurationSectionId(null)}
-                className="h-9 px-5 rounded-xl border border-[#FFBF00]/40 bg-[#FFBF00] text-xs font-black text-black hover:bg-amber-400 transition-all shadow-md active:scale-95"
+                className="h-10 rounded-xl bg-[#FFBF00] px-5 text-xs font-black text-black shadow-md transition-all hover:bg-amber-400 active:scale-95"
               >
                 Concluir Curadoria
               </button>
@@ -1010,7 +1053,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-wider text-white">
               Recursos Avançados
             </h4>
-            <ul className="list-disc pl-4 space-y-1 text-zinc-400">
+            <ul className="list-disc space-y-1 pl-4 text-zinc-400">
               <li>
                 <strong>+ Nova Vitrine:</strong> Crie seções personalizadas com
                 seus próprios títulos.
