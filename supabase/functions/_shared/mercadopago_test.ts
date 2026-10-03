@@ -2465,8 +2465,11 @@ Deno.test("criarOrder com corpoNoLog:false loga QUAL campo o MP recusou no 400, 
                 message: "invalid value for cliente@exemplo.com",
                 details: [
                   "payer.phone.number must match pattern, got '987654321'",
-                  `shipment.address.street_name invalid: "Rua Secreta"`,
+                  "invalid value Rua Secreta is invalid for shipment.address.street_name",
+                  "payer.first_name Maria Aparecida contains invalid characters",
+                  "The property 'items[0].unit_price' has an invalid value '1'",
                   `payer.identification.number ${CPF_TESTE} is invalid`,
+                  `transactions.payments[0].payment_method.token ${TOKEN_CARTAO} is invalid`,
                 ],
               }],
             }),
@@ -2482,9 +2485,14 @@ Deno.test("criarOrder com corpoNoLog:false loga QUAL campo o MP recusou no 400, 
   assertStringIncludes(texto, "property_value");
   assertStringIncludes(texto, "payer.phone.number");
   assertStringIncludes(texto, "shipment.address.street_name");
+  assertStringIncludes(texto, "payer.first_name");
+  assertStringIncludes(texto, "items[0].unit_price");
+  assertStringIncludes(texto, "transactions.payments[0].payment_method.token");
   assertEquals(texto.includes("987654321"), false);
   assertEquals(texto.includes("Rua Secreta"), false);
+  assertEquals(texto.includes("Maria"), false);
   assertEquals(texto.includes(CPF_TESTE), false);
+  assertEquals(texto.includes(TOKEN_CARTAO), false);
   assertEquals(texto.includes("cliente@exemplo.com"), false);
 });
 
