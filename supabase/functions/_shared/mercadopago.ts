@@ -13,6 +13,8 @@
  * `fetch` entra por parâmetro para o teste não tocar rede.
  */
 
+import { camposDoComprador } from "./dados-antifraude.ts";
+
 // Exportada pelo M1 do laudo do PR #438 (07/09): o executor de estorno
 // (`estorno.ts`) precisava da MESMA base e a redeclarava — segunda cópia da
 // mesma URL é o defeito #53 (regra em dois lugares) esperando para divergir.
@@ -424,6 +426,14 @@ export function normalizarDocumento(
  *   recebido — débito não parcela.
  * - `issuer_id` e o `processing_mode` que o Brick devolve NÃO entram: o
  *   emissor sai do token, e o modo de processamento é decisão do servidor.
+ * - `comprador` (opcional, 03/10/2026) soma os dados que o antifraude do MP
+ *   pede — `items`, `payer.phone`, `payer.address`, `shipment.address` — e
+ *   NUNCA derruba a cobrança: tudo passa de novo pelas regras de formato
+ *   (`camposDoComprador`), o que não presta é omitido sem lançar, e `items` só
+ *   vai quando a soma `unit_price × quantity` fecha AO CENTAVO com o
+ *   `total_amount` (a doc não afirma que precisa fechar; não mandar é a única
+ *   garantia de nunca ser recusado por soma). Fonte e campos que ficaram de
+ *   fora de propósito (`additional_info`): `_shared/dados-antifraude.ts`.
  *
  * Valida tudo e LANÇA em entrada inválida (este arquivo tem `@ts-nocheck`:
  * só o `throw` barra). As mensagens nunca carregam o valor recusado — um
@@ -439,6 +449,7 @@ export function montarCorpoCartaoOrders(args: {
   paymentMethodId: string;
   paymentTypeId: "credit_card" | "debit_card";
   parcelas: number;
+  comprador?: unknown;
 }): Record<string, unknown> {
   if (typeof args.orderId !== "string" || args.orderId.length === 0) {
     throw new Error("montarCorpoCartaoOrders: orderId obrigatório.");
@@ -474,7 +485,13 @@ export function montarCorpoCartaoOrders(args: {
   const payer: Record<string, unknown> = { email: args.email, ...dividirNomeDoPagador(args.nome) };
   payer.identification = documento;
 
-  return {
+  // Dados do comprador e do produto (antifraude): opcionais, revalidados, e a
+  // soma dos itens conferida contra o total JÁ ARREDONDADO que vai no corpo.
+  const extras = camposDoComprador(args.comprador, valorFormatado);
+  if (extras.phone) payer.phone = extras.phone;
+  if (extras.address) payer.address = extras.address;
+
+  const corpo: Record<string, unknown> = {
     type: "online",
     processing_mode: "automatic",
     capture_mode: "automatic_async",
@@ -503,6 +520,9 @@ export function montarCorpoCartaoOrders(args: {
       },
     },
   };
+  if (extras.items) corpo.items = extras.items;
+  if (extras.shipment) corpo.shipment = extras.shipment;
+  return corpo;
 }
 
 /** `transactions.payments[0]` da order, ou `undefined` — leitor comum dos

@@ -33,6 +33,7 @@ import {
 // handler, que o limite PRESERVADO ainda libera quando a order que ele
 // protege aparece morta.
 import { limiteInferiorDoSentinela, resolverSentinela, sentinelaDaChave, vagaEmVerificacao } from "../_shared/mercadopago.ts";
+import { COLUNAS_DO_PEDIDO_PARA_O_ANTIFRAUDE } from "../_shared/dados-antifraude.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes do fim deste arquivo — fixture escrito à mão não
 // provaria que a function decifra de verdade. Desde a tarefa mp-6 o fixture
@@ -150,8 +151,48 @@ function clienteFalso(opts: {
   chamadasRpc?: Array<{ nome: string; args: Record<string, unknown> }>;
   resultadoLiberar?: boolean;
   erroLiberar?: Record<string, unknown> | null;
+  // Dados do comprador no cartão (03/10/2026): as três leituras de MELHOR
+  // ESFORÇO que a edge faz para o antifraude. Ficam em ramos PRÓPRIOS do
+  // dublê — nunca contam na `chamadasSelect` do pedido (senão a releitura
+  // pós-UPDATE-falho andaria uma casa e todo teste de corrida mediria outra
+  // coisa). Default: nada a ler (itens vazios, sem colunas extras, sem
+  // endereço salvo).
+  itensDoPedido?: unknown;
+  colunasExtrasDoPedido?: Record<string, unknown> | null;
+  enderecoSalvo?: Record<string, unknown> | null;
+  // "erro" -> `{data:null,error}`; "lanca" -> exceção — para TODAS as leituras.
+  falhaNaLeituraDoAntifraude?: "erro" | "lanca";
+  leiturasDoAntifraude?: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }>;
 }) {
   let chamadasSelect = 0;
+  const leituraDoAntifraude = (tabela: string, colunas: string, resposta: unknown) => {
+    const leitura = { tabela, colunas, filtros: [] as Array<[string, unknown]> };
+    opts.leiturasDoAntifraude?.push(leitura);
+    const entregar = () => {
+      if (opts.falhaNaLeituraDoAntifraude === "lanca") {
+        throw new Error("banco caiu — telefone 11987654321 e Rua Secreta 99");
+      }
+      if (opts.falhaNaLeituraDoAntifraude === "erro") {
+        return Promise.resolve({ data: null, error: { message: "falha 11987654321 Rua Secreta 99" } });
+      }
+      return Promise.resolve({ data: resposta, error: null });
+    };
+    const cadeia = {
+      eq(coluna: string, valor: unknown) {
+        leitura.filtros.push([coluna, valor]);
+        return cadeia;
+      },
+      maybeSingle: () => entregar(),
+      then: (ok: (v: unknown) => unknown, nok?: (e: unknown) => unknown) => {
+        try {
+          return entregar().then(ok, nok);
+        } catch (e) {
+          return Promise.reject(e).then(ok, nok);
+        }
+      },
+    };
+    return cadeia;
+  };
   // Blindagem do cartão (02/10/2026): o que as gravações BEM-SUCEDIDAS (as
   // que devolveram linha) escreveram. Uma releitura SEM `releitura` explícita
   // passa a ver o pedido com essas escritas — antes ela devolvia o fixture
@@ -182,6 +223,16 @@ function clienteFalso(opts: {
       return { data: liberou, error: null };
     },
     from(tabela: string) {
+      if (tabela === "marketplace_order_items") {
+        return {
+          select: (colunas: string) => leituraDoAntifraude(tabela, colunas, opts.itensDoPedido ?? []),
+        };
+      }
+      if (tabela === "user_addresses") {
+        return {
+          select: (colunas: string) => leituraDoAntifraude(tabela, colunas, opts.enderecoSalvo ?? null),
+        };
+      }
       if (tabela === "config_pagamento_cartao") {
         return {
           select(colunas: string) {
@@ -249,6 +300,9 @@ function clienteFalso(opts: {
       }
       return {
         select(_cols: string) {
+          if (_cols === COLUNAS_DO_PEDIDO_PARA_O_ANTIFRAUDE) {
+            return leituraDoAntifraude(tabela, _cols, opts.colunasExtrasDoPedido ?? {});
+          }
           chamadasSelect++;
           const primeiraLeitura = chamadasSelect === 1;
           const erro = primeiraLeitura ? opts.erroLeitura ?? null : null;
@@ -3684,6 +3738,11 @@ function cenarioCartao(opts: {
   // POLÍTICA DO PIX (29/09/2026): repasse do registro do lojista para provar
   // a delimitação — o gate da chave de assinatura NÃO pode tocar o cartão.
   registroMp?: Record<string, unknown> | null;
+  // Dados do comprador (03/10/2026) — ver `clienteFalso`.
+  itensDoPedido?: unknown;
+  colunasExtrasDoPedido?: Record<string, unknown> | null;
+  enderecoSalvo?: Record<string, unknown> | null;
+  falhaNaLeituraDoAntifraude?: "erro" | "lanca";
 } = {}) {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   // Baseline do cofre para o registro default/repassado desta política —
@@ -3698,7 +3757,13 @@ function cenarioCartao(opts: {
   } = { chamadasUpdate: 0, historico: [] };
   const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
   const leiturasConfigCartao: Array<{ colunas: string; filtro: [string, unknown] }> = [];
+  const leiturasDoAntifraude: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }> = [];
   const supabase = clienteFalso({
+    itensDoPedido: opts.itensDoPedido,
+    colunasExtrasDoPedido: opts.colunasExtrasDoPedido,
+    enderecoSalvo: opts.enderecoSalvo,
+    falhaNaLeituraDoAntifraude: opts.falhaNaLeituraDoAntifraude,
+    leiturasDoAntifraude,
     pedido: opts.pedido ?? pedidoBase({ user_id: DONO_LOGADO }),
     releitura: opts.releitura,
     registroMp: opts.registroMp,
@@ -3722,7 +3787,7 @@ function cenarioCartao(opts: {
     resultadoLiberar: opts.resultadoLiberar,
     erroLiberar: opts.erroLiberar,
   });
-  return { supabase, registro, chamadasRpc, leiturasConfigCartao };
+  return { supabase, registro, chamadasRpc, leiturasConfigCartao, leiturasDoAntifraude };
 }
 
 const liberacoes = (chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }>) =>
@@ -10334,5 +10399,258 @@ Deno.test("handler cartão em SANDBOX: nome do pedido NÃO é mandado (o desfech
     assertEquals("last_name" in payer, false);
   } finally {
     Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
+
+// ─── Dados do comprador e do produto no cartão (03/10/2026) ──────────────────
+//
+// Duas compras reais de teste foram recusadas pelo antifraude do MP, e o painel
+// mostrava "Produto sem nome": a order de cartão não levava itens, telefone nem
+// endereço. A edge agora lê esses dados (melhor esforço, 3 leituras) e os soma
+// ao corpo. O que erra caro e se prova aqui: dado ausente/torto NUNCA derruba a
+// cobrança nem vira campo torto, a soma dos itens NUNCA diverge do total, e o
+// PIX segue sem tocar nada disto.
+
+const ENDERECO_DO_PEDIDO = {
+  cep: "06233-903",
+  street: "Rua Teste",
+  number: "3003",
+  neighborhood: "Bonfim",
+  city: "Osasco",
+  state: "SP",
+  complement: "Apto 303",
+};
+const ENDERECO_NO_CORPO = {
+  zip_code: "06233903",
+  street_name: "Rua Teste",
+  street_number: "3003",
+  neighborhood: "Bonfim",
+  city: "Osasco",
+  state: "SP",
+  complement: "Apto 303",
+};
+const LINHAS_DO_PEDIDO = [
+  { product_id: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b", product_name: "Camiseta Azul", quantity: 2, price: 50 },
+];
+
+function pedidoDeEntrega(extra: Record<string, unknown> = {}) {
+  return pedidoBase({
+    user_id: DONO_LOGADO,
+    total: 112.5,
+    customer_data: {
+      email: "cliente@exemplo.com",
+      whatsapp: "(11) 98765-4321",
+      address: ENDERECO_DO_PEDIDO,
+      shipping_option_id: "local-delivery",
+    },
+    ...extra,
+  });
+}
+
+Deno.test("handler cartão: itens, telefone, endereço e frete do pedido vão no corpo da order no formato da doc", async () => {
+  const { supabase, leiturasDoAntifraude } = cenarioCartao({
+    pedido: pedidoDeEntrega(),
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { customer_phone: null, address_id: null, shipping: 12.5 },
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  const enviado = mp.criacoes()[0].corpo as Record<string, unknown>;
+  assertEquals(enviado.total_amount, "112.50");
+  // 2 x 50,00 + 12,50 de frete = 112,50: a soma fecha com o total, ao centavo.
+  assertEquals(enviado.items, [
+    {
+      title: "Camiseta Azul",
+      unit_price: "50.00",
+      quantity: 2,
+      description: "Camiseta Azul",
+      external_code: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    },
+    { title: "Frete", unit_price: "12.50", quantity: 1, description: "Frete" },
+  ]);
+  const payer = enviado.payer as Record<string, unknown>;
+  assertEquals(payer.phone, { area_code: "11", number: "987654321" });
+  assertEquals(payer.address, ENDERECO_NO_CORPO);
+  assertEquals(enviado.shipment, { address: ENDERECO_NO_CORPO });
+  assertEquals("additional_info" in enviado, false);
+  // O que já era mandado segue igual.
+  assertEquals(payer.identification, { type: "CPF", number: CPF_TITULAR });
+  assertEquals(mp.criacoes().length, 1);
+  // Leituras: itens por order_id; a leitura extra do pedido por id.
+  assertEquals(
+    leiturasDoAntifraude.map((l) => [l.tabela, l.filtros]).sort(),
+    [["marketplace_order_items", [["order_id", UUID]]], ["marketplace_orders", [["id", UUID]]]].sort(),
+  );
+});
+
+Deno.test("handler cartão: cliente logado SEM snapshot de endereço usa o endereço SALVO, lido por id E dono", async () => {
+  const { supabase, leiturasDoAntifraude } = cenarioCartao({
+    pedido: pedidoBase({
+      user_id: DONO_LOGADO,
+      total: 100,
+      customer_data: { email: "cliente@exemplo.com", whatsapp: "11987654321", address: { cpf: "12345678909" } },
+    }),
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { address_id: "end-77", shipping: 0 },
+    enderecoSalvo: ENDERECO_DO_PEDIDO,
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  const enviado = mp.criacoes()[0].corpo as Record<string, unknown>;
+  assertEquals((enviado.payer as Record<string, unknown>).address, ENDERECO_NO_CORPO);
+  assertEquals((enviado.items as unknown[]).length, 1);
+  const leituraEndereco = leiturasDoAntifraude.find((l) => l.tabela === "user_addresses");
+  assertEquals(leituraEndereco?.filtros, [["id", "end-77"], ["user_id", DONO_LOGADO]]);
+  // O CPF que já esteve nesse jsonb nunca vai para endereço, entrega nem item.
+  assertEquals(JSON.stringify(enviado.shipment).includes("12345678909"), false);
+  assertEquals(JSON.stringify((enviado.payer as Record<string, unknown>).address).includes("12345678909"), false);
+  assertEquals(JSON.stringify(enviado.items).includes("12345678909"), false);
+});
+
+Deno.test("handler cartão: RETIRADA na loja manda itens e telefone, mas NÃO shipment (não há entrega)", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoDeEntrega({
+      total: 100,
+      customer_data: {
+        email: "cliente@exemplo.com",
+        whatsapp: "11987654321",
+        address: ENDERECO_DO_PEDIDO,
+        shipping_option_id: "store-pickup",
+        pickup_address: "Rua da Loja, 10",
+      },
+    }),
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { shipping: 0 },
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  const enviado = mp.criacoes()[0].corpo as Record<string, unknown>;
+  assertEquals("shipment" in enviado, false);
+  assertEquals((enviado.items as unknown[]).length, 1);
+  assertEquals((enviado.payer as Record<string, unknown>).phone, { area_code: "11", number: "987654321" });
+});
+
+Deno.test("handler cartão: pedido com DESCONTO (soma dos itens diferente do total) NÃO manda items — um 400 por soma derrubaria o cartão — e cobra normalmente", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoDeEntrega({ total: 90 }), // 100 de itens + 0 de frete - 10 de cupom
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { shipping: 0 },
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  const enviado = mp.criacoes()[0].corpo as Record<string, unknown>;
+  assertEquals(enviado.total_amount, "90.00");
+  assertEquals("items" in enviado, false);
+  // O resto do que se sabe do comprador continua indo.
+  assertEquals((enviado.payer as Record<string, unknown>).phone, { area_code: "11", number: "987654321" });
+  assertEquals(enviado.shipment, { address: ENDERECO_NO_CORPO });
+});
+
+Deno.test("handler cartão: leitura dos dados FALHANDO (erro de banco OU exceção) não bloqueia a cobrança, o corpo é o de antes e nada do dado vai para o log", async () => {
+  const logs: string[] = [];
+  const originais = { log: console.log, error: console.error, warn: console.warn };
+  console.log = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  console.error = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  console.warn = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  try {
+    for (const falha of ["erro", "lanca"] as const) {
+      const { supabase } = cenarioCartao({
+        pedido: pedidoBase({ user_id: DONO_LOGADO }),
+        falhaNaLeituraDoAntifraude: falha,
+      });
+      const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+      const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+      });
+      assertEquals(resposta.status, 200, falha);
+      assertEquals(mp.criacoes().length, 1, falha);
+      const enviado = mp.criacoes()[0].corpo as Record<string, unknown>;
+      for (const campo of ["items", "shipment"]) assertEquals(campo in enviado, false, `${falha} ${campo}`);
+      for (const campo of ["phone", "address"]) {
+        assertEquals(campo in (enviado.payer as Record<string, unknown>), false, `${falha} ${campo}`);
+      }
+    }
+  } finally {
+    console.log = originais.log;
+    console.error = originais.error;
+    console.warn = originais.warn;
+  }
+  assertEquals(logs.some((l) => l.includes("11987654321") || l.includes("Rua Secreta")), false);
+});
+
+Deno.test("handler cartão: dado TORTO no pedido (telefone, endereço, itens) é omitido campo a campo — o corpo continua válido e a cobrança segue", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({
+      user_id: DONO_LOGADO,
+      customer_data: { email: "cliente@exemplo.com", whatsapp: "ligue-me", address: { cep: "x", street: 7 } },
+    }),
+    itensDoPedido: [{ product_name: "X", quantity: -1, price: "abc" }, null],
+    colunasExtrasDoPedido: { customer_phone: "123", shipping: "lixo", address_id: null },
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  const enviado = mp.criacoes()[0].corpo as Record<string, unknown>;
+  for (const campo of ["items", "shipment"]) assertEquals(campo in enviado, false, campo);
+  for (const campo of ["phone", "address"]) {
+    assertEquals(campo in (enviado.payer as Record<string, unknown>), false, campo);
+  }
+});
+
+Deno.test("handler PIX: NÃO lê itens, telefone nem endereço e o corpo não ganha nenhum campo novo — o escopo é só o cartão", async () => {
+  const { supabase, leiturasDoAntifraude } = cenarioCartao({
+    pedido: pedidoDeEntrega(),
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { shipping: 12.5 },
+  });
+  let corpoDoPost: Record<string, unknown> | undefined;
+  const base = fetchFalsoMP({});
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") corpoDoPost = JSON.parse(String(init.body));
+    return base(url, init);
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(leiturasDoAntifraude, []);
+  for (const campo of ["items", "shipment", "additional_info"]) {
+    assertEquals(campo in (corpoDoPost ?? {}), false, campo);
+  }
+  for (const campo of ["phone", "address"]) {
+    assertEquals(campo in ((corpoDoPost?.payer as Record<string, unknown>) ?? {}), false, campo);
   }
 });
