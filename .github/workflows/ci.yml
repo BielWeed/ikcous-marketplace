@@ -380,6 +380,13 @@ jobs:
     # O ref abaixo tem de ser o projeto da loja em produção (o mesmo de
     # diagnostico-pagamentos.yml e prova-acesso.yml).
     #
+    # 03/10/2026: a loja principal roda no projeto cafkrminfnokvgjqtkle (o
+    # `ikcous-publicada` de publicar-functions.yml), em outra conta da Supabase;
+    # o dekxab… ficou para trás e não recebeu as migrations 89/90/91, então o
+    # detector reprovava código certo por olhar o banco errado. O token dessa
+    # conta é o secret SUPABASE_ACCESS_TOKEN_IKCOUS (o mesmo que o
+    # publicar-functions.yml já usa para ikcous-publicada).
+    #
     # Sem o token (PR de fork ou do Dependabot não recebem secrets), o script
     # sai 0 com um ::warning:: visível no log — detector inerte é dívida
     # declarada, não vermelho que o time aprende a ignorar (regra deste
@@ -395,6 +402,6 @@ jobs:
       - run: npm ci
       - name: Confere objetos usados pelo código contra o catálogo do banco
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: dekxabvqdsuukijblazl
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
+          SUPABASE_PROJECT_REF: cafkrminfnokvgjqtkle
         run: node scripts/db-check-objetos-do-codigo.mjs

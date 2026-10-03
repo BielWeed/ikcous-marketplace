@@ -3,11 +3,6 @@
   "outputDirectory": "dist",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "vite",
-  "git": {
-    "deploymentEnabled": {
-      "fix/pagamento-integracao-20261002": false
-    }
-  },
   "rewrites": [
     {
       "source": "/(.*)",
