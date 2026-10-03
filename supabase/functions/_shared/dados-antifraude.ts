@@ -12,7 +12,7 @@
  *   - https://www.mercadopago.com.br/developers/en/reference/online-payments/checkout-api/create-order/post
  *     (versão em markdown: o mesmo caminho com `.md` no fim) — `items[]`
  *     (title ≤150, description ≤100, unit_price STRING ≤18, quantity
- *     inteiro, external_code, picture_url, category_id), `payer.phone`
+ *     inteiro; SEM external_code, recusado pelo MP em 03/10), `payer.phone`
  *     {area_code, number}, `payer.address` e `shipment.address` {zip_code,
  *     street_name, street_number, neighborhood, city, state (EXATAMENTE 2
  *     caracteres), complement}. Tudo opcional para cartão.
@@ -53,7 +53,6 @@ export type ItemDaOrder = {
   unit_price: string;
   quantity: number;
   description: string;
-  external_code?: string;
 };
 
 export type EnderecoDaOrder = {
@@ -228,7 +227,7 @@ export function itensDaOrder(linhas: unknown, frete: unknown): ItemDaOrder[] | u
   for (const linha of linhas) {
     const l = objetoSimples(linha);
     if (!l) return undefined;
-    const { product_id, product_name, quantity, price } = l;
+    const { product_name, quantity, price } = l;
     if (
       typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 ||
       quantity > TETO_DA_QUANTIDADE
@@ -242,9 +241,9 @@ export function itensDaOrder(linhas: unknown, frete: unknown): ItemDaOrder[] | u
       quantity,
       description: textoLimpo(title, 100) ?? title,
     };
-    if (typeof product_id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(product_id)) {
-      item.external_code = product_id;
-    }
+    // SEM `external_code` (03/10/2026): o MP respondeu 400 property_value em
+    // `items[0].external_code` para o UUID do produto, em compra real — e um
+    // 400 derruba a cobranca inteira. O nome e o preco ja dao o sinal.
     itens.push(item);
   }
   if (freteEmCentavos > 0) {
@@ -377,9 +376,6 @@ export function camposDoComprador(comprador: unknown, totalFormatado: string): C
         quantity: Number(i.quantity),
         description: textoLimpo(i.description, 100) ?? "Produto",
       };
-      if (typeof i.external_code === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(i.external_code)) {
-        item.external_code = i.external_code;
-      }
       return item;
     });
   });
