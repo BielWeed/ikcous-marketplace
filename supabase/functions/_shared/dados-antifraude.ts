@@ -398,7 +398,7 @@ type ClienteDeLeitura = { from: (tabela: string) => any };
 
 /** Resolve com o valor, ou com `undefined` se a promessa rejeitar ou passar do
  * prazo. O timer sempre é limpo — nunca fica pendurado. */
-function comPrazo<T>(trabalho: () => Promise<T>, prazoMs: number): Promise<T | undefined> {
+export function comPrazo<T>(trabalho: () => Promise<T>, prazoMs: number): Promise<T | undefined> {
   return new Promise((resolve) => {
     const relogio = setTimeout(() => resolve(undefined), prazoMs);
     Promise.resolve()

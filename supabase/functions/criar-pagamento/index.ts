@@ -111,6 +111,7 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { lerDadosDoComprador } from "../_shared/dados-antifraude.ts";
+import { lerNomeNaFatura } from "../_shared/nome-na-fatura.ts";
 import { criarOrderDeCartao } from "../_shared/order-cartao-repeticao.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
@@ -2665,12 +2666,21 @@ async function handler(
     // do pedido, com teto de tempo; erro, exceção ou demora devolvem `{}` e a
     // cobrança segue com o corpo de sempre. Nunca lança e nunca loga o dado.
     // Só o CARTÃO: o PIX não passa por aqui.
-    const comprador = await lerDadosDoComprador(supabase, pedido);
+    //
+    // O nome da loja para a FATURA do cartão (`statement_descriptor`) vem da
+    // mesma forma — melhor esforço, com teto de tempo, `undefined` em qualquer
+    // falha — e as duas leituras andam JUNTAS: o pior caso soma o MAIOR dos
+    // tetos, não os dois. Só o cartão; o PIX não lê nem manda.
+    const [comprador, nomeDaLojaNaFatura] = await Promise.all([
+      lerDadosDoComprador(supabase, pedido),
+      lerNomeNaFatura(supabase),
+    ]);
 
     let corpo: Record<string, unknown>;
     try {
       corpo = montarCorpoCartaoOrders({
         comprador,
+        nomeNaFatura: nomeDaLojaNaFatura,
         orderId: pedido.id,
         valor: Number(pedido.total),
         email: emailPagadorSandbox ?? emailDoCartao,

@@ -14,6 +14,7 @@
  */
 
 import { camposDoComprador } from "./dados-antifraude.ts";
+import { nomeNaFatura } from "./nome-na-fatura.ts";
 
 // Exportada pelo M1 do laudo do PR #438 (07/09): o executor de estorno
 // (`estorno.ts`) precisava da MESMA base e a redeclarava — segunda cópia da
@@ -434,6 +435,10 @@ export function normalizarDocumento(
  *   `total_amount` (a doc não afirma que precisa fechar; não mandar é a única
  *   garantia de nunca ser recusado por soma). Fonte e campos que ficaram de
  *   fora de propósito (`additional_info`): `_shared/dados-antifraude.ts`.
+ * - `nomeNaFatura` (opcional, 03/10/2026) vira
+ *   `transactions.payments[0].payment_method.statement_descriptor`, normalizado
+ *   e cortado (`_shared/nome-na-fatura.ts`); vazio ou imprestável não manda a
+ *   chave. É um dos campos que `order-cartao-repeticao.ts` tira na repetição.
  *
  * Valida tudo e LANÇA em entrada inválida (este arquivo tem `@ts-nocheck`:
  * só o `throw` barra). As mensagens nunca carregam o valor recusado — um
@@ -450,6 +455,8 @@ export function montarCorpoCartaoOrders(args: {
   paymentTypeId: "credit_card" | "debit_card";
   parcelas: number;
   comprador?: unknown;
+  // Nome na fatura do comprador (03/10/2026) — opcional, ver `nome-na-fatura.ts`.
+  nomeNaFatura?: unknown;
 }): Record<string, unknown> {
   if (typeof args.orderId !== "string" || args.orderId.length === 0) {
     throw new Error("montarCorpoCartaoOrders: orderId obrigatório.");
@@ -488,6 +495,7 @@ export function montarCorpoCartaoOrders(args: {
   // Dados do comprador e do produto (antifraude): opcionais, revalidados, e a
   // soma dos itens conferida contra o total JÁ ARREDONDADO que vai no corpo.
   const extras = camposDoComprador(args.comprador, valorFormatado);
+  const descricaoNaFatura = nomeNaFatura(args.nomeNaFatura);
   if (extras.phone) payer.phone = extras.phone;
   if (extras.address) payer.address = extras.address;
 
@@ -507,6 +515,9 @@ export function montarCorpoCartaoOrders(args: {
             type: args.paymentTypeId,
             token: args.token,
             installments: parcelas,
+            // Nome na fatura (opcional): conferido DE NOVO aqui — mesmo teste
+            // de quem leu (`nomeNaFatura` e' idempotente), vazio nao manda.
+            ...(descricaoNaFatura ? { statement_descriptor: descricaoNaFatura } : {}),
           },
         },
       ],

@@ -163,6 +163,12 @@ function clienteFalso(opts: {
   // "erro" -> `{data:null,error}`; "lanca" -> exceção — para TODAS as leituras.
   falhaNaLeituraDoAntifraude?: "erro" | "lanca";
   leiturasDoAntifraude?: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }>;
+  // Nome na fatura (03/10/2026): a leitura de `store_config.store_name`. Ramo
+  // PRÓPRIO do dublê (nunca conta na `chamadasSelect` do pedido nem na lista
+  // do antifraude). Default: linha sem nome — o cartão segue sem o campo.
+  nomeDaLoja?: unknown;
+  falhaNaLeituraDoNome?: "erro" | "lanca";
+  leiturasDoNome?: Array<{ tabela: string; colunas: string }>;
 }) {
   let chamadasSelect = 0;
   const leituraDoAntifraude = (tabela: string, colunas: string, resposta: unknown) => {
@@ -231,6 +237,26 @@ function clienteFalso(opts: {
       if (tabela === "user_addresses") {
         return {
           select: (colunas: string) => leituraDoAntifraude(tabela, colunas, opts.enderecoSalvo ?? null),
+        };
+      }
+      if (tabela === "store_config") {
+        return {
+          select(colunas: string) {
+            opts.leiturasDoNome?.push({ tabela, colunas });
+            return {
+              limit: () => ({
+                maybeSingle: () => {
+                  if (opts.falhaNaLeituraDoNome === "lanca") {
+                    throw new Error("banco caiu — loja Nome Secreto da Loja");
+                  }
+                  if (opts.falhaNaLeituraDoNome === "erro") {
+                    return Promise.resolve({ data: null, error: { message: "falha Nome Secreto da Loja" } });
+                  }
+                  return Promise.resolve({ data: { store_name: opts.nomeDaLoja ?? null }, error: null });
+                },
+              }),
+            };
+          },
         };
       }
       if (tabela === "config_pagamento_cartao") {
@@ -3743,6 +3769,9 @@ function cenarioCartao(opts: {
   colunasExtrasDoPedido?: Record<string, unknown> | null;
   enderecoSalvo?: Record<string, unknown> | null;
   falhaNaLeituraDoAntifraude?: "erro" | "lanca";
+  // Nome na fatura (03/10/2026) — ver `clienteFalso`.
+  nomeDaLoja?: unknown;
+  falhaNaLeituraDoNome?: "erro" | "lanca";
 } = {}) {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   // Baseline do cofre para o registro default/repassado desta política —
@@ -3758,7 +3787,11 @@ function cenarioCartao(opts: {
   const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
   const leiturasConfigCartao: Array<{ colunas: string; filtro: [string, unknown] }> = [];
   const leiturasDoAntifraude: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }> = [];
+  const leiturasDoNome: Array<{ tabela: string; colunas: string }> = [];
   const supabase = clienteFalso({
+    nomeDaLoja: opts.nomeDaLoja,
+    falhaNaLeituraDoNome: opts.falhaNaLeituraDoNome,
+    leiturasDoNome,
     itensDoPedido: opts.itensDoPedido,
     colunasExtrasDoPedido: opts.colunasExtrasDoPedido,
     enderecoSalvo: opts.enderecoSalvo,
@@ -3787,7 +3820,7 @@ function cenarioCartao(opts: {
     resultadoLiberar: opts.resultadoLiberar,
     erroLiberar: opts.erroLiberar,
   });
-  return { supabase, registro, chamadasRpc, leiturasConfigCartao, leiturasDoAntifraude };
+  return { supabase, registro, chamadasRpc, leiturasConfigCartao, leiturasDoAntifraude, leiturasDoNome };
 }
 
 const liberacoes = (chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }>) =>
@@ -10824,4 +10857,139 @@ Deno.test("handler cartão: 5xx ou rede com campo opcional citado no corpo -> N�
     assertEquals(corpo.cartaoEmAnalise, true, String(status));
     assertEquals(mp.chamadas.length, 1, String(status));
   }
+});
+
+// ═══ Nome na FATURA do cartão (03/10/2026) ══════════════════════════════════
+//
+// `statement_descriptor` em `transactions.payments[0].payment_method` (Orders
+// API), com o nome da loja (`store_config.store_name`). OPCIONAL: leitura de
+// melhor esforço, só no cartão, e o primeiro dos campos que a repetição tira.
+
+const descritorDoPost = (corpo: Record<string, unknown> | undefined) =>
+  (corpo?.transactions as { payments: Array<{ payment_method: Record<string, unknown> }> }).payments[0]
+    .payment_method.statement_descriptor;
+
+Deno.test("handler cartão: o nome da loja vai como statement_descriptor — sem acento, maiúsculo, só caractere seguro", async () => {
+  const { supabase, leiturasDoNome, leiturasDoAntifraude } = cenarioCartao({ nomeDaLoja: "Açaí do Zé" });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(descritorDoPost(mp.criacoes()[0].corpo), "ACAI DO ZE");
+  assertEquals(leiturasDoNome, [{ tabela: "store_config", colunas: "store_name" }]);
+  // A leitura do nome NÃO entra na lista das leituras do antifraude.
+  assertEquals(leiturasDoAntifraude.some((l) => l.tabela === "store_config"), false);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("handler cartão: nome longo da loja é CORTADO no limite (13) e não termina em espaço", async () => {
+  const { supabase } = cenarioCartao({ nomeDaLoja: "Loja Muito Grande Mesmo Mesmo" });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(descritorDoPost(mp.criacoes()[0].corpo), "LOJA MUITO GR");
+});
+
+Deno.test("handler cartão: loja SEM nome (ausente, vazio ou só símbolo) NÃO manda statement_descriptor e cobra normalmente", async () => {
+  for (const nomeDaLoja of [null, "", "   ", "★★★"]) {
+    const { supabase } = cenarioCartao({ nomeDaLoja });
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 200, String(nomeDaLoja));
+    const metodo = ((mp.criacoes()[0].corpo as Record<string, unknown>).transactions as {
+      payments: Array<{ payment_method: Record<string, unknown> }>;
+    }).payments[0].payment_method;
+    assertEquals("statement_descriptor" in metodo, false, String(nomeDaLoja));
+  }
+});
+
+Deno.test("handler cartão: leitura do nome FALHANDO (erro de banco OU exceção) não bloqueia a cobrança e nada do nome vai para o log", async () => {
+  const logs: string[] = [];
+  const originais = { log: console.log, error: console.error, warn: console.warn };
+  console.log = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  console.error = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  console.warn = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  try {
+    for (const falha of ["erro", "lanca"] as const) {
+      const { supabase } = cenarioCartao({ nomeDaLoja: "Loja Teste", falhaNaLeituraDoNome: falha });
+      const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+      const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+      });
+      assertEquals(resposta.status, 200, falha);
+      assertEquals(mp.criacoes().length, 1, falha);
+      assertEquals(descritorDoPost(mp.criacoes()[0].corpo), undefined, falha);
+    }
+  } finally {
+    console.log = originais.log;
+    console.error = originais.error;
+    console.warn = originais.warn;
+  }
+  assertEquals(logs.some((l) => l.includes("Nome Secreto")), false);
+});
+
+Deno.test("handler cartão: o MP recusa o statement_descriptor (400 só nele) -> repete SEM ele, com chave nova, e o cartão APROVA", async () => {
+  const { supabase } = cenarioCartao({ nomeDaLoja: "Loja Teste" });
+  const mp = fetchMPEmSequencia([
+    {
+      status: 400,
+      corpo: {
+        errors: [{
+          code: "property_value",
+          details: ["transactions.payments[0].payment_method.statement_descriptor is invalid"],
+        }],
+      },
+    },
+    { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(mp.chamadas.length, 2);
+  assertEquals(descritorDoPost(mp.chamadas[0].corpo), "LOJA TESTE");
+  assertEquals(descritorDoPost(mp.chamadas[1].corpo), undefined);
+  assertEquals(
+    mp.chamadas[0].headers?.["X-Idempotency-Key"] === mp.chamadas[1].headers?.["X-Idempotency-Key"],
+    false,
+  );
+});
+
+Deno.test("handler PIX: NÃO lê o nome da loja nem manda statement_descriptor — o escopo é só o cartão", async () => {
+  const { supabase, leiturasDoNome } = cenarioCartao({ nomeDaLoja: "Loja Teste" });
+  let corpoDoPost: Record<string, unknown> | undefined;
+  const base = fetchFalsoMP({});
+  const fetchImpl = (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") corpoDoPost = JSON.parse(String(init.body));
+    return base(url, init);
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(leiturasDoNome, []);
+  assertEquals(JSON.stringify(corpoDoPost).includes("statement_descriptor"), false);
 });
