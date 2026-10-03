@@ -829,6 +829,260 @@ async function liberarCobranca(
 }
 
 /**
+ * Corpo do estado `sem_registro` (desenho A1, 4.2): a vaga guarda um
+ * sentinela que a busca da chave não resolveu — não há order confirmada, e
+ * nada desta function faz POST sobre ele (C3). O MESMO corpo para o cartão
+ * pedido sobre o sentinela (C3) e para o modo `verificar` (C2), que o front
+ * consome do mesmo jeito. `canceladoAutomaticamenteAte` é a data real do
+ * cancelamento pelo relógio (`expires_at + 24 h`, 20261186).
+ */
+function corpoSemRegistro(expiresAt: unknown): Record<string, unknown> {
+  const prazoMs = Date.parse(String(expiresAt ?? ""));
+  return {
+    verificacao: "sem_registro",
+    paymentId: null,
+    expiraEm: expiresAt ?? null,
+    canceladoAutomaticamenteAte: Number.isFinite(prazoMs)
+      ? new Date(prazoMs + JANELA_DO_CARTAO_EM_VERIFICACAO_MS).toISOString()
+      : undefined,
+  };
+}
+
+/**
+ * Corpo `pago` do `verificar` quando o BANCO já confirmou o pagamento
+ * (`payment_status` 'pago'/'pago_apos_expirar' — a RPC do webhook decidiu,
+ * não é palpite sobre a order). Decisão do coordenador (revisão do C2,
+ * 02/10/2026): vale na ENTRADA e na RELEITURA — o cliente que pagou nunca lê
+ * o 409 "não está aguardando", e duas chamadas seguidas respondem o mesmo.
+ * `paymentId` é o id da vaga, ou `null` se ela guarda um sentinela. `null` =
+ * não está pago.
+ */
+function corpoDePagoConfirmado(linha: Record<string, unknown>): Record<string, unknown> | null {
+  if (linha.payment_status !== "pago" && linha.payment_status !== "pago_apos_expirar") return null;
+  const vaga = linha.gateway_payment_id;
+  const idPago = typeof vaga === "string" && vaga.length > 0 && !vagaEmVerificacao(vaga) ? vaga : null;
+  return { verificacao: "pago", paymentId: idPago, expiraEm: linha.expires_at ?? null };
+}
+
+/**
+ * C2 (02/10/2026): quando a consulta `verificar` RECUSA — o espelho de
+ * `podeCobrar`, com as MESMAS mensagens terminais, e uma diferença só: o
+ * prazo. A consulta continua valendo depois de `expires_at` enquanto a
+ * 20261186 segura o pedido (`expires_at + 24 h`) — é o que deixa um 3DS ou
+ * uma aprovação que chegam depois do prazo serem vistos. `null` = pode
+ * verificar.
+ */
+function motivoParaNaoVerificar(
+  pedido: { payment_status?: unknown; status?: unknown; expires_at?: unknown },
+  agora: Date,
+): string | null {
+  if (pedido.payment_status !== "aguardando") return "Este pedido não está aguardando pagamento.";
+  if (pedido.status === "cancelled") return "Este pedido foi cancelado.";
+  if (pedido.expires_at === null || pedido.expires_at === undefined) {
+    return "Este pedido não tem prazo de pagamento.";
+  }
+  const prazoMs = Date.parse(String(pedido.expires_at));
+  if (!Number.isFinite(prazoMs) || prazoMs + JANELA_DO_CARTAO_EM_VERIFICACAO_MS <= agora.getTime()) {
+    return "O prazo para pagar este pedido acabou.";
+  }
+  return null;
+}
+
+/**
+ * Order MORTA pelo PAR (`mapearStatusOrder` → recusado/expirado). Par
+ * desconhecido NUNCA é morto.
+ *
+ * Revisão do C2 (revisor financeiro, 02/10/2026, bloqueio): quando nem todas
+ * as orders da busca estão mortas e nenhuma é viva CONHECIDA,
+ * `resolverSentinela` (`_shared/mercadopago.ts` — publicado, o webhook e a
+ * reconciliação dependem dele; não se toca) devolve `cartao[0]`, que pode
+ * ser a MORTA, com uma order de status desconhecido ao lado. Adotar essa
+ * morta transformava "status não mapeado" em recusa — a próxima chamada
+ * soltava a vaga e fazia POST com chave nova enquanto a desconhecida podia
+ * estar viva. Quem chama `resolverVagaEmVerificacao` e recebe uma order
+ * morta NÃO adota (e não libera): o sentinela fica, e a resposta é
+ * `sem_registro`.
+ */
+function orderMortaPeloPar(ordem: Record<string, unknown>): boolean {
+  const mapeado = mapearStatusOrder(String(ordem.status ?? ""), String(ordem.status_detail ?? ""));
+  return mapeado === "recusado" || mapeado === "expirado";
+}
+
+/**
+ * Troca o SENTINELA pela order que a busca da chave encontrou (Ponto 1,
+ * Achado S3: a forma e as parcelas vêm da order ENCONTRADA, nunca de um
+ * corpo de cartão). CAS pelo sentinela EXATO — se a vaga mudou (webhook,
+ * outra aba), não grava nada. Fonte única: a reconsulta do fluxo de
+ * cobrança e o modo `verificar` (C2) usam este mesmo CAS.
+ */
+async function adotarOrderNoSentinela(
+  supabase: ReturnType<typeof createClient>,
+  pedidoId: string,
+  sentinela: string,
+  ordem: Record<string, unknown>,
+): Promise<{ idResolvido: string; metodoResolvido: string | null; gravou: boolean; erro: unknown }> {
+  const idResolvido = String(ordem.id ?? "");
+  const tipoResolvido = tipoDoPagamentoDaOrder(ordem);
+  const metodoResolvido = tipoResolvido === "credit_card"
+    ? "credito"
+    : tipoResolvido === "debit_card"
+      ? "debito"
+      : null;
+  if (idResolvido.length === 0) return { idResolvido, metodoResolvido, gravou: false, erro: null };
+  const { data, error } = await supabase
+    .from("marketplace_orders")
+    .update({
+      gateway_payment_id: idResolvido,
+      metodo_online: metodoResolvido,
+      parcelas: parcelasDaOrder(ordem),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", pedidoId)
+    .eq("gateway_payment_id", sentinela)
+    .select("id")
+    .maybeSingle();
+  return { idResolvido, metodoResolvido, gravou: Boolean(data), erro: error ?? null };
+}
+
+/**
+ * C2 (desenho A1 §3/§4, corrigido pelo veredito A2, 02/10/2026): o modo
+ * `metodo: "verificar"` — a ÚNICA recuperação de um pedido de cartão em
+ * dúvida, sem cobrança nenhuma. Chamado depois de `donoConfere` e da trava
+ * de conta, ANTES de `podeCobrar` (vale depois do prazo, dentro das 24 h).
+ *
+ * O que ele faz com a vaga lida:
+ * - `null`: nada (nem consulta o MP).
+ * - id clássico (PIX legado): nada.
+ * - id real: GET por id. Cartão MORTO por prova (recusado/cancelado/
+ *   expirado) -> `liberar_cobranca_do_pedido` com o id EXATO. PIX (vivo ou
+ *   morto): nada — nunca grava por cima de PIX.
+ * - sentinela: a busca da chave (`resolverVagaEmVerificacao`). Order viva/
+ *   aprovada -> CAS sentinela -> id real. Todas mortas na janela, sentinela
+ *   da chave ATUAL -> RPC com a string EXATA. Busca vazia ou sem decisão ->
+ *   nada (nunca libera).
+ *
+ * NUNCA: POST, cancelamento no MP, chave/token/tentativa mudados fora da
+ * RPC. A única escrita que zera a vaga continua sendo a RPC (invariante do
+ * revisor: qualquer outra reabre o H1d).
+ *
+ * Depois de agir, RELÊ a linha e responde sobre a vaga ATUAL — se o webhook
+ * trocou o sentinela pelo id real no meio, a resposta é pelo id real.
+ */
+async function verificarVagaDoPedido(args: {
+  supabase: ReturnType<typeof createClient>;
+  mpToken: string;
+  fetchImpl?: typeof fetch;
+  pedido: Record<string, unknown>;
+  json: (corpo: unknown, status: number) => Response;
+  respostaIndisponivel: () => Response;
+}): Promise<Response> {
+  const { supabase, mpToken, fetchImpl, pedido, json, respostaIndisponivel } = args;
+  const pedidoId = String(pedido.id);
+  const pagoNaEntrada = corpoDePagoConfirmado(pedido);
+  if (pagoNaEntrada !== null) return json(pagoNaEntrada, 200);
+  const motivo = motivoParaNaoVerificar(pedido, new Date());
+  if (motivo !== null) return json({ error: motivo, terminal: true }, 409);
+
+  const consultarPorId = async (id: string): Promise<Record<string, unknown> | null> => {
+    const consulta = await consultarOrder({ token: mpToken, orderId: id, fetchImpl, corpoNoLog: false });
+    if (!consulta.ok || String(consulta.order?.id ?? "") !== id) return null;
+    return consulta.order as Record<string, unknown>;
+  };
+
+  const vagaLida = typeof pedido.gateway_payment_id === "string" && pedido.gateway_payment_id.length > 0
+    ? pedido.gateway_payment_id
+    : null;
+  const ordensJaConsultadas = new Map<string, Record<string, unknown>>();
+  // A ocupante LIDA no início está morta por PROVA (GET por id ou busca na
+  // janela) — é o que distingue "recusado" de "livre" quando a vaga relida
+  // está vazia (por esta RPC ou pela da notificação).
+  let ocupanteMortaPorProva = false;
+
+  if (vagaLida !== null && vagaEmVerificacao(vagaLida)) {
+    const resolucao = await resolverVagaEmVerificacao({
+      token: mpToken,
+      pedidoId,
+      desde: String(pedido.created_at ?? ""),
+      idSentinela: vagaLida,
+      fetchImpl,
+    });
+    if (!resolucao.ok && resolucao.buscaFalhou) return respostaIndisponivel();
+    if (resolucao.ok && resolucao.order === null) {
+      // Morta por prova. Sentinela de chave ANTERIOR nunca libera (revisão
+      // de 30/09, MENOR 1): a janela pode trazer só a order morta de uma
+      // tentativa posterior enquanto a `c<n>` ambígua não foi indexada.
+      if (sentinelaDaChave(vagaLida, await chaveDeIdempotencia(pedido as { id: string }, "cartao"))) {
+        const liberacao = await liberarCobranca(supabase, pedidoId, vagaLida);
+        if (!liberacao.ok) return respostaIndisponivel();
+        ocupanteMortaPorProva = true;
+      }
+    } else if (resolucao.ok && resolucao.order !== null) {
+      if (orderMortaPeloPar(resolucao.order)) {
+        // Morta com uma desconhecida ao lado (`orderMortaPeloPar`, acima):
+        // nem adota nem libera — a releitura responde `sem_registro`.
+        console.warn("criar-pagamento: verificar — busca devolveu order morta com status desconhecido ao lado; sentinela mantido", {
+          orderId: pedidoId,
+        });
+      } else {
+        const adocao = await adotarOrderNoSentinela(supabase, pedidoId, vagaLida, resolucao.order);
+        if (adocao.erro) {
+          console.error("criar-pagamento: verificar — falha ao gravar a order resolvida do sentinela", pedidoId, adocao.erro);
+          return respostaIndisponivel();
+        }
+      }
+    }
+  } else if (vagaLida !== null && !idEhClassico(vagaLida)) {
+    const ordem = await consultarPorId(vagaLida);
+    if (ordem === null) return respostaIndisponivel();
+    ordensJaConsultadas.set(vagaLida, ordem);
+    if (orderEhDeCartao(ordem) && orderMortaPeloPar(ordem)) {
+      // 3DS vencido (`canceled:expired`), recusa, cancelamento: libera pela
+      // RPC com o id EXATO da vaga. PIX nunca entra aqui.
+      const liberacao = await liberarCobranca(supabase, pedidoId, vagaLida);
+      if (!liberacao.ok) return respostaIndisponivel();
+      ocupanteMortaPorProva = true;
+    }
+  }
+
+  // Responde sobre a vaga ATUAL.
+  const { data: relida, error: erroRelida } = await supabase
+    .from("marketplace_orders")
+    .select("payment_status, status, expires_at, gateway_payment_id")
+    .eq("id", pedidoId)
+    .maybeSingle();
+  if (erroRelida || !relida) return respostaIndisponivel();
+  const atual = relida as Record<string, unknown>;
+  // Revisão do C2 (recomendação 1): a notificação confirmou o pagamento
+  // DURANTE esta consulta — ver `corpoDePagoConfirmado`.
+  const pagoNaReleitura = corpoDePagoConfirmado(atual);
+  if (pagoNaReleitura !== null) return json(pagoNaReleitura, 200);
+  const motivoAgora = motivoParaNaoVerificar(atual, new Date());
+  if (motivoAgora !== null) return json({ error: motivoAgora, terminal: true }, 409);
+  const expiraEm = atual.expires_at ?? null;
+  const vagaAtual = typeof atual.gateway_payment_id === "string" && atual.gateway_payment_id.length > 0
+    ? atual.gateway_payment_id
+    : null;
+  if (vagaAtual === null) {
+    return json({ verificacao: ocupanteMortaPorProva ? "recusado" : "livre", paymentId: null, expiraEm }, 200);
+  }
+  if (vagaEmVerificacao(vagaAtual)) return json(corpoSemRegistro(expiraEm), 200);
+  if (idEhClassico(vagaAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
+  const ordemAtual = ordensJaConsultadas.get(vagaAtual) ?? await consultarPorId(vagaAtual);
+  if (ordemAtual === null) return respostaIndisponivel();
+  if (!orderEhDeCartao(ordemAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
+  if (orderMortaPeloPar(ordemAtual)) return json({ verificacao: "recusado", paymentId: null, expiraEm }, 200);
+  const statusAtual = mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? ""));
+  if (statusAtual === "pago") return json({ verificacao: "pago", paymentId: vagaAtual, expiraEm }, 200);
+  const urlDoDesafio = statusAtual === "aguardando" ? extrairDesafio3ds(ordemAtual) : null;
+  if (urlDoDesafio) {
+    return json({ verificacao: "desafio3ds", paymentId: vagaAtual, desafio3ds: { url: urlDoDesafio }, expiraEm }, 200);
+  }
+  // `processing`, outro `action_required`, par desconhecido: a order existe
+  // e não está morta — "em análise" aqui é verdade.
+  return json({ verificacao: "em_analise", paymentId: vagaAtual, expiraEm }, 200);
+}
+
+/**
  * Dedup do aviso de "status de cartão desconhecido" (branch (d) da
  * reconsulta, mais abaixo — adendo 2 à 8ª rodada de risco, 26/09/2026):
  * chave `${pedidoId}:${status}:${statusDetail}` -> já avisado. MODULE-LEVEL
@@ -1017,6 +1271,13 @@ async function handler(
       403,
     );
 
+  // Contrato `verificacao: "indisponivel"` (desenho A1, 4.2): o MP (busca ou
+  // GET) ou o banco não responderam — nada foi decidido nem gravado, e
+  // "Verificar de novo" é seguro. Uma resposta só, para o cartão sobre
+  // sentinela (C3) e para o `verificar` (C2).
+  const respostaIndisponivel = () =>
+    json({ error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" }, 503);
+
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -1032,7 +1293,9 @@ async function handler(
   // arquivo). Forma desconhecida continua recuperável: "Tentar de novo"
   // remonta a escolha de forma, e o próprio retry troca de método.
   const metodo = body.metodo;
-  if (metodo !== "pix" && metodo !== "cartao") {
+  // C2 (02/10/2026): `"verificar"` é a consulta SEM cobrança (só GET no MP e
+  // CAS no banco) — ver `verificarVagaDoPedido`.
+  if (metodo !== "pix" && metodo !== "cartao" && metodo !== "verificar") {
     return json({ error: "Forma de pagamento inválida." }, 400);
   }
   // Corpo do cartão validado ANTES de qualquer leitura de banco ou chamada
@@ -1132,7 +1395,10 @@ async function handler(
   // de trocar para cartão). Quando a tela do lojista orientar o comprador,
   // ela decide consumir a flag — nunca comparação de texto (mesmo contrato
   // de sempre).
-  if (!dadosCartao) {
+  // C2 (02/10/2026): `metodo === "pix"`, não `!dadosCartao` — a consulta
+  // `verificar` (sem cartão e sem PIX) não passa por esta trava (desenho A1,
+  // 4.3): loja sem chave de webhook ainda precisa resolver um cartão em dúvida.
+  if (metodo === "pix") {
     if (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook) {
       // Só origem e motivo em log — nenhum segredo, jamais.
       console.error(
@@ -1184,6 +1450,22 @@ async function handler(
   const sub = subDoToken(req.headers.get("Authorization"));
   if (!donoConfere(pedido, sub)) {
     return json({ error: "Pedido não encontrado.", terminal: true }, 404);
+  }
+
+  // C2 (02/10/2026): a consulta `verificar` entra DEPOIS do dono e ANTES de
+  // `podeCobrar` (vale depois do prazo, dentro das 24 h da 20261186) e de
+  // qualquer leitura de config do cartão. Convidado: a mesma trava do cartão
+  // (pagamento online exige conta; o cartão nunca nasce sem conta).
+  if (metodo === "verificar") {
+    if (pedido.user_id === null) return respostaExigeConta();
+    return await verificarVagaDoPedido({
+      supabase,
+      mpToken,
+      fetchImpl: deps.fetchImpl,
+      pedido: pedido as Record<string, unknown>,
+      json,
+      respostaIndisponivel,
+    });
   }
 
   const decisao = podeCobrar(pedido, new Date());
@@ -1320,6 +1602,16 @@ async function handler(
             { orderId: pedido.id },
           );
         }
+      } else if (resolucao.ok && resolucao.order !== null && orderMortaPeloPar(resolucao.order)) {
+        // Revisão do C2 (02/10/2026, bloqueio): order MORTA devolvida com uma
+        // de status desconhecido ao lado (`orderMortaPeloPar`) — não adota e
+        // não libera. `sentinelaNaVaga` continua `true` e o bloco do C3, logo
+        // abaixo, responde `sem_registro` (cartão) ou `cartaoEmAnalise` (PIX):
+        // ZERO POST.
+        console.warn(
+          "criar-pagamento: busca devolveu order morta com status desconhecido ao lado — sentinela mantido, nenhum POST",
+          { orderId: pedido.id },
+        );
       } else if (resolucao.ok && resolucao.order !== null) {
         // Achado S3 (3ª revisão de risco, 26/09/2026): grava `metodo_online`/
         // `parcelas` JUNTO do id real — a partir daqui a vaga deixa de estar
@@ -1330,25 +1622,13 @@ async function handler(
         const ordemResolvida = resolucao.order;
         const idResolvido = String(ordemResolvida.id ?? "");
         if (idResolvido.length > 0) {
-          const tipoResolvido = tipoDoPagamentoDaOrder(ordemResolvida);
-          const metodoResolvido = tipoResolvido === "credit_card"
-            ? "credito"
-            : tipoResolvido === "debit_card"
-              ? "debito"
-              : null;
-          const sentinelaAntes = idGatewayReconsulta;
-          const { data: gravouResolucao, error: erroGravarResolucao } = await supabase
-            .from("marketplace_orders")
-            .update({
-              gateway_payment_id: idResolvido,
-              metodo_online: metodoResolvido,
-              parcelas: parcelasDaOrder(ordemResolvida),
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", pedido.id)
-            .eq("gateway_payment_id", sentinelaAntes)
-            .select("id")
-            .maybeSingle();
+          // C2 (02/10/2026): o MESMO CAS que o `verificar` usa
+          // (`adotarOrderNoSentinela`) — uma cópia só.
+          const {
+            metodoResolvido,
+            gravou: gravouResolucao,
+            erro: erroGravarResolucao,
+          } = await adotarOrderNoSentinela(supabase, pedido.id, idGatewayReconsulta, ordemResolvida);
           if (erroGravarResolucao) {
             console.error(
               "criar-pagamento: falha ao gravar a order resolvida do sentinela (Ponto 1)",
@@ -1434,24 +1714,13 @@ async function handler(
             "criar-pagamento: cartão sobre sentinela com a busca do MP falhando — nenhum POST",
             { orderId: pedido.id },
           );
-          return json({ error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" }, 503);
+          return respostaIndisponivel();
         }
         console.warn(
           "criar-pagamento: cartão sobre sentinela sem desfecho na busca — nenhum POST, sem_registro",
           { orderId: pedido.id, chaveAtual: sentinelaDaChave(idGatewayReconsulta, await chaveDeIdempotencia(pedido, "cartao")) },
         );
-        const prazoDoPedidoMs = Date.parse(String(pedido.expires_at ?? ""));
-        return json(
-          {
-            verificacao: "sem_registro",
-            paymentId: null,
-            expiraEm: pedido.expires_at,
-            canceladoAutomaticamenteAte: Number.isFinite(prazoDoPedidoMs)
-              ? new Date(prazoDoPedidoMs + JANELA_DO_CARTAO_EM_VERIFICACAO_MS).toISOString()
-              : undefined,
-          },
-          200,
-        );
+        return json(corpoSemRegistro(pedido.expires_at), 200);
       }
     }
 

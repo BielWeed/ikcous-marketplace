@@ -2769,7 +2769,13 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // confirmar a cobrança." (8c) — os dois identificadores já conhecidos. O
   // "pode ter sido cobrado" do A3.2 continua UM ponto de retorno (agora
   // dentro de `respostaSemRegistro`). 56 + 2 = 58.
-  assertEquals(achados, 58);
+  //
+  // 60, não mais 58: C2 (02/10/2026) — o modo `verificar` ganhou os dois
+  // 409 terminais de `motivoParaNaoVerificar` (antes de agir e depois de
+  // reler a vaga; levam `terminal: true`). O 503 "Não foi possível consultar
+  // o pagamento agora." do C3 mudou de lugar para `respostaIndisponivel`
+  // (continua UM ponto de retorno, usado pelo C3 e pelo C2). 58 + 2 = 60.
+  assertEquals(achados, 60);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -8897,4 +8903,869 @@ Deno.test("C3: sentinela de chave ANTERIOR (tentativa já avançou) e busca inco
   assertEquals(db.linha.gateway_payment_id, sentinela);
   assertEquals(db.linha.tentativas_de_pagamento, 1);
   assertEquals(db.chamadasRpc.length, 0);
+});
+
+// ═══ C2 (desenho A1 §3/§4, corrigido pelo veredito A2, 02/10/2026): modo
+// `metodo: "verificar"` — consulta SEM cobrança. Só GET no MP (busca da chave
+// ou order por id), CAS sentinela -> id real, e `liberar_cobranca_do_pedido`
+// com o valor EXATO da vaga quando há PROVA de morte. Nunca POST, nunca
+// cancelamento, nunca escrita por cima de PIX, nunca chave/tentativa mudadas
+// fora da RPC. Responde sobre a vaga ATUAL (relida no fim).
+const PEDIDO_VERIFICAR = { orderId: UUID, metodo: "verificar" };
+const PRAZO_BASE = "2099-01-01T00:00:00.000Z";
+const CANCELAMENTO_AUTOMATICO_BASE = "2099-01-02T00:00:00.000Z";
+const ID_CARTAO_NA_VAGA_C2 = "ORDTST03CARTAONAVAGAC20000000";
+const ID_PIX_NA_VAGA_C2 = "ORDTST03PIXNAVAGAC2000000000";
+
+function sentinelaDeTeste(chave: string, limiteMs: number): string {
+  return `verificando:${chave}:${limiteMs}`;
+}
+
+/** Banco com estado + contador de escritas (UPDATE) na tabela de pedidos. */
+function bancoContandoEscritas(linha: Record<string, unknown>) {
+  const db = bancoComEstado(linha);
+  const escritas: Array<Record<string, unknown>> = [];
+  const contado = {
+    ...db,
+    from(tabela: string) {
+      const original = db.from(tabela) as Record<string, unknown>;
+      if (tabela !== "marketplace_orders") return original;
+      return {
+        ...original,
+        update(valores: Record<string, unknown>) {
+          escritas.push(valores);
+          return (original.update as (v: Record<string, unknown>) => unknown)(valores);
+        },
+      };
+    },
+  };
+  return { db, contado, escritas };
+}
+
+/**
+ * MP falso da consulta: GET por id e busca; QUALQUER POST (criação ou
+ * cancelamento) é registrado e falha — o `verificar` nunca pode chegar lá.
+ */
+function mpDaConsulta(opts: {
+  orders?: Array<Record<string, unknown>>;
+  buscaFalha?: boolean;
+  getFalha?: boolean;
+  aoBuscar?: () => void | Promise<void>;
+  aoConsultar?: () => void | Promise<void>;
+} = {}) {
+  const orders = opts.orders ?? [];
+  const chamadas: string[] = [];
+  const posts: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    chamadas.push(`${verbo} ${url}`);
+    if (verbo !== "GET") {
+      posts.push(url);
+      throw new Error(`o verificar nunca faz ${verbo}: ${url}`);
+    }
+    if (url.includes("/v1/orders?")) {
+      await opts.aoBuscar?.();
+      if (opts.buscaFalha) return new Response(JSON.stringify({ message: "internal_error" }), { status: 500 });
+      return new Response(JSON.stringify({ data: orders.filter((o) => o.external_reference === UUID) }), { status: 200 });
+    }
+    if (url.includes("/v1/orders/")) {
+      await opts.aoConsultar?.();
+      if (opts.getFalha) return new Response(JSON.stringify({ message: "internal_error" }), { status: 500 });
+      const id = url.split("/v1/orders/")[1].split("?")[0];
+      const alvo = orders.find((o) => o.id === id);
+      return alvo
+        ? new Response(JSON.stringify(alvo), { status: 200 })
+        : new Response(JSON.stringify({ message: "not_found" }), { status: 404 });
+    }
+    throw new Error(`fetch inesperado no verificar: ${verbo} ${url}`);
+  };
+  return { fn, orders, chamadas, posts };
+}
+
+async function verificar(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  opts: { auth?: string; credenciaisMp?: CredenciaisMp } = {},
+): Promise<{ status: number; corpo: Record<string, unknown> }> {
+  const r = await emSilencio(() =>
+    handler(requisicao(PEDIDO_VERIFICAR, montarToken(opts.auth ?? DONO_LOGADO)), {
+      supabase: db as never,
+      fetchImpl: mp.fn as typeof fetch,
+      alertarAdminCartaoOrfao: async () => {},
+      ...(opts.credenciaisMp ? { credenciaisMp: opts.credenciaisMp } : {}),
+    })
+  );
+  return { status: r.status, corpo: await r.json() };
+}
+
+function cartaoC2(id: string, status: string, detalhe: string, extra: Record<string, unknown> = {}) {
+  const o = orderAvulsa(id, "credit_card", status, detalhe);
+  if (status === "action_required" && detalhe === "pending_challenge") {
+    const pm = ((o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>)[0]
+      .payment_method as Record<string, unknown>;
+    pm.transaction_security = { url: URL_DESAFIO };
+  }
+  return { ...o, ...extra };
+}
+
+// ── Portões: dono, conta, estado do pedido, janela de 24 h ────────────────
+
+for (
+  const caso of [
+    {
+      nome: "de OUTRO dono",
+      linha: {},
+      auth: "9f9f9f9f-1111-2222-3333-444455556666",
+      esperado: { status: 404, corpo: { error: "Pedido não encontrado.", terminal: true } },
+    },
+    {
+      nome: "de CONVIDADO (sem conta)",
+      linha: { user_id: null },
+      auth: DONO_LOGADO,
+      esperado: {
+        status: 403,
+        corpo: {
+          error: "Pagar pelo site exige conta. Entre ou crie uma conta para continuar.",
+          code: "PAGAMENTO_ONLINE_EXIGE_CONTA",
+          terminal: true,
+        },
+      },
+    },
+    {
+      nome: "EXPIRADO pelo relógio (payment_status 'expirado')",
+      linha: { payment_status: "expirado", status: "cancelled" },
+      auth: DONO_LOGADO,
+      esperado: { status: 409, corpo: { error: "Este pedido não está aguardando pagamento.", terminal: true } },
+    },
+    {
+      nome: "CANCELADO",
+      linha: { status: "cancelled" },
+      auth: DONO_LOGADO,
+      esperado: { status: 409, corpo: { error: "Este pedido foi cancelado.", terminal: true } },
+    },
+    {
+      nome: "com o prazo vencido há MAIS de 24 h (fora da janela da 20261186)",
+      linha: { expires_at: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() },
+      auth: DONO_LOGADO,
+      esperado: { status: 409, corpo: { error: "O prazo para pagar este pedido acabou.", terminal: true } },
+    },
+  ]
+) {
+  Deno.test(`C2 verificar: pedido ${caso.nome} -> ${caso.esperado.status} terminal, ZERO chamada ao MP, nada gravado`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const sentinela = sentinelaDeTeste(`${UUID}:c0`, Date.now() - 60_000);
+    const { db, contado, escritas } = bancoContandoEscritas(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: sentinela, ...caso.linha }),
+    );
+    const mp = mpDaConsulta({ orders: [cartaoC2("ORDTST03QUALQUER00000000000001", "processed", "accredited")] });
+    const r = await verificar(contado, mp, { auth: caso.auth });
+
+    assertEquals(r.status, caso.esperado.status, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, caso.esperado.corpo);
+    assertEquals(mp.chamadas, []);
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.gateway_payment_id, sentinela);
+  });
+}
+
+// Decisão do coordenador (revisão do C2, 02/10/2026) — MUDANÇA DE CONTRATO:
+// o pedido que já CHEGA pago responde 'pago' (antes: 409 terminal "não está
+// aguardando"), a mesma regra da releitura — o cliente que pagou não lê
+// erro, e duas chamadas seguidas respondem a mesma coisa. Sem consultar o
+// MP: a confirmação é do banco.
+for (const confirmado of ["pago", "pago_apos_expirar"]) {
+  for (
+    const vaga of [
+      { nome: "id real", valor: ID_CARTAO_NA_VAGA_C2, paymentId: ID_CARTAO_NA_VAGA_C2 },
+      { nome: "sentinela", valor: sentinelaDeTeste(`${UUID}:c0`, Date.now() - 60_000), paymentId: null },
+    ]
+  ) {
+    Deno.test(`C2 verificar: pedido que já CHEGA '${confirmado}' (${vaga.nome} na vaga) -> 'pago' com o paymentId ${vaga.paymentId === null ? "null" : "da vaga"}, ZERO chamada ao MP, nada gravado`, async () => {
+      Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+      const { db, contado, escritas } = bancoContandoEscritas(
+        pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: vaga.valor, payment_status: confirmado }),
+      );
+      const mp = mpDaConsulta({ orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "processing", "in_process")] });
+      const r = await verificar(contado, mp);
+
+      assertEquals(r.status, 200, JSON.stringify(r.corpo));
+      assertEquals(r.corpo, { verificacao: "pago", paymentId: vaga.paymentId, expiraEm: PRAZO_BASE });
+      assertEquals(mp.chamadas, []);
+      assertEquals(escritas.length, 0);
+      assertEquals(db.chamadasRpc.length, 0);
+      assertEquals(db.linha.gateway_payment_id, vaga.valor);
+    });
+  }
+}
+
+Deno.test("C2 verificar: a loja SEM chave de assinatura do webhook (portão do PIX) não bloqueia a consulta", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { contado } = bancoContandoEscritas(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const r = await verificar(contado, mpDaConsulta(), {
+    credenciaisMp: { origem: "lojista", token: TOKEN_LOJISTA_FALSO, segredoWebhook: null, publicKey: null },
+  });
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.verificacao, "livre");
+});
+
+// ── Vaga livre e PIX ───────────────────────────────────────────────────────
+
+Deno.test("C2 verificar: vaga LIVRE -> 'livre', sem consultar o MP, nada gravado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpDaConsulta();
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200);
+  assertEquals(r.corpo, { verificacao: "livre", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(mp.chamadas, []);
+  assertEquals(escritas.length, 0);
+  assertEquals(db.chamadasRpc.length, 0);
+});
+
+for (
+  const caso of [
+    { nome: "aberto (action_required)", status: "action_required", detalhe: "waiting_transfer" },
+    { nome: "MORTO (expired)", status: "expired", detalhe: "expired" },
+  ]
+) {
+  Deno.test(`C2 verificar: PIX ${caso.nome} na vaga -> 'pix' com o id, ZERO escrita e nenhuma RPC (nunca grava por cima de PIX)`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas } = bancoContandoEscritas(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_PIX_NA_VAGA_C2, metodo_online: "pix" }),
+    );
+    const mp = mpDaConsulta({ orders: [orderAvulsa(ID_PIX_NA_VAGA_C2, "bank_transfer", caso.status, caso.detalhe)] });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { verificacao: "pix", paymentId: ID_PIX_NA_VAGA_C2, expiraEm: PRAZO_BASE });
+    assertEquals(escritas.length, 0, "escreveu por cima de um PIX");
+    assertEquals(db.chamadasRpc.length, 0, "soltou a vaga de um PIX");
+    assertEquals(db.linha.gateway_payment_id, ID_PIX_NA_VAGA_C2);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// ── Vaga com id REAL de cartão: GET por id ────────────────────────────────
+
+for (
+  const caso of [
+    { nome: "APROVADO", order: ["processed", "accredited"], esperado: { verificacao: "pago" } },
+    { nome: "em ANÁLISE", order: ["processing", "in_process"], esperado: { verificacao: "em_analise" } },
+    {
+      nome: "3DS VIVO",
+      order: ["action_required", "pending_challenge"],
+      esperado: { verificacao: "desafio3ds", desafio3ds: { url: URL_DESAFIO } },
+    },
+    { nome: "par DESCONHECIDO", order: ["processing", "detalhe_novo"], esperado: { verificacao: "em_analise" } },
+  ]
+) {
+  Deno.test(`C2 verificar: id real de cartão ${caso.nome} na vaga -> ${caso.esperado.verificacao}, nada a adotar (zero escrita)`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas } = bancoContandoEscritas(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+    );
+    const mp = mpDaConsulta({ orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, caso.order[0], caso.order[1])] });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { ...caso.esperado, paymentId: ID_CARTAO_NA_VAGA_C2, expiraEm: PRAZO_BASE });
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+Deno.test("C2 verificar: 3DS VENCIDO (canceled:expired) com id real na vaga -> morto por PROVA: libera pela RPC com o id EXATO e responde 'recusado'", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado } = bancoContandoEscritas(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+  );
+  const mp = mpDaConsulta({ orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "canceled", "expired")] });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "recusado", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc, [
+    { nome: "liberar_cobranca_do_pedido", args: { p_order_id: UUID, p_gateway_payment_id: ID_CARTAO_NA_VAGA_C2 } },
+  ]);
+  assertEquals(db.linha.gateway_payment_id, null);
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
+  assertEquals(mp.posts, [], "nunca cancela nem cria nada");
+});
+
+Deno.test("C2 verificar: o GET da order da vaga FALHA -> 503 'indisponivel', nada gravado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas } = bancoContandoEscritas(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+  );
+  const mp = mpDaConsulta({ getFalha: true, orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "canceled", "expired")] });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 503, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" });
+  assertEquals(escritas.length, 0);
+  assertEquals(db.chamadasRpc.length, 0, "GET que falhou nunca prova morte");
+});
+
+Deno.test("C2 verificar: morto por PROVA mas a RPC de liberar FALHA (2 vezes) -> 503 'indisponivel', a vaga e a tentativa ficam como estavam", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas } = bancoContandoEscritas(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+  );
+  const chamadasRpc: string[] = [];
+  const rpcFalhando = {
+    ...contado,
+    rpc: async (nome: string) => {
+      chamadasRpc.push(nome);
+      return { data: null, error: { message: "deadlock" } };
+    },
+  };
+  const mp = mpDaConsulta({ orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "canceled", "expired")] });
+  const r = await verificar(rpcFalhando, mp);
+
+  assertEquals(r.status, 503, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" });
+  assertEquals(chamadasRpc, ["liberar_cobranca_do_pedido", "liberar_cobranca_do_pedido"]);
+  assertEquals(db.linha.gateway_payment_id, ID_CARTAO_NA_VAGA_C2, "nada fora da RPC zera a vaga");
+  assertEquals(db.linha.tentativas_de_pagamento, 0);
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+// Revisão do C2 (recomendação 1): o pagamento confirmado NO MEIO do
+// `verificar` responde 'pago' com o id — o cliente que pagou não lê erro.
+for (const confirmado of ["pago", "pago_apos_expirar"]) {
+  Deno.test(`C2 verificar (corrida): a notificação CONFIRMA o pagamento ('${confirmado}') durante o GET -> 'pago' com o paymentId da vaga relida, nada gravado`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas } = bancoContandoEscritas(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+    );
+    const mp = mpDaConsulta({
+      // A order ainda em análise no GET: só a RELEITURA sabe que pagou.
+      orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "processing", "in_process")],
+      aoConsultar: () => {
+        db.linha.payment_status = confirmado;
+      },
+    });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { verificacao: "pago", paymentId: ID_CARTAO_NA_VAGA_C2, expiraEm: PRAZO_BASE });
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// Revisão do C2 (recomendação 2): 'pago' é o PAR `processed:accredited`, nunca
+// a raiz `processed` sozinha — `partially_refunded` não é dinheiro limpo, e um
+// par processed desconhecido é "par desconhecido" (em análise), não aprovação.
+for (const detalhe of ["partially_refunded", "detalhe_novo_xyz"]) {
+  Deno.test(`C2 verificar: id real com 'processed:${detalhe}' -> NUNCA 'pago' ('em_analise'), nada gravado`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas } = bancoContandoEscritas(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+    );
+    const mp = mpDaConsulta({ orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "processed", detalhe)] });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_CARTAO_NA_VAGA_C2, expiraEm: PRAZO_BASE });
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+for (
+  const caso of [
+    {
+      nome: "o pedido é CANCELADO",
+      mudar: (l: Record<string, unknown>) => {
+        l.status = "cancelled";
+      },
+      erro: "Este pedido foi cancelado.",
+    },
+  ]
+) {
+  Deno.test(`C2 verificar (corrida): ${caso.nome} durante o GET -> a resposta é a do pedido RELIDO (409 terminal), nada gravado`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas } = bancoContandoEscritas(
+      pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+    );
+    const mp = mpDaConsulta({
+      orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "processed", "accredited")],
+      aoConsultar: () => caso.mudar(db.linha),
+    });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 409, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { error: caso.erro, terminal: true });
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// ── Vaga com SENTINELA: a busca da chave (Ponto 1/B1) ──────────────────────
+
+function cenarioSentinelaC2(opts: {
+  tentativas?: number;
+  chaveDoSentinela?: string;
+  orders?: (limite: number) => Array<Record<string, unknown>>;
+  expiresAt?: string;
+  buscaFalha?: boolean;
+  aoBuscar?: (db: ReturnType<typeof bancoComEstado>) => void | Promise<void>;
+}) {
+  const limite = Date.now() - 10 * 60 * 1000;
+  const sentinela = sentinelaDeTeste(opts.chaveDoSentinela ?? `${UUID}:c0`, limite);
+  const { db, contado, escritas } = bancoContandoEscritas(
+    pedidoBase({
+      user_id: DONO_LOGADO,
+      tentativas_de_pagamento: opts.tentativas ?? 0,
+      gateway_payment_id: sentinela,
+      ...(opts.expiresAt ? { expires_at: opts.expiresAt } : {}),
+    }),
+  );
+  const mp = mpDaConsulta({
+    orders: opts.orders?.(limite) ?? [],
+    buscaFalha: opts.buscaFalha,
+    aoBuscar: opts.aoBuscar ? () => opts.aoBuscar!(db) : undefined,
+  });
+  return { db, contado, escritas, mp, sentinela, limite };
+}
+
+Deno.test("C2 verificar: sentinela + busca OK e VAZIA -> 'sem_registro' com a data do cancelamento automático; nada muda (vaga, tentativa, RPC)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({});
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, {
+    verificacao: "sem_registro",
+    paymentId: null,
+    expiraEm: PRAZO_BASE,
+    canceladoAutomaticamenteAte: CANCELAMENTO_AUTOMATICO_BASE,
+  });
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(db.linha.tentativas_de_pagamento, 0);
+  assertEquals(db.chamadasRpc.length, 0, "busca vazia nunca libera");
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("C2 verificar: sentinela + a BUSCA FALHA -> 503 'indisponivel', nada muda", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({ buscaFalha: true });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 503, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.verificacao, "indisponivel");
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(escritas.length, 0);
+  assertEquals(db.chamadasRpc.length, 0);
+});
+
+for (
+  const caso of [
+    { nome: "APROVADA", order: ["processed", "accredited"], esperado: { verificacao: "pago" } },
+    { nome: "em ANÁLISE", order: ["processing", "in_process"], esperado: { verificacao: "em_analise" } },
+    {
+      nome: "3DS VIVO",
+      order: ["action_required", "pending_challenge"],
+      esperado: { verificacao: "desafio3ds", desafio3ds: { url: URL_DESAFIO } },
+    },
+  ]
+) {
+  Deno.test(`C2 verificar: sentinela + a busca acha a order ${caso.nome} -> CAS sentinela -> id real (com a forma), responde ${caso.esperado.verificacao} com o paymentId`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas, mp } = cenarioSentinelaC2({
+      orders: () => [cartaoC2(ID_CARTAO_NA_VAGA_C2, caso.order[0], caso.order[1])],
+    });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { ...caso.esperado, paymentId: ID_CARTAO_NA_VAGA_C2, expiraEm: PRAZO_BASE });
+    assertEquals(db.linha.gateway_payment_id, ID_CARTAO_NA_VAGA_C2);
+    assertEquals(db.linha.metodo_online, "credito");
+    assertEquals(escritas.length, 1, "uma única escrita: o CAS do sentinela");
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.tentativas_de_pagamento, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+Deno.test("C2 verificar: DEPOIS de expires_at (dentro das 24 h) — sentinela + 3DS vivo -> ainda adota e devolve o desafio", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const vencido = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const { db, contado, mp } = cenarioSentinelaC2({
+    expiresAt: vencido,
+    orders: () => [cartaoC2(ID_CARTAO_NA_VAGA_C2, "action_required", "pending_challenge")],
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.verificacao, "desafio3ds");
+  assertEquals(r.corpo.desafio3ds, { url: URL_DESAFIO });
+  assertEquals(r.corpo.expiraEm, vencido);
+  assertEquals(db.linha.gateway_payment_id, ID_CARTAO_NA_VAGA_C2);
+  assertEquals(db.linha.expires_at, vencido, "a consulta nunca mexe no prazo");
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("C2 verificar: sentinela da chave ATUAL + só order MORTA dentro da janela -> libera pela RPC com a string EXATA do sentinela, 'recusado'", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, mp, sentinela } = cenarioSentinelaC2({
+    orders: (limite) => [
+      { ...cartaoC2(ID_CARTAO_NA_VAGA_C2, "failed", "rejected_by_issuer"), date_created: new Date(limite + 60_000).toISOString() },
+    ],
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "recusado", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc, [
+    { nome: "liberar_cobranca_do_pedido", args: { p_order_id: UUID, p_gateway_payment_id: sentinela } },
+  ]);
+  assertEquals(db.linha.gateway_payment_id, null);
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
+  assertEquals(mp.posts, []);
+});
+
+// Revisão do C2 (revisor financeiro, 02/10/2026, bloqueio): quando nem todas
+// as orders da busca estão mortas e nenhuma é viva CONHECIDA,
+// `resolverSentinela` (_shared, publicado — não se toca) devolve
+// `cartao[0]`, que pode ser a MORTA. Adotá-la levava a 'recusado', e a
+// próxima chamada soltava a vaga e fazia POST com chave nova enquanto a
+// order de status desconhecido podia estar viva. Status não mapeado jamais
+// vira recusa: a order morta devolvida assim não é adotada nem liberada.
+const BUSCA_MORTA_COM_DESCONHECIDA = [
+  { nome: "[c0 failed, c1 'authorized']", mortaEm: ["failed", "rejected_by_issuer"], desconhecida: ["authorized", "authorized"] },
+  { nome: "[c0 canceled:expired, c1 'em_fila_xyz']", mortaEm: ["canceled", "expired"], desconhecida: ["em_fila_xyz", "qualquer"] },
+];
+const ID_C0_MORTA = "ORDTST03C0MORTANABUSCA000000";
+const ID_C1_DESCONHECIDA = "ORDTST03C1DESCONHECIDA0000000";
+
+function ordersMortaEDesconhecida(
+  caso: (typeof BUSCA_MORTA_COM_DESCONHECIDA)[number],
+  limite: number,
+): Array<Record<string, unknown>> {
+  return [
+    { ...cartaoC2(ID_C0_MORTA, caso.mortaEm[0], caso.mortaEm[1]), date_created: new Date(limite + 60_000).toISOString() },
+    {
+      ...cartaoC2(ID_C1_DESCONHECIDA, caso.desconhecida[0], caso.desconhecida[1]),
+      date_created: new Date(limite + 120_000).toISOString(),
+    },
+  ];
+}
+
+for (const caso of BUSCA_MORTA_COM_DESCONHECIDA) {
+  Deno.test(`C2 verificar (revisão): busca ${caso.nome} -> NÃO adota a morta, NÃO libera, nenhum POST; 'sem_registro'`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({
+      orders: (limite) => ordersMortaEDesconhecida(caso, limite),
+    });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, {
+      verificacao: "sem_registro",
+      paymentId: null,
+      expiraEm: PRAZO_BASE,
+      canceladoAutomaticamenteAte: CANCELAMENTO_AUTOMATICO_BASE,
+    });
+    assertEquals(db.linha.gateway_payment_id, sentinela, "a morta foi adotada no lugar do sentinela");
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0, "status desconhecido ao lado nunca deixa liberar");
+    assertEquals(db.linha.tentativas_de_pagamento, 0);
+    assertEquals(mp.posts, []);
+  });
+
+  Deno.test(`C3 + revisão do C2: cartão sobre o sentinela com a busca ${caso.nome} -> a reconsulta NÃO adota a morta, ZERO POST, 'sem_registro'; PIX bloqueado`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({
+      orders: (limite) => ordersMortaEDesconhecida(caso, limite),
+    });
+    const r = await emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao()));
+
+    assertEquals(mp.posts, [], "POST sobre o sentinela com uma order de status desconhecido na busca");
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+    assertEquals(db.linha.gateway_payment_id, sentinela, "a morta foi adotada no lugar do sentinela");
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.tentativas_de_pagamento, 0);
+
+    const pix = await emSilencio(() => chamar(contado, mp as unknown as MpVivo, PEDIDO_PIX));
+    assertEquals(pix.status, 409, JSON.stringify(pix.corpo));
+    assertEquals(pix.corpo.cartaoEmAnalise, true);
+    assertEquals(mp.posts, []);
+    assertEquals(db.linha.gateway_payment_id, sentinela);
+  });
+}
+
+Deno.test("C2 verificar: sentinela de chave ANTERIOR + só order morta -> NUNCA libera; 'sem_registro'", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, mp, sentinela } = cenarioSentinelaC2({
+    tentativas: 2,
+    orders: (limite) => [
+      { ...cartaoC2(ID_CARTAO_NA_VAGA_C2, "failed", "rejected_by_issuer"), date_created: new Date(limite + 60_000).toISOString() },
+    ],
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.corpo.verificacao, "sem_registro");
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(db.linha.tentativas_de_pagamento, 2);
+});
+
+// ── Sentinela + busca PAGINADA: lista PARCIAL nunca decide ────────────────
+//
+// Condição (2) da composição C2 + paginação (02/10/2026): o `verificar` tem de
+// herdar a regra de completude de `buscarOrdersDoPedido` pelo ramo
+// `buscaFalhou`. O cenário perigoso: a cobrança da tentativa anterior (c0,
+// APROVADA ou em ANÁLISE) só existe FORA da lista que chegou, e a lista traz
+// só mortas — a atual DENTRO da janela. Lida como completa, `resolverSentinela`
+// diz "liberar" e o `verificar` responde 'recusado' e solta a vaga (a próxima
+// tentativa seria a segunda cobrança). O MP com paging honesto que honra o
+// `page_size` pedido já é coberto pelo teste de ponta a ponta do cartão
+// (acima); aqui, as três formas em que a lista que CHEGA é parcial mesmo com
+// `page_size=100` pedido:
+//   A) o MP IGNORA `page_size` (serve 20) e diz `paging.total = "21"`;
+//   B) o MP honra `page_size`, mas há 102 orders: a c0 fica na página 2;
+//   C) o MP ignora `page_size` E não manda `paging` — 20 itens sem total.
+
+/**
+ * MP falso da consulta que PAGINA como a referência oficial documenta
+ * (`sort_order` desc por data de criação, `page_size` default 20, `paging` com
+ * STRINGS). `ignoraPageSize` serve sempre 20; `semPaging` tira o `paging` da
+ * resposta. Qualquer verbo que não seja GET é registrado e falha.
+ */
+function mpDaBuscaPaginada(
+  todas: Array<Record<string, unknown>>,
+  opts: { ignoraPageSize?: boolean; semPaging?: boolean } = {},
+) {
+  const chamadas: string[] = [];
+  const posts: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    chamadas.push(`${verbo} ${url}`);
+    if (verbo !== "GET") {
+      posts.push(url);
+      throw new Error(`o verificar nunca faz ${verbo}: ${url}`);
+    }
+    if (url.includes("/v1/orders?")) {
+      const q = new URL(url).searchParams;
+      const pagina = Number(q.get("page") ?? "1");
+      const tamanho = opts.ignoraPageSize ? 20 : Number(q.get("page_size") ?? "20");
+      const ref = q.get("external_reference");
+      const lista = todas
+        .filter((o) => ref === null || o.external_reference === ref)
+        .sort((a, b) => Date.parse(String(b.date_created)) - Date.parse(String(a.date_created)));
+      const inicio = (pagina - 1) * tamanho;
+      const corpo: Record<string, unknown> = { data: lista.slice(inicio, inicio + tamanho) };
+      if (!opts.semPaging) {
+        corpo.paging = {
+          total: String(lista.length),
+          total_pages: String(Math.ceil(lista.length / tamanho)),
+          offset: String(inicio),
+          limit: String(tamanho),
+        };
+      }
+      return new Response(JSON.stringify(corpo), { status: 200 });
+    }
+    if (url.includes("/v1/orders/")) {
+      const id = url.split("/v1/orders/")[1].split("?")[0];
+      const alvo = todas.find((o) => o.id === id);
+      return alvo
+        ? new Response(JSON.stringify(alvo), { status: 200 })
+        : new Response(JSON.stringify({ message: "not_found" }), { status: 404 });
+    }
+    throw new Error(`fetch inesperado no verificar paginado: ${verbo} ${url}`);
+  };
+  return { fn, chamadas, posts };
+}
+
+/**
+ * A c0 (tentativa anterior, `c0`) bem antes do limite do sentinela, `mortas`
+ * orders mortas antigas entre ela e o limite, e a morta da tentativa ATUAL
+ * dentro da janela. Em ordem desc, a c0 é sempre a ÚLTIMA.
+ */
+function ordensComC0Escondida(limite: number, c0: [string, string], mortas: number): Array<Record<string, unknown>> {
+  return [
+    { ...cartaoC2("ORDTST03C0FORADALISTA000000", c0[0], c0[1]), date_created: new Date(limite - 50 * 60_000).toISOString() },
+    ...Array.from({ length: mortas }, (_, i) => ({
+      ...cartaoC2(`ORDTST03MORTAANTIGA${String(i).padStart(8, "0")}`, "failed", "rejected_by_issuer"),
+      date_created: new Date(limite - 40 * 60_000 + i * 20_000).toISOString(),
+    })),
+    { ...cartaoC2("ORDTST03ATUALMORTA000000000", "failed", "rejected_by_issuer"), date_created: new Date(limite + 60_000).toISOString() },
+  ];
+}
+
+const BUSCA_PARCIAL: Array<{ nome: string; mp: (limite: number, c0: [string, string]) => ReturnType<typeof mpDaBuscaPaginada> }> = [
+  {
+    nome: "A (MP ignora page_size, paging.total=21)",
+    mp: (limite, c0) => mpDaBuscaPaginada(ordensComC0Escondida(limite, c0, 19), { ignoraPageSize: true }),
+  },
+  {
+    nome: "B (MP honra page_size=100, 102 orders, c0 na página 2)",
+    mp: (limite, c0) => mpDaBuscaPaginada(ordensComC0Escondida(limite, c0, 100)),
+  },
+  {
+    nome: "C (MP ignora page_size e não manda paging, 20 itens)",
+    mp: (limite, c0) => mpDaBuscaPaginada(ordensComC0Escondida(limite, c0, 19), { ignoraPageSize: true, semPaging: true }),
+  },
+];
+
+for (const variante of BUSCA_PARCIAL) {
+  for (const c0 of [["processed", "accredited"], ["processing", "in_process"]] as Array<[string, string]>) {
+    Deno.test(`C2 verificar (paginação) ${variante.nome}: c0 ${c0.join(":")} fora da lista recebida -> 503 'indisponivel', NUNCA 'recusado', zero RPC, zero POST, vaga = sentinela`, async () => {
+      Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+      const { db, contado, escritas, sentinela, limite } = cenarioSentinelaC2({
+        tentativas: 20,
+        chaveDoSentinela: `${UUID}:c20`,
+      });
+      const mp = variante.mp(limite, c0);
+      const r = await verificar(contado, mp);
+
+      assertEquals(r.status, 503, JSON.stringify(r.corpo));
+      assertEquals(r.corpo, { error: "Não foi possível consultar o pagamento agora.", verificacao: "indisponivel" });
+      assertEquals(r.corpo.verificacao !== "recusado", true, "lista parcial virou recusa");
+      assertEquals(liberacoes(db.chamadasRpc), [], "NÃO chama liberar_cobranca_do_pedido");
+      assertEquals(db.chamadasRpc.length, 0);
+      assertEquals(mp.posts, []);
+      assertEquals(db.linha.gateway_payment_id, sentinela, "lista parcial soltou ou trocou a vaga");
+      assertEquals(db.linha.tentativas_de_pagamento, 20, "a tentativa não avança");
+      assertEquals(escritas.length, 0);
+      assertEquals(
+        mp.chamadas.filter((c) => c.includes("/v1/orders?")).length,
+        1,
+        "uma busca só: a página 2 nunca é pedida",
+      );
+    });
+  }
+}
+
+// CONTROLE das variantes acima: os MESMOS 21 dados com o MP que honra o
+// `page_size=100` pedido -> a lista chega COMPLETA (`paging.total` 21 <= 21) e
+// a c0 viva é adotada. Prova que o 503 das variantes vem da lista parcial, e
+// não do MP falso.
+for (
+  const caso of [
+    { c0: ["processed", "accredited"] as [string, string], verificacao: "pago" },
+    { c0: ["processing", "in_process"] as [string, string], verificacao: "em_analise" },
+  ]
+) {
+  Deno.test(`C2 verificar (paginação) CONTROLE: os mesmos 21 dados com lista COMPLETA -> adota a c0 ${caso.c0.join(":")} ('${caso.verificacao}'), nunca 'recusado', zero RPC, zero POST`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, limite } = cenarioSentinelaC2({ tentativas: 20, chaveDoSentinela: `${UUID}:c20` });
+    const mp = mpDaBuscaPaginada(ordensComC0Escondida(limite, caso.c0, 19));
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo.verificacao, caso.verificacao);
+    assertEquals(r.corpo.paymentId, "ORDTST03C0FORADALISTA000000");
+    assertEquals(db.linha.gateway_payment_id, "ORDTST03C0FORADALISTA000000");
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.tentativas_de_pagamento, 20);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// ── Corrida: responde sobre a vaga ATUAL ──────────────────────────────────
+
+Deno.test("C2 verificar (corrida): o webhook ADOTA a order enquanto a busca ainda não a indexou -> responde pelo id REAL da vaga atual, sem escrever", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const viva = cartaoC2(ID_CARTAO_NA_VAGA_C2, "processing", "in_process");
+  const { db, contado, escritas, mp } = cenarioSentinelaC2({
+    aoBuscar: (d) => {
+      d.linha.gateway_payment_id = ID_CARTAO_NA_VAGA_C2;
+      d.linha.metodo_online = "credito";
+    },
+  });
+  // A busca ainda não indexou a order (vazia), mas o GET por id a enxerga.
+  const fn = async (url: string, init?: RequestInit) => {
+    if ((init?.method ?? "GET") === "GET" && url.endsWith(`/v1/orders/${ID_CARTAO_NA_VAGA_C2}`)) {
+      return new Response(JSON.stringify(viva), { status: 200 });
+    }
+    return mp.fn(url, init);
+  };
+  const r = await verificar(contado, { fn });
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_CARTAO_NA_VAGA_C2, expiraEm: PRAZO_BASE });
+  assertEquals(escritas.length, 0);
+  assertEquals(db.linha.gateway_payment_id, ID_CARTAO_NA_VAGA_C2);
+});
+
+Deno.test("C2 verificar (corrida): a RPC SOLTA o sentinela enquanto a busca roda -> responde o estado novo ('livre'), sem soltar de novo", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, mp } = cenarioSentinelaC2({
+    aoBuscar: async (d) => {
+      await d.rpc("liberar_cobranca_do_pedido", { p_order_id: UUID, p_gateway_payment_id: d.linha.gateway_payment_id });
+    },
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "livre", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc.length, 1, "só a RPC da notificação");
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
+});
+
+Deno.test("C2 verificar (corrida): a order do id real morre e a notificação SOLTA a vaga durante o GET -> a RPC do verificar não acha a vaga, e a resposta é a do estado novo ('recusado' pela prova)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado } = bancoContandoEscritas(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, gateway_payment_id: ID_CARTAO_NA_VAGA_C2, metodo_online: "credito" }),
+  );
+  const mp = mpDaConsulta({
+    orders: [cartaoC2(ID_CARTAO_NA_VAGA_C2, "failed", "rejected_by_issuer")],
+    aoConsultar: async () => {
+      if (db.linha.gateway_payment_id !== ID_CARTAO_NA_VAGA_C2) return;
+      await db.rpc("liberar_cobranca_do_pedido", { p_order_id: UUID, p_gateway_payment_id: ID_CARTAO_NA_VAGA_C2 });
+    },
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "recusado", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(db.linha.tentativas_de_pagamento, 1, "a tentativa avançou uma vez só");
+  assertEquals(db.linha.gateway_payment_id, null);
+});
+
+// ── Repetição ──────────────────────────────────────────────────────────────
+
+Deno.test("C2 verificar (repetição): duas chamadas seguidas com 3DS vivo -> a mesma resposta, UMA escrita só, nenhuma RPC", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp } = cenarioSentinelaC2({
+    orders: () => [cartaoC2(ID_CARTAO_NA_VAGA_C2, "action_required", "pending_challenge")],
+  });
+  const r1 = await verificar(contado, mp);
+  const r2 = await verificar(contado, mp);
+
+  assertEquals(r1.corpo, r2.corpo);
+  assertEquals(r2.corpo.verificacao, "desafio3ds");
+  assertEquals(r2.corpo.paymentId, ID_CARTAO_NA_VAGA_C2);
+  assertEquals(escritas.length, 1);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("C2 verificar (repetição): duas chamadas seguidas com a order morta por prova -> a RPC roda UMA vez, a tentativa avança UMA vez; a 2ª responde a vaga livre", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, mp } = cenarioSentinelaC2({
+    orders: (limite) => [
+      { ...cartaoC2(ID_CARTAO_NA_VAGA_C2, "failed", "rejected_by_issuer"), date_created: new Date(limite + 60_000).toISOString() },
+    ],
+  });
+  const r1 = await verificar(contado, mp);
+  const r2 = await verificar(contado, mp);
+
+  assertEquals(r1.corpo.verificacao, "recusado");
+  assertEquals(r2.corpo, { verificacao: "livre", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc.length, 1);
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
 });
