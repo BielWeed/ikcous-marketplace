@@ -46,14 +46,37 @@
  *   a mesma formula que a funcao sob teste usa — mesmo padrao do
  *   db-prove-cupom-sem-limite.cjs.
  *
- * USO NORMAL (aplica a migration inteira, com o redesenho da Rodada 4):
+ * DOIS MODOS, ESCOLHIDOS PELO ESTADO VIVO DO BANCO (peca 12):
+ *
+ *   MODO HISTORICO — a Rodada 4 AINDA NAO existe no banco: aplica SO a
+ *   20260901000000 na transacao e roda os grupos 1-5 (a prova original da
+ *   Rodada 4, intacta — por isso ela referencia SEMPRE o mundo antigo). A
+ *   prova da Fase 2 NAO roda neste modo de proposito: a varredura nova
+ *   referencia colunas que nascem DEPOIS da Rodada 4 (20260970000000).
+ *
+ *   MODO PECA 12 — a Rodada 4 JA ESTA viva no banco: nao aplica migration
+ *   nenhuma; exige a clausula nova viva (se a Rodada 4 estiver viva SEM a
+ *   carencia, aborta mandando aplicar as duas da Fase 2 pelo db-apply) e
+ *   roda as fichas das funcoes + o grupo 6 contra o que esta no ar. E o
+ *   modo que a peca 12 manda rodar, contra banco de DESENVOLVIMENTO com a
+ *   cadeia inteira aplicada.
+ *
+ * USO NORMAL (MODO HISTORICO, banco novo):
  *   node scripts/db-prove-devolucao-de-uso-de-cupom.cjs
  *
- * REPRODUZIR O VERMELHO (reinsere, SO EM MEMORIA -- nunca grava em disco --,
- * a chamada imediata de devolver_uso_cupom que a Rodada 1 fazia no
- * cancelamento manual, simulando a regressao para o desenho anterior. Os
- * casos "grupo1/cancelamento manual" abaixo falham; o resto do script
- * continua passando, porque so' aquele ponto depende do redesenho):
+ * USO NORMAL (MODO PECA 12, banco de DESENVOLVIMENTO com as migrations
+ * aplicadas pelo db-apply):
+ *   DATABASE_URL=... node scripts/db-prove-devolucao-de-uso-de-cupom.cjs
+ *   -- rodar SOMENTE contra banco de desenvolvimento comprovado. Em 15/09
+ *   -- 2026 a unica DATABASE_URL desta maquina aponta para a loja PRINCIPAL
+ *   -- (producao); a prova NAO rodou la. Ver o relatorio da peca 12.
+ *
+ * REPRODUZIR O VERMELHO (so no MODO HISTORICO; reinsere, SO EM MEMORIA --
+ * nunca grava em disk --, a chamada imediata de devolver_uso_cupom que a
+ * Rodada 1 fazia no cancelamento manual, simulando a regressao para o
+ * desenho anterior. Os casos "grupo1/cancelamento manual" abaixo falham; o
+ * resto do script continua passando, porque so' aquele ponto depende do
+ * redesenho):
  *   SEM_FIX_JANELA=1 node scripts/db-prove-devolucao-de-uso-de-cupom.cjs
  *
  * A saida real de cada um dos dois comandos acima, colada no relatorio da
@@ -67,6 +90,15 @@ const { Client } = require("pg");
 
 const RAIZ = path.resolve(__dirname, "..");
 const MIGRATION = "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql";
+// PECA 12 (Fase 2): as duas migrations do ramo nunca-cobrado + mensagens.
+const MIGRATION_MENSAGENS =
+  "20261151000000_cupom_preso_diz_que_a_vaga_volta.sql";
+const MIGRATION_VARREDURA =
+  "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql";
+// A frase canonica, exatamente como as tres funcoes a escrevem (lição #53:
+// o classificador do front casa um texto so).
+const FRASE_VAGA_PRESA =
+  "está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).";
 
 // Cenario: 1 unidade de um produto de R$ 100,00 + frete fixo de R$ 10,00.
 const PRECO = 100;
@@ -210,6 +242,55 @@ async function amarrarGateway(client, orderId, paymentId) {
   );
 }
 
+/**
+ * PECA 12: a gravação tardia do gateway COM a guarda nova do UPDATE da edge
+ * (`.eq("status","pending")`). Devolve o rowCount — 0 linhas é a guarda
+ * recusando gravar cobrança sobre pedido que não está mais 'pending'.
+ */
+async function amarrarGatewayComGuarda(client, orderId, paymentId) {
+  const r = await client.query(
+    "UPDATE public.marketplace_orders SET gateway_payment_id = $2 WHERE id = $1 AND status = 'pending'",
+    [orderId, paymentId],
+  );
+  return r.rowCount;
+}
+
+/** PECA 12: expires_at vencido ha 16 minutos — FORA da carencia de 15. */
+async function foraDaCarencia(client, orderId) {
+  await client.query(
+    `UPDATE public.marketplace_orders SET expires_at = now() - interval '16 minutes' WHERE id = $1`,
+    [orderId],
+  );
+}
+
+/** PECA 12: expires_at vencido ha 5 minutos — DENTRO da carencia de 15. */
+async function dentroDaCarencia(client, orderId) {
+  await client.query(
+    `UPDATE public.marketplace_orders SET expires_at = now() - interval '5 minutes' WHERE id = $1`,
+    [orderId],
+  );
+}
+
+/** PECA 12: corpo (ou corpos) vivos de uma funcao, via pg_get_functiondef. */
+async function corposFuncaoViva(client, nome) {
+  const { rows } = await client.query(
+    `SELECT pg_get_functiondef(p.oid) AS corpo
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = $1`,
+    [nome],
+  );
+  return rows.map((r) => r.corpo).join("\n");
+}
+
+/** PECA 12: a clausula nova da varredura esta viva no banco? */
+async function clausulaPeca12VivaAoVivo(client) {
+  const { rows } = await client.query(`
+    SELECT pg_get_functiondef(p.oid) LIKE '%gateway_payment_id IS NULL AND expires_at < now() - interval ''15 minutes''%' AS viva
+      FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND p.proname = 'devolver_cupons_de_pedidos_mortos'`);
+  return rows.length > 0 && rows[0].viva === true;
+}
+
 const claims = (sub, admin) =>
   sub === null
     ? ""
@@ -287,6 +368,280 @@ function reinserirDevolucaoImediata(sql) {
   );
 }
 
+/**
+ * PECA 12 (Fase 2): fichas das funcoes + GRUPO 6 — o ramo nunca-cobrado e a
+ * porta B1. Roda nos DOIS modos: no MODO HISTORICO, DEPOIS de as duas
+ * migrations da Fase 2 serem aplicadas na transacao; no MODO PECA 12,
+ * contra as funcoes ja vivas no banco de desenvolvimento. Tudo dentro da
+ * MESMA transacao terminada em ROLLBACK.
+ */
+async function provarFase2(client, produtoId, adminSub) {
+  // =========================================================================
+  // FICHAS: as funcoes vivas (na transacao) carregam a Fase 2 inteira
+  // =========================================================================
+  console.log(
+    "\n=== fichas (peca 12): as funcoes vivas tem a Fase 2 inteira ===",
+  );
+  const corpoVarredura = await corposFuncaoViva(
+    client,
+    "devolver_cupons_de_pedidos_mortos",
+  );
+  conferir(
+    "ficha/varredura: a carencia de 15 minutos esta viva",
+    corpoVarredura.includes(
+      "gateway_payment_id IS NULL AND expires_at < now() - interval '15 minutes'",
+    ),
+  );
+  conferir(
+    "ficha/varredura: as 24 horas do ramo antigo permanecem",
+    corpoVarredura.includes("interval '24 hours'"),
+  );
+  conferir(
+    "ficha/varredura: a 7a clausula (cancelled_after_shipping) permanece",
+    corpoVarredura.includes(
+      "cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL",
+    ),
+  );
+  conferir(
+    "ficha/varredura: o laco segue com FOR UPDATE SKIP LOCKED e o fato gravado",
+    corpoVarredura.includes("FOR UPDATE SKIP LOCKED") &&
+      corpoVarredura.includes("SET coupon_usage_returned = TRUE"),
+  );
+  for (const nome of [
+    "validate_coupon_secure_v2",
+    "create_marketplace_order_v23",
+    "create_marketplace_order_v24",
+  ]) {
+    const corpo = await corposFuncaoViva(client, nome);
+    conferir(
+      `ficha/${nome}: a frase canonica de vaga presa esta viva`,
+      corpo.includes(FRASE_VAGA_PRESA),
+    );
+  }
+  const { rows: privilegios } = await client.query(`
+    SELECT has_function_privilege('anon', 'public.validate_coupon_secure_v2(text,numeric)', 'EXECUTE') AS anon_validate,
+           has_function_privilege('authenticated', 'public.validate_coupon_secure_v2(text,numeric)', 'EXECUTE') AS auth_validate,
+           has_function_privilege('anon', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') AS anon_varredura,
+           has_function_privilege('authenticated', 'public.devolver_cupons_de_pedidos_mortos()', 'EXECUTE') AS auth_varredura`);
+  conferir(
+    "ficha/grants: anon e authenticated alcancam o validate (convidado aplica cupom)",
+    privilegios[0].anon_validate === true &&
+      privilegios[0].auth_validate === true,
+  );
+  conferir(
+    "ficha/grants: papeis web NAO alcancam a varredura (so o pg_cron)",
+    privilegios[0].anon_varredura === false &&
+      privilegios[0].auth_varredura === false,
+  );
+
+  // =========================================================================
+  // GRUPO 6 (peca 12): o ramo nunca-cobrado e a porta B1
+  // =========================================================================
+  console.log("\n=== grupo 6 (peca 12): o ramo nunca-cobrado e a porta B1 ===");
+
+  // --- 6a. nunca-cobrado, vencido FORA da carencia -> a vaga volta ----------
+  const cupomNunca = await criarCupom(client, { code: "G6_NUNCA" });
+  const pNunca = await criarPedido(client, { produtoId, codigo: "G6_NUNCA" });
+  await foraDaCarencia(client, pNunca);
+  await cancelarComoAdmin(client, pNunca, adminSub);
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/nunca-cobrado vencido (16 min): a varredura devolveu a vaga (1 -> 0)",
+    (await usosDoCupom(client, cupomNunca)) === 0,
+  );
+  const estadoNunca = await pedido(client, pNunca);
+  conferir(
+    "grupo6/nunca-cobrado vencido: coupon_usage_returned virou TRUE",
+    estadoNunca.coupon_usage_returned === true,
+  );
+
+  // --- 6b. vencido DENTRO da carencia -> a vaga NAO volta --------------------
+  const cupomCarencia = await criarCupom(client, { code: "G6_CARENCIA" });
+  const pCarencia = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_CARENCIA",
+  });
+  await dentroDaCarencia(client, pCarencia);
+  await cancelarComoAdmin(client, pCarencia, adminSub);
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/vencido dentro da carencia (5 min): a varredura NAO tocou — a carencia segura a gravação em voo",
+    (await usosDoCupom(client, cupomCarencia)) === 1,
+  );
+
+  // --- 6c. prazo no FUTURO -> a vaga NAO volta -------------------------------
+  const cupomFuturo = await criarCupom(client, { code: "G6_FUTURO" });
+  const pFuturo = await criarPedido(client, { produtoId, codigo: "G6_FUTURO" });
+  await cancelarComoAdmin(client, pFuturo, adminSub); // expires_at segue now()+30min
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/prazo no futuro: a varredura NAO tocou",
+    (await usosDoCupom(client, cupomFuturo)) === 1,
+  );
+
+  // --- 6d. a corrida B1, em ordem ---------------------------------------------
+  // Pedido cancelado sem cobranca, ja fora da carencia. A gravação tardia do
+  // gateway da edge aterrissa COM a guarda nova (WHERE status = 'pending') e
+  // NAO grava (0 linhas) — a cobranca fica orfa, nenhum QR chega ao cliente.
+  // A varredura devolve; e um pagamento tardio qualquer cai em 'divergente':
+  // a vaga devolvida nunca convive com pagamento que possa entrar (item 3 da
+  // prova da opcao D do desenho).
+  const cupomB1 = await criarCupom(client, { code: "G6_B1" });
+  const pB1 = await criarPedido(client, { produtoId, codigo: "G6_B1" });
+  await foraDaCarencia(client, pB1);
+  await cancelarComoAdmin(client, pB1, adminSub);
+  const gravadoB1 = await amarrarGatewayComGuarda(client, pB1, "PAY_G6_B1");
+  conferir(
+    "grupo6/B1: a gravação tardia do gateway bate na guarda de status e NÃO grava (0 linhas)",
+    gravadoB1 === 0,
+  );
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/B1: a varredura devolveu a vaga (1 -> 0) — o pedido segue nunca-cobrado de verdade",
+    (await usosDoCupom(client, cupomB1)) === 0,
+  );
+  const rB1 = await client.query(
+    "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago'::text) AS r",
+    [pB1, "PAY_G6_B1"],
+  );
+  conferir(
+    "grupo6/B1: pagamento tardio sobre o pedido ja liberado = 'divergente' (nada gravado)",
+    rB1.rows[0].r === "divergente",
+    `veio '${rB1.rows[0].r}'`,
+  );
+  const estadoB1 = await pedido(client, pB1);
+  conferir(
+    "grupo6/B1: payment_status NAO virou 'pago' e a vaga segue devolvida (usage 0)",
+    estadoB1.payment_status !== "pago" &&
+      (await usosDoCupom(client, cupomB1)) === 0,
+  );
+
+  // --- 6d-bis. dentro da carencia, a gravação em voo aterra e o pedido SAI --
+  // O outro lado da corrida: gravação que aterrissou a tempo (a edge leu o
+  // pedido ANTES do prazo/cancelamento). A carencia segurou a varredura; o
+  // gateway gravado tira o pedido do ramo nunca-cobrado — volta ao ramo das
+  // 24h, onde o QR pago vira 'pago_apos_expirar' (envelope residual aceito).
+  const cupomVoo = await criarCupom(client, { code: "G6_VOO" });
+  const pVoo = await criarPedido(client, { produtoId, codigo: "G6_VOO" });
+  await dentroDaCarencia(client, pVoo);
+  await cancelarComoAdmin(client, pVoo, adminSub);
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/B1-voo (1): dentro da carencia, a varredura NAO devolveu",
+    (await usosDoCupom(client, cupomVoo)) === 1,
+  );
+  await amarrarGateway(client, pVoo, "PAY_G6_VOO");
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/B1-voo (2): com o gateway gravado, o pedido SAIU do ramo novo — a varredura segue sem tocar",
+    (await usosDoCupom(client, cupomVoo)) === 1,
+  );
+
+  // --- 6e. gateway NOT NULL dentro das 24h -> ramo antigo segue de pe -------
+  const cupomComGateway = await criarCupom(client, { code: "G6_COM_GATEWAY" });
+  const pComGateway = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_COM_GATEWAY",
+  });
+  await amarrarGateway(client, pComGateway, "PAY_G6_GATEWAY");
+  await client.query(
+    `UPDATE public.marketplace_orders SET expires_at = now() - interval '1 hour' WHERE id = $1`,
+    [pComGateway],
+  );
+  await cancelarComoAdmin(client, pComGateway, adminSub);
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/cobranca existente vencida ha 1h: a varredura NAO tocou — o ramo das 24h governa",
+    (await usosDoCupom(client, cupomComGateway)) === 1,
+  );
+
+  // --- 6f. piso em zero NO ramo novo ------------------------------------------
+  const cupomPisoNovo = await criarCupom(client, { code: "G6_PISO_NOVO" });
+  const pPisoNovo = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_PISO_NOVO",
+  });
+  await client.query(
+    "UPDATE public.coupons SET usage_count = 0 WHERE id = $1",
+    [cupomPisoNovo],
+  );
+  await foraDaCarencia(client, pPisoNovo);
+  await cancelarComoAdmin(client, pPisoNovo, adminSub);
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  const estadoPisoNovo = await pedido(client, pPisoNovo);
+  conferir(
+    "grupo6/piso no ramo novo: varredura sobre usage_count 0 DEIXA 0, nunca -1",
+    (await usosDoCupom(client, cupomPisoNovo)) === 0,
+  );
+  conferir(
+    "grupo6/piso no ramo novo: a varredura PROCESSOU o pedido (coupon_usage_returned = true) — o 0 é o piso GREATEST, não desinteresse",
+    estadoPisoNovo.coupon_usage_returned === true,
+  );
+
+  // --- 6g. varredura DUAS vezes no ramo novo -> devolve UMA vez ---------------
+  const cupomIdemNovo = await criarCupom(client, { code: "G6_IDEM_NOVO" });
+  const pIdemNovo = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_IDEM_NOVO",
+  });
+  await foraDaCarencia(client, pIdemNovo);
+  await cancelarComoAdmin(client, pIdemNovo, adminSub);
+  // Controle positivo vivo: um pedido no ramo ANTIGO (janela de 24h vencida),
+  // para provar que a 2a chamada nao e' no-op geral.
+  const cupomIdemAntigo = await criarCupom(client, { code: "G6_IDEM_ANTIGO" });
+  const pIdemAntigo = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_IDEM_ANTIGO",
+  });
+  await foraDaJanela(client, pIdemAntigo);
+  await cancelarComoAdmin(client, pIdemAntigo, adminSub);
+
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/idempotencia (1a chamada): ramo novo devolveu (1 -> 0) e ramo antigo devolveu (1 -> 0)",
+    (await usosDoCupom(client, cupomIdemNovo)) === 0 &&
+      (await usosDoCupom(client, cupomIdemAntigo)) === 0,
+  );
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/idempotencia (2a chamada): NEM o ramo novo NEM o antigo foram mexidos de novo",
+    (await usosDoCupom(client, cupomIdemNovo)) === 0 &&
+      (await usosDoCupom(client, cupomIdemAntigo)) === 0,
+  );
+  const estadoIdemNovo = await pedido(client, pIdemNovo);
+  conferir(
+    "grupo6/idempotencia (2a chamada): o fato gravado segura o ramo novo (coupon_usage_returned = true)",
+    estadoIdemNovo.coupon_usage_returned === true,
+  );
+
+  // --- 6h. a 7a clausula bloqueia TAMBEM no ramo novo -------------------------
+  const cupomAposEnvio = await criarCupom(client, { code: "G6_APOS_ENVIO" });
+  const pAposEnvio = await criarPedido(client, {
+    produtoId,
+    codigo: "G6_APOS_ENVIO",
+  });
+  await client.query(
+    "UPDATE public.marketplace_orders SET status = 'shipping' WHERE id = $1",
+    [pAposEnvio],
+  );
+  await cancelarComoAdmin(client, pAposEnvio, adminSub); // grava cancelled_after_shipping = true
+  conferir(
+    "grupo6/apos-envio: o cancelamento apos o envio ficou registrado (cancelled_after_shipping = true)",
+    (
+      await client.query(
+        "SELECT cancelled_after_shipping AS c FROM public.marketplace_orders WHERE id = $1",
+        [pAposEnvio],
+      )
+    ).rows[0].c === true,
+  );
+  await foraDaCarencia(client, pAposEnvio);
+  await client.query("SELECT public.devolver_cupons_de_pedidos_mortos()");
+  conferir(
+    "grupo6/apos-envio: nunca-cobrado e vencido, mas SEM o produto de volta a varredura NAO devolve",
+    (await usosDoCupom(client, cupomAposEnvio)) === 1,
+  );
+}
+
 async function main() {
   const client = new Client({
     connectionString: lerDatabaseUrl(),
@@ -296,16 +651,41 @@ async function main() {
   await client.query("BEGIN");
 
   try {
-    const jaAplicada = await migrationJaAplicadaAoVivo(client);
-    if (jaAplicada) {
-      throw new Error(
-        "devolver_cupons_de_pedidos_mortos ja existe no banco AO VIVO -- este script assume " +
-          "que a Rodada 4 nunca foi aplicada em producao (nenhuma rodada anterior chegou a " +
-          "subir). Abortando para nao mascarar um estado inesperado.",
+    const rodada4Viva = await migrationJaAplicadaAoVivo(client);
+    if (rodada4Viva) {
+      // MODO PECA 12: a Rodada 4 ja esta viva. Exige a clausula nova viva e
+      // roda as fichas + o grupo 6 contra o que esta no ar — NENHUMA
+      // migration aplicada, tudo em transacao com ROLLBACK.
+      const carenciaViva = await clausulaPeca12VivaAoVivo(client);
+      if (!carenciaViva) {
+        throw new Error(
+          `devolver_cupons_de_pedidos_mortos ja existe AO VIVO, mas SEM a clausula da peca 12 (gateway_payment_id IS NULL AND expires_at < now() - interval '15 minutes'). Aplique ${MIGRATION_MENSAGENS} e ${MIGRATION_VARREDURA} pelo db-apply (fluxo da casa) antes de rodar esta prova.`,
+        );
+      }
+      console.log(
+        "banco: Rodada 4 viva COM a clausula da peca 12 — MODO PECA 12: provando as funcoes NO AR " +
+          "(ROLLBACK no final; nenhuma migration aplicada)\n",
       );
+
+      // Cenario fixo + produto + admin para o grupo 6.
+      await client.query(
+        `UPDATE public.store_config
+            SET shipping_fee = $1, free_shipping_min = 0
+          WHERE id = 1`,
+        [FRETE],
+      );
+      const produtoId = await criarProduto(client);
+      const admin = await descobrirAdmin(client);
+      await confirmarAdmin(client, admin.id, admin.email);
+      console.log(
+        `Admin de teste: ${admin.email} (is_admin() = true, conferido)\n`,
+      );
+
+      await provarFase2(client, produtoId, admin.id);
+      return; // o finally faz o ROLLBACK e encerra
     }
     console.log(
-      `banco: ${MIGRATION} AINDA NAO aplicada -- aplicando na transacao (ROLLBACK no final)\n`,
+      `banco: ${MIGRATION} AINDA NAO aplicada -- MODO HISTORICO: aplicando a Rodada 4 na transacao (ROLLBACK no final)\n`,
     );
 
     // Cenario fixo: frete de R$ 10,00 e nenhuma regra de frete gratis por valor.
@@ -762,6 +1142,13 @@ async function main() {
       "controle: a varredura ignora pedido SEM cupom sem erro",
       true, // se chegou ate aqui sem excecao, a asserção e' o proprio fluxo nao ter falhado
     );
+
+    // PECA 12: a prova da Fase 2 (fichas + grupo 6) NAO roda aqui de proposito.
+    // Este modo simula um banco so' ate a Rodada 4 — e a varredura da Fase 2
+    // referencia colunas que nascem DEPOIS dela (cancelled_after_shipping e
+    // returned_to_seller_at, 20260970000000): aplica-la neste mundo sintetico
+    // quebraria a execucao. O grupo 6 roda no MODO PECA 12, contra banco com a
+    // cadeia inteira aplicada — que e o que a peca manda provar.
   } finally {
     await client.query("ROLLBACK");
     await client.end();

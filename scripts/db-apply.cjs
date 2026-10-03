@@ -932,12 +932,22 @@ const VERIFICACOES = {
         // UPDATE SKIP LOCKED: mesma protecao de expirar_pedidos_vencidos
         // --", logo depois do BEGIN) mesmo com o anchor executavel
         // apagado -- e' a armadilha da Rodada 5 outra vez, com outro alvo.
+        //
+        // PECA 12 (20261152000000): a migration nova insere o ramo do pedido
+        // nunca-cobrado DENTRO do parentese da sexta clausula, e o texto
+        // antigo dela deixa de existir no corpo final. Pelo mesmo metodo da
+        // Rodada 6, o bloco ENCOLHE para as cinco clausulas que continuam
+        // contiguas byte a byte no arquivo DESTE migration E no corpo final
+        // (a sexta, ampliada, passa a ser prova da entrada da 20261152000000
+        // -- e reescreve-la aqui para o texto novo quebraria a regua
+        // db_apply_mapa_contra_sql_test.ts, que confere cada marcador contra
+        // o .sql da PROPRIA migration). A reescrita do texto novo cabe a
+        // migration que o cria.
         `WHERE coupon_id IS NOT NULL
           AND status = 'cancelled'
           AND payment_status IS DISTINCT FROM 'pago'
           AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
-          AND coupon_usage_returned = FALSE
-          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')`,
+          AND coupon_usage_returned = FALSE`,
         `        FOR UPDATE SKIP LOCKED
     LOOP
         PERFORM public.devolver_uso_cupom(v_pedido.id);`,
@@ -1151,13 +1161,16 @@ const VERIFICACOES = {
         // o texto da clausula tambem aparece, verbatim, no comentario logo
         // acima dela (a mesma falha da Rodada 5, ver a entrada de
         // 20260901000000 acima).
-        `WHERE coupon_id IS NOT NULL
-          AND status = 'cancelled'
-          AND payment_status IS DISTINCT FROM 'pago'
-          AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
-          AND coupon_usage_returned = FALSE
-          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours')
-          AND (cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL)
+        //
+        // PECA 12 (20261152000000): a migration nova insere o ramo do pedido
+        // nunca-cobrado DENTRO do parentese da sexta clausula (entre ela e a
+        // setima), e o bloco de sete clausulas contiguas deixa de existir no
+        // corpo final. Pelo mesmo metodo da Rodada 6, o bloco ENCOLHE para a
+        // setima clausula amarrada ao anchor do fim -- que continuam
+        // contiguas byte a byte no arquivo DESTE migration E no corpo final.
+        // O WHERE inteiro (com o ramo novo) e' prova da entrada da
+        // 20261152000000, abaixo -- que e quem o cria.
+        `AND (cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL)
         FOR UPDATE SKIP LOCKED`,
         // 8. ACHADO BLOQUEANTE de revisor de contexto limpo (terceira
         // rodada): o bloco acima (marcador 7) prova o WHERE, mas nada nesta
@@ -1608,6 +1621,102 @@ const VERIFICACOES = {
       esperado: [
         "WHEN 'og' THEN mime='image/png' AND asset->>'width'='1200' AND asset->>'height'='630'",
         "WHEN 'apple_touch' THEN mime='image/png' AND asset->>'width'='180' AND asset->>'height'='180'",
+      ],
+    },
+  ],
+  // ---------------------------------------------------------------------
+  // PECA 12 — Fase 2 (cupom preso diz que a vaga volta + varredura libera o
+  // pedido nunca-cobrado). As duas migrations sao CREATE OR REPLACE de
+  // funcao — tem entrada no mapa, senao saem PULADA no resumo.
+  // ---------------------------------------------------------------------
+  "20261151000000_cupom_preso_diz_que_a_vaga_volta.sql": [
+    {
+      funcao: "validate_coupon_secure_v2",
+      esperado: [
+        // A frase canônica AMARRADA à subconsulta de vaga presa: um não
+        // sobrevive sem o outro (o ramo-limite inteiro apagado deixa de
+        // casar). Texto idêntico ao das v23/v24 — e o teste
+        // migration_cupom_mensagem_de_vaga_presa_test.ts crava a frase nas
+        // TRÊS funções junto com os números 24h/15min da varredura (lição
+        // #53).
+        `IF EXISTS (
+            SELECT 1
+            FROM public.marketplace_orders o
+            WHERE o.coupon_id = v_coupon.id
+              AND o.status = 'cancelled'
+              AND o.coupon_usage_returned = FALSE
+        ) THEN
+            v_error := 'O cupom ' || p_code || ' está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).';
+        ELSE
+            v_error := 'Cupom atingiu o limite de uso.';
+        END IF;`,
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v23",
+      esperado: [
+        // Bloco amarrado da recusa por limite COM vaga presa + a frase antiga
+        // no ELSE (o caso sem vaga presa permanece). O bloco inteiro apagado
+        // deixa de casar.
+        `IF EXISTS (
+                    SELECT 1
+                    FROM public.marketplace_orders o
+                    WHERE o.coupon_id = v_cupom_recusado.id
+                      AND o.status = 'cancelled'
+                      AND o.coupon_usage_returned = FALSE
+                ) THEN
+                    RAISE EXCEPTION 'O cupom % está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).', p_coupon_code;
+                ELSE
+                    RAISE EXCEPTION 'O cupom % já atingiu o limite de usos.', p_coupon_code;
+                END IF;`,
+        // O diagnóstico ganhou o id (a subconsulta casa por coupon_id).
+        "SELECT id, active, valid_until, usage_limit, usage_count, min_purchase",
+      ],
+    },
+    {
+      funcao: "create_marketplace_order_v24",
+      esperado: [
+        // Mesmo bloco amarrado da v23 — os dois corpos são iguais no bloco da
+        // recusa.
+        `IF EXISTS (
+                    SELECT 1
+                    FROM public.marketplace_orders o
+                    WHERE o.coupon_id = v_cupom_recusado.id
+                      AND o.status = 'cancelled'
+                      AND o.coupon_usage_returned = FALSE
+                ) THEN
+                    RAISE EXCEPTION 'O cupom % está no limite de usos. A vaga dele volta sozinha quando o pagamento de um pedido cancelado deixar de ser possível (em até 24 horas).', p_coupon_code;
+                ELSE
+                    RAISE EXCEPTION 'O cupom % já atingiu o limite de usos.', p_coupon_code;
+                END IF;`,
+        "SELECT id, active, valid_until, usage_limit, usage_count, min_purchase",
+      ],
+    },
+  ],
+  "20261152000000_varredura_libera_vaga_de_pedido_sem_cobranca.sql": [
+    {
+      funcao: "devolver_cupons_de_pedidos_mortos",
+      esperado: [
+        // O WHERE INTEIRO com o ramo novo DENTRO do parêntese do prazo
+        // (formato Rodada 7: âncora no FIM — o PERFORM que abre o laço).
+        // Amarrado, não marcador solto: o texto das cláusulas também existe,
+        // verbatim, na prosa do cabeçalho da função (a falha da Rodada 5).
+        // Esta é a entrada que prova o texto NOVO — as entradas antigas
+        // (20260901000000 e 20260970000000) encolheram para os trechos que
+        // sobrevivem a esta inserção.
+        `WHERE coupon_id IS NOT NULL
+          AND status = 'cancelled'
+          AND payment_status IS DISTINCT FROM 'pago'
+          AND payment_status IS DISTINCT FROM 'pago_apos_expirar'
+          AND coupon_usage_returned = FALSE
+          AND (expires_at IS NULL OR expires_at < now() - interval '24 hours'
+               OR (gateway_payment_id IS NULL AND expires_at < now() - interval '15 minutes'))
+          AND (cancelled_after_shipping = false OR returned_to_seller_at IS NOT NULL)
+        FOR UPDATE SKIP LOCKED
+    LOOP
+        PERFORM public.devolver_uso_cupom(v_pedido.id);`,
+        // O fato gravado (idempotência por construção) sobrevive.
+        "SET coupon_usage_returned = TRUE",
       ],
     },
   ],
