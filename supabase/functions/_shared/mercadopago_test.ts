@@ -18,6 +18,8 @@ import {
   consultarOrder,
   consultarPagamento,
   criarOrder,
+  deviceIdValido,
+  dividirNomeDoPagador,
   erro400EhDeDadoDoCartao,
   extrairDataExpiracaoOrder,
   extrairDesafio3ds,
@@ -2463,4 +2465,244 @@ Deno.test("criarOrder SEM corpoNoLog (PIX) continua logando o corpo do erro como
   assertEquals(logados.length, 1);
   assertEquals(logados[0][0], "mercadopago: orders recusou");
   assertEquals(logados[0][2], "detalhe-bruto-do-mp");
+});
+
+// ─── Device ID do comprador (antifraude do Mercado Pago, 03/10/2026) ─────────
+//
+// Um cartão real foi recusado com `high_risk` porque o antifraude não recebia
+// o Device ID. A Orders API pede o valor no cabeçalho `X-meli-session-id` do
+// POST /v1/orders. O valor vem do navegador do cliente (`window.
+// MP_DEVICE_SESSION_ID`, criado pelo security.js do MP): é ENTRADA NÃO
+// CONFIÁVEL que vira cabeçalho HTTP — formato fechado, nunca "o que veio".
+
+const DEVICE_ID_REAL = "armor.8c1f0e2b9d7a4c35b6e1f0a9d8c7b6a5.XyZ123abc.9f8e7d6c5b4a";
+
+Deno.test("deviceIdValido: aceita o formato do security.js (letras, dígitos, ponto, hífen, sublinhado)", () => {
+  for (const bom of [DEVICE_ID_REAL, "a", "abc-DEF_123.xyz", "x".repeat(512)]) {
+    assertEquals(deviceIdValido(bom), true, bom.slice(0, 20));
+  }
+});
+
+Deno.test("deviceIdValido: recusa o que não é string, vazio, grande demais e qualquer caractere fora do formato", () => {
+  const ruins: unknown[] = [
+    undefined,
+    null,
+    42,
+    {},
+    [],
+    "",
+    "x".repeat(513),
+    " abc",
+    "abc def",
+    "abc\r\nX-Evil: 1",
+    "abc\n",
+    "abc:def",
+    "abc/def",
+    "abç",
+    "<script>",
+  ];
+  for (const ruim of ruins) {
+    assertEquals(deviceIdValido(ruim), false, JSON.stringify(ruim));
+  }
+});
+
+function fetchQueCaptura() {
+  const capturadas: Array<{ url: string; init: RequestInit }> = [];
+  const fn = ((url: string, init: RequestInit) => {
+    capturadas.push({ url, init });
+    return Promise.resolve(
+      new Response(JSON.stringify({ id: "ORDTST01DEVICE", status: "processed", status_detail: "accredited" }), {
+        status: 201,
+      }),
+    );
+  }) as unknown as typeof fetch;
+  return { fn, capturadas };
+}
+
+Deno.test("criarOrder com deviceId válido manda X-meli-session-id além da chave de idempotência", async () => {
+  const { fn, capturadas } = fetchQueCaptura();
+  const r = await criarOrder({
+    token: "token-de-teste",
+    corpo: { total_amount: "50.00" },
+    chaveIdempotencia: "k-1",
+    fetchImpl: fn,
+    deviceId: DEVICE_ID_REAL,
+  });
+  assertEquals(r.ok, true);
+  const headers = capturadas[0].init.headers as Record<string, string>;
+  assertEquals(headers["X-meli-session-id"], DEVICE_ID_REAL);
+  // O que já existia não muda: o cabeçalho novo só se soma.
+  assertEquals(headers["X-Idempotency-Key"], "k-1");
+  assertEquals(headers.Authorization, ["Bearer", "token-de-teste"].join(" "));
+  assertEquals(headers["Content-Type"], "application/json");
+});
+
+Deno.test("criarOrder sem deviceId (PIX, ou cliente sem o valor) NÃO manda o cabeçalho — nem vazio", async () => {
+  const { fn, capturadas } = fetchQueCaptura();
+  await criarOrder({ token: "t", corpo: {}, chaveIdempotencia: "k-2", fetchImpl: fn });
+  const headers = capturadas[0].init.headers as Record<string, string>;
+  assertEquals("X-meli-session-id" in headers, false);
+  assertEquals(Object.keys(headers).sort(), ["Authorization", "Content-Type", "X-Idempotency-Key"]);
+});
+
+Deno.test("criarOrder com deviceId INVÁLIDO ignora em vez de mandar (defesa em profundidade contra cabeçalho forjado) e a cobrança segue", async () => {
+  for (const ruim of ["", "abc\r\nX-Evil: 1", "com espaço", "x".repeat(513)]) {
+    const { fn, capturadas } = fetchQueCaptura();
+    const r = await criarOrder({ token: "t", corpo: {}, chaveIdempotencia: "k-3", fetchImpl: fn, deviceId: ruim });
+    assertEquals(r.ok, true);
+    const headers = capturadas[0].init.headers as Record<string, string>;
+    assertEquals("X-meli-session-id" in headers, false, JSON.stringify(ruim));
+    assertEquals(Object.keys(headers).includes("X-Evil"), false);
+  }
+});
+
+Deno.test("dividirNomeDoPagador: primeiro nome vira first_name e o RESTO vira last_name; nome único não inventa sobrenome", () => {
+  assertEquals(dividirNomeDoPagador("Maria da Silva Souza"), { first_name: "Maria", last_name: "da Silva Souza" });
+  assertEquals(dividirNomeDoPagador("  João   Pereira "), { first_name: "João", last_name: "Pereira" });
+  assertEquals(dividirNomeDoPagador("Maria"), { first_name: "Maria" });
+  assertEquals(dividirNomeDoPagador("APRO"), { first_name: "APRO" });
+  assertEquals(dividirNomeDoPagador("Ana-Clara D'Ávila Jr."), { first_name: "Ana-Clara", last_name: "D'Ávila Jr." });
+});
+
+Deno.test("dividirNomeDoPagador: ausente, vazio ou com cara de lixo (dígito, símbolo, e-mail, comprido demais) NÃO manda nome nenhum", () => {
+  for (const ruim of [undefined, null, 42, "", "   ", "Maria 2", "maria@exemplo.com", "<b>Maria</b>", "Maria\nSilva", "x".repeat(101)]) {
+    assertEquals(dividirNomeDoPagador(ruim), {}, JSON.stringify(ruim));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders com nome completo manda first_name e last_name — e nada além disso no payer", () => {
+  const corpo = montarCorpoCartaoOrders(argsCartao({ nome: "Maria da Silva" }));
+  assertEquals(corpo.payer, {
+    email: "cliente@exemplo.com",
+    first_name: "Maria",
+    last_name: "da Silva",
+    identification: { type: "CPF", number: CPF_TESTE },
+  });
+  // Nada de items, telefone, endereço nem additional_info nesta entrega.
+  for (const campo of ["items", "additional_info", "phone", "address"]) {
+    assertEquals(campo in corpo, false, campo);
+    assertEquals(campo in (corpo.payer as Record<string, unknown>), false, campo);
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders com nome imprestável não manda nome e NÃO lança — o nome nunca bloqueia a cobrança", () => {
+  const corpo = montarCorpoCartaoOrders(argsCartao({ nome: "Maria 2" }));
+  assertEquals("first_name" in (corpo.payer as Record<string, unknown>), false);
+  assertEquals("last_name" in (corpo.payer as Record<string, unknown>), false);
+});
+
+// ─── Dados do comprador e do produto no cartão (03/10/2026) ──────────────────
+//
+// O antifraude do MP recusou duas compras reais de teste vendo a venda como
+// "Produto sem nome". `comprador` (opcional) leva itens, telefone e endereço.
+// O que erra caro e se prova aqui: a soma dos itens NUNCA diverge do total, o
+// lixo NUNCA vira campo torto nem lança, e SEM `comprador` o corpo é o de sempre.
+
+const COMPRADOR_COMPLETO = {
+  items: [
+    { title: "Camiseta Azul", unit_price: "49.90", quantity: 2, description: "Camiseta Azul", external_code: "prod-1" },
+    { title: "Frete", unit_price: "50.10", quantity: 1, description: "Frete" },
+  ],
+  phone: { area_code: "11", number: "987654321" },
+  address: {
+    zip_code: "06233903",
+    street_name: "Rua Teste",
+    street_number: "3003",
+    neighborhood: "Bonfim",
+    city: "Osasco",
+    state: "SP",
+    complement: "Apto 303",
+  },
+  shipmentAddress: {
+    zip_code: "06233903",
+    street_name: "Rua Teste",
+    street_number: "3003",
+    neighborhood: "Bonfim",
+    city: "Osasco",
+    state: "SP",
+    complement: "Apto 303",
+  },
+};
+
+Deno.test("montarCorpoCartaoOrders com comprador: manda items, payer.phone, payer.address e shipment.address no formato da doc — e o resto do corpo intacto", () => {
+  const base = montarCorpoCartaoOrders(argsCartao({ valor: 149.9 }));
+  const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 149.9, comprador: COMPRADOR_COMPLETO }));
+
+  assertEquals(corpo.items, COMPRADOR_COMPLETO.items);
+  assertEquals(corpo.shipment, { address: COMPRADOR_COMPLETO.shipmentAddress });
+  const payer = corpo.payer as Record<string, unknown>;
+  assertEquals(payer.phone, { area_code: "11", number: "987654321" });
+  assertEquals(payer.address, COMPRADOR_COMPLETO.address);
+  // Tudo que ja existia segue igual: o comprador SO soma.
+  const { items: _i, shipment: _s, payer: payerComDados, ...restoCom } = corpo;
+  const { payer: payerBase, ...restoBase } = base;
+  assertEquals(restoCom, restoBase);
+  const { phone: _p, address: _a, ...payerSemExtras } = payerComDados as Record<string, unknown>;
+  assertEquals(payerSemExtras, payerBase);
+  // Nenhum campo fora do esquema de create-order.
+  assertEquals("additional_info" in corpo, false);
+});
+
+Deno.test("montarCorpoCartaoOrders: SOMA DOS ITENS DIVERGENTE do total -> items NAO vai (um 400 derrubaria todo cartao), o resto vai", () => {
+  // 149.90 de itens contra 100.00 de total (pedido com desconto, por exemplo).
+  const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 100, comprador: COMPRADOR_COMPLETO }));
+  assertEquals("items" in corpo, false);
+  assertEquals((corpo.payer as Record<string, unknown>).phone, { area_code: "11", number: "987654321" });
+  assertEquals(corpo.shipment, { address: COMPRADOR_COMPLETO.shipmentAddress });
+  // Um centavo de diferenca tambem derruba.
+  assertEquals("items" in montarCorpoCartaoOrders(argsCartao({ valor: 149.91, comprador: COMPRADOR_COMPLETO })), false);
+  assertEquals("items" in montarCorpoCartaoOrders(argsCartao({ valor: 149.89, comprador: COMPRADOR_COMPLETO })), false);
+});
+
+Deno.test("montarCorpoCartaoOrders: o total arredondado (10.005 -> duas casas) e' o que a soma compara", () => {
+  const comprador = { items: [{ title: "A", unit_price: "10.01", quantity: 1, description: "A" }] };
+  assertEquals("items" in montarCorpoCartaoOrders(argsCartao({ valor: 10.005 + 0.001, comprador })), true);
+});
+
+Deno.test("montarCorpoCartaoOrders: comprador ausente, vazio ou LIXO devolve o corpo de sempre — sem lancar", () => {
+  const base = montarCorpoCartaoOrders(argsCartao());
+  for (
+    const comprador of [
+      undefined,
+      null,
+      {},
+      "texto",
+      42,
+      [],
+      { items: "x", phone: 1, address: [], shipmentAddress: null },
+      { items: [{}], phone: { area_code: "99" }, address: { zip_code: "abc" } },
+    ]
+  ) {
+    assertEquals(montarCorpoCartaoOrders(argsCartao({ comprador })), base, JSON.stringify(comprador));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders: comprador com chave estranha (cpf) nao atravessa para o corpo", () => {
+  const corpo = montarCorpoCartaoOrders(
+    argsCartao({
+      valor: 149.9,
+      comprador: {
+        ...COMPRADOR_COMPLETO,
+        phone: { area_code: "11", number: "987654321", cpf: "99999999999" },
+        cpf: "99999999999",
+      },
+    }),
+  );
+  assertEquals(JSON.stringify(corpo).includes("99999999999"), false);
+});
+
+Deno.test("montarCorpoPixOrders: o PIX NAO ganha items, shipment, phone nem address — o escopo e' so o cartao", () => {
+  const corpo = montarCorpoPixOrders({
+    valor: 149.9,
+    email: "cliente@exemplo.com",
+    orderId: PEDIDO_CARTAO,
+    expiracao: "PT30M",
+    comprador: COMPRADOR_COMPLETO,
+  } as never);
+  for (const campo of ["items", "shipment", "additional_info"]) {
+    assertEquals(campo in corpo, false, campo);
+  }
+  for (const campo of ["phone", "address"]) {
+    assertEquals(campo in (corpo.payer as Record<string, unknown>), false, campo);
+  }
 });

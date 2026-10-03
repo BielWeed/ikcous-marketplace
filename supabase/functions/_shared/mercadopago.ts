@@ -13,6 +13,8 @@
  * `fetch` entra por parâmetro para o teste não tocar rede.
  */
 
+import { camposDoComprador } from "./dados-antifraude.ts";
+
 // Exportada pelo M1 do laudo do PR #438 (07/09): o executor de estorno
 // (`estorno.ts`) precisava da MESMA base e a redeclarava — segunda cópia da
 // mesma URL é o defeito #53 (regra em dois lugares) esperando para divergir.
@@ -339,6 +341,56 @@ export function parcelasValidas(parcelas: unknown): parcelas is number {
 }
 
 /**
+ * Device ID do comprador (03/10/2026) — o valor que o `security.js` do
+ * Mercado Pago cria no navegador (`window.MP_DEVICE_SESSION_ID`) e que a
+ * Orders API pede no cabeçalho `X-meli-session-id` do POST /v1/orders, para o
+ * antifraude reconhecer o dispositivo (sem ele, um cartão real foi recusado
+ * com `high_risk`). Medido: ~230 caracteres, só letras, dígitos e pontos.
+ *
+ * É ENTRADA NÃO CONFIÁVEL — vem do navegador do cliente e vira cabeçalho
+ * HTTP —, então o formato é fechado: `[A-Za-z0-9._-]`, 1..512. Nada de
+ * espaço, `:`, CR/LF ou unicode. Fonte única: `criar-pagamento` valida o
+ * corpo com ESTA função e `criarOrder` confere de novo antes de montar o
+ * cabeçalho (mesma regra dos outros formatos deste bloco, nunca duas regex).
+ * O MESMO padrão vive no front (`device-id-mercado-pago.ts`).
+ */
+export function deviceIdValido(valor: unknown): valor is string {
+  return typeof valor === "string" && /^[A-Za-z0-9._-]{1,512}$/.test(valor);
+}
+
+/**
+ * Nome do comprador → `payer.first_name` + `payer.last_name`: o primeiro nome
+ * e o RESTO (o antifraude compara o nome do pagador com o do titular; mandar
+ * tudo em `first_name` esconde o sobrenome). Nome único não inventa
+ * sobrenome.
+ *
+ * O nome NUNCA pode derrubar a cobrança: dado com cara de lixo (ausente,
+ * dígito, símbolo, e-mail, caractere de controle, comprido demais) devolve
+ * `{}` — sem nome nenhum —, não um erro nem um nome "consertado" por palpite.
+ * Só letras (qualquer alfabeto), apóstrofo, ponto e hífen entram, porque o
+ * limite de formato que a Orders API aplica a esses campos não está provado.
+ */
+export function dividirNomeDoPagador(
+  nome: unknown,
+): { first_name?: string; last_name?: string } {
+  if (typeof nome !== "string") return {};
+  // Controle (inclui quebra de linha) é lixo, não separador: sem isso o
+  // "colapsar espaços" abaixo transformaria "Maria\nSilva" num nome válido.
+  for (const caractere of nome) {
+    const codigo = caractere.charCodeAt(0);
+    if (codigo <= 0x1f || codigo === 0x7f) return {};
+  }
+  const limpo = nome.trim().replace(/\s+/g, " ");
+  if (limpo === "" || limpo.length > 100) return {};
+  const partes = limpo.split(" ");
+  if (!partes.every((parte) => /^\p{L}[\p{L}'’.-]*$/u.test(parte))) return {};
+  const [primeiro, ...resto] = partes;
+  return resto.length > 0
+    ? { first_name: primeiro, last_name: resto.join(" ") }
+    : { first_name: primeiro };
+}
+
+/**
  * Documento do titular, normalizado: aceita a máscara que o Brick ou uma
  * pessoa digita (ponto, hífen, barra, espaço) e devolve só os dígitos, com 11
  * para CPF e 14 para CNPJ. Qualquer outra coisa (letra, tamanho errado, tipo
@@ -374,6 +426,14 @@ export function normalizarDocumento(
  *   recebido — débito não parcela.
  * - `issuer_id` e o `processing_mode` que o Brick devolve NÃO entram: o
  *   emissor sai do token, e o modo de processamento é decisão do servidor.
+ * - `comprador` (opcional, 03/10/2026) soma os dados que o antifraude do MP
+ *   pede — `items`, `payer.phone`, `payer.address`, `shipment.address` — e
+ *   NUNCA derruba a cobrança: tudo passa de novo pelas regras de formato
+ *   (`camposDoComprador`), o que não presta é omitido sem lançar, e `items` só
+ *   vai quando a soma `unit_price × quantity` fecha AO CENTAVO com o
+ *   `total_amount` (a doc não afirma que precisa fechar; não mandar é a única
+ *   garantia de nunca ser recusado por soma). Fonte e campos que ficaram de
+ *   fora de propósito (`additional_info`): `_shared/dados-antifraude.ts`.
  *
  * Valida tudo e LANÇA em entrada inválida (este arquivo tem `@ts-nocheck`:
  * só o `throw` barra). As mensagens nunca carregam o valor recusado — um
@@ -389,6 +449,7 @@ export function montarCorpoCartaoOrders(args: {
   paymentMethodId: string;
   paymentTypeId: "credit_card" | "debit_card";
   parcelas: number;
+  comprador?: unknown;
 }): Record<string, unknown> {
   if (typeof args.orderId !== "string" || args.orderId.length === 0) {
     throw new Error("montarCorpoCartaoOrders: orderId obrigatório.");
@@ -419,11 +480,18 @@ export function montarCorpoCartaoOrders(args: {
   const valorFormatado = args.valor.toFixed(2);
   const parcelas = args.paymentTypeId === "debit_card" ? 1 : args.parcelas;
 
-  const payer: Record<string, unknown> = { email: args.email };
-  if (args.nome) payer.first_name = args.nome;
+  // `nome` inteiro entra dividido em first_name + last_name; nome imprestável
+  // não manda nada (ver `dividirNomeDoPagador`) e nunca lança.
+  const payer: Record<string, unknown> = { email: args.email, ...dividirNomeDoPagador(args.nome) };
   payer.identification = documento;
 
-  return {
+  // Dados do comprador e do produto (antifraude): opcionais, revalidados, e a
+  // soma dos itens conferida contra o total JÁ ARREDONDADO que vai no corpo.
+  const extras = camposDoComprador(args.comprador, valorFormatado);
+  if (extras.phone) payer.phone = extras.phone;
+  if (extras.address) payer.address = extras.address;
+
+  const corpo: Record<string, unknown> = {
     type: "online",
     processing_mode: "automatic",
     capture_mode: "automatic_async",
@@ -452,6 +520,9 @@ export function montarCorpoCartaoOrders(args: {
       },
     },
   };
+  if (extras.items) corpo.items = extras.items;
+  if (extras.shipment) corpo.shipment = extras.shipment;
+  return corpo;
 }
 
 /** `transactions.payments[0]` da order, ou `undefined` — leitor comum dos
@@ -1182,6 +1253,10 @@ export async function criarOrder(args: {
   // aborto sem esperar os 15s.
   tempoLimiteMs?: number;
   corpoNoLog?: boolean;
+  // Device ID do comprador (cartão): vira `X-meli-session-id` SÓ se passar em
+  // `deviceIdValido` — inválido ou ausente é ignorado, nunca erro (o antifraude
+  // fica sem o sinal, a cobrança segue). Ver `deviceIdValido`.
+  deviceId?: string | null;
 }): Promise<ResultadoOrder> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
@@ -1198,6 +1273,12 @@ export async function criarOrder(args: {
           "Content-Type": "application/json",
           // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
           "X-Idempotency-Key": args.chaveIdempotencia,
+          // Doc oficial (Orders API, "melhorar aprovação"): o Device ID vai
+          // neste cabeçalho do POST /v1/orders. Não altera o CORPO, que é o
+          // que o MP compara sob a mesma chave de idempotência (409 por
+          // "chave repetida, corpo diferente"); se o cabeçalho entra nessa
+          // comparação não está documentado — medir no teste real do runbook.
+          ...(deviceIdValido(args.deviceId) ? { "X-meli-session-id": args.deviceId } : {}),
         },
         body: JSON.stringify(args.corpo),
       },
