@@ -1009,6 +1009,186 @@ Deno.test("buscarOrdersDoPedido: 'data' que não é array (ou corpo só com pagi
   assertEquals((await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: soPaging })).ok, false);
 });
 
+// PAGINAÇÃO (02/10/2026): a busca antes não mandava `page_size` nem ordenação
+// (a API devolve 20 por página) e devolvia `{ ok: true }` com a 1ª página como
+// se fosse a lista COMPLETA — um pedido com 21+ orders na janela, e a viva (ou
+// a capturada) só na página 2, soltava a vaga. Regra de completude, sobre a
+// lista CRUA (antes do refiltro por `external_reference`):
+//   (a) `paging.total` válido (inteiro >= 0) e <= tamanho da lista -> completa;
+//   (b) `total` ausente/inválido e lista < 20 (o `page_size` DEFAULT da API, não
+//       os 100 pedidos: se a API ignorar o parâmetro serve no máximo 20, então
+//       uma página de 20 sem `paging` é ambígua) -> a última -> completa;
+//   qualquer outro caso -> `{ ok: false }` (nunca libera, nunca recusa).
+// Referência oficial (Search order, consultada em 02/10/2026): `page_size`
+// default 20, máx. 100; `paging` = { total, total_pages, offset, limit } com os
+// quatro campos como STRING.
+
+function ordensDoPedido(n: number, pedidoId = "p"): Record<string, unknown>[] {
+  return Array.from({ length: n }, (_, i) => ({ id: `ORD-${i}`, status: "failed", external_reference: pedidoId }));
+}
+
+function buscaComCorpo(corpo: unknown) {
+  return (() => Promise.resolve(new Response(JSON.stringify(corpo), { status: 200 }))) as unknown as typeof fetch;
+}
+
+Deno.test("buscarOrdersDoPedido (paginação): manda page_size=100, sort_by=created_date e sort_order=desc, junto dos parâmetros que já mandava", async () => {
+  let capturada: string | null = null;
+  const fetchStub = ((url: string) => {
+    capturada = url;
+    return Promise.resolve(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+  }) as unknown as typeof fetch;
+
+  await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
+    desde: "2026-09-26T12:00:00.000Z",
+    fetchImpl: fetchStub,
+  });
+
+  const q = new URL(capturada!).searchParams;
+  assertEquals(q.get("page_size"), "100");
+  assertEquals(q.get("sort_by"), "created_date");
+  assertEquals(q.get("sort_order"), "desc");
+  assertEquals(q.get("external_reference"), "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b");
+  assertEquals(q.get("begin_date"), "2026-09-26T11:58:00.000Z");
+  assertEquals(typeof q.get("end_date"), "string");
+  assertEquals(
+    [...q.keys()].sort(),
+    ["begin_date", "end_date", "external_reference", "page_size", "sort_by", "sort_order"],
+    "nenhum parâmetro a mais nem a menos — e nenhum `page`: não paginamos",
+  );
+});
+
+Deno.test("buscarOrdersDoPedido (paginação, a): 1ª página de 20 com paging.total='21' (a order viva está fora dela) -> ok:false, NUNCA ok:true com lista parcial", async () => {
+  const fetchStub = buscaComCorpo({
+    data: ordensDoPedido(20),
+    paging: { total: "21", total_pages: "2", offset: "0", limit: "20" },
+  });
+  const r = await buscarOrdersDoPedido({ token: "t", pedidoId: "p", desde: "d", fetchImpl: fetchStub });
+  assertEquals(r, { ok: false });
+});
+
+Deno.test("buscarOrdersDoPedido (paginação, b): sem paging e 20 itens (ou mais: 21, 99, 100) -> ok:false — 20 é o default da API, então uma página de 20 é ambígua (a API pode ter ignorado o page_size)", async () => {
+  for (const n of [20, 21, 99, 100]) {
+    const r = await buscarOrdersDoPedido({
+      token: "t",
+      pedidoId: "p",
+      desde: "d",
+      fetchImpl: buscaComCorpo({ data: ordensDoPedido(n) }),
+    });
+    assertEquals(r, { ok: false }, `${n} itens sem paging`);
+  }
+});
+
+Deno.test("buscarOrdersDoPedido (paginação, c): sem paging e página CURTA (0, 3, 19 — menos de 20) -> ok:true (mantém os dublês antigos e a API que omite o paging)", async () => {
+  for (const n of [0, 3, 19]) {
+    const r = await buscarOrdersDoPedido({
+      token: "t",
+      pedidoId: "p",
+      desde: "d",
+      fetchImpl: buscaComCorpo({ data: ordensDoPedido(n) }),
+    });
+    assertEquals(r, { ok: true, orders: ordensDoPedido(n) }, `${n} itens sem paging`);
+  }
+});
+
+Deno.test("buscarOrdersDoPedido (paginação, d): paging.total='3' com 3 itens (e total numérico) -> ok:true; total == tamanho da página cheia (100) também é completo", async () => {
+  const comString = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({
+      data: ordensDoPedido(3),
+      paging: { total: "3", total_pages: "1", offset: "0", limit: "100" },
+    }),
+  });
+  assertEquals(comString, { ok: true, orders: ordensDoPedido(3) });
+
+  const comNumero = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({ data: ordensDoPedido(3), paging: { total: 3 } }),
+  });
+  assertEquals(comNumero, { ok: true, orders: ordensDoPedido(3) });
+
+  // BORDA: exatamente uma página cheia e nada além -> total (100) <= n (100).
+  const cheiaECompleta = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({ data: ordensDoPedido(100), paging: { total: "100" } }),
+  });
+  assertEquals(cheiaECompleta.ok, true);
+  // BORDA: um a mais que a página -> incompleta.
+  const umAMais = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({ data: ordensDoPedido(100), paging: { total: "101" } }),
+  });
+  assertEquals(umAMais, { ok: false });
+});
+
+Deno.test("buscarOrdersDoPedido (paginação, e): paging.total inválido ('abc', vazio, null, negativo, fracionário, booleano) -> cai na regra do tamanho: 19 itens ok:true, 20 (e 100) ok:false", async () => {
+  for (const total of ["abc", "", "  ", null, "-1", -1, "2.5", 2.5, true, false, [], {}]) {
+    const curta = await buscarOrdersDoPedido({
+      token: "t",
+      pedidoId: "p",
+      desde: "d",
+      fetchImpl: buscaComCorpo({ data: ordensDoPedido(19), paging: { total } }),
+    });
+    assertEquals(curta.ok, true, `total inválido ${JSON.stringify(total)} com 19 itens`);
+    for (const n of [20, 100]) {
+      const cheia = await buscarOrdersDoPedido({
+        token: "t",
+        pedidoId: "p",
+        desde: "d",
+        fetchImpl: buscaComCorpo({ data: ordensDoPedido(n), paging: { total } }),
+      });
+      assertEquals(cheia.ok, false, `total inválido ${JSON.stringify(total)} com ${n} itens NÃO pode virar 'total 0'`);
+    }
+  }
+  // `paging` que nem objeto é.
+  for (const paging of ["21", 21, null, []]) {
+    const cheia = await buscarOrdersDoPedido({
+      token: "t",
+      pedidoId: "p",
+      desde: "d",
+      fetchImpl: buscaComCorpo({ data: ordensDoPedido(20), paging }),
+    });
+    assertEquals(cheia.ok, false, `paging ${JSON.stringify(paging)} ilegível com 20 itens`);
+  }
+});
+
+Deno.test("buscarOrdersDoPedido (paginação): a completude olha a lista CRUA — 100 orders da loja com só 3 deste pedido e sem paging (filtro do servidor ignorado) -> ok:false; e total > crua também", async () => {
+  const mistura = [...ordensDoPedido(3), ...ordensDoPedido(97, "outro-pedido")];
+  const semPaging = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({ data: mistura }),
+  });
+  assertEquals(semPaging, { ok: false }, "100 cruas = página cheia, mesmo que o refiltro deixe só 3");
+
+  const totalMaior = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({ data: ordensDoPedido(3), paging: { total: "40" } }),
+  });
+  assertEquals(totalMaior, { ok: false }, "o refiltro nunca encurta a lista a ponto de enganar: 3 de 40 é parcial");
+
+  // E o refiltro continua valendo quando a lista É completa.
+  const completa = await buscarOrdersDoPedido({
+    token: "t",
+    pedidoId: "p",
+    desde: "d",
+    fetchImpl: buscaComCorpo({ data: [...ordensDoPedido(2), ...ordensDoPedido(1, "outro")], paging: { total: "3" } }),
+  });
+  assertEquals(completa, { ok: true, orders: ordensDoPedido(2) });
+});
+
 // --- extrairQrCode: o QR não está mais na raiz da resposta ---
 //
 // Medido na resposta real de /v1/orders:

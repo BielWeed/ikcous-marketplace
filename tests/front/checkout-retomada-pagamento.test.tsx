@@ -130,9 +130,12 @@ vi.mock("@/components/checkout/PagamentoOnline", () => ({
   },
 }));
 
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => null,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

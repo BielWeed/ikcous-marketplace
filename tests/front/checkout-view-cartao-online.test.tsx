@@ -150,9 +150,10 @@ vi.mock("@/lib/flags", () => ({
 
 // `null` = cartão não oferecido (o hook já resolve a falha fechada).
 let mockConfigDoCartao: ConfigDoCartao | null = null;
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => mockConfigDoCartao,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { estadoPronto } = await import("./duble-use-config-do-cartao");
+  return { useConfigDoCartao: () => estadoPronto(mockConfigDoCartao) };
+});
 
 vi.mock("@/components/checkout/PagamentoOnline", () => ({
   PagamentoOnline: (props: Record<string, unknown>) => {

@@ -246,9 +246,12 @@ vi.mock("@/components/checkout/PagamentoOnline", () => ({
 // montar (useConfigDoCartao) — uma consulta que não é do polling que este
 // arquivo conta em `fromSpy`. A leitura tem suíte própria
 // (config-do-cartao.test.ts); aqui o cartão fica simplesmente desligado.
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => null,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público — mesmo padrão
 // dos outros arquivos desta pasta.
@@ -964,7 +967,11 @@ describe("CheckoutView — confirmação de pagamento na tela do PIX (CHECKOUT-0
       await vi.advanceTimersByTimeAsync(10_000);
     });
 
-    expect(selectSpy).toHaveBeenCalledWith("payment_status, expires_at");
+    // C6 (P1, 02/10/2026): a vaga e o status entram na mesma leitura — é por
+    // ela que a recusa depois do 3DS aparece (vaga solta por prova).
+    expect(selectSpy).toHaveBeenCalledWith(
+      "payment_status, expires_at, gateway_payment_id, status",
+    );
     expect(eqSpy).toHaveBeenCalledWith("id", "ped-999");
   });
 

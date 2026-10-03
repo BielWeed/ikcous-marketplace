@@ -12,7 +12,7 @@
  * pagamento de um pedido que o corpo do webhook não pode determinar sozinho
  * (por isso o `p_order_id` sai da RESPOSTA do MP, nunca do corpo).
  */
-import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
+import { assert, assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
 // mp-10: prova que a porta barata do handler e `avaliarAssinatura` usam a
 // MESMA regra de parse (ver o teste "camposDaAssinatura vem do módulo
@@ -263,6 +263,9 @@ function clienteFalso(opts: {
     chamadasUpdateMarketplaceOrders?: Array<
       { valores: Record<string, unknown>; filtros: Array<{ coluna: string; valor: unknown }> }
     >;
+    // C-P: cada `rpc("reservar_aviso_ao_lojista")`, e cada confirmar_/liberar_.
+    chamadasReservar?: Array<{ args: Record<string, unknown> }>;
+    chamadasAviso?: Array<{ nome: string; args: Record<string, unknown> }>;
   };
   // --- T5 (estorno pelo app): order_refunds — o ledger que o passo novo
   // (registrarDesfechoDoEstorno) lê/grava. Default: fila VAZIA — testes que
@@ -283,7 +286,22 @@ function clienteFalso(opts: {
   // ainda roda pelas chaves da plataforma, que é o que todos os testes
   // anteriores a esta tarefa exercitam.
   registroMp?: Record<string, unknown> | null;
+  // C-P (02/10/2026): as três RPCs do aviso (migration 20261191000000)
+  // espelham as reais, SEM o prazo de 2 minutos (o prazo é SQL e foi provado
+  // em Postgres de verdade à parte): reservar = 'reservado' se a chave não
+  // existe, 'enviado' se já foi entregue, 'em_envio' se outra entrega está
+  // com ela; confirmar = enviado; liberar = apaga se NÃO enviado. As chaves
+  // vivem em `avisos` — passe o MESMO Map entre chamadas de handler para
+  // simular as reentregas do MP contra o mesmo banco. `reservaFalha`: "erro"
+  // devolve `{ error }`, "lanca" rejeita, "nulo" devolve `{ data: null }`,
+  // "desconhecido" devolve `true` (o contrato booleano da rodada 2).
+  // `reservaRespostas`: roteiro consumido NA ORDEM das chamadas de reservar
+  // (um `Error` no roteiro = a chamada lança); esgotado, volta ao Map.
+  avisos?: Map<string, { enviado: boolean }>;
+  reservaFalha?: "erro" | "lanca" | "nulo" | "desconhecido";
+  reservaRespostas?: Array<string | Error>;
 }) {
+  const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   // Fila VIVA de order_refunds — mutável: um INSERT desta MESMA chamada de
   // handler (ou de uma chamada seguinte, com o MESMO cliente falso — W3/W5
   // reenviam a notificação) passa a aparecer nas leituras seguintes, como o
@@ -340,6 +358,34 @@ function clienteFalso(opts: {
           },
           error: null,
         };
+      }
+      if (nome === "reservar_aviso_ao_lojista") {
+        opts.registro?.chamadasReservar?.push({ args });
+        opts.registro?.chamadasAviso?.push({ nome, args });
+        if (opts.reservaFalha === "lanca") throw new Error("rede caiu (dublê)");
+        if (opts.reservaFalha === "erro") return { data: null, error: { message: "statement timeout (dublê)" } };
+        if (opts.reservaFalha === "nulo") return { data: null, error: null };
+        if (opts.reservaFalha === "desconhecido") return { data: true, error: null };
+        const roteiro = opts.reservaRespostas?.shift();
+        if (roteiro instanceof Error) throw roteiro;
+        if (roteiro !== undefined) return { data: roteiro, error: null };
+        const chave = String(args.p_chave);
+        const linha = avisos.get(chave);
+        if (linha) return { data: linha.enviado ? "enviado" : "em_envio", error: null };
+        avisos.set(chave, { enviado: false });
+        return { data: "reservado", error: null };
+      }
+      if (nome === "confirmar_aviso_ao_lojista" || nome === "liberar_aviso_ao_lojista") {
+        opts.registro?.chamadasAviso?.push({ nome, args });
+        const chave = String(args.p_chave);
+        const linha = avisos.get(chave);
+        if (nome === "confirmar_aviso_ao_lojista") {
+          if (linha) linha.enviado = true;
+          return { data: Boolean(linha), error: null };
+        }
+        const apaga = Boolean(linha && !linha.enviado);
+        if (apaga) avisos.delete(chave);
+        return { data: apaga, error: null };
       }
       throw new Error(`rpc inesperada nos testes: ${nome}`);
     },
@@ -5268,8 +5314,10 @@ Deno.test("cartão — order aprovada, mas a vaga JÁ TEM outra cobrança de ver
     resposta = await handler(req, {
       supabase,
       fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", "credit_card")),
-      enviarPush: async (a: unknown) => {
+      // C-P: o aviso de cobrança duplicada sai pelo push CONTADO.
+      enviarPushContado: (a: unknown) => {
         chamadasPush.push(a);
+        return Promise.resolve(1);
       },
       enviarComprovante: async () => {},
     });
@@ -5376,8 +5424,10 @@ Deno.test("cartão — Achado S5 (W4): a ADOÇÃO perde a corrida para um PIX gr
     resposta = await handler(req, {
       supabase,
       fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", "credit_card")),
-      enviarPush: async (a: unknown) => {
+      // C-P: o aviso de cobrança duplicada sai pelo push CONTADO.
+      enviarPushContado: (a: unknown) => {
         chamadasPush.push(a);
+        return Promise.resolve(1);
       },
       enviarComprovante: async () => {},
     });
@@ -5394,6 +5444,271 @@ Deno.test("cartão — Achado S5 (W4): a ADOÇÃO perde a corrida para um PIX gr
   // aqui — o admin nunca soube de duas cobranças aprovadas disputando o
   // mesmo pedido.
   assertEquals(chamadasPush.length, 1, "o admin precisa ser avisado — a vaga tem OUTRA cobrança real, não um sentinela");
+});
+
+// C-P (02/10/2026, W7 do harness PGlite): o push "Cobrança de cartão
+// duplicada?" saía a cada ENTREGA do MP (uma notificação por atualização da
+// order + reenvios; o handler relê o estado ATUAL). Agora reserva
+// `cartao_divergente:<pedido>:<order>` com PRAZO antes de avisar, confirma só
+// se o push CHEGOU a alguém e libera se não chegou — e avisa mesmo assim se a
+// reserva FALHAR (falha aberta). O prazo de 2 minutos é SQL (provado à parte).
+const VAGA_OUTRA_COBRANCA = "ORDTST01OUTRACOBRANCAJAGRAVADA";
+const CHAVE_DIVERGENTE = `cartao_divergente:${UUID_PEDIDO}:${ID_ORDER_CARTAO_MP}`;
+
+async function entregarOrderDivergente(opts: {
+  avisos: Map<string, { enviado: boolean }>;
+  reservaFalha?: "erro" | "lanca" | "nulo" | "desconhecido";
+  reservaRespostas?: Array<string | Error>;
+  order?: Record<string, unknown>;
+  corrida?: boolean;
+  // o que o push CONTADO devolve: número de inscrições, ou "lanca"
+  entrega?: number | "lanca";
+}) {
+  ambienteDoWebhook();
+  const registro = {
+    chamadasRpc: [],
+    chamadasLiberar: [],
+    chamadasUpdateMarketplaceOrders: [],
+    chamadasReservar: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasAviso: [] as Array<{ nome: string; args: Record<string, unknown> }>,
+  };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: opts.corrida ? null : VAGA_OUTRA_COBRANCA,
+  };
+  const supabase = clienteFalso({
+    rpcResultado: "divergente",
+    pedido,
+    registro,
+    avisos: opts.avisos,
+    reservaFalha: opts.reservaFalha,
+    reservaRespostas: opts.reservaRespostas,
+    aposLeituraDoPedido: opts.corrida
+      ? (p) => {
+        p.gateway_payment_id = VAGA_OUTRA_COBRANCA;
+      }
+      : undefined,
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const pushes: Array<{ title: string }> = [];
+  const erros: string[] = [];
+  const dormidas: number[] = [];
+  const [erroReal, avisoReal] = [console.error, console.warn];
+  console.error = (...a: unknown[]) => erros.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  console.warn = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, opts.order ?? orderDoMp("processed", "accredited", "credit_card")),
+      enviarPushContado: ({ aviso }: { aviso: { title: string } }) => {
+        pushes.push(aviso);
+        if (opts.entrega === "lanca") return Promise.reject(new Error("web push fora do ar (dublê)"));
+        return Promise.resolve(opts.entrega ?? 1);
+      },
+      // Rodada 3: a espera da reconsulta é injetada (nada de 8 s reais).
+      dormir: (ms: number) => {
+        dormidas.push(ms);
+        return Promise.resolve();
+      },
+      enviarComprovante: async () => {},
+    });
+  } finally {
+    console.error = erroReal;
+    console.warn = avisoReal;
+  }
+  const avisoRpcs = registro.chamadasAviso.map((c) => c.nome.replace("_aviso_ao_lojista", ""));
+  return { status: resposta.status, pushes, registro, erros, pedido, avisoRpcs, dormidas };
+}
+
+Deno.test("C-P (a) — 3 entregas com push ENTREGUE -> 1 push, confirmado; o log de cartao_divergente sai nas 3; a RPC decide 'divergente' nas 3", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const rodadas = [];
+  for (let i = 0; i < 3; i++) rodadas.push(await entregarOrderDivergente({ avisos }));
+  assertEquals(rodadas.map((r) => r.status), [200, 200, 200]);
+  assertEquals(rodadas.map((r) => r.pushes.length), [1, 0, 0]);
+  assertEquals(rodadas[0].pushes[0].title, "Cobrança de cartão duplicada?");
+  assertEquals(rodadas.map((r) => r.avisoRpcs), [["reservar", "confirmar"], ["reservar"], ["reservar"]]);
+  assertEquals(rodadas[0].registro.chamadasAviso.map((c) => c.args), [{ p_chave: CHAVE_DIVERGENTE }, { p_chave: CHAVE_DIVERGENTE }]);
+  assertEquals([...avisos.entries()], [[CHAVE_DIVERGENTE, { enviado: true }]]);
+  for (const r of rodadas) {
+    assert(r.erros.some((e) => e.includes("cartao_divergente")), "o console.error do cartao_divergente continua em toda entrega");
+    assertEquals(r.registro.chamadasRpc.map((c) => c.args.p_payment_id), [ID_ORDER_CARTAO_MP]);
+    assertEquals(r.pedido.gateway_payment_id, VAGA_OUTRA_COBRANCA);
+  }
+});
+
+for (const entrega of [0, "lanca"] as const) {
+  Deno.test(`C-P (b) — push que NÃO CHEGA (${entrega === 0 ? "0 inscrições entregues" : "lança"}): libera a reserva; a PRÓXIMA entrega avisa de novo e confirma`, async () => {
+    const avisos = new Map<string, { enviado: boolean }>();
+    const r1 = await entregarOrderDivergente({ avisos, entrega });
+    assertEquals([r1.status, r1.pushes.length], [200, 1]);
+    assertEquals(r1.avisoRpcs, ["reservar", "liberar"]);
+    assertEquals(avisos.size, 0, "reserva liberada");
+    const r2 = await entregarOrderDivergente({ avisos });
+    assertEquals([r2.pushes.length, r2.avisoRpcs], [1, ["reservar", "confirmar"]]);
+    const r3 = await entregarOrderDivergente({ avisos });
+    assertEquals(r3.pushes.length, 0);
+  });
+}
+
+for (const falha of ["erro", "lanca", "nulo", "desconhecido"] as const) {
+  const rotulo = new Map([
+    ["erro", "com ERRO"],
+    ["lanca", "que LANÇA"],
+    ["nulo", "com retorno NULO"],
+    ["desconhecido", "com valor DESCONHECIDO (true)"],
+  ]).get(falha);
+  Deno.test(`C-P (d) — reserva ${rotulo}: avisa em TODA entrega (falha aberta), 200, sem confirmar/liberar vaga que não é dela`, async () => {
+    const avisos = new Map<string, { enviado: boolean }>();
+    const rodadas = [];
+    for (let i = 0; i < 2; i++) rodadas.push(await entregarOrderDivergente({ avisos, reservaFalha: falha }));
+    assertEquals(rodadas.map((r) => [r.status, r.pushes.length]), [[200, 1], [200, 1]]);
+    assertEquals(rodadas.map((r) => r.avisoRpcs), [["reservar"], ["reservar"]]);
+    assert(rodadas[0].erros.some((e) => e.includes("reservar_aviso_ao_lojista falhou")), rodadas[0].erros.join("\n"));
+  });
+}
+
+// Rodada 3 (02/10/2026): a corrida A/B — quem encontra 'em_envio' espera o
+// RESULTADO da dona reconsultando (pausas 1 s, 2,5 s, 4,5 s; 8 s é a soma das
+// pausas, não um prazo — as RPCs e o push somam por fora) e
+// assume se ela liberou; se ela continuar enviando, 503 para o MP reentregar.
+Deno.test("C-P (singleflight) — 'em_envio' e depois 'reservado' (a dona liberou): assume, faz o push, confirma, 200", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const r = await entregarOrderDivergente({ avisos, reservaRespostas: ["em_envio", "reservado"] });
+  assertEquals([r.status, r.pushes.length, r.dormidas], [200, 1, [1000]]);
+  assertEquals(r.avisoRpcs, ["reservar", "reservar", "confirmar"]);
+  assertEquals(r.registro.chamadasRpc.length, 1, "segue para confirmar_pagamento");
+});
+
+Deno.test("C-P (singleflight) — 'em_envio', 'em_envio' e depois 'enviado' (a dona entregou): nenhum push, 200", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const r = await entregarOrderDivergente({ avisos, reservaRespostas: ["em_envio", "em_envio", "enviado"] });
+  assertEquals([r.status, r.pushes.length, r.dormidas], [200, 0, [1000, 2500]]);
+  assertEquals(r.avisoRpcs, ["reservar", "reservar", "reservar"]);
+});
+
+for (const ramo of ["divergente", "S5"] as const) {
+  Deno.test(`C-P (singleflight, ${ramo}) — 'em_envio' até o fim da espera: 503 (o MP reentrega), 4 reservas no máximo, 8 s de pausas somadas, nenhum push, nada de confirmar_pagamento`, async () => {
+    const avisos = new Map<string, { enviado: boolean }>();
+    const r = await entregarOrderDivergente({
+      avisos,
+      corrida: ramo === "S5",
+      reservaRespostas: ["em_envio", "em_envio", "em_envio", "em_envio", "em_envio", "em_envio"],
+    });
+    assertEquals([r.status, r.pushes.length], [503, 0]);
+    assertEquals(r.avisoRpcs, ["reservar", "reservar", "reservar", "reservar"]);
+    assertEquals(r.dormidas, [1000, 2500, 4500]);
+    assertEquals(r.dormidas.reduce((a, b) => a + b, 0), 8000);
+    assertEquals(r.registro.chamadasRpc.length, 0, "503 antes de confirmar_pagamento");
+  });
+}
+
+Deno.test("C-P (singleflight) — a RECONSULTA lança: falha aberta (avisa sem confirmar/liberar), 200", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const r = await entregarOrderDivergente({ avisos, reservaRespostas: ["em_envio", new Error("rede caiu (dublê)")] });
+  assertEquals([r.status, r.pushes.length, r.dormidas], [200, 1, [1000]]);
+  assertEquals(r.avisoRpcs, ["reservar", "reservar"]);
+});
+
+Deno.test("C-P (singleflight) — loja SEM inscrito, A e B: A entrega 0 e libera; B ('em_envio' -> 'reservado') entrega 0 e libera; os dois 200, nenhum não-2xx", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const a = await entregarOrderDivergente({ avisos, entrega: 0 });
+  const b = await entregarOrderDivergente({ avisos, entrega: 0, reservaRespostas: ["em_envio"] });
+  assertEquals([a.status, b.status], [200, 200]);
+  assertEquals([a.avisoRpcs, b.avisoRpcs], [["reservar", "liberar"], ["reservar", "reservar", "liberar"]]);
+  assertEquals(avisos.size, 0);
+});
+
+Deno.test("C-P (e) — OUTRA order aprovada (id diferente) no mesmo pedido avisa de novo, com chave própria", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  await entregarOrderDivergente({ avisos });
+  const outraOrder = { ...orderDoMp("processed", "accredited", "credit_card"), id: "ORDCARTAO2SEGUNDAAPROVADA00000" };
+  const r = await entregarOrderDivergente({ avisos, order: outraOrder });
+  assertEquals(r.pushes.length, 1);
+  assertEquals(r.registro.chamadasReservar[0].args.p_chave, `cartao_divergente:${UUID_PEDIDO}:ORDCARTAO2SEGUNDAAPROVADA00000`);
+  assertEquals([...avisos.keys()].sort(), [CHAVE_DIVERGENTE, `cartao_divergente:${UUID_PEDIDO}:ORDCARTAO2SEGUNDAAPROVADA00000`].sort());
+});
+
+Deno.test("C-P — ramo S5 (adoção perdeu a corrida) reserva a MESMA chave do ramo divergente: S5 e a reentrega seguinte dão 1 push", async () => {
+  const avisos = new Map<string, { enviado: boolean }>();
+  const s5 = await entregarOrderDivergente({ avisos, corrida: true });
+  assert(s5.erros.some((e) => e.includes("perdeu a corrida da adoção")), "a 1a entrega tem de passar pelo S5");
+  assertEquals(s5.registro.chamadasReservar.map((c) => c.args.p_chave), [CHAVE_DIVERGENTE]);
+  assertEquals(s5.avisoRpcs, ["reservar", "confirmar"]);
+  const reentrega = await entregarOrderDivergente({ avisos });
+  assert(reentrega.erros.some((e) => e.includes("a vaga já tem OUTRA cobrança gravada")), "a 2a entrega tem de passar pelo ramo divergente");
+  assertEquals([s5.pushes.length, reentrega.pushes.length], [1, 0]);
+});
+
+Deno.test("C-P — aprovação NORMAL (vaga vazia adotada, ou já com a própria order) nunca chama a reserva", async () => {
+  for (const vaga of [null, ID_ORDER_CARTAO_MP]) {
+    ambienteDoWebhook();
+    const registro = {
+      chamadasRpc: [],
+      chamadasLiberar: [],
+      chamadasUpdateMarketplaceOrders: [],
+      chamadasReservar: [],
+      chamadasAviso: [],
+    };
+    const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, gateway_payment_id: vaga };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", "credit_card")),
+      enviarPush: async () => {},
+      enviarComprovante: async () => {},
+    });
+    assertEquals(resposta.status, 200, String(vaga));
+    assertEquals(registro.chamadasAviso.length, 0, String(vaga));
+  }
+});
+
+Deno.test("C-P (b) — push REAL contado sem destino (nenhum admin; admin sem inscrição): 0 entregues -> libera; a próxima entrega tenta de novo", async () => {
+  for (const caso of ["sem admin", "admin sem inscrição"] as const) {
+    ambienteDoWebhook();
+    const avisos = new Map<string, { enviado: boolean }>();
+    const rodadas = [];
+    for (let i = 0; i < 2; i++) {
+      const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [], chamadasAviso: [] };
+      const pedido = { id: UUID_PEDIDO, customer_name: "Maria", total: 149.9, total_amount: null, gateway_payment_id: VAGA_OUTRA_COBRANCA };
+      const base = clienteFalso({ rpcResultado: "divergente", pedido, registro, avisos });
+      // `disparoPushContadoReal` de verdade: lê profiles e push_subscriptions.
+      const supabase = {
+        ...base,
+        from(tabela: string) {
+          if (tabela === "profiles") {
+            return { select: () => ({ eq: () => Promise.resolve({ data: caso === "sem admin" ? [] : [{ id: "adm-1" }], error: null }) }) };
+          }
+          if (tabela === "push_subscriptions") {
+            return { select: () => ({ in: () => Promise.resolve({ data: [], error: null }) }) };
+          }
+          return base.from(tabela);
+        },
+      };
+      const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+      const [erroReal, avisoReal, logReal] = [console.error, console.warn, console.log];
+      console.error = () => {};
+      console.warn = () => {};
+      console.log = () => {};
+      try {
+        const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", "credit_card")) });
+        assertEquals(resposta.status, 200, caso);
+      } finally {
+        [console.error, console.warn, console.log] = [erroReal, avisoReal, logReal];
+      }
+      rodadas.push(registro.chamadasAviso.map((c) => c.nome));
+    }
+    assertEquals(rodadas, [
+      ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"],
+      ["reservar_aviso_ao_lojista", "liberar_aviso_ao_lojista"],
+    ], caso);
+    assertEquals(avisos.size, 0, caso);
+  }
 });
 
 Deno.test("PIX — order recusada (failed, bank_transfer) continua em confirmar_pagamento('recusado') — comportamento de antes", async () => {
