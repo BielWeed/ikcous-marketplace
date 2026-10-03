@@ -47,6 +47,30 @@ export const TIMEOUT_BUSCA_CEP_MS = 8000;
  */
 export const TIMEOUT_TENTATIVA_CEP_MS = 3000;
 
+/**
+ * Como a última busca TERMINOU, para a tela contar à cliente sem depender do
+ * toast (some em 2,5 s, longe do campo que ela está olhando). `null` = nenhuma
+ * busca terminada (nunca buscou, está em voo, ou o CEP foi editado depois).
+ *
+ * - `achou`: um provedor devolveu endereço (a tela decide se veio completo).
+ * - `naoEncontrado`: TODOS os provedores responderam "esse CEP não existe".
+ * - `demorou`: a busca estourou o tempo (teto geral ou de uma tentativa).
+ * - `indisponivel`: sem rede / provedores fora do ar / "não existe" misturado
+ *   com falha — afirmar "não encontrado" aí seria chute.
+ */
+export type ResultadoBuscaCep = {
+  tipo: "achou" | "naoEncontrado" | "demorou" | "indisponivel";
+};
+
+export interface OpcoesBuscaCep {
+  /**
+   * Padrão `true`: o desfecho também sai como toast (checkout de convidado,
+   * que sempre foi assim). A tela de endereço passa `false` e mostra o aviso
+   * dentro da tela, a partir de `resultado`.
+   */
+  avisarPorToast?: boolean;
+}
+
 /** Formata "38500000" em "38500-000". Os dois chamadores fazem isto igual. */
 export function formatarCep(bruto: string): {
   limpo: string;
@@ -58,11 +82,22 @@ export function formatarCep(bruto: string): {
   return { limpo, formatado };
 }
 
-export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
+export function useBuscaCep(
+  aoEncontrar: (endereco: EnderecoDoCep) => void,
+  opcoes?: OpcoesBuscaCep,
+): {
   buscando: boolean;
   buscar: (cepLimpo: string) => Promise<void>;
+  resultado: ResultadoBuscaCep | null;
+  /** Apaga o desfecho velho (a cliente editou o CEP depois da busca). */
+  limpar: () => void;
 } {
   const [buscando, setBuscando] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoBuscaCep | null>(null);
+
+  // Lido por ref pelo mesmo motivo de `aoEncontrar`: `buscar` não é recriada.
+  const avisarPorToastRef = useRef(opcoes?.avisarPorToast !== false);
+  avisarPorToastRef.current = opcoes?.avisarPorToast !== false;
 
   // Lido por ref para que o chamador não precise memoizar a callback e
   // `buscar` não precise ser recriada a cada render.
@@ -107,6 +142,7 @@ export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
     }, TIMEOUT_BUSCA_CEP_MS);
 
     setBuscando(true);
+    setResultado(null);
     try {
       let naoExiste = 0; // provedores que RESPONDERAM "esse CEP não existe"
       let estourouTentativa = false;
@@ -155,7 +191,8 @@ export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
           const leitura = provedor.ler(dados);
           if (leitura.tipo === "achou") {
             aoEncontrarRef.current(leitura.endereco);
-            toast.success("CEP localizado!");
+            setResultado({ tipo: "achou" });
+            if (avisarPorToastRef.current) toast.success("CEP localizado!");
             return;
           }
           // Este provedor não tem o CEP (ou respondeu lixo): segue para o
@@ -188,20 +225,27 @@ export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
 
       if (naoExiste === PROVEDORES_DE_CEP.length) {
         // TODOS responderam que não existe: aí sim é CEP errado.
-        toast.error("CEP não encontrado");
+        setResultado({ tipo: "naoEncontrado" });
+        if (avisarPorToastRef.current) toast.error("CEP não encontrado");
       } else if (estourouOTeto || estourouTentativa) {
-        toast.error(
-          "A busca de CEP demorou demais. Preencha o endereço manualmente.",
-        );
+        setResultado({ tipo: "demorou" });
+        if (avisarPorToastRef.current) {
+          toast.error(
+            "A busca de CEP demorou demais. Preencha o endereço manualmente.",
+          );
+        }
       } else {
         // Sem endereço e sem consenso de "não existe": offline, DNS, portal
         // cativo, todos fora do ar — ou um "não existe" misturado com
         // falha, onde afirmar "CEP não encontrado" seria chute. Sem toast, a
         // cliente só via o spinner parar e concluía — errado — que o CEP
         // não existia.
-        toast.error(
-          "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.",
-        );
+        setResultado({ tipo: "indisponivel" });
+        if (avisarPorToastRef.current) {
+          toast.error(
+            "Não foi possível buscar o CEP agora. Preencha o endereço manualmente.",
+          );
+        }
       }
     } finally {
       clearTimeout(timerDoTeto);
@@ -213,5 +257,7 @@ export function useBuscaCep(aoEncontrar: (endereco: EnderecoDoCep) => void): {
     }
   }, []);
 
-  return { buscando, buscar };
+  const limpar = useCallback(() => setResultado(null), []);
+
+  return { buscando, buscar, resultado, limpar };
 }

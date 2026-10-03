@@ -3891,6 +3891,7 @@ export function CheckoutView({
         addresses={addresses}
         onNewAddressSubmit={handleNewAddressSubmit}
         onCancel={() => globalThis.history.back()}
+        nomeDaConta={profile?.full_name || user?.user_metadata?.name || ""}
       />
     );
   }
@@ -4539,12 +4540,14 @@ export function CheckoutView({
                             formatado,
                           );
 
-                          const isNational =
-                            config.shippingCoverage === "national";
+                          // A busca vale em TODA loja (decisão do dono,
+                          // 03/10/2026): a cobertura de entrega decide para
+                          // onde a loja entrega, no `calculate-shipping`, e
+                          // nunca onde o cliente pode dizer que mora.
                           // `limpo.length === 8` é portante, não só filtro
                           // de busca — ver o comentário equivalente em
                           // AddressForm.tsx.
-                          if (isNational && limpo.length === 8) {
+                          if (limpo.length === 8) {
                             cepEmBuscaRef.current = limpo;
                             await buscarCep(limpo);
                           }
@@ -5962,6 +5965,8 @@ interface AddressSelectionViewProps {
   addresses: Address[];
   onNewAddressSubmit: (data: Omit<Address, "id" | "user_id">) => Promise<void>;
   onCancel: () => void;
+  /** Nome da conta: já vem em "Quem vai receber" do endereço novo. */
+  nomeDaConta?: string;
 }
 
 function AddressSelectionView({
@@ -5969,9 +5974,10 @@ function AddressSelectionView({
   addresses,
   onNewAddressSubmit,
   onCancel,
+  nomeDaConta,
 }: Readonly<AddressSelectionViewProps>) {
   return (
-    <div className="min-h-screen bg-white pb-16 duration-500 animate-in slide-in-from-right">
+    <div className="pb-customer min-h-screen bg-background duration-500 animate-in slide-in-from-right">
       <div className="mx-auto max-w-md p-4">
         <div className="group relative mb-5 overflow-hidden rounded-2xl bg-primary p-5 shadow-lg">
           <div className="absolute right-0 top-0 -mr-16 -mt-16 size-32 rounded-full bg-white/5 blur-2xl transition-colors group-hover:bg-white/10" />
@@ -5990,7 +5996,7 @@ function AddressSelectionView({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-zinc-100 bg-white p-4 shadow-sm">
+        <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
           <AddressForm
             initialData={
               editingAddressId
@@ -5999,6 +6005,7 @@ function AddressSelectionView({
             }
             onSubmit={onNewAddressSubmit}
             onCancel={onCancel}
+            nomeDaConta={nomeDaConta}
           />
         </div>
 
