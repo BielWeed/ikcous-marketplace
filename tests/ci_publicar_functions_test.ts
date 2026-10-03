@@ -33,6 +33,7 @@ const WORKFLOW = fromFileUrl(
   new URL("../.github/workflows/publicar-functions.yml", import.meta.url),
 );
 const RAIZ = fromFileUrl(new URL("..", import.meta.url));
+const REF_IKCOUS_PUBLICADA = "cafkrminfnokvgjqtkle";
 const REF_LOJA = "dekxabvqdsuukijblazl";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const REF_SANDBOX = "lofznuxcvezrhxsgjqyg";
@@ -167,7 +168,7 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
           (l) =>
             l.includes("supabase functions deploy") && !l.includes("::group::"),
         );
-      assertEquals(reais.length, 2, "um deploy isolado por caminho de token");
+      assertEquals(reais.length, 3, "um deploy isolado por caminho de token");
       for (const chamada of reais) {
         assertEquals(
           chamada.trim(),
@@ -195,18 +196,30 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
   );
 
   await t.step(
-    "os quatro destinos são fechados: loja, Savy, Almeida e sandbox",
+    "os cinco destinos são fechados: CAF, Savy, Almeida, sandbox e loja",
     () => {
       assertStringIncludes(yaml, `loja) REF=${REF_LOJA} ;;`);
       assertStringIncludes(yaml, `savy) REF=${REF_SAVY} ;;`);
       assertStringIncludes(yaml, `almeida) REF=${REF_ALMEIDA} ;;`);
+      assertStringIncludes(
+        yaml,
+        "ikcous-publicada) REF=cafkrminfnokvgjqtkle ;;",
+      );
       assertStringIncludes(yaml, `sandbox) REF=${REF_SANDBOX} ;;`);
       assertStringIncludes(
         yaml,
-        "options:\n          - loja\n          - savy\n          - almeida\n          - sandbox",
+        "options:\n          - ikcous-publicada\n          - savy\n          - almeida\n          - sandbox\n          - loja",
       );
     },
   );
+
+  await t.step("o padrão é a loja no ar (CAF), nunca o projeto antigo", () => {
+    // Quem dispara sem escolher cai no destino mais travado (só as cinco
+    // financeiras + expected_sha). O padrão antigo, `loja`, apontava para o
+    // DEK, que a loja principal deixou de usar em 03/10/2026.
+    assertStringIncludes(yaml, "default: ikcous-publicada\n");
+    assert(!yaml.includes("default: loja"), "padrão voltou para o DEK");
+  });
 
   await t.step(
     "Almeida usa o MESMO segredo da loja (mesmo org Supabase), nunca o da Savy",
@@ -489,6 +502,117 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     },
   );
 
+  await t.step(
+    "IKCOUS publicada resolve CAF e somente as cinco financeiras",
+    async () => {
+      const r = await validar("ikcous-publicada", "cobranca", "a".repeat(40));
+      assertEquals(r.codigo, 0, r.stdout + r.stderr);
+      assertEquals(r.outputs.ref, REF_IKCOUS_PUBLICADA);
+      assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+      const unica = await validar(
+        "ikcous-publicada",
+        "criar-pagamento",
+        "A".repeat(40),
+      );
+      assertEquals(unica.codigo, 0, unica.stdout + unica.stderr);
+      assertEquals(unica.outputs.nomes, "criar-pagamento");
+    },
+  );
+
+  await t.step(
+    "IKCOUS publicada recusa SHA ausente divergente ou malformado",
+    async () => {
+      for (const expected of [
+        "",
+        "b".repeat(40),
+        "a".repeat(39),
+        "a".repeat(41),
+        "g".repeat(40),
+      ]) {
+        const r = await validar("ikcous-publicada", "cobranca", expected);
+        assertEquals(r.codigo, 1, expected);
+        assertStringIncludes(r.stdout, "exige expected_sha");
+        assert(!r.stdout.includes("projeto desconhecido"));
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "IKCOUS publicada recusa extras injecao WhatsApp e nomes vazios",
+    async () => {
+      for (const pedido of [
+        "send-push",
+        "criar-pagamento,send-push",
+        "_shared",
+        "send-order-whatsapp",
+        "criar-pagamento;echo injected",
+        "",
+        " , ",
+      ]) {
+        const r = await validar("ikcous-publicada", pedido, "a".repeat(40));
+        assertEquals(r.codigo, 1, pedido);
+        assert(!r.stdout.includes("projeto desconhecido"));
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "CAF usa apenas segredo dedicado e prova readonly antes do deploy",
+    () => {
+      const yaml = semComentarios(Deno.readTextFileSync(WORKFLOW));
+      const nomes = [
+        "Confere o segredo IKCOUS publicada",
+        "Prova somente leitura do banco CAF antes de publicar",
+        "Publica IKCOUS publicada, uma function por vez",
+        "Lista o que ficou publicado na IKCOUS publicada",
+      ];
+      let anterior = -1;
+      for (const nome of nomes) {
+        const inicio = yaml.indexOf(`name: ${nome}`);
+        assert(inicio > anterior && inicio >= 0, nome);
+        anterior = inicio;
+        const proximo = yaml.indexOf("\n      - ", inicio + 1);
+        const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+        assertStringIncludes(step, "if: inputs.projeto == 'ikcous-publicada'");
+        assertStringIncludes(
+          step,
+          "${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}",
+        );
+        assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
+        assert(!step.includes("${{ secrets.SUPABASE_ACCESS_TOKEN_SAVY }}"));
+      }
+      assertStringIncludes(
+        yaml,
+        "node scripts/publicacao/verificar-pagamentos-ikcous.cjs --site-publicado-caf",
+      );
+      for (const nome of [
+        "Confere o segredo",
+        "Publica, uma function por vez, sempre pelo nome",
+        "Lista o que ficou publicado",
+      ]) {
+        const inicio = yaml.indexOf(`name: ${nome}\n`);
+        const proximo = yaml.indexOf("\n      - ", inicio + 1);
+        const step = yaml.slice(inicio, proximo < 0 ? undefined : proximo);
+        assertStringIncludes(
+          step,
+          "if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'",
+        );
+      }
+      const consulta = Deno.readTextFileSync(
+        new URL(
+          "../.github/workflows/conferir-banco-da-loja.yml",
+          import.meta.url,
+        ),
+      );
+      const caf = consulta.slice(
+        consulta.indexOf("  verificar-ikcous-publicado:"),
+      );
+      assertStringIncludes(caf, "${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}");
+      assert(!caf.includes("${{ secrets.SUPABASE_ACCESS_TOKEN }}"));
+    },
+  );
   await t.step("recusa projeto fora da lista fechada", async () => {
     const r = await validar("producao", "credenciais-mercado-pago");
     assertEquals(r.codigo, 1);

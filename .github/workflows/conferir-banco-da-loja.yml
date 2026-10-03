@@ -48,6 +48,16 @@ name: Conferir banco da loja
 on:
   workflow_dispatch:
     inputs:
+      ikcous_publicado:
+        description: "Conferencia somente leitura do CAF observado no site publicado (sem alterar dados)"
+        type: boolean
+        required: false
+        default: false
+      ikcous_original:
+        description: Verificar somente pagamentos do projeto original IKCOUS (destino DEK fixo, sem ledger)
+        required: false
+        type: boolean
+        default: false
       consulta:
         description: "Consulta a rodar (scripts/publicacao/consultas/, sem .sql) ou backups"
         required: true
@@ -97,6 +107,7 @@ permissions:
 
 jobs:
   conferir:
+    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado }}
     name: Conferir ${{ inputs.consulta }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -124,7 +135,7 @@ jobs:
 
   ledger:
     name: Gravar ledger ${{ inputs.gravar_ledger }}
-    if: inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR'
+    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
@@ -149,3 +160,38 @@ jobs:
           PROJETO: ${{ inputs.projeto }}
           LEDGER: ${{ inputs.gravar_ledger }}
         run: node scripts/publicacao/conferir-banco.cjs
+
+  verificar-ikcous-original:
+    name: Pagamentos IKCOUS original (somente leitura)
+    if: inputs.ikcous_original && !inputs.ikcous_publicado
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: verificar-pagamentos-ikcous-dek
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Conferir banco original sem alterar dados
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: node scripts/publicacao/verificar-pagamentos-ikcous.cjs
+  verificar-ikcous-publicado:
+    name: Pagamentos do site publicado CAF (somente leitura)
+    if: inputs.ikcous_publicado && !inputs.ikcous_original
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: verificar-pagamentos-ikcous-caf
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - name: Conferir banco do site publicado sem alterar dados
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
+        run: node scripts/publicacao/verificar-pagamentos-ikcous.cjs --site-publicado-caf

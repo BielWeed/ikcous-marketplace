@@ -10,7 +10,8 @@
 // também não pode montar PIX. Este teste prende a correção em três casos:
 //   1. CARTÃO (credito) atrasado: nada monta antes do método real; depois
 //      monta UMA vez já em "cartao" — nunca PIX.
-//   2. SENTINELA (null + verificando:): NADA monta, nunca; tela informativa.
+//   2. SENTINELA (null + verificando:): NADA monta, nunca; a tela consulta a
+//      edge SEM cobrança (C4, `metodo: "verificar"`) — uma vez só.
 //   3. PIX legítimo atrasado: retoma normalmente DEPOIS da leitura.
 //
 // A prova de ausência de POST PIX prematuro é por montagem: o único lugar
@@ -24,6 +25,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createOrder = vi.fn();
 const updateOrderStatus = vi.fn();
+// C4 (02/10/2026): o sentinela agora pede a CONSULTA sem cobrança
+// (`metodo: "verificar"`) — a resposta fica pendente aqui; o que importa
+// neste arquivo é que nenhum pagamento monta.
+const criarPagamento = vi.fn(() => new Promise(() => {}));
 
 vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
   ShippingCalculator: () => null,
@@ -79,7 +84,7 @@ vi.mock("@/hooks/useCoupons", () => ({
 }));
 
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({ createOrder, updateOrderStatus }),
+  useOrders: () => ({ createOrder, updateOrderStatus, criarPagamento }),
 }));
 
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
@@ -131,7 +136,12 @@ vi.mock("@/lib/flags", () => ({
 
 let montagensDoPagamento = 0;
 let propsCapturadasDoPagamento: Record<string, unknown> | null = null;
-vi.mock("@/components/checkout/PagamentoOnline", () => ({
+// O resto do módulo segue o original: a VerificacaoDoPagamento (C4) usa o
+// `comTempoLimite` dele.
+vi.mock("@/components/checkout/PagamentoOnline", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/checkout/PagamentoOnline")
+  >()),
   PagamentoOnline: (props: Record<string, unknown>) => {
     montagensDoPagamento += 1;
     propsCapturadasDoPagamento = props;
@@ -139,9 +149,12 @@ vi.mock("@/components/checkout/PagamentoOnline", () => ({
   },
 }));
 
-vi.mock("@/hooks/useConfigDoCartao", () => ({
-  useConfigDoCartao: () => null,
-}));
+vi.mock("@/hooks/useConfigDoCartao", async () => {
+  const { ESTADO_PRONTO_SEM_CARTAO } = await import(
+    "./duble-use-config-do-cartao"
+  );
+  return { useConfigDoCartao: () => ESTADO_PRONTO_SEM_CARTAO };
+});
 
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -152,6 +165,7 @@ describe("CheckoutView — retomada não monta pagamento antes do método real (
 
   beforeEach(() => {
     montagensDoPagamento = 0;
+    criarPagamento.mockClear();
     propsCapturadasDoPagamento = null;
     resolversPendentes.clear();
     mockCart = [];
@@ -234,9 +248,17 @@ describe("CheckoutView — retomada não monta pagamento antes do método real (
 
     expect(montagensDoPagamento).toBe(0);
     expect(propsCapturadasDoPagamento).toBeNull();
-    // Tela informativa no lugar do pagamento — nunca "Finalize o pagamento".
-    expect(hospedeiro.textContent?.includes("Pagamento em verificação")).toBe(
-      true,
+    // C4: no lugar do pagamento, a CONSULTA sem cobrança — uma vez só, e a
+    // promessa falsa ("daqui a alguns minutos") não existe mais.
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(criarPagamento.mock.calls[0]).toEqual([
+      { orderId: "ped-777", metodo: "verificar" },
+    ]);
+    expect(
+      hospedeiro.textContent?.includes("Consultando o pagamento com o banco"),
+    ).toBe(true);
+    expect(hospedeiro.textContent?.includes("daqui a alguns minutos")).toBe(
+      false,
     );
     expect(hospedeiro.textContent?.includes("Finalize o pagamento")).toBe(
       false,

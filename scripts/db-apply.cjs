@@ -2322,6 +2322,108 @@ const VERIFICACOES = {
       ],
     },
   ],
+  // O CARTÃO EM ANÁLISE SEGURA A EXPIRAÇÃO (dinheiro; 02/10/2026, migration
+  // 20261186000000): a varredura não cancela pedido cujo cartão o banco ainda
+  // pode aprovar (sentinela `verificando:` ou vaga de crédito/débito) enquanto
+  // o pedido estiver dentro da janela de 24 h da reconciliação.
+  "20261186000000_cartao_em_analise_segura_a_expiracao.sql": [
+    {
+      funcao: "expirar_pedidos_vencidos",
+      esperado: [
+        // As guardas que a 20260901000000 já tinha têm de sobreviver ao
+        // REPLACE: sem elas a varredura alcançaria pedido pago ou cancelado.
+        "WHERE payment_status = 'aguardando'",
+        "AND status = 'pending'",
+        // O predicado novo, amarrado como UM bloco (do teto de 24 h ao
+        // SKIP LOCKED): se alguém tirar o COALESCE, trocar a lista do IN ou
+        // soltar o OR, esta string contígua deixa de casar. Sem o COALESCE,
+        // `NOT (NULL)` é NULL e o pedido sem `metodo_online` some da varredura.
+        "AND (\n                expires_at <= now() - interval '24 hours'\n                OR NOT COALESCE(\n                     gateway_payment_id LIKE 'verificando:%'\n                     OR (\n                          gateway_payment_id IS NOT NULL\n                          AND metodo_online IN ('credito', 'debito')\n                        ),\n                     false\n                   )\n              )\n        FOR UPDATE SKIP LOCKED",
+        // O laço que devolve o estoque e grava expirado/cancelled continua o
+        // mesmo (a única mudança é QUAIS pedidos entram nele).
+        `PERFORM public.devolver_estoque(v_pedido.id);
+
+        UPDATE public.marketplace_orders
+           SET payment_status = 'expirado',`,
+      ],
+    },
+  ],
+  // "JÁ ESTORNEI" FECHA A CORRIDA COM O CRON (dinheiro; 02/10/2026, migration
+  // 20261189000000): o registro manual trava as linhas vivas do ledger antes
+  // do pedido e leva a linha `solicitado` a `recusado` — as marcas do cron e
+  // da edge (UPDATE condicional por status) passam a achar 0 linhas e o
+  // estorno não é POSTADO em cima da devolução feita por fora.
+  "20261189000000_ja_estornei_fecha_a_corrida_com_o_cron.sql": [
+    {
+      funcao: "registrar_estorno_manual",
+      esperado: [
+        // A pré-trava das linhas vivas (ordem linha -> pedido, a mesma de
+        // concluir_estorno): sem ela a marca do cron não espera o clique.
+        "FOR UPDATE OF viva;",
+        // A linha que ninguém pediu ao MP ainda sai da fila: sem isto a marca
+        // condicional do cron ainda casa e o POST sai com a leitura velha.
+        "ultimo_erro = 'A loja registrou a devolução feita fora do app'",
+      ],
+    },
+  ],
+  // A RECONCILIAÇÃO ALCANÇA O CARTÃO TARDIO (dinheiro; 02/10/2026, migration
+  // 20261190000000): janela de 14 dias SÓ para o cartão possivelmente vivo
+  // (D2), rodízio pela tabela de visitas (D3) e a cobrança terminal no MP
+  // fora da fila — mais o carimbo que a edge chama no fim de cada ciclo.
+  "20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql": [
+    {
+      funcao: "pagamentos_a_reconciliar",
+      esperado: [
+        // Sem a janela longa o cartão aprovado dias depois some da fila (D2).
+        "o.expires_at > now() - interval '14 days'",
+        // Sem a marca POR COBRANÇA, ou a terminal fica sendo consultada por
+        // 14 dias, ou (pior) uma cobrança NOVA na vaga fica escondida.
+        "AND (v.cobranca_terminal IS NULL OR v.cobranca_terminal <> o.gateway_payment_id)",
+        // Sem o rodízio o LIMIT 100 volta a matar o candidato velho (D3).
+        "ORDER BY (o.status = 'pending') DESC, v.visitado_em ASC NULLS FIRST, o.expires_at DESC",
+      ],
+    },
+    {
+      funcao: "marcar_visitas_da_reconciliacao",
+      esperado: [
+        // O carimbo do rodízio, ordenado (dois ciclos sobrepostos sem deadlock).
+        "ON CONFLICT (order_id) DO UPDATE SET visitado_em = EXCLUDED.visitado_em;",
+      ],
+    },
+  ],
+  // O AVISO DE COBRANÇA DUPLICADA SAI UMA VEZ, E QUEM CHEGA JUNTO ESPERA O
+  // RESULTADO DA OUTRA ENTREGA (aviso de dinheiro ao admin; 02/10/2026,
+  // migration 20261191000000; a entrega não é garantida — os limites estão no
+  // cabeçalho da migration): a reserva com
+  // prazo que o webhook chama antes do push "Cobrança de cartão duplicada?",
+  // e o confirmar/liberar que ele chama depois.
+  "20261191000000_aviso_de_cobranca_duplicada_sai_uma_vez.sql": [
+    {
+      funcao: "reservar_aviso_ao_lojista",
+      esperado: [
+        // Sem o prazo, ou a reserva morta nunca mais avisa (aviso perdido),
+        // ou duas entregas avisam juntas; sem `enviado = false`, o aviso
+        // entregue volta a cada 2 minutos.
+        "WHERE a.enviado = false",
+        "AND a.reservado_em < now() - interval '2 minutes';",
+        // Os três estados (rodada 3): quem não pegou a vaga sabe se espera
+        // ('em_envio') ou se o aviso já saiu ('enviado').
+        "RETURN 'reservado';",
+        "RETURN 'em_envio';",
+      ],
+    },
+    {
+      funcao: "confirmar_aviso_ao_lojista",
+      esperado: ["SET enviado = true"],
+    },
+    {
+      funcao: "liberar_aviso_ao_lojista",
+      esperado: [
+        // Nunca apaga aviso já entregue.
+        "AND enviado = false;",
+      ],
+    },
+  ],
 };
 
 function lerDatabaseUrl() {

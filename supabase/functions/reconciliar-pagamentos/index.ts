@@ -29,14 +29,19 @@
  * meses — como a regra de frete grátis, que chegou a estar escrita em sete
  * lugares (#53).
  *
- * SEM PUSH AQUI
+ * PUSH AO ADMIN: SÓ PARA `pago_apos_expirar` (C-D, 02/10/2026)
  *
- * Quem avisa o lojista é o `webhook-mercadopago`. Se esta função também
- * avisasse, um pedido que o webhook JÁ confirmou (e que só está na fila de
- * candidatos por causa de uma corrida improvável) geraria dois avisos do
- * mesmo pedido. O `pago_apos_expirar` encontrado aqui aparece na fila de
- * atenção da Task 9 — não é um push perdido, é um push que não é desta
- * função.
+ * Até 02/10 esta função não avisava o lojista ("SEM PUSH AQUI"): o medo era
+ * um pedido que o webhook JÁ confirmou gerar dois avisos. Esse argumento não
+ * vale para `pago_apos_expirar`: `confirmar_pagamento` só devolve esse texto
+ * na PRIMEIRA transição (sob FOR UPDATE); quem chegar depois — webhook ou
+ * outro ciclo — recebe `ja_pago`. Então quem recebe `pago_apos_expirar` é o
+ * único que pode avisar, e sem este push o dinheiro que chegou depois do
+ * pedido morrer (notificação perdida, achada só aqui) não chegava ao lojista
+ * por canal nenhum além da fila de atenção. O aviso é o MESMO do webhook
+ * ("Pagamento fora do fluxo"), falha aberto (push fora do ar nunca para a
+ * reconciliação) e tem teto de 5 s. `pago` continua sem push daqui: o
+ * webhook é quem avisa venda normal, e a fila de atenção cobre o resto.
  *
  * COMPROVANTE AO CLIENTE: AQUI SIM (PEÇA 5, revisão de
  * dinheiro-não-recebido, 12/09/2026)
@@ -61,18 +66,30 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  buscarOrdersDoPedido,
   consultarOrder,
   consultarPagamento,
   extrairValorDaOrder,
   fetchComTempo,
   idEhClassico,
+  limiteInferiorDoSentinela,
   mapearStatus,
   mapearStatusOrder,
+  parcelasDaOrder,
   recusaLiberaAVaga,
+  resolverSentinela,
+  tipoDoPagamentoDaOrder,
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import { readKey } from "../_shared/webpush.ts";
+import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import {
+  carregarChavesVapid,
+  comTempoLimite,
+  enviarParaInscritos,
+  readKey,
+  resumir,
+} from "../_shared/webpush.ts";
 // Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
 // (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
@@ -93,7 +110,7 @@ import {
 // padrão.
 import { enviarComprovantePedido } from "../_shared/comprovante.ts";
 import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
-import { escaparHtml, numeroDoPedido } from "../_shared/pedido.ts";
+import { escaparHtml, formatarBRL, numeroDoPedido } from "../_shared/pedido.ts";
 
 /** Único texto do app que manda o lojista ao painel do MP (Restrições
  * globais do plano) — só depois de 5 tentativas sem confirmação. */
@@ -434,6 +451,178 @@ async function dispararAvisoDePagamentoAtrasadoReal(args: {
 }
 
 /**
+ * Push ao admin quando ESTA função grava `pago_apos_expirar` (ver "PUSH AO
+ * ADMIN" no cabeçalho). Mesmo mecanismo de `disparoPushReal`
+ * (`webhook-mercadopago/index.ts`), que não é importável daqui: aquele
+ * arquivo chama `serve()` no próprio import e subiria um segundo servidor
+ * HTTP — a mesma razão pela qual `criar-pagamento` monta o seu aviso com as
+ * primitivas de `_shared/webpush.ts`, como aqui.
+ *
+ * Nunca lança: o pagamento já está gravado quando isto roda, e um push fora
+ * do ar não pode virar `falhas` nem parar o laço. Só loga.
+ */
+async function dispararPushAoAdminReal(args: {
+  supabase: ReturnType<typeof createClient>;
+  aviso: { title: string; body: string; url: string };
+}): Promise<void> {
+  const { supabase, aviso } = args;
+  try {
+    const { data: admins, error: erroAdmins } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("role", "admin");
+    if (erroAdmins) throw erroAdmins;
+
+    const ids = (admins ?? []).map((a: { id: string }) => a.id);
+    if (ids.length === 0) {
+      console.warn("reconciliar-pagamentos: nenhum admin cadastrado, aviso de pagamento sem destino");
+      return;
+    }
+
+    const { data: inscricoes, error: erroInscricoes } = await supabase
+      .from("push_subscriptions")
+      .select("endpoint, p256dh, auth")
+      .in("user_id", ids);
+    if (erroInscricoes) throw erroInscricoes;
+
+    if (!inscricoes || inscricoes.length === 0) {
+      console.warn("reconciliar-pagamentos: nenhum admin inscrito para push");
+      return;
+    }
+
+    const vapidKeys = await carregarChavesVapid(
+      Deno.env.get("VAPID_PUBLIC_KEY"),
+      Deno.env.get("VAPID_PRIVATE_KEY"),
+    );
+    const servidor = await webpush.ApplicationServer.new({
+      contactInformation: Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
+      vapidKeys,
+    });
+
+    const itens = await enviarParaInscritos({
+      servidor,
+      inscricoes,
+      mensagem: JSON.stringify(aviso),
+      rotulo: "reconciliar-pagamentos",
+      aoDetectarMorta: (endpoint: string) =>
+        supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
+    });
+
+    const resumo = resumir(itens);
+    console.log(
+      `reconciliar-pagamentos: aviso de pagamento fora do fluxo → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
+    );
+  } catch (erro) {
+    console.error("reconciliar-pagamentos: falha ao disparar push de pagamento fora do fluxo", erro);
+  }
+}
+
+/**
+ * Resolve um SENTINELA na reconciliação — só no sentido de ADOTAR um cartão
+ * já CAPTURADO (auditoria de 30/09/2026, item 2; ver o comentário no laço do
+ * handler). Devolve o id da order adotada, ou `null` quando não há nada a
+ * adotar (busca falhou/vazia/inconclusiva, order viva ou morta, ou outra
+ * escrita trocou a vaga no meio do caminho — nunca sobrescreve: o UPDATE
+ * exige o MESMO sentinela no WHERE).
+ *
+ * `metodo_online`/`parcelas` gravados JUNTO do id, lidos da ORDER — mesma
+ * regra da adoção do webhook e da resolução do criar-pagamento (Achado S3):
+ * sem isto, o comprovante e o Financeiro contariam a venda como PIX.
+ *
+ * Falha de BANCO sobe (throw) — o catch do laço conta em `falhas` e o
+ * candidato volta no próximo ciclo, igual ao resto deste arquivo.
+ */
+async function adotarCartaoCapturadoDoSentinela(args: {
+  supabase: ReturnType<typeof createClient>;
+  token: string;
+  pedidoId: string;
+  sentinela: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string | null> {
+  const { data: pedido, error: erroPedido } = await args.supabase
+    .from("marketplace_orders")
+    .select("created_at, total, total_amount")
+    .eq("id", args.pedidoId)
+    .maybeSingle();
+  if (erroPedido) throw erroPedido;
+
+  const busca = await buscarOrdersDoPedido({
+    token: args.token,
+    pedidoId: args.pedidoId,
+    desde: String((pedido as Record<string, unknown> | null)?.created_at ?? ""),
+    fetchImpl: args.fetchImpl,
+  });
+  if (!busca.ok) return null;
+
+  const resolucao = resolverSentinela(busca.orders, limiteInferiorDoSentinela(args.sentinela));
+  if (resolucao === null || resolucao.acao !== "gravar") return null;
+  const order = resolucao.order;
+  if (String(order.status ?? "") !== "processed") return null;
+  const idOrder = order.id === null || order.id === undefined ? "" : String(order.id);
+  if (idOrder.length === 0) return null;
+
+  // Revisão de 30/09/2026 (MENOR 1): `processed` na BUSCA não basta — um
+  // `processed:partially_refunded` (estorno parcial à mão no painel) ou um
+  // valor que não bate com o pedido nunca seria confirmado pelo laço, e a
+  // vaga já teria perdido o sentinela para ele: o webhook do cartão certo
+  // cairia em `cartao_divergente`. Mesma régua da adoção do webhook: só
+  // adota o que a RECONSULTA por id mapeia como "pago" e com valor que bate.
+  const reconsulta = await consultarOrder({
+    token: args.token,
+    orderId: idOrder,
+    fetchImpl: args.fetchImpl,
+    corpoNoLog: false,
+  });
+  if (!reconsulta.ok) return null;
+  const orderReconsultada = reconsulta.order as Record<string, unknown>;
+  const statusReconsultado = mapearStatusOrder(
+    String(orderReconsultada.status ?? ""),
+    String(orderReconsultada.status_detail ?? ""),
+  );
+  if (statusReconsultado !== "pago") return null;
+  const linha = pedido as Record<string, unknown> | null;
+  const brutoTotal = linha?.total ?? linha?.total_amount;
+  const totalDoPedido = typeof brutoTotal === "number" ? brutoTotal : Number(brutoTotal);
+  const valorAprovado = extrairValorDaOrder(orderReconsultada);
+  if (
+    typeof valorAprovado === "number" &&
+    Number.isFinite(totalDoPedido) &&
+    Math.abs(valorAprovado - totalDoPedido) > TOLERANCIA_DE_VALOR
+  ) {
+    console.error(
+      "reconciliar-pagamentos: cartão capturado atrás do sentinela com VALOR divergente — não adotado; conferir no painel do MP",
+      { orderId: args.pedidoId, idOrder, valorAprovado, totalDoPedido },
+    );
+    return null;
+  }
+
+  const tipo = tipoDoPagamentoDaOrder(orderReconsultada);
+  // INVARIANTE DA VAGA: só a RPC `liberar_cobranca_do_pedido` esvazia a vaga,
+  // e só por prova ou cancelamento confirmado. Esta adoção é CAS — TROCA o
+  // sentinela (conferido no WHERE) pelo id da order, nunca grava NULL.
+  const { data: adotado, error: erroAdocao } = await args.supabase
+    .from("marketplace_orders")
+    .update({
+      gateway_payment_id: idOrder,
+      metodo_online: tipo === "credit_card" ? "credito" : tipo === "debit_card" ? "debito" : null,
+      parcelas: parcelasDaOrder(orderReconsultada),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", args.pedidoId)
+    .eq("gateway_payment_id", args.sentinela)
+    .select("id")
+    .maybeSingle();
+  if (erroAdocao) throw erroAdocao;
+  if (!adotado) return null;
+
+  console.warn(
+    "reconciliar-pagamentos: cartao_adotado — cobrança CAPTURADA atrás do sentinela, sem notificação do webhook; vaga trocada pelo id real",
+    { orderId: args.pedidoId, idOrder },
+  );
+  return idOrder;
+}
+
+/**
  * Mesma costura `handler(req, deps = {})` da Task 4
  * (`webhook-mercadopago/index.ts`): em produção o `serve()` lá embaixo chama
  * `handler(req)` com um único argumento; os testes injetam `supabase` e
@@ -447,6 +636,7 @@ async function handler(
     fetchImpl?: typeof fetch;
     enviarComprovante?: typeof dispararComprovanteReal;
     enviarAvisoAtrasado?: typeof dispararAvisoDePagamentoAtrasadoReal;
+    enviarPush?: typeof dispararPushAoAdminReal;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -519,13 +709,26 @@ async function handler(
   // vaga a reconciliação LIBEROU (a RPC devolveu true) — SUBCONJUNTO de
   // `ignorados`, informativo: a invariante lá embaixo não muda.
   let cobrancasLiberadas = 0;
+  // C-D (02/10/2026): o carimbo do rodízio e da cobrança terminal, gravado
+  // UMA vez depois do laço (`marcar_visitas_da_reconciliacao`).
+  const visitados: string[] = [];
+  const terminais: string[] = [];
+  const cobrancasTerminais: string[] = [];
 
   // Cada candidato dentro do seu próprio try: a reconciliação existe
   // exatamente para pegar o que já falhou uma vez (o webhook não confirmou),
   // então um segundo candidato não pode perder a vez porque o primeiro deu
   // erro de rede.
-  for (const candidato of candidatos ?? []) {
+  for (const candidatoDaFila of candidatos ?? []) {
+    // `let`, não `const`: um SENTINELA resolvido para uma cobrança de cartão
+    // CAPTURADA troca `gateway_payment_id` pelo id real antes do resto do
+    // laço (ver `adotarCartaoCapturadoDoSentinela`, abaixo).
+    let candidato = candidatoDaFila;
     verificados++;
+    // Todo candidato que a fila entregou conta como visitado, qualquer que
+    // seja o desfecho: é o rodízio que impede o LIMIT 100 de deixar sempre os
+    // mesmos de fora (D3).
+    visitados.push(candidatoDaFila.order_id);
     try {
       const mpToken = credenciaisMp.token;
       if (!mpToken) {
@@ -571,22 +774,48 @@ async function handler(
 
       // Achado S5/N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar
       // com o SENTINELA (`verificando:...`, Achado B2) em vez de um id de
-      // order de verdade — nem `idEhClassico` nem `consultarOrder`
-      // reconhecem isso, e cada ciclo (a cada 10 min) gastava uma chamada ao
-      // MP que SEMPRE falha (400 `invalid_path_param`), sem nunca sair da
-      // fila. Quem resolve o sentinela é a ADOÇÃO do `webhook-mercadopago`
-      // (quando a cobrança aparece aprovada) ou `resolverVagaEmVerificacao`
-      // em `criar-pagamento` (busca as orders de cartão na Orders API, Ponto
-      // 1 da 4ª revisão de risco, 26/09/2026 — quando o próprio cliente
-      // volta a mexer no pedido) — nenhum dos dois passa por aqui. Sem push
-      // (ver "SEM PUSH AQUI" no cabeçalho deste arquivo): o aviso ao admin já
-      // sai uma única vez, na ESCRITA do sentinela (`criar-pagamento/
-      // index.ts`), que é o ponto mais barato e mais confiável — avisar de
-      // novo aqui a cada ciclo duplicaria o mesmo aviso sem trava de
-      // duplicidade.
+      // order de verdade — `consultarOrder` com ele SEMPRE falha (400
+      // `invalid_path_param`). Até 30/09/2026 este ponto só pulava o
+      // candidato (`ignorados++`) e deixava tudo com a ADOÇÃO do webhook e
+      // com `resolverVagaEmVerificacao` (criar-pagamento, só quando o
+      // cliente volta a mexer no pedido).
+      //
+      // O BURACO QUE ISSO DEIXAVA (auditoria de 30/09/2026 do cartão da
+      // proxima/base, item 2): um cartão CAPTURADO atrás do sentinela só
+      // era registrado pela notificação `order` do webhook. Notificação
+      // perdida (ou painel do MP inscrito só no tópico `payment`, cuja rota
+      // não adota) e cliente que não volta = pedido expira com o dinheiro
+      // capturado e sem registro — e esta fila, a rede de segurança, pulava
+      // exatamente esse caso.
+      //
+      // AGORA: busca as orders de cartão do pedido (MESMA regra do
+      // criar-pagamento — `buscarOrdersDoPedido` + `resolverSentinela`, fonte
+      // única em _shared) e, SÓ quando a order resolvida está CAPTURADA
+      // (`processed` na busca E "pago", com valor que bate, na reconsulta
+      // por id — mesma régua da adoção do webhook), troca o sentinela pelo
+      // id real e segue o laço normal:
+      // a reconsulta por id, a conferência de valor e `confirmar_pagamento`
+      // decidem como para qualquer outro candidato. Order viva (em análise),
+      // morta ou busca inconclusiva: fica como estava (ignorado) — liberar
+      // a vaga ou esperar a análise continua com quem já decide isso hoje.
+      // Nenhum push NESTE passo: o aviso da cobrança em dúvida já saiu uma
+      // vez, na escrita do sentinela. Adotado aqui, o candidato segue o laço
+      // e, se `confirmar_pagamento` devolver `pago_apos_expirar`, ganha o
+      // push "Pagamento fora do fluxo" como qualquer outro (ver "PUSH AO
+      // ADMIN" no cabeçalho).
       if (vagaEmVerificacao(candidato.gateway_payment_id)) {
-        ignorados++;
-        continue;
+        const idAdotado = await adotarCartaoCapturadoDoSentinela({
+          supabase,
+          token: mpToken,
+          pedidoId: candidato.order_id,
+          sentinela: candidato.gateway_payment_id,
+          fetchImpl: deps.fetchImpl,
+        });
+        if (idAdotado === null) {
+          ignorados++;
+          continue;
+        }
+        candidato = { ...candidato, gateway_payment_id: idAdotado };
       }
 
       if (idEhClassico(candidato.gateway_payment_id)) {
@@ -687,6 +916,12 @@ async function handler(
         );
         if (erroLiberar) throw erroLiberar;
         if (liberou === true) cobrancasLiberadas++;
+        // A order (consultada POR ID) está terminal no MP — failed/canceled/
+        // expired, sem dinheiro capturável. Se a vaga não soltou (pedido já
+        // expirado), a fila pula ESTA cobrança dali em diante; outra cobrança
+        // na vaga volta na hora (a marca é do id, não do pedido).
+        terminais.push(candidato.order_id);
+        cobrancasTerminais.push(candidato.gateway_payment_id);
         console.log(
           "reconciliar-pagamentos: recusa de cartão (ou order cancelada) — vaga liberada, não confirma 'recusado'",
           candidato.order_id,
@@ -710,6 +945,9 @@ async function handler(
           "reconciliar-pagamentos: order expirada no MP — não chama confirmar_pagamento (RPC não trata 'expirado')",
           candidato.order_id,
         );
+        // Terminal no MP (só a Orders API chega aqui): sai da fila, ver acima.
+        terminais.push(candidato.order_id);
+        cobrancasTerminais.push(candidato.gateway_payment_id);
         ignorados++;
         continue;
       }
@@ -801,6 +1039,44 @@ async function handler(
           const enviarAvisoAtrasado = deps.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
           await enviarAvisoAtrasado({ supabase, orderId: candidato.order_id });
         }
+        // Push ao admin SÓ para o literal 'pago_apos_expirar' (ver "PUSH AO
+        // ADMIN" no cabeçalho): a RPC só devolve isto na primeira transição,
+        // então não duplica o push do webhook. Falha aberto — nada aqui pode
+        // virar `falhas` nem interromper o laço.
+        if (resultado === "pago_apos_expirar") {
+          try {
+            let valor: unknown = undefined;
+            try {
+              const { data: linhaPush } = await supabase
+                .from("marketplace_orders")
+                .select("total, total_amount")
+                .eq("id", candidato.order_id)
+                .maybeSingle();
+              valor =
+                (linhaPush as Record<string, unknown> | null)?.total ??
+                (linhaPush as Record<string, unknown> | null)?.total_amount;
+            } catch (erroLeitura) {
+              console.error("reconciliar-pagamentos: leitura do pedido para o push falhou", erroLeitura);
+            }
+            const enviarPush = deps.enviarPush ?? dispararPushAoAdminReal;
+            await comTempoLimite(
+              enviarPush({
+                supabase,
+                aviso: {
+                  // O MESMO aviso do webhook: "fora do fluxo", não "fora do
+                  // prazo" — a RPC devolve este valor também para o pedido
+                  // CANCELADO pelo admin e pago depois.
+                  title: "Pagamento fora do fluxo",
+                  body: `${numeroDoPedido(candidato.order_id)} · ${formatarBRL(valor)} · estoque já devolvido`,
+                  url: "/admin-orders",
+                },
+              }),
+              5000,
+            );
+          } catch (erroPush) {
+            console.error("reconciliar-pagamentos: push de pagamento fora do fluxo falhou", candidato.order_id, erroPush);
+          }
+        }
       } else {
         // 'divergente' e 'inexistente' significam que o candidato não bate
         // com o pedido — ninguém deveria descobrir isso só pela contagem.
@@ -816,6 +1092,22 @@ async function handler(
     } catch (erro) {
       console.error("reconciliar-pagamentos: falha ao processar candidato", candidato.order_id, erro);
       falhas++;
+    }
+  }
+
+  // C-D (02/10/2026): carimba o rodízio e as cobranças terminais. NÃO FATAL:
+  // uma falha aqui só loga — nunca vira `falhas`, nunca muda contagem nem a
+  // resposta (o pior caso é a fila não girar neste ciclo, como era antes).
+  if (visitados.length > 0) {
+    try {
+      const { error: erroVisitas } = await supabase.rpc("marcar_visitas_da_reconciliacao", {
+        p_visitados: visitados,
+        p_terminais: terminais,
+        p_cobrancas_terminais: cobrancasTerminais,
+      });
+      if (erroVisitas) throw erroVisitas;
+    } catch (erro) {
+      console.error("reconciliar-pagamentos: marcar_visitas_da_reconciliacao falhou (não fatal)", erro);
     }
   }
 

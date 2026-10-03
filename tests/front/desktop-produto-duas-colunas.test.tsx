@@ -331,4 +331,25 @@ describe("F3 — produto no computador e celular preservado", () => {
       "foto-m.png",
     );
   });
+
+  it("mostra a foto original da IKCOUS sem pedir transformação indisponível", async () => {
+    const foto =
+      "https://cafkrminfnokvgjqtkle.supabase.co/storage/v1/object/public/produtos/1770364033063.jpg";
+    await montar({ ...produto, images: [foto] });
+    const imagem = elemento(".main-product-image") as HTMLImageElement;
+    expect(imagem.src).toBe(foto);
+    expect(imagem.getAttribute("srcset")).toBeNull();
+  });
+
+  it("se uma loja perder transformação, a foto principal recai para o original", async () => {
+    const foto =
+      "https://abcdefghijklmnopqrst.supabase.co/storage/v1/object/public/produtos/foto.jpg";
+    await montar({ ...produto, images: [foto] });
+    const imagem = elemento(".main-product-image") as HTMLImageElement;
+    expect(imagem.src).toContain("/render/image/public/");
+    expect(imagem.getAttribute("srcset")).toContain("480w");
+    await act(async () => imagem.dispatchEvent(new Event("error")));
+    expect(imagem.src).toBe(foto);
+    expect(imagem.getAttribute("srcset")).toBeNull();
+  });
 });

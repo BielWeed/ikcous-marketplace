@@ -465,14 +465,74 @@ export type ArgsCriarPagamento =
       parcelas: number;
       documento: { type: "CPF" | "CNPJ"; number: string };
       email?: string;
+    }
+  // C4 (M1, 02/10/2026): a CONSULTA sem cobrança — a edge só lê o Mercado
+  // Pago (GET/busca) e só escreve por CAS ou pela RPC de liberação; nunca
+  // POST de cobrança, nunca cancelamento. Sem token, sem documento, sem
+  // corpo de cartão. A resposta 200 carrega `verificacao` (abaixo).
+  | {
+      orderId: string;
+      metodo: "verificar";
     };
+
+/**
+ * C4 (M1, 02/10/2026): o conjunto fechado do campo `verificacao` que a
+ * consulta `metodo: "verificar"` devolve num 200 (desenho A1 §4.2, corrigido
+ * pelo veredito A2). `indisponivel` NÃO está aqui: ele vem num 503, e chega
+ * à tela como erro não terminal.
+ */
+export type EstadoDaVerificacao =
+  | "livre"
+  | "recusado"
+  | "pix"
+  | "pago"
+  | "desafio3ds"
+  | "em_analise"
+  | "sem_registro";
+
+/**
+ * Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão de
+ * `criar-pagamento` carrega `codigo: "CARTAO_FORMA_DESLIGADA"`. O código NÃO
+ * afirma ausência de cobrança (o portão roda antes do ramo "reconsultar" da
+ * edge) — serve só para a tela trocar a configuração e oferecer PIX pela
+ * guarda da vaga.
+ */
+export type CodigoDoErroDePagamento = "CARTAO_FORMA_DESLIGADA";
+
+/**
+ * Só o literal EXATO vira código; qualquer outra coisa (ausente, outro texto,
+ * caixa ou espaço diferentes, outro tipo) é `undefined` — falha fechada, a
+ * mesma régua estrita de `terminal`/`cartaoEmAnalise`.
+ */
+function codigoDoErroDePagamento(
+  valor: unknown,
+): CodigoDoErroDePagamento | undefined {
+  return valor === "CARTAO_FORMA_DESLIGADA" ? valor : undefined;
+}
+
+/**
+ * C5 (front B2, 02/10/2026): o 503 `{ error, verificacao: "indisponivel" }`
+ * da edge (cartão sobre sentinela com a busca do MP falhando, e a consulta
+ * `metodo: "verificar"` que não conseguiu ler) — a cobrança está em DÚVIDA,
+ * não "falhou": a tela não pode pedir o cartão de novo. Só o literal exato
+ * conta (mesma régua estrita de `terminal`/`cartaoEmAnalise`/`codigo`).
+ */
+export type VerificacaoDoErroDePagamento = "indisponivel";
+
+function verificacaoDoErroDePagamento(
+  valor: unknown,
+): VerificacaoDoErroDePagamento | undefined {
+  return valor === "indisponivel" ? valor : undefined;
+}
 
 /**
  * O que a edge devolve num 200/201 — PIX e cartão falam a mesma resposta; os
  * campos de cada meio são opcionais.
  */
 export type RespostaCriarPagamento = {
-  paymentId: string;
+  // `null` é real: a recusa do cartão, a consulta `verificar` e o
+  // `sem_registro` do C3 voltam sem order (C5: "em análise" só COM order).
+  paymentId: string | null;
   // CHECKOUT-080 (#213): renomeado de `status` — o campo agora fala o
   // vocabulário FECHADO do banco ('aguardando'/'pago'/'recusado'/
   // 'expirado'/'estornado'), não mais o vocabulário clássico do MP, e
@@ -498,6 +558,14 @@ export type RespostaCriarPagamento = {
   // (reserva vencida, limite de tentativas) — a tela não oferece outro
   // cartão nem PIX.
   podeTentarDeNovo?: boolean;
+  // C4 (M1): só na resposta da consulta `metodo: "verificar"`. ATENÇÃO: nela
+  // `paymentId` pode vir `null` (vaga vazia ou com sentinela) — quem lê esta
+  // resposta (`VerificacaoDoPagamento`) trata o corpo como desconhecido e
+  // valida campo a campo, nunca confia no tipo acima.
+  verificacao?: EstadoDaVerificacao;
+  // Só em `sem_registro`: a data real do cancelamento automático
+  // (`expires_at + 24 h`).
+  canceladoAutomaticamenteAte?: string;
 };
 
 /** Argumentos de uma chamada de `loadOrders`, guardados para poder repeti-la. */
@@ -2928,8 +2996,10 @@ export function useOrders(
    * devolve o item ao estoque; sem ele, a mercadoria fica fora do catálogo
    * para sempre — a migration tirou o retorno automático que existia antes.
    *
-   * Não move dinheiro nenhum: o app não estorna sozinho. Isto só marca que a
-   * MERCADORIA voltou — quem governa o card de mercadoria é
+   * Não move dinheiro nenhum: isto só marca que a MERCADORIA voltou (a
+   * devolução do dinheiro, quando existe, anda por `order_refunds` — o
+   * cancelamento de pedido pago e não enviado a pede ao Mercado Pago
+   * sozinho desde 07/09/2026) — quem governa o card de mercadoria é
    * `precisaConfirmarRetornoDoProduto` (AdminOrdersView.tsx), não
    * `baldeDeEstorno` (achado da revisão de 26/08/2026, rodada 4: a versão
    * anterior deste comentário estava errada duas vezes — o card some por
@@ -3396,6 +3466,8 @@ export function useOrders(
         // MESMA regra estrita do `terminal`: só `true` booleano conta, falha
         // fechada em qualquer outra coisa (campo ausente, string "true").
         let cartaoEmAnalise = false;
+        let codigo: CodigoDoErroDePagamento | undefined;
+        let verificacao: VerificacaoDoErroDePagamento | undefined;
         try {
           const corpo = await (error as any).context?.json?.();
           if (corpo?.error) mensagem = corpo.error;
@@ -3403,13 +3475,24 @@ export function useOrders(
           if (typeof corpo?.cartaoEmAnalise === "boolean") {
             cartaoEmAnalise = corpo.cartaoEmAnalise;
           }
+          codigo = codigoDoErroDePagamento(corpo?.codigo);
+          verificacao = verificacaoDoErroDePagamento(corpo?.verificacao);
         } catch {
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
-        throw Object.assign(new Error(mensagem), { terminal, cartaoEmAnalise });
+        throw Object.assign(new Error(mensagem), {
+          terminal,
+          cartaoEmAnalise,
+          ...(codigo ? { codigo } : {}),
+          ...(verificacao ? { verificacao } : {}),
+        });
       }
       if (data?.error) {
+        const codigo = codigoDoErroDePagamento((data as any).codigo);
+        const verificacao = verificacaoDoErroDePagamento(
+          (data as any).verificacao,
+        );
         // Mesma regra estrita do ramo `error` acima: só `true` literal vira
         // terminal/cartaoEmAnalise. `Boolean(...)` aceitaria "false" (string),
         // 1, `{}` — este ramo é inalcançável hoje (o supabase-js v2 sempre
@@ -3422,6 +3505,8 @@ export function useOrders(
           cartaoEmAnalise:
             typeof (data as any).cartaoEmAnalise === "boolean" &&
             (data as any).cartaoEmAnalise,
+          ...(codigo ? { codigo } : {}),
+          ...(verificacao ? { verificacao } : {}),
         });
       }
       return data as RespostaCriarPagamento;

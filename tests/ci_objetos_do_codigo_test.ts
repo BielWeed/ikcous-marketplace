@@ -4,7 +4,7 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * A FIAÇÃO de scripts/db-check-objetos-do-codigo.mjs — o que os testes das
  * funções puras não provam sobre `main()` e o `ci.yml`:
  *
- *   (a) o CI usa SUPABASE_ACCESS_TOKEN e o ref da loja no endpoint somente
+ *   (a) o CI usa SUPABASE_ACCESS_TOKEN_IKCOUS e o ref da loja no endpoint somente
  *       leitura; não depende do DATABASE_URL antigo;
  *   (b) no uso LOCAL por DATABASE_URL, o script RODADO DE VERDADE
  *       recusa um projeto errado ANTES de abrir conexão — prova de que
@@ -53,7 +53,7 @@ const SCRIPT = fromFileUrl(
 );
 
 // O ref real só verifica a fiação do CI; os testes de conexão usam refs fictícios.
-const REF_LOJA = "dekxabvqdsuukijblazl";
+const REF_LOJA = "cafkrminfnokvgjqtkle";
 // Refs fictícios para o processo real — nunca o da loja.
 const REF_FICTICIO_CONECTADO = "aaaaaaaaaaaaaaaaaaaa";
 const REF_FICTICIO_ESPERADO = "bbbbbbbbbbbbbbbbbbbb";
@@ -64,7 +64,7 @@ Deno.test("ci.yml passa token existente e ref da loja ao detector pela API", asy
   const yaml = await Deno.readTextFile(CI_YML);
   assertStringIncludes(
     yaml,
-    `SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}\n          SUPABASE_PROJECT_REF: ${REF_LOJA}\n        run: node scripts/db-check-objetos-do-codigo.mjs`,
+    `SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}\n          SUPABASE_PROJECT_REF: ${REF_LOJA}\n        run: node scripts/db-check-objetos-do-codigo.mjs`,
   );
 });
 

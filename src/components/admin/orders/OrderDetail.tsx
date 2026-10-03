@@ -1493,6 +1493,11 @@ export const OrderDetail = memo(function OrderDetail({
     const texto = textoCancelamentoDoPainel({
       status: order.status,
       payment_status: order.paymentStatus,
+      // L3e: pedido enviado e reativado não gera a devolução automática —
+      // sem este campo o confirm prometeria um estorno que não vai existir.
+      cancelledAfterShipping: order.cancelledAfterShipping,
+      // G4: devolução parcial já concluída também impede a linha nova.
+      valorEstornado: order.valorEstornado,
     });
     if (!globalThis.confirm(texto)) return;
     void handleStatusChange(id, "cancelled");

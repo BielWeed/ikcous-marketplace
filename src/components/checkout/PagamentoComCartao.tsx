@@ -18,6 +18,7 @@ import type {
   SinalDeErroPagamento,
 } from "./PagamentoOnline";
 import { comTempoLimite } from "./PagamentoOnline";
+import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -63,8 +64,16 @@ export type DadosAdicionaisDoBrick = { readonly paymentTypeId?: unknown };
 
 export type ResultadoDoCartao =
   | { readonly tipo: "aprovado" }
-  | { readonly tipo: "em-analise" }
-  | { readonly tipo: "desafio"; readonly url: string }
+  // C6 (P1, 02/10/2026): `paymentId` é o TOKEN DE CERCA da tentativa — a
+  // order que o servidor gravou na vaga ANTES de responder. Em análise só
+  // existe com ele (C5); no desafio ele pode faltar (`null`), e aí a tela
+  // nunca arma a detecção da recusa (ver `CartaoEmCurso`).
+  | { readonly tipo: "em-analise"; readonly paymentId: string }
+  | {
+      readonly tipo: "desafio";
+      readonly url: string;
+      readonly paymentId: string | null;
+    }
   | { readonly tipo: "recusado"; readonly motivo: string }
   | {
       readonly tipo: "erro";
@@ -74,15 +83,95 @@ export type ResultadoDoCartao =
       // `SinalDeErroPagamento`. Ausente = falha fechada, o CheckoutView não
       // oferece PIX nem some com "Cancelar pedido".
       readonly sinal?: SinalDeErroPagamento;
+    }
+  // Contrato "forma de cartão desligada" (01/10/2026): o 409 do portão da
+  // edge (`codigo: "CARTAO_FORMA_DESLIGADA"`). NÃO afirma ausência de
+  // cobrança — o portão roda antes do ramo "reconsultar" da edge —, por isso
+  // não carrega `semCobranca` nem sinal nenhum. `tipoRecusado` é o tipo que
+  // ESTA chamada enviou: a tela tira só ele, sem esconder o outro tipo que
+  // ainda está ligado (ex.: só o débito desligado no meio do pagamento).
+  | { readonly tipo: "forma-desligada"; readonly tipoRecusado: TipoDeCartao }
+  // C5 (front B2, 02/10/2026): a resposta voltou SEM order confirmada e nada
+  // prova que não houve cobrança. Nunca "em análise" (isso exige
+  // `paymentId`), nunca PIX nem outro cartão: o pai abre a verificação do C4
+  // a partir desta resposta.
+  | {
+      readonly tipo: "em-duvida";
+      readonly pontoDePartida: PontoDePartidaDaVerificacao;
     };
+
+/** O literal do contrato — o mesmo que `useOrders` transporta em `Error.codigo`. */
+const CODIGO_FORMA_DESLIGADA = "CARTAO_FORMA_DESLIGADA";
+
+/**
+ * O que a tela mostra para a forma desligada ENQUANTO ela é tratada como o
+ * erro recuperável de antes: a MESMA frase da edge, que era o `err.message`.
+ */
+const MENSAGEM_FORMA_DESLIGADA =
+  "Esta forma de pagamento não está disponível nesta loja.";
 
 type EtapaDoCartao =
   | { readonly tipo: "formulario" }
-  | { readonly tipo: "confirmando-desafio" }
-  | Exclude<ResultadoDoCartao, { tipo: "erro" }>;
+  | { readonly tipo: "confirmando-desafio"; readonly paymentId: string | null }
+  | Exclude<
+      ResultadoDoCartao,
+      { tipo: "erro" } | { tipo: "forma-desligada" } | { tipo: "em-duvida" }
+    >;
 
 const MOTIVO_PADRAO_DA_RECUSA =
   "O banco recusou este cartão. Tente outro cartão ou pague com PIX.";
+
+/**
+ * C6 (P1, achado B1, 02/10/2026): a vaga da tentativa foi SOLTA depois da
+ * resposta do cartão (o banco recusou, ou o desafio 3DS expirou —
+ * `canceled:expired` também vira recusa no servidor). A tela não sabe qual
+ * dos dois: "não foi concluído", nunca "não foi aprovado" (veredito A2,
+ * item 4).
+ */
+export const MOTIVO_DA_TENTATIVA_ENCERRADA =
+  "O pagamento com cartão não foi concluído. Tente outro cartão ou pague com PIX.";
+
+/**
+ * C6 (P1): a tentativa de cartão que AINDA pode estar viva no banco. A chave
+ * é PEDIDO + TOKEN DE CERCA (mudança obrigatória 2 do revisor financeiro, e
+ * o bloqueio da revisão independente do front, 02/10/2026): o `paymentId` do
+ * 200 é a order que o servidor gravou na vaga — único entre tentativas E
+ * entre montagens desta tela. O contador local (`tentativa`) NÃO serve: ele
+ * volta a 0 a cada remontagem ("Tentar de novo" depois de uma falha local,
+ * forma desligada, escolha da forma depois da verificação), e a marca de uma
+ * tentativa velha chegava a derrubar um 3DS VIVO novo. Marca de outro pedido
+ * ou de outro token NUNCA encerra a tentativa atual.
+ */
+export type CartaoEmCurso = {
+  readonly orderId: string;
+  readonly paymentId: string;
+};
+
+/** As etapas em que a tentativa pode terminar sem o cliente fazer nada. */
+const ETAPAS_COM_CARTAO_EM_CURSO: ReadonlySet<EtapaDoCartao["tipo"]> = new Set([
+  "desafio",
+  "confirmando-desafio",
+  "em-analise",
+]);
+
+/**
+ * O token de cerca da etapa — só não vazio (mudança obrigatória 1 do revisor
+ * financeiro). Sem ele, a detecção da recusa NUNCA arma e a tela fica como
+ * sempre foi.
+ */
+function tokenDeCercaDaEtapa(etapa: EtapaDoCartao): string | null {
+  if (!ETAPAS_COM_CARTAO_EM_CURSO.has(etapa.tipo)) return null;
+  const { paymentId } = etapa as { paymentId?: unknown };
+  return textoNaoVazio(paymentId);
+}
+
+/**
+ * C5: o que vai para o `onErro` de um pai que ainda não sabe abrir a
+ * verificação (`onCobrancaEmDuvida` ausente) — com o sinal
+ * `cartaoEmAnalise`, que nunca oferece PIX nem "Cancelar pedido".
+ */
+const MENSAGEM_COBRANCA_EM_DUVIDA =
+  "Não conseguimos confirmar com o banco se o pagamento com cartão deste pedido foi feito.";
 
 /**
  * B2 da revisão de risco pré-publicação (26/09/2026): a tela "em análise"
@@ -278,16 +367,43 @@ export function montarCorpoDoCartao({
  * cartão só emite "pago" | "aguardando" | "recusado"; qualquer outra coisa é
  * falha TERMINAL (nunca sucesso silencioso — mesma rede de segurança do PIX,
  * CHECKOUT-080).
+ *
+ * C5 (front B2, 02/10/2026): "em análise" SÓ com `paymentId` não vazio — a
+ * order existe. Sem ela, a resposta é `em-duvida` (ver `ResultadoDoCartao`):
+ * o `sem_registro` do C3 decide antes de qualquer status, e o `aguardando`
+ * sem order (409 de chave já usada no MP) é o mesmo estado sem a data.
  */
 export function classificarRespostaCartao(
   r: RespostaCriarPagamento,
 ): ResultadoDoCartao {
+  const temOrder = textoNaoVazio(r?.paymentId) !== null;
+  if (r?.verificacao === "sem_registro") {
+    const cancelamento = textoNaoVazio(r.canceladoAutomaticamenteAte);
+    return {
+      tipo: "em-duvida",
+      pontoDePartida: cancelamento
+        ? {
+            verificacao: "sem_registro",
+            canceladoAutomaticamenteAte: cancelamento,
+          }
+        : { verificacao: "sem_registro" },
+    };
+  }
+
   if (r?.statusPagamento === "pago") return { tipo: "aprovado" };
 
   if (r?.statusPagamento === "aguardando") {
-    if (!r.desafio3ds) return { tipo: "em-analise" };
+    const paymentId = textoNaoVazio(r.paymentId);
+    if (!r.desafio3ds) {
+      return paymentId !== null
+        ? { tipo: "em-analise", paymentId }
+        : {
+            tipo: "em-duvida",
+            pontoDePartida: { verificacao: "sem_registro" },
+          };
+    }
     if (urlDoDesafioValida(r.desafio3ds.url)) {
-      return { tipo: "desafio", url: r.desafio3ds.url };
+      return { tipo: "desafio", url: r.desafio3ds.url, paymentId };
     }
     // O banco pediu o desafio, mas a URL não é do Mercado Pago — não abrimos
     // endereço desconhecido dentro do checkout. `semCobranca`: a vaga fica em
@@ -385,6 +501,16 @@ export function classificarRespostaCartao(
   // podia estar vivo). `sinal: "cartaoEmAnalise"` joga para a caixa âmbar
   // com "Tentar de novo" — seguro, porque a nova tentativa converge pela
   // MESMA branch (d): nunca uma segunda cobrança.
+  //
+  // C5: sem `paymentId` nem isso — nada diz que existe order, e nada prova
+  // que não existe. Em dúvida, com a verificação começando de "não foi
+  // possível consultar".
+  if (!temOrder) {
+    return {
+      tipo: "em-duvida",
+      pontoDePartida: { verificacao: "indisponivel" },
+    };
+  }
   return {
     tipo: "erro",
     mensagem: "Não foi possível confirmar o pagamento.",
@@ -436,6 +562,32 @@ export async function enviarPagamentoComCartao({
     // cobranças vivas quando o front oferecia PIX cegamente aqui). Só
     // `cartaoEmAnalise`, quando a edge confirma isso explicitamente no corpo
     // do erro — nunca PIX nem "Cancelar pedido" nesse caso.
+    //
+    // Forma de cartão desligada: só com o código EXATO e quando o MESMO erro
+    // não traz sinal mais forte — `terminal` ou `cartaoEmAnalise` vencem
+    // (prioridade de segurança: nunca rebaixar um cartão em análise ou um
+    // fim de linha para "forma desligada").
+    //
+    // C5: o 503 `verificacao: "indisponivel"` do C3 — a edge não conseguiu
+    // conferir uma cobrança em dúvida. Nunca "tente de novo com o cartão"
+    // (token novo sobre a dúvida): a verificação, que só consulta. O
+    // `terminal` vence, como em toda a cadeia.
+    if (err?.verificacao === "indisponivel" && err?.terminal !== true) {
+      return {
+        tipo: "em-duvida",
+        pontoDePartida: { verificacao: "indisponivel" },
+      };
+    }
+    if (
+      err?.codigo === CODIGO_FORMA_DESLIGADA &&
+      err?.terminal !== true &&
+      err?.cartaoEmAnalise !== true
+    ) {
+      return {
+        tipo: "forma-desligada",
+        tipoRecusado: montagem.corpo.paymentTypeId,
+      };
+    }
     return {
       tipo: "erro",
       mensagem: err?.message ?? "Não foi possível gerar a cobrança.",
@@ -567,7 +719,11 @@ export function PagamentoComCartao({
   config,
   emailDoPagador,
   onErro,
+  onFormaDesligada,
   onPagarComPix,
+  onCobrancaEmDuvida,
+  onCartaoEmCurso,
+  cartaoEncerrado = null,
 }: {
   orderId: string;
   valor: number;
@@ -579,6 +735,7 @@ export function PagamentoComCartao({
     categoria: CategoriaErroPagamento,
     sinal?: SinalDeErroPagamento,
   ) => void;
+  onFormaDesligada?: (tipoRecusado: TipoDeCartao) => void;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // `cartaoAindaVivo` diz ao CheckoutView se a cobrança de cartão pode
   // AINDA existir no momento da troca — antes de qualquer erro do PIX
@@ -592,6 +749,16 @@ export function PagamentoComCartao({
   // cartão vivo). Só a tela "recusado" chama com `false`: o banco já
   // respondeu que o cartão morreu.
   onPagarComPix: (cartaoAindaVivo: boolean) => void;
+  // C5: a resposta voltou sem order confirmada (`em-duvida`) — o pai abre a
+  // verificação a partir dela. Ausente: cai no `onErro` com o sinal
+  // `cartaoEmAnalise` (falha fechada: nunca PIX, nunca "Cancelar pedido").
+  onCobrancaEmDuvida?: (pontoDePartida: PontoDePartidaDaVerificacao) => void;
+  // C6 (P1): avisa o pai qual tentativa está em curso — `CartaoEmCurso` só
+  // com o token de cerca (o `paymentId` da resposta 200), `null` fora disso.
+  // O pai lê a vaga do pedido e devolve `cartaoEncerrado` quando ela foi
+  // solta DEPOIS deste aviso.
+  onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
+  cartaoEncerrado?: CartaoEmCurso | null;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
@@ -606,8 +773,14 @@ export function PagamentoComCartao({
   // PagamentoOnline): a identidade de `onErro` muda a cada render do pai e
   // não pode desmontar o Brick com o cliente no meio da digitação.
   const onErroRef = useRef(onErro);
+  const onFormaDesligadaRef = useRef(onFormaDesligada);
+  const onCobrancaEmDuvidaRef = useRef(onCobrancaEmDuvida);
+  const onCartaoEmCursoRef = useRef(onCartaoEmCurso);
   useEffect(() => {
     onErroRef.current = onErro;
+    onFormaDesligadaRef.current = onFormaDesligada;
+    onCobrancaEmDuvidaRef.current = onCobrancaEmDuvida;
+    onCartaoEmCursoRef.current = onCartaoEmCurso;
   });
   const montadoRef = useRef(false);
   useEffect(() => {
@@ -662,6 +835,30 @@ export function PagamentoComCartao({
           criarPagamento,
         });
         if (!montadoRef.current) return;
+        if (resultado.tipo === "forma-desligada") {
+          // O pai atualiza a opção de pagamento sem transformar o código em
+          // uma afirmação de que não há cobrança. Chamadores antigos seguem
+          // pelo erro conservador até passarem o callback novo.
+          if (onFormaDesligadaRef.current) {
+            onFormaDesligadaRef.current(resultado.tipoRecusado);
+          } else {
+            onErroRef.current(MENSAGEM_FORMA_DESLIGADA, "recuperavel");
+          }
+          throw new Error(MENSAGEM_FORMA_DESLIGADA);
+        }
+        if (resultado.tipo === "em-duvida") {
+          if (onCobrancaEmDuvidaRef.current) {
+            onCobrancaEmDuvidaRef.current(resultado.pontoDePartida);
+          } else {
+            onErroRef.current(
+              MENSAGEM_COBRANCA_EM_DUVIDA,
+              "recuperavel",
+              "cartaoEmAnalise",
+            );
+          }
+          // Relança para o Brick sair do "processando" (mesmo motivo do erro).
+          throw new Error(MENSAGEM_COBRANCA_EM_DUVIDA);
+        }
         if (resultado.tipo === "erro") {
           if (resultado.sinal) {
             onErroRef.current(
@@ -703,11 +900,37 @@ export function PagamentoComCartao({
     const aoReceberMensagem = (evento: MessageEvent) => {
       if (!origemDoMercadoPago(evento.origin)) return;
       if (!desafioConcluido(evento.data)) return;
-      setEtapa({ tipo: "confirmando-desafio" });
+      setEtapa((atual) => ({
+        tipo: "confirmando-desafio",
+        paymentId: atual.tipo === "desafio" ? atual.paymentId : null,
+      }));
     };
     globalThis.addEventListener("message", aoReceberMensagem);
     return () => globalThis.removeEventListener("message", aoReceberMensagem);
   }, [emDesafio]);
+
+  // C6 (P1, achado B1): a tentativa armada — só nas etapas em que o cartão
+  // pode terminar sem o cliente fazer nada, e só com o token de cerca.
+  const tokenDeCerca = tokenDeCercaDaEtapa(etapa);
+  useEffect(() => {
+    if (tokenDeCerca === null) return;
+    onCartaoEmCursoRef.current?.({ orderId, paymentId: tokenDeCerca });
+    return () => onCartaoEmCursoRef.current?.(null);
+  }, [tokenDeCerca, orderId]);
+
+  // O pai provou (leitura da vaga DEPOIS do aviso acima) que a vaga desta
+  // tentativa foi solta: recusa visível, com as duas saídas da recusa — o
+  // cartão está morto por prova, então "Pagar com PIX" aqui é `false`. Quem
+  // decide é o TOKEN: a marca precisa ser deste pedido E desta order.
+  const encerradoAqui =
+    tokenDeCerca !== null &&
+    cartaoEncerrado !== null &&
+    cartaoEncerrado.orderId === orderId &&
+    cartaoEncerrado.paymentId === tokenDeCerca;
+  useEffect(() => {
+    if (!encerradoAqui) return;
+    setEtapa({ tipo: "recusado", motivo: MOTIVO_DA_TENTATIVA_ENCERRADA });
+  }, [encerradoAqui]);
 
   const tentarOutroCartao = () => {
     setFormularioPronto(false);

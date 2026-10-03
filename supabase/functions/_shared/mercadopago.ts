@@ -762,6 +762,55 @@ export function vagaEmVerificacao(idGateway: unknown): boolean {
 export const MARGEM_RELOGIO_BUSCA_MS = 2 * 60_000;
 
 /**
+ * `page_size` que `buscarOrdersDoPedido`, abaixo, manda — o MÁXIMO documentado
+ * da busca de orders.
+ */
+const PAGE_SIZE_BUSCA_ORDERS = 100;
+
+/**
+ * O `page_size` DEFAULT documentado da busca de orders (20) — o tamanho que a
+ * API serve se IGNORAR o `page_size` que pedimos. É o limiar da regra de
+ * completude SEM `paging` utilizável: só uma lista com MENOS que isto é
+ * reconhecidamente a última página, porque vale nos dois mundos (API que honra
+ * `page_size=100` e API que o ignora e serve 20). Usar o 100 pedido como limiar
+ * deixaria uma 1ª página de 20 de uma API que ignora o parâmetro passar por
+ * "curta" = completa, e a lista parcial soltaria a vaga. Custo aceito: sem
+ * `paging` e com 20 a 99 orders a busca fica inconclusiva (`{ ok: false }`, o
+ * lado seguro).
+ */
+const PAGE_SIZE_PADRAO_BUSCA_ORDERS = 20;
+
+/**
+ * `paging.total` da resposta da busca como inteiro >= 0, ou `null` se ausente
+ * ou inválido. A doc devolve os campos de `paging` como STRING ("21"), então
+ * aceita string numérica e number. Só `typeof number`/`string` não-vazio passa
+ * para `Number()`: `Number(null)`, `Number("")`, `Number("  ")`,
+ * `Number(false)` e `Number([])` valem 0 e transformariam um `paging` ilegível
+ * em "total 0 -> lista completa" — o oposto do lado seguro.
+ */
+function totalDoPaging(paging: unknown): number | null {
+  if (!paging || typeof paging !== "object") return null;
+  const bruto = (paging as Record<string, unknown>).total;
+  const legivel = typeof bruto === "number" || (typeof bruto === "string" && bruto.trim().length > 0);
+  if (!legivel) return null;
+  const total = Number(bruto);
+  return Number.isInteger(total) && total >= 0 ? total : null;
+}
+
+/**
+ * A lista CRUA da busca (n itens, antes do refiltro por `external_reference`)
+ * é reconhecidamente COMPLETA? Só em dois casos: (a) `paging.total` válido e
+ * `total <= n`; (b) `total` ausente/inválido e `n < PAGE_SIZE_PADRAO_BUSCA_ORDERS`
+ * (20 — mais curta que a menor página que a API serviria, é a última). Todo o
+ * resto é INCOMPLETO — `total > n`, ou sem `total` com 20 itens ou mais.
+ */
+function listaDaBuscaEstaCompleta(n: number, paging: unknown): boolean {
+  const total = totalDoPaging(paging);
+  if (total !== null) return total <= n;
+  return n < PAGE_SIZE_PADRAO_BUSCA_ORDERS;
+}
+
+/**
  * BLOQUEIO da 7ª rodada de risco (26/09/2026): `resolverSentinela`, abaixo,
  * usava `MARGEM_RELOGIO_BUSCA_MS` (2 min) PARA TRÁS na comparação de
  * liberação (`criadaEm >= limiteInferiorMs - MARGEM_RELOGIO_BUSCA_MS`) — a
@@ -804,6 +853,34 @@ export const MARGEM_LIBERAR_APOS_LIMITE_MS = 15_000;
  */
 export function montarSentinela(chave: string, limiteInferiorMs: number): string {
   return `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}:${limiteInferiorMs}`;
+}
+
+/**
+ * Chave de idempotência da tentativa de CARTÃO atual de um pedido —
+ * `<pedido>:c<tentativas_de_pagamento>` (Achado A1: o token não entra).
+ * Fonte única: `chaveDeIdempotencia` (criar-pagamento) e o fallback de
+ * liberação do sentinela (webhook-mercadopago) montam a chave por aqui.
+ */
+export function chaveDoCartaoDaTentativa(pedidoId: string, tentativasDePagamento: unknown): string {
+  const bruto = Number(tentativasDePagamento);
+  const tentativas = Number.isInteger(bruto) && bruto >= 0 ? bruto : 0;
+  return `${pedidoId}:c${tentativas}`;
+}
+
+/**
+ * `true` quando `idGateway` é o SENTINELA gravado para esta MESMA chave de
+ * idempotência — `verificando:<chave>` (formato antigo) ou
+ * `verificando:<chave>:<ms>` (`montarSentinela`). O `:` depois da chave é o
+ * que separa `c1` de `c10`. Revisões de risco de 30/09/2026: um sentinela de
+ * chave ANTERIOR (a tentativa já avançou) nunca é recriado nem liberado pela
+ * busca — o limite inferior dele pode enxergar só a order morta de uma
+ * tentativa posterior, e liberar abriria um POST com chave nova ao lado da
+ * cobrança ambígua ainda não indexada (duas capturas).
+ */
+export function sentinelaDaChave(idGateway: unknown, chave: string): boolean {
+  if (typeof idGateway !== "string") return false;
+  const prefixo = `${PREFIXO_VAGA_EM_VERIFICACAO}${chave}`;
+  return idGateway === prefixo || idGateway.startsWith(`${prefixo}:`);
 }
 
 /**
@@ -1291,10 +1368,33 @@ export async function consultarOrder(args: {
  * um array na RAIZ) — com o corpo REAL, a busca voltava `{ ok: false }`
  * SEMPRE e a liberação do sentinela por busca (Ponto 1 da criar-pagamento e
  * o webhook, Ponto 2) era código morto: só `expires_at` liberava. `data`
- * vem PRIMEIRO; os nomes antigos ficam como defesa. Paginação documentada:
- * `page`/`page_size` (default 20, máx 100) — NÃO paginamos; um pedido com
- * mais orders que o page_size veria lista PARCIALMENTE indexada (o que os
- * chamadores já tratam como "não libera"). Qualquer OUTRO formato (corpo
+ * vem PRIMEIRO; os nomes antigos ficam como defesa. PAGINAÇÃO (02/10/2026;
+ * referência oficial "Search order", consultada nesse dia): `page` começa em
+ * 1, `page_size` tem default 20 e máximo 100, a ordem default é
+ * `sort_by=created_date`/`sort_order=desc`, e a resposta traz `paging` =
+ * `{ total, total_pages, offset, limit }` com os quatro campos como STRING.
+ * A versão anterior desta função não mandava `page_size` nem ordenação e
+ * devolvia `{ ok: true }` com a 1ª página (20) como se fosse a lista inteira —
+ * o comentário que havia aqui dizia que a lista parcial "não libera", e isso
+ * era FALSO: um pedido com 21+ orders na janela, e a viva (ou a capturada) só
+ * na página 2, soltava a vaga (e abria cobrança nova). Agora a busca MANDA
+ * `page_size=100`, `sort_by=created_date` e `sort_order=desc`, e só devolve
+ * `{ ok: true }` quando a lista CRUA (antes do refiltro por
+ * `external_reference`, abaixo) é reconhecidamente COMPLETA:
+ *   (a) `paging.total` é um inteiro >= 0 e `total <= n` (n = tamanho da lista
+ *       crua); ou
+ *   (b) `total` ausente/inválido e `n < 20` (o `page_size` DEFAULT da API, não
+ *       os 100 que pedimos: se a API ignorar o parâmetro serve no máximo 20, e
+ *       uma página de 20 sem `paging` é ambígua; só uma lista mais curta que
+ *       isso é necessariamente a última nos dois mundos).
+ * Qualquer outro caso — `total > n`, ou sem `total` com `n >= 20` — volta
+ * `{ ok: false }`, o MESMO resultado de uma busca que falhou: quem chama já
+ * trata isso como "não decide" (nunca libera, nunca recusa, nunca cria
+ * cobrança nova). NÃO paginamos além disso (sem laço): lista incompleta é
+ * indecisão, não motivo para buscar a página 2. NÃO VERIFICADO contra a API
+ * viva: se `paging` chega mesmo na resposta, e se a API aceita/ignora cada
+ * parâmetro novo (um 400 por parâmetro desconhecido também cai em
+ * `{ ok: false }`, o lado seguro). Qualquer OUTRO formato (corpo
  * sem lista reconhecível, corpo não-JSON, HTTP não-2xx, erro de rede)
  * volta como `{ ok: false }`, NUNCA como lista vazia: quem chama
  * (`resolverSentinela`, abaixo, e os dois chamadores em `criar-pagamento/
@@ -1351,6 +1451,11 @@ export async function buscarOrdersDoPedido(args: {
     external_reference: args.pedidoId,
     begin_date: beginDate,
     end_date: endDate,
+    // Paginação (02/10/2026): explícitos mesmo sendo (sort) o default da API —
+    // a regra de completude, abaixo, depende de `page_size` ser o MÁXIMO.
+    page_size: String(PAGE_SIZE_BUSCA_ORDERS),
+    sort_by: "created_date",
+    sort_order: "desc",
   });
 
   let resposta: Response;
@@ -1398,6 +1503,16 @@ export async function buscarOrdersDoPedido(args: {
           : null;
   if (!lista) {
     console.error("mercadopago: busca de orders com corpo sem lista reconhecível (data/results/elements)");
+    return { ok: false };
+  }
+
+  // Completude (02/10/2026) — ver o comentário grande da função. Sobre a lista
+  // CRUA: o refiltro por `external_reference`, abaixo, só encolhe o que já veio.
+  if (!listaDaBuscaEstaCompleta(lista.length, corpo?.paging)) {
+    console.error(
+      "mercadopago: busca de orders com lista INCOMPLETA (paging.total maior que a lista, ou página cheia sem paging) — tratada como indecisão, nunca como lista completa",
+      { recebidas: lista.length, total: totalDoPaging(corpo?.paging) },
+    );
     return { ok: false };
   }
 

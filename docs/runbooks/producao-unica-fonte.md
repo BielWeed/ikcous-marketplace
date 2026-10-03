@@ -1,81 +1,84 @@
-# Producao - fonte unica de deploy (29/09/2026, corrigido 30/09/2026)
+# Producao - como o front e as functions vao ao ar (29/09/2026, refeito 03/10/2026)
 
-## Como funciona
+## Como funciona hoje (medido em 03/10/2026)
 
-- A branch `production` e a UNICA fonte de deploy publico. Mas SO a loja PRINCIPAL
-  a segue: apenas `ickous-marketplace.vercel.app` acompanha os deployments da branch
-  `production` (Branch Domain da Vercel).
-- As 4 lojas clientes (`almeidastore`, `savycollection`, `brandmeliz` e
-  `spacelojadoskit`, todas `.vercel.app`) NAO seguem a branch: estao no MESMO projeto
-  Vercel (`ickous-marketplace`), servem o target Production e recebem o front por UM
-  `npx vercel --prod`, de uma worktree limpa no SHA publicado (secao "Front das lojas
-  clientes"). O porteiro escolhe a loja pelo host, via caderneta `frota_lojas`.
-- Correcao de 30/09/2026: ate esta data este arquivo dizia que `brandmeliz.vercel.app`
-  tambem seguia a branch. Nao segue. Por que importa: deployment PREVIEW nao tem as
-  variaveis `IKCOUS_FROTA_*` (elas so existem em Production), a caderneta fica
-  `ausente` e o dominio cliente passa a mostrar a loja PRINCIPAL - foi o que aconteceu
-  com a Brand Meliz de 29/09 08:21Z ate 30/09.
-- Ruleset `producao-unica-fonte`: todo cambio entra por PR com checks
-  obrigatorios (Build e tamanho, Catraca de lint, Testes front 1/2 e 2/2,
-  Testes Deno, Tipos). Sem push direto, sem force-push, sem delete.
-- Builds disparados por push na `main` sao PULADOS (Ignored Build Step) -
-  a linha 1.35.0 nao pode mais sobrescrever a producao.
+- As 5 lojas (`ickous-marketplace`, `savycollection`, `almeidastore`, `brandmeliz` e
+  `spacelojadoskit`, todas `.vercel.app`) estao no MESMO projeto Vercel
+  (`ickous-marketplace`) e TODAS servem o target Production. O porteiro escolhe a loja
+  pelo host, via caderneta `frota_lojas`: em cada dominio o cabecalho
+  `X-Ikcous-Caderneta` responde `hit`.
+- O front vai ao ar para as 5 de uma vez por UM `npx vercel --prod` (secao "Publicar o
+  front"). Juntar PR em qualquer branch NAO publica: o merge so gera deployment Preview.
+- A branch `production` deixou de ser fonte de deploy. Os merges nela de 30/09
+  (`d43a0198`, `9f942e2f`, `d031c53c`) geraram so Preview, e a 1.5.15 e a 1.5.16 foram
+  ao ar pelo `vercel --prod`. Ela segue como REGISTRO do que esta no ar (secao
+  "Depois de publicar").
+- Ruleset `producao-unica-fonte` (id 24166103) continua na `production`: todo cambio
+  entra por PR com checks obrigatorios (Build e tamanho, Catraca de lint, Testes front
+  1/2 e 2/2, Testes Deno, Tipos). Sem push direto, sem force-push, sem delete.
+- Builds disparados por push na `main` sao PULADOS (Ignored Build Step) - a linha
+  1.35.0 nao pode sobrescrever a producao.
+- Historico: de 29/09 a 02/10 a principal seguia a branch `production` (Branch Domain)
+  e respondia `X-Ikcous-Caderneta: ausente`. Isso acabou: hoje `ausente` em QUALQUER
+  dominio e defeito (deploy saiu como Preview, sem as `IKCOUS_FROTA_*`).
 
-## Release
+## Antes de publicar
 
-1. PR de `claude/app-major-upgrade-wmc8x2` (ou fix pontual) para `production`.
-2. Checks verdes + checklist da release.
-3. Merge: a Vercel constroi e `ickous-marketplace.vercel.app` aponta para o novo
-   deployment. As lojas clientes NAO se movem sozinhas: cada uma recebe o front pelo
-   passo da secao abaixo, e so depois das functions e migrations dela.
+1. As migrations que o codigo usa ja estao no banco de CADA loja que recebe o codigo
+   (o job "Codigo x banco" do CI le o banco da principal; a Savy se confere a parte).
+2. As functions que o codigo chama ja estao publicadas em cada loja (secao "Edge
+   functions por loja").
+3. O `codeSha` no ar (`https://<dominio>/version.json`) e ancestral do SHA a publicar
+   (`git merge-base --is-ancestor <sha-no-ar> <sha40>`): publicar nao desfaz nada do ar.
 
-## Front das lojas clientes
+## Publicar o front
 
-Um deploy so cobre as 4 lojas clientes (almeidastore, savycollection, brandmeliz,
-spacelojadoskit), porque todas servem o target Production do mesmo projeto:
-
-1. Worktree limpa e destacada no SHA publicado (o mesmo `<sha40>` que foi para
-   `production`), sem arquivo solto, com `.vercel/project.json` apontando para o
-   projeto `ickous-marketplace` (`projectId` + `orgId` do time).
-2. Publicar no target Production, informando o SHA duas vezes ao build (feito assim
-   em 30/09/2026, ~3 min):
+1. Worktree limpa e destacada no SHA juntado (`<sha40>`), sem arquivo solto, com
+   `.vercel/project.json` apontando para o projeto `ickous-marketplace`
+   (`projectId` + `orgId` do time).
+2. O DONO roda, dessa pasta, no PowerShell (~3 min; as permissoes do projeto negam o
+   deploy pelo agente):
 
 ```powershell
 npx vercel --prod --yes --build-env IKCOUS_CODE_SHA=<sha40> --build-env VERCEL_GIT_COMMIT_SHA=<sha40>
 ```
 
-3. Conferir em CADA dominio cliente `https://<dominio-da-loja>/version.json`: o `codeSha` tem de ser o
-   `<sha40>` publicado, e a tela tem de mostrar a PROPRIA loja, nunca a principal.
-   Caderneta `ausente` ou loja principal aparecendo no dominio cliente = o deploy
-   saiu como Preview, sem as `IKCOUS_FROTA_*`. Refazer com `--prod`.
-   Na loja PRINCIPAL o esperado e o contrario: o cabecalho `X-Ikcous-Caderneta: ausente`
-   e NORMAL (ela segue a branch `production`, que e um Preview sem `IKCOUS_FROTA_*`, e o
-   porteiro usa o proprio projeto). So nos dominios CLIENTES `ausente` e defeito.
+3. Conferir em CADA dominio: `version.json` com `codeSha` = `<sha40>`, cabecalho
+   `X-Ikcous-Caderneta: hit` e o `<title>` da PROPRIA loja. Loja principal aparecendo
+   num dominio cliente = o deploy saiu como Preview. Refazer com `--prod`.
 
-`vercel` sem `--prod` cria Preview: nunca usar nas lojas clientes.
+`vercel` sem `--prod` cria Preview: nunca usar para publicar.
+
+## Depois de publicar
+
+PR de `claude/app-major-upgrade-wmc8x2` para `production`, com merge commit, para que a
+`production` mostre o que esta no ar. Esse merge so gera Preview (nao muda loja nenhuma).
+Se o topo do ramo principal ja andou alem do SHA publicado, o PR so pode levar commits
+que nao mudam o front (CI, docs, testes): conferir com `git diff <sha40> <topo> --stat`.
 
 ## Edge functions por loja
 
-| Loja | Como publica as functions |
-|---|---|
-| Principal (`ickous-marketplace`) | Workflow `publicar-functions.yml`, `projeto=loja` |
-| Savy | Workflow, `projeto=savy` (token proprio `SUPABASE_ACCESS_TOKEN_SAVY`) |
-| Almeida | Workflow, `projeto=almeida` (mesmo `SUPABASE_ACCESS_TOKEN` da loja) |
-| Brand Meliz | Sem rota: o projeto Supabase esta em conta que o token nao alcanca |
-| Space Loja do Kit | Sem rota: idem |
+| Loja | Banco | Como publica as functions |
+|---|---|---|
+| Principal (`ickous-marketplace`) | `cafkrminfnokvgjqtkle` | Workflow `publicar-functions.yml`, `projeto=ikcous-publicada` (token `SUPABASE_ACCESS_TOKEN_IKCOUS`) |
+| Savy | `gnjsrucsmjkajijrakzr` | Workflow, `projeto=savy` (token proprio `SUPABASE_ACCESS_TOKEN_SAVY`) |
+| Almeida | `cuemaffjmhkebhmghbap` | Loja de teste: banco e functions nao se mexem (decisao do dono, 03/10/2026) |
+| Brand Meliz | conta sem acesso | Loja de teste: idem |
+| Space Loja do Kit | conta sem acesso | Loja de teste: idem |
 
-Savy e Almeida (lojas clientes no workflow) aceitam SO as cinco functions financeiras
-(`cobranca`) e exigem `expected_sha` completo, igual ao SHA do run. Detalhes em
-`DEPLOYMENT.md` secao 5.3.2.
+`ikcous-publicada`, `savy` e `almeida` aceitam SO as cinco functions financeiras
+(`cobranca`) e exigem `expected_sha` completo, igual ao SHA do run. `ikcous-publicada` e o
+padrao do workflow. O destino `loja` (`dekxabvqdsuukijblazl`) e o projeto antigo da
+principal: nenhuma loja no ar chama as functions dele. Detalhes em `DEPLOYMENT.md`
+secao 5.3.2.
 
 ## Rollback
 
-- Principal: reverter o PR na `production`, ou promover o deployment anterior na Vercel.
-- Lojas clientes: rodar de novo o `npx vercel --prod` da secao acima com o SHA anterior,
-  ou promover o deployment Production anterior do projeto (vale para as 4 de uma vez).
+- Front (as 5 lojas de uma vez): promover na Vercel o deployment Production anterior, ou
+  rodar de novo o `npx vercel --prod` da secao acima com o SHA anterior.
+- Functions: publicar de novo pelo workflow a partir do commit anterior.
 
 ## Rollback integral da configuracao
 
-- Dominio da principal: `gitBranch = null` (volta a seguir deployments de producao).
 - Ignore step: `commandForIgnoringBuildStep = null`.
 - Ruleset: remover `producao-unica-fonte` (id 24166103).
