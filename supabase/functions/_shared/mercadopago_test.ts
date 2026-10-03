@@ -2759,3 +2759,45 @@ Deno.test("montarCorpoPixOrders: o PIX NAO ganha items, shipment, phone nem addr
     assertEquals(campo in (corpo.payer as Record<string, unknown>), false, campo);
   }
 });
+
+// ─── Nome na fatura do cartão (03/10/2026) ──────────────────────────────────
+
+const PARAMS_CARTAO_FATURA = {
+  orderId: "11111111-2222-4333-8444-555555555555",
+  valor: 100,
+  email: "comprador.falso@exemplo.test",
+  documento: { type: "CPF", number: "12345678909" },
+  token: "ff8080814c11e237014c1ff593b57b4d",
+  paymentMethodId: "master",
+  paymentTypeId: "credit_card",
+  parcelas: 2,
+};
+
+function metodoDoPagamento(corpo: Record<string, unknown>): Record<string, unknown> {
+  return (corpo.transactions as { payments: Array<{ payment_method: Record<string, unknown> }> }).payments[0]
+    .payment_method;
+}
+
+Deno.test("montarCorpoCartaoOrders: nomeNaFatura vai em transactions.payments[0].payment_method.statement_descriptor, normalizado", () => {
+  const corpo = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: "Açaí do Zé" });
+  assertEquals(metodoDoPagamento(corpo).statement_descriptor, "ACAI DO ZE");
+});
+
+Deno.test("montarCorpoCartaoOrders: nome longo e' CORTADO em 13 caracteres, sem espaco no fim", () => {
+  const corpo = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: "Loja Muito Grande Mesmo" });
+  assertEquals(metodoDoPagamento(corpo).statement_descriptor, "LOJA MUITO GR");
+});
+
+Deno.test("montarCorpoCartaoOrders: nome vazio, so' simbolo ou ausente NAO manda a chave", () => {
+  for (const nome of [undefined, null, "", "   ", "★★", 7]) {
+    const corpo = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: nome });
+    assertEquals("statement_descriptor" in metodoDoPagamento(corpo), false, String(nome));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders: o nome na fatura NAO altera mais nada do corpo (so' acrescenta a chave)", () => {
+  const sem = montarCorpoCartaoOrders(PARAMS_CARTAO_FATURA);
+  const com = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: "Loja Teste" });
+  delete metodoDoPagamento(com).statement_descriptor;
+  assertEquals(com, sem);
+});

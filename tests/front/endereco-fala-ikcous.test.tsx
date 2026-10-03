@@ -94,6 +94,9 @@ describe("AddressFormView fala o nome certo da marca", () => {
 
     const texto = document.body.textContent ?? "";
     expect(texto).not.toContain("ICKOUS");
-    expect(texto).toContain("Onde entregaremos seu produto da Loja de Teste?");
+    // Redesenho de 03/10/2026: o título virou "Para onde vamos entregar?" e o
+    // nome da loja segue na linha de baixo ("Seu pedido da <loja>: ...").
+    expect(texto).toContain("Para onde vamos entregar?");
+    expect(texto).toContain("Seu pedido da Loja de Teste:");
   });
 });

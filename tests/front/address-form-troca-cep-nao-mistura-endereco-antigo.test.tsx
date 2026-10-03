@@ -120,14 +120,14 @@ describe("AddressForm — trocar o CEP de um endereço salvo não mistura rua an
       );
     });
 
-    // Confere que o formulário abriu com o endereço antigo, para não
-    // confundir "já nasceu vazio" com "foi limpo pela correção".
-    expect((document.getElementById("street") as HTMLInputElement).value).toBe(
-      "Rua Tiradentes",
-    );
-    expect(
-      (document.getElementById("neighborhood") as HTMLInputElement).value,
-    ).toBe("Centro");
+    // Confere que o formulário abriu com o endereço antigo (agora num
+    // cartão), para não confundir "já nasceu vazio" com "foi limpo pela
+    // correção".
+    const cartaoAntigo =
+      document.querySelector('[data-testid="cartao-do-endereco"]')
+        ?.textContent ?? "";
+    expect(cartaoAntigo).toContain("Rua Tiradentes");
+    expect(cartaoAntigo).toContain("Centro");
 
     // A pessoa mudou de cidade: apaga o CEP antigo e digita o novo, de
     // localidade única (sem rua/bairro no ViaCEP).
@@ -162,5 +162,12 @@ describe("AddressForm — trocar o CEP de um endereço salvo não mistura rua an
     // CEP mudou e a resposta nova não os determina.
     expect(street.value).toBe("");
     expect(neighborhood.value).toBe("");
+    // E a tela pede o que falta em vez de mostrar um cartão com dado velho.
+    expect(
+      document.querySelector('[data-testid="cartao-do-endereco"]'),
+    ).toBeNull();
+    expect(document.body.textContent).toContain(
+      "Este CEP não informa a rua e o bairro",
+    );
   });
 });

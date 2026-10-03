@@ -35,6 +35,11 @@ import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
+import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
+import {
+  motivoDoBloqueioDoProduto,
+  motivoDoEnvioDeFotos,
+} from "@/utils/motivo-do-bloqueio-do-produto";
 import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
@@ -116,6 +121,27 @@ function temCameraDisponivel(): boolean {
     typeof navigator !== "undefined" &&
     typeof navigator.mediaDevices?.getUserMedia === "function"
   );
+}
+
+/**
+ * Prazo de UMA foto, da compressão ao fim do upload. Existe porque o botão
+ * Publicar fica desligado enquanto há foto subindo e nenhuma das duas etapas
+ * tinha prazo: em rede lenta uma promessa que nunca responde segurava a tela
+ * para sempre (cliente pagante, 03/10/2026, selo "SLOW" na barra).
+ *
+ * Por que 90 s: depois da compressão (JPEG 1200 px, ~150-400 KB) o envio de
+ * 400 KB a 100 kbps (o patamar "muito lenta" de celular) leva ~32 s; a
+ * decodificação/compressão em celular de entrada soma 10-15 s. 90 s cobre esse
+ * pior caso REAL com folga, e ainda é curto o bastante para a lojista não
+ * esperar mais de um minuto e meio por foto antes de ver "Tentar de novo".
+ */
+const PRAZO_POR_FOTO_MS = 90_000;
+
+/** Uma foto que não subiu: guarda o arquivo para "Tentar de novo". */
+interface FotoComFalha {
+  id: string;
+  file: File;
+  motivo: "demorou demais" | "não foi enviada";
 }
 
 // Exportado só para o teste chamar direto (não passa pelo componente inteiro)
@@ -315,7 +341,7 @@ function isProductFormDirty(
   return false;
 }
 
-export const AdminProductFormView = React.memo(function AdminProductFormView({
+const FormularioDoProduto = React.memo(function FormularioDoProduto({
   productId,
   onNavigate,
   onSetDirty,
@@ -483,6 +509,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   );
   const [isUploadingAdjusted, setIsUploadingAdjusted] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
+  // "Foto 1 de 3" do lote em andamento, para o aviso do botão desligado.
+  const [progressoDoEnvio, setProgressoDoEnvio] = useState<{
+    atual: number;
+    total: number;
+  } | null>(null);
+  // Fotos que estouraram o prazo ou falharam: ficam na tela com "Tentar de
+  // novo"/"Remover" e NUNCA entram em `isValid` -- não impedem salvar.
+  const [fotosComFalha, setFotosComFalha] = useState<FotoComFalha[]>([]);
+  // Ligado quando o produto novo JÁ foi criado e a lojista está sendo levada
+  // para a edição dele (a grade não gravou). Daí em diante o auto-save não pode
+  // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
+  // próximo "Publicar" criaria um segundo produto idêntico.
+  const produtoNovoJaCriadoRef = useRef(false);
   const [imageUploadStep, setImageUploadStep] = useState<
     "compressing" | "uploading" | "idle"
   >("idle");
@@ -584,7 +623,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const loadingToast = toast.loading("Enviando imagem recortada...");
 
     try {
-      const urls = await uploadProductImages([file]);
+      // Mesmo prazo das fotos novas: o botão Publicar fica desligado enquanto
+      // este envio roda, e um upload que nunca responde o prenderia.
+      const urls = await comPrazo(
+        uploadProductImages([file]),
+        PRAZO_POR_FOTO_MS,
+      );
       if (urls && urls.length > 0) {
         const newUrl = urls[0];
         setFormData((prev) => {
@@ -618,7 +662,13 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       }
     } catch (error) {
       console.error("Error uploading adjusted image:", error);
-      toast.error("Erro ao salvar imagem ajustada", { id: loadingToast });
+      toast.error("Erro ao salvar imagem ajustada", {
+        id: loadingToast,
+        description:
+          error instanceof PrazoEsgotado
+            ? "O envio demorou demais. Confira a conexão e tente de novo."
+            : undefined,
+      });
     } finally {
       setIsUploadingAdjusted(false);
     }
@@ -1150,6 +1200,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (isLoading || !draftChecked) return;
 
     const timer = setTimeout(() => {
+      // Produto novo já criado (grade não gravou): o rascunho já foi para a
+      // chave de edição dele, e esta chave NÃO pode ser recriada.
+      if (!productId && produtoNovoJaCriadoRef.current) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = !productId
         ? "ikcous_product_form_draft"
@@ -1197,43 +1250,109 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
 
       setIsUploadingImages(true);
       setImageUploadStep("compressing");
+      setProgressoDoEnvio({ atual: 1, total: files.length });
       const loadingToast = toast.loading(
         `Comprimindo ${files.length} imagem(ns)...`,
       );
+      const falhas: FotoComFalha[] = [];
+      let enviadas = 0;
       try {
-        const compressedFiles = await Promise.all(
-          files.map((file) => compressProductImage(file)),
-        );
+        // Uma foto por vez, cada uma com o próprio prazo: a que trava não
+        // arrasta as outras, e a lojista vê "N de M" andar.
+        for (const [indice, file] of files.entries()) {
+          setProgressoDoEnvio({ atual: indice + 1, total: files.length });
+          setImageUploadStep("compressing");
+          // Marca o estouro para a continuação ATRASADA não iniciar o upload
+          // de uma foto que a tela já deu por falha (evita arquivo órfão no
+          // armazenamento e um estado "uploading" depois do fim).
+          let estourou = false;
+          try {
+            const url = await comPrazo(
+              (async () => {
+                const comprimida = await compressProductImage(file);
+                if (estourou) throw new PrazoEsgotado(PRAZO_POR_FOTO_MS);
+                setImageUploadStep("uploading");
+                toast.loading(
+                  `Enviando foto ${indice + 1} de ${files.length}...`,
+                  { id: loadingToast },
+                );
+                const urls = await uploadProductImages([comprimida]);
+                if (!urls || urls.length === 0) {
+                  throw new Error("Falha no upload.");
+                }
+                return urls[0];
+              })(),
+              PRAZO_POR_FOTO_MS,
+              () => {
+                estourou = true;
+              },
+            );
+            setFormData((prev) => ({
+              ...prev,
+              images: [...prev.images, url],
+            }));
+            enviadas += 1;
+          } catch (error) {
+            console.error("[Upload] Process error:", error, file.name);
+            falhas.push({
+              id: `${Date.now()}-${indice}-${file.name}`,
+              file,
+              motivo:
+                error instanceof PrazoEsgotado
+                  ? "demorou demais"
+                  : "não foi enviada",
+            });
+          }
+        }
 
-        setImageUploadStep("uploading");
-        toast.loading("Enviando imagens processadas...", { id: loadingToast });
-
-        const urls = await uploadProductImages(compressedFiles);
-        if (urls && urls.length > 0) {
-          setFormData((prev) => ({
-            ...prev,
-            images: [...prev.images, ...urls],
-          }));
+        if (falhas.length === 0) {
           toast.success("Imagens processadas e enviadas com sucesso!", {
             id: loadingToast,
           });
         } else {
-          throw new Error("Falha no upload.");
+          setFotosComFalha((prev) => [...prev, ...falhas]);
+          toast.error(
+            enviadas > 0
+              ? `${falhas.length} de ${files.length} fotos não subiram.`
+              : "Erro ao processar ou enviar imagens.",
+            {
+              id: loadingToast,
+              description:
+                "Veja o aviso abaixo das fotos: dá para tentar de novo, remover, ou publicar sem elas.",
+            },
+          );
         }
-      } catch (error) {
-        console.error("[Upload] Process error:", error);
-        toast.error("Erro ao processar ou enviar imagens.", {
-          id: loadingToast,
-          description:
-            "Por favor, verifique sua conexão e tente enviar novamente.",
-        });
       } finally {
+        // Sempre volta ao normal -- é isto que garante que o botão nunca
+        // fica preso por um envio que acabou (ou estourou).
         setIsUploadingImages(false);
         setImageUploadStep("idle");
+        setProgressoDoEnvio(null);
       }
     },
     [formData.images.length, uploadProductImages],
   );
+
+  const tentarFotoDeNovo = useCallback(
+    async (id: string) => {
+      const falha = fotosComFalha.find((f) => f.id === id);
+      if (!falha || isOffline) return;
+      if (formData.images.length >= 10) {
+        // Mesma regra do envio: não some com a foto da lista sem ela caber.
+        toast.error(
+          "O produto já tem 10 fotos. Remova uma foto antes de tentar de novo.",
+        );
+        return;
+      }
+      setFotosComFalha((prev) => prev.filter((f) => f.id !== id));
+      await processAndUploadImages([falha.file]);
+    },
+    [fotosComFalha, isOffline, formData.images.length, processAndUploadImages],
+  );
+
+  const descartarFotoComFalha = useCallback((id: string) => {
+    setFotosComFalha((prev) => prev.filter((f) => f.id !== id));
+  }, []);
 
   const handleImageUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1331,6 +1450,31 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     const sanitizedVarCodigoBarras = variantFormData.codigoBarras
       ? normalizarCodigoBarras(variantFormData.codigoBarras)
       : undefined;
+
+    // O SKU da variação é único na loja inteira (product_variants_sku_key):
+    // dois iguais NESTE produto são recusados pelo banco na hora de gravar,
+    // sem dizer qual. Aqui a lojista lê qual é, antes de perder o cadastro.
+    // Compara do jeito que será gravado (`sanitizedVarSku` já é maiúsculo e
+    // sem espaço; os já salvos passam pela mesma conta no envio).
+    if (sanitizedVarSku) {
+      const dona = formData.variants.find(
+        (v) =>
+          v.id !== editingVariant?.id &&
+          !!v.sku &&
+          v.sku.trim().toUpperCase().replace(/\s+/g, "-") === sanitizedVarSku,
+      );
+      if (dona) {
+        toast.error(
+          `O SKU "${sanitizedVarSku}" já está em outra variação deste produto (${dona.name}: ${dona.value}).`,
+          {
+            description:
+              "Cada variação precisa de um SKU diferente — ou deixe o SKU em branco.",
+            duration: 8000,
+          },
+        );
+        return;
+      }
+    }
 
     const vData = {
       productId: productId || "",
@@ -1629,6 +1773,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           await upsertVariants(productId, variantsWithSanitizedSku);
         }
       } else {
+        // Este formulário já criou o produto e a ida para a edição não
+        // aconteceu (o App descarta uma navegação a menos de 400 ms de outra).
+        // Um segundo addProduct seria a cópia que a trava existe para impedir.
+        if (produtoNovoJaCriadoRef.current) {
+          toast.error(
+            "Este produto já foi criado. Abra-o na lista de produtos para terminar a edição.",
+          );
+          setIsSubmitting(false);
+          return;
+        }
         const variantsWithSanitizedSku = formData.variants.map((v) => ({
           ...v,
           sku: v.sku
@@ -1638,10 +1792,48 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             ? normalizarCodigoBarras(v.codigoBarras)
             : undefined,
         }));
-        await addProduct({
+        const criado = await addProduct({
           ...productData,
           variants: variantsWithSanitizedSku,
         });
+
+        // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
+        // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
+        // nesta tela deixaria o id do produto só no estado dela: recarregar o
+        // app, ou voltar em "Novo produto", recuperaria o rascunho SEM id e o
+        // "Publicar" criaria uma segunda cópia. Por isso o rascunho vai para a
+        // chave de EDIÇÃO do produto criado e a lojista é levada para a edição
+        // dele, onde "Salvar" atualiza a linha e regrava a grade.
+        if (criado?.variantesNaoSalvas) {
+          // ORDEM: primeiro trava o auto-save (um timer de 1 s pode estar
+          // agendado e reescreveria a chave de produto novo), depois move.
+          produtoNovoJaCriadoRef.current = true;
+          try {
+            localStorage.setItem(
+              `ikcous_product_form_draft_edit_${criado.id}`,
+              JSON.stringify(formData),
+            );
+          } catch (erroDeCota) {
+            // Sem rascunho a lojista perde só a digitação da grade; com a chave
+            // de produto novo de pé ela criaria a cópia. Apagar vence.
+            console.warn(
+              "[AdminProductFormView] Não consegui guardar o rascunho de edição:",
+              erroDeCota,
+            );
+          }
+          localStorage.removeItem("ikcous_product_form_draft");
+          const motivo = criado.variantesNaoSalvas.motivo;
+          toast.error(
+            `O produto foi criado, mas as variações NÃO foram salvas.${
+              motivo ? ` ${motivo}` : ""
+            } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
+            { duration: 30000 },
+          );
+          setIsSubmitting(false);
+          onSetDirty?.(false);
+          onNavigate("admin-product-form", criado.id, true);
+          return;
+        }
       }
 
       setIsSubmitting(false);
@@ -1705,6 +1897,32 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
     !stockError;
+
+  // UMA conta para o botão e para o aviso (se fossem duas, divergiriam: um
+  // botão cinza sem frase, ou uma frase sobre um botão ligado). `null` = nada
+  // impede publicar por validação/envio de foto. Offline tem banner próprio.
+  // Enquanto envia foto, a frase é a do envio; passado o envio, a de
+  // validação -- e uma foto que FALHOU nunca entra aqui (não bloqueia).
+  const motivoDoBloqueio: string | null = isOffline
+    ? null
+    : isImageUploading
+      ? motivoDoEnvioDeFotos(progressoDoEnvio, isUploadingAdjusted)
+      : isValid
+        ? null
+        : motivoDoBloqueioDoProduto(
+            formData,
+            !!(
+              skuError ||
+              codigoBarrasError ||
+              priceError ||
+              (costError && !costError.startsWith("Aviso")) ||
+              originalPriceError ||
+              stockError
+            ),
+            !!productId,
+          );
+  const botaoDeSalvarDesligado =
+    isSubmitting || showSuccess || isOffline || motivoDoBloqueio !== null;
 
   // B3 da 2a revisao: produto pediu para editar mas nao carregou —
   // formulario vazio editavel e armadilha (save destrutivo). Erro na tela.
@@ -2474,17 +2692,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
             <button
               type="button"
               onClick={() => handleSubmit()}
-              disabled={
-                // #98 (ADMIN-060): showSuccess entra aqui — entre o sucesso
-                // e a navegação (1,5s) o botão mostra "Salvo" mas
-                // isSubmitting já é false; sem showSuccess o botão reabria
-                // para um segundo clique nessa janela.
-                !isValid ||
-                isSubmitting ||
-                showSuccess ||
-                isOffline ||
-                isImageUploading
-              }
+              // #98 (ADMIN-060): `showSuccess` entra em `botaoDeSalvarDesligado` —
+              // entre o sucesso e a navegação (1,5s) o botão mostra "Salvo"
+              // mas isSubmitting já é false; sem ele o botão reabria para um
+              // segundo clique nessa janela.
+              disabled={botaoDeSalvarDesligado}
               className={cn(
                 "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] border shrink-0",
                 isOffline
@@ -2534,6 +2746,16 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               temporariamente suspensos.
             </span>
           </div>
+        )}
+        {motivoDoBloqueio && (
+          <p
+            data-testid="motivo-do-bloqueio"
+            role="status"
+            className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+            <span>{motivoDoBloqueio}</span>
+          </p>
         )}
         {/* Visual Media Section */}
         <section className="group relative">
@@ -2851,6 +3073,38 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                   </span>
                 )}
               </div>
+            )}
+            {fotosComFalha.length > 0 && (
+              <ul data-testid="fotos-com-falha" className="mt-3 space-y-2">
+                {fotosComFalha.map((falha) => (
+                  <li
+                    key={falha.id}
+                    className="flex flex-col gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <span className="min-w-0">
+                      A foto "{falha.file.name}" {falha.motivo}. Ela não vai no
+                      produto — tente de novo, remova, ou publique sem ela.
+                    </span>
+                    <span className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void tentarFotoDeNovo(falha.id)}
+                        disabled={isImageUploading || isOffline}
+                        className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-950 disabled:opacity-40"
+                      >
+                        Tentar de novo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => descartarFotoComFalha(falha.id)}
+                        className="rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-300"
+                      >
+                        Remover
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         </section>
@@ -4102,6 +4356,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       )}
     </div>
   );
+});
+
+/**
+ * Uma instância do formulário POR produto (`productId` na `key`). O painel
+ * troca "novo" por "edição de p-1" na mesma view, sem desmontar: sem a `key`,
+ * os estados de produto novo (formulário preenchido, `isLoading` falso, rascunho
+ * já "checado") vazariam para a edição e a checagem de rascunho de edição
+ * compararia com o formulário velho -- e apagaria o rascunho recém-movido.
+ */
+export const AdminProductFormView = React.memo(function AdminProductFormView(
+  props: AdminProductFormViewProps,
+) {
+  return <FormularioDoProduto key={props.productId ?? "novo"} {...props} />;
 });
 
 interface VariantItemProps {
