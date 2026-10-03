@@ -10,8 +10,11 @@
 //     sem aviso na tela. Agora cada foto tem prazo; a que estoura (ou falha)
 //     vira um item "Tentar de novo / Remover" e NUNCA impede salvar o resto.
 //  2. Produto novo cuja grade não gravou: o formulário dava "Salvo", apagava o
-//     rascunho e saía da tela. Agora fica, mantém o rascunho, diz o motivo, e
-//     o próximo "Salvar" ATUALIZA o produto já criado (não cria outro).
+//     rascunho e saía da tela. Agora o rascunho muda para a chave de EDIÇÃO do
+//     produto criado (a de produto novo é apagada, e o auto-save não a
+//     recria) e a lojista é levada para a edição desse produto, com o motivo
+//     escrito -- recarregar o app ou voltar em "Novo produto" nunca cria uma
+//     segunda "Camiseta".
 //
 // Mesmo padrão dos testes irmãos: createRoot + act, hooks de dados mockados.
 import { act } from "react";
@@ -34,6 +37,9 @@ const mocks = vi.hoisted(() => ({
   uploadProductImages: vi.fn(),
   rpc: vi.fn(),
   toastError: vi.fn(),
+  toastInfo: vi.fn(),
+  toastSuccess: vi.fn(),
+  fetchProduct: vi.fn(),
 }));
 
 vi.mock("@/hooks/useProducts", () => ({
@@ -43,7 +49,7 @@ vi.mock("@/hooks/useProducts", () => ({
     upsertVariants: mocks.upsertVariants,
     deleteVariants: vi.fn().mockResolvedValue(undefined),
     uploadProductImages: mocks.uploadProductImages,
-    fetchProduct: vi.fn(),
+    fetchProduct: mocks.fetchProduct,
   }),
 }));
 
@@ -91,8 +97,8 @@ vi.mock("@/components/ui/select", () => ({
 
 vi.mock("sonner", () => ({
   toast: {
-    info: vi.fn(),
-    success: vi.fn(),
+    info: mocks.toastInfo,
+    success: mocks.toastSuccess,
     error: mocks.toastError,
     warning: vi.fn(),
     loading: vi.fn(),
@@ -394,6 +400,8 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
           "Este SKU já está em outra variação da loja. Cada variação precisa de um SKU diferente.",
       },
     };
+    const CHAVE_NOVO = "ikcous_product_form_draft";
+    const CHAVE_EDICAO = "ikcous_product_form_draft_edit_p-1";
 
     async function publicarComGradeFalha() {
       mocks.addProduct.mockResolvedValueOnce({ id: "p-1", ...grade });
@@ -403,78 +411,203 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
       });
     }
 
-    it("NÃO dá 'Salvo', NÃO sai da tela, mantém o rascunho e mostra o motivo", async () => {
+    it("leva a lojista para a EDIÇÃO do produto criado, com o motivo escrito, sem 'Salvo' e sem criar de novo", async () => {
       await montarPreenchido();
       await publicarComGradeFalha();
-      // Passa da janela de 1,5 s em que o "Salvo" antigo navegava para fora.
+      // Passa da janela de 1,5 s em que o "Salvo" antigo navegava para a lista.
       await act(async () => {
         await new Promise((r) => setTimeout(r, 1700));
       });
 
       expect(botaoPorTexto("Salvo")).toBeUndefined();
-      expect(onNavigate).not.toHaveBeenCalled();
-      expect(removeItem).not.toHaveBeenCalledWith("ikcous_product_form_draft");
-      const aviso = textoDe("grade-nao-salva");
-      expect(aviso).toContain("produto foi criado");
-      expect(aviso).toContain("Este SKU já está em outra variação");
-      // O botão agora é "Salvar" (produto existente), e está ligado.
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
+      expect(onNavigate).toHaveBeenCalledTimes(1);
+      expect(onNavigate).toHaveBeenCalledWith(
+        "admin-product-form",
+        "p-1",
+        true,
+      );
+      expect(mocks.addProduct).toHaveBeenCalledTimes(1);
+      const [mensagem] = mocks.toastError.mock.calls.at(-1) as [string];
+      expect(mensagem).toContain("produto foi criado");
+      expect(mensagem).toContain("variações NÃO foram salvas");
+      expect(mensagem).toContain("Este SKU já está em outra variação");
+      expect(mensagem).toMatch(/tentar de novo/i);
     });
 
-    it("salvar de novo ATUALIZA o produto criado (id p-1) e grava a grade -- não cria outro", async () => {
+    it("o rascunho muda para a chave de edição de p-1, a de produto novo some, e o auto-save não a recria", async () => {
       await montarPreenchido();
+      // O auto-save de 1 s da última digitação ainda está agendado: é ele que
+      // reescreveria a chave de produto novo se nada o segurasse.
       await publicarComGradeFalha();
+      expect(armazem.has(CHAVE_NOVO)).toBe(false);
+      const movido = JSON.parse(armazem.get(CHAVE_EDICAO) ?? "null");
+      expect(movido?.name).toBe("Camiseta");
+      expect(movido?.stock).toBe("3");
 
       await act(async () => {
-        clicar("Salvar");
-        await new Promise((r) => setTimeout(r, 0));
+        await new Promise((r) => setTimeout(r, 1500));
       });
-
-      expect(mocks.addProduct).toHaveBeenCalledTimes(1);
-      expect(mocks.updateProduct).toHaveBeenCalledTimes(1);
-      expect(mocks.updateProduct.mock.calls[0][0]).toBe("p-1");
-      expect(mocks.upsertVariants).toHaveBeenCalledTimes(0); // sem grade na tela
-      // Deu certo: agora sim "Salvo", rascunho do produto novo limpo.
-      expect(botaoPorTexto("Salvo")).toBeDefined();
-      expect(removeItem).toHaveBeenCalledWith("ikcous_product_form_draft");
-      expect(textoDe("grade-nao-salva")).toBeNull();
+      expect(armazem.has(CHAVE_NOVO)).toBe(false);
+      expect(armazem.has(CHAVE_EDICAO)).toBe(true);
     });
 
-    it("o código de barras do PRÓPRIO produto criado não bloqueia a nova tentativa", async () => {
-      await montarPreenchido({ codigoBarras: "7891234567890" });
+    it("recarregar o app e abrir 'Novo produto' NÃO recupera rascunho nem deixa criar outra Camiseta", async () => {
+      await montarPreenchido();
+      // O auto-save (1 s) já gravou o rascunho de produto novo, como na vida real.
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 1200));
+      });
+      expect(armazem.has(CHAVE_NOVO)).toBe(true);
       await publicarComGradeFalha();
 
-      // Agora o banco já TEM o produto com esse código: é o próprio p-1.
-      mocks.rpc.mockResolvedValue({
-        data: {
-          encontrado: true,
-          origem: "produto",
-          produto: { id: "p-1", nome: "Camiseta" },
+      // Recarregar = a tela some e uma nova nasce; o localStorage fica.
+      await act(async () => {
+        raiz.render(<div />);
+      });
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+      await act(async () => {
+        raiz.render(
+          <AdminProductFormView onNavigate={onNavigate} onSetDirty={vi.fn()} />,
+        );
+        await new Promise((r) => setTimeout(r, 1300));
+      });
+
+      expect(mocks.toastSuccess).not.toHaveBeenCalledWith(
+        expect.stringMatching(/Rascunho recuperado/),
+        expect.anything(),
+      );
+      expect(
+        (document.getElementById("product-name") as HTMLInputElement).value,
+      ).toBe("");
+      expect(botaoPublicar().disabled).toBe(true);
+      expect(mocks.addProduct).toHaveBeenCalledTimes(1);
+      expect(armazem.has(CHAVE_NOVO)).toBe(false);
+    });
+
+    it("na MESMA tela, trocar para productId p-1 (como o painel faz) abre a edição e oferece o rascunho com a grade", async () => {
+      await montarPreenchido();
+      await publicarComGradeFalha();
+      // O que a lojista tinha na tela incluía uma grade; o banco só tem o produto.
+      const rascunho = JSON.parse(armazem.get(CHAVE_EDICAO) as string);
+      rascunho.variants = [
+        {
+          id: "v-1",
+          productId: "",
+          name: "Tamanho",
+          value: "M",
+          stockIncrement: 1,
+          stock: 3,
+          active: true,
         },
-        error: null,
+      ];
+      armazem.set(CHAVE_EDICAO, JSON.stringify(rascunho));
+      mocks.fetchProduct.mockResolvedValue({
+        id: "p-1",
+        name: "Camiseta",
+        description: "Algodão",
+        price: 50,
+        stock: 3,
+        category: "Geral",
+        images: [],
+        freeShipping: false,
+        isBestseller: false,
+        isActive: true,
+        variants: [],
       });
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
+
       await act(async () => {
-        clicar("Salvar");
-        await new Promise((r) => setTimeout(r, 0));
+        raiz.render(
+          <AdminProductFormView
+            productId="p-1"
+            onNavigate={onNavigate}
+            onSetDirty={vi.fn()}
+          />,
+        );
+        await new Promise((r) => setTimeout(r, 100));
       });
 
-      expect(mocks.toastError).not.toHaveBeenCalled();
-      expect(mocks.updateProduct).toHaveBeenCalledTimes(1);
+      expect(mocks.fetchProduct).toHaveBeenCalledWith("p-1");
+      expect(mocks.toastInfo).toHaveBeenCalledWith(
+        "Rascunho não salvo encontrado para este produto",
+        expect.anything(),
+      );
+      // O rascunho com a grade continua guardado, esperando "Restaurar".
+      expect(
+        JSON.parse(armazem.get(CHAVE_EDICAO) as string).variants,
+      ).toHaveLength(1);
+      expect(botaoPorTexto("Salvar")).toBeDefined();
     });
 
-    it("se a nova tentativa também falha, continua na tela e sem produto duplicado", async () => {
+    it("a edição começa do zero: foto com falha do formulário de produto novo não vaza para a edição de p-1", async () => {
       await montarPreenchido();
-      await publicarComGradeFalha();
-      mocks.updateProduct.mockRejectedValueOnce(new Error("rede"));
-
+      mocks.uploadProductImages.mockResolvedValue([]);
       await act(async () => {
-        clicar("Salvar");
+        escolherFotos([foto("a.jpg")]);
         await new Promise((r) => setTimeout(r, 0));
       });
+      expect(textoDe("fotos-com-falha")).not.toBeNull();
+      await publicarComGradeFalha();
+      mocks.fetchProduct.mockResolvedValue({
+        id: "p-1",
+        name: "Camiseta",
+        description: "Algodão",
+        price: 50,
+        stock: 3,
+        category: "Geral",
+        images: [],
+        freeShipping: false,
+        isBestseller: false,
+        isActive: true,
+        variants: [],
+      });
+      const { AdminProductFormView } = await import(
+        "@/views/admin/AdminProductFormView"
+      );
 
-      expect(botaoPorTexto("Salvo")).toBeUndefined();
+      await act(async () => {
+        raiz.render(
+          <AdminProductFormView
+            productId="p-1"
+            onNavigate={onNavigate}
+            onSetDirty={vi.fn()}
+          />,
+        );
+        await new Promise((r) => setTimeout(r, 100));
+      });
+
+      expect(textoDe("fotos-com-falha")).toBeNull();
+    });
+
+    it("se o navegador recusa gravar o rascunho de edição (cota cheia), ainda assim vai para a edição e apaga a chave de produto novo", async () => {
+      await montarPreenchido();
+      // Rascunho de produto novo já gravado pelo auto-save (1 s).
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 1200));
+      });
+      expect(armazem.has(CHAVE_NOVO)).toBe(true);
+      vi.stubGlobal("localStorage", {
+        getItem: (c: string) => armazem.get(c) ?? null,
+        setItem: (c: string, v: string) => {
+          if (c === CHAVE_EDICAO) throw new Error("QuotaExceededError");
+          armazem.set(c, v);
+        },
+        removeItem,
+      });
+
+      await publicarComGradeFalha();
+
+      expect(onNavigate).toHaveBeenCalledWith(
+        "admin-product-form",
+        "p-1",
+        true,
+      );
+      expect(armazem.has(CHAVE_NOVO)).toBe(false);
       expect(mocks.addProduct).toHaveBeenCalledTimes(1);
-      expect(botaoPorTexto("Salvar")?.disabled).toBe(false);
     });
   });
 });

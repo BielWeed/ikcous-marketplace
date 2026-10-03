@@ -341,7 +341,7 @@ function isProductFormDirty(
   return false;
 }
 
-export const AdminProductFormView = React.memo(function AdminProductFormView({
+const FormularioDoProduto = React.memo(function FormularioDoProduto({
   productId,
   onNavigate,
   onSetDirty,
@@ -517,10 +517,11 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
   // Fotos que estouraram o prazo ou falharam: ficam na tela com "Tentar de
   // novo"/"Remover" e NUNCA entram em `isValid` -- não impedem salvar.
   const [fotosComFalha, setFotosComFalha] = useState<FotoComFalha[]>([]);
-  // Produto NOVO cuja grade não gravou: o produto já existe (id aqui), então o
-  // próximo "Salvar" o ATUALIZA em vez de criar outro.
-  const [produtoCriadoId, setProdutoCriadoId] = useState<string | null>(null);
-  const [avisoDaGrade, setAvisoDaGrade] = useState("");
+  // Ligado quando o produto novo JÁ foi criado e a lojista está sendo levada
+  // para a edição dele (a grade não gravou). Daí em diante o auto-save não pode
+  // mais escrever na chave de produto novo: recuperaria o rascunho sem id e o
+  // próximo "Publicar" criaria um segundo produto idêntico.
+  const produtoNovoJaCriadoRef = useRef(false);
   const [imageUploadStep, setImageUploadStep] = useState<
     "compressing" | "uploading" | "idle"
   >("idle");
@@ -1030,12 +1031,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       // mas só na direção certa: um código que já é o do PRODUTO não deixa
       // de ser duplicado só porque estamos conferindo o campo da VARIAÇÃO
       // (e vice-versa). Ver pdv-c5.json, decisão (c).
-      // `produtoCriadoId`: depois de um cadastro cuja grade não gravou, o
-      // produto JÁ existe no banco com este código — conferir a nova tentativa
-      // contra ele mesmo bloquearia o "Salvar" com "este código já está em
-      // <o próprio produto>".
-      const idDoProprio =
-        alvo === "produto" ? productId || produtoCriadoId : idDaVariacao;
+      const idDoProprio = alvo === "produto" ? productId : idDaVariacao;
       const ehOProprio =
         alvo === "produto"
           ? resposta.origem === "produto" &&
@@ -1204,6 +1200,9 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
     if (isLoading || !draftChecked) return;
 
     const timer = setTimeout(() => {
+      // Produto novo já criado (grade não gravou): o rascunho já foi para a
+      // chave de edição dele, e esta chave NÃO pode ser recriada.
+      if (!productId && produtoNovoJaCriadoRef.current) return;
       const isDirty = isProductFormDirty(formData, initialData);
       const draftKey = !productId
         ? "ikcous_product_form_draft"
@@ -1577,7 +1576,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       return;
     }
     setIsSubmitting(true);
-    setAvisoDaGrade("");
 
     // Ressalva da revisão da C5.2: o salvar ESPERA a checagem de duplicidade.
     // Sem este trecho, um clique durante uma checagem em voo (o blur do campo
@@ -1751,15 +1749,10 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           : null,
     };
 
-    // Produto novo cuja grade não gravou na tentativa anterior: ele já existe
-    // (`produtoCriadoId`), então esta tentativa é uma ATUALIZAÇÃO -- cair no
-    // `addProduct` de novo criaria um segundo produto idêntico.
-    const idDoProdutoNoBanco = productId || produtoCriadoId;
-
     try {
-      if (idDoProdutoNoBanco) {
+      if (productId) {
         // 1. Atualizar produto principal
-        await updateProduct(idDoProdutoNoBanco, productData);
+        await updateProduct(productId, productData);
 
         // 2. Deletar variantes que foram excluídas localmente
         if (deletedVariantIds.length > 0) {
@@ -1777,7 +1770,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               ? normalizarCodigoBarras(v.codigoBarras)
               : undefined,
           }));
-          await upsertVariants(idDoProdutoNoBanco, variantsWithSanitizedSku);
+          await upsertVariants(productId, variantsWithSanitizedSku);
         }
       } else {
         const variantsWithSanitizedSku = formData.variants.map((v) => ({
@@ -1795,19 +1788,40 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
         });
 
         // O produto foi criado mas a grade NÃO gravou (o hook já avisou por
-        // toast). Dar "Salvo", apagar o rascunho e sair da tela esconderia
-        // isso: a lojista só descobriria depois, na lista, um produto sem
-        // variação. Fica na tela, com o rascunho, o motivo escrito, e o
-        // próximo "Salvar" atualiza ESTE produto.
+        // toast). Dar "Salvo" e sair para a lista esconderia isso -- e ficar
+        // nesta tela deixaria o id do produto só no estado dela: recarregar o
+        // app, ou voltar em "Novo produto", recuperaria o rascunho SEM id e o
+        // "Publicar" criaria uma segunda cópia. Por isso o rascunho vai para a
+        // chave de EDIÇÃO do produto criado e a lojista é levada para a edição
+        // dele, onde "Salvar" atualiza a linha e regrava a grade.
         if (criado?.variantesNaoSalvas) {
-          setProdutoCriadoId(criado.id);
+          // ORDEM: primeiro trava o auto-save (um timer de 1 s pode estar
+          // agendado e reescreveria a chave de produto novo), depois move.
+          produtoNovoJaCriadoRef.current = true;
+          try {
+            localStorage.setItem(
+              `ikcous_product_form_draft_edit_${criado.id}`,
+              JSON.stringify(formData),
+            );
+          } catch (erroDeCota) {
+            // Sem rascunho a lojista perde só a digitação da grade; com a chave
+            // de produto novo de pé ela criaria a cópia. Apagar vence.
+            console.warn(
+              "[AdminProductFormView] Não consegui guardar o rascunho de edição:",
+              erroDeCota,
+            );
+          }
+          localStorage.removeItem("ikcous_product_form_draft");
           const motivo = criado.variantesNaoSalvas.motivo;
-          setAvisoDaGrade(
+          toast.error(
             `O produto foi criado, mas as variações NÃO foram salvas.${
               motivo ? ` ${motivo}` : ""
-            } Corrija e toque em Salvar de novo: isso atualiza este produto, não cria outro.`,
+            } Você está na edição dele: corrija e toque em Salvar para tentar de novo -- isso atualiza este produto, não cria outro.`,
+            { duration: 30000 },
           );
           setIsSubmitting(false);
+          onSetDirty?.(false);
+          onNavigate("admin-product-form", criado.id, true);
           return;
         }
       }
@@ -1895,7 +1909,7 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               originalPriceError ||
               stockError
             ),
-            !!(productId || produtoCriadoId),
+            !!productId,
           );
   const botaoDeSalvarDesligado =
     isSubmitting || showSuccess || isOffline || motivoDoBloqueio !== null;
@@ -2694,12 +2708,12 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
                 </>
               ) : (
                 <>
-                  {productId || produtoCriadoId ? (
+                  {productId ? (
                     <Edit2 className="size-3.5" />
                   ) : (
                     <Plus className="size-3.5" />
                   )}
-                  {productId || produtoCriadoId ? "Salvar" : "Publicar"}
+                  {productId ? "Salvar" : "Publicar"}
                 </>
               )}
             </button>
@@ -2731,16 +2745,6 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
           >
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
             <span>{motivoDoBloqueio}</span>
-          </p>
-        )}
-        {avisoDaGrade && (
-          <p
-            data-testid="grade-nao-salva"
-            role="alert"
-            className="flex items-start gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-bold text-red-300"
-          >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-400" />
-            <span>{avisoDaGrade}</span>
           </p>
         )}
         {/* Visual Media Section */}
@@ -4342,6 +4346,19 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       )}
     </div>
   );
+});
+
+/**
+ * Uma instância do formulário POR produto (`productId` na `key`). O painel
+ * troca "novo" por "edição de p-1" na mesma view, sem desmontar: sem a `key`,
+ * os estados de produto novo (formulário preenchido, `isLoading` falso, rascunho
+ * já "checado") vazariam para a edição e a checagem de rascunho de edição
+ * compararia com o formulário velho -- e apagaria o rascunho recém-movido.
+ */
+export const AdminProductFormView = React.memo(function AdminProductFormView(
+  props: AdminProductFormViewProps,
+) {
+  return <FormularioDoProduto key={props.productId ?? "novo"} {...props} />;
 });
 
 interface VariantItemProps {
