@@ -1,3 +1,4 @@
+import { AddressCardMap } from "@/components/ui/custom/AddressCardMap";
 import type { Address } from "@/types";
 import { CheckCircle2, Edit, MapPin, Trash2 } from "lucide-react";
 import { memo } from "react";
@@ -255,26 +256,18 @@ export const AddressList = memo(function AddressList({
               </p>
             </div>
 
-            {/* Mapa do endereço (opt-in showMaps, hoje só o Perfil): FORA do
-              pl-11 — largura interna inteira do cartão. O iframe é decorativo
-              (pointer-events none, tabIndex -1: nada de foco invisível); o
-              recorte do topo esconde o chip do embed SEM esconder os créditos
-              do rodapé do Google. O link VISÍVEL sob o mapa abre o Google
-              Maps em nova aba — com o apelido no nome acessível para
-              distinguir os cartões. Recolher os detalhes desmonta o ramo
-              expandido → desmonta o mapa. */}
+            {/* Mapa do endereço (opt-in showMaps, hoje só o Perfil): vetor
+              OpenFreeMap "positron" sem POIs/controles, pin próprio e
+              centralizado, créditos exigidos em linha discreta ABAIXO da
+              área cartográfica (AddressCardMap). O link VISÍVEL embaixo
+              abre o Google Maps em nova aba — com o apelido no nome
+              acessível para distinguir os cartões. Recolher os detalhes
+              desmonta o ramo expandido → desmonta o mapa (e o chunk do
+              maplibre só é baixado quando um mapa monta). */}
             {queryMaps && (
               <div className="mt-3 overflow-hidden rounded-xl border border-zinc-100">
-                <div className="relative h-40 w-full overflow-hidden">
-                  <iframe
-                    title={`Mapa do endereço ${address.name}`}
-                    src={`https://maps.google.com/maps?q=${queryMaps}&z=15&output=embed`}
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                    credentialless=""
-                    tabIndex={-1}
-                    className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
-                  />
+                <div className="relative h-40 w-full">
+                  <AddressCardMap address={address} />
                 </div>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${queryMaps}`}

@@ -1,0 +1,100 @@
+/* ── Mapa do cartão de endereço do Perfil (AddressCardMap, 29/09/2026) ──
+   Vetor OpenFreeMap "positron": sem controles, sem POI; a atribuição
+   exigida vive em LINHA PRÓPRIA abaixo da área cartográfica.
+
+   Arquivo AUTÔNOMO de propósito: os estilos gerais da área de endereço
+   (`address-layout.css`, da frente de cadastro de endereço) ainda não
+   estão nesta branch — apenas o que o mapa do cartão precisa vive aqui
+   (incluído o pin, espelhado do padrão visual da frente de endereço para
+   manter a mesma identidade quando os dois trabalhos se encontrarem). */
+
+/* Base do hospedeiro do mapa (a tela de fundo antes dos tiles). */
+.address-map {
+  overflow: hidden;
+  background: #fff;
+}
+
+/* Pin: mesma cara do pin da frente de endereço (gota escura com furo),
+   ancorado pela PONTA no ponto do geocode.
+
+   O elemento `.address-map__pin` é o do Marker do MapLibre — o MapLibre
+   REESCREVE o `transform` inline dele (translate/rotateZ) a cada
+   projeção, então qualquer `rotate` aqui na própria caixa é descartado
+   (medido em Chromium real: a gota saía sem rotação, com a ponta fora do
+   ponto). Por isso a caixa é só 32×42 (anchor "bottom" = ponta no ponto)
+   e a gota rotacionada mora em pseudo-elementos, que o MapLibre não toca.
+   Cabeça: quadrado de 28 px girado -45° com o canto inferior-esquerdo
+   vivo; o canto vivo fica a 28·√2/2 ≈ 19,8 px do centro, então centro em
+   y = 42 − 19,8 ≈ 22 e a ponta cai exatamente na base da caixa. */
+.address-map__pin {
+  position: relative;
+  display: block;
+  width: 32px;
+  height: 42px;
+  filter: drop-shadow(0 2px 3px #18181b55);
+}
+
+.address-map__pin::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  border: 3px solid #fff;
+  border-radius: 50% 50% 50% 0;
+  background: #25282b;
+  transform: rotate(-45deg);
+}
+
+.address-map__pin::after {
+  content: "";
+  position: absolute;
+  top: 18px;
+  left: 12px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+/* Cartão: canvas flexível + estados + linha de créditos ABAIXO do mapa. */
+.address-card-map {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.address-card-map__canvas {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+}
+
+.address-card-map__status {
+  margin: 0;
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 11px;
+  color: #71717a;
+  background: #f4f4f5;
+}
+
+.address-card-map__creditos {
+  margin: 0;
+  padding: 3px 6px;
+  font-size: 9px;
+  line-height: 1.4;
+  color: #71717a;
+  background: #fafafa;
+  border-top: 1px solid #f4f4f5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.address-card-map__creditos a {
+  color: #71717a;
+  text-decoration: underline;
+}
