@@ -168,7 +168,20 @@ describe("pedidosParaCsv", () => {
           paymentMethod: "online",
         }),
       ]),
-    ).toContain(";Ana;;Novo Pedido;Outro;Sem cobrança online;1234,50;;");
+    ).toContain(
+      ";Ana;;Novo Pedido;PIX pelo site;Sem cobrança online;1234,50;;",
+    );
+  });
+
+  it("distingue PIX pelo site (online) de PIX Instantâneo (pix); desconhecido segue Outro", () => {
+    const formaDePagamento = (paymentMethod: string) =>
+      pedidosParaCsv([pedido({ paymentMethod } as Partial<Pedido>)])
+        .split("\r\n")[1]
+        .split(";")[5];
+
+    expect(formaDePagamento("online")).toBe("PIX pelo site");
+    expect(formaDePagamento("pix")).toBe("PIX Instantâneo");
+    expect(formaDePagamento("boleto")).toBe("Outro");
   });
 
   it.each([
