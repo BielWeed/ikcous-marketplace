@@ -1147,6 +1147,36 @@ type ResultadoOrder =
 const CAMINHO_DE_CAMPO_DA_ORDER =
   /\b(?:payer|items|shipment|transactions|config|total_amount|external_reference|processing_mode|capture_mode|type)[a-z_.0-9[\]]*/g;
 
+/** As frases de UM erro do MP (`details` + `message`) — onde ele cita o campo. */
+function frasesDoErroDoMp(erro: unknown): string[] {
+  if (!erro || typeof erro !== "object") return [];
+  const { details, message } = erro as Record<string, unknown>;
+  const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
+  return [...lista, message].filter((d): d is string => typeof d === "string");
+}
+
+/**
+ * Os caminhos de campo citados por CADA erro de `errors[]` de um corpo de
+ * erro do MP — uma lista por erro, na ordem, SEM o corte e SEM o filtro de
+ * `resumoSemDadoPessoal` (que existem para o LOG). Quem DECIDE com isto
+ * (`order-cartao-repeticao.ts`) precisa ver tudo o que a recusa citou: um
+ * caminho descartado por parecer "valor colado" seria um campo que a decisão
+ * não viu. Lista vazia para um erro = ele não nomeia campo nenhum.
+ * Corpo sem `errors[]` devolve `[]`.
+ */
+export function caminhosDeCampoPorErro(corpo: unknown): string[][] {
+  if (!corpo || typeof corpo !== "object") return [];
+  const erros = (corpo as Record<string, unknown>).errors;
+  if (!Array.isArray(erros)) return [];
+  return erros.map((erro) => [
+    ...new Set(
+      frasesDoErroDoMp(erro)
+        .flatMap((frase) => frase.match(CAMINHO_DE_CAMPO_DA_ORDER) ?? [])
+        .map((caminho) => caminho.replace(/[.]+$/, "")),
+    ),
+  ]);
+}
+
 /**
  * Resumo do corpo de erro do MP SEM dado pessoal — códigos, status e os
  * caminhos dos campos recusados. É o que vai para o log quando quem chama pede
@@ -1166,14 +1196,7 @@ function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): strin
   // `details`/`message` dizem QUAL campo o MP recusou (03/10/2026: um 400
   // `property_value` nos campos de antifraude só mostrava o código, sem o
   // campo). Da frase, só o caminho do campo sobrevive; o resto é descartado.
-  const frases = erros
-    .flatMap((e) => {
-      if (!e || typeof e !== "object") return [];
-      const { details, message } = e as Record<string, unknown>;
-      const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
-      return [...lista, message];
-    })
-    .filter((d): d is string => typeof d === "string");
+  const frases = erros.flatMap(frasesDoErroDoMp);
   const campos = [
     ...new Set(
       frases

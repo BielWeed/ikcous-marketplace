@@ -111,6 +111,7 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { lerDadosDoComprador } from "../_shared/dados-antifraude.ts";
+import { criarOrderDeCartao } from "../_shared/order-cartao-repeticao.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
 // chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
@@ -2790,7 +2791,15 @@ async function handler(
       return json({ error: "Há um pagamento com cartão em análise para este pedido.", cartaoEmAnalise: true }, 409);
     }
 
-    const r = await criarOrder({
+    // `criarOrderDeCartao`: a MESMA chamada de `criarOrder`, com UMA repetição
+    // sem os campos OPCIONAIS de antifraude quando o MP responde 400 de
+    // validação apontando SÓ para eles (03/10/2026: `items[0].external_code`
+    // derrubou o cartão inteiro). Chave de idempotência nova na repetição,
+    // nunca em timeout/5xx/402/409/423 — tudo em `_shared/order-cartao-
+    // repeticao.ts`. O que esta function faz com o desfecho da repetição é
+    // exatamente o que fazia com o da primeira chamada: o resultado
+    // devolvido é o da ÚLTIMA chamada, e a reserva da vaga cobre as duas.
+    const r = await criarOrderDeCartao({
       token: mpToken,
       corpo,
       chaveIdempotencia: await chaveDeIdempotencia(pedido, "cartao", dados.token),

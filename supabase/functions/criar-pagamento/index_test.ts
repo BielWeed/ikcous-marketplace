@@ -10653,3 +10653,175 @@ Deno.test("handler PIX: NÃO lê itens, telefone nem endereço e o corpo não ga
     assertEquals(campo in ((corpoDoPost?.payer as Record<string, unknown>) ?? {}), false, campo);
   }
 });
+
+// ═══ Campo OPCIONAL de antifraude recusado não derruba o cartão (03/10/2026) ═
+//
+// Um 400 `property_value` em `items[0].external_code` derrubou a cobrança de
+// cartão inteira em produção. Agora, 400 de validação que cita SÓ campo
+// opcional repete UMA vez sem eles (`_shared/order-cartao-repeticao.ts` — a
+// regra e a prova de cada guarda moram no teste de lá; aqui, o que a
+// function FAZ com cada desfecho da repetição, com a reserva da vaga).
+
+/** POST /v1/orders respondendo em SEQUÊNCIA (1a chamada, 2a chamada...);
+ * a última resposta vale para as seguintes. GET e cancelamento não existem. */
+function fetchMPEmSequencia(criar: Array<{ status: number; corpo: unknown }>) {
+  const chamadas: ChamadaMP[] = [];
+  const fn = (url: string, init?: RequestInit) => {
+    chamadas.push({
+      url,
+      method: init?.method,
+      corpo: init?.body ? JSON.parse(String(init.body)) : undefined,
+      headers: init?.headers as Record<string, string> | undefined,
+    });
+    if (init?.method !== "POST" || url.endsWith("/cancel")) {
+      return Promise.reject(new Error(`fetch inesperado nos testes da repetição: ${init?.method} ${url}`));
+    }
+    const resposta = criar[Math.min(chamadas.length - 1, criar.length - 1)];
+    return Promise.resolve(new Response(JSON.stringify(resposta.corpo), { status: resposta.status }));
+  };
+  return { fn, chamadas };
+}
+
+const ERRO_400_DE_ITEM = {
+  errors: [{
+    code: "property_value",
+    message: "invalid",
+    details: ["items[0].external_code must be at most 30 characters"],
+  }],
+};
+
+function cenarioDeCartaoComAntifraude() {
+  return cenarioCartao({
+    pedido: pedidoDeEntrega(),
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { customer_phone: null, address_id: null, shipping: 12.5 },
+  });
+}
+
+Deno.test("handler cartão: MP recusa um campo OPCIONAL (400 em items) -> repete sem eles, com chave NOVA, e o cartão APROVA (a vaga fica com a order)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    { status: 400, corpo: ERRO_400_DE_ITEM },
+    { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, ORDER_CARTAO);
+  assertEquals(mp.chamadas.length, 2);
+
+  const [primeira, segunda] = mp.chamadas;
+  // 1a: o corpo completo, com a chave da tentativa. 2a: sem NENHUM opcional.
+  assertEquals("items" in (primeira.corpo as Record<string, unknown>), true);
+  assertEquals("shipment" in (primeira.corpo as Record<string, unknown>), true);
+  for (const campo of ["items", "shipment"]) assertEquals(campo in (segunda.corpo as Record<string, unknown>), false);
+  const payer2 = (segunda.corpo as Record<string, unknown>).payer as Record<string, unknown>;
+  for (const campo of ["phone", "address"]) assertEquals(campo in payer2, false);
+  // O que cobra segue igual nas duas.
+  assertEquals((segunda.corpo as Record<string, unknown>).total_amount, "112.50");
+  assertEquals(payer2.identification, { type: "CPF", number: CPF_TITULAR });
+  // Chave: a 1a e' a da tentativa; a 2a e' OUTRA (mesma chave + corpo diferente = 409 no MP).
+  const chave1 = primeira.headers?.["X-Idempotency-Key"];
+  const chave2 = segunda.headers?.["X-Idempotency-Key"];
+  assertEquals(chave1, `${UUID}:c0`);
+  assertEquals(chave2 === chave1, false);
+  assertEquals(String(chave2).startsWith(`${UUID}:c0:`), true);
+  // A vaga: reserva + gravação final com a order da 2a chamada; nada liberado.
+  assertEquals(registro.chamadasUpdate, 2);
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+Deno.test("handler cartão: 400 em campo OBRIGATORIO (payer.email) -> NÃO repete: 1 chamada, 502, reserva solta (igual a antes)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    {
+      status: 400,
+      corpo: { errors: [{ code: "property_value", details: ["payer.email domain is not allowed"] }] },
+    },
+    { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 502);
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+});
+
+Deno.test("handler cartão: 400 de opcional e a REPETIÇÃO volta 5xx -> cartão em análise (ambíguo), reserva MANTIDA, nunca uma terceira chamada", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    { status: 400, corpo: ERRO_400_DE_ITEM },
+    { status: 500, corpo: { message: "falha do MP" } },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+    alertarAdminCartaoOrfao: async () => {},
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.cartaoEmAnalise, true);
+  assertEquals(mp.chamadas.length, 2);
+  // O sentinela continua na vaga: a 2a chamada pode ter criado a order.
+  assertEquals(liberacoes(chamadasRpc), []);
+  assertEquals(registro.chamadasUpdate, 1, "só a reserva — nada gravado nem solto");
+});
+
+Deno.test("handler cartão: 400 de opcional e a REPETIÇÃO é recusada pelo emissor (402) -> 200 'recusado', vaga solta, 2 chamadas", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    { status: 400, corpo: ERRO_400_DE_ITEM },
+    {
+      status: 402,
+      corpo: { errors: [{ code: "failed", details: ["PAY01CARTAO:high_risk"] }], data: orderDeCartao("failed", "failed") },
+    },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(mp.chamadas.length, 2);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+});
+
+Deno.test("handler cartão: 5xx ou rede com campo opcional citado no corpo -> NÃO repete (o MP pode ter criado a order): 1 chamada, ambíguo", async () => {
+  for (const status of [500, 503, 0]) {
+    const { supabase } = cenarioDeCartaoComAntifraude();
+    const mp = fetchMPEmSequencia([{ status: status === 0 ? 500 : status, corpo: ERRO_400_DE_ITEM }]);
+    const fetchImpl = status === 0
+      ? () => {
+        mp.chamadas.push({ url: "rede", method: "POST" });
+        return Promise.reject(new TypeError("network error"));
+      }
+      : mp.fn;
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+      alertarAdminCartaoOrfao: async () => {},
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502, String(status));
+    assertEquals(corpo.cartaoEmAnalise, true, String(status));
+    assertEquals(mp.chamadas.length, 1, String(status));
+  }
+});
