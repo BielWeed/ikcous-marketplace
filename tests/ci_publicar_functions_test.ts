@@ -208,8 +208,19 @@ Deno.test("o workflow de publicação, do jeito que está no arquivo", async (t)
       assertStringIncludes(yaml, `sandbox) REF=${REF_SANDBOX} ;;`);
       assertStringIncludes(
         yaml,
-        "options:\n          - loja\n          - savy\n          - almeida\n          - ikcous-publicada\n          - sandbox",
+        "options:\n          - ikcous-publicada\n          - savy\n          - almeida\n          - sandbox\n          - loja",
       );
+    },
+  );
+
+  await t.step(
+    "o padrão é a loja no ar (CAF), nunca o projeto antigo",
+    () => {
+      // Quem dispara sem escolher cai no destino mais travado (só as cinco
+      // financeiras + expected_sha). O padrão antigo, `loja`, apontava para o
+      // DEK, que a loja principal deixou de usar em 03/10/2026.
+      assertStringIncludes(yaml, "default: ikcous-publicada\n");
+      assert(!yaml.includes("default: loja"), "padrão voltou para o DEK");
     },
   );
 
