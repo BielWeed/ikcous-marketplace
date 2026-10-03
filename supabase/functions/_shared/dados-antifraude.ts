@@ -227,7 +227,7 @@ export function itensDaOrder(linhas: unknown, frete: unknown): ItemDaOrder[] | u
   for (const linha of linhas) {
     const l = objetoSimples(linha);
     if (!l) return undefined;
-    const { product_id, product_name, quantity, price } = l;
+    const { product_name, quantity, price } = l;
     if (
       typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 ||
       quantity > TETO_DA_QUANTIDADE
