@@ -35,6 +35,7 @@ import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
+import { motivoDoBloqueioDoProduto } from "@/utils/motivo-do-bloqueio-do-produto";
 import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
@@ -1332,6 +1333,31 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
       ? normalizarCodigoBarras(variantFormData.codigoBarras)
       : undefined;
 
+    // O SKU da variação é único na loja inteira (product_variants_sku_key):
+    // dois iguais NESTE produto são recusados pelo banco na hora de gravar,
+    // sem dizer qual. Aqui a lojista lê qual é, antes de perder o cadastro.
+    // Compara do jeito que será gravado (`sanitizedVarSku` já é maiúsculo e
+    // sem espaço; os já salvos passam pela mesma conta no envio).
+    if (sanitizedVarSku) {
+      const dona = formData.variants.find(
+        (v) =>
+          v.id !== editingVariant?.id &&
+          !!v.sku &&
+          v.sku.trim().toUpperCase().replace(/\s+/g, "-") === sanitizedVarSku,
+      );
+      if (dona) {
+        toast.error(
+          `O SKU "${sanitizedVarSku}" já está em outra variação deste produto (${dona.name}: ${dona.value}).`,
+          {
+            description:
+              "Cada variação precisa de um SKU diferente — ou deixe o SKU em branco.",
+            duration: 8000,
+          },
+        );
+        return;
+      }
+    }
+
     const vData = {
       productId: productId || "",
       name: nomeComposto,
@@ -2534,6 +2560,29 @@ export const AdminProductFormView = React.memo(function AdminProductFormView({
               temporariamente suspensos.
             </span>
           </div>
+        )}
+        {!isValid && !isOffline && (
+          <p
+            data-testid="motivo-do-bloqueio"
+            role="status"
+            className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
+            <span>
+              {motivoDoBloqueioDoProduto(
+                formData,
+                !!(
+                  skuError ||
+                  codigoBarrasError ||
+                  priceError ||
+                  (costError && !costError.startsWith("Aviso")) ||
+                  originalPriceError ||
+                  stockError
+                ),
+                !!productId,
+              )}
+            </span>
+          </p>
         )}
         {/* Visual Media Section */}
         <section className="group relative">
