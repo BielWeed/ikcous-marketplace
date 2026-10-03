@@ -156,9 +156,10 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
 id; 15 min; 1 envio por pedido a cada 60s — protege a cota ~100/dia do SMTP da loja).
 
 **Integrações:** Mercado Pago (Orders + Payments API; Card Payment Brick do SDK JS v2 no
-checkout) · ViaCEP · Melhor Envio e Frenet (frete em `calculate-shipping`; etiqueta de ida e
-código de postagem reverso da devolução em `melhor-envio-etiqueta`) · SMTP da loja (OTP e
-comprovante) · Web Push (VAPID) · wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
+checkout) · busca de CEP (ViaCEP, com OpenCEP e AwesomeAPI de reserva, em
+`src/lib/provedores-de-cep.ts`) · Melhor Envio e Frenet (frete em `calculate-shipping`; etiqueta
+de ida e código de postagem reverso da devolução em `melhor-envio-etiqueta`) · SMTP da loja (OTP
+e comprovante) · Web Push (VAPID) · wa.me (deep links) · linkrastreio. Sem axios — tudo `fetch`.
 
 ### Políticas declaradas pelo dono (Gabriel)
 
