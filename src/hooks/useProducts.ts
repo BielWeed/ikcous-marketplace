@@ -306,6 +306,57 @@ export function mensagemAmigavelErroProduto(
   error: unknown,
   acao: "cadastrar" | "atualizar",
 ): string {
+  const conhecida = traduzirRecusaConhecida(error);
+  if (conhecida) return conhecida;
+
+  return acao === "cadastrar"
+    ? "Não foi possível cadastrar o produto agora. Confira os dados e tente novamente."
+    : "Não foi possível atualizar o produto agora. Confira os dados e tente novamente.";
+}
+
+/**
+ * O SKU da VARIAÇÃO é único na loja inteira (`product_variants_sku_key`,
+ * baseline do schema) — o do PRODUTO (`produtos.codigo`) não tem constraint.
+ * Citar o nome da constraint E o detalhe `Key (sku)=` pelo mesmo motivo do
+ * índice de código de barras acima: se o Postgres só devolver um dos dois, o
+ * outro ainda pega.
+ */
+const INDICE_SKU_DA_VARIACAO = /product_variants_sku_key|Key \(sku\)=/;
+
+const MSG_SKU_REPETIDO_NO_BANCO =
+  "Este SKU já está em outra variação da loja. Cada variação precisa de um SKU diferente.";
+
+const MSG_SESSAO_OU_PERMISSAO =
+  "Sua sessão expirou ou você não tem permissão para salvar. Saia da conta, entre de novo e tente outra vez.";
+
+const MSG_SEM_CONEXAO =
+  "Sem conexão com a internet. Confira a conexão e tente salvar de novo.";
+
+/**
+ * Recusa que o app gerou ele mesmo, em português, ANTES de gravar qualquer
+ * coisa (hoje: SKU de variação repetido). A tradutora a deixa passar como
+ * veio — é a frase que a lojista deve ler, não um texto técnico a esconder.
+ */
+class RecusaDoCadastroDeProduto extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RecusaDoCadastroDeProduto";
+  }
+}
+
+/**
+ * As recusas que sabemos dizer pelo nome, ou `null` quando não há tradução
+ * conhecida (e quem chama escolhe a frase genérica da ação em curso).
+ *
+ * Só entra aqui causa que a lojista consegue resolver sozinha e cujo sinal é
+ * inequívoco: o texto do TruthGate, o 23505 de dois índices únicos
+ * (código de barras, SKU da variação), sessão vencida/sem permissão
+ * (42501 = RLS ou grant recusado, PGRST301/303 = JWT inválido) e a falha do
+ * `fetch` sem resposta do servidor.
+ */
+function traduzirRecusaConhecida(error: unknown): string | null {
+  if (error instanceof RecusaDoCadastroDeProduto) return error.message;
+
   const detalhes = (error ?? {}) as {
     message?: unknown;
     details?: unknown;
@@ -327,10 +378,100 @@ export function mensagemAmigavelErroProduto(
   ) {
     return "Este código de barras já está em outro produto ou variação.";
   }
+  if (
+    ehUnicoViolado &&
+    INDICE_SKU_DA_VARIACAO.test(`${textoOriginal} ${textoDetalhe}`)
+  ) {
+    return MSG_SKU_REPETIDO_NO_BANCO;
+  }
 
-  return acao === "cadastrar"
-    ? "Não foi possível cadastrar o produto agora. Confira os dados e tente novamente."
-    : "Não foi possível atualizar o produto agora. Confira os dados e tente novamente.";
+  if (
+    detalhes.code === "42501" ||
+    detalhes.code === "PGRST301" ||
+    detalhes.code === "PGRST303" ||
+    /JWT expired/i.test(textoOriginal)
+  ) {
+    return MSG_SESSAO_OU_PERMISSAO;
+  }
+
+  // `fetch` sem resposta: Chrome "Failed to fetch", Firefox "NetworkError…",
+  // Safari "Load failed". O que chega aqui NÃO é um TypeError: o `.catch` do
+  // postgrest-js (2.110.1, PostgrestBuilder.then) engole a exceção do fetch e
+  // devolve `{ message: "TypeError: Failed to fetch", details: <stack>,
+  // hint: "", code: "" }` — objeto simples, que `instanceof TypeError` nunca
+  // pega. Por isso a detecção é pelo TEXTO, com `code` vazio: erro de servidor
+  // sempre traz `code` (SQLSTATE ou PGRST…), então um texto de banco que só
+  // pareça rede não é confundido. O TypeError cru (de código nosso) cai na
+  // mesma regra, pois também só tem `message`.
+  if (
+    !detalhes.code &&
+    /failed to fetch|networkerror|load failed|network request failed/i.test(
+      textoOriginal,
+    )
+  ) {
+    return MSG_SEM_CONEXAO;
+  }
+
+  return null;
+}
+
+/**
+ * Confere os SKUs da grade ANTES de gravar o produto novo.
+ *
+ * Por quê: `product_variants.sku` é único na loja inteira, e o cadastro
+ * grava o produto primeiro e a grade depois — um SKU repetido derrubava o
+ * insert da grade com o produto já criado, deixando um produto SEM variação
+ * no catálogo. Conferindo antes, nada é gravado e a lojista lê qual SKU
+ * corrigir. Dois casos:
+ *  - o mesmo SKU em duas variações da própria grade (nem consulta o banco);
+ *  - o SKU já existente em outra variação — dizendo de quem é, e se esse
+ *    produto foi EXCLUÍDO (a exclusão é lógica: a variação some da loja mas o
+ *    SKU continua reservado pelo índice).
+ *
+ * Variação sem SKU nunca colide (NULL não conta como repetido) e nem gera
+ * consulta. Falha da consulta NÃO bloqueia (sem veredito, o cadastro segue —
+ * a colisão real que escapar vira o 23505 traduzido acima).
+ */
+async function conferirSkusDasVariacoes(
+  variantes: ReadonlyArray<{ sku?: string | null }>,
+): Promise<string | null> {
+  const skus = variantes
+    .map((v) => (typeof v.sku === "string" ? v.sku.trim() : ""))
+    .filter((sku) => sku !== "");
+  if (skus.length === 0) return null;
+
+  const jaVistos = new Set<string>();
+  for (const sku of skus) {
+    if (jaVistos.has(sku)) {
+      return `O SKU "${sku}" está em mais de uma variação deste produto. Use um SKU diferente em cada variação.`;
+    }
+    jaVistos.add(sku);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("product_variants")
+      .select("sku, product_id, produtos(nome, deleted_at)" as any)
+      .in("sku", skus);
+    if (error) throw error;
+
+    const linha = ((data ?? []) as any[])[0];
+    if (!linha) return null;
+
+    const dono = Array.isArray(linha.produtos)
+      ? linha.produtos[0]
+      : linha.produtos;
+    if (dono?.deleted_at) {
+      return `O SKU "${linha.sku}" já foi usado em "${dono.nome}", um produto que foi excluído — o SKU continua reservado. Use outro SKU.`;
+    }
+    if (dono?.nome) {
+      return `O SKU "${linha.sku}" já está na variação do produto "${dono.nome}". Cada variação precisa de um SKU diferente.`;
+    }
+    return `O SKU "${linha.sku}" já está em outra variação da loja. Cada variação precisa de um SKU diferente.`;
+  } catch (err) {
+    console.warn("[useProducts] Não consegui conferir os SKUs agora:", err);
+    return null;
+  }
 }
 
 export function useProducts({ autoFetch = true } = {}) {
@@ -691,6 +832,15 @@ export function useProducts({ autoFetch = true } = {}) {
           });
         }
 
+        // O mesmo raciocínio vale para o SKU da variação, que é único na loja
+        // inteira: confere ANTES do insert do produto (ver
+        // `conferirSkusDasVariacoes`), para um SKU repetido não deixar um
+        // produto sem grade no catálogo.
+        const recusaDeSku = await conferirSkusDasVariacoes(
+          productData.variants || [],
+        );
+        if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
+
         const { data, error } = await supabase
           .from("vw_produtos_admin")
           .insert({
@@ -732,6 +882,10 @@ export function useProducts({ autoFetch = true } = {}) {
           // produto existe, mas o lojista precisa saber que a grade ficou
           // para trás (o toast de erro acima já disse; o de sucesso cala).
           let variantesFalharam = false;
+          // Quando a grade falha, quem chamou precisa saber (o produto existe,
+          // mas está sem variação) para NÃO dar "Salvo" nem sair da tela, e
+          // para tentar de novo SEM criar outro produto.
+          let gradeNaoSalva: { motivo: string | null } | undefined;
 
           if (productData.variants && productData.variants.length > 0) {
             const variantsToInsert = productData.variants.map((v) => ({
@@ -759,8 +913,16 @@ export function useProducts({ autoFetch = true } = {}) {
               // grade que o lojista digitou, sem aviso nenhum. O aviso diz o
               // que aconteceu e o caminho de conserto (o produto existe; as
               // variações é que precisam ser salvas de novo).
+              // Quando a recusa tem nome conhecido (SKU repetido, código de
+              // barras repetido, sessão vencida...), a frase vai junto: sem
+              // o motivo a lojista cadastra de novo a mesma grade e bate na
+              // mesma parede.
+              const motivo = traduzirRecusaConhecida(varErr);
+              gradeNaoSalva = { motivo };
               toast.error(
-                `O produto foi criado, mas as VARIAÇÕES não foram salvas. Abra "${productData.name}" e cadastre as variações de novo.`,
+                `O produto foi criado, mas as VARIAÇÕES não foram salvas.${
+                  motivo ? ` ${motivo}` : ""
+                } Abra "${productData.name}" e cadastre as variações de novo.`,
                 { duration: 10000 },
               );
             } else if (insertedVariants) {
@@ -790,7 +952,11 @@ export function useProducts({ autoFetch = true } = {}) {
           if (!variantesFalharam) {
             toast.success("Produto cadastrado com sucesso!");
           }
-          return newProduct;
+          return (
+            gradeNaoSalva
+              ? { ...newProduct, variantesNaoSalvas: gradeNaoSalva }
+              : newProduct
+          ) as Product & { variantesNaoSalvas?: { motivo: string | null } };
         }
       } catch (err: any) {
         console.error("Error adding product:", err);
