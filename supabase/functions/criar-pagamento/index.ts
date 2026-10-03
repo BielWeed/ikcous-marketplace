@@ -80,6 +80,7 @@ import {
   consultarOrder,
   consultarPagamento,
   criarOrder,
+  deviceIdValido,
   erro400EhDeDadoDoCartao,
   extrairDataExpiracaoOrder,
   extrairDesafio3ds,
@@ -509,7 +510,7 @@ async function recuperarOrderPixDoIdempotencia(args: {
 }
 
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, tentativas_de_pagamento, created_at, updated_at, metodo_online, status";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, customer_name, tentativas_de_pagamento, created_at, updated_at, metodo_online, status";
 
 /**
  * O LIMITE INFERIOR (epoch ms) que vai gravado no sentinela — achado B1, 5ª
@@ -705,6 +706,9 @@ export type DadosDoCartao = {
   parcelas: number;
   documento: { type: "CPF" | "CNPJ"; number: string };
   email: string | null;
+  // Device ID do comprador (03/10/2026) — opcional: `null` quando ausente ou
+  // fora do formato (ver `deviceIdValido`). Nunca recusa o cartão.
+  deviceId: string | null;
 };
 
 /**
@@ -757,6 +761,10 @@ export function validarCorpoDoCartao(
       parcelas,
       documento,
       email: emailValido(body.email) ? body.email : null,
+      // `device_id` (snake_case, como o front manda) fora do formato é IGNORADO,
+      // não recusado: sem ele o antifraude do MP perde um sinal, mas o cliente
+      // paga — e front novo e edge velha/nova convivem em qualquer ordem.
+      deviceId: deviceIdValido(body.device_id) ? body.device_id : null,
     },
   };
 }
@@ -2655,6 +2663,12 @@ async function handler(
         orderId: pedido.id,
         valor: Number(pedido.total),
         email: emailPagadorSandbox ?? emailDoCartao,
+        // Nome do comprador no pedido -> first_name + last_name (o antifraude
+        // compara com o titular). Em sandbox NÃO: o desfecho de teste do cartão
+        // é o nome do titular no Brick (ver `nomePagadorSandbox`). Nome ausente
+        // ou imprestável não manda nada e nunca derruba a cobrança
+        // (`dividirNomeDoPagador`).
+        nome: emailPagadorSandbox ? undefined : (pedido.customer_name as string | null | undefined) ?? undefined,
         documento: dados.documento,
         token: dados.token,
         paymentMethodId: dados.paymentMethodId,
@@ -2771,6 +2785,8 @@ async function handler(
       corpo,
       chaveIdempotencia: await chaveDeIdempotencia(pedido, "cartao", dados.token),
       fetchImpl: deps.fetchImpl,
+      // Device ID do comprador -> `X-meli-session-id` (só no cartão; o PIX não).
+      deviceId: dados.deviceId,
       // O corpo da recusa traz o pagador (e-mail, CPF): no log, só o resumo.
       corpoNoLog: false,
     });

@@ -10165,3 +10165,174 @@ Deno.test("P7 PIX vivo ao lado: [c0 cartão processed:partially_refunded, PIX ac
   assertEquals(db.chamadasRpc.length, 0);
   assertEquals(mp.posts, []);
 });
+
+// ─── Device ID + nome do pagador no cartão (03/10/2026) ──────────────────────
+//
+// Um cartão real foi recusado com `high_risk`: o antifraude do Mercado Pago não
+// recebia o Device ID do comprador. O front agora manda `device_id` no corpo do
+// cartão; a edge o valida (formato fechado), repassa como `X-meli-session-id`
+// no POST /v1/orders do CARTÃO e IGNORA — nunca recusa — o que vier fora do
+// formato, para front novo e edge velha/nova conviverem em qualquer ordem.
+
+const DEVICE_ID_TESTE = "armor.8c1f0e2b9d7a4c35b6e1f0a9d8c7b6a5.XyZ123abc.9f8e7d6c5b4a";
+
+Deno.test("validarCorpoDoCartao: device_id válido entra em dados.deviceId; ausente, nulo ou fora do formato vira null SEM recusar o cartão", () => {
+  const com = validarCorpoDoCartao(corpoCartao({ device_id: DEVICE_ID_TESTE }));
+  assertEquals(com.ok, true);
+  if (com.ok) assertEquals(com.dados.deviceId, DEVICE_ID_TESTE);
+
+  for (
+    const device_id of [
+      undefined,
+      null,
+      "",
+      42,
+      { a: 1 },
+      ["x"],
+      "abc\r\nX-Evil: 1",
+      "com espaço",
+      "x".repeat(513),
+    ]
+  ) {
+    const r = validarCorpoDoCartao(corpoCartao({ device_id }));
+    assertEquals(r.ok, true, JSON.stringify(device_id));
+    if (r.ok) assertEquals(r.dados.deviceId, null, JSON.stringify(device_id));
+  }
+});
+
+Deno.test("handler cartão: device_id válido vira o cabeçalho X-meli-session-id do POST /v1/orders — e NÃO vai para dentro do corpo da order", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(
+    requisicao(corpoCartao({ device_id: DEVICE_ID_TESTE }), montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.criacoes().length, 1);
+  const enviado = mp.criacoes()[0];
+  assertEquals(enviado.headers?.["X-meli-session-id"], DEVICE_ID_TESTE);
+  // O cabeçalho só se soma: a chave de idempotência por tentativa segue igual.
+  assertEquals(enviado.headers?.["X-Idempotency-Key"], `${UUID}:c0`);
+  assertEquals(JSON.stringify(enviado.corpo).includes(DEVICE_ID_TESTE), false);
+});
+
+Deno.test("handler cartão: SEM device_id (front antigo, script bloqueado, coleta atrasada) a cobrança segue igual — sem o cabeçalho", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals("X-meli-session-id" in (mp.criacoes()[0].headers ?? {}), false);
+});
+
+Deno.test("handler cartão: device_id FORA DO FORMATO é ignorado (200, sem o cabeçalho, sem cabeçalho forjado) — nunca 400", async () => {
+  for (const device_id of ["abc\r\nX-Evil: 1", "com espaço", "x".repeat(513), 42, ""]) {
+    const { supabase } = cenarioCartao();
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+    const resposta = await handler(
+      requisicao(corpoCartao({ device_id }), montarToken(DONO_LOGADO)),
+      { supabase, fetchImpl: mp.fn },
+    );
+
+    assertEquals(resposta.status, 200, JSON.stringify(device_id));
+    const headers = mp.criacoes()[0].headers ?? {};
+    assertEquals("X-meli-session-id" in headers, false, JSON.stringify(device_id));
+    assertEquals("X-Evil" in headers, false);
+  }
+});
+
+Deno.test("handler cartão: campo DESCONHECIDO no corpo não é recusado (a validação lê só os campos que conhece) — front novo contra edge velha não quebra", async () => {
+  const { supabase } = cenarioCartao();
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(
+    requisicao(corpoCartao({ campo_do_futuro: "x", device_id: DEVICE_ID_TESTE }), montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl: mp.fn },
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(JSON.stringify(mp.criacoes()[0].corpo).includes("campo_do_futuro"), false);
+});
+
+Deno.test("handler PIX: device_id no corpo é ignorado — o PIX NÃO manda X-meli-session-id (escopo é só o cartão)", async () => {
+  const { supabase } = cenarioCartao({ pedido: pedidoBase({ user_id: DONO_LOGADO }) });
+  let headersDoPost: Record<string, string> | undefined;
+  const base = fetchFalsoMP({});
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") headersDoPost = init.headers as Record<string, string>;
+    return base(url, init);
+  };
+
+  const resposta = await handler(
+    requisicao({ orderId: UUID, metodo: "pix", device_id: DEVICE_ID_TESTE }, montarToken(DONO_LOGADO)),
+    { supabase, fetchImpl },
+  );
+
+  assertEquals(resposta.status, 200);
+  assertEquals(typeof headersDoPost?.["X-Idempotency-Key"], "string");
+  assertEquals("X-meli-session-id" in (headersDoPost ?? {}), false);
+});
+
+Deno.test("handler cartão: o nome do pedido (customer_name) vira payer.first_name + payer.last_name", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, customer_name: "Maria da Silva Souza" }),
+  });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  const payer = mp.criacoes()[0].corpo?.payer as Record<string, unknown>;
+  assertEquals(payer.first_name, "Maria");
+  assertEquals(payer.last_name, "da Silva Souza");
+  assertEquals(payer.identification, { type: "CPF", number: CPF_TITULAR });
+});
+
+Deno.test("handler cartão: pedido SEM nome, ou com nome imprestável, cobra do mesmo jeito e não manda nome (nunca inventa)", async () => {
+  for (const customer_name of [undefined, null, "", "   ", "Cliente 123", "joao@exemplo.com"]) {
+    const { supabase } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, customer_name }),
+    });
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 200, JSON.stringify(customer_name));
+    const payer = mp.criacoes()[0].corpo?.payer as Record<string, unknown>;
+    assertEquals("first_name" in payer, false, JSON.stringify(customer_name));
+    assertEquals("last_name" in payer, false, JSON.stringify(customer_name));
+  }
+});
+
+Deno.test("handler cartão em SANDBOX: nome do pedido NÃO é mandado (o desfecho de teste é o nome do titular no Brick, não o pagador)", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, customer_name: "Maria da Silva" }),
+  });
+  Deno.env.set("MP_SANDBOX_PAYER_EMAIL", "test_user_1@testuser.com");
+  try {
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    assertEquals(resposta.status, 200);
+    const payer = mp.criacoes()[0].corpo?.payer as Record<string, unknown>;
+    assertEquals("first_name" in payer, false);
+    assertEquals("last_name" in payer, false);
+  } finally {
+    Deno.env.delete("MP_SANDBOX_PAYER_EMAIL");
+  }
+});
