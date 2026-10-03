@@ -92,8 +92,9 @@ vi.mock("@/hooks/useOnlineStatus", () => ({
 
 const toastError = vi.fn();
 const toastSuccess = vi.fn();
+const toastInfo = vi.fn();
 vi.mock("sonner", () => ({
-  toast: { success: toastSuccess, error: toastError },
+  toast: { success: toastSuccess, error: toastError, info: toastInfo },
 }));
 
 // Fronteira do arrastar: o que o framer chama quando o dedo mexe/solta.
@@ -660,5 +661,251 @@ describe("sem personalização salva (config.homeSections ausente)", () => {
       "offers",
       "bestsellers",
     ]);
+  });
+});
+
+// ── Correções da revisão Opus (03/10/2026) ───────────────────────────────
+
+const secaoVerao: Secao = {
+  id: "custom_2",
+  title: "Coleção verão",
+  active: true,
+  maxItems: 6,
+  productIds: [],
+  isCustom: true,
+};
+
+describe("lista travada enquanto a ordem arrastada é gravada", () => {
+  // Antes: depois de soltar e ANTES do banco confirmar, a tela mostrava a ordem
+  // nova mas setas/liga-desliga montavam a gravação sobre a ordem ANTIGA —
+  // o arrasto era desfeito em silêncio. Agora a lista trava até confirmar.
+  let confirmar: (salvou: boolean) => void = () => {};
+
+  async function soltarComGravacaoPendente() {
+    configDaLoja = {
+      homeSections: [secaoLancamentos, secaoKits, secaoDestaques, secaoVerao],
+    };
+    updateConfig.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolver) => {
+          confirmar = resolver;
+        }),
+    );
+    await montar();
+    await act(async () => {
+      arrastar.onReorder?.([
+        secaoVerao,
+        secaoLancamentos,
+        secaoKits,
+        secaoDestaques,
+      ]);
+    });
+    await act(async () => {
+      arrastar.aoSoltar.get("custom_2")?.();
+    });
+  }
+
+  it("com a gravação pendente, setas, liga/desliga, alça, cartão e Nova vitrine ficam desabilitados e nenhuma segunda gravação sai", async () => {
+    await soltarComGravacaoPendente();
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+
+    const desabilitado = (el: Element) => el.hasAttribute("disabled");
+    const interruptorDestaques = cartaoDe("Destaques em Alta").querySelector(
+      '[role="switch"]',
+    ) as HTMLElement;
+    expect(desabilitado(porRotulo("Descer vitrine Últimos Lançamentos"))).toBe(
+      true,
+    );
+    expect(desabilitado(porRotulo("Subir vitrine Kits de presente"))).toBe(
+      true,
+    );
+    expect(desabilitado(interruptorDestaques)).toBe(true);
+    expect(desabilitado(porRotulo(/^Arrastar vitrine Kits/))).toBe(true);
+    expect(desabilitado(porRotulo("Editar vitrine Kits de presente"))).toBe(
+      true,
+    );
+    expect(desabilitado(botaoComTexto("Nova vitrine", hospedeiro))).toBe(true);
+    expect(desabilitado(porRotulo("Mais ações"))).toBe(true);
+    expect(hospedeiro.textContent).toContain("Salvando ordem");
+
+    // tocar nelas não grava nada
+    await clicar(porRotulo("Descer vitrine Últimos Lançamentos"));
+    await clicar(interruptorDestaques);
+    await clicar(porRotulo("Editar vitrine Kits de presente"));
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(painel()).toBeNull();
+  });
+
+  it("um segundo arrasto na janela não grava nem zera a ordem em curso", async () => {
+    await soltarComGravacaoPendente();
+    await act(async () => {
+      arrastar.onReorder?.([
+        secaoLancamentos,
+        secaoKits,
+        secaoDestaques,
+        secaoVerao,
+      ]);
+      arrastar.aoSoltar.get("new_arrivals")?.();
+    });
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    // a tela segue mostrando a ordem que está sendo gravada
+    expect(cartoes().map((c) => c.getAttribute("data-vitrine-id"))).toEqual([
+      "custom_2",
+      "new_arrivals",
+      "custom_1",
+      "bestsellers",
+    ]);
+  });
+
+  it("ao confirmar, tudo volta a funcionar", async () => {
+    await soltarComGravacaoPendente();
+    await act(async () => {
+      confirmar(true);
+    });
+    expect(
+      porRotulo("Descer vitrine Kits de presente").hasAttribute("disabled"),
+    ).toBe(false);
+    expect(hospedeiro.textContent).not.toContain("Salvando ordem");
+    await clicar(porRotulo("Descer vitrine Kits de presente"));
+    expect(updateConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it("se a gravação falhar, também destrava (e a lista volta à ordem salva)", async () => {
+    await soltarComGravacaoPendente();
+    await act(async () => {
+      confirmar(false);
+    });
+    expect(
+      porRotulo("Descer vitrine Kits de presente").hasAttribute("disabled"),
+    ).toBe(false);
+    expect(cartoes().map((c) => c.getAttribute("data-vitrine-id"))).toEqual([
+      "new_arrivals",
+      "custom_1",
+      "bestsellers",
+      "custom_2",
+    ]);
+  });
+});
+
+describe("ao soltar, grava sobre o estado ATUAL das vitrines (por id)", () => {
+  it("uma mudança confirmada no meio do arrasto não é desfeita", async () => {
+    await montar();
+    await act(async () => {
+      arrastar.onReorder?.([secaoKits, secaoLancamentos, secaoDestaques]);
+    });
+    // no meio do arrasto, a vitrine de Lançamentos foi desligada e renomeada
+    configDaLoja = {
+      homeSections: [
+        { ...secaoLancamentos, active: false, title: "Novidades" },
+        secaoKits,
+        secaoDestaques,
+      ],
+    };
+    await montar();
+    await act(async () => {
+      arrastar.aoSoltar.get("custom_1")?.();
+    });
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(ultimaGravacao()).toEqual({
+      homeSections: [
+        secaoKits,
+        { ...secaoLancamentos, active: false, title: "Novidades" },
+        secaoDestaques,
+      ],
+    });
+  });
+
+  it("lista incompleta (faltou vitrine) não grava", async () => {
+    await montar();
+    await act(async () => {
+      arrastar.onReorder?.([secaoKits, secaoLancamentos]);
+    });
+    await act(async () => {
+      arrastar.aoSoltar.get("custom_1")?.();
+    });
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(cartoes()).toHaveLength(3);
+  });
+
+  it("vitrine que sumiu do estado atual durante o arrasto não grava", async () => {
+    await montar();
+    await act(async () => {
+      arrastar.onReorder?.([secaoKits, secaoLancamentos, secaoDestaques]);
+    });
+    configDaLoja = {
+      homeSections: [secaoLancamentos, secaoDestaques, secaoVerao],
+    };
+    await montar();
+    await act(async () => {
+      arrastar.aoSoltar.get("custom_1")?.();
+    });
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe("dado antigo e avisos", () => {
+  async function escolherRestaurarNoMenu() {
+    await abrirMenuMaisAcoes();
+    await clicar(
+      Array.from(
+        document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+      ).find((el) =>
+        el.textContent?.includes("Restaurar padrão"),
+      ) as HTMLElement,
+    );
+  }
+
+  it("vitrine sem título (dado antigo) não quebra a tela, o painel nem o restaurar", async () => {
+    const semTitulo = {
+      id: "custom_9",
+      active: true,
+      isCustom: true,
+      productIds: [],
+    } as unknown as Secao;
+    configDaLoja = { homeSections: [secaoLancamentos, semTitulo] };
+    await montar();
+    expect(cartaoDe("Sem nome")).toBeTruthy();
+    await clicar(porRotulo("Editar vitrine Sem nome"));
+    expect(
+      painel()?.querySelector<HTMLInputElement>("#vitrine-title-custom_9")
+        ?.value,
+    ).toBe("");
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    await escolherRestaurarNoMenu();
+    expect(confirmacao()?.textContent).toContain("Sem nome");
+  });
+
+  it("duas personalizadas com o mesmo nome no diálogo de restaurar não repetem chave", async () => {
+    const erro = vi.spyOn(console, "error").mockImplementation(() => {});
+    configDaLoja = {
+      homeSections: [
+        { ...secaoKits, id: "custom_a", productIds: [] },
+        { ...secaoKits, id: "custom_b", productIds: [] },
+      ],
+    };
+    await montar();
+    await escolherRestaurarNoMenu();
+    const avisosDeChave = erro.mock.calls.filter((c) =>
+      String(c[0]).includes("same key"),
+    );
+    erro.mockRestore();
+    expect(avisosDeChave).toHaveLength(0);
+    const linhas =
+      confirmacao()?.textContent?.match(/Some a vitrine "Kits de presente"/g) ??
+      [];
+    expect(linhas).toHaveLength(2);
+  });
+
+  it("Escolher numa vitrine automática sem produto em exibição avisa, e não grava", async () => {
+    // nenhum produto em oferta: a vitrine "offers" automática fica vazia
+    configDaLoja = {
+      homeSections: [{ ...secaoDestaques, active: true, id: "offers" }],
+    };
+    await montar();
+    await clicar(porRotulo(/^Editar vitrine Destaques em Alta/));
+    await clicar(botaoComTexto("Escolher", painel() as HTMLElement));
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(toastInfo).toHaveBeenCalledTimes(1);
+    expect(painel()?.textContent).toContain("Nenhum produto aparece");
   });
 });

@@ -24,5 +24,6 @@ export function tipoDaVitrine(secao: SecaoDaHome): {
 
 /** Título para exibir/rotular — vitrine com título vazio não some do leitor de tela. */
 export function tituloExibido(secao: SecaoDaHome): string {
-  return secao.title.trim() || "Sem nome";
+  // `|| ""`: dado antigo de alguma loja pode vir sem título.
+  return (secao.title || "").trim() || "Sem nome";
 }

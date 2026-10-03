@@ -39,6 +39,7 @@ export function CartaoDaVitrine({
   aoAlternarAtiva,
   aoMover,
   aoSoltar,
+  travado,
 }: {
   readonly secao: SecaoDaHome;
   readonly indice: number;
@@ -48,6 +49,8 @@ export function CartaoDaVitrine({
   readonly aoAlternarAtiva: (id: string) => void;
   readonly aoMover: (indice: number, direcao: "up" | "down") => void;
   readonly aoSoltar: () => void;
+  /** Ordem sendo gravada: nada no cartão responde até o banco confirmar. */
+  readonly travado: boolean;
 }) {
   const controles = useDragControls();
   const titulo = tituloExibido(secao);
@@ -81,6 +84,7 @@ export function CartaoDaVitrine({
           type="button"
           aria-label={`Editar vitrine ${titulo}`}
           onClick={() => aoAbrir(secao.id)}
+          disabled={travado}
           className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
         />
 
@@ -90,6 +94,7 @@ export function CartaoDaVitrine({
             tabIndex={-1}
             aria-label={`Arrastar vitrine ${titulo} para reordenar`}
             onPointerDown={(evento) => controles.start(evento)}
+            disabled={travado}
             className="pointer-events-auto flex h-9 w-6 shrink-0 cursor-grab touch-none items-center justify-center text-zinc-600 active:cursor-grabbing"
           >
             <GripVertical className="size-4" />
@@ -130,6 +135,7 @@ export function CartaoDaVitrine({
             checked={secao.active}
             onCheckedChange={() => aoAlternarAtiva(secao.id)}
             aria-label={`Exibir na loja: ${titulo}`}
+            disabled={travado}
             className="pointer-events-auto h-[26px] w-11 data-[state=checked]:bg-admin-gold data-[state=unchecked]:bg-zinc-700 [&>span]:ml-0.5 [&>span]:size-5 [&>span]:data-[state=checked]:translate-x-[18px]"
           />
         </div>
@@ -207,7 +213,7 @@ export function CartaoDaVitrine({
             <button
               type="button"
               onClick={() => aoMover(indice, "up")}
-              disabled={indice === 0}
+              disabled={travado || indice === 0}
               aria-label={`Subir vitrine ${titulo}`}
               title="Subir"
               className="flex size-[30px] items-center justify-center rounded-[10px] border border-white/5 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"
@@ -217,7 +223,7 @@ export function CartaoDaVitrine({
             <button
               type="button"
               onClick={() => aoMover(indice, "down")}
-              disabled={indice === total - 1}
+              disabled={travado || indice === total - 1}
               aria-label={`Descer vitrine ${titulo}`}
               title="Descer"
               className="flex size-[30px] items-center justify-center rounded-[10px] border border-white/5 bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-25"

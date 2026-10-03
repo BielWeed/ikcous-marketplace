@@ -46,27 +46,51 @@ interface AdminCarouselsViewProps {
   onSetDirty?: (dirty: boolean) => void;
 }
 
+/** Uma linha do diálogo de restaurar; `chave` é estável e única por linha. */
+interface EfeitoDeRestaurar {
+  chave: string;
+  texto: string;
+}
+
 /** "Some a vitrine X" / "Somem as N vitrines personalizadas", sem encher a tela. */
-function efeitosDeRestaurar(secoes: readonly SecaoDaHome[]): string[] {
-  const efeitos: string[] = [];
+function efeitosDeRestaurar(
+  secoes: readonly SecaoDaHome[],
+): EfeitoDeRestaurar[] {
+  const efeitos: EfeitoDeRestaurar[] = [];
   const personalizadas = secoes.filter((s) => s.isCustom);
   if (personalizadas.length > 0 && personalizadas.length <= 3) {
+    // A chave leva o id: duas vitrines com o mesmo nome são duas linhas.
     for (const s of personalizadas) {
-      efeitos.push(`Some a vitrine "${tituloExibido(s)}"`);
+      efeitos.push({
+        chave: `some-${s.id}`,
+        texto: `Some a vitrine "${tituloExibido(s)}"`,
+      });
     }
   } else if (personalizadas.length > 3) {
-    efeitos.push(`Somem as ${personalizadas.length} vitrines personalizadas`);
+    efeitos.push({
+      chave: "somem-personalizadas",
+      texto: `Somem as ${personalizadas.length} vitrines personalizadas`,
+    });
   }
   const escolhidos = secoes.reduce(
     (soma, s) => soma + (s.productIds?.length ?? 0),
     0,
   );
   if (escolhidos === 1) {
-    efeitos.push("Some o produto escolhido à mão");
+    efeitos.push({
+      chave: "produtos-escolhidos",
+      texto: "Some o produto escolhido à mão",
+    });
   } else if (escolhidos > 1) {
-    efeitos.push(`Somem os ${escolhidos} produtos escolhidos à mão`);
+    efeitos.push({
+      chave: "produtos-escolhidos",
+      texto: `Somem os ${escolhidos} produtos escolhidos à mão`,
+    });
   }
-  efeitos.push("Nomes, quantidades, ordem e visibilidade voltam ao original");
+  efeitos.push({
+    chave: "voltam-ao-original",
+    texto: "Nomes, quantidades, ordem e visibilidade voltam ao original",
+  });
   return efeitos;
 }
 
@@ -162,6 +186,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const handleToggleSectionActive = (sectionId: string) => {
+    if (salvandoOrdem) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para alterar a visibilidade.",
@@ -211,6 +236,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   };
 
   const moveSection = (index: number, direction: "up" | "down") => {
+    if (salvandoOrdem) return;
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para reordenar.",
@@ -233,22 +259,52 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
   // grava UMA vez, ao soltar, pelo mesmo `handleUpdateHomeSections` das setas.
   // Depois da gravação a tela volta a ler `homeSections`: se gravou, é a ordem
   // nova; se falhou, é a ordem antiga — sem remendo de "desfazer".
+  //
+  // O `updateConfig` não é otimista: entre soltar e o banco confirmar,
+  // `homeSections` ainda está na ordem ANTIGA enquanto a tela mostra a nova.
+  // Qualquer outra gravação nessa janela (seta, liga/desliga, painel, nova
+  // vitrine) montaria a lista sobre a ordem velha e desfaria o arrasto em
+  // silêncio. Por isso a lista TRAVA (`salvandoOrdem`) até a confirmação: o
+  // que está na tela volta a ser a base de toda gravação.
   const [ordemArrastada, setOrdemArrastada] = useState<SecaoDaHome[] | null>(
     null,
   );
+  const [salvandoOrdem, setSalvandoOrdem] = useState(false);
   const ordemArrastadaRef = useRef<SecaoDaHome[] | null>(null);
   const secoesNaLista = ordemArrastada ?? homeSections;
 
   const handleReordenando = (novaOrdem: SecaoDaHome[]) => {
+    if (salvandoOrdem) return;
     ordemArrastadaRef.current = novaOrdem;
     setOrdemArrastada(novaOrdem);
   };
 
   const handleSoltou = async () => {
+    if (salvandoOrdem) return;
     const novaOrdem = ordemArrastadaRef.current;
     ordemArrastadaRef.current = null;
     if (!novaOrdem) return;
-    const mudou = novaOrdem.some((s, i) => s.id !== homeSections.at(i)?.id);
+
+    // A ordem vem do arrasto, mas o CONTEÚDO vem das vitrines de agora, por
+    // id: uma mudança confirmada durante o arrasto (desligar, renomear) não
+    // pode ser desfeita pelas cópias guardadas no primeiro `onReorder`.
+    const porId = new Map(homeSections.map((s) => [s.id, s]));
+    const reordenada: SecaoDaHome[] = [];
+    for (const item of novaOrdem) {
+      const atual = porId.get(item.id);
+      if (atual) reordenada.push(atual);
+    }
+    if (
+      reordenada.length !== homeSections.length ||
+      new Set(reordenada.map((s) => s.id)).size !== homeSections.length
+    ) {
+      // Lista incompleta/duplicada (uma vitrine surgiu ou sumiu no meio do
+      // arrasto): não grava, e a tela volta ao que está salvo.
+      setOrdemArrastada(null);
+      return;
+    }
+
+    const mudou = reordenada.some((s, i) => s.id !== homeSections.at(i)?.id);
     if (!mudou) {
       setOrdemArrastada(null);
       return;
@@ -260,8 +316,13 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       setOrdemArrastada(null);
       return;
     }
-    await handleUpdateHomeSections(novaOrdem, false);
-    setOrdemArrastada(null);
+    setSalvandoOrdem(true);
+    try {
+      await handleUpdateHomeSections(reordenada, false);
+    } finally {
+      setOrdemArrastada(null);
+      setSalvandoOrdem(false);
+    }
   };
 
   const handleAddCustomVitrine = async () => {
@@ -402,7 +463,15 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     const atual = homeSections.find((s) => s.id === sectionId);
     if (!atual || (atual.productIds?.length ?? 0) > 0) return;
     const idsHoje = (previewProducts[sectionId] || []).map((p) => p.id);
-    if (idsHoje.length === 0) return;
+    if (idsHoje.length === 0) {
+      toast.info("Nenhum produto aparece nesta vitrine agora", {
+        description:
+          products.length > 0
+            ? "Toque em um produto da lista abaixo para escolher."
+            : "Cadastre produtos para poder escolhê-los aqui.",
+      });
+      return;
+    }
     if (isOffline) {
       toast.error("Sem conexão com a internet");
       return;
@@ -470,6 +539,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                         type="button"
                         aria-label="Mais ações"
                         title="Mais ações"
+                        disabled={salvandoOrdem}
                         className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
                       >
                         <MoreHorizontal className="size-[17px]" />
@@ -522,16 +592,24 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           <button
             type="button"
             onClick={() => setShowAddVitrineModal(true)}
-            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-admin-gold px-6 text-[14.5px] font-extrabold text-zinc-950 shadow-[0_10px_24px_-10px] shadow-admin-gold/55 transition-all hover:bg-admin-gold/90 active:scale-[0.99] sm:h-auto sm:w-56"
+            disabled={salvandoOrdem}
+            className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-admin-gold px-6 text-[14.5px] font-extrabold text-zinc-950 shadow-[0_10px_24px_-10px] shadow-admin-gold/55 transition-all hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60 sm:h-auto sm:w-56"
           >
             <Plus className="size-[18px] stroke-[2.5]" />
             Nova vitrine
           </button>
         </div>
 
+        {salvandoOrdem ? (
+          <p role="status" className="px-1 text-xs font-medium text-zinc-400">
+            Salvando ordem…
+          </p>
+        ) : null}
+
         <Reorder.Group
           as="div"
           axis="y"
+          aria-busy={salvandoOrdem}
           values={secoesNaLista}
           onReorder={handleReordenando}
           className="flex flex-col gap-2.5"
@@ -547,6 +625,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
               aoAlternarAtiva={handleToggleSectionActive}
               aoMover={moveSection}
               aoSoltar={handleSoltou}
+              travado={salvandoOrdem}
             />
           ))}
         </Reorder.Group>
@@ -619,14 +698,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
           <ul className="space-y-1.5">
             {efeitosDeRestaurar(homeSections).map((efeito) => (
               <li
-                key={efeito}
+                key={efeito.chave}
                 className="flex items-center gap-2 text-[13px] text-zinc-300"
               >
                 <span
                   aria-hidden="true"
                   className="h-0.5 w-3 shrink-0 rounded bg-rose-400"
                 />
-                {efeito}
+                {efeito.texto}
               </li>
             ))}
           </ul>

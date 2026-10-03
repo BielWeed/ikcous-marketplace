@@ -22,11 +22,15 @@ import { fromFileUrl } from "https://deno.land/std@0.177.0/path/mod.ts";
  * tela oferece, porque a tela só sabe desenhar opção que vem dela.
  *
  * A ARMADILHA, e por isso a calibragem existe: se a tela voltasse a ter opções
- * literais (um `<select>` novo, ou botões escritos à mão), a lista deixaria de
- * ser o que o painel oferece e a comparação passaria sem medir nada. A
+ * literais (um `<select>` novo, ou um botão escrito à mão), a lista deixaria
+ * de ser o que o painel oferece e a comparação passaria sem medir nada. A
  * calibragem prova, na MESMA rodada, que (1) a lista existe e tem valores
- * válidos, (2) o painel DESENHA a partir dela, e (3) não há `<select>`/`<option>`
- * literal na tela nem no painel.
+ * válidos, (2) o painel DESENHA a partir dela, (3) não há `<select>`/`<option>`
+ * literal na tela nem no painel, e (4) a quantidade só é escolhida por UM
+ * ponto — o botão desenhado dentro do `.map` da lista: `aoMudarQuantidade(`
+ * aparece uma única vez no painel, com o argumento do próprio `.map`, e a
+ * tela não repassa número literal a `handleUpdateMaxItems`. Um botão extra
+ * escrito à mão (`aoMudarQuantidade(12)`) faz esta varredura cair.
  */
 import {
   assert,
@@ -71,6 +75,31 @@ Deno.test("calibragem: a lista de opções existe e é a que o painel desenha", 
   assert(
     PAINEL.includes('from "@/config/carrossel"'),
     "FolhaEditarVitrine nao importa a lista de src/config/carrossel",
+  );
+
+  // UM só ponto de escolha: a chamada nasce dentro do `.map` e usa o argumento
+  // dele. Qualquer outra chamada (botão escrito à mão) aumenta a contagem.
+  const mapa = PAINEL.match(
+    /OPCOES_MAX_ITENS_CARROSSEL\.map\(\(\s*(\w+)\s*\)\s*=>/,
+  );
+  assert(
+    mapa,
+    "nao achei o `.map((x) =>` de OPCOES_MAX_ITENS_CARROSSEL no painel",
+  );
+  const chamadas = [...PAINEL.matchAll(/aoMudarQuantidade\(/g)];
+  assertEquals(
+    chamadas.length,
+    1,
+    `aoMudarQuantidade( aparece ${chamadas.length}x em FolhaEditarVitrine: so o botao desenhado dentro do .map da lista pode escolher a quantidade — um botao escrito a mao escapa da comparacao com o limite de carga.`,
+  );
+  assert(
+    PAINEL.indexOf(`aoMudarQuantidade(${mapa[1]})`) > mapa.index,
+    "a unica chamada de aoMudarQuantidade nao usa o argumento do .map (ou esta fora dele)",
+  );
+  assertEquals(
+    [...TELA.matchAll(/handleUpdateMaxItems\([^)]*\b\d+\s*\)/g)].length,
+    0,
+    "AdminCarouselsView passa um numero literal a handleUpdateMaxItems: a opcao nao vem de OPCOES_MAX_ITENS_CARROSSEL",
   );
 
   // DISCRIMINA: sem `<select>`/`<option>` literal na tela nem no painel. Se

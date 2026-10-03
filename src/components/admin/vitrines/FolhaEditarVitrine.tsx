@@ -179,7 +179,9 @@ export function FolhaEditarVitrine({
       <p className="mt-2 px-0.5 text-xs leading-snug text-zinc-500">
         {manual
           ? 'Aparecem na ordem em que você marcar. "Automático" volta a loja a escolher sozinha.'
-          : "Hoje a loja escolhe sozinha. Toque em um produto para passar a escolher você."}
+          : idsEmExibicao.length === 0 && produtos.length > 0
+            ? "Nenhum produto aparece nesta vitrine agora. Toque em um produto da lista para escolher."
+            : "Hoje a loja escolhe sozinha. Toque em um produto para passar a escolher você."}
       </p>
 
       <div className="relative mt-3">
