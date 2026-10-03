@@ -4540,12 +4540,14 @@ export function CheckoutView({
                             formatado,
                           );
 
-                          const isNational =
-                            config.shippingCoverage === "national";
+                          // A busca vale em TODA loja (decisão do dono,
+                          // 03/10/2026): a cobertura de entrega decide para
+                          // onde a loja entrega, no `calculate-shipping`, e
+                          // nunca onde o cliente pode dizer que mora.
                           // `limpo.length === 8` é portante, não só filtro
                           // de busca — ver o comentário equivalente em
                           // AddressForm.tsx.
-                          if (isNational && limpo.length === 8) {
+                          if (limpo.length === 8) {
                             cepEmBuscaRef.current = limpo;
                             await buscarCep(limpo);
                           }

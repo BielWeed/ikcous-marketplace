@@ -34,8 +34,7 @@ vi.mock("@/components/ui/custom/ShippingCalculator", () => ({
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
-    // Precisa ser "national" — é o gate que liga a busca de CEP neste
-    // bloco (ver `isNational` em CheckoutView.tsx).
+    // A busca de CEP vale em toda loja; "national" é só o padrão dos casos.
     config: mockConfig,
     isLoaded: true,
   }),
@@ -298,7 +297,11 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("gate isNational: loja local não busca CEP mesmo com 8 dígitos", async () => {
+  it("loja de entrega LOCAL (não nacional): o convidado digita o CEP e rua, bairro, cidade e UF são preenchidos", async () => {
+    // Decisão do dono (03/10/2026): a busca de CEP vale em TODA loja, também no
+    // checkout de convidado. Antes só `shippingCoverage === "national"` buscava.
+    // Frete e entrega não mudam: quem decide para onde a loja entrega é o
+    // `calculate-shipping`, por CEP — não esta busca.
     mockConfig.shippingCoverage = "local";
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
 
@@ -314,14 +317,51 @@ describe("CheckoutView (convidado) — busca de CEP via useBuscaCep", () => {
     act(() => {
       digitar("guest-cep", "01310100");
     });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(pendentes.size).toBe(1);
+
+    pendentes.get("01310100")!({
+      logradouro: "Avenida Paulista",
+      bairro: "Bela Vista",
+      localidade: "São Paulo",
+      uf: "SP",
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const campo = (id: string) =>
+      (document.getElementById(id) as HTMLInputElement).value;
+    expect(campo("guest-street")).toBe("Avenida Paulista");
+    expect(campo("guest-neighborhood")).toBe("Bela Vista");
+    expect(campo("guest-city")).toBe("São Paulo");
+    expect(campo("guest-state")).toBe("SP");
+    // O CEP continua gravado como sempre (fora de qualquer gate).
+    expect(armazem.get("ikcous_last_shipping_cep")).toBe("01310-100");
+  });
+
+  it("loja local: CEP com menos de 8 dígitos continua sem buscar", async () => {
+    mockConfig.shippingCoverage = "local";
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+        />,
+      );
+    });
+
+    act(() => {
+      digitar("guest-cep", "0131010");
+    });
     await act(async () => {
       await Promise.resolve();
     });
 
     expect(fetchMock).not.toHaveBeenCalled();
-    // O `setItem` roda fora de QUALQUER gate — inclusive do `isNational`. Se
-    // alguém mover a gravação para dentro do `if (isNational)`, o CEP
-    // lembrado da loja local regride em silêncio.
-    expect(armazem.get("ikcous_last_shipping_cep")).toBe("01310-100");
+    expect(armazem.get("ikcous_last_shipping_cep")).toBe("01310-10");
   });
 });
