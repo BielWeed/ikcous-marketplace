@@ -6053,6 +6053,104 @@ Deno.test("handler cartão (B1, Q3, relógio REALISTA — BLOQUEIO da 7ª rodada
   assertEquals(chamadasCriacao, 1, "nenhuma segunda cobrança (PIX) chegou a ser criada no MP");
 });
 
+// PAGINAÇÃO (02/10/2026): a busca (`buscarOrdersDoPedido`) não pedia `page_size`
+// e devolvia a 1ª página (20) como se fosse a lista completa. Aqui o MP é
+// PAGINADO de verdade (devolve 20 por página e diz `paging.total = "21"`): a
+// cobrança CAPTURADA da tentativa anterior só existe na página 2. A página 1
+// traz 19 mortas antigas + a morta da tentativa atual (DENTRO da janela) —
+// exatamente o que fazia `resolverSentinela` dizer "liberar". Lista parcial
+// NUNCA libera: nada de `liberar_cobranca_do_pedido`, nada de POST de cobrança
+// nova (seria a segunda captura para o mesmo pedido).
+Deno.test("handler cartão (paginação): sentinela + busca PAGINADA (total 21, a capturada só na página 2) -> 503 'indisponivel': NÃO libera a vaga, NÃO chama liberar_cobranca_do_pedido, NÃO faz POST de cobrança nova (cartão nem PIX)", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const idCapturadaNaPagina2 = "ORDTST0PAGINA2CAPTURADA0001";
+  const posts: string[] = [];
+  const paginasPedidas: Array<string | null> = [];
+  const fn = async (url: string, init?: RequestInit) => {
+    if (init?.method === "POST" && url.endsWith("/v1/orders")) {
+      posts.push(url);
+      // O 1º POST (cartão da tentativa c0) perde a resposta e ocupa a vaga com
+      // o sentinela; qualquer POST DEPOIS dele é uma cobrança nova — se
+      // acontecer, a resposta de sucesso deixa o defeito visível nas asserções
+      // abaixo em vez de estourar aqui.
+      if (posts.length === 1) throw new DOMException("abortado", "AbortError");
+      return new Response(
+        JSON.stringify(orderDeCartao("processed", "accredited", { id: "ORDTST0SEGUNDACOBRANCA0001" })),
+        { status: 201 },
+      );
+    }
+    if (url.includes("/v1/orders?")) {
+      const q = new URL(url).searchParams;
+      paginasPedidas.push(q.get("page"));
+      if (q.get("page") === "2") {
+        return new Response(
+          JSON.stringify({
+            data: [{
+              ...orderDeCartao("processed", "accredited", { id: idCapturadaNaPagina2 }),
+              date_created: new Date(Date.now() - 50 * 60_000).toISOString(),
+            }],
+            paging: { total: "21", total_pages: "2", offset: "20", limit: "20" },
+          }),
+          { status: 200 },
+        );
+      }
+      const mortas = Array.from({ length: 19 }, (_, i) => ({
+        ...orderDeCartao("failed", "cc_rejected_other_reason", { id: `ORDTST0PAGINA1MORTA${String(i).padStart(8, "0")}` }),
+        date_created: new Date(Date.now() - 40 * 60_000 + i * 60_000).toISOString(),
+      }));
+      const atualMorta = {
+        ...orderDeCartao("failed", "cc_rejected_other_reason", { id: "ORDTST0PAGINA1ATUALMORTA001" }),
+        date_created: new Date(Date.now() + 60_000).toISOString(),
+      };
+      return new Response(
+        JSON.stringify({
+          data: [atualMorta, ...mortas],
+          paging: { total: "21", total_pages: "2", offset: "0", limit: "20" },
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`fetch inesperado no teste de paginação: ${init?.method} ${url}`);
+  };
+
+  // 1ª chamada: resposta perdida -> a vaga fica com o sentinela.
+  const r1 = await handler(requisicao(corpoCartao({ token: TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  assertEquals(r1.status, 502);
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+
+  // Retry do cartão (token novo): a busca devolve lista PARCIAL -> sem decisão.
+  const r2 = await handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  const c2 = await r2.json();
+  assertEquals(r2.status, 503, "lista parcial = o MP não respondeu o bastante: indisponível, nunca 'sem registro' nem liberação");
+  assertEquals(c2.verificacao, "indisponivel");
+  assertEquals(liberacoes(db.chamadasRpc), [], "NÃO chama liberar_cobranca_do_pedido");
+  assertEquals(posts.length, 1, "NÃO faz POST de cobrança nova — só o 1º POST (o que perdeu a resposta)");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true, "a vaga continua com o sentinela");
+  assertEquals(db.linha.tentativas_de_pagamento, 0, "a tentativa não avança");
+
+  // PIX sobre o mesmo sentinela: o mesmo bloqueio (409, cartão em análise).
+  const rPix = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase: db,
+    fetchImpl: fn,
+  });
+  assertEquals(rPix.status, 409);
+  assertEquals((await rPix.json()).cartaoEmAnalise, true);
+  assertEquals(liberacoes(db.chamadasRpc), []);
+  assertEquals(posts.length, 1, "nem o PIX cria cobrança nova");
+  assertEquals(db.linha.gateway_payment_id?.startsWith("verificando:"), true);
+  assertEquals(
+    paginasPedidas.filter((p) => p === "2").length,
+    0,
+    "decisão do desenho: não paginamos — a página 2 nunca é pedida",
+  );
+});
+
 // B2 (5ª revisão de risco, 26/09/2026), cenário Q4 do 5º revisor: a busca do
 // MP devolve, por engano (o filtro do lado do servidor não é verificado),
 // uma order APROVADA de OUTRO pedido — sem o filtro por `external_reference`
