@@ -10470,7 +10470,6 @@ Deno.test("handler cartão: itens, telefone, endereço e frete do pedido vão no
       unit_price: "50.00",
       quantity: 2,
       description: "Camiseta Azul",
-      external_code: "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b",
     },
     { title: "Frete", unit_price: "12.50", quantity: 1, description: "Frete" },
   ]);

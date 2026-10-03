@@ -2679,7 +2679,9 @@ Deno.test("montarCorpoCartaoOrders com comprador: manda items, payer.phone, paye
   const base = montarCorpoCartaoOrders(argsCartao({ valor: 149.9 }));
   const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 149.9, comprador: COMPRADOR_COMPLETO }));
 
-  assertEquals(corpo.items, COMPRADOR_COMPLETO.items);
+  // `external_code` que chegue no comprador NAO atravessa: o MP recusou o UUID
+  // do produto com 400 property_value em compra real (03/10/2026).
+  assertEquals(corpo.items, COMPRADOR_COMPLETO.items.map(({ external_code: _e, ...resto }) => resto));
   assertEquals(corpo.shipment, { address: COMPRADOR_COMPLETO.shipmentAddress });
   const payer = corpo.payer as Record<string, unknown>;
   assertEquals(payer.phone, { area_code: "11", number: "987654321" });
