@@ -1137,10 +1137,21 @@ type ResultadoOrder =
   };
 
 /**
- * Resumo do corpo de erro do MP SEM dado pessoal — só códigos e status. É o
- * que vai para o log quando quem chama pede `corpoNoLog: false` (cartão): o
- * corpo inteiro da recusa traz a order com o pagador (e-mail, CPF), que não
- * pode parar no log da função.
+ * Caminho de campo do corpo da order (`payer.phone.area_code`,
+ * `items[0].unit_price`...), a partir das raízes que nós mesmos mandamos. É a
+ * ÚNICA coisa que atravessa da frase de erro do MP para o log: a frase pode
+ * ecoar o valor recusado sem aspas (nome, rua, token) e pode citar o próprio
+ * campo COM aspas — lista do que é proibido falha nos dois sentidos, lista do
+ * que é permitido não (revisão Opus, 03/10/2026).
+ */
+const CAMINHO_DE_CAMPO_DA_ORDER =
+  /\b(?:payer|items|shipment|transactions|config|total_amount|external_reference|processing_mode|capture_mode|type)[a-z_.0-9[\]]*/g;
+
+/**
+ * Resumo do corpo de erro do MP SEM dado pessoal — códigos, status e os
+ * caminhos dos campos recusados. É o que vai para o log quando quem chama pede
+ * `corpoNoLog: false` (cartão): o corpo inteiro da recusa traz a order com o
+ * pagador (e-mail, CPF), que não pode parar no log da função.
  */
 function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): string {
   if (!corpo) return "(corpo não-JSON)";
@@ -1152,8 +1163,29 @@ function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): strin
     ? corpo.data as Record<string, unknown>
     : undefined;
   const pagamento = primeiroPagamentoDaOrder(data);
+  // `details`/`message` dizem QUAL campo o MP recusou (03/10/2026: um 400
+  // `property_value` nos campos de antifraude só mostrava o código, sem o
+  // campo). Da frase, só o caminho do campo sobrevive; o resto é descartado.
+  const frases = erros
+    .flatMap((e) => {
+      if (!e || typeof e !== "object") return [];
+      const { details, message } = e as Record<string, unknown>;
+      const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
+      return [...lista, message];
+    })
+    .filter((d): d is string => typeof d === "string");
+  const campos = [
+    ...new Set(
+      frases
+        .flatMap((f) => f.match(CAMINHO_DE_CAMPO_DA_ORDER) ?? [])
+        .map((c) => c.replace(/[.]+$/, ""))
+        // Índice de array tem 1-2 dígitos; 3+ seria valor colado no caminho.
+        .filter((c) => !/\d{3,}/.test(c)),
+    ),
+  ].slice(0, 6);
   return JSON.stringify({
     codigos,
+    ...(campos.length > 0 ? { campos } : {}),
     status: typeof data?.status === "string" ? data.status : undefined,
     status_detail: typeof data?.status_detail === "string" ? data.status_detail : undefined,
     pagamento_status_detail: typeof pagamento?.status_detail === "string"
