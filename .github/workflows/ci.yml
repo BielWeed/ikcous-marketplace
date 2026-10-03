@@ -366,10 +366,9 @@ jobs:
     # Distingue AUSENTE (o banco não tem) de INALCANÇÁVEL (tem, mas nenhum
     # papel da origem alcança) — defeitos de correção diferente.
     #
-    # FONTE DO CATÁLOGO (29/09/2026): o secret SUPABASE_ACCESS_TOKEN (o mesmo de
-    # aplicar-migrations e publicar-functions) lido pelo endpoint OFICIAL
-    # somente leitura da API de gestão — `POST /database/query/read-only`, o
-    # mesmo provado em diagnostico-pagamentos.yml. Antes a fonte era o secret
+    # FONTE DO CATÁLOGO (29/09/2026): um token da API de gestão do Supabase lido
+    # pelo endpoint OFICIAL somente leitura — `POST /database/query/read-only`
+    # (o token hoje é o da nota de 03/10 abaixo). Antes a fonte era o secret
     # DATABASE_URL, que apontava para o projeto pausado em 28/09 e deixou este
     # job vermelho em toda rodada por "tenant/user not found". O SQL e a
     # montagem do catálogo são idênticos nos dois transportes (constantes
@@ -377,8 +376,8 @@ jobs:
     # tests/db_check_objetos_do_codigo_test.ts); a comparação continua estrita.
     # DATABASE_URL segue valendo para rodar o script à mão, fora do CI.
     #
-    # O ref abaixo tem de ser o projeto da loja em produção (o mesmo de
-    # diagnostico-pagamentos.yml e prova-acesso.yml).
+    # O ref abaixo tem de ser o projeto da loja em produção (o mesmo do destino
+    # `ikcous-publicada` de publicar-functions.yml).
     #
     # 03/10/2026: a loja principal roda no projeto cafkrminfnokvgjqtkle (o
     # `ikcous-publicada` de publicar-functions.yml), em outra conta da Supabase;

@@ -24,8 +24,8 @@
 # CREDENCIAL: o segredo `SUPABASE_ACCESS_TOKEN` do repositório (GitHub →
 # Settings → Secrets and variables → Actions) é um token pessoal da conta do
 # Supabase (Account → Access Tokens). Ele vale para TODOS os projetos da
-# conta — por isso o destino é uma escolha fechada (loja | savy | almeida |
-# sandbox) e o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo
+# conta — por isso o destino é uma escolha fechada (ikcous-publicada | savy |
+# almeida | sandbox | loja) e o log imprime o ref antes de publicar. Savy usa SOMENTE o segredo
 # separado `SUPABASE_ACCESS_TOKEN_SAVY`, da conta que tem acesso àquele projeto.
 # Almeida (loja cliente, desde 30/09/2026) está no MESMO org Supabase da loja
 # principal e por isso usa o mesmo `SUPABASE_ACCESS_TOKEN` — nunca o da Savy.
@@ -56,17 +56,21 @@ on:
         type: string
       projeto:
         description: >-
-          Destino fechado: loja (DEK), savy (GNJ), almeida (CUE), ikcous-publicada (CAF)
-          ou sandbox (lof...)
+          Destino fechado: ikcous-publicada (CAF, a loja principal no ar), savy (GNJ),
+          almeida (CUE), sandbox (lof...) ou loja (DEK, projeto antigo, sem loja no ar)
         required: true
         type: choice
-        default: loja
+        # 03/10/2026: o padrão era `loja` (DEK), que a loja principal deixou de usar —
+        # quem disparasse sem escolher publicaria no banco errado. O padrão agora é o
+        # destino que está no ar, e ele é o mais travado (só as cinco financeiras e
+        # expected_sha): esquecer de escolher vira recusa, nunca deploy no lugar errado.
+        default: ikcous-publicada
         options:
-          - loja
+          - ikcous-publicada
           - savy
           - almeida
-          - ikcous-publicada
           - sandbox
+          - loja
       expected_sha:
         description: >-
           Savy e Almeida: SHA completo do commit aprovado, igual ao SHA deste run
