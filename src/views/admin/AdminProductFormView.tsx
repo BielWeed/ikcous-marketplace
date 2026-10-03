@@ -1773,6 +1773,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           await upsertVariants(productId, variantsWithSanitizedSku);
         }
       } else {
+        // Este formulário já criou o produto e a ida para a edição não
+        // aconteceu (o App descarta uma navegação a menos de 400 ms de outra).
+        // Um segundo addProduct seria a cópia que a trava existe para impedir.
+        if (produtoNovoJaCriadoRef.current) {
+          toast.error(
+            "Este produto já foi criado. Abra-o na lista de produtos para terminar a edição.",
+          );
+          setIsSubmitting(false);
+          return;
+        }
         const variantsWithSanitizedSku = formData.variants.map((v) => ({
           ...v,
           sku: v.sku

@@ -434,6 +434,21 @@ describe("AdminProductFormView — foto e grade não prendem a lojista em silên
       expect(mensagem).toMatch(/tentar de novo/i);
     });
 
+    it("se a ida para a edição se perde (o App descarta navegação seguida), um segundo Publicar NÃO cria outro produto", async () => {
+      await montarPreenchido();
+      await publicarComGradeFalha();
+      // onNavigate é um dublê: a tela continua montada, como quando o App
+      // descarta a navegação. O formulário ainda está preenchido.
+      await act(async () => {
+        botaoPublicar().click();
+        await new Promise((r) => setTimeout(r, 0));
+      });
+
+      expect(mocks.addProduct).toHaveBeenCalledTimes(1);
+      const [mensagem] = mocks.toastError.mock.calls.at(-1) as [string];
+      expect(mensagem).toContain("já foi criado");
+    });
+
     it("o rascunho muda para a chave de edição de p-1, a de produto novo some, e o auto-save não a recria", async () => {
       await montarPreenchido();
       // O auto-save de 1 s da última digitação ainda está agendado: é ele que
