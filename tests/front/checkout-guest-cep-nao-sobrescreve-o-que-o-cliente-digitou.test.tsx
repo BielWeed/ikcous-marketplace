@@ -134,6 +134,7 @@ describe("CheckoutView (convidado) — a busca de CEP não sobrescreve o que o c
   let hospedeiro: HTMLDivElement;
   let pendentes: Map<string, FetchResolver>;
   let fetchMock: ReturnType<typeof vi.fn>;
+  let armazem: Map<string, string>;
 
   async function montar() {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
@@ -171,7 +172,7 @@ describe("CheckoutView (convidado) — a busca de CEP não sobrescreve o que o c
     // dispara `onChange` (o valor não mudou) — a busca nunca sairia. Cada caso
     // é uma visita nova.
     globalThis.sessionStorage.clear();
-    const armazem = new Map<string, string>();
+    armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, v: string) => {
@@ -296,6 +297,45 @@ describe("CheckoutView (convidado) — a busca de CEP não sobrescreve o que o c
     expect(valor("guest-street")).toBe("Rua Nova");
     expect(valor("guest-neighborhood")).toBe("Bairro Novo");
     expect(valor("guest-state")).toBe("MG");
+  });
+
+  it("apagar e redigitar o último dígito do MESMO CEP não faz a rua corrigida à mão virar 'da busca'", async () => {
+    await montar();
+
+    await digitarEsperando("guest-cep", "01310-100");
+    await responder(CEP_PAULISTA, PAULISTA);
+    await digitarEsperando("guest-street", "Rua Do Cliente");
+
+    // Mesmo CEP, redigitado: o campo do CEP passa por 7 dígitos e volta aos 8.
+    await digitarEsperando("guest-cep", "01310-10");
+    await digitarEsperando("guest-cep", "01310-100");
+    // A segunda busca do mesmo CEP volta com a cidade escrita de outro jeito:
+    // o campo que o cliente NÃO tocou acompanha a busca, a rua dele não.
+    await responder(CEP_PAULISTA, {
+      ...PAULISTA,
+      localidade: "Sao Paulo (SP)",
+    });
+
+    expect(valor("guest-street")).toBe("Rua Do Cliente");
+    expect(valor("guest-city")).toBe("Sao Paulo (SP)");
+    expect(valor("guest-neighborhood")).toBe("Bela Vista");
+  });
+
+  it("CEP que nasce do localStorage (visita anterior): corrigir a rua e redigitar o MESMO CEP também não a apaga", async () => {
+    // O dono dos campos é o CEP da visita anterior, e nenhuma busca saiu ainda
+    // nesta sessão: só `cepAssociadoRef` sabe que redigitar o mesmo CEP não é
+    // CEP novo.
+    armazem.set("ikcous_last_shipping_cep", "01310-100");
+    await montar();
+    expect(valor("guest-cep")).toBe("01310-100");
+
+    await digitarEsperando("guest-street", "Rua Do Cliente");
+    await digitarEsperando("guest-cep", "01310-10");
+    await digitarEsperando("guest-cep", "01310-100");
+    await responder(CEP_PAULISTA, PAULISTA);
+
+    expect(valor("guest-street")).toBe("Rua Do Cliente");
+    expect(valor("guest-city")).toBe("São Paulo");
   });
 
   it("o campo editado e depois esvaziado antes da resposta é preenchido (não há valor do cliente a proteger)", async () => {

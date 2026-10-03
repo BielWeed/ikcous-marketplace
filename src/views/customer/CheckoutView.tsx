@@ -219,6 +219,12 @@ interface CheckoutFormValues {
 
 /** Os campos de endereço que a busca de CEP preenche (e o cliente pode editar). */
 type CampoDoEnderecoDoCep = "street" | "neighborhood" | "city" | "state";
+const CAMPOS_DO_ENDERECO_DO_CEP: readonly CampoDoEnderecoDoCep[] = [
+  "street",
+  "neighborhood",
+  "city",
+  "state",
+];
 
 // Ordem de tabulação do formulário. Usada para levar o foco ao PRIMEIRO campo
 // com erro quando o pedido é recusado por preenchimento (laudo de
@@ -1046,37 +1052,65 @@ export function CheckoutView({
   // A resposta só ESCREVE (preenche ou limpa) um campo que o cliente não
   // editou à mão desde o CEP atual. Campo editado e depois esvaziado não tem
   // valor do cliente a proteger: a busca o preenche.
-  const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
-    (endereco) => {
-      const cepDaResposta = cepEmBuscaRef.current;
-      const eraDeOutroCep =
-        cepAssociadoRef.current !== null &&
-        cepAssociadoRef.current !== cepDaResposta;
+  const escreverCampoDoCep = (campo: CampoDoEnderecoDoCep, valor: string) => {
+    const digitadoPeloCliente =
+      camposEditadosAMaoRef.current.has(campo) &&
+      (form.getValues(campo) ?? "").trim() !== "";
+    if (digitadoPeloCliente) return;
+    form.setValue(campo, valor, { shouldValidate: true });
+  };
 
-      const escrever = (campo: CampoDoEnderecoDoCep, valor: string) => {
-        const digitadoPeloCliente =
-          camposEditadosAMaoRef.current.has(campo) &&
-          (form.getValues(campo) ?? "").trim() !== "";
-        if (digitadoPeloCliente) return;
-        form.setValue(campo, valor, { shouldValidate: true });
-      };
+  const {
+    buscando: isSearchingCep,
+    buscar: buscarCep,
+    resultado: resultadoCep,
+  } = useBuscaCep((endereco) => {
+    const cepDaResposta = cepEmBuscaRef.current;
+    const eraDeOutroCep =
+      cepAssociadoRef.current !== null &&
+      cepAssociadoRef.current !== cepDaResposta;
 
-      if (endereco.logradouro) {
-        escrever("street", endereco.logradouro);
-      } else if (eraDeOutroCep) {
-        escrever("street", "");
+    const escrever = escreverCampoDoCep;
+
+    if (endereco.logradouro) {
+      escrever("street", endereco.logradouro);
+    } else if (eraDeOutroCep) {
+      escrever("street", "");
+    }
+    if (endereco.bairro) {
+      escrever("neighborhood", endereco.bairro);
+    } else if (eraDeOutroCep) {
+      escrever("neighborhood", "");
+    }
+    if (endereco.localidade) escrever("city", endereco.localidade);
+    if (endereco.uf) escrever("state", endereco.uf);
+
+    cepAssociadoRef.current = cepDaResposta;
+  });
+
+  // A busca do CEP NOVO falhou (não achou, demorou ou está fora do ar): o que
+  // estava em rua/bairro/cidade/UF veio da busca do CEP ANTERIOR (ou de um
+  // rascunho dele) e não pode seguir misturado com o CEP novo — o pedido
+  // sairia com o CEP B e a cidade A. Mesma limpeza do AddressForm (efeito de
+  // `resultadoCep`), por cima da regra de `escreverCampoDoCep`: o que o
+  // cliente digitou à mão neste CEP fica. Sem busca anterior aplicada
+  // (`null`) o que está na tela é só dele e nada se limpa. Depois de limpar o
+  // dono vira `null`, para a segunda falha do mesmo CEP não limpar de novo.
+  useEffect(() => {
+    if (!resultadoCep || resultadoCep.tipo === "achou") return;
+    if (
+      cepAssociadoRef.current !== null &&
+      cepAssociadoRef.current !== cepEmBuscaRef.current
+    ) {
+      for (const campo of CAMPOS_DO_ENDERECO_DO_CEP) {
+        escreverCampoDoCep(campo, "");
       }
-      if (endereco.bairro) {
-        escrever("neighborhood", endereco.bairro);
-      } else if (eraDeOutroCep) {
-        escrever("neighborhood", "");
-      }
-      if (endereco.localidade) escrever("city", endereco.localidade);
-      if (endereco.uf) escrever("state", endereco.uf);
-
-      cepAssociadoRef.current = cepDaResposta;
-    },
-  );
+      cepAssociadoRef.current = null;
+    }
+    // `escreverCampoDoCep` só lê refs e `form`, que é estável: o efeito
+    // depende apenas do desfecho da busca.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultadoCep]);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   // CARTÃO PELO APP (Fase 3.5, 26/09/2026): PIX e cartão pelo app são o
@@ -4580,11 +4614,19 @@ export function CheckoutView({
                           // de busca — ver o comentário equivalente em
                           // AddressForm.tsx.
                           if (limpo.length === 8) {
+                            // Mesmo CEP da última busca (ou dono dos campos
+                            // atuais): apagar e redigitar o último dígito
+                            // não pode fazer a rua que o cliente corrigiu
+                            // virar "da busca". CEP DIFERENTE: o que ele
+                            // digitou à mão valia para o CEP anterior (ou
+                            // antes deste) — a busca que sai agora volta a
+                            // poder preencher tudo.
+                            const mesmoCep =
+                              limpo === cepEmBuscaRef.current ||
+                              limpo === cepAssociadoRef.current;
                             cepEmBuscaRef.current = limpo;
-                            // CEP novo: o que o cliente digitou à mão valia
-                            // para o CEP ANTERIOR (ou antes deste) — a busca
-                            // que sai agora volta a poder preencher tudo.
-                            camposEditadosAMaoRef.current.clear();
+                            if (!mesmoCep)
+                              camposEditadosAMaoRef.current.clear();
                             await buscarCep(limpo);
                           }
                         }}
