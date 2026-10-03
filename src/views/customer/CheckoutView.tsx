@@ -217,6 +217,9 @@ interface CheckoutFormValues {
   cpf?: string;
 }
 
+/** Os campos de endereço que a busca de CEP preenche (e o cliente pode editar). */
+type CampoDoEnderecoDoCep = "street" | "neighborhood" | "city" | "state";
+
 // Ordem de tabulação do formulário. Usada para levar o foco ao PRIMEIRO campo
 // com erro quando o pedido é recusado por preenchimento (laudo de
 // acessibilidade 03/09, achado 1): o leitor de tela cai no campo já marcado
@@ -1009,11 +1012,40 @@ export function CheckoutView({
   // `buscarCep` — ver o comentário equivalente em AddressForm.tsx.
   const cepEmBuscaRef = useRef<string>("");
 
+  // Campos de endereço que o cliente digitou À MÃO desde que completou o CEP
+  // atual (zera quando ele completa outro CEP — ver o `onChange` do campo).
+  // A busca pode levar até ~8 s (3 provedores, num 3G) e, nesse tempo, o
+  // formulário continua aberto: rua, bairro, cidade e UF seguem editáveis
+  // (só o CEP trava). Sem esta marca, a resposta atrasada apagava o que o
+  // cliente acabou de digitar — o CI pegou isto depois que o #761 abriu a
+  // busca para toda loja ("expected 'São Paulo' to be 'Cidade Teste'").
+  // Só o `onChange` do usuário marca (via `register`); `setValue` da própria
+  // busca não passa por lá, então um campo PREENCHIDO pela busca anterior não
+  // conta como editado e a busca nova pode trocá-lo.
+  //
+  // O AddressForm (cadastro de conta) não precisa desta marca: enquanto a
+  // busca roda ele esconde os campos (`mostrarCampos` exige `!buscandoCep`),
+  // então não há digitação possível no meio da espera. Aqui o formulário fica
+  // aberto, e é a marca que faz o papel desse esconde.
+  const camposEditadosAMaoRef = useRef<Set<CampoDoEnderecoDoCep>>(new Set());
+
+  // `register` do campo de endereço, com a marca de "editado à mão".
+  const registrarCampoDoEndereco = (campo: CampoDoEnderecoDoCep) =>
+    form.register(campo, {
+      onChange: () => {
+        camposEditadosAMaoRef.current.add(campo);
+      },
+    });
+
   // Busca de CEP do checkout de convidado — mesma implementação do
   // AddressForm, atrás de useBuscaCep (#184 corrida, #185 timeout, #186
   // abort no desmonte). Campo que o ViaCEP não devolveu (CEP de localidade
   // única) só é limpo se pertencia a um CEP DIFERENTE do que acabou de
   // responder — ver AddressForm.tsx para o mecanismo completo.
+  //
+  // A resposta só ESCREVE (preenche ou limpa) um campo que o cliente não
+  // editou à mão desde o CEP atual. Campo editado e depois esvaziado não tem
+  // valor do cliente a proteger: a busca o preenche.
   const { buscando: isSearchingCep, buscar: buscarCep } = useBuscaCep(
     (endereco) => {
       const cepDaResposta = cepEmBuscaRef.current;
@@ -1021,26 +1053,26 @@ export function CheckoutView({
         cepAssociadoRef.current !== null &&
         cepAssociadoRef.current !== cepDaResposta;
 
+      const escrever = (campo: CampoDoEnderecoDoCep, valor: string) => {
+        const digitadoPeloCliente =
+          camposEditadosAMaoRef.current.has(campo) &&
+          (form.getValues(campo) ?? "").trim() !== "";
+        if (digitadoPeloCliente) return;
+        form.setValue(campo, valor, { shouldValidate: true });
+      };
+
       if (endereco.logradouro) {
-        form.setValue("street", endereco.logradouro, {
-          shouldValidate: true,
-        });
+        escrever("street", endereco.logradouro);
       } else if (eraDeOutroCep) {
-        form.setValue("street", "", { shouldValidate: true });
+        escrever("street", "");
       }
       if (endereco.bairro) {
-        form.setValue("neighborhood", endereco.bairro, {
-          shouldValidate: true,
-        });
+        escrever("neighborhood", endereco.bairro);
       } else if (eraDeOutroCep) {
-        form.setValue("neighborhood", "", { shouldValidate: true });
+        escrever("neighborhood", "");
       }
-      if (endereco.localidade)
-        form.setValue("city", endereco.localidade, {
-          shouldValidate: true,
-        });
-      if (endereco.uf)
-        form.setValue("state", endereco.uf, { shouldValidate: true });
+      if (endereco.localidade) escrever("city", endereco.localidade);
+      if (endereco.uf) escrever("state", endereco.uf);
 
       cepAssociadoRef.current = cepDaResposta;
     },
@@ -4549,6 +4581,10 @@ export function CheckoutView({
                           // AddressForm.tsx.
                           if (limpo.length === 8) {
                             cepEmBuscaRef.current = limpo;
+                            // CEP novo: o que o cliente digitou à mão valia
+                            // para o CEP ANTERIOR (ou antes deste) — a busca
+                            // que sai agora volta a poder preencher tudo.
+                            camposEditadosAMaoRef.current.clear();
                             await buscarCep(limpo);
                           }
                         }}
@@ -4607,7 +4643,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-street"
-                      {...form.register("street")}
+                      {...registrarCampoDoEndereco("street")}
                       placeholder="Nome da rua"
                       aria-invalid={
                         form.formState.errors.street ? true : undefined
@@ -4637,7 +4673,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-neighborhood"
-                      {...form.register("neighborhood")}
+                      {...registrarCampoDoEndereco("neighborhood")}
                       placeholder="Seu bairro"
                       aria-invalid={
                         form.formState.errors.neighborhood ? true : undefined
@@ -4667,7 +4703,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-city"
-                      {...form.register("city")}
+                      {...registrarCampoDoEndereco("city")}
                       placeholder="Cidade"
                       // Sem mensagem renderizada para este campo, mas o erro
                       // existe no schema (convidado): `aria-invalid` + foco
@@ -4687,7 +4723,7 @@ export function CheckoutView({
                     </label>
                     <input
                       id="guest-state"
-                      {...form.register("state")}
+                      {...registrarCampoDoEndereco("state")}
                       maxLength={2}
                       placeholder={
                         config.shippingCoverage === "national" ? "UF" : "MG"

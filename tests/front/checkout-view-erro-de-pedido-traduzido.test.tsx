@@ -14,6 +14,7 @@
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
 const createOrder = vi.fn();
 const clearCart = vi.fn();
@@ -184,6 +185,9 @@ describe("CheckoutView — o comprador para de ler o erro cru do banco ao fechar
     toastError.mockReset();
     alertSpy = vi.spyOn(globalThis, "alert").mockImplementation(() => {});
     const armazem = new Map<string, string>();
+    // Desde o #761 o CEP de 8 dígitos dispara a busca em toda loja: sem dublê,
+    // o teste iria à rede de verdade (ver duble-busca-de-cep.ts).
+    pararABuscaDeCep();
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
