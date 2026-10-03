@@ -147,8 +147,8 @@ Deno.test("itensDaOrder: linhas do pedido viram items da Orders API (unit_price 
     0,
   );
   assertEquals(itens, [
-    { title: "Camiseta Azul", unit_price: "49.90", quantity: 2, description: "Camiseta Azul", external_code: PRODUTO },
-    { title: "Bone", unit_price: "19.90", quantity: 1, description: "Bone", external_code: OUTRO_PRODUTO },
+    { title: "Camiseta Azul", unit_price: "49.90", quantity: 2, description: "Camiseta Azul" },
+    { title: "Bone", unit_price: "19.90", quantity: 1, description: "Bone" },
   ]);
 });
 
@@ -176,10 +176,10 @@ Deno.test("itensDaOrder: titulo ausente ganha 'Produto', e titulo comprido e' co
   assertEquals(b.description.length, 100);
 });
 
-Deno.test("itensDaOrder: external_code so com formato fechado — id esquisito nao vai", () => {
+Deno.test("itensDaOrder: external_code NUNCA vai (MP recusou o UUID do produto com 400 property_value em 03/10)", () => {
   const [a, b] = itensDaOrder(
     [
-      { product_id: "id com espaco", product_name: "A", quantity: 1, price: 10 },
+      { product_id: PRODUTO, product_name: "A", quantity: 1, price: 10 },
       { product_id: null, product_name: "B", quantity: 1, price: 10 },
     ],
     0,
@@ -429,7 +429,7 @@ Deno.test("camposDoComprador: copia SO as chaves conhecidas — chave estranha (
   );
   assertEquals(JSON.stringify(r).includes("12345678909"), false);
   assertEquals(JSON.stringify(r).includes('"cpf"'), false);
-  assertEquals(r.items?.[0].external_code, PRODUTO);
+  assertEquals("external_code" in (r.items?.[0] ?? {}), false);
   assertEquals(r.address?.state, "SP");
 });
 

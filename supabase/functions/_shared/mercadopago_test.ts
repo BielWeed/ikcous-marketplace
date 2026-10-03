@@ -2445,6 +2445,57 @@ Deno.test("criarOrder com corpoNoLog:false NÃO põe e-mail nem CPF do pagador n
   assertStringIncludes(texto, "402");
 });
 
+Deno.test("criarOrder com corpoNoLog:false loga QUAL campo o MP recusou no 400, com o valor mascarado", async () => {
+  const logados: unknown[][] = [];
+  const consoleErrorReal = console.error;
+  console.error = (...args: unknown[]) => {
+    logados.push(args);
+  };
+  try {
+    await criarOrder({
+      token: "t",
+      corpo: {},
+      chaveIdempotencia: "k",
+      fetchImpl: (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              errors: [{
+                code: "property_value",
+                message: "invalid value for cliente@exemplo.com",
+                details: [
+                  "payer.phone.number must match pattern, got '987654321'",
+                  "invalid value Rua Secreta is invalid for shipment.address.street_name",
+                  "payer.first_name Maria Aparecida contains invalid characters",
+                  "The property 'items[0].unit_price' has an invalid value '1'",
+                  `payer.identification.number ${CPF_TESTE} is invalid`,
+                  `transactions.payments[0].payment_method.token ${TOKEN_CARTAO} is invalid`,
+                ],
+              }],
+            }),
+            { status: 400 },
+          ),
+        )) as unknown as typeof fetch,
+      corpoNoLog: false,
+    });
+  } finally {
+    console.error = consoleErrorReal;
+  }
+  const texto = JSON.stringify(logados);
+  assertStringIncludes(texto, "property_value");
+  assertStringIncludes(texto, "payer.phone.number");
+  assertStringIncludes(texto, "shipment.address.street_name");
+  assertStringIncludes(texto, "payer.first_name");
+  assertStringIncludes(texto, "items[0].unit_price");
+  assertStringIncludes(texto, "transactions.payments[0].payment_method.token");
+  assertEquals(texto.includes("987654321"), false);
+  assertEquals(texto.includes("Rua Secreta"), false);
+  assertEquals(texto.includes("Maria"), false);
+  assertEquals(texto.includes(CPF_TESTE), false);
+  assertEquals(texto.includes(TOKEN_CARTAO), false);
+  assertEquals(texto.includes("cliente@exemplo.com"), false);
+});
+
 Deno.test("criarOrder SEM corpoNoLog (PIX) continua logando o corpo do erro como sempre — o conserto do cartão não muda o PIX", async () => {
   const logados: unknown[][] = [];
   const consoleErrorReal = console.error;
@@ -2628,7 +2679,9 @@ Deno.test("montarCorpoCartaoOrders com comprador: manda items, payer.phone, paye
   const base = montarCorpoCartaoOrders(argsCartao({ valor: 149.9 }));
   const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 149.9, comprador: COMPRADOR_COMPLETO }));
 
-  assertEquals(corpo.items, COMPRADOR_COMPLETO.items);
+  // `external_code` que chegue no comprador NAO atravessa: o MP recusou o UUID
+  // do produto com 400 property_value em compra real (03/10/2026).
+  assertEquals(corpo.items, COMPRADOR_COMPLETO.items.map(({ external_code: _e, ...resto }) => resto));
   assertEquals(corpo.shipment, { address: COMPRADOR_COMPLETO.shipmentAddress });
   const payer = corpo.payer as Record<string, unknown>;
   assertEquals(payer.phone, { area_code: "11", number: "987654321" });
