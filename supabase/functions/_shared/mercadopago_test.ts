@@ -18,6 +18,8 @@ import {
   consultarOrder,
   consultarPagamento,
   criarOrder,
+  deviceIdValido,
+  dividirNomeDoPagador,
   erro400EhDeDadoDoCartao,
   extrairDataExpiracaoOrder,
   extrairDesafio3ds,
@@ -2463,4 +2465,128 @@ Deno.test("criarOrder SEM corpoNoLog (PIX) continua logando o corpo do erro como
   assertEquals(logados.length, 1);
   assertEquals(logados[0][0], "mercadopago: orders recusou");
   assertEquals(logados[0][2], "detalhe-bruto-do-mp");
+});
+
+// ─── Device ID do comprador (antifraude do Mercado Pago, 03/10/2026) ─────────
+//
+// Um cartão real foi recusado com `high_risk` porque o antifraude não recebia
+// o Device ID. A Orders API pede o valor no cabeçalho `X-meli-session-id` do
+// POST /v1/orders. O valor vem do navegador do cliente (`window.
+// MP_DEVICE_SESSION_ID`, criado pelo security.js do MP): é ENTRADA NÃO
+// CONFIÁVEL que vira cabeçalho HTTP — formato fechado, nunca "o que veio".
+
+const DEVICE_ID_REAL = "armor.8c1f0e2b9d7a4c35b6e1f0a9d8c7b6a5.XyZ123abc.9f8e7d6c5b4a";
+
+Deno.test("deviceIdValido: aceita o formato do security.js (letras, dígitos, ponto, hífen, sublinhado)", () => {
+  for (const bom of [DEVICE_ID_REAL, "a", "abc-DEF_123.xyz", "x".repeat(512)]) {
+    assertEquals(deviceIdValido(bom), true, bom.slice(0, 20));
+  }
+});
+
+Deno.test("deviceIdValido: recusa o que não é string, vazio, grande demais e qualquer caractere fora do formato", () => {
+  const ruins: unknown[] = [
+    undefined,
+    null,
+    42,
+    {},
+    [],
+    "",
+    "x".repeat(513),
+    " abc",
+    "abc def",
+    "abc\r\nX-Evil: 1",
+    "abc\n",
+    "abc:def",
+    "abc/def",
+    "abç",
+    "<script>",
+  ];
+  for (const ruim of ruins) {
+    assertEquals(deviceIdValido(ruim), false, JSON.stringify(ruim));
+  }
+});
+
+function fetchQueCaptura() {
+  const capturadas: Array<{ url: string; init: RequestInit }> = [];
+  const fn = ((url: string, init: RequestInit) => {
+    capturadas.push({ url, init });
+    return Promise.resolve(
+      new Response(JSON.stringify({ id: "ORDTST01DEVICE", status: "processed", status_detail: "accredited" }), {
+        status: 201,
+      }),
+    );
+  }) as unknown as typeof fetch;
+  return { fn, capturadas };
+}
+
+Deno.test("criarOrder com deviceId válido manda X-meli-session-id além da chave de idempotência", async () => {
+  const { fn, capturadas } = fetchQueCaptura();
+  const r = await criarOrder({
+    token: "token-de-teste",
+    corpo: { total_amount: "50.00" },
+    chaveIdempotencia: "k-1",
+    fetchImpl: fn,
+    deviceId: DEVICE_ID_REAL,
+  });
+  assertEquals(r.ok, true);
+  const headers = capturadas[0].init.headers as Record<string, string>;
+  assertEquals(headers["X-meli-session-id"], DEVICE_ID_REAL);
+  // O que já existia não muda: o cabeçalho novo só se soma.
+  assertEquals(headers["X-Idempotency-Key"], "k-1");
+  assertEquals(headers.Authorization, ["Bearer", "token-de-teste"].join(" "));
+  assertEquals(headers["Content-Type"], "application/json");
+});
+
+Deno.test("criarOrder sem deviceId (PIX, ou cliente sem o valor) NÃO manda o cabeçalho — nem vazio", async () => {
+  const { fn, capturadas } = fetchQueCaptura();
+  await criarOrder({ token: "t", corpo: {}, chaveIdempotencia: "k-2", fetchImpl: fn });
+  const headers = capturadas[0].init.headers as Record<string, string>;
+  assertEquals("X-meli-session-id" in headers, false);
+  assertEquals(Object.keys(headers).sort(), ["Authorization", "Content-Type", "X-Idempotency-Key"]);
+});
+
+Deno.test("criarOrder com deviceId INVÁLIDO ignora em vez de mandar (defesa em profundidade contra cabeçalho forjado) e a cobrança segue", async () => {
+  for (const ruim of ["", "abc\r\nX-Evil: 1", "com espaço", "x".repeat(513)]) {
+    const { fn, capturadas } = fetchQueCaptura();
+    const r = await criarOrder({ token: "t", corpo: {}, chaveIdempotencia: "k-3", fetchImpl: fn, deviceId: ruim });
+    assertEquals(r.ok, true);
+    const headers = capturadas[0].init.headers as Record<string, string>;
+    assertEquals("X-meli-session-id" in headers, false, JSON.stringify(ruim));
+    assertEquals(Object.keys(headers).includes("X-Evil"), false);
+  }
+});
+
+Deno.test("dividirNomeDoPagador: primeiro nome vira first_name e o RESTO vira last_name; nome único não inventa sobrenome", () => {
+  assertEquals(dividirNomeDoPagador("Maria da Silva Souza"), { first_name: "Maria", last_name: "da Silva Souza" });
+  assertEquals(dividirNomeDoPagador("  João   Pereira "), { first_name: "João", last_name: "Pereira" });
+  assertEquals(dividirNomeDoPagador("Maria"), { first_name: "Maria" });
+  assertEquals(dividirNomeDoPagador("APRO"), { first_name: "APRO" });
+  assertEquals(dividirNomeDoPagador("Ana-Clara D'Ávila Jr."), { first_name: "Ana-Clara", last_name: "D'Ávila Jr." });
+});
+
+Deno.test("dividirNomeDoPagador: ausente, vazio ou com cara de lixo (dígito, símbolo, e-mail, comprido demais) NÃO manda nome nenhum", () => {
+  for (const ruim of [undefined, null, 42, "", "   ", "Maria 2", "maria@exemplo.com", "<b>Maria</b>", "Maria\nSilva", "x".repeat(101)]) {
+    assertEquals(dividirNomeDoPagador(ruim), {}, JSON.stringify(ruim));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders com nome completo manda first_name e last_name — e nada além disso no payer", () => {
+  const corpo = montarCorpoCartaoOrders(argsCartao({ nome: "Maria da Silva" }));
+  assertEquals(corpo.payer, {
+    email: "cliente@exemplo.com",
+    first_name: "Maria",
+    last_name: "da Silva",
+    identification: { type: "CPF", number: CPF_TESTE },
+  });
+  // Nada de items, telefone, endereço nem additional_info nesta entrega.
+  for (const campo of ["items", "additional_info", "phone", "address"]) {
+    assertEquals(campo in corpo, false, campo);
+    assertEquals(campo in (corpo.payer as Record<string, unknown>), false, campo);
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders com nome imprestável não manda nome e NÃO lança — o nome nunca bloqueia a cobrança", () => {
+  const corpo = montarCorpoCartaoOrders(argsCartao({ nome: "Maria 2" }));
+  assertEquals("first_name" in (corpo.payer as Record<string, unknown>), false);
+  assertEquals("last_name" in (corpo.payer as Record<string, unknown>), false);
 });
