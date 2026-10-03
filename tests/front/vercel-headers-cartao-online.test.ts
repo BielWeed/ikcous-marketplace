@@ -41,10 +41,13 @@ describe("CSP libera o Card Payment Brick e o desafio 3-D Secure", () => {
   // desta loja: com o host só em script-src o valor nasce; sem ele, o script é
   // bloqueado; nenhuma violação de connect-src/img-src/frame-src — o frame-src
   // já cobre www por `*.mercadopago.com`, e o api.mercadopago.com que o script
-  // chama já está no connect-src).
-  it("script-src libera o security.js do Mercado Pago (Device ID) SEM abrir 'unsafe-inline'", () => {
+  // chama já está no connect-src). Revisão Opus do 02985934: liberar só o
+  // CAMINHO exato do arquivo, não a origem inteira — medido de novo com a CSP
+  // da loja e só este caminho em script-src: o ID nasce igual (231 chars).
+  it("script-src libera SÓ o arquivo security.js do Mercado Pago (Device ID), SEM 'unsafe-inline'", () => {
     const scripts = diretiva(csp, "script-src");
-    expect(scripts).toContain("https://www.mercadopago.com");
+    expect(scripts).toContain("https://www.mercadopago.com/v2/security.js");
+    expect(scripts).not.toContain("https://www.mercadopago.com");
     expect(scripts).not.toContain("'unsafe-inline'");
   });
 

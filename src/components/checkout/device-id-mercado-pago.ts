@@ -8,7 +8,10 @@
  * SDK v2 NÃO o cria aqui: o script de "device profiling" que ele injeta é
  * INLINE e a CSP da loja o barra (`script-src-elem inline`) — medido em
  * 03/10/2026. Então carregamos o `security.js` à parte, com `view="checkout"`,
- * e liberamos só `https://www.mercadopago.com` em `script-src` (vercel.json).
+ * e liberamos só o CAMINHO exato dele (`SECURITY_JS_URL`) em `script-src`
+ * (vercel.json). Limite conhecido: o widget de profiling que o security.js
+ * injeta também é inline e continua barrado — o MP recebe o ID, não a
+ * impressão digital completa; destravar isso exige nonce por requisição.
  *
  * Três regras que não se negociam:
  * - LAZY: só quando o formulário do cartão vai ser montado. O boot do app é
