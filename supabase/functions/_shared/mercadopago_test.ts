@@ -2590,3 +2590,119 @@ Deno.test("montarCorpoCartaoOrders com nome imprestável não manda nome e NÃO 
   assertEquals("first_name" in (corpo.payer as Record<string, unknown>), false);
   assertEquals("last_name" in (corpo.payer as Record<string, unknown>), false);
 });
+
+// ─── Dados do comprador e do produto no cartão (03/10/2026) ──────────────────
+//
+// O antifraude do MP recusou duas compras reais de teste vendo a venda como
+// "Produto sem nome". `comprador` (opcional) leva itens, telefone e endereço.
+// O que erra caro e se prova aqui: a soma dos itens NUNCA diverge do total, o
+// lixo NUNCA vira campo torto nem lança, e SEM `comprador` o corpo é o de sempre.
+
+const COMPRADOR_COMPLETO = {
+  items: [
+    { title: "Camiseta Azul", unit_price: "49.90", quantity: 2, description: "Camiseta Azul", external_code: "prod-1" },
+    { title: "Frete", unit_price: "50.10", quantity: 1, description: "Frete" },
+  ],
+  phone: { area_code: "11", number: "987654321" },
+  address: {
+    zip_code: "06233903",
+    street_name: "Rua Teste",
+    street_number: "3003",
+    neighborhood: "Bonfim",
+    city: "Osasco",
+    state: "SP",
+    complement: "Apto 303",
+  },
+  shipmentAddress: {
+    zip_code: "06233903",
+    street_name: "Rua Teste",
+    street_number: "3003",
+    neighborhood: "Bonfim",
+    city: "Osasco",
+    state: "SP",
+    complement: "Apto 303",
+  },
+};
+
+Deno.test("montarCorpoCartaoOrders com comprador: manda items, payer.phone, payer.address e shipment.address no formato da doc — e o resto do corpo intacto", () => {
+  const base = montarCorpoCartaoOrders(argsCartao({ valor: 149.9 }));
+  const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 149.9, comprador: COMPRADOR_COMPLETO }));
+
+  assertEquals(corpo.items, COMPRADOR_COMPLETO.items);
+  assertEquals(corpo.shipment, { address: COMPRADOR_COMPLETO.shipmentAddress });
+  const payer = corpo.payer as Record<string, unknown>;
+  assertEquals(payer.phone, { area_code: "11", number: "987654321" });
+  assertEquals(payer.address, COMPRADOR_COMPLETO.address);
+  // Tudo que ja existia segue igual: o comprador SO soma.
+  const { items: _i, shipment: _s, payer: payerComDados, ...restoCom } = corpo;
+  const { payer: payerBase, ...restoBase } = base;
+  assertEquals(restoCom, restoBase);
+  const { phone: _p, address: _a, ...payerSemExtras } = payerComDados as Record<string, unknown>;
+  assertEquals(payerSemExtras, payerBase);
+  // Nenhum campo fora do esquema de create-order.
+  assertEquals("additional_info" in corpo, false);
+});
+
+Deno.test("montarCorpoCartaoOrders: SOMA DOS ITENS DIVERGENTE do total -> items NAO vai (um 400 derrubaria todo cartao), o resto vai", () => {
+  // 149.90 de itens contra 100.00 de total (pedido com desconto, por exemplo).
+  const corpo = montarCorpoCartaoOrders(argsCartao({ valor: 100, comprador: COMPRADOR_COMPLETO }));
+  assertEquals("items" in corpo, false);
+  assertEquals((corpo.payer as Record<string, unknown>).phone, { area_code: "11", number: "987654321" });
+  assertEquals(corpo.shipment, { address: COMPRADOR_COMPLETO.shipmentAddress });
+  // Um centavo de diferenca tambem derruba.
+  assertEquals("items" in montarCorpoCartaoOrders(argsCartao({ valor: 149.91, comprador: COMPRADOR_COMPLETO })), false);
+  assertEquals("items" in montarCorpoCartaoOrders(argsCartao({ valor: 149.89, comprador: COMPRADOR_COMPLETO })), false);
+});
+
+Deno.test("montarCorpoCartaoOrders: o total arredondado (10.005 -> duas casas) e' o que a soma compara", () => {
+  const comprador = { items: [{ title: "A", unit_price: "10.01", quantity: 1, description: "A" }] };
+  assertEquals("items" in montarCorpoCartaoOrders(argsCartao({ valor: 10.005 + 0.001, comprador })), true);
+});
+
+Deno.test("montarCorpoCartaoOrders: comprador ausente, vazio ou LIXO devolve o corpo de sempre — sem lancar", () => {
+  const base = montarCorpoCartaoOrders(argsCartao());
+  for (
+    const comprador of [
+      undefined,
+      null,
+      {},
+      "texto",
+      42,
+      [],
+      { items: "x", phone: 1, address: [], shipmentAddress: null },
+      { items: [{}], phone: { area_code: "99" }, address: { zip_code: "abc" } },
+    ]
+  ) {
+    assertEquals(montarCorpoCartaoOrders(argsCartao({ comprador })), base, JSON.stringify(comprador));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders: comprador com chave estranha (cpf) nao atravessa para o corpo", () => {
+  const corpo = montarCorpoCartaoOrders(
+    argsCartao({
+      valor: 149.9,
+      comprador: {
+        ...COMPRADOR_COMPLETO,
+        phone: { area_code: "11", number: "987654321", cpf: "99999999999" },
+        cpf: "99999999999",
+      },
+    }),
+  );
+  assertEquals(JSON.stringify(corpo).includes("99999999999"), false);
+});
+
+Deno.test("montarCorpoPixOrders: o PIX NAO ganha items, shipment, phone nem address — o escopo e' so o cartao", () => {
+  const corpo = montarCorpoPixOrders({
+    valor: 149.9,
+    email: "cliente@exemplo.com",
+    orderId: PEDIDO_CARTAO,
+    expiracao: "PT30M",
+    comprador: COMPRADOR_COMPLETO,
+  } as never);
+  for (const campo of ["items", "shipment", "additional_info"]) {
+    assertEquals(campo in corpo, false, campo);
+  }
+  for (const campo of ["phone", "address"]) {
+    assertEquals(campo in (corpo.payer as Record<string, unknown>), false, campo);
+  }
+});

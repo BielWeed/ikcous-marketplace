@@ -110,6 +110,7 @@ import {
   tokenDeCartaoValido,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
+import { lerDadosDoComprador } from "../_shared/dados-antifraude.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
 // chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
@@ -2657,9 +2658,18 @@ async function handler(
       emailDoToken(req.headers.get("Authorization")),
     ].find(emailValido) ?? "sem-email@ikcous.com.br";
 
+    // Itens, telefone e endereço do comprador para o antifraude do MP (duas
+    // compras reais foram recusadas com a venda aparecendo como "Produto sem
+    // nome"). MELHOR ESFORÇO por construção: três leituras à parte do SELECT
+    // do pedido, com teto de tempo; erro, exceção ou demora devolvem `{}` e a
+    // cobrança segue com o corpo de sempre. Nunca lança e nunca loga o dado.
+    // Só o CARTÃO: o PIX não passa por aqui.
+    const comprador = await lerDadosDoComprador(supabase, pedido);
+
     let corpo: Record<string, unknown>;
     try {
       corpo = montarCorpoCartaoOrders({
+        comprador,
         orderId: pedido.id,
         valor: Number(pedido.total),
         email: emailPagadorSandbox ?? emailDoCartao,
