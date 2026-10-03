@@ -602,7 +602,12 @@ async function resolverVagaEmVerificacao(args: {
   // não a cada reconsulta.
   idSentinela: string;
   fetchImpl?: typeof fetch;
-}): Promise<{ ok: true; order: Record<string, unknown> | null } | { ok: false; buscaFalhou: boolean }> {
+}): Promise<
+  // `ordens` (P7, 02/10/2026): a lista da busca, para quem chama conferir as
+  // IRMÃS da order escolhida (`estornadaComIrmaNaoMorta`, mais abaixo).
+  | { ok: true; order: Record<string, unknown> | null; ordens: Record<string, unknown>[] }
+  | { ok: false; buscaFalhou: boolean }
+> {
   const busca = await buscarOrdersDoPedido({
     token: args.token,
     pedidoId: args.pedidoId,
@@ -615,8 +620,8 @@ async function resolverVagaEmVerificacao(args: {
   const limiteInferiorMs = limiteInferiorDoSentinela(args.idSentinela);
   const resolucao = resolverSentinela(busca.orders, limiteInferiorMs);
   if (resolucao === null) return { ok: false, buscaFalhou: false };
-  if (resolucao.acao === "liberar") return { ok: true, order: null };
-  return { ok: true, order: resolucao.order };
+  if (resolucao.acao === "liberar") return { ok: true, order: null, ordens: busca.orders };
+  return { ok: true, order: resolucao.order, ordens: busca.orders };
 }
 
 /**
@@ -909,6 +914,48 @@ function orderMortaPeloPar(ordem: Record<string, unknown>): boolean {
 }
 
 /**
+ * Os dois `status` raiz de `STATUS_ORDER_MORTOS` (`_shared/mercadopago.ts`)
+ * que são dinheiro DEVOLVIDO (estorno, contestação), não recusa — os outros
+ * quatro (failed/canceled/cancelled/expired) já são `orderMortaPeloPar`.
+ */
+const STATUS_ORDER_ESTORNADA = new Set(["refunded", "charged_back"]);
+
+/**
+ * Order morta por ESTORNO ou CONTESTAÇÃO: `status` raiz em
+ * `STATUS_ORDER_ESTORNADA`, ou o par `processed:partially_refunded` — raiz
+ * `processed`, que `resolverSentinela` escolhe como "aprovada".
+ */
+function orderMortaPorEstorno(ordem: Record<string, unknown>): boolean {
+  return STATUS_ORDER_ESTORNADA.has(String(ordem.status ?? "")) ||
+    String(ordem.status_detail ?? "") === "partially_refunded";
+}
+
+/**
+ * P7 (revisor Opus, 02/10/2026): `resolverSentinela` pode devolver uma order
+ * ESTORNADA/CONTESTADA (`orderMortaPorEstorno`) — por ser `processed`
+ * (`partially_refunded`) ou por ser `cartao[0]` ao lado de uma de status
+ * desconhecido — com uma IRMÃ de cartão NÃO-morta na mesma busca (viva, paga
+ * ou desconhecida; morta = a régua de `STATUS_ORDER_MORTOS`). Adotar a
+ * estornada tirava a vaga da irmã: quando ela aprovava, o webhook já não
+ * adotava (`cartao_divergente`, `webhook-mercadopago`) e o pedido não se
+ * confirmava. Quem chama NÃO adota nem libera: o sentinela fica, e a resposta
+ * é `sem_registro` — o mesmo desfecho de `orderMortaPeloPar`.
+ */
+function estornadaComIrmaNaoMorta(
+  ordem: Record<string, unknown>,
+  ordens: Record<string, unknown>[],
+): boolean {
+  if (!orderMortaPorEstorno(ordem)) return false;
+  const idDaEstornada = String(ordem.id ?? "");
+  return ordens.some((irma) =>
+    orderEhDeCartao(irma) &&
+    String(irma.id ?? "") !== idDaEstornada &&
+    !orderMortaPeloPar(irma) &&
+    !orderMortaPorEstorno(irma)
+  );
+}
+
+/**
  * Troca o SENTINELA pela order que a busca da chave encontrou (Ponto 1,
  * Achado S3: a forma e as parcelas vêm da order ENCONTRADA, nunca de um
  * corpo de cartão). CAS pelo sentinela EXATO — se a vaga mudou (webhook,
@@ -1021,6 +1068,12 @@ async function verificarVagaDoPedido(args: {
         // Morta com uma desconhecida ao lado (`orderMortaPeloPar`, acima):
         // nem adota nem libera — a releitura responde `sem_registro`.
         console.warn("criar-pagamento: verificar — busca devolveu order morta com status desconhecido ao lado; sentinela mantido", {
+          orderId: pedidoId,
+        });
+      } else if (estornadaComIrmaNaoMorta(resolucao.order, resolucao.ordens)) {
+        // P7: estornada com irmã não-morta ao lado (`estornadaComIrmaNaoMorta`,
+        // acima): nem adota nem libera — a releitura responde `sem_registro`.
+        console.warn("criar-pagamento: verificar — busca devolveu order estornada com irmã não-morta ao lado; sentinela mantido", {
           orderId: pedidoId,
         });
       } else {
@@ -1610,6 +1663,17 @@ async function handler(
         // ZERO POST.
         console.warn(
           "criar-pagamento: busca devolveu order morta com status desconhecido ao lado — sentinela mantido, nenhum POST",
+          { orderId: pedido.id },
+        );
+      } else if (
+        resolucao.ok && resolucao.order !== null && estornadaComIrmaNaoMorta(resolucao.order, resolucao.ordens)
+      ) {
+        // P7: order ESTORNADA com uma irmã não-morta ao lado
+        // (`estornadaComIrmaNaoMorta`) — não adota e não libera; o bloco do
+        // C3, logo abaixo, responde `sem_registro` (cartão) ou
+        // `cartaoEmAnalise` (PIX): ZERO POST.
+        console.warn(
+          "criar-pagamento: busca devolveu order estornada com irmã não-morta ao lado — sentinela mantido, nenhum POST",
           { orderId: pedido.id },
         );
       } else if (resolucao.ok && resolucao.order !== null) {

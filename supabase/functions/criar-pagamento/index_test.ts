@@ -32,7 +32,7 @@ import {
 // (achado #1, 8ª rodada de risco, 26/09/2026): prova, num nível abaixo do
 // handler, que o limite PRESERVADO ainda libera quando a order que ele
 // protege aparece morta.
-import { limiteInferiorDoSentinela, resolverSentinela, sentinelaDaChave } from "../_shared/mercadopago.ts";
+import { limiteInferiorDoSentinela, resolverSentinela, sentinelaDaChave, vagaEmVerificacao } from "../_shared/mercadopago.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes do fim deste arquivo — fixture escrito à mão não
 // provaria que a function decifra de verdade. Desde a tarefa mp-6 o fixture
@@ -9768,4 +9768,400 @@ Deno.test("C2 verificar (repetição): duas chamadas seguidas com a order morta 
   assertEquals(r2.corpo, { verificacao: "livre", paymentId: null, expiraEm: PRAZO_BASE });
   assertEquals(db.chamadasRpc.length, 1);
   assertEquals(db.linha.tentativas_de_pagamento, 1);
+});
+
+// ═══ P7 (scratch, 02/10/2026) — order ESTORNADA/CONTESTADA na busca do sentinela ═══
+// Defeito (revisor Opus, SCR/revisor-opus-int-real/sonda-p7.txt; P4 em
+// SCR/composicao-c2-paginacao/depois-sondas*.txt): `resolverSentinela`
+// (_shared) devolve a order morta por estorno/contestação quando ela é
+// `processed` (`processed:partially_refunded` — "aprovada" vence) ou quando é
+// `cartao[0]` ao lado de uma de status desconhecido. Adotá-la no sentinela
+// tira a vaga da irmã viva: quando a irmã aprova, o webhook não adota mais
+// (`cartao_divergente`) e o pedido não se confirma sozinho.
+// Regra: a order morta por estorno/contestação NUNCA é adotada quando a busca
+// traz uma irmã de cartão não-morta — a resposta é a inconclusiva
+// (`sem_registro`), sentinela mantido, zero RPC, zero POST.
+
+const ID_C0_ESTORNADA_P7 = "ORDTST04C0ESTORNADAP70000000";
+const ID_C1_IRMA_P7 = "ORDTST04C1IRMAP7000000000000";
+
+type ParP7 = readonly [string, string];
+
+const PARCIAL_P7: ParP7 = ["processed", "partially_refunded"];
+const ESTORNO_TOTAL_P7: ParP7 = ["refunded", "refunded"];
+const CONTESTADA_P7: ParP7 = ["charged_back", "settled"];
+const VIVA_P7: ParP7 = ["processing", "in_process"];
+const DESCONHECIDA_P7: ParP7 = ["authorized", "authorized"];
+const APROVADA_P7: ParP7 = ["processed", "accredited"];
+
+function buscaP7(c0: ParP7, c1: ParP7 | null, opts: { c1Primeiro?: boolean; c0ForaDaJanela?: boolean } = {}) {
+  return (limite: number): Array<Record<string, unknown>> => {
+    const criadaC0 = opts.c0ForaDaJanela ? limite - 30 * 60_000 : limite + 60_000;
+    const a = { ...cartaoC2(ID_C0_ESTORNADA_P7, c0[0], c0[1]), date_created: new Date(criadaC0).toISOString() };
+    if (c1 === null) return [a];
+    const b = { ...cartaoC2(ID_C1_IRMA_P7, c1[0], c1[1]), date_created: new Date(limite + 120_000).toISOString() };
+    return opts.c1Primeiro ? [b, a] : [a, b];
+  };
+}
+
+const SEM_REGISTRO_P7 = {
+  verificacao: "sem_registro",
+  paymentId: null,
+  expiraEm: PRAZO_BASE,
+  canceladoAutomaticamenteAte: CANCELAMENTO_AUTOMATICO_BASE,
+};
+
+/**
+ * O webhook (webhook-mercadopago/index.ts ~2031) quando a IRMÃ aprova: adota
+ * só se a vaga estiver vazia ou com sentinela; senão é `cartao_divergente`.
+ * Dublê fiel ao CAS de lá (mesma condição), escrevendo direto na linha.
+ */
+function webhookAprovaIrmaP7(db: { linha: Record<string, unknown> }): "adotou" | "ja_era" | "divergente" {
+  const vaga = db.linha.gateway_payment_id;
+  if (vaga === null || vaga === undefined || (typeof vaga === "string" && vagaEmVerificacao(vaga))) {
+    db.linha.gateway_payment_id = ID_C1_IRMA_P7;
+    db.linha.metodo_online = "credito";
+    return "adotou";
+  }
+  return vaga === ID_C1_IRMA_P7 ? "ja_era" : "divergente";
+}
+
+const ESCRITAS_DA_ESTORNADA = (escritas: Array<Record<string, unknown>>) =>
+  escritas.filter((e) => e.gateway_payment_id === ID_C0_ESTORNADA_P7).length;
+
+// Os estados em que `resolverSentinela` devolve a ESTORNADA com uma irmã
+// não-morta ao lado — o defeito.
+const DEFEITO_P7: Array<{ nome: string; c0: ParP7; c1: ParP7; c1Primeiro?: boolean }> = [
+  { nome: "(b) [c0 processed:partially_refunded, c1 processing:in_process]", c0: PARCIAL_P7, c1: VIVA_P7 },
+  { nome: "(b) [c1 processing:in_process, c0 processed:partially_refunded] (ordem invertida)", c0: PARCIAL_P7, c1: VIVA_P7, c1Primeiro: true },
+  { nome: "(c) [c0 refunded:refunded, c1 'authorized']", c0: ESTORNO_TOTAL_P7, c1: DESCONHECIDA_P7 },
+  { nome: "(c) [c0 charged_back:settled, c1 'authorized']", c0: CONTESTADA_P7, c1: DESCONHECIDA_P7 },
+  { nome: "(c) [c0 processed:partially_refunded, c1 'authorized']", c0: PARCIAL_P7, c1: DESCONHECIDA_P7 },
+  { nome: "(c) [c0 processed:partially_refunded, c1 'em_fila_xyz:qualquer']", c0: PARCIAL_P7, c1: ["em_fila_xyz", "qualquer"] },
+  { nome: "(h) [c0 processed:partially_refunded, c1 processed:accredited] (irmã PAGA)", c0: PARCIAL_P7, c1: APROVADA_P7 },
+];
+
+for (const caso of DEFEITO_P7) {
+  Deno.test(`P7 verificar ${caso.nome} -> NÃO adota a estornada: 'sem_registro', sentinela mantido, 0 RPC, 0 POST`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({
+      orders: buscaP7(caso.c0, caso.c1, { c1Primeiro: caso.c1Primeiro }),
+    });
+    const r = await verificar(contado, mp);
+
+    assertEquals(db.linha.gateway_payment_id, sentinela, "a estornada foi adotada no lugar do sentinela");
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, SEM_REGISTRO_P7);
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.tentativas_de_pagamento, 0);
+    assertEquals(mp.posts, []);
+
+    // A irmã aprova depois: o webhook ainda consegue adotá-la.
+    assertEquals(webhookAprovaIrmaP7(db), "adotou");
+  });
+}
+
+// (d) O caminho de COBRANÇA: o cliente reenvia o cartão (e depois pede PIX)
+// no mesmo estado.
+for (const caso of DEFEITO_P7) {
+  Deno.test(`P7 cobrança (d) ${caso.nome}: cartão reenviado -> 0 POST, 0 RPC, sentinela mantido, 'sem_registro'; PIX -> 409 cartaoEmAnalise`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({
+      orders: buscaP7(caso.c0, caso.c1, { c1Primeiro: caso.c1Primeiro }),
+    });
+    const r = await emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao()));
+
+    assertEquals(mp.posts, [], "POST sobre o sentinela com a estornada na busca");
+    assertEquals(db.linha.gateway_payment_id, sentinela, "a estornada foi adotada no lugar do sentinela");
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+    assertEquals(escritas.length, 0);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.tentativas_de_pagamento, 0);
+
+    const pix = await emSilencio(() => chamar(contado, mp as unknown as MpVivo, PEDIDO_PIX));
+    assertEquals(pix.status, 409, JSON.stringify(pix.corpo));
+    assertEquals(pix.corpo.cartaoEmAnalise, true);
+    assertEquals(mp.posts, []);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(db.linha.gateway_payment_id, sentinela);
+    assertEquals(webhookAprovaIrmaP7(db), "adotou");
+  });
+}
+
+// (a)/(b) como escritos no brief, com a irmã VIVA CONHECIDA (`processing`) e
+// a estornada com `status` raiz `refunded`/`charged_back`: `resolverSentinela`
+// (_shared/mercadopago.ts ~1630) escolhe a VIVA, nunca a estornada — a regra
+// ("nunca adotar a estornada") não dispara, e adotar a viva é o que deixa o
+// webhook confirmar quando ela aprovar. Trava: nunca a estornada, nunca RPC,
+// nunca POST.
+for (const c0 of [ESTORNO_TOTAL_P7, CONTESTADA_P7]) {
+  for (const verbo of ["verificar", "cobrança"] as const) {
+    Deno.test(`P7 (a)/(b) ${verbo} [c0 ${c0.join(":")}, c1 processing:in_process] -> adota a VIVA (c1), nunca a estornada; 0 RPC, 0 POST`, async () => {
+      Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+      const { db, contado, escritas, mp } = cenarioSentinelaC2({ orders: buscaP7(c0, VIVA_P7) });
+      const r = verbo === "verificar"
+        ? await verificar(contado, mp)
+        : await emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao()));
+
+      assertEquals(ESCRITAS_DA_ESTORNADA(escritas), 0, "tentou gravar a estornada");
+      assertEquals(db.linha.gateway_payment_id, ID_C1_IRMA_P7);
+      assertEquals(r.status, 200, JSON.stringify(r.corpo));
+      if (verbo === "verificar") {
+        assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_C1_IRMA_P7, expiraEm: PRAZO_BASE });
+      } else {
+        assertEquals(r.corpo.paymentId, ID_C1_IRMA_P7);
+        assertEquals(r.corpo.statusPagamento, "aguardando");
+      }
+      assertEquals(db.chamadasRpc.length, 0);
+      assertEquals(mp.posts, []);
+      assertEquals(webhookAprovaIrmaP7(db), "ja_era");
+    });
+  }
+}
+
+// (e) CONTROLES — a estornada SOZINHA (sem irmã): o comportamento de hoje.
+Deno.test("P7 controle (e): [c0 refunded:refunded] SOZINHA, dentro da janela, chave atual -> todas mortas: libera pela RPC com o sentinela EXATO, 'recusado', 0 POST", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({ orders: buscaP7(ESTORNO_TOTAL_P7, null) });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "recusado", paymentId: null, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc, [
+    { nome: "liberar_cobranca_do_pedido", args: { p_order_id: UUID, p_gateway_payment_id: sentinela } },
+  ]);
+  assertEquals(db.linha.gateway_payment_id, null);
+  assertEquals(db.linha.tentativas_de_pagamento, 1);
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("P7 controle (e): [c0 refunded:refunded] SOZINHA, FORA da janela -> não libera; 'sem_registro'", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({
+    orders: buscaP7(ESTORNO_TOTAL_P7, null, { c0ForaDaJanela: true }),
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(r.corpo, SEM_REGISTRO_P7);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("P7 controle (e'): [c0 processed:partially_refunded] SOZINHA -> INALTERADO por este patch (adota; par não mapeado responde 'em_analise')", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, null) });
+  const r = await verificar(contado, mp);
+
+  assertEquals(db.linha.gateway_payment_id, ID_C0_ESTORNADA_P7);
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_C0_ESTORNADA_P7, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+// (f) CONTROLE — order PAGA é fato: continua adotada, com qualquer irmã.
+for (const irma of [VIVA_P7, ESTORNO_TOTAL_P7, PARCIAL_P7]) {
+  Deno.test(`P7 controle (f): [c0 processed:accredited, c1 ${irma.join(":")}] -> adota a PAGA, 'pago'`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const ID_PAGA = "ORDTST04C0PAGAP7000000000000";
+    const { db, contado, escritas, mp } = cenarioSentinelaC2({
+      orders: (limite) => [
+        { ...cartaoC2(ID_PAGA, APROVADA_P7[0], APROVADA_P7[1]), date_created: new Date(limite + 60_000).toISOString() },
+        { ...cartaoC2(ID_C1_IRMA_P7, irma[0], irma[1]), date_created: new Date(limite + 120_000).toISOString() },
+      ],
+    });
+    const r = await verificar(contado, mp);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { verificacao: "pago", paymentId: ID_PAGA, expiraEm: PRAZO_BASE });
+    assertEquals(db.linha.gateway_payment_id, ID_PAGA);
+    assertEquals(escritas.length, 1);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// (g) CONCORRÊNCIA.
+Deno.test("P7 concorrência (g): dois 'verificar' SIMULTÂNEOS no estado do defeito -> nenhum adota, nenhum libera, nenhum POST; o webhook ainda adota a irmã", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, VIVA_P7) });
+  const [r1, r2] = await Promise.all([verificar(contado, mp), verificar(contado, mp)]);
+
+  assertEquals(r1.corpo, SEM_REGISTRO_P7);
+  assertEquals(r2.corpo, SEM_REGISTRO_P7);
+  assertEquals(escritas.length, 0, "adoção (ou tentativa de adoção) da estornada");
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(mp.posts, []);
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(webhookAprovaIrmaP7(db), "adotou");
+});
+
+Deno.test("P7 concorrência (g): o webhook ADOTA a irmã aprovada ENTRE a busca e a decisão do 'verificar' -> nunca tenta gravar a estornada; responde pela vaga atual ('pago' da irmã)", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, VIVA_P7) });
+  const fn = async (url: string, init?: RequestInit) => {
+    const resposta = await mp.fn(url, init);
+    if ((init?.method ?? "GET") === "GET" && url.includes("/v1/orders?")) {
+      // A busca já respondeu com a irmã VIVA; ela aprova e o webhook adota.
+      const irma = mp.orders.find((o) => o.id === ID_C1_IRMA_P7)!;
+      irma.status = APROVADA_P7[0];
+      irma.status_detail = APROVADA_P7[1];
+      assertEquals(webhookAprovaIrmaP7(db), "adotou");
+    }
+    return resposta;
+  };
+  const r = await verificar(contado, { fn });
+
+  assertEquals(ESCRITAS_DA_ESTORNADA(escritas), 0, "tentou gravar a estornada");
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: ID_C1_IRMA_P7, expiraEm: PRAZO_BASE });
+  assertEquals(db.linha.gateway_payment_id, ID_C1_IRMA_P7);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("P7 concorrência (g): 'verificar' e o webhook da irmã em Promise.all -> vaga termina na irmã, sem divergência, nunca a estornada, 0 RPC, 0 POST", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, VIVA_P7) });
+  const webhook = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const irma = mp.orders.find((o) => o.id === ID_C1_IRMA_P7)!;
+    irma.status = APROVADA_P7[0];
+    irma.status_detail = APROVADA_P7[1];
+    return webhookAprovaIrmaP7(db);
+  };
+  const [r, desfechoDoWebhook] = await Promise.all([verificar(contado, mp), webhook()]);
+
+  assertEquals(desfechoDoWebhook, "adotou");
+  assertEquals(ESCRITAS_DA_ESTORNADA(escritas), 0, "tentou gravar a estornada");
+  assertEquals(db.linha.gateway_payment_id, ID_C1_IRMA_P7);
+  assertEquals(r.corpo.verificacao !== "recusado", true);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+// ── P7: sondas do revisor Opus (R1-R3), viradas teste com asserção ─────────
+
+// R1 — a metade `!orderMortaPorEstorno(irma)`: a estornada escolhida tem uma
+// irmã TAMBÉM estornada/contestada. Irmã estornada é irmã MORTA (a régua de
+// `STATUS_ORDER_MORTOS`): a regra P7 não dispara e a adoção de hoje fica.
+for (const irma of [ESTORNO_TOTAL_P7, CONTESTADA_P7, PARCIAL_P7]) {
+  Deno.test(`P7 R1 verificar [c0 processed:partially_refunded, c1 ${irma.join(":")}] -> irmã também estornada não conta: adota c0 (como hoje), 'em_analise'`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, irma) });
+    const r = await verificar(contado, mp);
+
+    assertEquals(db.linha.gateway_payment_id, ID_C0_ESTORNADA_P7);
+    assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_C0_ESTORNADA_P7, expiraEm: PRAZO_BASE });
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// R2 — `verificar`, dois cartões reenviados e um PIX SIMULTÂNEOS no estado do
+// defeito: nenhum caminho adota, libera ou cobra.
+for (const caso of DEFEITO_P7) {
+  Deno.test(`P7 R2 concorrência: verificar || cartão || cartão || PIX ${caso.nome} -> 0 POST, 0 RPC, 0 escrita, sentinela mantido`, async () => {
+    Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+    const { db, contado, escritas, mp, sentinela } = cenarioSentinelaC2({
+      orders: buscaP7(caso.c0, caso.c1, { c1Primeiro: caso.c1Primeiro }),
+    });
+    const [rv, rc, rc2, rp] = await Promise.all([
+      verificar(contado, mp),
+      emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao())),
+      emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao())),
+      emSilencio(() => chamar(contado, mp as unknown as MpVivo, PEDIDO_PIX)),
+    ]);
+
+    assertEquals(mp.posts, []);
+    assertEquals(db.chamadasRpc.length, 0);
+    assertEquals(escritas.length, 0);
+    assertEquals(db.linha.gateway_payment_id, sentinela);
+    assertEquals(db.linha.tentativas_de_pagamento, 0);
+    assertEquals(rv.corpo, SEM_REGISTRO_P7);
+    assertEquals(rc.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+    assertEquals(rc2.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+    assertEquals(rp.status, 409, JSON.stringify(rp.corpo));
+    assertEquals(rp.corpo.cartaoEmAnalise, true);
+
+    const r3 = await emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao()));
+    assertEquals(r3.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+    assertEquals(mp.posts, []);
+    assertEquals(webhookAprovaIrmaP7(db), "adotou");
+  });
+}
+
+// R3 — caminho de COBRANÇA x webhook: a irmã aprova e o webhook a ADOTA entre
+// a busca e a decisão da cobrança. A cobrança nunca grava a estornada nem faz
+// POST; a resposta desta chamada é a inconclusiva (decidida sobre o sentinela
+// LIDO — não relê a vaga, só deixa de agir), e a chamada SEGUINTE já vê a
+// irmã adotada e paga.
+Deno.test("P7 R3 concorrência (cobrança): o webhook adota a irmã aprovada entre a busca e a decisão -> 0 POST, 0 RPC, nunca grava a estornada; a próxima chamada responde 'pago' pela irmã", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp } = cenarioSentinelaC2({ orders: buscaP7(PARCIAL_P7, VIVA_P7) });
+  const fn = async (url: string, init?: RequestInit) => {
+    const resposta = await mp.fn(url, init);
+    if ((init?.method ?? "GET") === "GET" && url.includes("/v1/orders?")) {
+      const irma = mp.orders.find((o) => o.id === ID_C1_IRMA_P7)!;
+      irma.status = APROVADA_P7[0];
+      irma.status_detail = APROVADA_P7[1];
+      assertEquals(webhookAprovaIrmaP7(db), "adotou");
+    }
+    return resposta;
+  };
+  const r = await emSilencio(() => chamar(contado, { ...mp, fn } as unknown as MpVivo, corpoCartao()));
+
+  assertEquals(ESCRITAS_DA_ESTORNADA(escritas), 0, "tentou gravar a estornada");
+  assertEquals(mp.posts, []);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(db.linha.gateway_payment_id, ID_C1_IRMA_P7);
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+
+  const r2 = await emSilencio(() => chamar(contado, mp as unknown as MpVivo, corpoCartao()));
+  assertEquals(mp.posts, []);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(r2.status, 200, JSON.stringify(r2.corpo));
+  assertEquals(r2.corpo.statusPagamento, "pago");
+  assertEquals(r2.corpo.paymentId, ID_C1_IRMA_P7);
+});
+
+// ── P7: PIX VIVO ao lado da estornada de cartão ────────────────────────────
+// Decisão (rodada 2 da revisão do P7, 02/10/2026): um PIX VIVO NÃO é "irmã
+// não-morta" para a adoção do CARTÃO. Motivo: o defeito P7 é a estornada
+// tirar a vaga de um CARTÃO que o webhook precisa adotar depois — e a adoção
+// do webhook sobre o sentinela só existe para order de CARTÃO
+// (`rota === "order" && ordemDeCartaoNaNotificacao && statusMapeado ===
+// "pago"`, webhook-mercadopago/index.ts ~2027). Segurar o sentinela por causa
+// de um PIX não salvaria esse PIX (o webhook nunca o adotaria na vaga), e a
+// própria `resolverSentinela` já descarta PIX (filtra `orderEhDeCartao`):
+// contar PIX aqui seria uma régua diferente da que escolheu a order. O que
+// acontece com um PIX pago fora da vaga é assunto do PIX, não do P7.
+// Comportamento de hoje, fixado de propósito (mata o mutante
+// `orderEhDeCartao(irma) -> true`): a estornada parcial é adotada como se
+// estivesse sozinha (o mesmo do controle (e')).
+const ID_PIX_VIVO_P7 = "ORDTST04PIXVIVOP700000000000";
+
+Deno.test("P7 PIX vivo ao lado: [c0 cartão processed:partially_refunded, PIX action_required:waiting_transfer] -> o PIX não é irmã: adota c0 como se estivesse sozinha ('em_analise'), 0 RPC, 0 POST", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, contado, escritas, mp } = cenarioSentinelaC2({
+    orders: (limite) => [
+      { ...cartaoC2(ID_C0_ESTORNADA_P7, PARCIAL_P7[0], PARCIAL_P7[1]), date_created: new Date(limite + 60_000).toISOString() },
+      {
+        ...orderAvulsa(ID_PIX_VIVO_P7, "bank_transfer", "action_required", "waiting_transfer"),
+        date_created: new Date(limite + 120_000).toISOString(),
+      },
+    ],
+  });
+  const r = await verificar(contado, mp);
+
+  assertEquals(db.linha.gateway_payment_id, ID_C0_ESTORNADA_P7);
+  assertEquals(r.corpo, { verificacao: "em_analise", paymentId: ID_C0_ESTORNADA_P7, expiraEm: PRAZO_BASE });
+  assertEquals(escritas.length, 1);
+  assertEquals(db.chamadasRpc.length, 0);
+  assertEquals(mp.posts, []);
 });
