@@ -14,6 +14,7 @@
  */
 
 import { camposDoComprador } from "./dados-antifraude.ts";
+import { nomeNaFatura } from "./nome-na-fatura.ts";
 
 // Exportada pelo M1 do laudo do PR #438 (07/09): o executor de estorno
 // (`estorno.ts`) precisava da MESMA base e a redeclarava — segunda cópia da
@@ -434,6 +435,10 @@ export function normalizarDocumento(
  *   `total_amount` (a doc não afirma que precisa fechar; não mandar é a única
  *   garantia de nunca ser recusado por soma). Fonte e campos que ficaram de
  *   fora de propósito (`additional_info`): `_shared/dados-antifraude.ts`.
+ * - `nomeNaFatura` (opcional, 03/10/2026) vira
+ *   `transactions.payments[0].payment_method.statement_descriptor`, normalizado
+ *   e cortado (`_shared/nome-na-fatura.ts`); vazio ou imprestável não manda a
+ *   chave. É um dos campos que `order-cartao-repeticao.ts` tira na repetição.
  *
  * Valida tudo e LANÇA em entrada inválida (este arquivo tem `@ts-nocheck`:
  * só o `throw` barra). As mensagens nunca carregam o valor recusado — um
@@ -450,6 +455,8 @@ export function montarCorpoCartaoOrders(args: {
   paymentTypeId: "credit_card" | "debit_card";
   parcelas: number;
   comprador?: unknown;
+  // Nome na fatura do comprador (03/10/2026) — opcional, ver `nome-na-fatura.ts`.
+  nomeNaFatura?: unknown;
 }): Record<string, unknown> {
   if (typeof args.orderId !== "string" || args.orderId.length === 0) {
     throw new Error("montarCorpoCartaoOrders: orderId obrigatório.");
@@ -488,6 +495,7 @@ export function montarCorpoCartaoOrders(args: {
   // Dados do comprador e do produto (antifraude): opcionais, revalidados, e a
   // soma dos itens conferida contra o total JÁ ARREDONDADO que vai no corpo.
   const extras = camposDoComprador(args.comprador, valorFormatado);
+  const descricaoNaFatura = nomeNaFatura(args.nomeNaFatura);
   if (extras.phone) payer.phone = extras.phone;
   if (extras.address) payer.address = extras.address;
 
@@ -507,6 +515,9 @@ export function montarCorpoCartaoOrders(args: {
             type: args.paymentTypeId,
             token: args.token,
             installments: parcelas,
+            // Nome na fatura (opcional): conferido DE NOVO aqui — mesmo teste
+            // de quem leu (`nomeNaFatura` e' idempotente), vazio nao manda.
+            ...(descricaoNaFatura ? { statement_descriptor: descricaoNaFatura } : {}),
           },
         },
       ],
@@ -1147,6 +1158,36 @@ type ResultadoOrder =
 const CAMINHO_DE_CAMPO_DA_ORDER =
   /\b(?:payer|items|shipment|transactions|config|total_amount|external_reference|processing_mode|capture_mode|type)[a-z_.0-9[\]]*/g;
 
+/** As frases de UM erro do MP (`details` + `message`) — onde ele cita o campo. */
+function frasesDoErroDoMp(erro: unknown): string[] {
+  if (!erro || typeof erro !== "object") return [];
+  const { details, message } = erro as Record<string, unknown>;
+  const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
+  return [...lista, message].filter((d): d is string => typeof d === "string");
+}
+
+/**
+ * Os caminhos de campo citados por CADA erro de `errors[]` de um corpo de
+ * erro do MP — uma lista por erro, na ordem, SEM o corte e SEM o filtro de
+ * `resumoSemDadoPessoal` (que existem para o LOG). Quem DECIDE com isto
+ * (`order-cartao-repeticao.ts`) precisa ver tudo o que a recusa citou: um
+ * caminho descartado por parecer "valor colado" seria um campo que a decisão
+ * não viu. Lista vazia para um erro = ele não nomeia campo nenhum.
+ * Corpo sem `errors[]` devolve `[]`.
+ */
+export function caminhosDeCampoPorErro(corpo: unknown): string[][] {
+  if (!corpo || typeof corpo !== "object") return [];
+  const erros = (corpo as Record<string, unknown>).errors;
+  if (!Array.isArray(erros)) return [];
+  return erros.map((erro) => [
+    ...new Set(
+      frasesDoErroDoMp(erro)
+        .flatMap((frase) => frase.match(CAMINHO_DE_CAMPO_DA_ORDER) ?? [])
+        .map((caminho) => caminho.replace(/[.]+$/, "")),
+    ),
+  ]);
+}
+
 /**
  * Resumo do corpo de erro do MP SEM dado pessoal — códigos, status e os
  * caminhos dos campos recusados. É o que vai para o log quando quem chama pede
@@ -1166,14 +1207,7 @@ function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): strin
   // `details`/`message` dizem QUAL campo o MP recusou (03/10/2026: um 400
   // `property_value` nos campos de antifraude só mostrava o código, sem o
   // campo). Da frase, só o caminho do campo sobrevive; o resto é descartado.
-  const frases = erros
-    .flatMap((e) => {
-      if (!e || typeof e !== "object") return [];
-      const { details, message } = e as Record<string, unknown>;
-      const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
-      return [...lista, message];
-    })
-    .filter((d): d is string => typeof d === "string");
+  const frases = erros.flatMap(frasesDoErroDoMp);
   const campos = [
     ...new Set(
       frases
