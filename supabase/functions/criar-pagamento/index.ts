@@ -40,12 +40,16 @@
  * vira log e a resposta é a de antes: o webhook/reconciliação seguem como
  * fonte da verdade.
  *
- * RISCO RESIDUAL (declarado): se o isolado morrer entre a transação da RPC e
- * os efeitos (push ao lojista, comprovante), eles se perdem — como já acontece
- * em TODOS os caminhos (webhook, cron, `verificar`); não há varredura de
- * efeitos pendentes. Uma fila de efeitos pendentes é tarefa futura (migration
- * na RPC de dinheiro, lote próprio). Provado só localmente: no runtime real do
- * Edge a retenção do isolado pelo `waitUntil` NÃO foi medida.
+ * RISCO RESIDUAL (declarado): se o isolado morrer antes de o `waitUntil`
+ * terminar (depois da resposta, entre a transação da RPC e os efeitos: push ao
+ * lojista, comprovante), os efeitos se perdem, e esse risco é MAIOR que o do
+ * webhook, que AGUARDA os efeitos dentro da própria requisição; é comparável
+ * ao do `verificar`. No caso comum (cartão aprovado sem 3DS) a criação ganha a
+ * corrida e o webhook recebe `ja_pago` sem refazer os efeitos. Não há varredura
+ * de efeitos pendentes; uma fila deles é tarefa futura (migration na RPC de
+ * dinheiro, lote próprio). Provado só localmente: no runtime real do Edge a
+ * retenção do isolado pelo `waitUntil` NÃO foi medida, e o ensaio TEST no
+ * runtime real (Q4-2) é portão antes de dizer "pronto em produção".
  *
  * A CONSULTA também confirma — e só com PROVA: no `verificar` (cartão e PIX) e
  * nos ramos pagos da reconsulta ((a) cartão, (e) PIX), quando o GET
@@ -1063,9 +1067,13 @@ async function adotarOrderNoSentinela(
  * do GET por id da vaga e a LINHA RELIDA do banco nas mãos, confirma o pedido
  * se — e só se — a linha ainda está 'aguardando' e a order PROVA o pagamento
  * (`provarPagamentoPelaConsulta`). A RPC é AGUARDADA (quem chama responde
- * pelo desfecho dela); os efeitos NÃO — saem por `dispararSemEsperarCliente`
- * (`EdgeRuntime.waitUntil` no Edge; no runner de teste, teto de 5 s), e só
- * quando ESTA chamada recebeu a transição ('pago'/'pago_apos_expirar').
+ * pelo desfecho dela). Os efeitos (só quando ESTA chamada recebeu a transição
+ * 'pago'/'pago_apos_expirar') dependem do parâmetro `aguardarEfeitos`: sem ele
+ * (default, `verificar` e reconsulta) NÃO são aguardados — saem por
+ * `dispararSemEsperarCliente` (`EdgeRuntime.waitUntil` no Edge; no runner de
+ * teste, teto de 5 s); com ele (só a criação) a promessa devolvida AGUARDA os
+ * efeitos antes de resolver, porque a criação já roda dentro de um único
+ * `dispararSemEsperarCliente`.
  *
  * Devolve o desfecho da RPC, ou `null` quando ela nem foi chamada (sem prova,
  * linha fora de 'aguardando') ou falhou — nesses casos quem chama segue o

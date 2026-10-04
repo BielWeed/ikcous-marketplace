@@ -19,7 +19,8 @@
  *      automática que crie efeito (o único passo extra é um GET, leitura,
  *      para reconhecer "acabou de ser paga").
  *   2. MP diz paga → não cancela, responde `ja_pago`. Quem grava o pago é o
- *      caminho de servidor que já existe (webhook-mercadopago / reconciliar-
+ *      caminho de servidor que já existe (a criação do cartão aprovado no
+ *      POST, pela prova do GET / webhook-mercadopago / reconciliar-
  *      pagamentos → `confirmar_pagamento`) — esta função nunca escreve
  *      pagamento.
  *   3. Cartão em análise (`processing`) ou no desafio 3DS (`action_required`)

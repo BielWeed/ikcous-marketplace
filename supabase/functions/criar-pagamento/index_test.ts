@@ -13139,7 +13139,7 @@ Deno.test("CORRIDA T3 (f): o webhook chega com a vaga ainda no SENTINELA (durant
   assertEquals(confirmacoesCI(db).length, 1);
 });
 
-Deno.test("CORRIDA T3 (e): Promise.all(criação, webhook) em 5 rodadas (webhook largando 0..4 macrotarefas depois) -> em TODAS exatamente 1 push, 1 comprovante, pedido 'pago', resposta da criação byte a byte a de antes", async () => {
+Deno.test("CORRIDA T3 (e) — FUMAÇA de concorrência no caminho observado (a criação confirma primeiro; o webhook vê ja_pago; não varia a ordem): Promise.all(criação, webhook) em 5 rodadas (webhook largando 0..4 macrotarefas depois) -> em TODAS exatamente 1 push, 1 comprovante, pedido 'pago', resposta da criação byte a byte a de antes", async () => {
   const caminhos = new Set<string>();
   for (let rodada = 0; rodada < 5; rodada++) {
     const ef = efeitosCI();

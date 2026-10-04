@@ -63,7 +63,8 @@ export const TEMPO_LIMITE_DA_CONSULTA_DO_CARTAO_MS = 35_000;
 /**
  * Pagamento aprovado pelo banco, pedido ainda não confirmado no nosso
  * banco: depois disto, a tela avisa que pode levar alguns minutos (a
- * confirmação vem do webhook/reconciliação) e mostra "Ver meus pedidos".
+ * confirmação vem da criação — o POST aprovado confirma em segundo plano pela
+ * prova do GET —, do webhook ou da reconciliação) e mostra "Ver meus pedidos".
  */
 export const ESPERA_ANTES_DO_AVISO_DO_APROVADO_MS = 60_000;
 
