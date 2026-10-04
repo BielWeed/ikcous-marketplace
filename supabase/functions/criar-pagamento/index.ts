@@ -25,12 +25,26 @@
  *
  * QUANDO ELA CONFIRMA PAGAMENTO (04/10/2026 — confirmação imediata)
  *
- * A CRIAÇÃO continua NUNCA confirmando: o cartão aprovado na hora no POST
- * responde "pago" para a tela seguir, e quem grava é o webhook/reconciliação
- * (`confirmar_pagamento`). O POST não prova nada sozinho — o objeto dele não é
- * o GET autenticado da vaga relida.
+ * A CRIAÇÃO de cartão aprovado na hora no POST responde "pago" para a tela
+ * seguir — o corpo e o tempo da resposta NÃO mudam — e dispara, em segundo
+ * plano (UM `dispararSemEsperarCliente`, registrado antes da resposta), a
+ * confirmação pela MESMA prova da consulta: GET por id da vaga relida
+ * (`confirmarDepoisDaCriacao`), NUNCA o objeto do POST (ele não é o GET
+ * autenticado da vaga relida; `processed` pode mudar depois). Só com cartão,
+ * 'pago' no POST e pedido de dono autenticado, nas duas saídas de sucesso: a
+ * gravação normal da vaga e a adoção `vagaAdotada`; a convergência com a
+ * adoção do webhook NÃO entra. Qualquer falha (GET, prova, releitura, RPC)
+ * vira log e a resposta é a de antes: o webhook/reconciliação seguem como
+ * fonte da verdade.
  *
- * A CONSULTA, sim, confirma — e só com PROVA: no `verificar` (cartão e PIX) e
+ * RISCO RESIDUAL (declarado): se o isolado morrer entre a transação da RPC e
+ * os efeitos (push ao lojista, comprovante), eles se perdem — como já acontece
+ * em TODOS os caminhos (webhook, cron, `verificar`); não há varredura de
+ * efeitos pendentes. Uma fila de efeitos pendentes é tarefa futura (migration
+ * na RPC de dinheiro, lote próprio). Provado só localmente: no runtime real do
+ * Edge a retenção do isolado pelo `waitUntil` NÃO foi medida.
+ *
+ * A CONSULTA também confirma — e só com PROVA: no `verificar` (cartão e PIX) e
  * nos ramos pagos da reconsulta ((a) cartão, (e) PIX), quando o GET
  * /v1/orders/{id} da vaga RELIDA passa por `provarPagamentoPelaConsulta`
  * (`_shared/prova-de-pagamento.ts`: id = vaga, `external_reference` = pedido,
@@ -1062,6 +1076,13 @@ async function confirmarNaHoraSeProvado(args: {
   order: Record<string, unknown>;
   linha: Record<string, unknown>;
   efeitos: DepsDosEfeitos;
+  // Só a CRIAÇÃO liga isto (`confirmarDepoisDaCriacao`): ela já roda DENTRO de
+  // um único `dispararSemEsperarCliente`, então os efeitos são AGUARDADOS aqui
+  // em vez de despachados por um segundo `waitUntil` aninhado (um registro
+  // tardio, dentro de outra tarefa de fundo, não está documentado no Supabase:
+  // se o runtime não o contar, os efeitos se perdem). Default `false`: o
+  // `verificar` e a reconsulta seguem como sempre.
+  aguardarEfeitos?: boolean;
 }): Promise<string | null> {
   const { supabase, pedidoId, idConsultado, order, linha, efeitos } = args;
   if (linha.payment_status !== "aguardando") return null;
@@ -1086,10 +1107,9 @@ async function confirmarNaHoraSeProvado(args: {
   const resultado = confirmacao.resultado;
   if (desfechoComEfeito(resultado)) {
     try {
-      await dispararSemEsperarCliente(
-        aplicarEfeitosDoPagamentoConfirmado({ supabase, orderId: pedidoId, resultado, ...efeitos }),
-        5000,
-      );
+      const aplicacao = aplicarEfeitosDoPagamentoConfirmado({ supabase, orderId: pedidoId, resultado, ...efeitos });
+      if (args.aguardarEfeitos === true) await aplicacao;
+      else await dispararSemEsperarCliente(aplicacao, 5000);
     } catch (_erro) {
       // `aplicarEfeitosDoPagamentoConfirmado` não lança; isto é só a cerca.
       console.error("criar-pagamento: efeitos da confirmação imediata falharam", { orderId: pedidoId });
@@ -1105,6 +1125,84 @@ async function confirmarNaHoraSeProvado(args: {
     });
   }
   return resultado;
+}
+
+/**
+ * Cartão aprovado já no POST de criação (04/10/2026): confirma o pedido pela
+ * MESMA prova do `verificar` — GET por id da vaga relida, nunca o objeto do
+ * POST (`processed` pode mudar depois; regra (a) de `_shared/prova-de-
+ * pagamento.ts`). Passos: (1) GET /v1/orders/{id} com a MESMA credencial do
+ * POST, conferindo que a order devolvida é a pedida; (2) relê a linha do
+ * pedido; (3) `confirmarNaHoraSeProvado` com a order DO GET e os efeitos
+ * AGUARDADOS (esta função inteira roda dentro de UM `dispararSemEsperarCliente`,
+ * ver `agendarConfirmacaoDaCriacao`).
+ *
+ * Devolve o desfecho da RPC ou `null`. Nunca lança: qualquer falha (GET,
+ * prova recusada, releitura, RPC) vira `null` e só gera log — ids e motivos,
+ * nunca dado do pagador nem token.
+ */
+async function confirmarDepoisDaCriacao(args: {
+  supabase: ReturnType<typeof createClient>;
+  mpToken: string;
+  fetchImpl?: typeof fetch;
+  pedidoId: string;
+  idGateway: string;
+  efeitos: DepsDosEfeitos;
+}): Promise<string | null> {
+  const { supabase, mpToken, fetchImpl, pedidoId, idGateway, efeitos } = args;
+  try {
+    const consulta = await consultarOrder({ token: mpToken, orderId: idGateway, fetchImpl, corpoNoLog: false });
+    if (!consulta.ok || String(consulta.order?.id ?? "") !== idGateway) return null;
+    const { data: linha, error: erroLinha } = await supabase
+      .from("marketplace_orders")
+      .select("payment_status, status, expires_at, gateway_payment_id, total")
+      .eq("id", pedidoId)
+      .maybeSingle();
+    if (erroLinha || !linha) return null;
+    return await confirmarNaHoraSeProvado({
+      supabase,
+      pedidoId,
+      idConsultado: idGateway,
+      order: consulta.order as Record<string, unknown>,
+      linha: linha as Record<string, unknown>,
+      efeitos,
+      aguardarEfeitos: true,
+    });
+  } catch (_erro) {
+    console.error("criar-pagamento: confirmação imediata na criação falhou", { orderId: pedidoId, paymentId: idGateway });
+    return null;
+  }
+}
+
+/**
+ * O gancho da criação: só com cartão, aprovado na hora (`statusCru` 'pago') e
+ * pedido de DONO autenticado (`user_id` não nulo — o de convidado fica com o
+ * webhook). Registra UM `dispararSemEsperarCliente` ANTES de a resposta sair
+ * (`EdgeRuntime.waitUntil` no Edge; no runner de teste, teto de 5 s): a
+ * resposta ao cliente não muda em conteúdo nem em tempo.
+ */
+async function agendarConfirmacaoDaCriacao(args: {
+  supabase: ReturnType<typeof createClient>;
+  mpToken: string;
+  fetchImpl?: typeof fetch;
+  pedido: Record<string, unknown>;
+  metodo: unknown;
+  statusCru: string;
+  idGateway: string;
+  efeitos: DepsDosEfeitos;
+}): Promise<void> {
+  const { supabase, mpToken, fetchImpl, pedido, metodo, statusCru, idGateway, efeitos } = args;
+  if (metodo !== "cartao" || statusCru !== "pago") return;
+  if (pedido.user_id === null || pedido.user_id === undefined) return;
+  try {
+    await dispararSemEsperarCliente(
+      confirmarDepoisDaCriacao({ supabase, mpToken, fetchImpl, pedidoId: String(pedido.id), idGateway, efeitos }),
+      5000,
+    );
+  } catch (_erro) {
+    // `confirmarDepoisDaCriacao` não lança; isto é só a cerca.
+    console.error("criar-pagamento: gancho da confirmação na criação falhou", { orderId: pedido.id });
+  }
 }
 
 /**
@@ -3275,10 +3373,14 @@ async function handler(
     }
 
     // Aprovado na hora, em análise ou esperando o desafio 3DS: a vaga é
-    // OCUPADA por esta order (gravação logo abaixo, a mesma do PIX). Quem
-    // escreve 'pago' continua sendo o webhook/reconciliação. Par
-    // desconhecido vira 'aguardando', pelo mesmo motivo do PIX: a cobrança
-    // EXISTE, e a verdade chega pelo webhook.
+    // OCUPADA por esta order (gravação logo abaixo, a mesma do PIX). O POST
+    // NUNCA confirma o pedido: o 'pago' desta resposta é só o que a tela
+    // recebe. Quem escreve 'pago' no banco é a RPC `confirmar_pagamento`,
+    // chamada pelo webhook/reconciliação OU — só para cartão aprovado — pela
+    // confirmação imediata em segundo plano, depois de um GET por id que
+    // PROVE o pagamento (`agendarConfirmacaoDaCriacao`). Par desconhecido
+    // vira 'aguardando', pelo mesmo motivo do PIX: a cobrança EXISTE, e a
+    // verdade chega pelo webhook.
     idGateway = String(orderCartao.id);
     statusCru = statusCartao ?? "aguardando";
     // Achado A1 (3): o status CRU (não o mapeado) da order que ACABOU de ser
@@ -4031,6 +4133,18 @@ async function handler(
               : "criar-pagamento: cartao_orfao evitado — PIX concorrente ainda aberto foi cancelado e a vaga foi trocada pelo cartão já aprovado (Achado R2)",
             { orderId: pedido.id, idOrderAprovado: idGateway, ocupanteAnterior: idOcupante },
           );
+          // Confirmação imediata (04/10/2026): a vaga ADOTADA é desta order
+          // aprovada — mesma prova do GET que a saída principal.
+          await agendarConfirmacaoDaCriacao({
+            supabase,
+            mpToken,
+            fetchImpl: deps.fetchImpl,
+            pedido,
+            metodo,
+            statusCru,
+            idGateway,
+            efeitos,
+          });
           return json(
             {
               paymentId: idGateway,
@@ -4133,6 +4247,20 @@ async function handler(
     return json({ error: "Não foi possível confirmar a cobrança." }, 409);
   }
 
+  // Confirmação imediata (04/10/2026): cartão aprovado na hora, vaga gravada
+  // por ESTA chamada. UM `waitUntil`, registrado ANTES da resposta; a resposta
+  // abaixo não muda. Só cartão + 'pago' + dono autenticado (ver o gancho).
+  await agendarConfirmacaoDaCriacao({
+    supabase,
+    mpToken,
+    fetchImpl: deps.fetchImpl,
+    pedido,
+    metodo,
+    statusCru,
+    idGateway,
+    efeitos,
+  });
+
   return json(
     {
       paymentId: idGateway,
@@ -4147,7 +4275,9 @@ async function handler(
       qrCodeBase64,
       ticketUrl,
       // Só cartão, só quando o banco pediu o desafio 3-D Secure: a tela abre
-      // a URL num iframe e espera a confirmação pelo webhook. Ausente no PIX
+      // a URL num iframe e a confirmação vem do `verificar` da tela, do
+      // webhook ou da reconciliação (a criação só confirma o cartão aprovado
+      // na hora, por `agendarConfirmacaoDaCriacao`, acima). Ausente no PIX
       // (`undefined` some do JSON).
       desafio3ds,
     },

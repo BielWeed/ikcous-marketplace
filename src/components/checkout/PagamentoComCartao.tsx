@@ -1289,9 +1289,10 @@ export function PagamentoComCartao({
   };
 
   // Aprovado pelo banco, pedido ainda não confirmado no nosso banco (quem
-  // grava é o webhook/reconciliação): depois de um minuto a tela avisa que
-  // pode demorar e oferece "Ver meus pedidos" — sem nunca oferecer pagar de
-  // novo.
+  // grava é o servidor: a confirmação imediata que a criação dispara em
+  // segundo plano pela prova do GET, o webhook ou a reconciliação): depois de
+  // um minuto a tela avisa que pode demorar e oferece "Ver meus pedidos" —
+  // sem nunca oferecer pagar de novo. A tela NÃO consulta nada nesta etapa.
   const aprovado = etapa.tipo === "aprovado";
   const [avisoDoAprovado, setAvisoDoAprovado] = useState(false);
   useEffect(() => {

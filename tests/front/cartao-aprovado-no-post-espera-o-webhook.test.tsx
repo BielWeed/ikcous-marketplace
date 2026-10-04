@@ -216,7 +216,10 @@ describe("T0-LOCAL — cartão aprovado já no POST: a tela espera o banco, e o 
     chamadasDaEdge.length = 0;
     leiturasDaLinhaPeloCliente = 0;
     // O servidor aprova na hora: grava a order na vaga ANTES de responder
-    // "pago", e NÃO toca `payment_status` (a criação nunca confirma).
+    // "pago", e NÃO toca `payment_status` neste cenário (a confirmação
+    // imediata em segundo plano não aconteceu — GET falho, ou o isolado
+    // morreu — e o webhook/cron ainda não chegaram). A tela não tem como
+    // saber o motivo: é o PISO que estes testes medem.
     aoPostar = (corpo) => {
       if (corpo.metodo !== "cartao") {
         throw new Error(`chamada inesperada à edge: ${corpo.metodo}`);

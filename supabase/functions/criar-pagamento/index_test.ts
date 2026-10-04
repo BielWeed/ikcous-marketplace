@@ -11044,8 +11044,14 @@ Deno.test("handler PIX: NÃO lê itens, telefone nem endereço e o corpo não ga
 // function FAZ com cada desfecho da repetição, com a reserva da vaga).
 
 /** POST /v1/orders respondendo em SEQUÊNCIA (1a chamada, 2a chamada...);
- * a última resposta vale para as seguintes. GET e cancelamento não existem. */
-function fetchMPEmSequencia(criar: Array<{ status: number; corpo: unknown }>) {
+ * a última resposta vale para as seguintes. Cancelamento não existe, e o GET
+ * só existe quando o teste o declara em `consultar` — e SÓ para a order do
+ * cartão (`ORDER_CARTAO`): desde a confirmação imediata na criação (04/10/2026)
+ * o cartão aprovado no POST faz UM GET por id dessa order. */
+function fetchMPEmSequencia(
+  criar: Array<{ status: number; corpo: unknown }>,
+  consultar?: { status: number; corpo: unknown },
+) {
   const chamadas: ChamadaMP[] = [];
   const fn = (url: string, init?: RequestInit) => {
     chamadas.push({
@@ -11054,6 +11060,9 @@ function fetchMPEmSequencia(criar: Array<{ status: number; corpo: unknown }>) {
       corpo: init?.body ? JSON.parse(String(init.body)) : undefined,
       headers: init?.headers as Record<string, string> | undefined,
     });
+    if (consultar && init?.method === "GET" && url === `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`) {
+      return Promise.resolve(new Response(JSON.stringify(consultar.corpo), { status: consultar.status }));
+    }
     if (init?.method !== "POST" || url.endsWith("/cancel")) {
       return Promise.reject(new Error(`fetch inesperado nos testes da repetição: ${init?.method} ${url}`));
     }
@@ -11084,7 +11093,7 @@ Deno.test("handler cartão: MP recusa um campo OPCIONAL (400 em items) -> repete
   const mp = fetchMPEmSequencia([
     { status: 400, corpo: ERRO_400_DE_ITEM },
     { status: 201, corpo: orderDeCartao("processed", "accredited") },
-  ]);
+  ], { status: 200, corpo: orderDeCartao("processed", "accredited") });
 
   const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
     supabase,
@@ -11095,7 +11104,12 @@ Deno.test("handler cartão: MP recusa um campo OPCIONAL (400 em items) -> repete
   assertEquals(resposta.status, 200);
   assertEquals(corpo.statusPagamento, "pago");
   assertEquals(corpo.paymentId, ORDER_CARTAO);
-  assertEquals(mp.chamadas.length, 2);
+  // As DUAS criações de antes (400, depois 201) + o GET por id da confirmação
+  // imediata (a order do orderDeCartao não traz valor pago: a prova recusa).
+  assertEquals(mp.chamadas.length, 3);
+  assertEquals(mp.chamadas.filter((c) => c.method === "POST").length, 2);
+  assertEquals(mp.chamadas[2].method, "GET");
+  assertEquals(mp.chamadas[2].url, `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`);
 
   const [primeira, segunda] = mp.chamadas;
   // 1a: o corpo completo, com a chave da tentativa. 2a: sem NENHUM opcional.
@@ -11304,7 +11318,7 @@ Deno.test("handler cartão: o MP recusa o statement_descriptor (400 só nele) ->
       },
     },
     { status: 201, corpo: orderDeCartao("processed", "accredited") },
-  ]);
+  ], { status: 200, corpo: orderDeCartao("processed", "accredited") });
 
   const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
     supabase,
@@ -11314,7 +11328,10 @@ Deno.test("handler cartão: o MP recusa o statement_descriptor (400 só nele) ->
 
   assertEquals(resposta.status, 200);
   assertEquals(corpo.statusPagamento, "pago");
-  assertEquals(mp.chamadas.length, 2);
+  // As DUAS criações de antes + o GET por id da confirmação imediata.
+  assertEquals(mp.chamadas.length, 3);
+  assertEquals(mp.chamadas.filter((c) => c.method === "POST").length, 2);
+  assertEquals(mp.chamadas[2].method, "GET");
   assertEquals(descritorDoPost(mp.chamadas[0].corpo), "LOJA TESTE");
   assertEquals(descritorDoPost(mp.chamadas[1].corpo), undefined);
   assertEquals(
@@ -12260,24 +12277,375 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-rpc-falha): reconsulta com a RPC lançando 
   assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
 });
 
-// ── (12) a criação continua NUNCA confirmando ─────────────────────────────
+// ── (12) a criação confirma pela MESMA prova — do GET por id, nunca do POST ──
+//
+// Desenho "cartão aprovado já no POST" (04/10/2026): o POST aprovado na hora
+// só dispara a confirmação; quem PROVA é o GET por id da vaga relida, pela
+// mesma `provarPagamentoPelaConsulta` do `verificar`. O objeto do POST nunca
+// é prova (`_shared/prova-de-pagamento.ts`, regra (a)).
 
-Deno.test("CONFIRMAÇÃO IMEDIATA (12): a CRIAÇÃO de um cartão aprovado na hora — com o objeto oficial da doc, que PASSARIA na prova — continua sem confirmar_pagamento", async () => {
-  const { supabase, chamadasRpc } = cenarioCartao();
-  const aprovada = orderCartaoAprovadaDaDoc({ id: ORDER_CARTAO, externalReference: UUID, valor: "100.00" });
-  const mp = fetchMP({ criar: { status: 201, corpo: aprovada } });
+/** O corpo que a tela recebe de um cartão aprovado na criação — o mesmo de
+ * ANTES do desenho, byte a byte (a confirmação roda em segundo plano). */
+const CORPO_DA_CRIACAO_APROVADA =
+  `{"paymentId":"${ORDER_CARTAO}","statusPagamento":"pago","expiraEm":"2099-01-01T00:00:00.000Z"}`;
+
+const aprovadaDaCriacao = (extra: Record<string, unknown> = {}) => ({
+  ...orderCartaoAprovadaDaDoc({ id: ORDER_CARTAO, externalReference: UUID, valor: "100.00" }),
+  ...extra,
+});
+
+/**
+ * MP falso da CRIAÇÃO: POST /v1/orders devolve o cartão aprovado; o GET por id
+ * da order é configurável. Preso a rota, método e `Authorization` (a
+ * credencial é a mesma do POST). Rota fora disto ESTOURA.
+ * - `get` objeto: 200 com esse corpo; número: esse status de erro;
+ *   "rede": o fetch lança; "preso": só volta quando o teste solta.
+ * - `aoPostar`/`aoConsultar`: simulam o mundo mudando no meio da chamada.
+ */
+function mpDaCriacaoComGet(opts: {
+  post?: Record<string, unknown>;
+  get?: Record<string, unknown> | number | "rede" | "preso";
+  aoPostar?: () => void;
+  aoConsultar?: () => void;
+  // Um PIX concorrente ABERTO na vaga: o GET dele e o cancelamento são servidos.
+  pixOcupante?: { id: string; aberto: Record<string, unknown>; cancelado: Record<string, unknown> };
+} = {}) {
+  const chamadas: Array<{ verbo: string; url: string; autorizacao?: string }> = [];
+  let soltar: (() => void) | null = null;
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    const autorizacao = (init?.headers as Record<string, string> | undefined)?.Authorization;
+    chamadas.push({ verbo, url, autorizacao });
+    if (verbo === "POST" && url.endsWith("/v1/orders")) {
+      opts.aoPostar?.();
+      return new Response(JSON.stringify(opts.post ?? aprovadaDaCriacao()), { status: 201 });
+    }
+    const pix = opts.pixOcupante;
+    if (pix && verbo === "GET" && url === `https://api.mercadopago.com/v1/orders/${pix.id}`) {
+      return new Response(JSON.stringify(pix.aberto), { status: 200 });
+    }
+    if (pix && verbo === "POST" && url === `https://api.mercadopago.com/v1/orders/${pix.id}/cancel`) {
+      return new Response(JSON.stringify(pix.cancelado), { status: 200 });
+    }
+    if (verbo === "GET" && url === `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`) {
+      opts.aoConsultar?.();
+      const g = opts.get;
+      if (g === undefined) throw new Error(`GET sem rota configurada neste teste: ${url}`);
+      if (g === "rede") throw new Error("rede caiu");
+      if (g === "preso") {
+        await new Promise<void>((resolver) => {
+          soltar = resolver;
+        });
+        return new Response(JSON.stringify({ message: "not_found" }), { status: 404 });
+      }
+      if (typeof g === "number") return new Response(JSON.stringify({ message: "erro" }), { status: g });
+      return new Response(JSON.stringify(g), { status: 200 });
+    }
+    throw new Error(`fetch inesperado na criação: ${verbo} ${url}`);
+  };
+  return {
+    fn,
+    chamadas,
+    // Só as chamadas da ORDER do cartão (o GET do PIX ocupante e o cancelamento
+    // dele não contam como "GET da criação").
+    gets: () => chamadas.filter((c) => c.verbo === "GET" && c.url.endsWith(`/${ORDER_CARTAO}`)),
+    posts: () => chamadas.filter((c) => c.verbo === "POST" && c.url.endsWith("/v1/orders")),
+    soltarGet: () => soltar?.(),
+  };
+}
+
+async function criarCartaoCI(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown> = {},
+  authorization = montarToken(DONO_LOGADO),
+): Promise<{ status: number; texto: string }> {
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), authorization), {
+      supabase: db as never,
+      fetchImpl: mp.fn as typeof fetch,
+      credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS,
+      alertarAdminCartaoOrfao: async () => {},
+      ...deps,
+    })
+  );
+  return { status: resposta.status, texto: await resposta.text() };
+}
+
+const pedidoDaCriacaoCI = () => pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 });
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12): a CRIAÇÃO de um cartão aprovado na hora confirma pela prova do GET por id — RPC 1x com os args exatos, push 1x, comprovante 1x, 1 POST e 1 GET, resposta byte a byte a de antes", async () => {
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
   const ef = efeitosCI();
-  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
-    supabase,
-    fetchImpl: mp.fn,
-    ...ef.deps,
-  });
-  const corpo = await resposta.json();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
 
-  assertEquals(resposta.status, 200, JSON.stringify(corpo));
-  assertEquals(corpo.statusPagamento, "pago");
-  assertEquals(chamadasRpc.some((c) => c.nome === "confirmar_pagamento"), false);
-  assertEquals(ef.pushes.length + ef.comprovantes.length, 0);
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+  assertEquals(mp.posts().length, 1);
+  assertEquals(mp.gets().map((c) => c.url), [`https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`]);
+  // MESMA credencial do POST.
+  assertEquals(mp.gets()[0].autorizacao, mp.posts()[0].autorizacao);
+  assertEquals(mp.gets()[0].autorizacao, `Bearer ${CREDENCIAIS_LOJISTA_FIXAS.token}`);
+  // A confirmação é a RPC: nenhuma escrita direta de payment_status.
+  assertEquals(escritas.every((v) => !("payment_status" in v)), true);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12b): a PROVA é a do GET, nunca a do POST — POST 'accredited' com GET 'processing' -> ZERO RPC (mata o mutante 'passa o objeto do POST à prova')", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao({ status: "processing", status_detail: "in_process" }) });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  assertEquals(mp.gets().length, 1);
+});
+
+// ── (12c) cada falha da confirmação, isolada: a resposta é a MESMA ────────
+
+for (
+  const caso of [
+    { nome: "GET com falha de rede (status 0)", get: "rede" as const },
+    { nome: "GET 500", get: 500 },
+    { nome: "GET 404", get: 404 },
+    {
+      nome: "GET com order.id DIFERENTE da vaga",
+      get: aprovadaDaCriacao({ id: "ORDTST01OUTRAORDEMNOGET000000" }),
+    },
+    {
+      nome: "valor +R$ 0,06 (100,06 contra o total 100)",
+      get: (() => {
+        const o = aprovadaDaCriacao({ total_amount: "100.06" });
+        pagamentoDaOrderCI(o).amount = "100.06";
+        return o;
+      })(),
+    },
+    { nome: "valor pago PARCIAL (60 de 100)", get: aprovadaDaCriacao({ total_paid_amount: "60.00" }) },
+    {
+      nome: "external_reference de OUTRO pedido",
+      get: aprovadaDaCriacao({ external_reference: "9e9e9e9e-1111-2222-3333-444455556666" }),
+    },
+  ]
+) {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA (12c): ${caso.nome} -> ZERO RPC, ZERO efeito, pedido segue aguardando, resposta byte a byte a de antes`, async () => {
+    const { db, contado, escritas } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: caso.get });
+    const ef = efeitosCI();
+    const r = await criarCartaoCI(contado, mp, ef.deps);
+
+    assertEquals(r.status, 200, r.texto);
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(confirmacoesCI(db), []);
+    assertEquals(db.chamadasRpc, []);
+    assertEquals(db.linha.payment_status, "aguardando");
+    assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+    assertEquals(escritas.every((v) => !("payment_status" in v)), true);
+    assertEquals(mp.posts().length, 1);
+    assertEquals(mp.gets().length, 1);
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12d): releitura 'expirado' (o pg_cron expirou DURANTE o GET) -> ZERO RPC, ZERO efeito, resposta a de antes", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoConsultar: () => {
+      db.linha.payment_status = "expirado";
+      db.linha.status = "cancelled";
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(db.linha.payment_status, "expirado");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12e): a RPC LANÇA -> a resposta continua 200 'pago' a de antes, nada gravado, ZERO efeito", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI(), {
+    antesDeConfirmar: () => Promise.reject(new Error("banco caiu")),
+  });
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12f): pedido de CONVIDADO (user_id nulo) -> 403 'exige conta' como sempre, ZERO GET, ZERO RPC (a condição user_id do gancho é defesa em profundidade)", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoBase({ user_id: null, tentativas_de_pagamento: 0 }));
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 403);
+  assertEquals(mp.chamadas, []);
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12g): cartão EM ANÁLISE (processing) na criação -> o gancho NÃO roda: ZERO GET, ZERO RPC", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    post: aprovadaDaCriacao({ status: "processing", status_detail: "in_process" }),
+    get: aprovadaDaCriacao(),
+  });
+  const r = await criarCartaoCI(contado, mp, efeitosCI().deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(JSON.parse(r.texto).statusPagamento, "aguardando");
+  assertEquals(mp.gets().length, 0);
+  assertEquals(db.chamadasRpc, []);
+});
+
+// ── (12h) com o runtime do Edge: UM waitUntil, e a resposta não espera ────
+
+/** Instala um `EdgeRuntime.waitUntil` falso que guarda as promessas. */
+function comEdgeRuntimeFalso<T>(corpo: (entregues: Promise<unknown>[]) => Promise<T>): Promise<T> {
+  const global = globalThis as { EdgeRuntime?: unknown };
+  const antes = global.EdgeRuntime;
+  const entregues: Promise<unknown>[] = [];
+  global.EdgeRuntime = { waitUntil: (p: Promise<unknown>) => entregues.push(p) };
+  return corpo(entregues).finally(() => {
+    global.EdgeRuntime = antes;
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12h): com EdgeRuntime.waitUntil a criação registra EXATAMENTE UMA promessa (sem waitUntil aninhado), e ela só resolve DEPOIS de o push e o comprovante resolverem", () =>
+  comEdgeRuntimeFalso(async (entregues) => {
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+    let soltarPush!: () => void;
+    let soltarComprovante!: () => void;
+    const feitos: string[] = [];
+    const deps = {
+      enviarPush: async () => {
+        await new Promise<void>((r) => (soltarPush = r));
+        feitos.push("push");
+      },
+      enviarComprovante: async () => {
+        await new Promise<void>((r) => (soltarComprovante = r));
+        feitos.push("comprovante");
+      },
+      enviarAvisoAtrasado: async () => {},
+    };
+    const inicio = Date.now();
+    const r = await criarCartaoCI(contado, mp, deps);
+    const levou = Date.now() - inicio;
+
+    // A resposta saiu sem esperar nada do segundo plano.
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(levou < 1000, true, `a resposta esperou o segundo plano: ${levou} ms`);
+    assertEquals(entregues.length, 1, "UM waitUntil, registrado antes da resposta");
+
+    let resolveu = false;
+    entregues[0].then(() => {
+      resolveu = true;
+    });
+    const tique = () => new Promise<void>((r) => setTimeout(r, 20));
+    await tique();
+    // A RPC já rodou (a confirmação AGUARDA o efeito), mas o efeito pendura.
+    assertEquals(confirmacoesCI(db).length, 1);
+    assertEquals(resolveu, false, "a promessa entregue resolveu antes dos efeitos");
+    assertEquals(entregues.length, 1, "nenhum waitUntil novo depois do primeiro");
+
+    // Solta o push: o comprovante ainda pendura -> a promessa segue aberta.
+    soltarPush();
+    await tique();
+    assertEquals(resolveu, false, "resolveu sem o comprovante");
+    soltarComprovante();
+    await entregues[0];
+    assertEquals(resolveu, true);
+    assertEquals(feitos.sort(), ["comprovante", "push"]);
+    assertEquals(entregues.length, 1);
+  }));
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12i): com EdgeRuntime.waitUntil e um GET que NUNCA volta, a resposta sai mesmo assim (a confirmação vai para o waitUntil e nada foi confirmado ainda)", () =>
+  comEdgeRuntimeFalso(async (entregues) => {
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: "preso" });
+    const ef = efeitosCI();
+    const inicio = Date.now();
+    const r = await criarCartaoCI(contado, mp, ef.deps);
+    const levou = Date.now() - inicio;
+
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(levou < 1000, true, `a resposta esperou o GET: ${levou} ms`);
+    assertEquals(entregues.length, 1);
+    assertEquals(db.chamadasRpc, []);
+    // Solta o GET (404) para o teste não deixar timer pendurado.
+    mp.soltarGet();
+    await entregues[0];
+    assertEquals(db.chamadasRpc, []);
+    assertEquals(ef.pushes.length + ef.comprovantes.length, 0);
+  }));
+
+// ── (12j) as duas saídas de sucesso da criação que o gancho cobre/não cobre ──
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12j): a saída `vagaAdotada` (um PIX concorrente aberto ocupou a vaga; é cancelado e o cartão aprovado é adotado) também confirma 1x pela prova do GET — mesma resposta, 1 push, 1 comprovante", async () => {
+  const idPix = "ORDTST01PIXCONCORRENTE000000";
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    // O PIX concorrente grava a vaga enquanto o POST do cartão está no ar: a
+    // gravação final perde, o PIX é cancelado e o cartão aprovado é adotado.
+    aoPostar: () => {
+      db.linha.gateway_payment_id = idPix;
+    },
+    pixOcupante: {
+      id: idPix,
+      aberto: orderDePix("action_required", "waiting_transfer", idPix),
+      cancelado: orderDePix("canceled", "canceled", idPix),
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "a saída `vagaAdotada` foi a que respondeu");
+  assertEquals(mp.chamadas.some((c) => c.url.endsWith(`/${idPix}/cancel`)), true, "o PIX concorrente foi cancelado");
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(mp.gets().length, 1);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12k): a CONVERGÊNCIA (o webhook já adotou esta mesma order antes do UPDATE da criação) NÃO confirma pela criação — ZERO GET da criação, ZERO RPC, mesma resposta", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoPostar: () => {
+      db.linha.gateway_payment_id = ORDER_CARTAO;
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(mp.gets().length, 0, "a convergência nunca faz GET da criação");
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
 });
 
 // ── Webhook de verdade: paridade do push e concorrência ───────────────────
@@ -12399,17 +12767,21 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (concorrência): o webhook entregue 3x DEPOIS 
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MEDIÇÃO LOCAL (T0-LOCAL, 04/10/2026, sobre a prévia cccee4b8) — o que
-// acontece HOJE com um cartão aprovado já no POST de criação. Estes testes
-// DOCUMENTAM o comportamento atual (a criação nunca confirma; só o webhook,
-// atrasado, ou o cron confirmam) e NÃO mudam com o desenho "a criação confirma
-// pela prova do GET": quem muda é o (12), acima. Banco COM ESTADO + o handler
-// do webhook DE VERDADE; nada sai para a rede.
+// acontecia com um cartão aprovado já no POST de criação ANTES de a criação
+// confirmar pela prova do GET: só o webhook (atrasado) ou o cron confirmavam.
+// Depois do desenho "a criação confirma pela prova do GET" (testes (12), acima)
+// esse atraso continua sendo o comportamento quando o GET da criação NÃO
+// prova (falha, 5xx): estes testes seguem como documentação desse piso — o
+// GET da criação falha, a criação responde 'pago' e quem confirma é o webhook.
+// Banco COM ESTADO + o handler do webhook DE VERDADE; nada sai para a rede.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** MP falso: o POST de criação devolve o cartão APROVADO (objeto da doc); o
- * GET por id (que só o webhook faz) devolve a mesma order. */
+ * GET por id devolve a mesma order SÓ quando `getFunciona.valor` é true (o
+ * GET da criação roda com ele false: 500; o do webhook, depois, com true). */
 function mpDaCriacaoAprovadaT0() {
   const chamadas: string[] = [];
+  const getFunciona = { valor: false };
   const fn = async (url: string, init?: RequestInit): Promise<Response> => {
     const verbo = init?.method ?? "GET";
     chamadas.push(`${verbo} ${url}`);
@@ -12417,11 +12789,12 @@ function mpDaCriacaoAprovadaT0() {
       return new Response(JSON.stringify(cartaoPagoCI()), { status: 201 });
     }
     if (verbo === "GET" && url.endsWith(`/v1/orders/${VAGA_CI}`)) {
+      if (!getFunciona.valor) return new Response(JSON.stringify({ message: "erro" }), { status: 500 });
       return new Response(JSON.stringify(cartaoPagoCI()), { status: 200 });
     }
     throw new Error(`fetch inesperado na medição T0: ${verbo} ${url}`);
   };
-  return { fn, chamadas };
+  return { fn, chamadas, getFunciona };
 }
 
 async function criarCartaoAprovadoT0(
@@ -12439,7 +12812,7 @@ async function criarCartaoAprovadoT0(
   return { status: resposta.status, corpo: await resposta.json() };
 }
 
-Deno.test("T0-LOCAL (b): POST de cartão aprovado com webhook AUSENTE -> responde 'pago' à tela, mas o pedido segue 'aguardando': ZERO confirmar_pagamento, ZERO efeito, e a criação não faz GET", async () => {
+Deno.test("T0-LOCAL (b): POST de cartão aprovado e o GET da criação FALHANDO (webhook ausente) -> responde 'pago' à tela, mas o pedido segue 'aguardando': ZERO confirmar_pagamento, ZERO efeito", async () => {
   const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const mp = mpDaCriacaoAprovadaT0();
   const ef = efeitosCI();
@@ -12453,11 +12826,14 @@ Deno.test("T0-LOCAL (b): POST de cartão aprovado com webhook AUSENTE -> respond
   assertEquals(db.linha.payment_status, "aguardando");
   assertEquals(confirmacoesCI(db), []);
   assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
-  // Uma ÚNICA chamada ao MP: o POST. Nenhum GET por id.
-  assertEquals(mp.chamadas, ["POST https://api.mercadopago.com/v1/orders"]);
+  // O POST e UM GET por id (que falhou).
+  assertEquals(mp.chamadas, [
+    "POST https://api.mercadopago.com/v1/orders",
+    `GET https://api.mercadopago.com/v1/orders/${VAGA_CI}`,
+  ]);
 });
 
-Deno.test("T0-LOCAL (d): o mesmo pedido, WEBHOOK ATRASADO — só quando o webhook chega o pedido vira 'pago' (RPC 1x, push 1x, comprovante 1x); entregas repetidas dão 'ja_pago'", async () => {
+Deno.test("T0-LOCAL (d): o mesmo pedido, WEBHOOK ATRASADO — com o GET da criação falho, só quando o webhook chega o pedido vira 'pago' (RPC 1x, push 1x, comprovante 1x); entregas repetidas dão 'ja_pago'", async () => {
   const db = bancoContandoEscritas(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
   const mp = mpDaCriacaoAprovadaT0();
   const ef = efeitosCI();
@@ -12468,7 +12844,8 @@ Deno.test("T0-LOCAL (d): o mesmo pedido, WEBHOOK ATRASADO — só quando o webho
   assertEquals(db.db.linha.payment_status, "aguardando");
   assertEquals(confirmacoesCI(db.db), []);
 
-  // O webhook atrasado chega.
+  // O webhook atrasado chega (o MP voltou a responder o GET).
+  mp.getFunciona.valor = true;
   const w = await entregarWebhookCI(db.contado, mp, ef.deps);
   assertEquals(w.status, 200, JSON.stringify(w.corpo));
   assertEquals(w.corpo, { ok: true, resultado: "pago" });
