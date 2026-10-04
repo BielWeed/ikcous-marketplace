@@ -202,7 +202,22 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   assert(!/continue-on-error/.test(bloqueante.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")));
   assert(/- name: Aplica as migrations do zero\n\s+id: aplica\n\s+run: node tests\/banco\/aplicar-migrations\.cjs/.test(bloqueante));
   const passos = bloqueante.split(/\n {6}- /).slice(1);
-  const provas = passos.filter((p) => /tests\/banco\/(rodar-isolado\.cjs|invariantes-dinheiro\.cjs)/.test(p));
+  // Prova é QUALQUER passo que roda um script de tests/banco que não seja de
+  // apoio — pelo rodar-isolado ou direto (`node tests/banco/x-viva.cjs`). Os
+  // scripts de apoio vão por nome; um apoio novo tem de entrar aqui, senão o
+  // passo dele conta como prova sem nome na lista (vermelho). Só as linhas
+  // que não são comentário: um comentário que cita uma prova não é passo.
+  const APOIO = [
+    "tests/banco/aplicar-migrations.cjs",
+    "tests/banco/provisionar.cjs",
+    "tests/banco/rodar-isolado.cjs",
+    "tests/banco/efemero.cjs",
+  ];
+  const scriptsDeProva = (p) =>
+    [...p.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n").matchAll(/tests\/banco\/[^\s"'`]+\.cjs/g)]
+      .map((m) => m[0])
+      .filter((s) => !APOIO.includes(s));
+  const provas = passos.filter((p) => scriptsDeProva(p).length > 0);
   // A lista é por NOME, não só por número: cada prova de dinheiro aparece
   // exatamente uma vez, e nenhuma prova fica no job sem estar aqui. Na
   // integração das branches, as listas se SOMAM (união dos nomes) e a
@@ -232,9 +247,10 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     );
   }
   for (const passo of provas) {
+    const scripts = scriptsDeProva(passo);
     assert(
-      PROVAS_DO_DINHEIRO.some((prova) => passo.includes(prova)),
-      `prova no job do dinheiro sem nome na lista: ${passo.split("\n")[0]}`,
+      scripts.length === 1 && PROVAS_DO_DINHEIRO.includes(scripts[0]),
+      `prova no job do dinheiro sem nome na lista: ${passo.split("\n")[0]} (${scripts.join(", ")})`,
     );
   }
   assertEquals(provas.length, PROVAS_DO_DINHEIRO.length, "uma prova por nome da lista");
