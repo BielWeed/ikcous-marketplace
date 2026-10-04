@@ -693,6 +693,13 @@ function ehViolacaoDeUnicidade(erro: unknown): boolean {
  * (edge/cron) conclui. Nenhuma linha casa a chave → o 23505 veio de OUTRA
  * restrição: relança o erro original (500, o MP reenvia) — nunca engolir uma
  * violação que não se entende.
+ *
+ * Devolve "ja_registrado" (ou "recusado", se a conclusão da linha órfã
+ * esbarrou em `estorno_acima_do_total`) — NUNCA "inserido": o valor desta
+ * linha NÃO é dinheiro novo DESTA entrega, e quem chama não pode somá-lo ao
+ * acumulado em memória (bloqueio da revisão do Lote A: somar contava o mesmo
+ * refund duas vezes no clamp do próximo — pedido de 100, refunds 20 e 70,
+ * terminava gravando 60 em vez de 70). Quem chama relê o acumulado do banco.
  */
 async function recuperarLinhaJaRegistrada(args: {
   supabase: ReturnType<typeof createClient>;
@@ -701,7 +708,7 @@ async function recuperarLinhaJaRegistrada(args: {
   mpStatus: string;
   mpStatusDetail: string | null;
   erroOriginal: unknown;
-}): Promise<boolean> {
+}): Promise<DesfechoDaInsercao> {
   const { supabase, orderId, mpRefundId, mpStatus, mpStatusDetail, erroOriginal } = args;
   const { data: linhas, error: erroLeitura } = await supabase
     .from("order_refunds")
@@ -720,7 +727,7 @@ async function recuperarLinhaJaRegistrada(args: {
   );
   const concluidaSemCarimbo = existente.status === "concluido" &&
     (existente.concluido_em === null || existente.concluido_em === undefined);
-  if (existente.solicitado_por !== "sistema" || !concluidaSemCarimbo) return true;
+  if (existente.solicitado_por !== "sistema" || !concluidaSemCarimbo) return "ja_registrado";
 
   const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
     p_refund_id: existente.id,
@@ -736,11 +743,47 @@ async function recuperarLinhaJaRegistrada(args: {
         mpRefundId,
         erroConcluir,
       );
-      return false;
+      return "recusado";
     }
     throw erroConcluir;
   }
-  return true;
+  return "ja_registrado";
+}
+
+/**
+ * Desfecho de `inserirEstornoConcluido` (Lote A, bloqueio da revisão):
+ *   "inserido"      — ESTA entrega gravou a linha e somou o valor dela
+ *                     (`concluir_estorno`): só este soma no acumulado em
+ *                     memória de quem chama;
+ *   "ja_registrado" — outra entrega já tinha a linha do mesmo refund (23505):
+ *                     o acumulado em memória está VELHO — quem chama relê o
+ *                     `valor_estornado` do banco antes do próximo clamp;
+ *   "recusado"      — a RPC recusou (`estorno_acima_do_total`) ou o INSERT não
+ *                     devolveu a linha: nada somado.
+ */
+type DesfechoDaInsercao = "inserido" | "ja_registrado" | "recusado";
+
+/**
+ * Relê o `valor_estornado` do pedido — a fonte canônica do acumulado
+ * (`concluir_estorno` é o único que o soma). Usada depois de um 23505: o
+ * acumulado em memória deste lote não enxerga o que OUTRA entrega concluiu
+ * entre a leitura inicial e agora.
+ */
+async function releValorEstornado(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+): Promise<number> {
+  const { data, error } = await supabase
+    .from("marketplace_orders")
+    .select("valor_estornado")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) throw error;
+  const valor = Number((data as Record<string, unknown> | null)?.valor_estornado);
+  if (!data || !Number.isFinite(valor)) {
+    throw new Error("webhook-mercadopago: valor_estornado ilegível ao reler o pedido depois de um 23505");
+  }
+  return valor;
 }
 
 /**
@@ -754,9 +797,10 @@ async function recuperarLinhaJaRegistrada(args: {
  * a diferença.
  *
  * Erro nomeado `estorno_acima_do_total` (a RPC recusou por segurança) →
- * console.error e `false` (SEGUE — 200 no fim, item 6 do brief: reenviar não
- * muda a conta e 500 aqui viraria reenvio infinito). Qualquer outro erro de
- * banco → lança (o chamador devolve 500 — fila do MP).
+ * console.error e "recusado" (SEGUE — 200 no fim, item 6 do brief: reenviar
+ * não muda a conta e 500 aqui viraria reenvio infinito). 23505 do índice
+ * único → "ja_registrado" (`recuperarLinhaJaRegistrada`). Qualquer outro erro
+ * de banco → lança (o chamador devolve 500 — fila do MP).
  */
 async function inserirEstornoConcluido(args: {
   supabase: ReturnType<typeof createClient>;
@@ -767,7 +811,7 @@ async function inserirEstornoConcluido(args: {
   mpRefundId: string | null;
   mpStatus: string;
   mpStatusDetail: string | null;
-}): Promise<boolean> {
+}): Promise<DesfechoDaInsercao> {
   const { supabase, orderId, amount, valorOriginal, motivoBase, mpRefundId, mpStatus, mpStatusDetail } = args;
   const clampou = amount < valorOriginal;
   const motivo = motivoBase + (clampou ? `, valor no MP R$ ${valorOriginal.toFixed(2)}` : "");
@@ -808,7 +852,7 @@ async function inserirEstornoConcluido(args: {
       orderId,
       mpRefundId,
     );
-    return false;
+    return "recusado";
   }
 
   const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
@@ -825,11 +869,11 @@ async function inserirEstornoConcluido(args: {
         mpRefundId,
         erroConcluir,
       );
-      return false;
+      return "recusado";
     }
     throw erroConcluir;
   }
-  return true;
+  return "inserido";
 }
 
 /**
@@ -1111,7 +1155,7 @@ async function registrarDesfechoDoEstorno(args: {
     }
 
     const amountClampado = Math.min(valorRefund, disponivel);
-    const ok = await inserirEstornoConcluido({
+    const desfecho = await inserirEstornoConcluido({
       supabase,
       orderId,
       amount: amountClampado,
@@ -1121,9 +1165,16 @@ async function registrarDesfechoDoEstorno(args: {
       mpStatus: status,
       mpStatusDetail: statusDetail || null,
     });
-    if (ok) {
+    if (desfecho === "inserido") {
       reivindicados.add(refundId);
       pedido.valor_estornado = Number((pedido.valor_estornado + amountClampado).toFixed(2));
+    } else if (desfecho === "ja_registrado") {
+      // Lote A (bloqueio da revisão): o refund já era de OUTRA entrega — o
+      // valor dele NÃO é somado aqui. O acumulado em memória pode estar
+      // velho (a outra entrega concluiu depois da nossa leitura): relê do
+      // banco antes do clamp do próximo refund.
+      reivindicados.add(refundId);
+      pedido.valor_estornado = await releValorEstornado(supabase, orderId);
     }
   }
 

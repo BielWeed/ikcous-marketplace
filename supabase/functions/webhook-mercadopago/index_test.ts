@@ -314,6 +314,10 @@ function clienteFalso(opts: {
   // (com a fila viva) — simula outra entrega gravando entre a leitura e o
   // INSERT desta.
   aposLerOrderRefunds?: (fila: Array<Record<string, unknown>>) => void;
+  // Lote A (bloqueio da revisão): `concluir_estorno` também soma em
+  // `pedido.valor_estornado` (como a RPC real, 2026110000100) — para o teste
+  // ler o acumulado CANÔNICO no fim e numa reentrega. Opt-in.
+  concluirSomaNoPedido?: boolean;
 }) {
   const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   let leiturasNaBarreira = 0;
@@ -365,6 +369,10 @@ function clienteFalso(opts: {
         const jaConcluida = Boolean(linha && linha.status === "concluido" && linha.concluido_em);
         if (linha && !jaConcluida) {
           valorEstornadoAcumulado += Number(linha.amount ?? 0);
+          if (opts.concluirSomaNoPedido && opts.pedido) {
+            const p = opts.pedido as Record<string, unknown>;
+            p.valor_estornado = Number((Number(p.valor_estornado ?? 0) + Number(linha.amount ?? 0)).toFixed(2));
+          }
           linha.status = "concluido";
           linha.concluido_em = "2026-09-08T00:00:00.000Z";
           if (args.p_mp_refund_id !== undefined && args.p_mp_refund_id !== null) {
@@ -3404,6 +3412,73 @@ Deno.test("Lote A R2 - 23505 com a linha existente AINDA sem concluido_em (a out
     "a linha da janela de falha é concluída por quem esbarrou nela",
   );
   assertEquals((registro as any).valorEstornadoAcumulado, 20);
+});
+
+Deno.test("Lote A R2 - bloqueio da revisão: refund 20 já concluído por OUTRA entrega entre a leitura do ledger e a do pedido + refund 70 novo -> grava 70 (não 60), total 90; a reentrega continua 90", async () => {
+  // Intercalação: pedido de 100. Esta entrega (B) lê o ledger VAZIO; a
+  // entrega A conclui o refund de 20; B lê o pedido com valor_estornado 20;
+  // B tenta inserir r20 -> 23505 (linha de A). O valor de r20 NÃO é dinheiro
+  // novo de B: somá-lo de novo em memória (40) fazia o clamp de r70 gravar 60
+  // e o banco terminar em 80, sem reentrega que corrigisse (r20 e r70 já
+  // reivindicados).
+  const registro = registroDoLedger();
+  const pedido = pedidoPago();
+  let entregaAJaConcluiu = false;
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [],
+    indicesUnicosDoLedger: true,
+    concluirSomaNoPedido: true,
+    aposLerOrderRefunds: (fila) => {
+      if (entregaAJaConcluiu) return;
+      entregaAJaConcluiu = true;
+      fila.push({
+        id: "linha-da-entrega-A",
+        order_id: UUID_PEDIDO,
+        amount: 20,
+        status: "concluido",
+        solicitado_por: "sistema",
+        mp_refund_id: "r-20",
+        concluido_em: "2026-10-04T00:00:00.000Z",
+      });
+      pedido.valor_estornado = 20;
+    },
+  });
+  const corpo = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "processed" }],
+      refunds: [
+        { id: "r-20", amount: "20.00", status: "processed" },
+        { id: "r-70", amount: "70.00", status: "processed" },
+      ],
+    },
+  };
+  const entregar = async () =>
+    await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpo),
+      enviarPushContado: async () => 1,
+    });
+
+  const resposta = await entregar();
+  assertEquals(resposta.status, 200);
+  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
+  const r70 = fila.filter((r) => r.mp_refund_id === "r-70");
+  assertEquals(r70.length, 1);
+  assertEquals(r70[0].amount, 70, "o clamp usa o acumulado CANÔNICO (20), não 20 + 20 em memória");
+  assertEquals(pedido.valor_estornado, 90);
+
+  // Reentrega do MP: nada novo, o total continua 90.
+  const reentrega = await entregar();
+  assertEquals(reentrega.status, 200);
+  assertEquals(pedido.valor_estornado, 90);
+  assertEquals(fila.filter((r) => r.status === "concluido").reduce((a, r) => a + Number(r.amount), 0), 90);
 });
 
 Deno.test("Lote A R2 - 23505 sem linha casando a chave (outra restrição) -> NÃO engole: 500, o MP reenvia", async () => {
