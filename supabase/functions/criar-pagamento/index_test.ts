@@ -12782,17 +12782,19 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (concorrência): o webhook entregue 3x DEPOIS 
 function mpDaCriacaoAprovadaT0() {
   const chamadas: string[] = [];
   const getFunciona = { valor: false };
-  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+  const fn = (url: string, init?: RequestInit): Promise<Response> => {
     const verbo = init?.method ?? "GET";
     chamadas.push(`${verbo} ${url}`);
     if (verbo === "POST" && url.endsWith("/v1/orders")) {
-      return new Response(JSON.stringify(cartaoPagoCI()), { status: 201 });
+      return Promise.resolve(new Response(JSON.stringify(cartaoPagoCI()), { status: 201 }));
     }
     if (verbo === "GET" && url.endsWith(`/v1/orders/${VAGA_CI}`)) {
-      if (!getFunciona.valor) return new Response(JSON.stringify({ message: "erro" }), { status: 500 });
-      return new Response(JSON.stringify(cartaoPagoCI()), { status: 200 });
+      if (!getFunciona.valor) {
+        return Promise.resolve(new Response(JSON.stringify({ message: "erro" }), { status: 500 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(cartaoPagoCI()), { status: 200 }));
     }
-    throw new Error(`fetch inesperado na medição T0: ${verbo} ${url}`);
+    return Promise.reject(new Error(`fetch inesperado na medição T0: ${verbo} ${url}`));
   };
   return { fn, chamadas, getFunciona };
 }
