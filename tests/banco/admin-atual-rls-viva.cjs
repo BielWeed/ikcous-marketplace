@@ -918,6 +918,211 @@ PROVAS.push({
 });
 
 // ---------------------------------------------------------------------------
+// (f) COMPOSIÇÃO com a 20261198000000 e o resto da pilha: depois da 202, quem
+//     escreve em itens e histórico COMO FUNÇÃO continua escrevendo
+// ---------------------------------------------------------------------------
+
+// As escritoras legítimas são funções SECURITY DEFINER (dono do banco: ignoram
+// a RLS). Aqui se mede (1) POR BUSCA no corpo vivo — sem lista — que toda
+// função que dá INSERT/UPDATE/DELETE nessas duas tabelas é SECURITY DEFINER
+// (uma INVOKER quebraria com a 202: o comprador não escreve mais); (2) que as
+// escritoras nomeadas existem e são DEFINER; e (3) COMPORTAMENTO: criação
+// (v23, v24), balcão, mudança de status e cancelamento com cobrança gravam
+// itens e histórico chamados por quem NÃO é admin (comprador) ou por admin.
+const ESCRITORAS_NOMEADAS = [
+  "create_marketplace_order(jsonb,text,uuid,text,text,text,text)",
+  "create_marketplace_order_v23(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)",
+  "create_marketplace_order_v24(jsonb,numeric,numeric,text,uuid,text,text,text,text,jsonb,text,text,uuid)",
+  "registrar_venda_presencial(jsonb,text,uuid,text,text,numeric,text,uuid)",
+  "update_order_status_atomic(uuid,text,text,boolean)",
+  "pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)",
+  "cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)",
+];
+
+PROVAS.push({
+  nome: "(f) composição: toda função que escreve em itens/histórico é SECURITY DEFINER (busca no corpo vivo + as nomeadas); criação v23/v24 (itens), balcão, status e cancelamento com cobrança (itens e histórico) seguem gravando depois da 202",
+  corpo: async (c) => {
+    // (1) por busca, sem lista.
+    const achadas = (
+      await c.query(
+        `SELECT p.oid::regprocedure::text AS f, p.prosecdef AS definer
+           FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public'
+            AND p.prosrc ~* '(insert\\s+into|update|delete\\s+from)\\s+(public\\.)?marketplace_order_(items|history)\\M'
+          ORDER BY 1`,
+      )
+    ).rows;
+    assert.ok(
+      achadas.length >= 5,
+      `achei poucas escritoras: ${achadas.length}`,
+    );
+    const invoker = achadas.filter((x) => !x.definer).map((x) => x.f);
+    assert.deepEqual(
+      invoker,
+      [],
+      `escritora INVOKER quebra com a 202: ${invoker.join(", ")}`,
+    );
+    // (2) as nomeadas existem e são DEFINER.
+    for (const assinatura of ESCRITORAS_NOMEADAS) {
+      const r = await c.query(
+        "SELECT prosecdef FROM pg_proc WHERE oid = to_regprocedure($1)",
+        [assinatura],
+      );
+      assert.equal(
+        r.rows.length,
+        1,
+        `${assinatura} não existe no banco composto`,
+      );
+      assert.equal(
+        r.rows[0].prosecdef,
+        true,
+        `${assinatura} não é SECURITY DEFINER`,
+      );
+    }
+    console.log(
+      `    (f) escritoras achadas por busca (todas DEFINER): ${achadas.map((x) => x.f.split("(")[0]).join(", ")}`,
+    );
+
+    // (3) comportamento, numa transação desfeita.
+    const contar = async (pedido) =>
+      (
+        await c.query(
+          `SELECT (SELECT count(*)::int FROM public.marketplace_order_items WHERE order_id = $1) AS itens,
+                  (SELECT count(*)::int FROM public.marketplace_order_history WHERE order_id = $1) AS historico`,
+          [pedido],
+        )
+      ).rows[0];
+    await c.query("BEGIN");
+    try {
+      await c.query(
+        `INSERT INTO public.store_config
+           (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage)
+         VALUES (1, '38500-000', '38500000-38505000', 0.01, 'national')
+         ON CONFLICT (id) DO UPDATE
+           SET origin_cep = EXCLUDED.origin_cep,
+               local_cep_range = EXCLUDED.local_cep_range,
+               free_shipping_min = EXCLUDED.free_shipping_min,
+               shipping_coverage = EXCLUDED.shipping_coverage`,
+      );
+      const P_F = "a9caaaaa-0000-4000-8000-0000000000f2";
+      await c.query(
+        `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, frete_gratis)
+         VALUES ($1, 'Produto composição', 100, 1000, true, 40, false)`,
+        [P_F],
+      );
+      const ITENS = JSON.stringify([
+        { product_id: P_F, variant_id: null, quantity: 1 },
+      ]);
+      const criar = (rpc, metodo) => [
+        `SELECT public.${rpc}($1::jsonb, 100::numeric, 0::numeric, $2::text, NULL::uuid, NULL::text,
+           'Comprador', '5539000000000', NULL::text, $3::jsonb, '38500-000', 'local-delivery', NULL::uuid) AS id`,
+        [
+          ITENS,
+          metodo,
+          JSON.stringify({
+            cep: "38500-000",
+            rua: "Rua da Prova",
+            numero: "1",
+          }),
+        ],
+      ];
+
+      // Criação pelo COMPRADOR (authenticated, sem ser admin): v24 (pix) e v23 (dinheiro).
+      const criados = {};
+      for (const [rpc, metodo] of [
+        ["create_marketplace_order_v24", "pix"],
+        ["create_marketplace_order_v23", "cash"],
+      ]) {
+        await entrar(c, "dono");
+        const [sql, par] = criar(rpc, metodo);
+        const r = await c.query(sql, par);
+        await c.query("RESET ROLE");
+        const id = r.rows[0].id;
+        const n = await contar(id);
+        assert.ok(n.itens >= 1, `${rpc}: não gravou item`);
+        // A criação só grava ITENS (o corpo da v23/v24 não escreve histórico:
+        // a linha do tempo começa na primeira mudança de status).
+        criados[rpc] = id;
+      }
+
+      // Balcão pelo ADMIN atual.
+      await entrar(c, "admin");
+      const venda = await c.query(
+        `SELECT public.registrar_venda_presencial($1::jsonb, 'cash', NULL::uuid, NULL::text, NULL::text,
+           0::numeric, NULL::text, NULL::uuid) AS venda`,
+        [JSON.stringify([{ product_id: P_F, quantity: 1 }])],
+      );
+      await c.query("RESET ROLE");
+      const idVenda = venda.rows[0].venda.order.id;
+      const nv = await contar(idVenda);
+      assert.ok(
+        nv.itens >= 1 && nv.historico >= 1,
+        "balcão não gravou itens e histórico",
+      );
+
+      // Mudança de status pelo admin atual (pedido v23, dinheiro): o histórico cresce.
+      const antesStatus = await contar(criados.create_marketplace_order_v23);
+      await entrar(c, "admin");
+      await c.query(
+        "SELECT public.update_order_status_atomic($1::uuid, 'processing') AS r",
+        [criados.create_marketplace_order_v23],
+      );
+      await c.query("RESET ROLE");
+      const depoisStatus = await contar(criados.create_marketplace_order_v23);
+      assert.equal(
+        depoisStatus.historico,
+        antesStatus.historico + 1,
+        "update_order_status_atomic não gravou o histórico",
+      );
+
+      // Cancelamento com cobrança aberta (a RPC da 98, chamada como a edge: service_role).
+      const O_COBRANCA = "a9cccccc-0000-4000-8000-0000000000f3";
+      await c.query(
+        `INSERT INTO public.marketplace_orders
+           (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
+            payment_method, payment_status, expires_at, metodo_online, gateway_payment_id)
+         VALUES ($1, $2, 'Comprador', '{}'::jsonb, 100, 100, 'pending', 'online',
+                 'online', 'aguardando', now() + interval '30 minutes', 'pix', 'ORDF202')`,
+        [O_COBRANCA, U_DONO],
+      );
+      await c.query(
+        `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price)
+         VALUES ($1, $2, 'Produto composição', 1, 100)`,
+        [O_COBRANCA, P_F],
+      );
+      const antesCancel = await contar(O_COBRANCA);
+      await c.query("SELECT set_config('app.rpc.user_id', '', true)");
+      await c.query("SET LOCAL ROLE service_role");
+      const cancel = await c.query(
+        "SELECT public.cancelar_pedido_com_cobranca($1::uuid, $2::uuid, 'ORDF202', 'aguardando', NULL) AS r",
+        [O_COBRANCA, U_ADMIN],
+      );
+      await c.query("RESET ROLE");
+      assert.equal(
+        cancel.rows[0].r.cancelado,
+        true,
+        JSON.stringify(cancel.rows[0].r),
+      );
+      const depoisCancel = await contar(O_COBRANCA);
+      assert.equal(
+        depoisCancel.historico,
+        antesCancel.historico + 1,
+        "cancelar_pedido_com_cobranca não gravou o histórico",
+      );
+      const ultimo = (
+        await c.query(
+          "SELECT new_status FROM public.marketplace_order_history WHERE order_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1",
+          [O_COBRANCA],
+        )
+      ).rows[0];
+      assert.equal(ultimo.new_status, "cancelled");
+    } finally {
+      await c.query("ROLLBACK");
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
 // (d) corpo vivo, rollback, idempotência, preflight
 // ---------------------------------------------------------------------------
 
