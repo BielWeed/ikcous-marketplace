@@ -174,6 +174,7 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/admin-atual-viva.cjs",
     "tests/banco/admin-atual-portas-viva.cjs",
     "tests/banco/admin-atual-devolucao-viva.cjs",
+    "tests/banco/admin-atual-rls-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
@@ -232,6 +233,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/admin-atual-portas-viva.cjs",
     // 20261200000000: a decisão da devolução exige o admin de agora.
     "tests/banco/admin-atual-devolucao-viva.cjs",
+    // 20261202000000: as políticas de RLS do pedido, da devolução e do financeiro.
+    "tests/banco/admin-atual-rls-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
     // 20261198000000: cancelar anula a cobrança.
     "tests/banco/cancelar-pedido-viva.cjs",

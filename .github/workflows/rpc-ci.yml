@@ -156,6 +156,14 @@ jobs:
       - name: Prova viva do admin atual na decisão da devolução (migration 20261200000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-devolucao-viva.cjs
+      # Migration 20261202000000 (as políticas de RLS do pedido, da devolução e
+      # do financeiro exigem o admin de agora): nas 14 políticas, o ex-admin
+      # com JWT velho lê 0 linhas e não escreve; controle na política antiga
+      # lê e escreve; admin atual como antes; dono lê o que é dele e terceiro
+      # não; rollback só troca a porta. CLONE próprio.
+      - name: Prova viva do admin atual nas políticas de RLS (migration 20261202000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-rls-viva.cjs
       # Migration 20261196000000 (Lote A): a contestação decide sob a trava do
       # pedido — corridas REAIS entre duas conexões (a 2ª comprovadamente
       # parada na trava), estimativa que só reserva, multicaso, refund regular
