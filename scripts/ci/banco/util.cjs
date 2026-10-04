@@ -176,7 +176,10 @@ const NEUTRALIZACOES_DE_PROVISIONAMENTO = [
   },
 ];
 
-/** Comenta as linhas de extensão; devolve o texto novo e os avisos dos que casaram. */
+/** Troca SÓ o comando de extensão por um comentário de BLOCO; devolve o texto
+ * novo e os avisos dos que casaram. Bloco, não `--`: com `--`, código na
+ * mesma linha depois do `;` sumiria junto e um erro dele sairia verde
+ * (revisão Opus de d3c97eb0, sonda `CREATE EXTENSION ... pg_cron; SELECT 1/0;`). */
 function neutralizarProvisionamento(texto) {
   let neutro = texto;
   const avisos = [];
@@ -184,7 +187,7 @@ function neutralizarProvisionamento(texto) {
     padrao.lastIndex = 0;
     if (padrao.test(neutro)) {
       padrao.lastIndex = 0;
-      neutro = neutro.replace(padrao, `-- [ci-banco] ${aviso}`);
+      neutro = neutro.replace(padrao, `/* [ci-banco] ${aviso} */`);
       avisos.push(aviso);
     }
     padrao.lastIndex = 0;

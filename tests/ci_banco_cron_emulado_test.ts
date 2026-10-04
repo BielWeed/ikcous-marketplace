@@ -68,14 +68,25 @@ Deno.test("neutralizarProvisionamento comenta SÓ as duas linhas de extensão", 
   const { texto, avisos } = neutralizarProvisionamento(SQL_COM_CRON);
   assertEquals(avisos.length, 2);
   assert(!/^\s*CREATE EXTENSION/im.test(texto), "linha de extensão sobrou");
-  assertMatch(texto, /-- \[ci-banco\] pg_cron emulado/);
-  assertMatch(texto, /-- \[ci-banco\] pg_net/);
+  assertMatch(texto, /\/\* \[ci-banco\] pg_cron emulado[^\n]*\*\//);
+  assertMatch(texto, /\/\* \[ci-banco\] pg_net[^\n]*\*\//);
   assertMatch(texto, /SELECT cron\.schedule\('job'/); // o resto fica
   // Sem a linha, nada muda e nenhum aviso.
   const limpo = neutralizarProvisionamento("SELECT 1;");
   assertEquals(limpo, { texto: "SELECT 1;", avisos: [] });
   // Chamar duas vezes seguidas dá o mesmo resultado (regex global sem estado).
   assertEquals(neutralizarProvisionamento(SQL_COM_CRON).avisos.length, 2);
+});
+
+Deno.test("neutralizarProvisionamento: código na MESMA linha da extensão continua executável", () => {
+  const { texto } = neutralizarProvisionamento(
+    "CREATE EXTENSION IF NOT EXISTS pg_cron; SELECT 1/0;\n",
+  );
+  // A linha some inteira com `--`; com bloco, o SELECT continua fora do comentário.
+  assertEquals(
+    texto,
+    "/* [ci-banco] pg_cron emulado por stub (provisionar-efemero.cjs) */ SELECT 1/0;\n",
+  );
 });
 
 /** Cliente de mentira: registra o que recebeu e falha conforme o roteiro. */
