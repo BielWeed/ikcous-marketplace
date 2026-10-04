@@ -34,7 +34,6 @@ import {
   consultarOrder,
   fetchComTempo,
   idEhClassico,
-  resumoSemDadoPessoal,
 } from "./mercadopago.ts";
 
 export type LinhaEstorno = {
@@ -44,12 +43,6 @@ export type LinhaEstorno = {
   status: "solicitado" | "em_processamento" | "concluido" | "falhou" | "recusado";
   mp_refund_id: string | null;
   tentativas: number;
-  // R1 (revisão Opus de 14d77a5b; colunas da 20261196000000). Opcionais:
-  // ausentes = linha LEGADA (o critério antigo vale) — o lado seguro.
-  /** Último POST autorizado por `autorizar_post_do_estorno`; presente = incerta. */
-  post_autorizado_em?: string | null;
-  /** true = nasceu depois da 20261196000000; NULL/ausente = legado. */
-  criada_sob_autorizacao?: boolean | null;
 };
 
 export type PedidoParaEstorno = {
@@ -80,157 +73,6 @@ export type ResultadoEstorno =
   | { tipo: "recusado"; motivo: string }
   // 429/5xx/rede/resposta não reconhecida: o cron re-tenta com a MESMA chave.
   | { tipo: "tentar_depois"; motivo: string; retryAfterS?: number };
-
-/**
- * A AUTORIZAÇÃO IMEDIATAMENTE ANTES DO POST (Lote A, 04/10/2026 — achado
- * causal do 01765261). O chamador lê o pedido, marca a linha e chama o
- * executor; entre essa leitura e o POST há o GET da transação da order (e,
- * em qualquer caminho, o tempo da própria fila). Um refund feito no painel
- * do MP e registrado pelo webhook nesse meio-tempo
- * (`registrar_estorno_externo_do_mp`) mudava o saldo sem o executor ver.
- *
- * `autorizarAntesDoPost` pergunta ao BANCO — RPC
- * `autorizar_post_do_estorno` (20261196000000): linha e pedido travados
- * (ordem global linha -> pedido), saldo relido — se o POST de X desta linha
- * ainda cabe:
- *   * `autorizado` — devolve o pedido RELIDO; o executor ainda roda a guarda
- *     de entrada sobre ele (pagamento, prazo, saldo) antes do POST.
- *   * `nao_cabe` — nada sai. Linha INCERTA (`linhaPodeJaTerChegadoAoMp`):
- *     fica em_processamento (o cron consulta o MP antes de qualquer
- *     repetição) — uma tentativa ANTERIOR pode ter chegado ao MP sem
- *     confirmação, e liberar a reserva sem prova é o caminho do dinheiro
- *     sair duas vezes. Linha NÃO incerta: `recusado` (nenhum POST saiu; R1
- *     da revisão Opus de 14d77a5b — antes ela ficava reservada para sempre).
- *   * `linha_mudou` — outro executor concluiu/recusou a linha no meio.
- *   * `indisponivel` — o banco não respondeu ou respondeu algo ilegível.
- * Falha FECHADA: sem a autorização (ausente, erro, ilegível) nenhum POST
- * sai — mesma régua de `consultarTransacaoDaOrder` ausente.
- *
- * O que isto NÃO garante: atomicidade com o Mercado Pago. Entre a resposta
- * do banco e o POST ainda há uma janela (curta: nenhuma espera de rede no
- * meio além do próprio POST); quem decide o saldo em última instância é o
- * MP, que recusa refund acima do que resta (`refund_amount_exceeds`/4296).
- */
-export type AutorizacaoDoPost =
-  | { decisao: "autorizado"; pedido: PedidoParaEstorno }
-  | { decisao: "nao_cabe"; disponivel: number | null }
-  | { decisao: "linha_mudou"; status: string | null }
-  | { decisao: "indisponivel" };
-
-/** Texto leigo gravado em `ultimo_erro` quando o saldo mudou antes do POST. */
-export const MOTIVO_SALDO_MUDOU_ANTES_DO_POST =
-  "o saldo do pedido mudou enquanto a devolução era preparada (outra devolução já foi registrada pelo Mercado Pago) — nada foi enviado; confira o pedido no painel do Mercado Pago";
-
-/** Texto leigo do `recusado` quando o banco diz que o POST não cabe mais e a
- * linha nunca teve POST (R1). */
-export const MOTIVO_SALDO_NAO_COBRE_MAIS =
-  "o saldo do pedido não cobre mais esta devolução (outra devolução já foi registrada pelo Mercado Pago) — nada foi enviado e o valor reservado foi liberado; confira o pedido no painel do Mercado Pago";
-
-/**
- * Sufixo do motivo quando a guarda de entrada recusaria uma linha INCERTA
- * (ver `linhaPodeJaTerChegadoAoMp`): nada é enviado e a reserva fica.
- */
-export const MOTIVO_LINHA_INCERTA =
-  "uma tentativa anterior desta devolução pode já ter chegado ao Mercado Pago — nada novo foi enviado e o valor segue reservado até o Mercado Pago confirmar ou negar";
-
-/**
- * A linha pode JÁ ter chegado ao MP? (Lote A, 04/10/2026 — achado do
- * coordenador em 1a823e3f; critério refeito no R1 da revisão Opus de
- * 14d77a5b, colunas da 20261196000000.) CRITÉRIO EXATO — incerta se:
- *   * `post_autorizado_em` presente — `autorizar_post_do_estorno` autorizou
- *     um POST desta linha (todo POST do executor passa por ela antes);
- *   * `mp_refund_id` presente (não vazio) — o MP já devolveu um id para ela;
- *   * LEGADO: `criada_sob_autorizacao` diferente de true (linha anterior à
- *     migration, ou campo ausente) E `tentativas > 1` — o executor antigo
- *     não carimbava, e toda MARCA (tentativas + 1) antecedia um POST
- *     possível; a linha que chega com tentativas 1 nunca foi marcada antes.
- * Linha nascida depois da migration (true) NÃO é incerta só por
- * `tentativas > 1`: tentativas sobe também em passagem que parou ANTES do
- * POST (nao_cabe, GET da transação falhou, autorização indisponível), e
- * contar isso como "pode ter saído" deixava a reserva presa para sempre.
- * Resíduos no cabeçalho da 20261196000000 (POST real que o MP nunca
- * processou; janela entre migration e edges novas).
- */
-export function linhaPodeJaTerChegadoAoMp(linha: LinhaEstorno): boolean {
-  if (typeof linha.post_autorizado_em === "string" && linha.post_autorizado_em !== "") {
-    return true;
-  }
-  if (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "") return true;
-  return linha.criada_sob_autorizacao !== true && Number(linha.tentativas ?? 0) > 1;
-}
-
-type ChamarRpc = (
-  nome: string,
-  args: Record<string, unknown>,
-) => PromiseLike<{ data: unknown; error: unknown }>;
-
-function numeroFinito(v: unknown): number | null {
-  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
-  return Number.isFinite(n) ? n : null;
-}
-
-function pedidoDaAutorizacao(bruto: unknown): PedidoParaEstorno | null {
-  if (!bruto || typeof bruto !== "object") return null;
-  const p = bruto as Record<string, unknown>;
-  const total = numeroFinito(p.total);
-  const estornado = numeroFinito(p.valor_estornado ?? 0);
-  if (
-    typeof p.id !== "string" || typeof p.gateway_payment_id !== "string" ||
-    total === null || estornado === null || typeof p.status !== "string"
-  ) {
-    return null;
-  }
-  return {
-    id: p.id,
-    gateway_payment_id: p.gateway_payment_id,
-    total,
-    valor_estornado: estornado,
-    payment_status: typeof p.payment_status === "string" ? p.payment_status : null,
-    paid_at: typeof p.paid_at === "string" ? p.paid_at : null,
-    status: p.status,
-  };
-}
-
-/**
- * A autorização pelo banco, para os chamadores que têm um cliente Supabase
- * (edge `estornar-pagamento` e cron `reconciliar-pagamentos`): UMA leitura
- * da resposta da RPC, dois chamadores. Nunca lança.
- */
-export function autorizacaoPeloBanco(
-  rpc: ChamarRpc,
-): (linha: LinhaEstorno) => Promise<AutorizacaoDoPost> {
-  return async (linha) => {
-    let resposta: { data: unknown; error: unknown };
-    try {
-      resposta = await rpc("autorizar_post_do_estorno", {
-        p_refund_id: linha.id,
-        p_valor: linha.amount,
-      });
-    } catch (err) {
-      console.error("estorno: autorizar_post_do_estorno lançou", nomeDoErro(err));
-      return { decisao: "indisponivel" };
-    }
-    if (resposta.error) {
-      console.error("estorno: autorizar_post_do_estorno falhou", resposta.error);
-      return { decisao: "indisponivel" };
-    }
-    const d = resposta.data && typeof resposta.data === "object"
-      ? resposta.data as Record<string, unknown>
-      : null;
-    if (d?.decisao === "autorizado") {
-      const pedido = pedidoDaAutorizacao(d.pedido);
-      return pedido ? { decisao: "autorizado", pedido } : { decisao: "indisponivel" };
-    }
-    if (d?.decisao === "nao_cabe") {
-      return { decisao: "nao_cabe", disponivel: numeroFinito(d.disponivel) };
-    }
-    if (d?.decisao === "linha_mudou") {
-      return { decisao: "linha_mudou", status: typeof d.status === "string" ? d.status : null };
-    }
-    console.error("estorno: autorizar_post_do_estorno devolveu forma desconhecida");
-    return { decisao: "indisponivel" };
-  };
-}
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 const PRAZO_DE_ESTORNO_MS = 180 * MS_POR_DIA;
@@ -395,12 +237,6 @@ function acharCodigo(corpo: unknown): string | null {
       : null);
 }
 
-/** R9: o que do erro de parse pode ir ao log — o NOME (`SyntaxError`),
- * nunca a mensagem (o V8 cola nela o começo do corpo recebido). */
-function nomeDoErro(err: unknown): string {
-  return err instanceof Error ? err.name : typeof err;
-}
-
 function comoObjeto(corpo: unknown): Record<string, unknown> {
   return corpo && typeof corpo === "object"
     ? corpo as Record<string, unknown>
@@ -413,84 +249,6 @@ function detailOuNull(corpo: Record<string, unknown>): string | null {
 
 function idComoString(valor: unknown): string {
   return valor === null || valor === undefined ? "" : String(valor);
-}
-
-/**
- * Id do REFUND na resposta do POST de refund da Orders API — NUNCA o id do
- * topo, que é o da ORDER. Contrato confirmado na doc primária (reference
- * orders online-payments refund/post, 29/09/2026): o id do refund mora em
- * `transactions.refunds[].id`; a coluna `order_refunds.mp_refund_id` exige
- * exatamente isso ("id do refund ... gravado só quando existe de verdade",
- * migration 2026110000000), e a travessia P0 (um refund credita UMA linha,
- * via `idsJaReivindicados`) só casa com o id DE VERDADE.
- *
- * SELEÇÃO (achado MÉDIO da revisão de 29/09): só são candidatos refunds com
- * id E com o VALOR desta linha (`emCentavos(amount)`), quando o valor é
- * legível — a resposta do parcial acumula os refunds ANTIGOS da order, e
- * reivindicar o id de um refund alheio degrada o P0 do mesmo jeito que o id
- * da order. Entre candidatos, o MAIS RECENTE por `date_created` (o
- * recém-criado); sem data, perde o desempate (mesma regra de
- * `refundQueCobreALinha`). Nenhum candidato do valor certo: string vazia —
- * quem esclarece é a CONSULTA (GET), como sempre; o id da order nunca.
- *
- * `idsJaReivindicados` (Lote A, 04/10/2026, A6): ids que OUTRAS linhas do
- * pedido já têm saem dos candidatos ANTES do desempate. Dois parciais de
- * MESMO valor davam o MESMO "mais recente" às duas linhas; com o índice
- * único (order_id, mp_refund_id) da migration 20261192000000, o
- * `concluir_estorno` da segunda estouraria 23505 (o COALESCE grava o id) e a
- * linha ficaria presa em 500 — e sem o índice, um refund creditava DUAS
- * linhas (o P0 quebrado pelo POST, não pela consulta).
- */
-/**
- * B1 (revisão Opus de 14d77a5b, 04/10/2026): a resposta traz ALGUM refund,
- * com id, do valor desta linha — reivindicado ou não. Quando há e todos já
- * são de outras linhas, `refundDaLinhaNaResposta` devolve null, e isso NÃO
- * pode virar "concluido sem id": o refund do valor da linha existe, só que
- * já está creditado a outra linha (o webhook pode ter casado o refund DESTA
- * chave com outra linha do mesmo valor). Concluir sem id grava
- * concluir_estorno(linha, NULL), que soma sem a guarda do índice único
- * (order_id, mp_refund_id) — a devolução sai em dobro no ledger.
- */
-function respostaTemRefundDoValorDaLinha(
-  c: Record<string, unknown>,
-  linha: LinhaEstorno,
-): boolean {
-  const centavosDaLinha = emCentavos(linha.amount);
-  return refundsDaOrder(c).some((r) => {
-    const temId = (typeof r.id === "string" && r.id !== "") || typeof r.id === "number";
-    const valor = Number(r.amount);
-    return temId && Number.isFinite(valor) && emCentavos(valor) === centavosDaLinha;
-  });
-}
-
-function refundDaLinhaNaResposta(
-  c: Record<string, unknown>,
-  linha: LinhaEstorno,
-  idsJaReivindicados: string[] = [],
-): Record<string, unknown> | null {
-    const centavosDaLinha = emCentavos(linha.amount);
-    const reivindicados = new Set(idsJaReivindicados);
-    const comId = refundsDaOrder(c).filter((r) =>
-        ((typeof r.id === "string" && r.id !== "") || typeof r.id === "number") &&
-        !reivindicados.has(String(r.id))
-    );
-    const doValorDaLinha = comId.filter((r) => {
-        const valor = Number(r.amount);
-        return Number.isFinite(valor) &&
-            emCentavos(valor) === centavosDaLinha;
-    });
-    const candidatos = doValorDaLinha.length > 0 ? doValorDaLinha : [];
-    if (candidatos.length === 0) return null;
-    let melhor = candidatos[0];
-    let melhorData = dataCreatedMs(melhor);
-    for (const refund of candidatos.slice(1)) {
-        const data = dataCreatedMs(refund);
-        if (data > melhorData) {
-            melhor = refund;
-            melhorData = data;
-        }
-    }
-    return melhor;
 }
 
 /**
@@ -539,20 +297,6 @@ function interpretarPayments(
     return {
       tipo: "tentar_depois",
       motivo: "o Mercado Pago está ocupado ou instável agora",
-    };
-  }
-
-  // 423 resource_locked (doc primária da idempotência, conferida 29/09): lock
-  // TRANSITÓRIO da order — webhook, cron e edge disputam a mesma cobrança, e
-  // o MP pede 'retry after some time'. Matar a linha aqui seria executar de
-  // novo um POST que é IDEMPOTENTE pela chave da própria linha — repetir é
-  // seguro por contrato (achado MÉDIO da revisão de 29/09; antes caía no
-  // default e virava 'falhou' definitivo sem retry em lugar nenhum).
-  if (status === 423) {
-    return {
-      tipo: "tentar_depois",
-      motivo: "a cobrança está temporariamente em outra operação no Mercado Pago",
-      retryAfterS: 30,
     };
   }
 
@@ -629,7 +373,6 @@ function interpretarOrders(
   status: number,
   corpo: unknown,
   linha: LinhaEstorno,
-  idsJaReivindicados: string[] = [],
 ): ResultadoEstorno {
   const c = comoObjeto(corpo);
   const codigo = acharCodigo(corpo);
@@ -700,44 +443,9 @@ function interpretarOrders(
     // devolução é o da LINHA: o corpo da order não traz o valor do refund
     // no topo, e quem sabe quanto foi pedido é o nosso ledger.
     if (mpStatus === "refunded" || detail === "partially_refunded") {
-      // P1 da revisão independente (29/09/2026): o topo da order vira
-      // refunded/partially_refunded ANTES de o refund DESTA linha terminar —
-      // o retorno do POST pode nascer 'processing'. Concluir exige o
-      // TERMINAL do refund da linha (`processed`, STATUS_REFUND_CONCLUIDO);
-      // não-terminal deixa a linha em_processamento COM o id gravado (o
-      // cron/webhook esclarece pela consulta, que já é terminais-estrita).
-      // Sem candidato legível do valor da linha: contrato do E14 original —
-      // concluido com id vazio, quem preenche é a consulta (GET).
-      const refundDaLinha = refundDaLinhaNaResposta(c, linha, idsJaReivindicados);
-      if (refundDaLinha === null && respostaTemRefundDoValorDaLinha(c, linha)) {
-        // B1: o refund do valor da linha está na resposta, mas já é de
-        // OUTRA linha — a consulta (GET), que passa pelo índice único,
-        // decide. Nunca "concluido sem id" aqui (ver a função acima).
-        return {
-          tipo: "tentar_depois",
-          motivo: "o Mercado Pago devolveu um reembolso que já está registrado em outra devolução deste pedido — vou conferir pela consulta",
-        };
-      }
-      if (
-        refundDaLinha !== null &&
-        String(refundDaLinha.status ?? "") !== STATUS_REFUND_CONCLUIDO
-      ) {
-        return {
-          tipo: "em_processamento",
-          mp_refund_id: idComoString(refundDaLinha.id),
-          // Status do REFUND da linha (ex. 'processing'), não do topo da
-          // order — rotular linha pendente com 'refunded' parecia terminal
-          // (achado BAIXA da revisão, 29/09; campo só para diagnóstico/T6).
-          mp_status: String(refundDaLinha.status ?? ""),
-        };
-      }
       return {
         tipo: "concluido",
-        // Id do REFUND (transactions.refunds[].id), nunca o id do topo da
-        // order — ver refundDaLinhaNaResposta acima (E14b/E14c, 29/09/2026).
-        mp_refund_id: refundDaLinha !== null
-          ? idComoString(refundDaLinha.id)
-          : "",
+        mp_refund_id: idComoString(c.id),
         mp_status: mpStatus,
         mp_status_detail: detail,
         valor: linha.amount,
@@ -753,17 +461,6 @@ function interpretarOrders(
     return {
       tipo: "tentar_depois",
       motivo: "o Mercado Pago está ocupado ou instável agora",
-    };
-  }
-
-  // 423 resource_locked — mesmo tratamento do interpretarPayments: lock
-  // transitório, POST idempotente pela chave da linha, repetir é seguro
-  // (achado MÉDIO da revisão de 29/09; antes virava 'falhou' definitivo).
-  if (status === 423) {
-    return {
-      tipo: "tentar_depois",
-      motivo: "a cobrança está temporariamente em outra operação no Mercado Pago",
-      retryAfterS: 30,
     };
   }
 
@@ -799,14 +496,11 @@ export function interpretarResposta(
   corpo: unknown,
   linha: LinhaEstorno,
   pedido: PedidoParaEstorno,
-  // Lote A (A6): ids que OUTRAS linhas do pedido já têm — ver
-  // `refundDaLinhaNaResposta`. Opcional: sem a lista, o contrato de antes.
-  idsJaReivindicados: string[] = [],
 ): ResultadoEstorno {
   if (idEhClassico(pedido.gateway_payment_id)) {
     return interpretarPayments(status, corpo, linha);
   }
-  return interpretarOrders(status, corpo, linha, idsJaReivindicados);
+  return interpretarOrders(status, corpo, linha);
 }
 
 /** Os códigos cujo veredito final depende de uma CONSULTA (GET). */
@@ -1285,9 +979,7 @@ export async function confirmarPorConsulta(args: {
   try {
     corpo = comoObjeto(await resposta.json());
   } catch (err) {
-    // R9: só o NOME do erro — a mensagem do erro de parse do V8 cola o começo
-    // do corpo (`Unexpected token 'J', "Josefina A"...`), que é do pagador.
-    console.error("estorno: confirmação com corpo ilegível", nomeDoErro(err));
+    console.error("estorno: confirmação com corpo ilegível", err);
     return {
       tipo: "tentar_depois",
       motivo: "resposta ilegível ao confirmar o estorno",
@@ -1402,15 +1094,10 @@ export async function consultarTransacaoDaOrder(args: {
   token: string;
   buscar?: typeof fetch;
 }): Promise<string | null> {
-  // N1 (3ª/4ª revisão de risco, 26/09/2026): a order consultada aqui pode
-  // ser de CARTÃO (payer com e-mail e CPF do titular) — `corpoNoLog: false`
-  // troca o corpo cru por um resumo sem dado pessoal no log de erro, mesma
-  // proteção que os outros pontos do cartão já usam.
   const resultado = await consultarOrder({
     token: args.token,
     orderId: args.orderId,
     fetchImpl: args.buscar,
-    corpoNoLog: false,
   });
   if (!resultado.ok) {
     console.error(
@@ -1441,8 +1128,6 @@ export async function executarEstorno(args: {
   buscar?: typeof fetch;
   consultarTransacaoDaOrder?: (orderId: string) => Promise<string | null>;
   idsJaReivindicados?: string[];
-  /** Ver `AutorizacaoDoPost`. Ausente = nenhum POST (falha fechada). */
-  autorizarAntesDoPost?: (linha: LinhaEstorno) => Promise<AutorizacaoDoPost>;
 }): Promise<ResultadoEstorno> {
   const { linha, pedido, token } = args;
   const buscar: typeof fetch = args.buscar ??
@@ -1450,25 +1135,7 @@ export async function executarEstorno(args: {
       fetchComTempo(fetch, typeof input === "string" ? input : String(input), init));
 
   const guarda = guardaAntesDeChamar(linha, pedido, new Date());
-  if (!guarda.ok) {
-    // Linha INCERTA (ver `linhaPodeJaTerChegadoAoMp`): a guarda sobre o
-    // retrato NUNCA a termina. `recusado` libera a reserva, e um POST
-    // anterior desta linha pode ter chegado ao MP — saldo insuficiente aqui
-    // é exatamente o caso em que outra devolução entrou depois dele. Nada é
-    // enviado; a reserva fica até a consulta ao MP (o caminho que já existe
-    // no cron) achar o refund (conclui) ou o MP dar veredito negativo. Vale
-    // para toda recusa da guarda: pedido já 'estornado' é saldo zero por
-    // outro nome, e o prazo de 180 dias não apaga um POST que já saiu.
-    if (linhaPodeJaTerChegadoAoMp(linha)) {
-      console.error(
-        "estorno: a guarda recusaria uma linha que pode já ter chegado ao MP — nada enviado, reserva preservada",
-        linha.id,
-        guarda.motivo,
-      );
-      return { tipo: "tentar_depois", motivo: `${guarda.motivo}; ${MOTIVO_LINHA_INCERTA}` };
-    }
-    return { tipo: "recusado", motivo: guarda.motivo };
-  }
+  if (!guarda.ok) return { tipo: "recusado", motivo: guarda.motivo };
 
   let transacaoDaOrder: string | null | undefined;
   if (!idEhClassico(pedido.gateway_payment_id)) {
@@ -1494,70 +1161,7 @@ export async function executarEstorno(args: {
     }
   }
 
-  // A AUTORIZAÇÃO, por último antes do POST — DEPOIS do GET da transação
-  // (é durante ele que o saldo pode mudar). Ver `AutorizacaoDoPost`.
-  if (!args.autorizarAntesDoPost) {
-    console.error("estorno: executor chamado sem autorizarAntesDoPost — nenhum POST", linha.id);
-    return {
-      tipo: "tentar_depois",
-      motivo: "não consegui reconferir o saldo do pedido antes de devolver",
-    };
-  }
-  let autorizacao: AutorizacaoDoPost;
-  try {
-    autorizacao = await args.autorizarAntesDoPost(linha);
-  } catch (err) {
-    console.error("estorno: a autorização antes do POST lançou", nomeDoErro(err));
-    autorizacao = { decisao: "indisponivel" };
-  }
-  if (autorizacao.decisao === "nao_cabe") {
-    if (!linhaPodeJaTerChegadoAoMp(linha)) {
-      // R1: nenhum POST desta linha saiu (nem carimbo, nem id do MP, nem
-      // legado com marca anterior) — recusar é seguro e libera a reserva. A
-      // escrita terminal dos chamadores exige post_autorizado_em IS NULL: se
-      // outro executor autorizou no meio, 0 linhas e nada é sobrescrito.
-      console.error(
-        "estorno: o saldo relido não cobre mais este POST e a linha nunca teve POST — recusada",
-        linha.id,
-        linha.amount,
-        autorizacao.disponivel,
-      );
-      return { tipo: "recusado", motivo: MOTIVO_SALDO_NAO_COBRE_MAIS };
-    }
-    console.error(
-      "estorno: o saldo relido não cobre mais este POST — nada enviado, linha incerta preservada em_processamento",
-      linha.id,
-      linha.amount,
-      autorizacao.disponivel,
-    );
-    return { tipo: "tentar_depois", motivo: `${MOTIVO_SALDO_MUDOU_ANTES_DO_POST}; ${MOTIVO_LINHA_INCERTA}` };
-  }
-  if (autorizacao.decisao === "linha_mudou") {
-    return {
-      tipo: "tentar_depois",
-      motivo: "a devolução mudou de estado enquanto era preparada — nada foi enviado",
-    };
-  }
-  if (autorizacao.decisao !== "autorizado") {
-    return {
-      tipo: "tentar_depois",
-      motivo: "não consegui reconferir o saldo do pedido antes de devolver",
-    };
-  }
-  const pedidoRelido = autorizacao.pedido;
-  const guardaRelida = guardaAntesDeChamar(linha, pedidoRelido, new Date());
-  if (!guardaRelida.ok) {
-    // O pedido RELIDO já não aceita este POST (estornado por outro caminho,
-    // saldo menor). Nunca terminal no último instante — ver AutorizacaoDoPost.
-    console.error(
-      "estorno: a guarda sobre o pedido relido recusou — nada enviado, linha preservada em_processamento",
-      linha.id,
-      guardaRelida.motivo,
-    );
-    return { tipo: "tentar_depois", motivo: MOTIVO_SALDO_MUDOU_ANTES_DO_POST };
-  }
-
-  const req = montarRequisicao(linha, pedidoRelido, transacaoDaOrder ?? undefined);
+  const req = montarRequisicao(linha, pedido, transacaoDaOrder ?? undefined);
   let resposta: Response;
   try {
     resposta = await buscar(req.url, {
@@ -1579,32 +1183,16 @@ export async function executarEstorno(args: {
   try {
     corpo = await resposta.json();
   } catch (err) {
-    console.error("estorno: resposta com corpo ilegível", resposta.status, nomeDoErro(err));
+    console.error("estorno: resposta com corpo ilegível", resposta.status, err);
     corpo = null;
   }
   if (!resposta.ok) {
-    // M2: o erro do MP vai para o log da função (padrão da casa), nunca para
-    // o texto do lojista — e sem ele o POST reprovado some. R9 (Lote A,
-    // 04/10/2026): só o RESUMO (status, códigos, caminho do campo) — o corpo
-    // cru traz o pagador (e-mail, CPF, nome) e a frase da recusa ecoa o
-    // valor. A decisão (`interpretarResposta`, abaixo) continua lendo o corpo
-    // inteiro: a idempotência e o veredito não mudam.
-    console.error(
-      "estorno: mercado pago recusou o POST",
-      resposta.status,
-      resumoSemDadoPessoal(corpo),
-    );
+    // M2: o corpo do erro do MP vai para o log da função (padrão da casa),
+    // nunca para o texto do lojista — e sem ele o POST reprovado some.
+    console.error("estorno: mercado pago recusou o POST", resposta.status, corpo);
   }
 
-  // O pedido RELIDO na autorização (B1, de passagem): é o mesmo POST que
-  // acabou de sair com ele.
-  let resultado = interpretarResposta(
-    resposta.status,
-    corpo,
-    linha,
-    pedidoRelido,
-    args.idsJaReivindicados ?? [],
-  );
+  let resultado = interpretarResposta(resposta.status, corpo, linha, pedido);
 
   // O Retry-After mora no header da resposta, que o interpretar (puro) não
   // vê: o executor enriquece o `tentar_depois` do 429 com o prazo (E13).
@@ -1626,7 +1214,7 @@ export async function executarEstorno(args: {
       buscar,
       token,
       linha,
-      pedido: pedidoRelido,
+      pedido,
       codigo: resultado.codigo,
       idsJaReivindicados: args.idsJaReivindicados,
     });
