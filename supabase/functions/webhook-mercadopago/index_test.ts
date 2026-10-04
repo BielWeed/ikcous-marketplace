@@ -232,6 +232,9 @@ function clienteFalso(opts: {
   // `created_at, tentativas_de_pagamento` do fallback do sentinela — sem a
   // tentativa atual, o fallback não pode soltar a vaga.
   falharLeituraDaTentativa?: boolean;
+  // Lote A (R10): falha a leitura `metodo_online, gateway_payment_id` — o
+  // segundo sinal de "é cartão" na recusa de order sem payment_method.type.
+  falharLeituraDoMetodo?: boolean;
   // Achado S5/W4 (3ª revisão de risco, 26/09/2026): simula uma corrida —
   // dispara logo DEPOIS da leitura ÚNICA (`select("total, total_amount,
   // gateway_payment_id")`, index.ts:1753-1757) que precede a decisão de
@@ -617,6 +620,9 @@ function clienteFalso(opts: {
               return {
                 maybeSingle: async () => {
                   if (opts.falharLeituraDaTentativa && colunasPedidas.has("tentativas_de_pagamento")) {
+                    return { data: null, error: { message: "statement timeout" } };
+                  }
+                  if (opts.falharLeituraDoMetodo && colunasPedidas.has("metodo_online")) {
                     return { data: null, error: { message: "statement timeout" } };
                   }
                   if (colunas.trim() === "gateway_payment_id" && falhasLeituraGatewayRestantes > 0) {
@@ -5975,6 +5981,37 @@ Deno.test("hardening — order recusada SEM payment_method.type legível, mas me
   assertEquals(registro.chamadasRpc.length, 1);
   assertEquals(registro.chamadasRpc[0].args.p_status, "recusado");
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_CARTAO_MP);
+});
+
+Deno.test("Lote A R10 - recusa de order SEM payment_method.type legível e a leitura do metodo_online FALHA -> 500 (o MP reenvia), sem confirmar_pagamento nem liberar", async () => {
+  // A leitura com erro era ignorada: `metodoRow` vinha null, o pedido de
+  // CARTÃO parecia PIX, e confirmar_pagamento('recusado') CANCELAVA o pedido
+  // e devolvia o estoque com o cliente ainda na tela do cartão.
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [] };
+  const supabase = clienteFalso({
+    rpcResultado: "recusado",
+    pedido: { id: UUID_PEDIDO, total: 149.9, metodo_online: "credito" },
+    registro,
+    falharLeituraDoMetodo: true,
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+
+  const erroReal = console.error;
+  console.error = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderDoMpSemTipoLegivel("failed", "failed")),
+    });
+  } finally {
+    console.error = erroReal;
+  }
+
+  assertEquals(resposta.status, 500);
+  assertEquals(registro.chamadasRpc.length, 0, "confirmar_pagamento('recusado') cancelaria um pedido de cartão");
+  assertEquals(registro.chamadasLiberar.length, 0);
 });
 
 Deno.test("cartão — liberar_cobranca_do_pedido com erro de banco -> 500 (o MP reenvia), sem confirmar_pagamento", async () => {

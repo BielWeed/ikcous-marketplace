@@ -2067,11 +2067,23 @@ async function handler(
     // qualquer que seja o método — não tem o mesmo risco, e gastar a leitura
     // aqui não mudaria nada.
     if (!liberarAVaga && statusBanco === "recusado" && pareceUuid(order.external_reference)) {
-      const { data: metodoRow } = await supabase
+      const { data: metodoRow, error: erroMetodo } = await supabase
         .from("marketplace_orders")
         .select("metodo_online, gateway_payment_id")
         .eq("id", order.external_reference)
         .maybeSingle();
+      // Lote A (R10, 04/10/2026): a falha desta leitura era IGNORADA —
+      // `metodoRow` vinha null, um pedido de CARTÃO parecia PIX, e a recusa
+      // seguia para `confirmar_pagamento('recusado')`, que CANCELA o pedido e
+      // devolve o estoque. Sem saber o método, nada é decidido: 500, o MP
+      // reenvia (mesma régua do Achado S4 para a leitura do id gravado).
+      if (erroMetodo) {
+        console.error(
+          "webhook-mercadopago: falha ao ler o metodo_online do pedido numa recusa de order sem tipo legível — evento mantido na fila do MP",
+          { idOrder: String(order.id ?? ""), erro: erroMetodo },
+        );
+        return json({ error: "Erro ao verificar a forma de pagamento do pedido." }, 500);
+      }
       const metodoGravado = (metodoRow as Record<string, unknown> | null)?.metodo_online;
       const vagaGravada = (metodoRow as Record<string, unknown> | null)?.gateway_payment_id;
       if (metodoGravado === "credito" || metodoGravado === "debito") {
