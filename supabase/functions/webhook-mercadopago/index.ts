@@ -1381,6 +1381,35 @@ async function registrarDesfechoDoEstorno(args: {
     // tentar_depois → nada (o cron continua com ela).
   }
 
+  // ── B) Contestação (status === "charged_back") — Lote A (R1/R1-NULL) ─────
+  // ANTES dos refunds externos (revisão do Lote A, ordem): no MESMO GET, um
+  // caso FINAL a favor da loja libera a reserva, e o REF que só não cabia por
+  // causa dela entra inteiro neste mesmo evento — com o REF primeiro, a RPC
+  // dele via a reserva (nao_cabe) e ninguém o revisitava depois. A RPC do REF
+  // lê o saldo sob a mesma trava, então a ordem não conta dinheiro duas vezes.
+  if (status === "charged_back") {
+    await registrarContestacao({
+      supabase,
+      orderId,
+      corpo,
+      ehPayments,
+      pedido,
+      consultarCaso: args.consultarCaso,
+      avisar: args.avisar,
+    });
+  }
+
+  // Pedido em CONTEXTO DE CONTESTAÇÃO: a order está charged_back agora, ou o
+  // ledger já tem linha de contestação (CBK, ou reserva antiga sistema +
+  // charged_back). Nele, todo refund externo passa pela RPC sob a trava —
+  // sem o clamp sobre o retrato lido no começo (bloqueio 0 da revisão: a
+  // order que saiu de charged_back para refunded caía no INSERT direto).
+  const contextoDeContestacao = status === "charged_back" ||
+    linhasBanco.some((l) =>
+      (l.mp_chargeback_id !== null && l.mp_chargeback_id !== undefined) ||
+      (l.solicitado_por === "sistema" && l.mp_status === "charged_back")
+    );
+
   // Item 4 do passo A: refunds "processed"/"approved" que SOBRARAM fora de
   // `reivindicados` = estorno feito FORA do app (painel do MP).
   const somaEmCurso = (rows: Array<Record<string, unknown>>) =>
@@ -1423,7 +1452,7 @@ async function registrarDesfechoDoEstorno(args: {
     // da contestação conta); senão NÃO entra nem é recortado (sobreposição
     // inconclusiva) e o admin é avisado uma vez — a reserva continua
     // bloqueando novas devoluções até a conferência.
-    if (status === "charged_back") {
+    if (contextoDeContestacao) {
       const { data, error } = await supabase.rpc("registrar_estorno_externo_na_contestacao", {
         p_order_id: orderId,
         p_mp_refund_id: refundId,
@@ -1491,18 +1520,6 @@ async function registrarDesfechoDoEstorno(args: {
     }
   }
 
-  // ── B) Contestação (status === "charged_back") — Lote A (R1/R1-NULL) ─────
-  if (status === "charged_back") {
-    await registrarContestacao({
-      supabase,
-      orderId,
-      corpo,
-      ehPayments,
-      pedido,
-      consultarCaso: args.consultarCaso,
-      avisar: args.avisar,
-    });
-  }
 }
 
 /**

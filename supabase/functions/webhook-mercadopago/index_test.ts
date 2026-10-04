@@ -4149,6 +4149,100 @@ Deno.test("Lote A (bloqueio 2) - erro da RPC do REF -> 500 (o MP reenvia); REF j
   assertEquals(registro.chamadasExternoNaContestacao.length, 0, "um refund credita UMA linha");
 });
 
+Deno.test("Lote A (ordem) - MESMO GET com REF processed 100 + caso FINAL a favor da loja, reserva antiga de 100 -> a contestação decide ANTES do REF: libera e o REF entra inteiro no mesmo evento", async () => {
+  // Cenário exato da revisão: com o REF antes, a RPC dele via a reserva de
+  // 100 (nao_cabe), a contestação liberava depois e a resposta era 200 sem
+  // revisitar o REF — a devolução real confirmada ficava 0.
+  const registro = registroDoLedger();
+  const ordem: string[] = [];
+  let reservaAtiva = true;
+  let estornado = 0;
+  const supabase = clienteFalso({
+    pedido: pedidoPago(100),
+    registro,
+    orderRefundsRows: [linhaDaReserva()],
+    contestacaoNoLedger: (args) => {
+      ordem.push(`contestacao:${args.p_decisao}`);
+      if (args.p_decisao === "a_favor_da_loja" && reservaAtiva) {
+        reservaAtiva = false;
+        return retornoDaRpc("liberado", { disponivel: 100 });
+      }
+      return retornoDaRpc("ja_liberado", { disponivel: 100 - estornado });
+    },
+    estornoExternoNaContestacao: (args) => {
+      ordem.push(`ref:${args.p_mp_refund_id}`);
+      if (reservaAtiva) {
+        return { data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: estornado, em_voo: 100, disponivel: 0 }, error: null };
+      }
+      if (estornado > 0) {
+        return { data: { resultado: "ja_registrado", aviso: null, valor_estornado: estornado, em_voo: 0, disponivel: 0 }, error: null };
+      }
+      estornado = Number(args.p_valor);
+      return { data: { resultado: "inserido", aviso: null, valor_estornado: estornado, em_voo: 0, disponivel: 0 }, error: null };
+    },
+  });
+  const { fn } = fetchDaContestacao({
+    order: orderContestada({
+      detalheOrder: "reimbursed",
+      total: "100.00",
+      refunds: [{ id: "REF01ORDEM", transaction_id: ID_PAGAMENTO_DA_ORDER, amount: "100.00", status: "processed" }],
+    }),
+    caso: CASO_A_FAVOR_DA_LOJA,
+  });
+  const pushes: any[] = [];
+  const resposta = await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  assertEquals(resposta.status, 200);
+  assertEquals(ordem, ["contestacao:a_favor_da_loja", "ref:REF01ORDEM"]);
+  assertEquals(estornado, 100, "a devolução real confirmada entra no mesmo evento");
+  assertEquals(pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago")).length, 0);
+
+  // Reentrega do MP: nada novo, sem contar duas vezes.
+  await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  assertEquals(estornado, 100);
+  semEscritaDireta(registro);
+});
+
+Deno.test("Lote A (bloqueio 0) - order que JÁ teve contestação no ledger, agora com status 'refunded': o REF também passa pela RPC sob a trava (sem clamp no retrato), nunca pelo INSERT direto", async () => {
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({
+    pedido: pedidoPago(100),
+    registro,
+    orderRefundsRows: [linhaDaReserva()],
+    estornoExternoNaContestacao: () => ({
+      data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: 0, em_voo: 100, disponivel: 0 },
+      error: null,
+    }),
+  });
+  const corpo = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "refunded" }],
+      refunds: [{ id: "REF01DEPOIS", transaction_id: ID_PAGAMENTO_DA_ORDER, amount: "100.00", status: "processed" }],
+    },
+  };
+  const pushes: any[] = [];
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await semLogs(() =>
+    handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpo),
+      enviarPushContado: async (args: any) => {
+        pushes.push(args.aviso);
+        return 1;
+      },
+    } as any)
+  );
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasExternoNaContestacao.length, 1);
+  assertEquals(registro.chamadasExternoNaContestacao[0].args.p_valor, 100);
+  semEscritaDireta(registro);
+  assertEquals(pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago")).length, 1);
+});
+
 Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {
   const registro = {
     chamadasRpc: [] as any[],
