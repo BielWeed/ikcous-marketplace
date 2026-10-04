@@ -31,9 +31,12 @@
  * confirmação pela MESMA prova da consulta: GET por id da vaga relida
  * (`confirmarDepoisDaCriacao`), NUNCA o objeto do POST (ele não é o GET
  * autenticado da vaga relida; `processed` pode mudar depois). Só com cartão,
- * 'pago' no POST e pedido de dono autenticado, nas duas saídas de sucesso: a
- * gravação normal da vaga e a adoção `vagaAdotada`; a convergência com a
- * adoção do webhook NÃO entra. Qualquer falha (GET, prova, releitura, RPC)
+ * 'pago' (no POST, ou no GET do ramo `adotadaPeloGet`) e pedido de dono
+ * autenticado, nas quatro saídas de sucesso em que ESTA chamada registra a
+ * order na vaga: a gravação normal, a adoção da blindagem de 02/10, a adoção
+ * `vagaAdotada` e o ramo `adotadaPeloGet` — em todas o GET da confirmação é
+ * NOVO (nunca reaproveita o GET do ramo); a convergência com a adoção do
+ * webhook NÃO entra. Qualquer falha (GET, prova, releitura, RPC)
  * vira log e a resposta é a de antes: o webhook/reconciliação seguem como
  * fonte da verdade.
  *
@@ -3814,6 +3817,17 @@ async function handler(
             "criar-pagamento: cartão adotado na vaga desta mesma chave depois de perder a gravação (blindagem 02/10)",
             { orderId: pedido.id, idOrder: idGateway, ocupanteAnterior: idOcupanteAgora },
           );
+          // Confirmação imediata (04/10/2026): a vaga adotada é desta order.
+          await agendarConfirmacaoDaCriacao({
+            supabase,
+            mpToken,
+            fetchImpl: deps.fetchImpl,
+            pedido,
+            metodo,
+            statusCru,
+            idGateway,
+            efeitos,
+          });
           return json(
             { paymentId: idGateway, statusPagamento: statusCru, expiraEm: adotadaAgora.expires_at, desafio3ds },
             200,
@@ -3944,6 +3958,19 @@ async function handler(
             "criar-pagamento: cartão vivo adotado na vaga livre depois de a tentativa avançar durante a criação (veredito A2)",
             { orderId: pedido.id, idOrder: idGateway, statusConsultado, consultaOk: consultaDaOrder.ok },
           );
+          // Confirmação imediata (04/10/2026): só se o status DESTA resposta é
+          // 'pago'. O GET acima NÃO é prova aqui: `agendarConfirmacaoDaCriacao`
+          // faz um GET novo e passa a mesma prova — um caminho só.
+          await agendarConfirmacaoDaCriacao({
+            supabase,
+            mpToken,
+            fetchImpl: deps.fetchImpl,
+            pedido,
+            metodo,
+            statusCru: statusConsultado ?? statusCru,
+            idGateway,
+            efeitos,
+          });
           return json(
             {
               paymentId: idGateway,

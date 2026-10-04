@@ -8891,7 +8891,11 @@ for (
     assertEquals(db.linha.gateway_payment_id, ID_CARTAO_DO_POST, "a cobrança viva ficou sem registro no pedido");
     assertEquals(db.linha.metodo_online, "credito");
     assertEquals(db.linha.parcelas, 3);
-    assertEquals(consultas.length, 1);
+    // 1 GET do próprio ramo; quando a resposta diz 'pago' entra MAIS UM — o GET
+    // NOVO da confirmação imediata (04/10/2026), que não reaproveita o do ramo.
+    // A order desta fixture não traz valor pago, então a prova recusa e a RPC
+    // de confirmação NÃO é chamada (a asserção das RPCs abaixo segue em 1).
+    assertEquals(consultas.length, caso.status === "pago" ? 2 : 1);
     assertEquals(avisos.length, 0, "com registro, quem fecha é o webhook — não o admin");
     assertEquals(mp.cancelamentos.length, 0);
     assertEquals(mp.posts.length, 1, "nenhum POST novo");
@@ -12645,6 +12649,74 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (12k): a CONVERGÊNCIA (o webhook já adotou e
   assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
   assertEquals(mp.gets().length, 0, "a convergência nunca faz GET da criação");
   assertEquals(db.chamadasRpc, []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12l): a adoção da BLINDAGEM (o sentinela da MESMA chave, gravado por outra aba durante o POST, é trocado pela order aprovada) também confirma 1x pela prova do GET — 1 RPC, 1 push, 1 comprovante, mesmo corpo", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoPostar: () => {
+      db.linha.gateway_payment_id = `verificando:${UUID}:c0:1790000000000`;
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "a adoção da blindagem foi a que respondeu");
+  assertEquals(db.linha.metodo_online, "credito");
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(mp.gets().length, 1);
+});
+
+/** A notificação soltou a vaga e AVANÇOU a tentativa durante o POST: a criação
+ * perde a gravação, relê a linha (vaga livre, tentativa 1 ≠ 0) e cai no ramo
+ * que decide pelo GET da order (`adotadaPeloGet`). */
+const tentativaAvancouNoPost = (db: { linha: Record<string, unknown> }) => () => {
+  db.linha.gateway_payment_id = null;
+  db.linha.tentativas_de_pagamento = 1;
+};
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12m): o ramo `adotadaPeloGet` com a order PAGA no GET confirma 1x — o GET do ramo NÃO é a prova: há um GET NOVO + a mesma prova (2 GETs, 1 RPC, 1 push, 1 comprovante), mesmo corpo", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao(), aoPostar: tentativaAvancouNoPost(db) });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "o ramo `adotadaPeloGet` adotou a order na vaga livre");
+  assertEquals(mp.gets().length, 2, "1 GET do próprio ramo + 1 GET novo da confirmação");
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12n): o ramo `adotadaPeloGet` com a order NÃO paga no GET (em análise) NÃO confirma — ZERO GET extra (só o do ramo), ZERO RPC, a resposta diz o status do GET", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao({ status: "processing", status_detail: "in_process" }),
+    aoPostar: tentativaAvancouNoPost(db),
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(JSON.parse(r.texto).statusPagamento !== "pago", true, r.texto);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "o ramo `adotadaPeloGet` adotou a order");
+  assertEquals(mp.gets().length, 1, "só o GET do próprio ramo");
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(db.linha.payment_status, "aguardando");
   assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
 });
 
