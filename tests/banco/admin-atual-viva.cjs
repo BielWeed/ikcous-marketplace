@@ -246,6 +246,37 @@ async function desfazer98NaTransacao(cliente) {
   );
 }
 
+// COMPOSIÇÃO com a 20261202000000, que põe `rls_admin_atual()` (criada AQUI) em
+// 14 políticas de outras tabelas (pedido, devolução, financeiro). As provas
+// (1)-(4) medem a 97 no banco VIVO; já os passos que DESFAZEM a 97 medem a 97
+// ISOLADA: o rollback dela apaga `rls_admin_atual()`, que a 202 usa — com a
+// 202 no ar o DROP falha por dependência (o comportamento CERTO: fecha, não
+// abre). Então, DENTRO da transação desses passos, o rollback-manual da 202
+// devolve primeiro o estado "97 sem 202", na ordem inversa da aplicação; o
+// ROLLBACK do fim devolve a 202 intacta. Sem a 202 no ar, não faz nada.
+const CAMINHO_ROLLBACK_202 = path.join(
+  __dirname,
+  "..",
+  "..",
+  "supabase",
+  "migrations",
+  "rollback-manual-20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql",
+);
+
+async function desfazer202NaTransacao(cliente) {
+  const r = await cliente.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'fin_lancamentos_admin_select_policy'
+          AND polrelid = to_regclass('public.fin_lancamentos')
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%'
+     ) AS sim`,
+  );
+  if (!r.rows[0].sim) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_202 é constante do próprio teste (path.join de literais).
+  await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_202, "utf8"));
+}
+
 // As políticas de RLS financeira, deparseadas com search_path = pg_catalog
 // (nomes sempre qualificados) — a mesma forma que os preflights comparam.
 async function politicas(cliente) {
@@ -976,6 +1007,7 @@ PROVAS.push({
     for (const quem of ["rebaixadoPerfil", "rebaixadoAuth", "rebaixadoAmbos"]) {
       await cliente.query("BEGIN");
       try {
+        await desfazer202NaTransacao(cliente);
         await desfazer98NaTransacao(cliente);
         await cliente.query(rollback);
         await cliente.query(`SET LOCAL ROLE ${QUEM[quem].papel}`);
@@ -1001,6 +1033,7 @@ PROVAS.push({
     // service_role: o mesmo resultado com a política nova e a antiga.
     await cliente.query("BEGIN");
     try {
+      await desfazer202NaTransacao(cliente);
       await desfazer98NaTransacao(cliente);
       await cliente.query(rollback);
       await cliente.query("SET LOCAL ROLE service_role");
@@ -1082,6 +1115,7 @@ PROVAS.push({
     for (const [rotulo, divergir, regex] of divergencias) {
       await cliente.query("BEGIN");
       try {
+        await desfazer202NaTransacao(cliente);
         await desfazer98NaTransacao(cliente);
         await cliente.query(rollback);
         await divergir();
@@ -1117,6 +1151,7 @@ PROVAS.push({
     const migration = fs.readFileSync(CAMINHO_MIGRATION, "utf8");
     await cliente.query("BEGIN");
     try {
+      await desfazer202NaTransacao(cliente);
       await desfazer98NaTransacao(cliente);
       const depoisDaMigration = await estado(cliente);
       await cliente.query(rollback);

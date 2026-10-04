@@ -1661,6 +1661,27 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // antes a 98, na ordem inversa da aplicação (98 → 97).
 const NOME_1198 = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
 
+// A 20261202000000 põe `rls_admin_atual()` (da 97) em 14 políticas de RLS. O
+// rollback da 97 apaga essa função: com a 202 no ar o DROP falha por
+// dependência (o comportamento CERTO). Como estas seções medem a 95 ISOLADA,
+// a 202 é desfeita primeiro, DENTRO da transação (ordem inversa da aplicação);
+// o ROLLBACK do fim devolve as duas. Sem a 202 no ar, não faz nada.
+const NOME_1202 =
+  "20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql";
+
+async function desfazer202NaTransacao(c) {
+  const r = await c.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM pg_policy
+        WHERE polname = 'fin_lancamentos_admin_select_policy'
+          AND polrelid = to_regclass('public.fin_lancamentos')
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%'
+     ) AS sim`,
+  );
+  if (!r.rows[0].sim) return;
+  await c.query(lerMigracao(`rollback-manual-${NOME_1202}`));
+}
+
 async function a97EstaNoAr(c) {
   const r = await c.query(
     "SELECT to_regprocedure('public.is_admin_atual()') IS NOT NULL AS sim",
@@ -1779,6 +1800,7 @@ PROVAS.push({
         await c.query("ROLLBACK TO SAVEPOINT sobre_a_97");
         assert.deepEqual(await hashesVivos(c), vivoAntes);
         // Daqui em diante: a 95 isolada (a 97 desfeita SÓ nesta transação).
+        await desfazer202NaTransacao(c);
         await desfazer97NaTransacao(c);
         assert.deepEqual(
           await hashesVivos(c),
@@ -2180,6 +2202,7 @@ PROVAS.push({
         );
         // Daqui em diante, a 95 ISOLADA: a 97 desfeita SÓ nesta transação (o
         // ROLLBACK do fim a devolve — conferido depois do finally).
+        await desfazer202NaTransacao(c);
         await desfazer97NaTransacao(c);
       }
 
