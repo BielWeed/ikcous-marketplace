@@ -2,6 +2,7 @@ import { type Page, type Request, type Route, expect } from "@playwright/test";
 import {
   PRODUTO_ACESSORIOS,
   abrirLoja,
+  buscarDocumentoDoPreview,
   enderecosFixtura,
   fichaDaLojaFixtura,
   instalarLojaFixtura,
@@ -558,7 +559,7 @@ export async function instalarPagamentoSimulado(
     if (url.origin === ORIGEM_DO_PREVIEW && ehGet) {
       // A ficha com o pagamento ligado vai no HTML e no JSON do porteiro.
       if (pedido.resourceType() === "document") {
-        const resposta = await rota.fetch();
+        const resposta = await buscarDocumentoDoPreview(rota);
         const corpo = (await resposta.text()).replace(
           "<head>",
           `<head><script type="application/json" id="ikcous-loja">${ficha}</script>`,

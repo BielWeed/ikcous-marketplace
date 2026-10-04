@@ -388,6 +388,23 @@ function estaticoDoBuild(caminho: string): boolean {
   );
 }
 
+/**
+ * Busca o documento no servidor de preview. Se ele não responde, o erro diz
+ * ONDE está a causa: o log da rodada grava a hora e o código de saída do
+ * preview (medido em 04/10/2026: o varredor de órfãos da máquina matava o
+ * `vite preview` no meio da rodada — ECONNREFUSED em toda jornada seguinte).
+ */
+export async function buscarDocumentoDoPreview(rota: Route) {
+  try {
+    return await rota.fetch();
+  } catch (erro) {
+    const rodada = process.env.IKCOUS_E2E_RODADA ?? "?";
+    throw new Error(
+      `O servidor de preview (127.0.0.1:4173) não respondeu: ${String(erro)}. Se ele morreu no meio da rodada, a hora e o código de saída estão em test-results/preview-logs/preview-${rodada}.log`,
+    );
+  }
+}
+
 /** A fonte Inter do index.html: CSS vazio (a tela cai na fonte do sistema). */
 const URL_DA_FONTE_DO_GOOGLE = "https://fonts.googleapis.com/css2?";
 
@@ -457,7 +474,7 @@ export async function instalarLojaFixtura(page: Page): Promise<void> {
       pedido.method() === "GET" &&
       url.origin === URL_DO_PREVIEW
     ) {
-      const resposta = await rota.fetch();
+      const resposta = await buscarDocumentoDoPreview(rota);
       const corpo = (await resposta.text()).replace(
         "<head>",
         `<head><script type="application/json" id="ikcous-loja">${ficha}</script>`,
