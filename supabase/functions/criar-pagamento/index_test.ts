@@ -2869,7 +2869,12 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // assinatura do webhook responde o 409 "Para pagar com cartão, a loja
   // precisa cadastrar…" (leva `terminal: true` e a flag
   // `cartaoSemChaveDeAssinatura`, mesmo contrato do PIX). 61 + 1 = 62.
-  assertEquals(achados, 62);
+  //
+  // 63, não mais 62: R8 (04/10/2026) — pedido online de R$ 0,00 responde o
+  // 409 "Este pedido não tem valor a pagar online." antes de qualquer
+  // chamada ao MP (leva `terminal: true`: o total não muda com outra
+  // tentativa; antes era 502 recuperável em laço). 62 + 1 = 63.
+  assertEquals(achados, 63);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -11170,4 +11175,69 @@ Deno.test("S5: cartão MORTO na vaga de um pedido NÃO online + PIX -> libera a 
   assertEquals(corpo.error, "Este pedido não é de pagamento online.");
   assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
   assertEquals(mp.criacoes().length, 0);
+});
+
+// =============================================================================
+// R8 (travas onde a cobrança nasce, 04/10/2026): pedido online de R$ 0,00. A
+// v24 calcula o total com GREATEST(0, ...) (cupom maior que a compra), e o
+// montador do corpo PIX em _shared não guarda valor > 0: o MP recusava, a
+// function devolvia 502 recuperável e o cliente ficava num laço de "Tentar
+// de novo" até a reserva vencer. A recusa vem ANTES de qualquer chamada ao
+// MP, terminal, para PIX e cartão.
+// =============================================================================
+for (const total of [0, "0.00", -5, null]) {
+  for (const metodo of ["pix", "cartao"] as const) {
+    Deno.test(`R8: pedido online com total ${JSON.stringify(total)} + ${metodo} -> 409 terminal, ZERO chamadas ao MP, nada gravado`, async () => {
+      const { supabase, registro, chamadasRpc } = cenarioCartao({
+        pedido: pedidoBase({ user_id: DONO_LOGADO, total }),
+      });
+      const mp = fetchMP({}); // qualquer chamada ao MP estoura
+
+      const resposta = await emSilencio(() =>
+        handler(
+          requisicao(metodo === "pix" ? { orderId: UUID, metodo: "pix" } : corpoCartao(), montarToken(DONO_LOGADO)),
+          { supabase, fetchImpl: mp.fn },
+        )
+      );
+      const corpo = await resposta.json();
+
+      assertEquals(resposta.status, 409);
+      assertEquals(corpo.terminal, true);
+      assertEquals(corpo.error, "Este pedido não tem valor a pagar online.");
+      assertEquals(mp.chamadas.length, 0);
+      assertEquals(registro.chamadasUpdate, 0);
+      assertEquals(chamadasRpc.length, 0);
+    });
+  }
+}
+
+Deno.test("R8 — controle: total de UM centavo cria o PIX normalmente (a trava é > 0, não um piso de valor)", async () => {
+  const { supabase } = cenarioCartao({ pedido: pedidoBase({ user_id: DONO_LOGADO, total: 0.01 }) });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: fetchFalsoMP(capturado),
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(capturado.corpo?.total_amount, "0.01");
+});
+
+Deno.test("R8: pedido de R$ 0,00 com PIX já na vaga -> a RECONSULTA não é bloqueada (a trava é só de criação)", async () => {
+  const { supabase, registro } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, total: 0, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
 });

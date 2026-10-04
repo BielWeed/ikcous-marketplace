@@ -2213,6 +2213,21 @@ async function handler(
     return json({ error: "Este pedido não é de pagamento online.", terminal: true }, 409);
   }
 
+  // R8 (travas onde a cobrança nasce, 04/10/2026): pedido online de R$ 0,00.
+  // A v24 calcula o total com GREATEST(0, ...) — cupom maior que a compra
+  // zera o pedido —, e o montador do corpo do PIX em _shared não guarda
+  // valor > 0: o MP recusava, saía 502 recuperável e o cliente ficava num
+  // laço de "Tentar de novo" até a reserva vencer. Recusa ANTES de qualquer
+  // chamada ao MP, para PIX e cartão, e terminal: o total do pedido não muda
+  // com outra tentativa. `!(> 0)`, não `<= 0`: total ilegível (NaN) também
+  // não vira cobrança.
+  if (!(Number(pedido.total) > 0)) {
+    console.warn("criar-pagamento: cobrança recusada — pedido online sem valor a cobrar", {
+      pedidoId: pedido.id,
+    });
+    return json({ error: "Este pedido não tem valor a pagar online.", terminal: true }, 409);
+  }
+
   // decisao.acao === "criar" a partir daqui.
   // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
   // fallback genérico — o MP passa a ver quem de verdade paga.
