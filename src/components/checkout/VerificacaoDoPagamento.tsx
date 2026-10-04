@@ -107,7 +107,6 @@ type Situacao =
     }
   | { readonly tipo: "desafio-sem-pagina"; readonly pixAteMs: number | null }
   | { readonly tipo: "desafio-concluido"; readonly pixAteMs: number | null }
-  | { readonly tipo: "prazo-acabou"; readonly recusado: boolean }
   | {
       readonly tipo: "liberada";
       readonly verificacao: DesfechoQueLiberaARetomada;
@@ -134,12 +133,6 @@ function dataEHora(iso: unknown): string | null {
     minute: "2-digit",
   });
   return `${dia} às ${hora}`;
-}
-
-function prazoVencido(expiraEm: unknown, agoraMs: number): boolean {
-  if (!textoNaoVazio(expiraEm)) return false;
-  const prazoMs = Date.parse(expiraEm);
-  return Number.isFinite(prazoMs) && prazoMs <= agoraMs;
 }
 
 /**
@@ -210,9 +203,13 @@ export function situacaoDaResposta(
     case "livre":
     case "recusado":
     case "pix":
-      return prazoVencido(r.expiraEm, agoraMs)
-        ? { tipo: "prazo-acabou", recusado: r.verificacao === "recusado" }
-        : { tipo: "liberada", verificacao: r.verificacao };
+      // F5 (04/10/2026): o prazo NÃO é comparado com o relógio do aparelho
+      // aqui — relógio adiantado transformava uma resposta que o servidor deu
+      // como viva em "o prazo acabou" (a ressalva B2 que o cartão já resolveu
+      // em confirmacao-do-cartao.ts). Quem diz que o prazo acabou é o
+      // servidor: o 409 terminal de `criar-pagamento` (`situacaoDoErro`) ou o
+      // 409 da próxima chamada, quando o cliente escolher como pagar.
+      return { tipo: "liberada", verificacao: r.verificacao };
     default:
       return { tipo: "indisponivel" };
   }
@@ -489,13 +486,6 @@ export function VerificacaoDoPagamento({
           <p className="text-sm text-zinc-700">
             Confirmação enviada ao banco. Toque em “Verificar de novo” para ver
             a resposta.
-          </p>
-        )}
-        {situacao.tipo === "prazo-acabou" && (
-          <p className="text-sm font-medium text-zinc-800">
-            {situacao.recusado
-              ? "O pagamento com cartão não foi concluído. O prazo para pagar este pedido acabou."
-              : "O prazo para pagar este pedido acabou."}
           </p>
         )}
         {podeVerificarDeNovo && esgotouOsToques && (

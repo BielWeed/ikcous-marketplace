@@ -663,34 +663,37 @@ describe("VerificacaoDoPagamento — um estado do contrato, um texto verdadeiro"
     });
   }
 
-  it("recusado com o prazo vencido: diz as duas verdades e não reabre a retomada", async () => {
+  // F5 (04/10/2026): estes dois testes fixavam o prazo decidido pelo RELÓGIO
+  // DO APARELHO ("prazo vencido" = `expiraEm` antes de `Date.now()` local) —
+  // o defeito que a ressalva B2 do cartão já tinha removido. Quem diz que o
+  // prazo acabou é o servidor (o 409 terminal, coberto acima e em
+  // verificacao-prazo-acabou-so-quem-diz-e-o-servidor.test.tsx); uma
+  // resposta 200 `livre`/`recusado` libera a retomada mesmo com `expiraEm`
+  // no passado do aparelho.
+  it("recusado com expiraEm no passado do aparelho: devolve a retomada ao pai (o 409 do servidor encerra, não o relógio local)", async () => {
     criarPagamento.mockResolvedValue({
       verificacao: "recusado",
       paymentId: null,
       expiraEm: PRAZO_VENCIDO,
     });
     await montar();
-    // Revisão do C4 (bloqueio): `recusado` inclui o 3DS que só expirou —
-    // "não foi concluído", nunca "não foi aprovado" (veredito A2, item 4).
-    expect(texto()).toContain(
-      "O pagamento com cartão não foi concluído. O prazo para pagar este pedido acabou.",
-    );
-    expect(texto()).not.toContain("não foi aprovado");
-    expect(onRetomadaLiberada).not.toHaveBeenCalled();
-    expect(botoes()).toEqual(["Ver meus pedidos"]);
+    expect(onRetomadaLiberada).toHaveBeenCalledTimes(1);
+    expect(onRetomadaLiberada).toHaveBeenCalledWith("recusado");
+    expect(texto()).not.toContain("O prazo para pagar este pedido acabou");
   });
 
-  it("livre com o prazo vencido: 'O prazo para pagar este pedido acabou.' sem reabrir a retomada", async () => {
+  it("livre com expiraEm no passado do aparelho: devolve a retomada ao pai, sem 'o prazo acabou' vindo do relógio local", async () => {
     criarPagamento.mockResolvedValue({
       verificacao: "livre",
       paymentId: null,
       expiraEm: PRAZO_VENCIDO,
     });
     await montar();
-    expect(texto()).toContain("O prazo para pagar este pedido acabou.");
+    expect(onRetomadaLiberada).toHaveBeenCalledTimes(1);
+    expect(onRetomadaLiberada).toHaveBeenCalledWith("livre");
+    expect(texto()).not.toContain("O prazo para pagar este pedido acabou");
     expect(texto()).not.toContain("não foi aprovado");
     expect(texto()).not.toContain("não foi concluído");
-    expect(onRetomadaLiberada).not.toHaveBeenCalled();
   });
 });
 
