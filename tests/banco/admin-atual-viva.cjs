@@ -1454,12 +1454,30 @@ PROVAS.push({
     await cliente.query("BEGIN");
     try {
       await desfazerPosterioresNaTransacao(cliente);
+      // BASELINE VERDE do O1: com as posteriores desfeitas e SEM sonda, o
+      // rollback da 97 passa (nenhuma guarda dispara: nem a do hash do reemitir,
+      // nem a dos dependentes) e apaga as duas portas. Sem isto, uma recusa
+      // abaixo poderia ser de baseline e não do defeito das maiúsculas.
+      await cliente.query("SAVEPOINT baseline");
+      await cliente.query(rollback);
+      const verde = await cliente.query(
+        "SELECT to_regprocedure('public.is_admin_atual()') IS NULL AS some, to_regprocedure('public.rls_admin_atual()') IS NULL AS some2",
+      );
+      assert.deepEqual(
+        verde.rows[0],
+        { some: true, some2: true },
+        "baseline do O1 não está verde: o rollback da 97 não passou sem sonda",
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT baseline");
+
       // O1: o plpgsql não distingue maiúsculas de minúsculas, então uma função
       // futura que chame `PUBLIC.IS_ADMIN_ATUAL()` (ou RLS_ADMIN_ATUAL) é
       // dependente do mesmo jeito. A guarda do rollback da 97 busca no corpo
-      // VIVO sem distinguir caixa: o rollback RECUSA, nomeando a função, sem
-      // escrever. (Política não tem este caso: pg_get_expr devolve o nome já
-      // em minúsculas.)
+      // VIVO sem distinguir caixa: o rollback RECUSA pela guarda de DEPENDÊNCIA
+      // (não pela do hash), nomeando a função, sem escrever. Com a busca antiga
+      // (~) o rollback PASSA e apaga a porta por baixo da função: a mensagem
+      // do assert abaixo diz isso. (Política não tem este caso: pg_get_expr
+      // devolve o nome já em minúsculas.)
       for (const corpo of [
         "PERFORM PUBLIC.IS_ADMIN_ATUAL();",
         "PERFORM Public.Rls_Admin_Atual();",
@@ -1471,18 +1489,28 @@ PROVAS.push({
         );
         const antesO1 = await digitalDoRollback(cliente);
         await cliente.query("SAVEPOINT recusa");
-        await assert.rejects(cliente.query(rollback), (e) => {
-          assert.match(
-            e.message,
-            /^B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
-          );
-          assert.ok(
-            e.message.includes("public.zz_o1_dependente_em_maiusculas()"),
-            e.message,
-          );
-          return true;
-        });
-        await cliente.query("ROLLBACK TO SAVEPOINT recusa");
+        let mensagem = null;
+        try {
+          await cliente.query(rollback);
+        } catch (e) {
+          mensagem = e.message;
+          await cliente.query("ROLLBACK TO SAVEPOINT recusa");
+        }
+        assert.notEqual(
+          mensagem,
+          null,
+          `O1 VERMELHO: o rollback da 97 PASSOU com a função em maiúsculas (${corpo}) — a guarda não viu a dependência`,
+        );
+        assert.match(
+          mensagem,
+          /^B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
+          `O1: recusou por outra guarda que não a de dependência: ${mensagem}`,
+        );
+        assert.ok(
+          mensagem.includes("public.zz_o1_dependente_em_maiusculas()"),
+          mensagem,
+        );
+        console.log(`    (6b/O1) ${corpo} -> ${mensagem.slice(0, 150)}`);
         assert.equal(
           await digitalDoRollback(cliente),
           antesO1,
