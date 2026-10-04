@@ -12310,7 +12310,13 @@ function mpDaCriacaoComGet(opts: {
   post?: Record<string, unknown>;
   get?: Record<string, unknown> | number | "rede" | "preso";
   aoPostar?: () => void;
+  // Como `aoPostar`, AGUARDADO antes de o POST responder (o webhook chega com a
+  // vaga ainda no sentinela — CORRIDAS T3).
+  aoPostarAssinc?: () => Promise<void>;
   aoConsultar?: () => void;
+  // Como `aoConsultar`, mas AGUARDADO antes de o GET responder: deixa o teste
+  // entregar um webhook de verdade no meio da chamada (CORRIDAS T3).
+  aoConsultarAssinc?: () => Promise<void>;
   // Um PIX concorrente ABERTO na vaga: o GET dele e o cancelamento são servidos.
   pixOcupante?: { id: string; aberto: Record<string, unknown>; cancelado: Record<string, unknown> };
 } = {}) {
@@ -12322,6 +12328,7 @@ function mpDaCriacaoComGet(opts: {
     chamadas.push({ verbo, url, autorizacao });
     if (verbo === "POST" && url.endsWith("/v1/orders")) {
       opts.aoPostar?.();
+      if (opts.aoPostarAssinc) await opts.aoPostarAssinc();
       return new Response(JSON.stringify(opts.post ?? aprovadaDaCriacao()), { status: 201 });
     }
     const pix = opts.pixOcupante;
@@ -12333,6 +12340,7 @@ function mpDaCriacaoComGet(opts: {
     }
     if (verbo === "GET" && url === `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`) {
       opts.aoConsultar?.();
+      if (opts.aoConsultarAssinc) await opts.aoConsultarAssinc();
       const g = opts.get;
       if (g === undefined) throw new Error(`GET sem rota configurada neste teste: ${url}`);
       if (g === "rede") throw new Error("rede caiu");
@@ -12741,14 +12749,17 @@ async function entregarWebhookCI(
   db: unknown,
   mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
   deps: Record<string, unknown>,
+  // Default: a order dos testes de `verificar`. As CORRIDAS da criação passam
+  // `ORDER_CARTAO`, a order que o POST de criação grava na vaga.
+  orderId: string = VAGA_CI,
 ): Promise<{ status: number; corpo: Record<string, unknown> }> {
   const ts = Math.floor(Date.now() / 1000);
   const requestId = `req-${crypto.randomUUID()}`;
-  const v1 = await assinarWebhookCI(VAGA_CI, ts, requestId);
+  const v1 = await assinarWebhookCI(orderId, ts, requestId);
   const req = new Request("http://localhost/webhook-mercadopago", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-signature": `ts=${ts},v1=${v1}`, "x-request-id": requestId },
-    body: JSON.stringify({ type: "order", action: "order.processed", data: { id: VAGA_CI } }),
+    body: JSON.stringify({ type: "order", action: "order.processed", data: { id: orderId } }),
   });
   const r = await emSilencio(() =>
     handlerDoWebhook(req, { supabase: db as never, fetchImpl: mp.fn as typeof fetch, ...deps })
@@ -12968,4 +12979,189 @@ Deno.test("T0-LOCAL (d, cron): o agendamento de reconciliar-pagamentos é de 10 
   // Nenhuma idade mínima: o pedido aprovado entra na fila no ciclo seguinte.
   assertEquals(/created_at\s*<|paid_at\s*<|interval '[0-9]+ minutes?'/i.test(corpo), false);
   assertEquals(corpo.includes("LIMIT 100"), true);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CORRIDAS T3 (04/10/2026) — a CRIAÇÃO que confirma pela prova do GET contra o
+// webhook DE VERDADE da FASE2 (`handlerDoWebhook`, mesmos efeitos de
+// `_shared/efeitos-do-pagamento.ts`). Banco com estado e transição ÚNICA
+// (`transicaoDeConfirmarPagamento`, espelho de `confirmar_pagamento` sob FOR
+// UPDATE). Em todas: UM coletor de efeitos compartilhado, então "1" é o total
+// dos dois caminhos, nunca "1 por handler". Nada sai para a rede; credenciais
+// só pelas fixtures `*_FALSO`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const webhookDaCriacaoCI = (
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown>,
+) => entregarWebhookCI(db, mp, deps, ORDER_CARTAO);
+
+Deno.test("CORRIDA T3 (a): a criação confirma e DEPOIS o webhook chega 3x -> 'ja_pago' nas três, ZERO efeito novo (1 push, 1 comprovante no total)", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+
+  for (let entrega = 0; entrega < 3; entrega++) {
+    const w = await webhookDaCriacaoCI(contado, mp, ef.deps);
+    assertEquals(w.status, 200, JSON.stringify(w.corpo));
+    assertEquals(w.corpo, { ok: true, resultado: "ja_pago" });
+  }
+  // 1 da criação + 3 do webhook; só a primeira transitou.
+  assertEquals(confirmacoesCI(db).length, 4);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CORRIDA T3 (b): o webhook confirma ANTES da releitura da criação (durante o GET dela) -> a criação não chama a RPC (pedido já 'pago'); 1 RPC no total, 1 push, 1 comprovante", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mpDoWebhook = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  let webhook: { status: number; corpo: Record<string, unknown> } | undefined;
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoConsultarAssinc: async () => {
+      webhook = await webhookDaCriacaoCI(contado, mpDoWebhook, ef.deps);
+    },
+  });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(webhook?.status, 200, JSON.stringify(webhook));
+  assertEquals(webhook?.corpo, { ok: true, resultado: "pago" });
+  assertEquals(db.linha.payment_status, "pago");
+  // Só o webhook transitou: a criação releu 'pago' e nem chegou na RPC.
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CORRIDA T3 (c): o webhook confirma ENTRE a releitura e a RPC da criação -> a criação recebe 'ja_pago' e não dispara efeito; 2 RPC, 1 push, 1 comprovante", async () => {
+  const ef = efeitosCI();
+  const mpDoWebhook = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  let webhook: { status: number; corpo: Record<string, unknown> } | undefined;
+  let jaDisparou = false;
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI(), {
+    antesDeConfirmar: (linha) => {
+      // A 2ª chamada (a do próprio webhook, aninhada) segue a transição real.
+      if (jaDisparou) return undefined;
+      jaDisparou = true;
+      return (async () => {
+        webhook = await webhookDaCriacaoCI(contado, mpDoWebhook, ef.deps);
+        // A RPC da CRIAÇÃO só executa agora, com o pedido já pago pelo webhook.
+        const { resultado, mudanca } = transicaoDeConfirmarPagamento(linha, {
+          p_order_id: UUID,
+          p_payment_id: ORDER_CARTAO,
+          p_status: "pago",
+        });
+        if (mudanca) Object.assign(linha, mudanca);
+        return { data: resultado, error: null };
+      })();
+    },
+  });
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(webhook?.corpo, { ok: true, resultado: "pago" });
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(confirmacoesCI(db).length, 2);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CORRIDA T3 (d): o pedido EXPIRA entre a releitura e a RPC da criação -> 'pago_apos_expirar': 1 push 'Pagamento fora do fluxo', 1 aviso atrasado, ZERO comprovante; o webhook que chega depois não repete nada", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI(), {
+    antesDeConfirmar: (linha) => {
+      if (linha.payment_status === "aguardando") {
+        linha.payment_status = "expirado";
+        linha.status = "cancelled";
+      }
+      return undefined;
+    },
+  });
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.payment_status, "pago_apos_expirar");
+  assertEquals(ef.pushes, [PUSH_FORA_DO_FLUXO_CI]);
+  assertEquals(ef.atrasados, [UUID]);
+  assertEquals(ef.comprovantes, []);
+
+  const w = await webhookDaCriacaoCI(contado, mp, ef.deps);
+  assertEquals(w.status, 200, JSON.stringify(w.corpo));
+  assertEquals(w.corpo, { ok: true, resultado: "ja_pago" });
+  assertEquals(ef.pushes, [PUSH_FORA_DO_FLUXO_CI]);
+  assertEquals(ef.atrasados, [UUID]);
+  assertEquals(ef.comprovantes, []);
+});
+
+Deno.test("CORRIDA T3 (f): o webhook chega com a vaga ainda no SENTINELA (durante o POST da criação) -> qualquer que seja o desfecho dele, a criação termina com 1 push, 1 comprovante, pedido 'pago'", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mpDoWebhook = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  let webhook: { status: number; corpo: Record<string, unknown> } | undefined;
+  let vagaVistaPeloWebhook: unknown;
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoPostarAssinc: async () => {
+      vagaVistaPeloWebhook = db.linha.gateway_payment_id;
+      webhook = await webhookDaCriacaoCI(contado, mpDoWebhook, ef.deps);
+    },
+  });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(String(vagaVistaPeloWebhook).startsWith("verificando:"), true, String(vagaVistaPeloWebhook));
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(webhook?.status, 200, JSON.stringify(webhook));
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+  // O webhook ADOTA a vaga do sentinela e confirma ele mesmo (1 RPC); a criação
+  // acha a vaga já adotada e a releitura 'pago' a faz parar sem RPC nem efeito.
+  assertEquals(webhook?.corpo, { ok: true, resultado: "pago" });
+  assertEquals(confirmacoesCI(db).length, 1);
+});
+
+Deno.test("CORRIDA T3 (e): Promise.all(criação, webhook) em 5 rodadas (webhook largando 0..4 macrotarefas depois) -> em TODAS exatamente 1 push, 1 comprovante, pedido 'pago', resposta da criação byte a byte a de antes", async () => {
+  const caminhos = new Set<string>();
+  for (let rodada = 0; rodada < 5; rodada++) {
+    const ef = efeitosCI();
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+    const atrasoDoWebhook = async () => {
+      // Tenta variar a ordem de chegada; as ordens GARANTIDAS são as dos
+      // testes (b), (c) e (f), com portão determinístico.
+      for (let passo = 0; passo < rodada; passo++) await new Promise<void>((r) => setTimeout(r, 0));
+      return webhookDaCriacaoCI(contado, mp, ef.deps);
+    };
+    const [r, w] = await Promise.all([criarCartaoCI(contado, mp, ef.deps), atrasoDoWebhook()]);
+
+    assertEquals(r.status, 200, r.texto);
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(w.status, 200, JSON.stringify(w.corpo));
+    assertEquals(db.linha.payment_status, "pago", `rodada ${rodada}`);
+    assertEquals(ef.pushes, [PUSH_PAGO_CI], `rodada ${rodada}`);
+    assertEquals(ef.comprovantes, [UUID], `rodada ${rodada}`);
+    assertEquals(ef.atrasados, [], `rodada ${rodada}`);
+    caminhos.add(`webhook=${String(w.corpo.resultado)} rpcs=${confirmacoesCI(db).length}`);
+  }
+  // Registro (não asserção de ordem): quais desfechos de fato ocorreram.
+  console.log("CORRIDA T3 (e) caminhos observados:", [...caminhos].sort().join(" | "));
 });

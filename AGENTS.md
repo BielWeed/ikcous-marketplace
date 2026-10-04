@@ -90,7 +90,11 @@ do pedido de teste do [runbook de publicação](docs/runbooks/publicar-painel-ca
    realinhamento de `expires_at` com a data do MP); grava o id da cobrança e devolve o QR.
    Cartão: token do Card Payment Brick (o dado do cartão nunca passa pelo app); forma ligada e
    teto de parcelas conferidos em `config_pagamento_cartao` antes de tocar a vaga; 3DS pela
-   Orders API (o desafio abre em iframe; quem confirma continua sendo o webhook).
+   Orders API (o desafio abre em iframe). Cartão **aprovado já no POST**: a resposta ao cliente
+   sai igual e a criação confirma em segundo plano (`confirmarDepoisDaCriacao`), só pela prova do
+   GET por id (mesma `provarPagamentoPelaConsulta` do webhook) + RPC `confirmar_pagamento` +
+   efeitos (push/comprovante, uma vez só); o objeto do POST nunca é prova. Em 3DS/em análise
+   quem confirma continua sendo o webhook (ou a reconciliação).
    **Idempotência POR TENTATIVA** (`chaveDeIdempotencia`): PIX `<pedido>` na tentativa 0
    (byte a byte a chave de antes) e `<pedido>:<n>` depois; cartão `<pedido>:c<n>`, **sem o
    token** — no MP real, duas abas ou o retry de resposta perdida batem no MESMO 409

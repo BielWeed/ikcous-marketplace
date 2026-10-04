@@ -28,7 +28,7 @@
  * POR QUE OS EFEITOS NÃO SAEM EM DOBRO com dois caminhos chegando juntos:
  * a RPC devolve 'pago'/'pago_apos_expirar' para UMA chamada só — a que fez a
  * transição sob `FOR UPDATE`; a outra espera o lock e lê 'ja_pago'
- * (`tests/banco/pagamentos-rpc-viva.cjs`, prova (13)). Quem recebeu
+ * (`tests/banco/pagamentos-rpc-viva.cjs`, prova (14)). Quem recebeu
  * 'ja_pago' não dispara nada, seja o webhook, o cron ou a confirmação
  * imediata. O comprovante tem ainda a reserva própria
  * (`reivindicar_email_de_confirmacao`). O push NÃO tem reserva própria: a
