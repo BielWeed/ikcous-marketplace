@@ -1,0 +1,1513 @@
+"use strict";
+
+/**
+ * PROVA VIVA das duas RPCs que escrevem o PAGAMENTO do pedido, contra o
+ * Postgres EFÊMERO com as migrations aplicadas do zero:
+ *
+ *   - public.confirmar_pagamento(uuid, text, text) — corpo vigente em
+ *     20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql, ACL em
+ *     20260810000000_confirmar_pagamento_guarda_status.sql. É o ÚNICO caminho
+ *     que grava payment_status a partir do gateway (webhook e reconciliação).
+ *   - public.registrar_pagamento_recebido(uuid, boolean) — o lojista registra
+ *     que recebeu na mão (20261020000000_lojista_registra_pagamento_recebido).
+ *
+ * O estoque volta por public.devolver_estoque (corpo vigente em
+ * 20261175000000, idempotente pelo fato `stock_returned_at`) e a expiração
+ * por public.expirar_pedidos_vencidos (vigente em 20261186000000): as duas
+ * rodam de VERDADE aqui, com produto e variante de fixture. Nenhuma asserção
+ * olha texto de SQL — todas olham o que o banco GRAVOU (payment_status,
+ * status, paid_at, estoque do produto e da variante, carimbo de devolução,
+ * avisos ao cliente, histórico de recebimento).
+ *
+ *   (1)  PIX aguardando -> 'pago' (service_role): paid_at gravado, estoque
+ *        intacto, 1 aviso; reenvio -> 'ja_pago' sem mexer em NADA.
+ *   (2)  'divergente' (id nulo, pedido sem gateway, id diferente, vaga
+ *        sentinela de cartão) e 'inexistente': nenhuma coluna muda.
+ *   (3)  'recusado' devolve o estoque UMA vez (produto E variante); 2a
+ *        entrega -> 'ignorado'.
+ *   (4)  CONCORRÊNCIA, duas conexões reais: dois 'recusado' ao mesmo tempo —
+ *        o segundo ESPERA o FOR UPDATE, ao liberar vê o pedido já recusado.
+ *   (5)  expiração: PIX vencido expira e devolve uma vez; 'pago' depois ->
+ *        'pago_apos_expirar' sem tocar no estoque; reenvios idempotentes.
+ *        (5b) CONCORRÊNCIA: 'pago' esperando a varredura que segura a linha.
+ *        (5c) CONCORRÊNCIA INVERSA: 'pago' segura a linha de um PIX vencido;
+ *        a varredura (SKIP LOCKED) NÃO espera e devolve 0.
+ *   (6)  cliente cancelou pelo app (update_order_status_atomic REAL): 'pago'
+ *        -> 'pago_apos_expirar'; 'recusado' não credita de novo.
+ *   (7)  'estornado': de aguardando devolve uma vez; de pago só marca.
+ *   (8)  permissão: anon e authenticated (cliente E admin) são recusados;
+ *        service_role executa.
+ *   (9)  registrar_pagamento_recebido: gate de admin, recusas, idempotência,
+ *        desfazer, histórico; pedido de ENTREGA e venda de BALCÃO (RPC real
+ *        registrar_venda_presencial).
+ *        (9e) o 'desfazer' também vale para pedido de entrega já 'delivered'.
+ *   (10) bordas de transição: 'pago'/'recusado'/'estornado' sobre pedido que
+ *        o lojista já adiantou (processing/shipping/delivered/new); status
+ *        de gateway desconhecido; 'pago' depois de 'recusado'; 'recusado'
+ *        sobre payment_status NULL com cobrança gravada (ACHADO).
+ *   (11) CONCORRÊNCIA: dois registrar_pagamento_recebido ao mesmo tempo
+ *        gravam UMA linha de histórico.
+ *
+ * Linhas marcadas `ACHADO:` abaixo documentam comportamento ATUAL que merece
+ * olhar do dono do produto — o teste afirma o que o banco FAZ hoje, para o
+ * dia em que alguém mudar isso mudar de propósito.
+ *
+ * USO (como as outras provas vivas, num CLONE do banco migrado):
+ *   node tests/banco/rodar-isolado.cjs tests/banco/pagamentos-rpc-viva.cjs
+ */
+
+const assert = require("node:assert");
+const { Client } = require("pg");
+const {
+  falhar,
+  lerDatabaseUrlEfemera,
+  anexarAoSummary,
+} = require("./efemero.cjs");
+
+const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
+const U_OUTRO = "71111111-1111-1111-1111-111111111112";
+const U_ADMIN = "72222222-2222-2222-2222-222222222222";
+
+const ESTOQUE_INICIAL = 10;
+const VARIANTE_INICIAL = 7;
+const PRECO = 25;
+
+let sequencia = 0;
+const uuid = (prefixo, n) =>
+  `${prefixo}-0000-0000-0000-${String(n).padStart(12, "0")}`;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------------------
+// Sessão, papel e chamada
+// ---------------------------------------------------------------------------
+
+/** "Login" da prova: o auth.uid() emulado lê este GUC. '' = sem sessão. */
+async function logar(cliente, userId) {
+  await cliente.query("SELECT set_config('app.rpc.user_id', $1, false)", [
+    userId,
+  ]);
+}
+
+/**
+ * Roda UMA consulta como o papel pedido (SET LOCAL ROLE dentro de BEGIN) e
+ * devolve {ok, rows} ou {ok:false, erro}. Sempre fecha a transação: COMMIT
+ * quando {commit:true} e deu certo, ROLLBACK no resto.
+ */
+async function comPapel(cliente, papel, sql, params, opcoes = {}) {
+  await cliente.query("BEGIN");
+  try {
+    if (papel) await cliente.query(`SET LOCAL ROLE ${papel}`);
+    const r = await cliente.query(sql, params);
+    await cliente.query(opcoes.commit ? "COMMIT" : "ROLLBACK");
+    return { ok: true, rows: r.rows };
+  } catch (erro) {
+    await cliente.query("ROLLBACK").catch(() => {});
+    return { ok: false, erro };
+  }
+}
+
+async function confirmar(cliente, pedidoId, gateway, status) {
+  const r = await comPapel(
+    cliente,
+    "service_role",
+    "SELECT public.confirmar_pagamento($1::uuid, $2::text, $3::text) AS r",
+    [pedidoId, gateway, status],
+    { commit: true },
+  );
+  if (!r.ok) throw r.erro;
+  return r.rows[0].r;
+}
+
+async function expirar(cliente) {
+  const r = await comPapel(
+    cliente,
+    "service_role",
+    "SELECT public.expirar_pedidos_vencidos() AS n",
+    [],
+    { commit: true },
+  );
+  if (!r.ok) throw r.erro;
+  return Number(r.rows[0].n);
+}
+
+async function registrar(cliente, papel, userId, pedidoId, recebido) {
+  await logar(cliente, userId);
+  return comPapel(
+    cliente,
+    papel,
+    "SELECT public.registrar_pagamento_recebido($1::uuid, $2::boolean) AS r",
+    [pedidoId, recebido],
+    { commit: true },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+async function criarUsuarios(cliente) {
+  for (const [id, email, meta] of [
+    [U_CLIENTE, "cliente@pagamentos.teste", "{}"],
+    [U_OUTRO, "outro@pagamentos.teste", "{}"],
+    [U_ADMIN, "admin@pagamentos.teste", '{"role":"admin"}'],
+  ]) {
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, $2, $3::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [id, email, meta],
+    );
+  }
+}
+
+/**
+ * Pedido de fixture com produto(s) PRÓPRIO(s): o estoque de cada item é
+ * "depois da reserva" (ESTOQUE_INICIAL), então devolver = ESTOQUE_INICIAL+qtd.
+ * itens: [{qtd, variante:boolean}]. gateway: undefined = id próprio; null =
+ * sem cobrança gravada.
+ */
+async function novoPedido(cliente, o = {}) {
+  sequencia += 1;
+  const id = uuid("7ddddddd", sequencia);
+  const itensSpec = o.itens || [{ qtd: 3 }];
+  const paymentStatus =
+    o.paymentStatus === undefined ? "aguardando" : o.paymentStatus;
+  const gateway = o.gateway === undefined ? `ORD-PGTO-${sequencia}` : o.gateway;
+  const minutosVencido = o.vencidoHaMin;
+  const total = itensSpec.reduce((s, i) => s + i.qtd * PRECO, 0);
+
+  await cliente.query(
+    `INSERT INTO public.marketplace_orders
+       (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
+        payment_method, payment_status, gateway_payment_id, metodo_online, expires_at)
+     VALUES ($1, $2, 'Cliente Pagamentos', '{}'::jsonb, $3, $3, $4, $5, $6, $7, $8, $9,
+             CASE WHEN $10::int IS NOT NULL THEN now() - make_interval(mins => $10::int)
+                  WHEN $7::text = 'aguardando' THEN now() + interval '30 minutes'
+                  ELSE NULL END)`,
+    [
+      id,
+      o.userId === undefined ? U_CLIENTE : o.userId,
+      total,
+      o.status || "pending",
+      o.canal || "online",
+      o.paymentMethod === undefined ? "online" : o.paymentMethod,
+      paymentStatus,
+      gateway,
+      o.metodoOnline === undefined
+        ? paymentStatus === "aguardando"
+          ? "pix"
+          : null
+        : o.metodoOnline,
+      minutosVencido === undefined ? null : minutosVencido,
+    ],
+  );
+
+  const itens = [];
+  for (const spec of itensSpec) {
+    sequencia += 1;
+    const produtoId = uuid("7aaaaaaa", sequencia);
+    await cliente.query(
+      `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+       VALUES ($1, 'Produto Pagamentos', 10.00, $2, $3, true, false)`,
+      [produtoId, PRECO, ESTOQUE_INICIAL],
+    );
+    let varianteId = null;
+    if (spec.variante) {
+      varianteId = uuid("7bbbbbbb", sequencia);
+      await cliente.query(
+        `INSERT INTO public.product_variants (id, product_id, name, value, stock_increment, active)
+         VALUES ($1, $2, 'Tamanho', 'M', $3, true)`,
+        [varianteId, produtoId, VARIANTE_INICIAL],
+      );
+    }
+    await cliente.query(
+      `INSERT INTO public.marketplace_order_items (order_id, product_id, variant_id, product_name, quantity, price)
+       VALUES ($1, $2, $3, 'Produto Pagamentos', $4, $5)`,
+      [id, produtoId, varianteId, spec.qtd, PRECO],
+    );
+    itens.push({ produtoId, varianteId, qtd: spec.qtd });
+  }
+  return { id, gateway, itens };
+}
+
+/** Estoque de cada item: {produto, variante|null}. */
+async function estoques(cliente, pedido) {
+  const saida = [];
+  for (const item of pedido.itens) {
+    const p = await cliente.query(
+      "SELECT estoque FROM public.produtos WHERE id = $1",
+      [item.produtoId],
+    );
+    let variante = null;
+    if (item.varianteId) {
+      const v = await cliente.query(
+        "SELECT stock_increment FROM public.product_variants WHERE id = $1",
+        [item.varianteId],
+      );
+      variante = Number(v.rows[0].stock_increment);
+    }
+    saida.push({ produto: Number(p.rows[0].estoque), variante });
+  }
+  return saida;
+}
+
+/** Foto completa: a LINHA INTEIRA do pedido (to_jsonb) + o estoque. */
+async function foto(cliente, pedido) {
+  const r = await cliente.query(
+    "SELECT to_jsonb(o) AS linha FROM public.marketplace_orders o WHERE o.id = $1",
+    [pedido.id],
+  );
+  return { linha: r.rows[0].linha, estoques: await estoques(cliente, pedido) };
+}
+
+/** O estoque que devia estar depois de UMA devolução (ou nenhuma). */
+function estoqueEsperado(pedido, devolvido) {
+  return pedido.itens.map((i) => ({
+    produto: i.varianteId
+      ? ESTOQUE_INICIAL
+      : ESTOQUE_INICIAL + (devolvido ? i.qtd : 0),
+    variante: i.varianteId ? VARIANTE_INICIAL + (devolvido ? i.qtd : 0) : null,
+  }));
+}
+
+/** Avisos de PAGAMENTO do pedido (o aviso de 'Pedido cancelado' é de outro gatilho). */
+async function avisosDoPedido(cliente, pedidoId) {
+  const r = await cliente.query(
+    `SELECT titulo FROM public.notificacoes
+      WHERE dados->>'order_id' = $1 AND titulo LIKE 'Pagamento%'
+      ORDER BY created_at, id`,
+    [pedidoId],
+  );
+  return r.rows.map((x) => x.titulo);
+}
+
+const AVISO_PAGO = "Pagamento confirmado";
+const AVISO_TARDIO = "Pagamento recebido após o cancelamento";
+
+async function historicoDoRecebimento(cliente, pedidoId) {
+  const r = await cliente.query(
+    `SELECT acao, payment_status_antes AS antes, payment_status_depois AS depois, created_by
+       FROM public.marketplace_order_payment_history
+      WHERE order_id = $1 ORDER BY created_at, id`,
+    [pedidoId],
+  );
+  return r.rows;
+}
+
+function esperaDevolvido(f, pedido, devolvido, mensagem) {
+  assert.deepEqual(f.estoques, estoqueEsperado(pedido, devolvido), mensagem);
+  assert.equal(
+    f.linha.stock_returned_at !== null,
+    devolvido,
+    `${mensagem}: carimbo stock_returned_at`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Duas conexões reais (concorrência)
+// ---------------------------------------------------------------------------
+
+async function novaConexao(url) {
+  const c = new Client({ connectionString: url });
+  await c.connect();
+  // Teto de segurança: uma prova que trava não pode pendurar o job inteiro.
+  await c.query("SET statement_timeout = '30s'");
+  return c;
+}
+
+async function esperarBloqueio(observador, pid, limiteMs = 10000) {
+  const fim = Date.now() + limiteMs;
+  while (Date.now() < fim) {
+    const r = await observador.query(
+      "SELECT wait_event_type, state FROM pg_stat_activity WHERE pid = $1",
+      [pid],
+    );
+    if (r.rows[0] && r.rows[0].wait_event_type === "Lock") return true;
+    await sleep(40);
+  }
+  return false;
+}
+
+/**
+ * A segura a linha (abre transação, roda `sqlA` como service_role, NÃO fecha);
+ * B dispara `sqlB` e tem de FICAR ESPERANDO; só então A dá COMMIT. Devolve
+ * {resultadoA, resultadoB, esperou}. Fecha tudo no finally.
+ */
+async function corrida(
+  observador,
+  url,
+  { sqlA, paramsA, sqlB, paramsB, papelB, userB },
+) {
+  const A = await novaConexao(url);
+  const B = await novaConexao(url);
+  let aberta = false;
+  try {
+    const pidB = (await B.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    if (userB !== undefined) await logar(B, userB);
+
+    await A.query("BEGIN");
+    aberta = true;
+    await A.query("SET LOCAL ROLE service_role");
+    const resultadoA = (await A.query(sqlA, paramsA)).rows[0].r;
+
+    await B.query("BEGIN");
+    if (papelB) await B.query(`SET LOCAL ROLE ${papelB}`);
+    let terminouB = false;
+    const promessaB = B.query(sqlB, paramsB).then(
+      (r) => {
+        terminouB = true;
+        return { ok: true, valor: r.rows[0].r };
+      },
+      (erro) => {
+        terminouB = true;
+        return { ok: false, erro };
+      },
+    );
+
+    const esperou = await esperarBloqueio(observador, pidB);
+    const terminouAntes = terminouB;
+
+    await A.query("COMMIT");
+    aberta = false;
+    const resultadoB = await promessaB;
+    await B.query(resultadoB.ok ? "COMMIT" : "ROLLBACK");
+    return { resultadoA, resultadoB, esperou, terminouAntes };
+  } finally {
+    if (aberta) await A.query("ROLLBACK").catch(() => {});
+    await A.end().catch(() => {});
+    await B.end().catch(() => {});
+  }
+}
+
+// ---------------------------------------------------------------------------
+// As provas
+// ---------------------------------------------------------------------------
+
+const PROVAS = [];
+let URL_BANCO = null;
+
+PROVAS.push({
+  nome: "(1) PIX aguardando -> 'pago': paid_at gravado, estoque intacto, 1 aviso; reenvio -> 'ja_pago' sem mexer em nada",
+  corpo: async (c) => {
+    await criarUsuarios(c);
+    const p = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    const antes = await foto(c, p);
+    assert.equal(antes.linha.payment_status, "aguardando");
+    assert.equal(antes.linha.paid_at, null);
+
+    assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "pago");
+    const depois = await foto(c, p);
+    assert.equal(depois.linha.payment_status, "pago");
+    assert.equal(depois.linha.status, "pending", "pago não adianta o pedido");
+    assert.notEqual(depois.linha.paid_at, null);
+    esperaDevolvido(depois, p, false, "pago não mexe no estoque");
+    assert.deepEqual(await avisosDoPedido(c, p.id), [AVISO_PAGO]);
+
+    // Reenvio do webhook: nada muda — nem paid_at, nem updated_at, nem aviso.
+    assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "ja_pago");
+    assert.deepEqual(await foto(c, p), depois, "reenvio não reescreve a linha");
+    assert.deepEqual(await avisosDoPedido(c, p.id), [AVISO_PAGO]);
+  },
+});
+
+PROVAS.push({
+  nome: "(2) 'divergente' (id nulo, sem gateway, id diferente, vaga sentinela) e 'inexistente': nenhuma coluna muda",
+  corpo: async (c) => {
+    const comGateway = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    const semGateway = await novoPedido(c, { gateway: null });
+    const sentinela = await novoPedido(c, {
+      gateway: "verificando:chave-de-prova",
+      metodoOnline: null,
+    });
+
+    const casos = [
+      ["p_payment_id NULL", comGateway, null],
+      ["id diferente do gravado", comGateway, "ORD-DE-OUTRO-PEDIDO"],
+      ["pedido sem gateway, id real chegando", semGateway, "ORD-QUALQUER"],
+      ["pedido sem gateway e p_payment_id NULL", semGateway, null],
+      [
+        "vaga sentinela de cartão, id real chegando",
+        sentinela,
+        "ORD-REAL-DO-MP",
+      ],
+    ];
+    for (const status of ["pago", "recusado", "estornado"]) {
+      for (const [rotulo, pedido, gateway] of casos) {
+        const antes = await foto(c, pedido);
+        assert.equal(
+          await confirmar(c, pedido.id, gateway, status),
+          "divergente",
+          `${status} / ${rotulo}`,
+        );
+        assert.deepEqual(
+          await foto(c, pedido),
+          antes,
+          `${status} / ${rotulo}: nenhuma coluna nem estoque pode mudar`,
+        );
+      }
+    }
+    assert.deepEqual(await avisosDoPedido(c, comGateway.id), []);
+
+    // Inexistente: nem a checagem de id vem antes (nada a comparar).
+    const fantasma = uuid("7eeeeeee", 1);
+    assert.equal(await confirmar(c, fantasma, "ORD-X", "pago"), "inexistente");
+    assert.equal(await confirmar(c, fantasma, null, "recusado"), "inexistente");
+  },
+});
+
+PROVAS.push({
+  nome: "(3) 'recusado' de aguardando+pending devolve o estoque UMA vez (produto e variante) e cancela; 2a entrega -> 'ignorado'",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    esperaDevolvido(await foto(c, p), p, false, "ponto de partida");
+
+    assert.equal(await confirmar(c, p.id, p.gateway, "recusado"), "recusado");
+    const depois = await foto(c, p);
+    assert.equal(depois.linha.payment_status, "recusado");
+    assert.equal(depois.linha.status, "cancelled");
+    assert.equal(depois.linha.paid_at, null);
+    esperaDevolvido(depois, p, true, "recusado devolve a reserva uma vez");
+    // Variante: o crédito vai para a VARIANTE, nunca para o produto pai.
+    assert.equal(depois.estoques[1].produto, ESTOQUE_INICIAL);
+    assert.equal(depois.estoques[1].variante, VARIANTE_INICIAL + 2);
+
+    // Segunda entrega do mesmo 'recusado': não sobe de novo.
+    assert.equal(await confirmar(c, p.id, p.gateway, "recusado"), "ignorado");
+    assert.deepEqual(await foto(c, p), depois, "2a entrega não mexe em nada");
+  },
+});
+
+PROVAS.push({
+  nome: "(4) CONCORRÊNCIA: dois 'recusado' ao mesmo tempo — o 2o ESPERA o lock, ao liberar vê 'recusado' -> 'ignorado'; estoque soma UMA vez",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    const sql =
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, $3::text) AS r";
+    const params = [p.id, p.gateway, "recusado"];
+
+    const r = await corrida(c, URL_BANCO, {
+      sqlA: sql,
+      paramsA: params,
+      sqlB: sql,
+      paramsB: params,
+      papelB: "service_role",
+    });
+
+    assert.equal(r.resultadoA, "recusado");
+    assert.equal(
+      r.esperou,
+      true,
+      "a conexão B tinha de estar ESPERANDO um lock enquanto A segurava a linha",
+    );
+    assert.equal(
+      r.terminouAntes,
+      false,
+      "B não pode terminar antes do COMMIT de A",
+    );
+    assert.deepEqual(r.resultadoB, { ok: true, valor: "ignorado" });
+
+    const depois = await foto(c, p);
+    assert.equal(depois.linha.payment_status, "recusado");
+    assert.equal(depois.linha.status, "cancelled");
+    esperaDevolvido(depois, p, true, "o estoque somou uma vez só");
+  },
+});
+
+PROVAS.push({
+  nome: "(5) expiração: PIX vencido expira e devolve uma vez; 'pago' depois -> 'pago_apos_expirar' sem mexer no estoque; reenvios idempotentes",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      vencidoHaMin: 31,
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    assert.equal(await expirar(c), 1, "só o PIX vencido da prova expira");
+    const expirado = await foto(c, p);
+    assert.equal(expirado.linha.payment_status, "expirado");
+    assert.equal(expirado.linha.status, "cancelled");
+    esperaDevolvido(expirado, p, true, "a varredura devolveu uma vez");
+
+    // O PIX é pago DEPOIS de expirar.
+    assert.equal(
+      await confirmar(c, p.id, p.gateway, "pago"),
+      "pago_apos_expirar",
+    );
+    const pago = await foto(c, p);
+    assert.equal(pago.linha.payment_status, "pago_apos_expirar");
+    assert.equal(pago.linha.status, "cancelled", "o pedido segue cancelado");
+    assert.notEqual(pago.linha.paid_at, null);
+    esperaDevolvido(pago, p, true, "não consome nem devolve de novo");
+    assert.deepEqual(await avisosDoPedido(c, p.id), [AVISO_TARDIO]);
+
+    // Reenvio, recusa tardia e nova varredura: tudo inerte.
+    assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "ja_pago");
+    assert.deepEqual(await foto(c, p), pago);
+    assert.equal(await confirmar(c, p.id, p.gateway, "recusado"), "ignorado");
+    assert.deepEqual(await foto(c, p), pago);
+    assert.equal(await expirar(c), 0);
+    assert.deepEqual(await foto(c, p), pago);
+    assert.deepEqual(await avisosDoPedido(c, p.id), [AVISO_TARDIO]);
+  },
+});
+
+PROVAS.push({
+  nome: "(5b) CONCORRÊNCIA: 'pago' chega com a varredura segurando a linha — espera e vira 'pago_apos_expirar' (nunca 'pago' com pedido cancelado)",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      vencidoHaMin: 31,
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    const r = await corrida(c, URL_BANCO, {
+      sqlA: "SELECT public.expirar_pedidos_vencidos() AS r",
+      paramsA: [],
+      sqlB: "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
+      paramsB: [p.id, p.gateway],
+      papelB: "service_role",
+    });
+
+    assert.equal(Number(r.resultadoA), 1);
+    assert.equal(
+      r.esperou,
+      true,
+      "B tinha de esperar a varredura soltar a linha",
+    );
+    assert.equal(r.terminouAntes, false);
+    assert.deepEqual(r.resultadoB, { ok: true, valor: "pago_apos_expirar" });
+
+    const depois = await foto(c, p);
+    assert.equal(depois.linha.payment_status, "pago_apos_expirar");
+    assert.equal(depois.linha.status, "cancelled");
+    assert.notEqual(depois.linha.paid_at, null);
+    esperaDevolvido(depois, p, true, "devolvido uma vez só, pela varredura");
+  },
+});
+
+PROVAS.push({
+  nome: "(5c) CONCORRÊNCIA INVERSA: 'pago' segura a linha de um PIX vencido — a varredura (SKIP LOCKED) NÃO espera, devolve 0 e o pedido fica 'pago' com estoque intacto",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      vencidoHaMin: 31,
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    const A = await novaConexao(URL_BANCO);
+    const B = await novaConexao(URL_BANCO);
+    let abertaA = false;
+    let abertaB = false;
+    try {
+      // A: o webhook confirma o PIX (vencido, ainda 'aguardando') e NÃO fecha.
+      await A.query("BEGIN");
+      abertaA = true;
+      await A.query("SET LOCAL ROLE service_role");
+      const ra = (
+        await A.query(
+          "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
+          [p.id, p.gateway],
+        )
+      ).rows[0].r;
+      assert.equal(ra, "pago", "A: vencido mas ainda aguardando vira 'pago'");
+
+      // B: a varredura chega com a linha travada. SKIP LOCKED => pula e termina.
+      await B.query("BEGIN");
+      abertaB = true;
+      await B.query("SET LOCAL ROLE service_role");
+      // Timer cancelável: um sleep() solto seguraria o processo ~8 s depois
+      // de a varredura vencer a corrida (anotação da revisão Opus).
+      let limiteDaCorrida;
+      const resultadoB = await Promise.race([
+        B.query("SELECT public.expirar_pedidos_vencidos() AS r").then((r) => ({
+          n: Number(r.rows[0].r),
+        })),
+        new Promise((r) => {
+          limiteDaCorrida = setTimeout(() => r("TRAVOU"), 8000);
+        }),
+      ]).finally(() => clearTimeout(limiteDaCorrida));
+      assert.notEqual(
+        resultadoB,
+        "TRAVOU",
+        "a varredura ficou ESPERANDO a linha de A: sem SKIP LOCKED ela trava (e depois sobrescreve)",
+      );
+      assert.deepEqual(
+        resultadoB,
+        { n: 0 },
+        "a varredura pula a linha travada e devolve 0",
+      );
+      await B.query("COMMIT");
+      abertaB = false;
+
+      // Antes do COMMIT de A, quem olha de fora ainda vê o pedido intocado.
+      const fora = await foto(c, p);
+      assert.equal(fora.linha.payment_status, "aguardando");
+      esperaDevolvido(fora, p, false, "a varredura não devolveu nada");
+
+      await A.query("COMMIT");
+      abertaA = false;
+    } finally {
+      if (abertaA) await A.query("ROLLBACK").catch(() => {});
+      if (abertaB) await B.query("ROLLBACK").catch(() => {});
+      await A.end().catch(() => {});
+      await B.end().catch(() => {});
+    }
+
+    const depois = await foto(c, p);
+    assert.equal(depois.linha.payment_status, "pago");
+    assert.equal(depois.linha.status, "pending", "o pedido não foi cancelado");
+    assert.notEqual(depois.linha.paid_at, null);
+    esperaDevolvido(depois, p, false, "estoque intacto e sem carimbo");
+    assert.deepEqual(await avisosDoPedido(c, p.id), [AVISO_PAGO]);
+
+    // Uma varredura depois: o pedido já é 'pago', não é mais alvo.
+    assert.equal(await expirar(c), 0);
+    assert.deepEqual(await foto(c, p), depois, "a varredura seguinte não mexe");
+  },
+});
+
+PROVAS.push({
+  nome: "(6) cliente cancelou pelo app (update_order_status_atomic real): 'pago' -> 'pago_apos_expirar'; 'recusado' não credita de novo; 'estornado' só marca",
+  corpo: async (c) => {
+    const cancelarComoCliente = async (pedido) => {
+      await logar(c, U_CLIENTE);
+      const r = await comPapel(
+        c,
+        "authenticated",
+        "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
+        [pedido.id],
+        { commit: true },
+      );
+      await logar(c, "");
+      if (!r.ok) throw r.erro;
+    };
+
+    // O cancelamento do app devolve o estoque e NÃO escreve payment_status.
+    const pago = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    await cancelarComoCliente(pago);
+    const cancelado = await foto(c, pago);
+    assert.equal(cancelado.linha.status, "cancelled");
+    assert.equal(cancelado.linha.payment_status, "aguardando");
+    esperaDevolvido(cancelado, pago, true, "o app já devolveu");
+
+    assert.equal(
+      await confirmar(c, pago.id, pago.gateway, "pago"),
+      "pago_apos_expirar",
+    );
+    const depoisPago = await foto(c, pago);
+    assert.equal(depoisPago.linha.payment_status, "pago_apos_expirar");
+    assert.equal(depoisPago.linha.status, "cancelled");
+    assert.notEqual(depoisPago.linha.paid_at, null);
+    esperaDevolvido(
+      depoisPago,
+      pago,
+      true,
+      "pago não mexe no estoque já devolvido",
+    );
+    assert.deepEqual(await avisosDoPedido(c, pago.id), [AVISO_TARDIO]);
+
+    // Dinheiro chegado depois do cancelamento e depois estornado: só marca.
+    assert.equal(
+      await confirmar(c, pago.id, pago.gateway, "estornado"),
+      "estornado",
+    );
+    const estornado = await foto(c, pago);
+    assert.equal(estornado.linha.payment_status, "estornado");
+    esperaDevolvido(
+      estornado,
+      pago,
+      true,
+      "estorno de pedido já cancelado não credita",
+    );
+
+    // 'recusado' depois do cancelamento: marca, mas NÃO credita de novo.
+    const recusado = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    await cancelarComoCliente(recusado);
+    assert.equal(
+      await confirmar(c, recusado.id, recusado.gateway, "recusado"),
+      "recusado",
+    );
+    const depoisRecusado = await foto(c, recusado);
+    assert.equal(depoisRecusado.linha.payment_status, "recusado");
+    assert.equal(depoisRecusado.linha.status, "cancelled");
+    esperaDevolvido(
+      depoisRecusado,
+      recusado,
+      true,
+      "recusado não credita o que o app já devolveu",
+    );
+
+    // 'estornado' direto de aguardando+cancelled (nunca pago): só marca.
+    const estornoSemPago = await novoPedido(c, { itens: [{ qtd: 3 }] });
+    await cancelarComoCliente(estornoSemPago);
+    assert.equal(
+      await confirmar(
+        c,
+        estornoSemPago.id,
+        estornoSemPago.gateway,
+        "estornado",
+      ),
+      "estornado",
+    );
+    esperaDevolvido(
+      await foto(c, estornoSemPago),
+      estornoSemPago,
+      true,
+      "estornado de aguardando+cancelled não credita de novo",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(7) 'estornado': de aguardando+pending devolve uma vez; de 'pago' só marca (estoque intacto); repetição -> 'ja_estornado'",
+  corpo: async (c) => {
+    // De aguardando: a reserva volta, o pedido morre.
+    const a = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    assert.equal(await confirmar(c, a.id, a.gateway, "estornado"), "estornado");
+    const fa = await foto(c, a);
+    assert.equal(fa.linha.payment_status, "estornado");
+    assert.equal(fa.linha.status, "cancelled");
+    assert.notEqual(
+      fa.linha.estorno_manual_registrado_em,
+      null,
+      "o gatilho carimba o estorno direto do gateway",
+    );
+    esperaDevolvido(
+      fa,
+      a,
+      true,
+      "estorno de aguardando devolve a reserva uma vez",
+    );
+    assert.equal(
+      await confirmar(c, a.id, a.gateway, "estornado"),
+      "ja_estornado",
+    );
+    assert.deepEqual(await foto(c, a), fa, "repetição não mexe em nada");
+
+    // De pago: houve venda, a mercadoria pode ter saído — só marca.
+    const b = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    assert.equal(await confirmar(c, b.id, b.gateway, "pago"), "pago");
+    assert.equal(await confirmar(c, b.id, b.gateway, "estornado"), "estornado");
+    const fb = await foto(c, b);
+    assert.equal(fb.linha.payment_status, "estornado");
+    assert.equal(
+      fb.linha.status,
+      "pending",
+      "estorno de pago não cancela o pedido",
+    );
+    esperaDevolvido(fb, b, false, "estorno de pago NUNCA mexe em estoque");
+    assert.equal(
+      await confirmar(c, b.id, b.gateway, "estornado"),
+      "ja_estornado",
+    );
+    assert.deepEqual(await foto(c, b), fb);
+  },
+});
+
+PROVAS.push({
+  nome: "(8) permissão real: anon e authenticated (cliente E admin) recebem permission denied em confirmar_pagamento; service_role executa",
+  corpo: async (c) => {
+    const p = await novoPedido(c, { itens: [{ qtd: 3 }] });
+    const antes = await foto(c, p);
+    const sql =
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r";
+
+    for (const [rotulo, papel, userId] of [
+      ["anon", "anon", ""],
+      ["authenticated (cliente dono do pedido)", "authenticated", U_CLIENTE],
+      ["authenticated (outro cliente)", "authenticated", U_OUTRO],
+      ["authenticated (admin da loja)", "authenticated", U_ADMIN],
+    ]) {
+      await logar(c, userId);
+      const r = await comPapel(c, papel, sql, [p.id, p.gateway], {
+        commit: true,
+      });
+      assert.equal(r.ok, false, `${rotulo} não pode executar`);
+      assert.match(
+        r.erro.message,
+        /permission denied for function confirmar_pagamento/,
+        rotulo,
+      );
+      assert.deepEqual(await foto(c, p), antes, `${rotulo}: nada gravado`);
+    }
+
+    await logar(c, "");
+    assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "pago");
+    assert.equal((await foto(c, p)).linha.payment_status, "pago");
+  },
+});
+
+// -- (9) registrar_pagamento_recebido --------------------------------------
+
+/** Fluxo completo de um pedido sem pagamento registrado (entrega ou balcão). */
+async function fluxoDeRecebimento(c, pedido, rotulo) {
+  const inicial = await foto(c, pedido);
+  assert.equal(
+    inicial.linha.payment_status,
+    null,
+    `${rotulo}: parte sem pagamento`,
+  );
+  const historicoInicial = await historicoDoRecebimento(c, pedido.id);
+  assert.deepEqual(historicoInicial, [], `${rotulo}: sem histórico`);
+
+  // anon: nem executa.
+  let r = await registrar(c, "anon", "", pedido.id, true);
+  assert.equal(r.ok, false);
+  assert.match(r.erro.message, /permission denied/, `${rotulo}: anon`);
+
+  // authenticated que NÃO é admin (nem o dono do pedido pode).
+  for (const quem of [U_CLIENTE, U_OUTRO]) {
+    r = await registrar(c, "authenticated", quem, pedido.id, true);
+    assert.equal(r.ok, false);
+    assert.match(r.erro.message, /Não autorizado/, `${rotulo}: não-admin`);
+  }
+  assert.deepEqual(
+    await foto(c, pedido),
+    inicial,
+    `${rotulo}: recusas não gravam nada`,
+  );
+  assert.deepEqual(await historicoDoRecebimento(c, pedido.id), []);
+
+  // admin: registra.
+  r = await registrar(c, "authenticated", U_ADMIN, pedido.id, true);
+  assert.equal(r.ok, true, r.erro?.message);
+  assert.equal(r.rows[0].r.payment_status, "recebido_na_entrega");
+  assert.equal(r.rows[0].r.ja_estava, false);
+  const recebido = await foto(c, pedido);
+  assert.equal(recebido.linha.payment_status, "recebido_na_entrega");
+  assert.equal(recebido.linha.pagamento_recebido_por, U_ADMIN);
+  assert.notEqual(recebido.linha.pagamento_recebido_em, null);
+  assert.deepEqual(
+    recebido.estoques,
+    inicial.estoques,
+    `${rotulo}: não mexe em estoque`,
+  );
+  assert.deepEqual(await historicoDoRecebimento(c, pedido.id), [
+    {
+      acao: "recebido",
+      antes: null,
+      depois: "recebido_na_entrega",
+      created_by: U_ADMIN,
+    },
+  ]);
+
+  // Repetição: nada novo.
+  r = await registrar(c, "authenticated", U_ADMIN, pedido.id, true);
+  assert.equal(r.ok, true);
+  assert.equal(r.rows[0].r.ja_estava, true);
+  assert.deepEqual(
+    await foto(c, pedido),
+    recebido,
+    `${rotulo}: repetição não reescreve`,
+  );
+  assert.equal((await historicoDoRecebimento(c, pedido.id)).length, 1);
+
+  // Desfazer: volta a NULL nas três colunas + linha 'desfeito'.
+  r = await registrar(c, "authenticated", U_ADMIN, pedido.id, false);
+  assert.equal(r.ok, true);
+  assert.equal(r.rows[0].r.ja_estava, false);
+  const desfeito = await foto(c, pedido);
+  assert.equal(desfeito.linha.payment_status, null);
+  assert.equal(desfeito.linha.pagamento_recebido_em, null);
+  assert.equal(desfeito.linha.pagamento_recebido_por, null);
+  assert.deepEqual((await historicoDoRecebimento(c, pedido.id)).slice(-1), [
+    {
+      acao: "desfeito",
+      antes: "recebido_na_entrega",
+      depois: null,
+      created_by: U_ADMIN,
+    },
+  ]);
+  assert.equal((await historicoDoRecebimento(c, pedido.id)).length, 2);
+
+  // Desfazer de novo: ja_estava, sem linha nova.
+  r = await registrar(c, "authenticated", U_ADMIN, pedido.id, false);
+  assert.equal(r.ok, true);
+  assert.equal(r.rows[0].r.ja_estava, true);
+  assert.deepEqual(await foto(c, pedido), desfeito);
+  assert.equal((await historicoDoRecebimento(c, pedido.id)).length, 2);
+}
+
+async function exigeRecusa(c, pedido, regex, rotulo) {
+  const antes = await foto(c, pedido);
+  const historicoAntes = await historicoDoRecebimento(c, pedido.id);
+  for (const flag of [true, false]) {
+    const r = await registrar(c, "authenticated", U_ADMIN, pedido.id, flag);
+    assert.equal(
+      r.ok,
+      false,
+      `${rotulo} (p_recebido=${flag}) tinha de ser recusado`,
+    );
+    assert.match(r.erro.message, regex, rotulo);
+  }
+  assert.deepEqual(await foto(c, pedido), antes, `${rotulo}: nada gravado`);
+  assert.deepEqual(await historicoDoRecebimento(c, pedido.id), historicoAntes);
+}
+
+PROVAS.push({
+  nome: "(9a) registrar_pagamento_recebido num pedido de ENTREGA (cash/pix/card/legado): gate de admin, registra, repete, desfaz, histórico",
+  corpo: async (c) => {
+    // payment_method de entrega vem de create_marketplace_order_v23 (cash,
+    // pix, card — forma_de_pagamento_aceita, 20261174000000); 'na_entrega' é
+    // o legado que a 20261162000000 cita. Todos nascem com payment_status NULL.
+    for (const metodo of ["cash", "pix", "card", "na_entrega"]) {
+      const p = await novoPedido(c, {
+        paymentMethod: metodo,
+        paymentStatus: null,
+        gateway: null,
+        metodoOnline: null,
+        itens: [{ qtd: 2 }],
+      });
+      await fluxoDeRecebimento(c, p, `entrega/${metodo}`);
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(9b) registrar_pagamento_recebido recusa: pedido online, cancelado, com pagamento já preenchido e inexistente — nada grava",
+  corpo: async (c) => {
+    const online = await novoPedido(c, {
+      paymentMethod: "online",
+      paymentStatus: "aguardando",
+    });
+    await exigeRecusa(c, online, /pelo site/, "pedido pago pelo site");
+
+    const cancelado = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: null,
+      status: "cancelled",
+      gateway: null,
+      metodoOnline: null,
+    });
+    await exigeRecusa(c, cancelado, /cancelado/, "pedido cancelado");
+
+    // Dinheiro recebido e depois o pedido morreu: nem desfazer vale.
+    const recebidoEcancelado = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: "recebido_na_entrega",
+      status: "cancelled",
+      gateway: null,
+      metodoOnline: null,
+    });
+    await exigeRecusa(
+      c,
+      recebidoEcancelado,
+      /cancelado/,
+      "recebido + cancelado",
+    );
+
+    for (const preenchido of [
+      "pago",
+      "estornado",
+      "recusado",
+      "pago_apos_expirar",
+    ]) {
+      const p = await novoPedido(c, {
+        paymentMethod: "cash",
+        paymentStatus: preenchido,
+        gateway: null,
+        metodoOnline: null,
+      });
+      const antes = await foto(c, p);
+      // marcar recebido por cima de outro pagamento: recusa.
+      let r = await registrar(c, "authenticated", U_ADMIN, p.id, true);
+      assert.equal(
+        r.ok,
+        false,
+        `${preenchido}: marcar por cima tinha de ser recusado`,
+      );
+      assert.match(r.erro.message, /já tem pagamento registrado/, preenchido);
+      // desfazer onde não há recebimento na entrega: ja_estava, sem mexer.
+      r = await registrar(c, "authenticated", U_ADMIN, p.id, false);
+      assert.equal(r.ok, true);
+      assert.equal(
+        r.rows[0].r.ja_estava,
+        true,
+        `${preenchido}: desfazer não desfaz pagamento alheio`,
+      );
+      assert.equal(r.rows[0].r.payment_status, preenchido);
+      assert.deepEqual(await foto(c, p), antes, `${preenchido}: nada gravado`);
+      assert.deepEqual(await historicoDoRecebimento(c, p.id), []);
+    }
+
+    const r = await registrar(
+      c,
+      "authenticated",
+      U_ADMIN,
+      uuid("7eeeeeee", 2),
+      true,
+    );
+    assert.equal(r.ok, false);
+    assert.match(r.erro.message, /não encontrado/);
+  },
+});
+
+PROVAS.push({
+  nome: "(9c) registrar_pagamento_recebido na venda de BALCÃO (registrar_venda_presencial real): repetição não duplica; medida do 'desfazer' e do NULL",
+  corpo: async (c) => {
+    sequencia += 1;
+    const produtoId = uuid("7aaaaaaa", sequencia);
+    await c.query(
+      `INSERT INTO public.produtos (id, nome, custo, preco_venda, estoque, ativo, frete_gratis)
+       VALUES ($1, 'Produto Balcao', 10.00, $2, $3, true, false)`,
+      [produtoId, PRECO, ESTOQUE_INICIAL],
+    );
+    const vender = async () => {
+      await logar(c, U_ADMIN);
+      const r = await comPapel(
+        c,
+        "authenticated",
+        "SELECT public.registrar_venda_presencial($1::jsonb, 'cash') AS r",
+        [JSON.stringify([{ product_id: produtoId, quantity: 1 }])],
+        { commit: true },
+      );
+      if (!r.ok) throw r.erro;
+      return r.rows[0].r.order.id;
+    };
+
+    // A venda de balcão nasce RECEBIDA: delivered + recebido_na_entrega, com
+    // 1 linha de histórico e o estoque já debitado pela própria RPC.
+    const vendaId = await vender();
+    const pedido = { id: vendaId, itens: [] };
+    const nascida = await foto(c, pedido);
+    assert.equal(nascida.linha.canal, "presencial");
+    assert.equal(nascida.linha.status, "delivered");
+    assert.equal(nascida.linha.payment_status, "recebido_na_entrega");
+    assert.equal(nascida.linha.pagamento_recebido_por, U_ADMIN);
+    assert.equal(
+      Number(
+        (
+          await c.query("SELECT estoque FROM public.produtos WHERE id = $1", [
+            produtoId,
+          ])
+        ).rows[0].estoque,
+      ),
+      ESTOQUE_INICIAL - 1,
+      "a venda de balcão debitou o estoque",
+    );
+    assert.equal((await historicoDoRecebimento(c, vendaId)).length, 1);
+
+    // anon e não-admin: recusados, nada muda.
+    let r = await registrar(c, "anon", "", vendaId, false);
+    assert.equal(r.ok, false);
+    assert.match(r.erro.message, /permission denied/);
+    r = await registrar(c, "authenticated", U_CLIENTE, vendaId, false);
+    assert.equal(r.ok, false);
+    assert.match(r.erro.message, /Não autorizado/);
+    assert.deepEqual(await foto(c, pedido), nascida);
+
+    // Repetição de 'recebido': ja_estava, nada novo.
+    r = await registrar(c, "authenticated", U_ADMIN, vendaId, true);
+    assert.equal(r.ok, true);
+    assert.equal(r.rows[0].r.ja_estava, true);
+    assert.deepEqual(await foto(c, pedido), nascida);
+    assert.equal((await historicoDoRecebimento(c, vendaId)).length, 1);
+
+    // DECISÃO DE PRODUTO A CONFIRMAR (ACHADO, não defeito): o "desfazer" é
+    // recurso deliberado e deixa trilha ('desfeito' no histórico), mas a RPC
+    // vale para QUALQUER pedido não-online já ENTREGUE — balcão e entrega
+    // (ver (9e)) —: payment_status volta a NULL, o dinheiro some dos
+    // relatórios que contam 'recebido_na_entrega' e o pedido segue delivered
+    // sem pagamento. A tela também oferece o botão (podeRegistrarPagamento só
+    // olha online/cancelado). Cabe ao dono do produto dizer se desfazer um
+    // recebimento de pedido já entregue deve continuar livre. Afirmamos o
+    // comportamento ATUAL, com trilha: 1 linha 'desfeito'.
+    r = await registrar(c, "authenticated", U_ADMIN, vendaId, false);
+    assert.equal(r.ok, true);
+    const desfeita = await foto(c, pedido);
+    assert.equal(desfeita.linha.status, "delivered");
+    assert.equal(desfeita.linha.payment_status, null);
+    assert.equal(desfeita.linha.pagamento_recebido_em, null);
+    assert.equal(desfeita.linha.pagamento_recebido_por, null);
+    assert.deepEqual((await historicoDoRecebimento(c, vendaId)).slice(-1), [
+      {
+        acao: "desfeito",
+        antes: "recebido_na_entrega",
+        depois: null,
+        created_by: U_ADMIN,
+      },
+    ]);
+    r = await registrar(c, "authenticated", U_ADMIN, vendaId, false);
+    assert.equal(r.rows[0].r.ja_estava, true);
+    assert.equal((await historicoDoRecebimento(c, vendaId)).length, 2);
+
+    // ACHADO: p_recebido = NULL cai no ELSE do `IF p_recebido` e se comporta
+    // como DESFAZER (grava linha 'desfeito'). Registra de volta e mede.
+    r = await registrar(c, "authenticated", U_ADMIN, vendaId, true);
+    assert.equal(r.rows[0].r.ja_estava, false);
+    r = await registrar(c, "authenticated", U_ADMIN, vendaId, null);
+    assert.equal(r.ok, true, "NULL não é recusado");
+    assert.equal(r.rows[0].r.payment_status, null, "NULL desfaz o recebimento");
+    assert.deepEqual((await historicoDoRecebimento(c, vendaId)).slice(-1), [
+      {
+        acao: "desfeito",
+        antes: "recebido_na_entrega",
+        depois: null,
+        created_by: U_ADMIN,
+      },
+    ]);
+  },
+});
+
+PROVAS.push({
+  nome: "(9e) registrar_pagamento_recebido: o 'desfazer' também vale para pedido de ENTREGA já 'delivered' (decisão de produto a confirmar)",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: null,
+      status: "delivered",
+      gateway: null,
+      metodoOnline: null,
+    });
+    let r = await registrar(c, "authenticated", U_ADMIN, p.id, true);
+    assert.equal(r.ok, true, r.erro?.message);
+    const recebido = await foto(c, p);
+    assert.equal(recebido.linha.status, "delivered");
+    assert.equal(recebido.linha.payment_status, "recebido_na_entrega");
+
+    // ACHADO (ver o comentário em (9c)): entregue e recebido, o admin ainda
+    // consegue desfazer — o pedido fica delivered com payment_status NULL.
+    r = await registrar(c, "authenticated", U_ADMIN, p.id, false);
+    assert.equal(r.ok, true, r.erro?.message);
+    const desfeito = await foto(c, p);
+    assert.equal(desfeito.linha.status, "delivered");
+    assert.equal(desfeito.linha.payment_status, null);
+    assert.equal(desfeito.linha.pagamento_recebido_em, null);
+    assert.equal(desfeito.linha.pagamento_recebido_por, null);
+    assert.deepEqual(await historicoDoRecebimento(c, p.id), [
+      {
+        acao: "recebido",
+        antes: null,
+        depois: "recebido_na_entrega",
+        created_by: U_ADMIN,
+      },
+      {
+        acao: "desfeito",
+        antes: "recebido_na_entrega",
+        depois: null,
+        created_by: U_ADMIN,
+      },
+    ]);
+  },
+});
+
+PROVAS.push({
+  nome: "(9d) registrar_pagamento_recebido como service_role SEM sessão: contrato medido (is_admin() libera o papel; autor NULL)",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: null,
+      gateway: null,
+      metodoOnline: null,
+    });
+    // ACHADO: is_admin() devolve true para o papel service_role, e auth.uid()
+    // é NULL sem JWT de usuário — então o registro passa, mas grava
+    // pagamento_recebido_por = NULL e created_by = NULL: um recebimento SEM
+    // autor. Hoje só a edge/cron com service role poderia chamar; nenhuma
+    // chama esta RPC. Contrato medido, não corrigido.
+    const r = await registrar(c, "service_role", "", p.id, true);
+    assert.equal(r.ok, true, r.erro?.message);
+    assert.equal(r.rows[0].r.payment_status, "recebido_na_entrega");
+    const f = await foto(c, p);
+    assert.equal(f.linha.payment_status, "recebido_na_entrega");
+    assert.equal(f.linha.pagamento_recebido_por, null);
+    assert.notEqual(f.linha.pagamento_recebido_em, null);
+    assert.deepEqual(await historicoDoRecebimento(c, p.id), [
+      {
+        acao: "recebido",
+        antes: null,
+        depois: "recebido_na_entrega",
+        created_by: null,
+      },
+    ]);
+  },
+});
+
+PROVAS.push({
+  nome: "(10) bordas: pago/recusado/estornado sobre pedido já adiantado pelo lojista (processing/shipping/delivered/new); status de gateway desconhecido; 'pago' depois de 'recusado'",
+  corpo: async (c) => {
+    for (const statusDoPedido of [
+      "processing",
+      "shipping",
+      "delivered",
+      "new",
+    ]) {
+      // pago: vira 'pago', o pedido segue onde o lojista o deixou.
+      const a = await novoPedido(c, {
+        status: statusDoPedido,
+        itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+      });
+      assert.equal(
+        await confirmar(c, a.id, a.gateway, "pago"),
+        "pago",
+        statusDoPedido,
+      );
+      const fa = await foto(c, a);
+      assert.equal(fa.linha.payment_status, "pago");
+      assert.equal(
+        fa.linha.status,
+        statusDoPedido,
+        "pago não muda o status do pedido",
+      );
+      esperaDevolvido(fa, a, false, `pago/${statusDoPedido}`);
+
+      // recusado: marca, MAS não cancela nem devolve venda que o lojista fechou.
+      const b = await novoPedido(c, {
+        status: statusDoPedido,
+        itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+      });
+      assert.equal(
+        await confirmar(c, b.id, b.gateway, "recusado"),
+        "recusado",
+        statusDoPedido,
+      );
+      const fb = await foto(c, b);
+      assert.equal(fb.linha.payment_status, "recusado");
+      assert.equal(
+        fb.linha.status,
+        statusDoPedido,
+        "recusado não cancela pedido adiantado",
+      );
+      esperaDevolvido(fb, b, false, `recusado/${statusDoPedido}`);
+
+      // estornado: idem.
+      const d = await novoPedido(c, {
+        status: statusDoPedido,
+        itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+      });
+      assert.equal(
+        await confirmar(c, d.id, d.gateway, "estornado"),
+        "estornado",
+        statusDoPedido,
+      );
+      const fd = await foto(c, d);
+      assert.equal(fd.linha.payment_status, "estornado");
+      assert.equal(
+        fd.linha.status,
+        statusDoPedido,
+        "estornado não cancela pedido adiantado",
+      );
+      esperaDevolvido(fd, d, false, `estornado/${statusDoPedido}`);
+    }
+
+    // Status de gateway que a função não conhece: inerte (inclui NULL e os
+    // 'pending'/'in_process' que o MP manda enquanto o pagamento não saiu).
+    const g = await novoPedido(c, { itens: [{ qtd: 3 }] });
+    const antes = await foto(c, g);
+    for (const desconhecido of [
+      "pending",
+      "in_process",
+      "approved",
+      "",
+      null,
+    ]) {
+      assert.equal(
+        await confirmar(c, g.id, g.gateway, desconhecido),
+        "ignorado",
+        `status de gateway ${JSON.stringify(desconhecido)}`,
+      );
+      assert.deepEqual(await foto(c, g), antes);
+    }
+
+    // 'recusado' depois de 'pago' e 'pago' depois de 'recusado'/'estornado'
+    // não ressuscitam nem desfazem nada.
+    const h = await novoPedido(c, { itens: [{ qtd: 3 }] });
+    assert.equal(await confirmar(c, h.id, h.gateway, "pago"), "pago");
+    const pago = await foto(c, h);
+    assert.equal(await confirmar(c, h.id, h.gateway, "recusado"), "ignorado");
+    assert.deepEqual(await foto(c, h), pago, "recusado não desfaz pago");
+
+    // ACHADO: o dinheiro que chega para um pedido já 'recusado' (ou
+    // 'estornado') com o MESMO id de cobrança é descartado em silêncio
+    // ('ignorado', sem aviso e sem 'pago_apos_expirar') e o pedido segue
+    // cancelado. Hoje o MP não reabre um pagamento recusado, então não há
+    // cenário conhecido — mas se algum dia houver, esse dinheiro não deixa
+    // rastro nenhum no banco.
+    const i = await novoPedido(c, { itens: [{ qtd: 3 }] });
+    assert.equal(await confirmar(c, i.id, i.gateway, "recusado"), "recusado");
+    const recusado = await foto(c, i);
+    assert.equal(await confirmar(c, i.id, i.gateway, "pago"), "ignorado");
+    assert.deepEqual(
+      await foto(c, i),
+      recusado,
+      "pago depois de recusado: nada muda",
+    );
+    assert.deepEqual(await avisosDoPedido(c, i.id), []);
+
+    // ACHADO (revisão Opus): 'recusado' sobre payment_status NULL com
+    // gateway_payment_id gravado e status 'pending' ATRAVESSA a guarda
+    // `IF v_pedido.payment_status <> 'aguardando'`
+    // (20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql:573):
+    // NULL <> 'aguardando' é NULL, o IF não dispara, e a função DEVOLVE o
+    // estoque e CANCELA o pedido — enquanto o 'pago' do mesmo pedido dá
+    // 'ignorado' (o ramo do pago só age em 'expirado'/'aguardando').
+    // Assimetria: hoje NÃO alcançável —
+    // criar-pagamento só grava cobrança em 'aguardando'; só uma linha
+    // histórica com NULL + cobrança cairia aqui. Afirmamos o comportamento
+    // ATUAL; a função não foi mudada. Ao corrigir a guarda (ex.: `IS DISTINCT
+    // FROM 'aguardando'`), o esperado aqui passa a ser 'ignorado', com estoque
+    // intacto, status e payment_status inalterados e sem stock_returned_at.
+    const nuloRecusado = await novoPedido(c, {
+      paymentStatus: null,
+      metodoOnline: "pix",
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+    });
+    const nuloAntes = await foto(c, nuloRecusado);
+    assert.equal(nuloAntes.linha.payment_status, null);
+    assert.equal(nuloAntes.linha.status, "pending");
+    assert.notEqual(nuloAntes.linha.gateway_payment_id, null);
+    assert.equal(
+      await confirmar(c, nuloRecusado.id, nuloRecusado.gateway, "recusado"),
+      "recusado",
+    );
+    const nuloDepois = await foto(c, nuloRecusado);
+    assert.equal(nuloDepois.linha.payment_status, "recusado");
+    assert.equal(nuloDepois.linha.status, "cancelled");
+    esperaDevolvido(nuloDepois, nuloRecusado, true, "NULL + recusado devolve");
+
+    const nuloPago = await novoPedido(c, {
+      paymentStatus: null,
+      metodoOnline: "pix",
+      itens: [{ qtd: 3 }],
+    });
+    const nuloPagoAntes = await foto(c, nuloPago);
+    assert.equal(
+      await confirmar(c, nuloPago.id, nuloPago.gateway, "pago"),
+      "ignorado",
+    );
+    assert.deepEqual(
+      await foto(c, nuloPago),
+      nuloPagoAntes,
+      "NULL + pago: nada muda",
+    );
+  },
+});
+
+PROVAS.push({
+  nome: "(11) CONCORRÊNCIA: dois registrar_pagamento_recebido ao mesmo tempo gravam UMA linha de histórico (o 2o espera o lock e vê 'ja_estava')",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: null,
+      gateway: null,
+      metodoOnline: null,
+    });
+    // A e B como admin (o GUC de sessão é por conexão): A segura, B espera.
+    const A = await novaConexao(URL_BANCO);
+    const B = await novaConexao(URL_BANCO);
+    let abertaA = false;
+    try {
+      await logar(A, U_ADMIN);
+      await logar(B, U_ADMIN);
+      const pidB = (await B.query("SELECT pg_backend_pid() AS pid")).rows[0]
+        .pid;
+      const sql =
+        "SELECT public.registrar_pagamento_recebido($1::uuid, true) AS r";
+
+      await A.query("BEGIN");
+      abertaA = true;
+      await A.query("SET LOCAL ROLE authenticated");
+      const ra = (await A.query(sql, [p.id])).rows[0].r;
+      assert.equal(ra.ja_estava, false);
+
+      await B.query("BEGIN");
+      await B.query("SET LOCAL ROLE authenticated");
+      let terminouB = false;
+      const promessaB = B.query(sql, [p.id]).then(
+        (r) => {
+          terminouB = true;
+          return r.rows[0].r;
+        },
+        (erro) => {
+          terminouB = true;
+          throw erro;
+        },
+      );
+      assert.equal(
+        await esperarBloqueio(c, pidB),
+        true,
+        "B tinha de estar esperando o lock",
+      );
+      assert.equal(terminouB, false);
+      await A.query("COMMIT");
+      abertaA = false;
+      const rb = await promessaB;
+      await B.query("COMMIT");
+      assert.equal(
+        rb.ja_estava,
+        true,
+        "B vê o recebimento que A acabou de gravar",
+      );
+
+      const f = await foto(c, p);
+      assert.equal(f.linha.payment_status, "recebido_na_entrega");
+      assert.equal(
+        (await historicoDoRecebimento(c, p.id)).length,
+        1,
+        "UMA linha de histórico",
+      );
+    } finally {
+      if (abertaA) await A.query("ROLLBACK").catch(() => {});
+      await B.query("ROLLBACK").catch(() => {});
+      await A.end().catch(() => {});
+      await B.end().catch(() => {});
+    }
+  },
+});
+
+// ---------------------------------------------------------------------------
+
+async function main() {
+  const url = lerDatabaseUrlEfemera();
+  URL_BANCO = url;
+  const cliente = new Client({ connectionString: url });
+  try {
+    await cliente.connect();
+  } catch (erro) {
+    falhar("INDETERMINADO", `Não conectei no banco efêmero: ${erro.message}`);
+  }
+  const linhas = [];
+  try {
+    for (const { nome, corpo } of PROVAS) {
+      try {
+        await corpo(cliente);
+        console.log(`  PASSOU ${nome}`);
+        linhas.push(`- ✅ ${nome}`);
+      } catch (erro) {
+        console.error(`  FALHOU ${nome}`);
+        console.error(`    ${erro.message}`);
+        linhas.push(`- ❌ ${nome}\n  - \`${erro.message}\``);
+        anexarAoSummary(
+          "Prova viva dos pagamentos (rpc-ci)",
+          linhas.join("\n"),
+        );
+        await cliente.end().catch(() => {});
+        falhar(
+          "FALHOU",
+          "Uma regra de confirmar_pagamento ou registrar_pagamento_recebido foi quebrada — ver acima qual.",
+        );
+      }
+    }
+  } finally {
+    await cliente.end().catch(() => {});
+  }
+  console.log(
+    `\n[pagamentos] ${PROVAS.length}/${PROVAS.length} provas passaram.`,
+  );
+  anexarAoSummary(
+    "Prova viva dos pagamentos (rpc-ci)",
+    `${linhas.join("\n")}\n\n**${PROVAS.length}/${PROVAS.length} provas** contra as migrations aplicadas do zero.`,
+  );
+}
+
+main().catch((erro) => falhar("INDETERMINADO", erro.stack || erro.message));

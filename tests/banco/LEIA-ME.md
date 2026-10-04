@@ -20,6 +20,11 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   host sem sensibilidade a maiúscula; inativo e chave errada devolvem zero
   linhas (sem oráculo).
 
+- **pagamentos (`pagamentos-rpc-viva.cjs`, via `rodar-isolado.cjs`)**:
+  `confirmar_pagamento` e `registrar_pagamento_recebido` — transições,
+  estoque devolvido uma vez, expiração, permissão por papel e corridas com
+  duas conexões reais (a 2a espera o `FOR UPDATE`).
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do

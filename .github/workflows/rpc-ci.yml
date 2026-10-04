@@ -114,5 +114,11 @@ jobs:
       # de entradas fictícias -- 0 divergências.
       - name: Prova viva do CPF da janela (migration 20261182000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs
+      # confirmar_pagamento e registrar_pagamento_recebido (as duas RPCs que
+      # escrevem o payment_status): transições, devolução de estoque uma vez,
+      # expiração, permissão por papel e CONCORRÊNCIA com duas conexões reais
+      # — CLONE próprio (rodar-isolado.cjs), as fixtures não vazam.
+      - name: Prova viva dos pagamentos (confirmar_pagamento e registrar_pagamento_recebido)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/pagamentos-rpc-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs
