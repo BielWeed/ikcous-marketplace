@@ -222,6 +222,13 @@ export function expiracaoParaDesafio3ds(
 export const MENSAGEM_CREDENCIAL_RECUSADA =
   "O pagamento pelo app está indisponível nesta loja agora. Fale com a loja para concluir o pedido.";
 
+/** Frase do 409 NÃO terminal da troca PIX→cartão quando o cartão é
+ * impossível (loja sem a chave de assinatura) e o PIX da vaga ainda vale:
+ * manda o cliente de volta ao QR, nunca para o "Cancelar pedido". Exportada
+ * para o teste. */
+export const MENSAGEM_PIX_CONTINUA_VALENDO =
+  "Seu PIX continua valendo. Volte e pague pelo código, ou aguarde ele vencer para escolher outra forma.";
+
 export function pareceUuid(v: unknown): boolean {
   return (
     typeof v === "string" &&
@@ -2090,6 +2097,27 @@ async function handler(
       // S2: ANTES de qualquer cancelamento — sem a chave de assinatura o
       // cartão novo é impossível, e cancelar o PIX primeiro deixaria o
       // cliente sem cobrança nenhuma na mão.
+      //
+      // PIX AINDA VIVO (ressalva da revisão do lote B, 04/10/2026): o QR
+      // continua pagável no Mercado Pago, então a resposta NÃO é terminal —
+      // terminal vira, na tela do cartão, a caixa vermelha com "Cancelar
+      // pedido e voltar ao carrinho" como ação principal, e um pagamento
+      // posterior do QR cairia num pedido cancelado. Sem `terminal`, o front
+      // trata o 409 como cobrança em dúvida (CheckoutView: erro sem sinal em
+      // modo cartão), abre a verificação (`verificar`, só GET), que responde
+      // "pix" para esta vaga e leva à escolha da forma — com "Pagar com PIX",
+      // que devolve o MESMO QR (ramo e), e sem "Cancelar pedido". "Vivo" é o
+      // mesmo critério do cancelamento logo abaixo (`!cobrancaMorta`): par
+      // desconhecido nunca é morto. A flag `cartaoSemChaveDeAssinatura` fica
+      // de fora: ela anda com o terminal. Nada cancelado, nada criado, nada
+      // gravado.
+      if (cartaoSemChaveDeAssinatura && pixNaVaga && !cobrancaMorta) {
+        console.warn(
+          `criar-pagamento: troca para cartão recusada — loja sem chave de assinatura do webhook e o PIX da vaga ainda vale (origem: ${credenciaisMp.origem})`,
+          idGatewayReconsulta,
+        );
+        return json({ error: MENSAGEM_PIX_CONTINUA_VALENDO }, 409);
+      }
       if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
       if (!pixNaVaga) {
         console.warn(

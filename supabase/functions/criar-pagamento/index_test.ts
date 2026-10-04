@@ -18,6 +18,7 @@ import {
   expiracaoRealinhavel,
   handler,
   MENSAGEM_CREDENCIAL_RECUSADA,
+  MENSAGEM_PIX_CONTINUA_VALENDO,
   MINUTOS_DESAFIO_3DS,
   pareceUuid,
   podeCobrar,
@@ -2498,6 +2499,15 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "o próximo retry relê o estado real (se o PIX foi pago, vira 'pago')",
     ],
     [
+      // Ressalva da revisão do lote B (04/10/2026): troca PIX→cartão numa
+      // loja sem a chave de assinatura com o PIX da vaga AINDA VIVO.
+      "MENSAGEM_PIX_CONTINUA_VALENDO",
+      "o QR da vaga continua pagável no MP: o cliente volta a ele (a " +
+        "verificação responde 'pix' e a escolha da forma devolve o MESMO " +
+        "QR); terminal ofereceria 'Cancelar pedido' com o PIX vivo, e o " +
+        "pagamento posterior cairia num pedido cancelado. Nada foi tocado",
+    ],
+    [
       "Há um pagamento com cartão em análise para este pedido.",
       "o desfecho do cartão chega em minutos pelo webhook: aprovado, o " +
         "retry devolve 'pago'; recusado, a vaga é liberada e o PIX sai",
@@ -2874,7 +2884,12 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // 409 "Este pedido não tem valor a pagar online." antes de qualquer
   // chamada ao MP (leva `terminal: true`: o total não muda com outra
   // tentativa; antes era 502 recuperável em laço). 62 + 1 = 63.
-  assertEquals(achados, 63);
+  //
+  // 64, não mais 63: ressalva da revisão do lote B (04/10/2026) — a troca
+  // PIX→cartão numa loja sem a chave de assinatura, com o PIX da vaga AINDA
+  // VIVO, responde o 409 NÃO terminal `MENSAGEM_PIX_CONTINUA_VALENDO` (na
+  // lista de recuperáveis, acima) antes do terminal de sempre. 63 + 1 = 64.
+  assertEquals(achados, 64);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -6738,31 +6753,88 @@ Deno.test("S2: sentinela `verificando:` sem desfecho + lojista SEM chave -> resp
   assertEquals(db.chamadasRpc.length, 0);
 });
 
-Deno.test("S2: PIX ABERTO na vaga + pedido de cartão + lojista SEM chave -> o PIX NÃO é cancelado, 409 terminal, ZERO POST", async () => {
-  const { supabase, registro, chamadasRpc } = cenarioCartao({
-    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
-    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
-    registroMp: await registroMpDeTeste({ webhookSecret: null }),
-  });
-  const mp = fetchMP({
-    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
-    cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
-    criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
-  });
+// Ressalva da revisão do lote B (04/10/2026): o PIX VIVO na vaga continua
+// pagável no Mercado Pago. Um 409 TERMINAL aqui virava, na tela do cartão, a
+// caixa vermelha com "Cancelar pedido e voltar ao carrinho" como ação
+// principal — o cliente cancelava e o pagamento posterior do QR caía num
+// pedido cancelado. Agora: 409 SEM `terminal`, com a frase que manda voltar
+// ao PIX; nada é cancelado, nada é criado, nada é gravado. "Par
+// desconhecido" entra junto: nunca é morto (`mapearStatusOrder` devolve
+// null), então a cobrança pode estar viva.
+for (
+  const caso of [
+    { nome: "aberto (aguardando transferência)", order: () => orderDePix("action_required", "waiting_transfer") },
+    { nome: "com par de status desconhecido", order: () => orderDePix("action_required", "status_novo_do_mp") },
+  ]
+) {
+  Deno.test(`S2: PIX ${caso.nome} na vaga + pedido de cartão + lojista SEM chave -> 409 NÃO terminal mandando voltar ao PIX, PIX NÃO cancelado, ZERO POST`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: caso.order() },
+      cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+      criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+    });
 
-  const resposta = await emSilencio(() =>
-    handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
-  );
-  const corpo = await resposta.json();
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
 
-  assertEquals(resposta.status, 409);
-  assertEquals(corpo.terminal, true);
-  assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
-  assertEquals(mp.cancelamentos().length, 0, "o PIX foi cancelado antes de saber que o cartão era impossível");
-  assertEquals(mp.criacoes().length, 0);
-  assertEquals(chamadasRpc.length, 0);
-  assertEquals(registro.chamadasUpdate, 0);
-});
+    assertEquals(resposta.status, 409, JSON.stringify(corpo));
+    assertEquals(corpo.terminal, undefined, "terminal encerra a tela e oferece 'Cancelar pedido' com o PIX vivo");
+    assertEquals(
+      corpo.error,
+      "Seu PIX continua valendo. Volte e pague pelo código, ou aguarde ele vencer para escolher outra forma.",
+    );
+    assertEquals(corpo.error, MENSAGEM_PIX_CONTINUA_VALENDO);
+    // A flag do cartão sem chave anda SEMPRE com o terminal — aqui o desfecho
+    // é outro (o PIX vale), e a flag não vai junto.
+    assertEquals(corpo.cartaoSemChaveDeAssinatura, undefined);
+    assertEquals(mp.cancelamentos().length, 0, "o PIX foi cancelado antes de saber que o cartão era impossível");
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+// CONTROLE do bloco acima: PIX já MORTO (vencido/recusado) não tem para onde
+// o cliente voltar — sem a chave, nem cartão nem PIX novo nascem. Continua o
+// 409 terminal com a flag, como antes.
+for (
+  const caso of [
+    { nome: "vencido", order: () => orderDePix("expired", "expired") },
+    { nome: "recusado", order: () => orderDePix("failed", "failed") },
+  ]
+) {
+  Deno.test(`S2 — CONTROLE: PIX ${caso.nome} na vaga + pedido de cartão + lojista SEM chave -> continua 409 terminal com a flag, ZERO POST`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: caso.order() },
+      criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409, JSON.stringify(corpo));
+    assertEquals(corpo.terminal, true);
+    assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
 
 Deno.test("S2: cartão MORTO na vaga + pedido de cartão + lojista SEM chave -> 409 terminal, sem liberar a vaga, ZERO POST", async () => {
   const { supabase, registro, chamadasRpc } = cenarioCartao({
