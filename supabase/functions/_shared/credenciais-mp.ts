@@ -94,7 +94,7 @@ export type CredenciaisMp = {
 // segredo e quem o lê na hora de cobrar têm de usar exatamente a mesma
 // cifra, e o `env` injetável é a única diferença.
 
-function base64ParaBytes(base64: string): Uint8Array<ArrayBuffer> {
+function base64ParaBytes(base64: string): Uint8Array {
     // Uint8Array.from em vez de índice variável (`bytes[i] =`) — mesmo
     // resultado, sem acordar a catraca de segurança do eslint.
     return Uint8Array.from(atob(base64), (caractere) => caractere.charCodeAt(0));
@@ -112,7 +112,7 @@ export async function chaveDeCifra(
 ): Promise<CryptoKey | null> {
     const segredo = env.get("MP_CHAVES_ENCRYPTION_KEY")?.trim() ?? "";
     if (!segredo) return null;
-    let bytes: Uint8Array<ArrayBuffer>;
+    let bytes: Uint8Array;
     try {
         bytes = base64ParaBytes(segredo);
     } catch {
@@ -180,25 +180,6 @@ export async function lerRegistroMp(
     if (error) throw new Error(`storage_leitura: ${error.message}`);
     if (!data?.value) return null;
     return JSON.parse(data.value) as Registro;
-}
-
-/**
- * A loja SALVOU a chave de assinatura do webhook do Mercado Pago (cifrada +
- * iv no registro)? É a definição ÚNICA de "tem chave própria" (30/09/2026):
- * `resolverCredenciaisMp` só tenta decifrar quando ela diz sim, e a ação
- * `ligar_pix` da tela de Ajustes só acende o PIX quando ela diz sim — as duas
- * nunca divergem, que era o defeito (a tela acendia PIX que o criar-pagamento
- * recusava no fim da compra). O MP_WEBHOOK_SECRET do ambiente NÃO entra aqui:
- * só o que a própria loja cadastrou.
- *
- * É presença, não decifração: quem precisa do segredo em claro decifra.
- */
-export function registroTemChaveDeAssinatura<
-    R extends Pick<Registro, "webhook_cifrado" | "webhook_iv">,
->(
-    registro: R | null | undefined,
-): registro is R & { webhook_cifrado: string; webhook_iv: string } {
-    return Boolean(registro?.webhook_cifrado && registro?.webhook_iv);
 }
 
 /**
@@ -293,7 +274,7 @@ export async function resolverCredenciaisMp(
     // derruba a cobrança — quem confere assinatura é que decide o que fazer
     // com a falta dele.
     let segredoWebhook: string | null = null;
-    if (registroTemChaveDeAssinatura(registro)) {
+    if (registro.webhook_cifrado && registro.webhook_iv) {
         try {
             segredoWebhook = await decifrar(
                 registro.webhook_cifrado,
