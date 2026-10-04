@@ -238,6 +238,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // Ordem das travas COMPOSTA (96 x 98 x 97/94/89 x reemitir, ciclo de 3).
     "tests/banco/ordem-das-travas-composta-viva.cjs",
     "tests/banco/invariantes-dinheiro.cjs",
+    // send-order-whatsapp: cada select da edge executa no schema real.
+    "tests/banco/whatsapp-edge-consultas-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
