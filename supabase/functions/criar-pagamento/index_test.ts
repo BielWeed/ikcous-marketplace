@@ -11488,7 +11488,7 @@ Deno.test("R9: PIX recusado (402) cujo corpo traz o pagador -> e-mail e CPF NUNC
 // =============================================================================
 for (
   const loja of [
-    { nome: "chaves da PLATAFORMA (sem registro)", registro: async () => null },
+    { nome: "chaves da PLATAFORMA (sem registro)", registro: () => Promise.resolve(null) },
     { nome: "lojista SEM chave", registro: () => registroMpDeTeste({ webhookSecret: null }) },
   ]
 ) {
