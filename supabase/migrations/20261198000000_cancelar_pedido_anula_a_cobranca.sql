@@ -28,8 +28,8 @@
 --      migration é descartado com aviso, nunca reenviado para sempre.
 --   3. R11 — o estorno automático do cancelamento de pedido PAGO devolve o
 --      REMANESCENTE: total − já confirmado (`valor_estornado`) − em voo
---      (`order_refunds` solicitado/em_processamento) − reembolso manual de
---      devolução concluída. É a conta de `solicitar_estorno` (20261175, seção
+--      (`order_refunds` solicitado/em_processamento, e a 'concluido' ainda não
+--      somada — concluido_em NULL) − reembolso manual de devolução concluída. É a conta de `solicitar_estorno` (20261175, seção
 --      10), agora numa função só (`pedido__saldo_a_estornar`). Antes: a
 --      linha só nascia se NÃO existisse estorno nenhum, e então pelo total —
 --      pago 100 com 30 já devolvidos não abria os 70 restantes.
@@ -206,7 +206,7 @@ BEGIN
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
     FROM pg_proc
    WHERE oid = to_regprocedure('public.pedido__saldo_a_estornar(uuid)');
-  IF v_hash IS NOT NULL AND v_hash <> 'ff8f3f2ecbd16982157b17fc8e4d3d20' THEN
+  IF v_hash IS NOT NULL AND v_hash <> '9579d2b56b57cf948659936a928dd7dc' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pedido__saldo_a_estornar já existe com outro corpo (hash %).', v_hash;
   END IF;
 
@@ -230,7 +230,11 @@ END $preflight_20261198$;
 --    seção 10), num lugar só.
 -- ---------------------------------------------------------------------------
 -- total pago − já confirmado (valor_estornado) − em voo (order_refunds
--- solicitado/em_processamento) − reembolso manual de devolução concluída.
+-- solicitado/em_processamento) − concluída AINDA NÃO SOMADA (status
+-- 'concluido' com concluido_em NULL: a linha que o webhook grava antes de
+-- chamar concluir_estorno — o dinheiro já saiu no MP e valor_estornado ainda
+-- não o conta; é a mesma condição de "ainda não somada" de concluir_estorno)
+-- − reembolso manual de devolução concluída.
 -- Linhas falhou/recusado NÃO reservam saldo (pedidos mortos, retry legítimo).
 -- Pode dar zero ou negativo: quem chama decide (o cancelamento só abre linha
 -- com saldo > 0). TODO(20261197000000 aplicada): redefinir solicitar_estorno
@@ -248,7 +252,8 @@ AS $$
          - COALESCE((SELECT sum(r.amount)
                        FROM public.order_refunds r
                       WHERE r.order_id = o.id
-                        AND r.status IN ('solicitado', 'em_processamento')), 0)
+                        AND (r.status IN ('solicitado', 'em_processamento')
+                             OR (r.status = 'concluido' AND r.concluido_em IS NULL))), 0)
          - COALESCE((SELECT sum(d.valor_reembolso)
                        FROM public.devolucoes d
                       WHERE d.order_id = o.id

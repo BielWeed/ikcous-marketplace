@@ -252,11 +252,14 @@ Deno.test("pedido__mudar_status é o código da 80 com SÓ as mudanças prometid
   );
 });
 
-Deno.test("pedido__saldo_a_estornar é a conta de solicitar_estorno: total − confirmado − em voo − manual", () => {
+Deno.test("pedido__saldo_a_estornar: total − confirmado − em voo − concluída ainda não somada − manual", () => {
   const c = norm(semComentarios(funcao(migration, "pedido__saldo_a_estornar")));
   for (const trecho of [
     "SELECT o.total - COALESCE(o.valor_estornado, 0)",
     "r.status IN ('solicitado', 'em_processamento')",
+    // R1 (revisão Opus de d5d7d1fd): a linha 'concluido' que o webhook grava
+    // antes do concluir_estorno — a mesma condição de "ainda não somada".
+    "OR (r.status = 'concluido' AND r.concluido_em IS NULL)",
     "d.status = 'concluida' AND d.reembolso_manual",
   ]) {
     assertStringIncludes(c, trecho);

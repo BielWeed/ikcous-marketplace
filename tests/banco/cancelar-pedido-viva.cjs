@@ -61,6 +61,10 @@
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-viva.cjs
  */
 
+/* eslint-disable security/detect-non-literal-fs-filename --
+ * Os únicos arquivos lidos são as migrations deste repositório, por nome
+ * fixo (constantes abaixo), nunca entrada de rede nem de terceiro. */
+
 const assert = require("node:assert");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -600,9 +604,13 @@ PROVAS.push({
   },
 });
 
-async function cenarioR11(cliente, porta, { confirmado, reservado }) {
+async function cenarioR11(
+  cliente,
+  porta,
+  { confirmado, reservado, orfao = 0 },
+) {
   // A vaga é UNIQUE (idx_marketplace_orders_gateway_payment_id): uma por cenário.
-  const vaga = `ORD98R11${porta}${confirmado}x${reservado}`;
+  const vaga = `ORD98R11${porta}${confirmado}x${reservado}x${orfao}`;
   const p = await criarPedido(cliente, {
     status: "processing",
     paymentStatus: "pago",
@@ -613,9 +621,43 @@ async function cenarioR11(cliente, porta, { confirmado, reservado }) {
   });
   if (confirmado > 0) {
     await cliente.query(
-      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
-       VALUES ($1, $2, 'devolução parcial anterior', 'lojista', 'concluido')`,
+      // Já SOMADA em valor_estornado: concluir_estorno carimba concluido_em.
+      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status, concluido_em)
+       VALUES ($1, $2, 'devolução parcial anterior', 'lojista', 'concluido', now())`,
       [p.pedidoId, confirmado],
+    );
+  }
+  if (orfao > 0) {
+    // R1 (revisão Opus de d5d7d1fd): a linha que o webhook insere ANTES do
+    // concluir_estorno — dinheiro que já saiu no MP, 'concluido' mas ainda
+    // NÃO somado (concluido_em NULL, valor_estornado intocado). O saldo tem de
+    // descontá-la; senão o cancelamento reserva de novo o que já saiu.
+    await cliente.query(
+      `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status, mp_refund_id)
+       VALUES ($1, $2, 'estorno feito fora do app (Mercado Pago)', 'sistema', 'concluido', $3)`,
+      [p.pedidoId, orfao, `MPREF98ORFAO${porta}${orfao}`],
+    );
+    // CONTROLE dentro da prova: a fórmula SEM o termo da órfã (a de antes da
+    // correção) dá outro número neste pedido — o caso distingue as duas.
+    const semOrfao = (
+      await cliente.query(
+        `SELECT o.total - COALESCE(o.valor_estornado, 0)
+                - COALESCE((SELECT sum(r.amount) FROM public.order_refunds r
+                             WHERE r.order_id = o.id
+                               AND r.status IN ('solicitado', 'em_processamento')), 0) AS s
+           FROM public.marketplace_orders o WHERE o.id = $1`,
+        [p.pedidoId],
+      )
+    ).rows[0].s;
+    const vivo = (
+      await cliente.query("SELECT public.pedido__saldo_a_estornar($1) AS s", [
+        p.pedidoId,
+      ])
+    ).rows[0].s;
+    assert.equal(
+      Number(semOrfao) - Number(vivo),
+      orfao,
+      "CONTROLE: sem descontar a órfã o saldo seria maior exatamente pela órfã",
     );
   }
   if (reservado > 0) {
@@ -643,7 +685,7 @@ async function cenarioR11(cliente, porta, { confirmado, reservado }) {
 }
 
 PROVAS.push({
-  nome: "(c) R11: cancelar pedido pago com estornos abre o REMANESCENTE (70 / 50 / nada), pelas duas portas",
+  nome: "(c) R11: cancelar pedido pago com estornos abre o REMANESCENTE (70 / 50 / nada; a linha concluída ainda não somada também desconta), pelas duas portas",
   corpo: async (cliente) => {
     for (const porta of ["front", "edge"]) {
       assert.deepEqual(
@@ -666,6 +708,29 @@ PROVAS.push({
         ).map((l) => l.amount),
         [],
         `${porta}: 100 confirmado = nada a estornar`,
+      );
+      // R1: 'concluido' sem concluido_em (já saiu no MP, ainda não somado).
+      assert.deepEqual(
+        (
+          await cenarioR11(cliente, porta, {
+            confirmado: 0,
+            reservado: 0,
+            orfao: 100,
+          })
+        ).map((l) => l.amount),
+        [],
+        `${porta}: 100 já saiu (órfã não somada) = nada a estornar, nunca 200 no ledger`,
+      );
+      assert.deepEqual(
+        (
+          await cenarioR11(cliente, porta, {
+            confirmado: 0,
+            reservado: 0,
+            orfao: 30,
+          })
+        ).map((l) => l.amount),
+        [70],
+        `${porta}: 100 − 30 da órfã = 70`,
       );
     }
 
