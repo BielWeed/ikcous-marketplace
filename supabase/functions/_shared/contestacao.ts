@@ -571,7 +571,9 @@ export async function registrarContestacao(args: {
  * com `order.transactions.payments[].id` (PAY01...): são espaços de id diferentes
  * — não se compara, não se converte, não se adivinha a correspondência.
  *  - 'a_favor_da_loja' LIBERA a reserva (o sentido que devolve saldo e que a RPC
- *    grava como decisão final, sem reabrir).
+ *    grava como decisão final, sem reabrir) — EXCETO com evidência contrária em
+ *    mãos (pagamento da order deste pedido com status_detail de outra decisão):
+ *    aí CONSERVA e avisa.
  *  - 'contra_a_loja' NUNCA conclui por este caminho — dinheiro que sai,
  *    irreversível, sem corroboração — CONSERVA e avisa (quem conclui é o caminho
  *    da order, com `chargebacks[]` legível e o pagamento da MESMA order).
@@ -579,6 +581,14 @@ export async function registrarContestacao(args: {
  * Falha transitória do MP LANÇA (o chamador repete); o resto conserva e avisa
  * UMA vez. Quem decide o dinheiro continua sendo a RPC, sob a trava do pedido.
  */
+/** Os pagamentos da ORDER (`transactions.payments[]`), ou nenhum se não houver order/forma. */
+function pagamentosDaOrder(corpoDaOrder: Record<string, unknown> | null): Array<Record<string, unknown>> {
+  const transacoes = corpoDaOrder?.transactions;
+  if (!transacoes || typeof transacoes !== "object" || Array.isArray(transacoes)) return [];
+  const lista = (transacoes as Record<string, unknown>).payments;
+  return (Array.isArray(lista) ? lista : []).filter((p): p is Record<string, unknown> => Boolean(p) && typeof p === "object");
+}
+
 export type DesfechoDoCasoConhecido = "entregue" | "em_aberto" | "conservada";
 
 export async function registrarContestacaoConhecida(args: {
@@ -628,6 +638,27 @@ export async function registrarContestacaoConhecida(args: {
   // Sem corroboração por pagamento, só o que DEVOLVE saldo se entrega: 'a favor'
   // libera a reserva (a RPC grava a decisão final e a lápide, sem reabrir);
   // 'contra' (dinheiro que sai, irreversível) CONSERVA e avisa.
+  //
+  // EVIDÊNCIA CONTRÁRIA EM MÃOS conserva o 'a favor': se a order DESTE pedido
+  // (veio do GET autenticado) traz algum pagamento cujo `status_detail` mapeia
+  // para outra decisão (ex.: 'settled' = contra a loja), o caso e a order se
+  // contradizem — o MESMO conflito que o caminho da order conserva, pelo MESMO
+  // mapeamento (`decisaoDoStatusDoPagamento`). Compara ESTADO dentro da mesma
+  // order, nunca ids de espaços diferentes. Liberar aqui gravaria a lápide
+  // 'a favor' e travaria um 'contra' posterior (viraria só `revertido`).
+  // Sem order em mãos, ou sem evidência contrária: o 'a favor' libera.
+  if (peloCaso === "a_favor_da_loja") {
+    const contrarias = pagamentosDaOrder(corpoDaOrder).filter((p) => {
+      const d = decisaoDoStatusDoPagamento(typeof p.status_detail === "string" ? p.status_detail : "");
+      return d !== null && d !== peloCaso;
+    });
+    if (contrarias.length > 0) {
+      return await conservar("o caso é a favor da loja mas a order deste pedido tem pagamento com status contrário — nada liberado", {
+        peloCaso,
+        pagamentosContrarios: contrarias.length,
+      });
+    }
+  }
   if (peloCaso === "em_analise") return "em_aberto";
   if (peloCaso === "contra_a_loja") {
     return await conservar("decisão contra a loja sem corroboração do pagamento contestado — nada concluído", { peloCaso });

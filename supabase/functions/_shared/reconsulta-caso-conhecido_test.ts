@@ -906,3 +906,68 @@ Deno.test("B2: ERRO na consulta de existência -> CONSERVA como falha TEMPORÁRI
   const w = await webhook(bancoVivo([linhaVinculada("L1")], { erroNaExistencia: true }), mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } }));
   assertEquals(w.status, 500);
 });
+
+// ── D1: evidência CONTRÁRIA em mãos (na MESMA order) conserva o "a favor" ─────────
+// Não compara ids de espaços diferentes: compara o ESTADO (status_detail) dos
+// pagamentos da order deste pedido, com o mesmo mapeamento do caminho da order
+// (`decisaoDoStatusDoPagamento`). "A favor" sem evidência contrária continua
+// liberando (case_id + id exato + RPC); "contra" continua conservando sempre.
+
+Deno.test("D1 PONTO-A: caso 'a favor' mas a order DESTE pedido em charged_back com o pagamento 'settled' (contra) e chargebacks[] sem o CBK -> CONSERVA e avisa: 0 RPC, a reserva NÃO é liberada (a lápide 'a favor' travaria um 'contra' posterior)", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  const m = mp({
+    order: orderProcessada({ status: "charged_back", detalhe: "settled", chargebacks: [] }),
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } },
+  });
+  const r = await cron(b, m);
+  assertEquals(doLedger(b), []);
+  assertEquals(b.lapides, []);
+  assertEquals(b.linhas[0].status, "em_processamento");
+  assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:CBK1`]);
+  assertEquals([r.resumo.conservadas, r.resumo.reconsultadas], [1, 0]);
+});
+
+Deno.test("D1 PONTO-A pelo TÓPICO: o mesmo conflito conserva e avisa (200, desfecho conservada, 0 RPC)", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  const m = mp({
+    order: orderProcessada({ status: "charged_back", detalhe: "settled", chargebacks: [] }),
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } },
+  });
+  const w = await webhook(b, m);
+  assertEquals([w.status, w.corpo.desfecho, doLedger(b), b.lapides], [200, "conservada", [], []]);
+});
+
+Deno.test("D1: com MAIS de um pagamento na order, QUALQUER um com status_detail contrário conserva (sem comparar ids)", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  const order = orderProcessada({ status: "charged_back", detalhe: "reimbursed", chargebacks: [] });
+  Reflect.set(order.transactions, "payments", [
+    { id: PAGAMENTO_NA_ORDER, status: "charged_back", status_detail: "reimbursed" },
+    { id: "PAY01OUTROPAGAMENTO00000000001", status: "charged_back", status_detail: "settled" },
+  ]);
+  const m = mp({ order, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const r = await cron(b, m);
+  assertEquals([doLedger(b), r.avisos.length], [[], 1]);
+});
+
+Deno.test("D1 controle: 'a favor' + order SEM evidência contrária (processed/accredited) continua LIBERANDO", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  await cron(b, mpGanho());
+  assertEquals([doLedger(b).length, b.linhas[0].status], [1, "liberado"]);
+});
+
+Deno.test("D1 controle: 'a favor' + pagamento da order que CONCORDA ('reimbursed') continua LIBERANDO", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  const m = mp({
+    order: orderProcessada({ status: "charged_back", detalhe: "reimbursed", chargebacks: [] }),
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } },
+  });
+  await cron(b, m);
+  assertEquals([doLedger(b).length, b.linhas[0].status], [1, "liberado"]);
+});
+
+Deno.test("D1 controle: 'a favor' + order AUSENTE (404) continua LIBERANDO (sem evidência em mãos)", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  await cron(b, m);
+  assertEquals([doLedger(b).length, b.linhas[0].status], [1, "liberado"]);
+});
