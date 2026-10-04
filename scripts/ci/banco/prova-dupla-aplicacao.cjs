@@ -29,7 +29,9 @@
  * arquivo que não prometeu e colidiu = linha do relatório (saída segue 0).
  *
  * Os mesmos arquivos de provisionamento (pg_cron/pg_net — util.cjs) seguem
- * PULADOS com aviso nas duas passadas.
+ * o mesmo caminho nas duas passadas: nativo primeiro, reaplicados com a
+ * extensão emulada quando o erro é o de provisionamento (só PULADOS se nem
+ * assim passarem por erro de provisionamento).
  *
  * USO: node scripts/ci/banco/prova-dupla-aplicacao.cjs <pasta-de-migrations>
  * (rode DEPOIS de aplicar-migrations.cjs, no mesmo banco efêmero)
@@ -44,7 +46,7 @@ const {
   sair,
   lerDatabaseUrlEfemero,
   listarMigrations,
-  excecaoDeProvisionamento,
+  aplicarComProvisionamento,
   instrucoesDeNivelDeTopo,
   anexarAoSummaryDoJob,
 } = require("./util.cjs");
@@ -100,21 +102,24 @@ async function main() {
   const colidiuSemPromessa = [];
   const quebrouPromessa = [];
   const pulados = [];
+  const emulados = [];
   try {
     for (const arquivo of arquivos) {
       const nome = path.basename(arquivo);
       const texto = fs.readFileSync(arquivo, "utf8");
       const promete = prometeIdempotencia(texto);
-      try {
-        await cliente.query('SET search_path = "$user", public, extensions');
-        await cliente.query(texto);
+      // Mesmo caminho da 1ª passada: nativo primeiro; os arquivos de
+      // provisionamento reaplicam com pg_cron/pg_net emulado (util.cjs).
+      const r = await aplicarComProvisionamento(cliente, nome, texto);
+      if (r.estado === "nativo") {
         limpoNaSegunda.push(nome);
-      } catch (erro) {
-        await cliente.query("ROLLBACK").catch(() => {});
-        if (excecaoDeProvisionamento(nome, erro.message)) {
-          pulados.push(nome);
-          continue;
-        }
+      } else if (r.estado === "emulado") {
+        limpoNaSegunda.push(nome);
+        emulados.push(nome);
+      } else if (r.estado === "pulado") {
+        pulados.push(nome);
+      } else {
+        const erro = r.erro;
         const registro = `${nome} → [${erro.code || "sem código"}] ${erro.message.split("\n")[0].slice(0, 140)}`;
         if (promete) quebrouPromessa.push(registro);
         else colidiuSemPromessa.push(registro);
@@ -128,8 +133,21 @@ async function main() {
     `**2ª passada: ${limpoNaSegunda.length}/${arquivos.length} reaplicaram limpo.**`,
     `· Prometem idempotência e colidiram: **${quebrouPromessa.length}** (isto SIM é defeito — reprova o job)`,
     `· Não prometem (colisão esperada, relatório): **${colidiuSemPromessa.length}**`,
+    `· Reaplicados com pg_cron/pg_net emulado (contam entre os limpos): **${emulados.length}**`,
     `· Pulados por provisionamento (pg_cron/pg_net): **${pulados.length}**`,
   ];
+  if (emulados.length) {
+    linhas.push(
+      "",
+      "<details><summary>Reaplicados com pg_cron/pg_net emulado</summary>",
+      "",
+      "```",
+      ...emulados,
+      "```",
+      "",
+      "</details>",
+    );
+  }
   if (colidiuSemPromessa.length) {
     linhas.push(
       "",

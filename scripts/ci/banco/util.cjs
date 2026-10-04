@@ -47,8 +47,19 @@ const HOSTS_PROIBIDOS = [
 /** Arquivos que dependem de pg_cron/pg_net — extensões do Supabase que o
  * postgres oficial do CI não traz. Mesma lista (e mesma ressalva) do
  * db-prove-banco-zerado.cjs: a prova não cobre o AGENDAMENTO (cron.job /
- * pg_net), nunca o schema; cada arquivo é PULADO somente se o erro dele for
- * o de provisionamento. Erro qualquer outro continua FALHOU. */
+ * pg_net), nunca o schema. Cada arquivo daqui, quando o erro NATIVO é o de
+ * provisionamento, é REAPLICADO com as linhas `CREATE EXTENSION IF NOT
+ * EXISTS pg_cron|pg_net;` comentadas (aplicarComProvisionamento, abaixo) —
+ * o provisionador (provisionar-efemero.cjs) emula o schema `cron`, então o
+ * resto do arquivo roda DE VERDADE. Só é PULADO se a reaplicação ainda
+ * esbarrar em erro de provisionamento (banco sem o stub). Erro qualquer
+ * outro, nas duas tentativas, continua FALHOU.
+ *
+ * POR QUE NÃO PULAR MAIS (PR 766, 04/10/2026): pular a 20260901 inteira
+ * deixava `confirmar_pagamento` no corpo da 20260810 (e sem
+ * `devolver_uso_cupom`) — um banco que não existe em loja nenhuma —, e a
+ * 20261195, que confere o corpo vivo por hash, recusava com
+ * B1_BASELINE_DIVERGENT. */
 const EXCECOES_DE_PROVISIONAMENTO = {
   "20260807000000_reserva_com_expiracao.sql": REGEX_PROVISIONAMENTO(),
   "20260807000001_agenda_expiracao.sql": REGEX_PROVISIONAMENTO(),
@@ -141,10 +152,90 @@ function listarMigrations(pasta) {
     .map((n) => path.join(pasta, n));
 }
 
-/** É dos arquivos que a ferramenta da casa sabe pular por provisionamento? */
+/** É dos arquivos que a ferramenta da casa sabe tratar por provisionamento
+ * (reaplicar com pg_cron/pg_net emulado, ou pular)? */
 function excecaoDeProvisionamento(nomeArquivo, mensagemDeErro) {
   const excecao = EXCECOES_DE_PROVISIONAMENTO[nomeArquivo];
   return Boolean(excecao?.test(mensagemDeErro || ""));
+}
+
+/**
+ * As duas linhas que o Supabase resolve de fábrica e o image oficial não:
+ * as MESMAS neutralizações de tests/banco/aplicar-migrations.cjs (rpc-ci). O
+ * schema `cron` (stub) vem de provisionar-efemero.cjs; pg_net só vive dentro
+ * de comando agendado (texto opaco para o stub), sem instância aqui.
+ */
+const NEUTRALIZACOES_DE_PROVISIONAMENTO = [
+  {
+    padrao: /CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+pg_cron\s*;/gi,
+    aviso: "pg_cron emulado por stub (provisionar-efemero.cjs)",
+  },
+  {
+    padrao: /CREATE\s+EXTENSION\s+IF\s+NOT\s+EXISTS\s+pg_net\s*;/gi,
+    aviso: "pg_net só vive dentro de comando agendado — sem instância aqui",
+  },
+];
+
+/** Comenta as linhas de extensão; devolve o texto novo e os avisos dos que casaram. */
+function neutralizarProvisionamento(texto) {
+  let neutro = texto;
+  const avisos = [];
+  for (const { padrao, aviso } of NEUTRALIZACOES_DE_PROVISIONAMENTO) {
+    padrao.lastIndex = 0;
+    if (padrao.test(neutro)) {
+      padrao.lastIndex = 0;
+      neutro = neutro.replace(padrao, `-- [ci-banco] ${aviso}`);
+      avisos.push(aviso);
+    }
+    padrao.lastIndex = 0;
+  }
+  return { texto: neutro, avisos };
+}
+
+const SEARCH_PATH_DE_FABRICA = 'SET search_path = "$user", public, extensions';
+
+/**
+ * Aplica UM arquivo no banco efêmero: NATIVO primeiro; só quando o arquivo
+ * está em EXCECOES_DE_PROVISIONAMENTO E o erro nativo casa o regex de
+ * provisionamento, repete com as linhas de extensão comentadas.
+ *
+ * Devolve {estado, ...}:
+ *   "nativo"  — aplicou como está;
+ *   "emulado" — aplicou com pg_cron/pg_net emulado (avisos = quais linhas);
+ *   "pulado"  — nem a reaplicação passou e o erro DELA ainda é de
+ *               provisionamento (ex.: banco sem o stub de cron) OU não há
+ *               linha de extensão a neutralizar: mesmo pulo de sempre, com o
+ *               erro à vista;
+ *   "falhou"  — erro de SQL real (nativo fora da lista, ou da reaplicação).
+ * Cada tentativa é UMA simple query (transação implícita): o que falha não
+ * deixa nada gravado, então repetir é seguro.
+ */
+async function aplicarComProvisionamento(cliente, nome, texto) {
+  await cliente.query(SEARCH_PATH_DE_FABRICA);
+  try {
+    await cliente.query(texto);
+    return { estado: "nativo" };
+  } catch (erroNativo) {
+    await cliente.query("ROLLBACK").catch(() => {});
+    if (!excecaoDeProvisionamento(nome, erroNativo.message)) {
+      return { estado: "falhou", erro: erroNativo };
+    }
+    const { texto: neutro, avisos } = neutralizarProvisionamento(texto);
+    if (avisos.length === 0) {
+      return { estado: "pulado", erro: erroNativo };
+    }
+    try {
+      await cliente.query(SEARCH_PATH_DE_FABRICA);
+      await cliente.query(neutro);
+      return { estado: "emulado", avisos, erroNativo };
+    } catch (erroEmulado) {
+      await cliente.query("ROLLBACK").catch(() => {});
+      if (excecaoDeProvisionamento(nome, erroEmulado.message)) {
+        return { estado: "pulado", erro: erroEmulado };
+      }
+      return { estado: "falhou", erro: erroEmulado };
+    }
+  }
 }
 
 /**
@@ -226,6 +317,8 @@ module.exports = {
   lerDatabaseUrlEfemero,
   listarMigrations,
   excecaoDeProvisionamento,
+  neutralizarProvisionamento,
+  aplicarComProvisionamento,
   codigoSemLiteral,
   instrucoesDeNivelDeTopo,
   anexarAoSummaryDoJob,
