@@ -904,6 +904,42 @@ describe("CheckoutView — cartão: a caixa de erro oferece PIX (B1) e não deix
     expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
   });
 
+  // Fase 3 dos pagamentos (04/10/2026, R2 da revisão): com a cobrança incerta
+  // marcada e um erro RECUPERÁVEL, a caixa tinha só "Tentar de novo" — se o
+  // erro se repetisse, o cliente ficava sem saída. "Ver meus pedidos" fecha o
+  // beco (a tela de pedidos não cobra nada, e cancelar por lá esbarra na
+  // mesma guarda); "Cancelar pedido" continua escondido.
+  it("R2 (fase 3): cartão vivo -> PIX -> erro RECUPERÁVEL: 'Tentar de novo' E 'Ver meus pedidos', nunca 'Cancelar pedido'", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onTrocarParaPix as (
+          cartaoAindaVivo: boolean,
+        ) => void
+      )(true);
+    });
+    await act(async () => {
+      (
+        pagamentoOnlineProps.at(-1)!.onErro as (
+          msg: string,
+          categoria: "recuperavel" | "terminal",
+        ) => void
+      )("Não foi possível gerar a cobrança.", "recuperavel");
+    });
+
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeDefined();
+    expect(botaoPorTexto(hospedeiro, "Ver meus pedidos")).toBeDefined();
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Ver meus pedidos")?.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("orders");
+  });
+
   // Controle do R2: a tela "recusado" chama com o cartão MORTO (o banco já
   // respondeu) — nesse caso a troca para PIX NÃO pode marcar o pedido, e
   // "Cancelar pedido" continua disponível se o PIX falhar depois.

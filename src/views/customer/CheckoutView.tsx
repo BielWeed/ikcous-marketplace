@@ -3851,8 +3851,19 @@ export function CheckoutView({
                 cartão): a tela de pedidos não oferece nada que cobra, e
                 cancelar por lá esbarra na MESMA guarda P0001. */}
             {pedidoTemCobrancaIncerta ? (
-              erroPagamento.categoria === "terminal" &&
-              (lojaTemWhatsappNoCheckout ? (
+              erroPagamento.categoria !== "terminal" ? (
+                // Fase 3 (04/10/2026, R2 da revisão): erro RECUPERÁVEL com a
+                // cobrança incerta — só havia "Tentar de novo"; se o erro se
+                // repetisse, o cliente ficava sem saída. "Ver meus pedidos"
+                // não cobra nada e "Cancelar pedido" continua escondido.
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              ) : lojaTemWhatsappNoCheckout ? (
                 <Button
                   onClick={handleFalarComALojaSobreCartao}
                   variant="outline"
@@ -3868,7 +3879,7 @@ export function CheckoutView({
                 >
                   Ver meus pedidos
                 </Button>
-              ))
+              )
             ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
               lojaTemWhatsappNoCheckout ? (
                 <Button
