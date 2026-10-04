@@ -74,7 +74,7 @@ disso — senão vê dezenas de remoções fantasma e acha que o código mudou n
 ```js
 const customerWhatsapp = record.customer_data?.whatsapp
 ...
-`Olá *${customerName}*, recebemos seu pedido *#${orderId.slice(-6)}* com sucesso!`
+`Olá *${customerName}*, recebemos seu pedido *${numeroDoPedido(orderId)}* com sucesso!`
 ```
 
 Isso importa porque circulava a leitura de que ela barateava a `PEDIDO-020` (#89,
