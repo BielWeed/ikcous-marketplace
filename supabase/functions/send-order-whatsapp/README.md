@@ -207,3 +207,11 @@ provam o CONTRATO (autorização, pedido canônico, log sem telefone, 4xx/5xx =
 falha) com dublês da Evolution e do banco; não provam integração real, e o
 caminho padrão de produção — sem configuração — é o 503 "não configurado", que
 também tem teste.
+
+**Limitação, sem rodeio:** no schema atual `store_config.whatsapp_api_*` está
+AUSENTE (medido num Postgres novo com as 130 migrations aplicadas), e nenhuma
+outra tabela guarda a configuração da Evolution. Portanto o ENVIO REAL NÃO é
+válido com este schema: o comportamento é "não configurado" — 503 e 0 chamadas
+à Evolution — que é o lado seguro. Nenhuma configuração foi inventada. Religar
+exige refazer a configuração por loja e decidir de onde `lerConfigDaEvolution`
+a lê; até lá, só o contrato está provado (com configuração injetada nos testes).
