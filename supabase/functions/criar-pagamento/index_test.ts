@@ -480,6 +480,10 @@ function pedidoBase(overrides: Record<string, unknown> = {}) {
     expires_at: "2099-01-01T00:00:00.000Z",
     gateway_payment_id: null,
     customer_data: { email: "cliente@exemplo.com" },
+    // S5 (04/10/2026): só pedido 'online' vira cobrança — a forma que a v24
+    // grava quando o front escolhe "Pagar agora". Os testes da trava passam
+    // a forma de entrega por override.
+    payment_method: "online",
     ...overrides,
   };
 }
@@ -2855,7 +2859,12 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // reler a vaga; levam `terminal: true`). O 503 "Não foi possível consultar
   // o pagamento agora." do C3 mudou de lugar para `respostaIndisponivel`
   // (continua UM ponto de retorno, usado pelo C3 e pelo C2). 58 + 2 = 60.
-  assertEquals(achados, 60);
+  //
+  // 61, não mais 60: S5 (04/10/2026) — pedido que não é de pagamento online
+  // responde o 409 "Este pedido não é de pagamento online." no ponto em que
+  // toda criação passa (leva `terminal: true`: a forma do pedido não muda
+  // com "Tentar de novo"). 60 + 1 = 61.
+  assertEquals(achados, 61);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -10992,4 +11001,93 @@ Deno.test("handler PIX: NÃO lê o nome da loja nem manda statement_descriptor �
   assertEquals(resposta.status, 200);
   assertEquals(leiturasDoNome, []);
   assertEquals(JSON.stringify(corpoDoPost).includes("statement_descriptor"), false);
+});
+
+// =============================================================================
+// S5 (travas onde a cobrança nasce, 04/10/2026): a FORMA do pedido. Desde a
+// 20261174000000 a v24 grava 'aguardando' para QUALQUER forma aceita pela
+// loja (online, pix/card/cash na entrega) — só o front chamava esta function
+// para o 'online'. Uma requisição montada à mão com o id de um pedido "pagar
+// na entrega" virava cobrança online. A trava vale SÓ para criar cobrança
+// nova; reconsultar a que já existe e o `verificar` seguem livres.
+// =============================================================================
+for (const forma of ["cash", "pix", "card", null]) {
+  for (const metodo of ["pix", "cartao"] as const) {
+    Deno.test(`S5: pedido com forma '${forma}' (não online) + ${metodo} -> 409 terminal, ZERO chamadas ao MP, nada gravado`, async () => {
+      const { supabase, registro, chamadasRpc } = cenarioCartao({
+        pedido: pedidoBase({ user_id: DONO_LOGADO, payment_method: forma }),
+      });
+      const mp = fetchMP({}); // qualquer chamada ao MP estoura
+
+      const resposta = await emSilencio(() =>
+        handler(
+          requisicao(metodo === "pix" ? { orderId: UUID, metodo: "pix" } : corpoCartao(), montarToken(DONO_LOGADO)),
+          { supabase, fetchImpl: mp.fn },
+        )
+      );
+      const corpo = await resposta.json();
+
+      assertEquals(resposta.status, 409);
+      assertEquals(corpo.terminal, true);
+      assertEquals(corpo.error, "Este pedido não é de pagamento online.");
+      assertEquals(mp.chamadas.length, 0);
+      assertEquals(registro.chamadasUpdate, 0);
+      assertEquals(chamadasRpc.length, 0);
+    });
+  }
+}
+
+Deno.test("S5: pedido NÃO online com PIX já na vaga -> a RECONSULTA continua devolvendo o MESMO QR (a trava é só de criação)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, payment_method: "cash", gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("S5: pedido NÃO online -> o `verificar` (consulta sem cobrança) não é bloqueado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { contado } = bancoContandoEscritas(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, payment_method: "cash" }),
+  );
+  const r = await verificar(contado, mpDaConsulta());
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.verificacao, "livre");
+});
+
+Deno.test("S5: cartão MORTO na vaga de um pedido NÃO online + PIX -> libera a vaga, mas NÃO cria a cobrança nova (a trava pega a criação depois da liberação)", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, payment_method: "cash", gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    releitura: pedidoBase({
+      user_id: DONO_LOGADO,
+      payment_method: "cash",
+      gateway_payment_id: null,
+      tentativas_de_pagamento: 1,
+    }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.error, "Este pedido não é de pagamento online.");
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
+  assertEquals(mp.criacoes().length, 0);
 });

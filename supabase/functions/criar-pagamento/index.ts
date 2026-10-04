@@ -513,7 +513,7 @@ async function recuperarOrderPixDoIdempotencia(args: {
 }
 
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, customer_name, tentativas_de_pagamento, created_at, updated_at, metodo_online, status";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, customer_name, tentativas_de_pagamento, created_at, updated_at, metodo_online, status, payment_method";
 
 /**
  * O LIMITE INFERIOR (epoch ms) que vai gravado no sentinela — achado B1, 5ª
@@ -2171,6 +2171,23 @@ async function handler(
   // página DEPOIS dela perderia acesso a um PIX que já pode ter pago — o
   // dinheiro entraria e nem o cliente nem a loja teriam como saber pela tela.
   if (pedido.user_id === null) return respostaExigeConta();
+
+  // S5 (travas onde a cobrança nasce, 04/10/2026): a FORMA do pedido. Desde a
+  // 20261174000000 a v24 grava 'aguardando' para QUALQUER forma que a loja
+  // aceita (online e pix/card/cash na entrega) — quem garantia que só o
+  // 'online' chegava aqui era o front, e uma requisição montada à mão com o
+  // id de um pedido "pagar na entrega" virava cobrança online. Mesmo lugar da
+  // trava de conta, e pelo mesmo motivo: SÓ a criação passa por aqui (a
+  // reconsulta de uma cobrança que já existe devolveu lá em cima, e o
+  // `verificar` nem chega em `podeCobrar`). Terminal: a forma do pedido não
+  // muda com "Tentar de novo".
+  if (pedido.payment_method !== "online") {
+    console.warn("criar-pagamento: cobrança recusada — o pedido não é de pagamento online", {
+      pedidoId: pedido.id,
+      formaDoPedido: pedido.payment_method ?? null,
+    });
+    return json({ error: "Este pedido não é de pagamento online.", terminal: true }, 409);
+  }
 
   // decisao.acao === "criar" a partir daqui.
   // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
