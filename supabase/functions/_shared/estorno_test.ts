@@ -3,10 +3,12 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import {
+  autorizacaoPeloBanco,
+  type AutorizacaoDoPost,
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
   decidirConclusaoPelaConsulta,
-  executarEstorno,
+  executarEstorno as executarEstornoReal,
   guardaAntesDeChamar,
   interpretarResposta,
   montarRequisicao,
@@ -14,6 +16,7 @@ import {
   MOTIVO_NAO_COBRE,
   MOTIVO_NAO_COBRE_CONSERVADOR,
   refundsDaOrder,
+  MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
   type LinhaEstorno,
   type PedidoParaEstorno,
 } from "./estorno.ts";
@@ -144,6 +147,21 @@ function fetchDuble(rotas: RotaDuble[]) {
     );
   };
   return { f, chamadas };
+}
+
+/**
+ * Os testes E1..E43 e R9 não são sobre a AUTORIZAÇÃO antes do POST (Lote A,
+ * 04/10/2026): neles o banco autoriza com o MESMO pedido que o chamador
+ * leu. A autorização tem as provas próprias (LEASE-*, no fim do arquivo),
+ * que chamam `executarEstornoReal` direto — inclusive SEM autorização.
+ */
+function executarEstorno(
+  args: Parameters<typeof executarEstornoReal>[0],
+): ReturnType<typeof executarEstornoReal> {
+  return executarEstornoReal({
+    autorizarAntesDoPost: () => Promise.resolve({ decisao: "autorizado", pedido: args.pedido }),
+    ...args,
+  });
 }
 
 const consultaTransacaoFalsa = (_orderId: string): Promise<string | null> =>
@@ -2649,4 +2667,250 @@ Deno.test("R9-c - confirmação (GET) com corpo NAO-JSON que traz o pagador: o l
   semDadoPessoal(log, cru);
   assertStringIncludes(log, "estorno: confirmação com corpo ilegível");
   assertStringIncludes(log, "SyntaxError");
+});
+
+// ---------------------------------------------------------------------------
+// LEASE antes do POST (Lote A, 04/10/2026 — achado causal do 01765261)
+// ---------------------------------------------------------------------------
+// O executor validava o saldo no RETRATO lido pelo chamador, esperava o GET
+// da transação da order e mandava o POST sem reler nada: um refund de 70
+// feito no painel do MP e registrado pelo webhook DURANTE esse GET não
+// impedia o POST de 20 num pedido de 100 que já tinha 20 devolvidos (90 +
+// 20 > 100). Agora, IMEDIATAMENTE antes do POST, o executor pede ao banco
+// (`autorizarAntesDoPost`, RPC autorizar_post_do_estorno — linha e pedido
+// travados, saldo relido) se o POST de X ainda cabe. Não cabe: nada sai, a
+// linha fica em_processamento (reconciliável) e o motivo diz o que houve.
+//
+// O dublê do banco abaixo é CAUSAL: a resposta da autorização depende do
+// estado no instante da pergunta, e o REF de 70 só entra DURANTE a pausa do
+// GET. Um executor que perguntasse ANTES do GET receberia "autorizado".
+// O que esta prova NÃO afirma: que nenhum POST sai depois de uma
+// autorização — entre a resposta do banco e o POST ainda há uma janela, e
+// quem decide o saldo em última instância é o Mercado Pago (ver
+// `autorizar_post_do_estorno` na 20261196000000).
+
+type EstadoDoBancoFalso = {
+  total: number;
+  valor_estornado: number;
+  em_voo_outras: number;
+  payment_status: string;
+  status_da_linha: string;
+};
+
+function bancoFalso(estado: EstadoDoBancoFalso) {
+  const perguntas: { linha: string; valor: number; estornadoNaHora: number }[] = [];
+  const autorizar = (linha: LinhaEstorno): Promise<AutorizacaoDoPost> => {
+    perguntas.push({ linha: linha.id, valor: linha.amount, estornadoNaHora: estado.valor_estornado });
+    if (estado.status_da_linha !== "em_processamento") {
+      return Promise.resolve({ decisao: "linha_mudou", status: estado.status_da_linha });
+    }
+    const disponivel = estado.total - estado.valor_estornado - estado.em_voo_outras;
+    if (linha.amount > disponivel) return Promise.resolve({ decisao: "nao_cabe", disponivel });
+    return Promise.resolve({
+      decisao: "autorizado",
+      pedido: pedidoOrder({
+        total: estado.total,
+        valor_estornado: estado.valor_estornado,
+        payment_status: estado.payment_status,
+      }),
+    });
+  };
+  return { autorizar, perguntas };
+}
+
+/** O GET da transação PARA até a prova soltar — e nesse meio-tempo a prova
+ * faz o que o webhook faria. */
+function getComBarreira() {
+  let soltar!: () => void;
+  const solta = new Promise<void>((r) => {
+    soltar = r;
+  });
+  let chegou!: () => void;
+  const chegouNoGet = new Promise<void>((r) => {
+    chegou = r;
+  });
+  const consultar = async (_orderId: string): Promise<string | null> => {
+    chegou();
+    await solta;
+    return "PAY01XYZEXEMPLODETRANSA1";
+  };
+  return { consultar, soltar, chegouNoGet };
+}
+
+const POST_ORDERS_OK: RotaDuble = {
+  metodo: "POST",
+  trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+  status: 201,
+  corpo: {
+    id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    status: "processed",
+    status_detail: "partially_refunded",
+    transactions: { refunds: [{ id: "REF_NOVO", amount: "20.00", status: "processed" }] },
+  },
+};
+
+Deno.test("LEASE-1 (prova negativa) - REF de 70 registrado DURANTE o GET: o executor relê o saldo antes do POST e NÃO manda o POST de 20 (pedido 100, 20 já devolvidos)", async () => {
+  const estado: EstadoDoBancoFalso = {
+    total: 100,
+    valor_estornado: 20,
+    em_voo_outras: 0,
+    payment_status: "pago",
+    status_da_linha: "em_processamento",
+  };
+  const banco = bancoFalso(estado);
+  const barreira = getComBarreira();
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const execucao = executarEstornoReal({
+    linha: linhaCom({ amount: 20, status: "em_processamento" }),
+    // O retrato do CHAMADOR: 20 devolvidos — a guarda de entrada passa.
+    pedido: pedidoOrder({ valor_estornado: 20 }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: barreira.consultar,
+    autorizarAntesDoPost: banco.autorizar,
+  });
+  await barreira.chegouNoGet;
+  // O webhook registra o REF de 70 do painel (registrar_estorno_externo_do_mp)
+  // enquanto o GET está parado.
+  estado.valor_estornado = 90;
+  barreira.soltar();
+  const r = await execucao;
+
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0, "nenhum POST saiu");
+  assertEquals(r.tipo, "tentar_depois", "a linha fica em_processamento: reconciliável, nunca liberada");
+  assertEquals((r as { motivo: string }).motivo, MOTIVO_SALDO_MUDOU_ANTES_DO_POST);
+  assertEquals(banco.perguntas.length, 1);
+  assertEquals(banco.perguntas[0].estornadoNaHora, 90, "a pergunta foi feita DEPOIS do GET");
+});
+
+Deno.test("LEASE-2 - sem o REF no meio, a autorização vem DEPOIS do GET e o POST sai com o pedido relido", async () => {
+  const estado: EstadoDoBancoFalso = {
+    total: 100,
+    valor_estornado: 20,
+    em_voo_outras: 0,
+    payment_status: "pago",
+    status_da_linha: "em_processamento",
+  };
+  const banco = bancoFalso(estado);
+  const barreira = getComBarreira();
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const execucao = executarEstornoReal({
+    linha: linhaCom({ amount: 20, status: "em_processamento" }),
+    pedido: pedidoOrder({ valor_estornado: 20 }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: barreira.consultar,
+    autorizarAntesDoPost: banco.autorizar,
+  });
+  await barreira.chegouNoGet;
+  assertEquals(banco.perguntas.length, 0, "nada perguntado antes do GET terminar");
+  barreira.soltar();
+  const r = await execucao;
+  assertEquals(banco.perguntas.length, 1);
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 1);
+  assertEquals(r.tipo, "concluido");
+});
+
+Deno.test("LEASE-3 - autorização ausente, que lança, indisponível ou de linha que mudou: NENHUM POST, tentar_depois (falha fechada)", async () => {
+  const casos: { nome: string; autorizar?: (l: LinhaEstorno) => Promise<AutorizacaoDoPost> }[] = [
+    { nome: "ausente" },
+    { nome: "lança", autorizar: () => Promise.reject(new Error("rede do banco caiu")) },
+    { nome: "indisponível", autorizar: () => Promise.resolve({ decisao: "indisponivel" }) },
+    {
+      nome: "linha mudou",
+      autorizar: () => Promise.resolve({ decisao: "linha_mudou", status: "concluido" }),
+    },
+  ];
+  for (const caso of casos) {
+    const mp = fetchDuble([POST_ORDERS_OK]);
+    const r = await executarEstornoReal({
+      linha: linhaCom({ amount: 20, status: "em_processamento" }),
+      pedido: pedidoOrder(),
+      token: TOKEN,
+      buscar: mp.f,
+      consultarTransacaoDaOrder: consultaTransacaoFalsa,
+      ...(caso.autorizar ? { autorizarAntesDoPost: caso.autorizar } : {}),
+    });
+    assertEquals(mp.chamadas.length, 0, `${caso.nome}: nenhuma chamada ao MP`);
+    assertEquals(r.tipo, "tentar_depois", caso.nome);
+  }
+});
+
+Deno.test("LEASE-4 - autorizado, mas o pedido RELIDO não passa na guarda (já estornado): nenhum POST, tentar_depois — nunca terminal no último instante", async () => {
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const r = await executarEstornoReal({
+    linha: linhaCom({ amount: 20, status: "em_processamento" }),
+    pedido: pedidoOrder(),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    autorizarAntesDoPost: () =>
+      Promise.resolve({
+        decisao: "autorizado",
+        pedido: pedidoOrder({ payment_status: "estornado", valor_estornado: 100 }),
+      }),
+  });
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(r.tipo, "tentar_depois");
+});
+
+Deno.test("LEASE-5 - Payments clássica também pergunta antes do POST (não há GET, mas o retrato do chamador pode estar velho)", async () => {
+  const mp = fetchDuble([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 1, status: "approved", amount: 20 } },
+  ]);
+  const banco = bancoFalso({
+    total: 100,
+    valor_estornado: 90,
+    em_voo_outras: 0,
+    payment_status: "pago",
+    status_da_linha: "em_processamento",
+  });
+  const r = await executarEstornoReal({
+    linha: linhaCom({ amount: 20, status: "em_processamento" }),
+    pedido: pedidoPagoCom({ valor_estornado: 20 }),
+    token: TOKEN,
+    buscar: mp.f,
+    autorizarAntesDoPost: banco.autorizar,
+  });
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(r.tipo, "tentar_depois");
+  assertEquals((r as { motivo: string }).motivo, MOTIVO_SALDO_MUDOU_ANTES_DO_POST);
+});
+
+Deno.test("LEASE-6 - autorizacaoPeloBanco: chama autorizar_post_do_estorno com a linha e o valor; resposta ilegível ou erro do banco = indisponível", async () => {
+  const chamadas: { nome: string; args: Record<string, unknown> }[] = [];
+  const pedidoDoBanco = {
+    id: "22222222-2222-4222-8222-222222222222",
+    gateway_payment_id: "ORD01ABCDEFOLUIMWQKDXYZ01",
+    total: 100,
+    valor_estornado: 20,
+    payment_status: "pago",
+    paid_at: new Date(AGORA.getTime() - DIA_MS).toISOString(),
+    status: "cancelled",
+  };
+  const respostas: { data: unknown; error: unknown }[] = [
+    { data: { decisao: "autorizado", pedido: pedidoDoBanco }, error: null },
+    { data: { decisao: "nao_cabe", disponivel: 10 }, error: null },
+    { data: { decisao: "linha_mudou", status: "concluido" }, error: null },
+    { data: { decisao: "autorizado", pedido: { ...pedidoDoBanco, total: "cem" } }, error: null },
+    { data: { decisao: "outra_coisa" }, error: null },
+    { data: null, error: { message: "boom" } },
+  ];
+  const autorizar = autorizacaoPeloBanco((nome, args) => {
+    chamadas.push({ nome, args });
+    return Promise.resolve(respostas.shift()!);
+  });
+  const linha = linhaCom({ amount: 20, status: "em_processamento" });
+  const a1 = await autorizar(linha);
+  assertEquals(a1.decisao, "autorizado");
+  assertEquals((a1 as { pedido: PedidoParaEstorno }).pedido.valor_estornado, 20);
+  assertEquals(await autorizar(linha), { decisao: "nao_cabe", disponivel: 10 });
+  assertEquals(await autorizar(linha), { decisao: "linha_mudou", status: "concluido" });
+  assertEquals(await autorizar(linha), { decisao: "indisponivel" }, "pedido ilegível não autoriza");
+  assertEquals(await autorizar(linha), { decisao: "indisponivel" });
+  assertEquals(await autorizar(linha), { decisao: "indisponivel" });
+  assertEquals(chamadas[0], {
+    nome: "autorizar_post_do_estorno",
+    args: { p_refund_id: linha.id, p_valor: 20 },
+  });
 });

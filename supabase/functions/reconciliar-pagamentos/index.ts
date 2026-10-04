@@ -95,6 +95,7 @@ import {
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
 import {
+  autorizacaoPeloBanco,
   confirmarPorConsulta,
   consultarTransacaoDaOrder,
   executarEstorno,
@@ -1195,6 +1196,17 @@ async function handler(
     // Buscar CRU (`deps.fetchImpl ?? fetch`, nunca `buscarEstorno`):
     // `consultarTransacaoDaOrder` já embute o próprio `fetchComTempo` por
     // dentro de `consultarOrder` — envolver de novo duplicaria o timeout.
+    // Lote A (04/10/2026, achado causal do 01765261): o pedido "fresco" lido
+    // por item ainda envelhece até o POST (o GET da transação fica no meio,
+    // e o webhook pode registrar um refund do painel nesse tempo). O
+    // executor pergunta ao banco — RPC autorizar_post_do_estorno, linha e
+    // pedido travados — imediatamente antes do POST; não cabe = nada sai, a
+    // linha fica em_processamento (o próximo ciclo CONSULTA o MP antes de
+    // qualquer repetição) e o motivo vai para ultimo_erro.
+    const autorizarPostDoCron = autorizacaoPeloBanco((nome, argumentos) =>
+      supabase.rpc(nome, argumentos)
+    );
+
     const consultarTransacaoDaOrderDoCron = (orderId: string) =>
       consultarTransacaoDaOrder({
         orderId,
@@ -1312,6 +1324,7 @@ async function handler(
             buscar: buscarEstorno,
             consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
             idsJaReivindicados,
+            autorizarAntesDoPost: autorizarPostDoCron,
           });
           const desfecho = await gravarDesfechoDoEstorno(
             supabase,
@@ -1413,6 +1426,7 @@ async function handler(
           buscar: buscarEstorno,
           consultarTransacaoDaOrder: consultarTransacaoDaOrderDoCron,
           idsJaReivindicados,
+          autorizarAntesDoPost: autorizarPostDoCron,
         });
         const desfechoRetry = await gravarDesfechoDoEstorno(
           supabase,

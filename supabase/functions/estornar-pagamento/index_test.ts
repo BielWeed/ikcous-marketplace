@@ -133,6 +133,7 @@ const AUTH_JWT_VELHO_ADMIN = "Bearer " + [
 
 globalThis.fetch = fetchAdminFalso
 const { handler } = await import("./index.ts")
+const { MOTIVO_SALDO_MUDOU_ANTES_DO_POST } = await import("../_shared/estorno.ts")
 globalThis.fetch = fetchNativo
 
 async function comFetch(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
@@ -216,6 +217,10 @@ function clienteSupaFalso(opts: {
     // ainda roda pelas chaves da plataforma, que é o que todos os testes
     // anteriores a esta tarefa exercitam.
     registroMp?: any
+    // Lote A (04/10/2026): a resposta de autorizar_post_do_estorno (a
+    // pergunta do executor ao banco antes do POST). Default: autorizado com o
+    // MESMO pedido desta fixture (o banco não mudou nada no meio).
+    autorizacao?: any
 } = {}) {
     const registro = {
         leiturasLinha: 0,
@@ -231,12 +236,22 @@ function clienteSupaFalso(opts: {
         finais: [] as any[],
         atualizacoes: [] as any[],
         rpcs: [] as any[],
+        // Fora de `rpcs` de propósito: os testes antigos contam em `rpcs` só
+        // a concluir_estorno.
+        autorizacoes: [] as any[],
     }
     let chamadasDeMarca = 0
     let chamadasDeFim = 0
     const promessa = (valor: any) => Promise.resolve(valor)
     const cliente: any = {
         rpc(nome: string, args?: any) {
+            if (nome === "autorizar_post_do_estorno") {
+                registro.autorizacoes.push(args)
+                return promessa({
+                    data: opts.autorizacao ?? { decisao: "autorizado", pedido: opts.pedido },
+                    error: null,
+                })
+            }
             registro.rpcs.push({ nome, args })
             return promessa({ data: opts.rpcResultado ?? { concluido: true }, error: opts.rpcErro ?? null })
         },
@@ -1185,4 +1200,60 @@ Deno.test("F12b - defesa em profundidade: a MARCA de uma linha legítima carrega
         (f: any) => f.metodo === "neq" && f.coluna === "solicitado_por" && f.valor === "sistema",
     )
     assertEquals(temNeqSistema, true)
+})
+
+
+// ── LEASE (Lote A, 04/10/2026 — achado causal do 01765261): a edge entrega
+// ao executor a pergunta ao banco feita IMEDIATAMENTE antes do POST
+// (autorizar_post_do_estorno). Com o módulo REAL (sem injetar o executor):
+// o banco dizendo "não cabe mais" => nenhum POST, 202, a linha fica
+// em_processamento com o motivo em ultimo_erro — nunca terminal.
+
+Deno.test("LEASE-E1 - o banco diz que o POST não cabe mais (REF do painel registrado no meio): NENHUM POST, 202, linha preservada com o motivo", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20 },
+        pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
+        autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+    })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+                // SEM executarEstorno: o módulo real, igual ao F5b.
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 202)
+    assertEquals((await resposta.json()).status, "em_processamento")
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0, "nenhum POST saiu")
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "GET").length, 1, "o GET da transação veio ANTES da pergunta")
+    assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 20 }])
+    assertEquals(registro.finais.length, 0, "nada terminal")
+    assertEquals(registro.rpcs.length, 0, "nada concluído")
+    const adiamento = registro.atualizacoes.find((u: any) => u.valores && "ultimo_erro" in u.valores)
+    assertEquals(adiamento?.valores.ultimo_erro, MOTIVO_SALDO_MUDOU_ANTES_DO_POST)
+    assertEquals(adiamento?.filtros.some((f: any) => f.metodo === "in" && f.valores.includes("em_processamento")), true)
+})
+
+Deno.test("LEASE-E2 - com executor injetado, a edge passa autorizarAntesDoPost e ela pergunta ao banco pela linha e pelo valor", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: { ...LINHA_SOLICITADA, amount: 30 }, pedido: PEDIDO_PAGO })
+    let resposta: any = null
+    const executor = async (args: any) => {
+        resposta = await args.autorizarAntesDoPost(args.linha)
+        return { tipo: "tentar_depois", motivo: "teste" }
+    }
+    await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor,
+                buscar: fetchMpFalso().buscar,
+            }),
+        ),
+    )
+    assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 30 }])
+    assertEquals(resposta?.decisao, "autorizado")
+    assertEquals(resposta?.pedido?.id, PEDIDO_PAGO.id)
 })

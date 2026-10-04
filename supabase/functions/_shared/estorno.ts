@@ -75,6 +75,118 @@ export type ResultadoEstorno =
   // 429/5xx/rede/resposta não reconhecida: o cron re-tenta com a MESMA chave.
   | { tipo: "tentar_depois"; motivo: string; retryAfterS?: number };
 
+/**
+ * A AUTORIZAÇÃO IMEDIATAMENTE ANTES DO POST (Lote A, 04/10/2026 — achado
+ * causal do 01765261). O chamador lê o pedido, marca a linha e chama o
+ * executor; entre essa leitura e o POST há o GET da transação da order (e,
+ * em qualquer caminho, o tempo da própria fila). Um refund feito no painel
+ * do MP e registrado pelo webhook nesse meio-tempo
+ * (`registrar_estorno_externo_do_mp`) mudava o saldo sem o executor ver.
+ *
+ * `autorizarAntesDoPost` pergunta ao BANCO — RPC
+ * `autorizar_post_do_estorno` (20261196000000): linha e pedido travados
+ * (ordem global linha -> pedido), saldo relido — se o POST de X desta linha
+ * ainda cabe:
+ *   * `autorizado` — devolve o pedido RELIDO; o executor ainda roda a guarda
+ *     de entrada sobre ele (pagamento, prazo, saldo) antes do POST.
+ *   * `nao_cabe` — nada sai; a linha fica em_processamento (reconciliável:
+ *     o cron consulta o MP antes de qualquer repetição) e o motivo diz o que
+ *     houve. Nunca terminal aqui: uma tentativa ANTERIOR desta mesma linha
+ *     pode ter chegado ao MP sem confirmação, e liberar a reserva sem prova
+ *     é o caminho do dinheiro sair duas vezes.
+ *   * `linha_mudou` — outro executor concluiu/recusou a linha no meio.
+ *   * `indisponivel` — o banco não respondeu ou respondeu algo ilegível.
+ * Falha FECHADA: sem a autorização (ausente, erro, ilegível) nenhum POST
+ * sai — mesma régua de `consultarTransacaoDaOrder` ausente.
+ *
+ * O que isto NÃO garante: atomicidade com o Mercado Pago. Entre a resposta
+ * do banco e o POST ainda há uma janela (curta: nenhuma espera de rede no
+ * meio além do próprio POST); quem decide o saldo em última instância é o
+ * MP, que recusa refund acima do que resta (`refund_amount_exceeds`/4296).
+ */
+export type AutorizacaoDoPost =
+  | { decisao: "autorizado"; pedido: PedidoParaEstorno }
+  | { decisao: "nao_cabe"; disponivel: number | null }
+  | { decisao: "linha_mudou"; status: string | null }
+  | { decisao: "indisponivel" };
+
+/** Texto leigo gravado em `ultimo_erro` quando o saldo mudou antes do POST. */
+export const MOTIVO_SALDO_MUDOU_ANTES_DO_POST =
+  "o saldo do pedido mudou enquanto a devolução era preparada (outra devolução já foi registrada pelo Mercado Pago) — nada foi enviado; confira o pedido no painel do Mercado Pago";
+
+type ChamarRpc = (
+  nome: string,
+  args: Record<string, unknown>,
+) => PromiseLike<{ data: unknown; error: unknown }>;
+
+function numeroFinito(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+function pedidoDaAutorizacao(bruto: unknown): PedidoParaEstorno | null {
+  if (!bruto || typeof bruto !== "object") return null;
+  const p = bruto as Record<string, unknown>;
+  const total = numeroFinito(p.total);
+  const estornado = numeroFinito(p.valor_estornado ?? 0);
+  if (
+    typeof p.id !== "string" || typeof p.gateway_payment_id !== "string" ||
+    total === null || estornado === null || typeof p.status !== "string"
+  ) {
+    return null;
+  }
+  return {
+    id: p.id,
+    gateway_payment_id: p.gateway_payment_id,
+    total,
+    valor_estornado: estornado,
+    payment_status: typeof p.payment_status === "string" ? p.payment_status : null,
+    paid_at: typeof p.paid_at === "string" ? p.paid_at : null,
+    status: p.status,
+  };
+}
+
+/**
+ * A autorização pelo banco, para os chamadores que têm um cliente Supabase
+ * (edge `estornar-pagamento` e cron `reconciliar-pagamentos`): UMA leitura
+ * da resposta da RPC, dois chamadores. Nunca lança.
+ */
+export function autorizacaoPeloBanco(
+  rpc: ChamarRpc,
+): (linha: LinhaEstorno) => Promise<AutorizacaoDoPost> {
+  return async (linha) => {
+    let resposta: { data: unknown; error: unknown };
+    try {
+      resposta = await rpc("autorizar_post_do_estorno", {
+        p_refund_id: linha.id,
+        p_valor: linha.amount,
+      });
+    } catch (err) {
+      console.error("estorno: autorizar_post_do_estorno lançou", nomeDoErro(err));
+      return { decisao: "indisponivel" };
+    }
+    if (resposta.error) {
+      console.error("estorno: autorizar_post_do_estorno falhou", resposta.error);
+      return { decisao: "indisponivel" };
+    }
+    const d = resposta.data && typeof resposta.data === "object"
+      ? resposta.data as Record<string, unknown>
+      : null;
+    if (d?.decisao === "autorizado") {
+      const pedido = pedidoDaAutorizacao(d.pedido);
+      return pedido ? { decisao: "autorizado", pedido } : { decisao: "indisponivel" };
+    }
+    if (d?.decisao === "nao_cabe") {
+      return { decisao: "nao_cabe", disponivel: numeroFinito(d.disponivel) };
+    }
+    if (d?.decisao === "linha_mudou") {
+      return { decisao: "linha_mudou", status: typeof d.status === "string" ? d.status : null };
+    }
+    console.error("estorno: autorizar_post_do_estorno devolveu forma desconhecida");
+    return { decisao: "indisponivel" };
+  };
+}
+
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
 const PRAZO_DE_ESTORNO_MS = 180 * MS_POR_DIA;
 
@@ -1253,6 +1365,8 @@ export async function executarEstorno(args: {
   buscar?: typeof fetch;
   consultarTransacaoDaOrder?: (orderId: string) => Promise<string | null>;
   idsJaReivindicados?: string[];
+  /** Ver `AutorizacaoDoPost`. Ausente = nenhum POST (falha fechada). */
+  autorizarAntesDoPost?: (linha: LinhaEstorno) => Promise<AutorizacaoDoPost>;
 }): Promise<ResultadoEstorno> {
   const { linha, pedido, token } = args;
   const buscar: typeof fetch = args.buscar ??
@@ -1286,7 +1400,57 @@ export async function executarEstorno(args: {
     }
   }
 
-  const req = montarRequisicao(linha, pedido, transacaoDaOrder ?? undefined);
+  // A AUTORIZAÇÃO, por último antes do POST — DEPOIS do GET da transação
+  // (é durante ele que o saldo pode mudar). Ver `AutorizacaoDoPost`.
+  if (!args.autorizarAntesDoPost) {
+    console.error("estorno: executor chamado sem autorizarAntesDoPost — nenhum POST", linha.id);
+    return {
+      tipo: "tentar_depois",
+      motivo: "não consegui reconferir o saldo do pedido antes de devolver",
+    };
+  }
+  let autorizacao: AutorizacaoDoPost;
+  try {
+    autorizacao = await args.autorizarAntesDoPost(linha);
+  } catch (err) {
+    console.error("estorno: a autorização antes do POST lançou", nomeDoErro(err));
+    autorizacao = { decisao: "indisponivel" };
+  }
+  if (autorizacao.decisao === "nao_cabe") {
+    console.error(
+      "estorno: o saldo relido não cobre mais este POST — nada enviado, linha preservada em_processamento",
+      linha.id,
+      linha.amount,
+      autorizacao.disponivel,
+    );
+    return { tipo: "tentar_depois", motivo: MOTIVO_SALDO_MUDOU_ANTES_DO_POST };
+  }
+  if (autorizacao.decisao === "linha_mudou") {
+    return {
+      tipo: "tentar_depois",
+      motivo: "a devolução mudou de estado enquanto era preparada — nada foi enviado",
+    };
+  }
+  if (autorizacao.decisao !== "autorizado") {
+    return {
+      tipo: "tentar_depois",
+      motivo: "não consegui reconferir o saldo do pedido antes de devolver",
+    };
+  }
+  const pedidoRelido = autorizacao.pedido;
+  const guardaRelida = guardaAntesDeChamar(linha, pedidoRelido, new Date());
+  if (!guardaRelida.ok) {
+    // O pedido RELIDO já não aceita este POST (estornado por outro caminho,
+    // saldo menor). Nunca terminal no último instante — ver AutorizacaoDoPost.
+    console.error(
+      "estorno: a guarda sobre o pedido relido recusou — nada enviado, linha preservada em_processamento",
+      linha.id,
+      guardaRelida.motivo,
+    );
+    return { tipo: "tentar_depois", motivo: MOTIVO_SALDO_MUDOU_ANTES_DO_POST };
+  }
+
+  const req = montarRequisicao(linha, pedidoRelido, transacaoDaOrder ?? undefined);
   let resposta: Response;
   try {
     resposta = await buscar(req.url, {

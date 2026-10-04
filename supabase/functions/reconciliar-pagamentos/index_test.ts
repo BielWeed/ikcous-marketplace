@@ -21,6 +21,7 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+import { MOTIVO_SALDO_MUDOU_ANTES_DO_POST } from "../_shared/estorno.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes MP-1/MP-2 do fim deste arquivo. Desde a tarefa mp-6
 // o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
@@ -93,6 +94,7 @@ function clienteFalso(opts: {
     chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
+    chamadasAutorizarPost?: Array<{ args: Record<string, unknown> }>;
     atualizacoesOrderRefunds?: Array<
       { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
     >;
@@ -134,6 +136,11 @@ function clienteFalso(opts: {
   // ainda roda pelas chaves da plataforma, que é o que todos os testes
   // anteriores a esta tarefa exercitam.
   registroMp?: Record<string, unknown> | null;
+  // --- Lote A (04/10/2026): autorizar_post_do_estorno, a pergunta do
+  // executor ao banco imediatamente antes do POST. Default: autorizado com o
+  // pedido fresco ATUAL da linha (`resolverPedidoFresco`) — o banco relê o
+  // mesmo estado que o handler leu, no instante da pergunta.
+  autorizarPost?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -156,6 +163,14 @@ function clienteFalso(opts: {
         opts.registro.chamadasLiberar.push({ args: args ?? {} });
         if (opts.liberarErro) return { data: null, error: opts.liberarErro };
         return { data: opts.liberarResultado ?? true, error: null };
+      }
+      if (nome === "autorizar_post_do_estorno") {
+        opts.registro.chamadasAutorizarPost?.push({ args: args ?? {} });
+        if (opts.autorizarPost) return opts.autorizarPost(args ?? {});
+        const refund = (opts.refundsPendentes ?? []).find((r) => r.id === args?.p_refund_id);
+        const pedido = refund ? opts.resolverPedidoFresco?.(String(refund.order_id)) : null;
+        if (!pedido) throw new Error("autorizar_post_do_estorno sem pedido conhecido neste teste");
+        return { data: { decisao: "autorizado", pedido }, error: null };
       }
       if (nome === "concluir_estorno") {
         opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
@@ -2880,4 +2895,118 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados continua 
   assertEquals(corpo.confirmados, 1);
   assertEquals(corpo.ignorados, 1);
   assertEquals(corpo.cobrancasLiberadas, 1);
+});
+
+
+// ── LEASE (Lote A, 04/10/2026 — achado causal do 01765261): o cron entrega
+// ao executor a pergunta ao banco feita IMEDIATAMENTE antes do POST
+// (autorizar_post_do_estorno), nos DOIS caminhos que POSTam: a linha
+// solicitado e o retry da em_processamento. Não cabe => nenhum POST, a linha
+// fica em_processamento com o motivo em ultimo_erro, nada terminal.
+
+function registroDoLease() {
+  return {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasAutorizarPost: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+    >,
+  };
+}
+
+Deno.test("LEASE-C1 - linha solicitado: o banco diz que o POST não cabe mais -> NENHUM POST, adiada, ultimo_erro com o motivo, nada terminal", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 20 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rl1", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 10 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 20 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0, "nenhum POST saiu");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasAutorizarPost.map((c) => c.args), [{ p_refund_id: "rl1", p_valor: 20 }]);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "rl1" && a.valores.ultimo_erro === MOTIVO_SALDO_MUDOU_ANTES_DO_POST &&
+        a.statusFiltro.includes("em_processamento"),
+    ),
+    true,
+  );
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou" || a.valores.status === "recusado"),
+    false,
+    "nada terminal",
+  );
+});
+
+Deno.test("LEASE-C2 - retry da em_processamento (consulta sem refund): o banco diz que não cabe -> só o GET, NENHUM POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 20 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rl2", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 10 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 20 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta; nenhum POST");
+  assertEquals(corpo.estornos.adiados, 1);
+  assertEquals(registro.chamadasAutorizarPost.map((c) => c.args), [{ p_refund_id: "rl2", p_valor: 20 }]);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "rl2" && a.valores.ultimo_erro === MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
+    ),
+    true,
+  );
+});
+
+Deno.test("LEASE-C3 - autorizado: os dois caminhos perguntam ao banco UMA vez cada e o POST sai (controle positivo)", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rl3", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+      { id: "rl4", order_id: pedido.id, amount: 30, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
+  ]);
+
+  await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+
+  assertEquals(
+    registro.chamadasAutorizarPost.map((c) => c.args.p_refund_id).sort(),
+    ["rl3", "rl4"],
+  );
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").map((c) => c.chave).sort(), ["rl3", "rl4"]);
 });

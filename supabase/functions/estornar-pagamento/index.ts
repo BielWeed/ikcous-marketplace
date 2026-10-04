@@ -57,6 +57,10 @@ import { fetchComTempo } from "../_shared/mercadopago.ts"
 // LOJISTA (cofre em app_settings) ou pela da plataforma (env) — e quem fecha
 // a porta quando existe cadastro que não dá para decifrar.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts"
+// Lote A (04/10/2026): a pergunta ao banco IMEDIATAMENTE antes do POST de
+// refund (RPC autorizar_post_do_estorno, 20261196000000) — uma leitura da
+// resposta, dois chamadores (esta edge e o cron reconciliar-pagamentos).
+import { autorizacaoPeloBanco, type AutorizacaoDoPost } from "../_shared/estorno.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -101,6 +105,10 @@ export type ExecutorEstorno = (args: {
     // Item 1 do brief P0 (08/09/2026) / encargo da T5: os mp_refund_id das
     // OUTRAS linhas de order_refunds do mesmo pedido que já têm id gravado.
     idsJaReivindicados?: string[]
+    // Lote A (04/10/2026): o executor pergunta ao banco, com a linha e o
+    // pedido travados, se o POST ainda cabe — DEPOIS do GET da transação e
+    // imediatamente antes do POST. Ausente = nenhum POST (falha fechada).
+    autorizarAntesDoPost?: (linha: LinhaEstorno) => Promise<AutorizacaoDoPost>
 }) => Promise<ResultadoEstorno>
 
 /** Texto EXATO do plano (T3) para 202 — o lojista sabe quem confere e quando. */
@@ -399,6 +407,14 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             // Item 3b acima: as OUTRAS linhas do pedido que já reivindicaram
             // um mp_refund_id — a mesma invariante que o cron (P0) já passa.
             idsJaReivindicados,
+            // Lote A (04/10/2026, achado causal do 01765261): o retrato do
+            // pedido lido no passo 3 pode envelhecer até o POST (o GET da
+            // transação fica no meio, e o webhook pode registrar um refund do
+            // painel nesse tempo). O executor pergunta ao banco — linha e
+            // pedido travados, saldo relido — logo antes do POST; não cabe =
+            // nada sai, a linha fica em_processamento e o motivo vai para
+            // ultimo_erro (ramo tentar_depois abaixo).
+            autorizarAntesDoPost: autorizacaoPeloBanco((nome, argumentos) => supabase.rpc(nome, argumentos)),
         })
 
         // 7. O resultado vira estado + resposta. Nenhum texto carrega
