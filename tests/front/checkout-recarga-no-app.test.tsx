@@ -510,6 +510,37 @@ describe("App — o checkout volta ao pedido pendente depois da recarga", () => 
     expect(lerPedidoPendenteDoCheckout("user-1")).toBeNull();
   });
 
+  it("Voltar do navegador (popstate) saindo do checkout apaga o registro", async () => {
+    guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+    await carregarEm("/checkout");
+    expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
+
+    await act(async () => {
+      globalThis.history.pushState({ view: "home" }, "", "/");
+      globalThis.dispatchEvent(
+        new PopStateEvent("popstate", { state: { view: "home" } }),
+      );
+    });
+    await assentar();
+
+    expect(naTela("home")).not.toBeNull();
+    expect(lerPedidoPendenteDoCheckout("user-1")).toBeNull();
+  });
+
+  it("troca direta de conta (A → B, sem logout no meio) apaga o registro de A", async () => {
+    guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+    await carregarEm("/checkout");
+    expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
+
+    estadoAuth.user = { id: "user-2" };
+    await act(async () => {
+      raiz?.render(<App />);
+    });
+    await assentar();
+
+    expect(lerPedidoPendenteDoCheckout("user-1")).toBeNull();
+  });
+
   it("entrar num checkout NOVO (carrinho → checkout) apaga o registro velho e não herda a retomada", async () => {
     await carregarEm("/");
     // Um registro que sobrou (ex.: saída do checkout pelo Voltar do

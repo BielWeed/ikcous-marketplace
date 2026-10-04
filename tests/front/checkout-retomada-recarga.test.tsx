@@ -94,8 +94,10 @@ vi.mock("@/hooks/useAddresses", () => ({
 }));
 
 const USUARIO = { id: "user-1", email: "cliente@exemplo.com" };
+// Mutável: a troca de conta e o logout acontecem na MESMA instância.
+let usuarioAtual: { id: string; email: string } | null = USUARIO;
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: USUARIO, profile: null, loading: false }),
+  useAuth: () => ({ user: usuarioAtual, profile: null, loading: false }),
 }));
 
 function carrinhoCheio() {
@@ -169,6 +171,11 @@ vi.mock("@/hooks/useConfigDoCartao", async () => {
 // verificação periódica da tela (`single`). `erroDaLeitura` simula a rede.
 const pedidos: Record<string, Record<string, unknown>> = {};
 let erroDaLeitura: { message: string } | null = null;
+// Leitura que o teste segura e solta quando quiser (ordem de chegada).
+const leiturasAdiadas: Record<
+  string,
+  Promise<{ data: Record<string, unknown> | null; error: null }>
+> = {};
 const leiturasDaRetomada: string[] = [];
 vi.mock("@/lib/supabase", () => ({
   supabase: {
@@ -177,6 +184,9 @@ vi.mock("@/lib/supabase", () => ({
         eq: (_coluna: string, valor: string) => ({
           maybeSingle: () => {
             leiturasDaRetomada.push(colunas);
+            // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê (ids definidos neste arquivo).
+            const adiada = leiturasAdiadas[valor];
+            if (adiada) return adiada;
             return Promise.resolve(
               erroDaLeitura
                 ? { data: null, error: erroDaLeitura }
@@ -288,7 +298,12 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     updateOrderStatus.mockReset().mockResolvedValue(undefined);
     onNavigate.mockClear();
     erroDaLeitura = null;
+    usuarioAtual = USUARIO;
     leiturasDaRetomada.length = 0;
+    for (const chave of Object.keys(leiturasAdiadas)) {
+      // eslint-disable-next-line security/detect-object-injection -- Limpando o dublê local entre testes.
+      delete leiturasAdiadas[chave];
+    }
     for (const chave of Object.keys(pedidos)) {
       // eslint-disable-next-line security/detect-object-injection -- Limpando o dublê local entre testes.
       delete pedidos[chave];
@@ -629,5 +644,117 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     );
     expect(criarPagamento).not.toHaveBeenCalled();
     expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+  });
+
+  // ── A confirmação pertence ao PEDIDO e ao USUÁRIO (revisão, 04/10/2026) ──
+  // A mesma instância do CheckoutView (sem desmontar) recebendo outra
+  // retomada ou outro usuário: a confirmação de A nunca aparece para B.
+
+  const PEDIDO_B = "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b";
+
+  function linhaDoPedidoB(campos: Record<string, unknown> = {}) {
+    // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê (PEDIDO_B, constante deste arquivo).
+    pedidos[PEDIDO_B] = {
+      user_id: USUARIO.id,
+      total: 80,
+      status: "pending",
+      payment_status: "aguardando",
+      gateway_payment_id: "mp-pix-b",
+      metodo_online: "pix",
+      expires_at: PIX_VIVO.expiraEm,
+      ...campos,
+    };
+  }
+
+  function adiarLeitura(id: string) {
+    let soltar: (linha: Record<string, unknown> | null) => void = () => {};
+    // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê (ids definidos neste arquivo).
+    leiturasAdiadas[id] = new Promise((resolve) => {
+      soltar = (linha) => resolve({ data: linha, error: null });
+    });
+    return (linha: Record<string, unknown> | null) => soltar(linha);
+  }
+
+  /** Re-renderiza a MESMA instância (sem `key`, sem desmontar). */
+  async function renderizarNaMesmaInstancia(pedidoId: string | undefined) {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await act(async () => {
+      raiz.render(
+        <CheckoutView
+          onNavigate={onNavigate}
+          onSetBackOverride={onSetBackOverride}
+          retomarPedidoId={pedidoId}
+          retomadaDaRecarga={pedidoId !== undefined}
+        />,
+      );
+    });
+    await esvaziar();
+  }
+
+  it("A pago → B pendente na mesma instância: nenhuma confirmação para B e nenhuma cobrança antes da leitura de B", async () => {
+    linhaDoPedido({ payment_status: "pago", status: "processing" });
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado!");
+
+    linhaDoPedidoB();
+    const soltarB = adiarLeitura(PEDIDO_B);
+    await renderizarNaMesmaInstancia(PEDIDO_B);
+
+    // A leitura de B ainda não voltou: nem a confirmação de A, nem cobrança.
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(hospedeiro.textContent).not.toContain("recebido");
+    expect(criarPagamento).not.toHaveBeenCalled();
+
+    // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê (PEDIDO_B, constante deste arquivo).
+    soltarB(pedidos[PEDIDO_B]);
+    await esvaziar();
+
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(hospedeiro.textContent).toContain(FINALIZE);
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(criarPagamento.mock.calls[0][0]).toEqual({
+      orderId: PEDIDO_B,
+      metodo: "pix",
+    });
+  });
+
+  it("leitura ATRASADA de A (pago) que chega depois de a retomada já ser B: não mostra confirmação", async () => {
+    linhaDoPedido({ payment_status: "pago", status: "processing" });
+    const soltarA = adiarLeitura(PEDIDO);
+    await renderizarNaMesmaInstancia(PEDIDO);
+
+    linhaDoPedidoB();
+    const soltarB = adiarLeitura(PEDIDO_B);
+    await renderizarNaMesmaInstancia(PEDIDO_B);
+
+    // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê (PEDIDO, constante deste arquivo).
+    soltarA(pedidos[PEDIDO]);
+    await esvaziar();
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(criarPagamento).not.toHaveBeenCalled();
+
+    // eslint-disable-next-line security/detect-object-injection -- Chave fechada do dublê (PEDIDO_B, constante deste arquivo).
+    soltarB(pedidos[PEDIDO_B]);
+    await esvaziar();
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(hospedeiro.textContent).toContain(FINALIZE);
+  });
+
+  it("troca de conta (A → B) e logout na mesma instância: a confirmação de A não vaza", async () => {
+    linhaDoPedido({ payment_status: "pago", status: "processing" });
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).toContain("Pagamento Confirmado!");
+
+    // A releitura do pedido para o usuário novo fica SEGURA: o que decide a
+    // tela nesse intervalo é a identidade da confirmação, não o descarte.
+    adiarLeitura(PEDIDO);
+    usuarioAtual = { id: "user-2", email: "outra@exemplo.com" };
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+
+    usuarioAtual = null;
+    await renderizarNaMesmaInstancia(PEDIDO);
+    expect(hospedeiro.textContent).not.toContain("Pagamento Confirmado!");
+    expect(criarPagamento).not.toHaveBeenCalled();
   });
 });

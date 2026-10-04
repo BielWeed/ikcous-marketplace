@@ -16,6 +16,7 @@ import {
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
 import {
+  esquecerPedidoPendenteDoCheckout,
   esquecerTodosOsPedidosPendentesDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
@@ -593,6 +594,16 @@ const AppContent = () => {
     cargaNoCheckout,
     idDoUsuarioDaRecarga,
   ]);
+  // Troca DIRETA de conta na mesma aba (A → B sem SIGNED_OUT no meio — o
+  // logout já limpa pelo AuthContext): o registro de A sai junto com A.
+  const usuarioAnteriorDaRecargaRef = useRef(idDoUsuarioDaRecarga);
+  useEffect(() => {
+    const anterior = usuarioAnteriorDaRecargaRef.current;
+    usuarioAnteriorDaRecargaRef.current = idDoUsuarioDaRecarga;
+    if (anterior && anterior !== idDoUsuarioDaRecarga) {
+      esquecerPedidoPendenteDoCheckout(anterior);
+    }
+  }, [idDoUsuarioDaRecarga]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -1934,6 +1945,16 @@ const AppContent = () => {
         const finalSelectedProductId = isGoingBackToHomeFromProduct
           ? null
           : nextSelectedProductId;
+
+        // Recarga: o Voltar do navegador que sai do checkout larga o pedido
+        // em pagamento — a mesma limpeza da saída por `handleNavigate`.
+        if (
+          origem === "popstate" &&
+          currentViewRef.current === "checkout" &&
+          targetView !== "checkout"
+        ) {
+          esquecerTodosOsPedidosPendentesDoCheckout();
+        }
 
         if (
           currentViewRef.current === targetView &&

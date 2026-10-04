@@ -1433,10 +1433,24 @@ export function CheckoutView({
     retomarPedidoIdRecebido !== retomadaDescartada
       ? retomarPedidoIdRecebido
       : undefined;
-  // Recarga: pago entre a saída e a volta — a tela de confirmado, nada monta.
-  const [retomadaJaPaga, setRetomadaJaPaga] = useState(false);
   // O dono que a leitura da recarga confere (e de quem é o registro da aba).
   const idDoUsuarioDaRetomada = user?.id;
+  // Recarga: pago entre a saída e a volta — a tela de confirmado, nada monta.
+  // Carrega o PEDIDO, o USUÁRIO e o VALOR a que pertence (o mesmo invariante
+  // de `falhaDaRetomada`): só vale enquanto a retomada e o usuário forem
+  // esses — outra retomada (ou outra conta) na mesma instância nunca herda a
+  // confirmação, nem o valor, de um pedido anterior.
+  const [confirmacaoDaRecarga, setConfirmacaoDaRecarga] = useState<{
+    readonly pedidoId: string;
+    readonly userId: string;
+    readonly valor: number;
+  } | null>(null);
+  const retomadaJaPaga =
+    confirmacaoDaRecarga !== null &&
+    retomarPedidoId !== undefined &&
+    confirmacaoDaRecarga.pedidoId === retomarPedidoId &&
+    idDoUsuarioDaRetomada !== undefined &&
+    confirmacaoDaRecarga.userId === idDoUsuarioDaRetomada;
   // F4: `"falhou"` mostra a mensagem; `"relendo"` é o intervalo entre o toque
   // em "Tentar de novo" e a resposta (a mensagem fica, sem o botão, em vez de
   // piscar o checkout vazio). `tentativaDaRetomada` refaz a leitura.
@@ -1552,8 +1566,11 @@ export function CheckoutView({
             respondeu = true;
             clearTimeout(relogio);
             setFalhaDaRetomada(null);
-            setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
-            setRetomadaJaPaga(true);
+            setConfirmacaoDaRecarga({
+              pedidoId: pedidoRetomado,
+              userId: dono,
+              valor: Number((data as { total: unknown }).total ?? 0),
+            });
             return;
           }
         }
@@ -3622,11 +3639,11 @@ export function CheckoutView({
     );
   }
 
-  if (retomadaJaPaga && retomarPedidoId) {
+  if (retomadaJaPaga && confirmacaoDaRecarga) {
     return (
       <PagamentoConfirmadoView
-        orderId={retomarPedidoId}
-        valor={valorDoPedido}
+        orderId={confirmacaoDaRecarga.pedidoId}
+        valor={confirmacaoDaRecarga.valor}
         onNavigate={onNavigate}
       />
     );
