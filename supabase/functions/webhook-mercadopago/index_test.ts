@@ -3199,7 +3199,7 @@ Deno.test("W4 - chargeback: 'in_process' cria linha 'sistema' em_processamento (
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
   const inProcess = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "in_process" }),
-    caso: { coverage_applied: null, amount: 100, currency: "BRL" },
+    caso: { id: "1234567890", coverage_applied: null, amount: 100, currency: "BRL" },
   });
 
   const resp1 = await semLogs(() => entregarContestacao(supabase, inProcess.fn));
@@ -3219,7 +3219,7 @@ Deno.test("W4 - chargeback: 'in_process' cria linha 'sistema' em_processamento (
 
   const settled = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "settled" }),
-    caso: { coverage_applied: false, amount: 100, currency: "BRL" },
+    caso: { id: "1234567890", coverage_applied: false, amount: 100, currency: "BRL" },
   });
   const resp2 = await semLogs(() => entregarContestacao(supabase, settled.fn));
   assertEquals(resp2.status, 200);
@@ -3234,7 +3234,7 @@ Deno.test("W4b - chargeback: 'reimbursed' (caso a favor da loja) com a linha em_
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
   const inProcess = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "in_process" }),
-    caso: { coverage_applied: null, amount: 100, currency: "BRL" },
+    caso: { id: "1234567890", coverage_applied: null, amount: 100, currency: "BRL" },
   });
   await semLogs(() => entregarContestacao(supabase, inProcess.fn));
   assertEquals(registro.insertsOrderRefunds.length, 1);
@@ -3242,7 +3242,7 @@ Deno.test("W4b - chargeback: 'reimbursed' (caso a favor da loja) com a linha em_
 
   const reimbursed = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "reimbursed" }),
-    caso: { coverage_applied: true, amount: 100, currency: "BRL" },
+    caso: { id: "1234567890", coverage_applied: true, amount: 100, currency: "BRL" },
   });
   const resp2 = await semLogs(() => entregarContestacao(supabase, reimbursed.fn));
   assertEquals(resp2.status, 200);
@@ -3804,7 +3804,7 @@ Deno.test("Lote A R1 - in_process com o caso SEM valor em reais -> reserva pelo 
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
   const { fn } = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "in_process" }),
-    caso: { coverage_applied: null, amount: 37.5, currency: "ARS" },
+    caso: { id: "1234567890", coverage_applied: null, amount: 37.5, currency: "ARS" },
   });
   await semLogs(() => entregarContestacao(supabase, fn));
   assertEquals(registro.insertsOrderRefunds.length, 1);
@@ -4002,6 +4002,23 @@ Deno.test("Lote A R1 - decisão REVERTIDA (reserva já concluída, agora caso a 
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
   assertEquals(pushes.length, 1);
   assertStringIncludes(String(pushes[0].title), "Contestação");
+});
+
+Deno.test("Lote A R1 (bloqueio 4) - o GET do caso devolve OUTRO caso -> nada concluído nem liberado, reserva conservada, aviso ao admin UMA vez", async () => {
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
+  const { fn } = fetchDaContestacao({
+    order: orderContestada({ detalheOrder: "settled" }),
+    caso: { ...CASO_CONTRA_A_LOJA, id: "9999999999" },
+  });
+  const pushes: unknown[] = [];
+  const r1 = await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  const r2 = await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  assertEquals([r1.status, r2.status], [200, 200]);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.updatesOrderRefunds.length, 0);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(pushes.length, 1);
 });
 
 Deno.test("Lote A R1 - consulta do CASO falha (500) -> 500 (o MP reenvia = reconsulta), nada gravado", async () => {

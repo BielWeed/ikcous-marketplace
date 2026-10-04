@@ -59,6 +59,39 @@ Deno.test("consultarContestacao: rede/5xx/429 são TRANSITÓRIOS (o MP reenvia);
   assertEquals((r404 as { transitorio: boolean }).transitorio, false);
 });
 
+Deno.test("consultarContestacao: o caso devolvido TEM de ser o pedido (id == case_id, string; número só se inteiro seguro) — senão não lê (não transitório)", async () => {
+  // Bloqueio 4 da revisão do Lote A: o objeto do GET era aceito sem conferir
+  // de QUAL caso ele é. Doc (chargebacks/management): GET /v1/chargebacks/{id}
+  // devolve `id` = o case_id, como string ("234000062890459000").
+  const consulta = (caseId: string, corpoCru: string) =>
+    consultarContestacao({
+      token: "T",
+      caseId,
+      fetchImpl: async () => new Response(corpoCru, { status: 200 }),
+    });
+  const erroReal = console.error;
+  console.error = () => {};
+  try {
+    const outroCaso = await consulta("1234567890", JSON.stringify({ id: "999", coverage_applied: false }));
+    const semId = await consulta("1234567890", JSON.stringify({ coverage_applied: false }));
+    const idVazio = await consulta("1234567890", JSON.stringify({ id: "", coverage_applied: false }));
+    // 234000062890459000 > 2^53: como NÚMERO, o JSON já perdeu dígitos.
+    const numeroLongo = await consulta("234000062890459000", '{"id": 234000062890459000, "coverage_applied": false}');
+    const numeroQuase = await consulta("234000062890459001", '{"id": 234000062890459001, "coverage_applied": false}');
+    for (const [nome, r] of Object.entries({ outroCaso, semId, idVazio, numeroLongo, numeroQuase })) {
+      assertEquals(r.ok, false, nome);
+      assertEquals((r as { transitorio: boolean }).transitorio, false, nome);
+    }
+
+    const mesmoCasoString = await consulta("234000062890459000", JSON.stringify({ id: "234000062890459000", coverage_applied: null }));
+    const mesmoCasoNumeroSeguro = await consulta("1234567890", '{"id": 1234567890, "coverage_applied": null}');
+    assertEquals(mesmoCasoString.ok, true);
+    assertEquals(mesmoCasoNumeroSeguro.ok, true);
+  } finally {
+    console.error = erroReal;
+  }
+});
+
 Deno.test("decisaoDoCaso: coverage_applied true = a favor da loja; false = contra; null = em análise; ausente/outro = não sei", () => {
   assertEquals(decisaoDoCaso({ coverage_applied: true }), "a_favor_da_loja");
   assertEquals(decisaoDoCaso({ coverage_applied: false }), "contra_a_loja");

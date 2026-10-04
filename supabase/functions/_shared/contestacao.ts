@@ -83,6 +83,20 @@ export async function consultarContestacao(args: {
   try {
     const corpo = await resposta.json();
     if (corpo && typeof corpo === "object" && !Array.isArray(corpo)) {
+      // O caso devolvido tem de SER o pedido (bloqueio 4 da revisão do Lote
+      // A): `id` do recurso = o case_id (doc chargebacks/management). String
+      // igual; número só se inteiro SEGURO (acima de 2^53 o JSON já perdeu
+      // dígitos e dois casos diferentes viram o mesmo número). Divergente ou
+      // ausente: não lê — quem chama conserva a reserva e avisa o admin;
+      // nada é decidido em cima do caso de outro.
+      const idDevolvido = comoId((corpo as Record<string, unknown>).id);
+      if (idDevolvido !== args.caseId) {
+        console.error("mercadopago: chargebacks (consulta) devolveu OUTRO caso ou caso sem id — ignorado", {
+          esperado: args.caseId,
+          tipoDoId: typeof (corpo as Record<string, unknown>).id,
+        });
+        return { ok: false, status: resposta.status, transitorio: false };
+      }
       return { ok: true, caso: corpo as Record<string, unknown> };
     }
   } catch (_err) {
