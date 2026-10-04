@@ -6,8 +6,9 @@
 -- `public.registrar_estorno_externo_na_contestacao`). Elas NÃO existiam antes
 -- desta migration — não há corpo anterior a restaurar. NENHUMA linha de
 -- `order_refunds` é tocada. As colunas `mp_chargeback_case_id` e
--- `mp_chargeback_valor_do_caso` FICAM, de propósito: apagá-las perderia o
--- vínculo e o valor confirmado de casos já registrados (dado de dinheiro) —
+-- `mp_chargeback_valor_do_caso` e a tabela `public.contestacoes_decisao_final`
+-- FICAM, de propósito: apagá-las perderia o vínculo, o valor confirmado e o
+-- histórico das decisões finais de casos já registrados (dado de dinheiro) —
 -- se um dia for preciso, é decisão do dono, com o SQL mostrado.
 --
 -- Depois do rollback a edge NOVA do webhook falha ao registrar contestação

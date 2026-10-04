@@ -59,7 +59,17 @@ Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas 
   assert(!/\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(topo), "a migration não reescreve linha existente");
   assertStringIncludes(topo, "ADD COLUMN IF NOT EXISTS mp_chargeback_case_id text;");
   assertStringIncludes(topo, "ADD COLUMN IF NOT EXISTS mp_chargeback_valor_do_caso numeric(12,2)");
-  assert(!/\bDEFAULT\b/i.test(topo), "sem default (sem backfill implícito)");
+  // Sem default nas colunas novas de order_refunds (sem backfill implícito).
+  for (const linha of topo.split("\n").filter((l) => /ADD COLUMN/i.test(l))) {
+    assert(!/\bDEFAULT\b/i.test(linha), linha);
+  }
+  // A decisão final: tabela nova, fora do alcance do cliente, nunca apagada.
+  assertStringIncludes(topo, "CREATE TABLE IF NOT EXISTS public.contestacoes_decisao_final (");
+  assertStringIncludes(topo, "PRIMARY KEY (order_id, mp_chargeback_id)");
+  assertStringIncludes(topo, "ALTER TABLE public.contestacoes_decisao_final ENABLE ROW LEVEL SECURITY;");
+  assertStringIncludes(topo, "REVOKE ALL ON TABLE public.contestacoes_decisao_final FROM PUBLIC, anon, authenticated;");
+  assert(!/CREATE\s+POLICY/i.test(topo), "sem política: só a função SECURITY DEFINER lê e escreve");
+  assert(!/DROP\s+TABLE/i.test(semComentarios(rollback)), "o rollback não apaga o histórico da decisão final");
   const drops = [...topo.matchAll(/\bDROP\b[^(;]*/gi)].map((m) => m[0].replace(/\s+/g, " ").trim());
   assertEquals(drops, [
     "DROP FUNCTION IF EXISTS public.registrar_contestacao_no_ledger",

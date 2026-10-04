@@ -25,6 +25,18 @@
 --     > 0): o valor do CASO em reais, quando o MP o confirmou. NULL = a
 --     linha nasceu de ESTIMATIVA (total pago). É o que separa "reserva
 --     estimada" de "valor confirmado" — estimativa só RESERVA, nunca conclui.
+--   * `public.contestacoes_decisao_final` (tabela nova): a decisão FINAL do
+--     caso (a favor / contra a loja), com identidade (pedido + CBK + case_id),
+--     valor do caso e procedência (`origem`, `decidido_em`) — gravada MESMO
+--     quando não existe reserva a liberar. Sem ela, um GET final "a favor da
+--     loja" que chegava antes de qualquer reserva não deixava rastro, e uma
+--     notificação PENDENTE atrasada (o MP entrega fora de ordem) criava a
+--     reserva depois de o caso já estar ganho. Pendente depois da final:
+--     'ja_decidido', nada reservado. Final que vira (a favor -> contra, sem
+--     linha): 'revertido', aviso, nada mexido. Uma linha por (pedido, CBK);
+--     nada é apagado nem reescrito (ON CONFLICT DO NOTHING). Fora do alcance
+--     do cliente: RLS ligada sem política e REVOKE de anon/authenticated —
+--     só as funções (SECURITY DEFINER) a leem e escrevem.
 --   * `registrar_contestacao_no_ledger(...)`: calcula, reserva, adota linha
 --     antiga, ajusta, conclui e libera numa transação só, com o pedido
 --     travado (`SELECT ... FOR UPDATE` em marketplace_orders — a MESMA trava
@@ -57,7 +69,9 @@
 --   nada muda, aviso.
 --
 -- DADOS EXISTENTES: nada é reescrito. As duas colunas novas nascem NULL em
--- todas as linhas (sem default, sem backfill). Reserva antiga de contestação
+-- todas as linhas (sem default, sem backfill); a tabela da decisão final nasce
+-- VAZIA (casos já decididos antes desta migration não têm registro — para
+-- eles vale só o estado das linhas, como antes). Reserva antiga de contestação
 -- (sem CBK, de antes da 20261192000000) é ADOTADA pela função na próxima
 -- notificação do caso, só quando ela é a única e a order tem um caso só —
 -- senão aviso. Linhas concluídas antes NÃO são reabertas.
@@ -92,8 +106,9 @@
 --
 -- ROLLBACK MANUAL:
 -- rollback-manual-20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql
--- (apaga as duas funções; as colunas FICAM — apagá-las perderia o vínculo
--- de casos já registrados, e isso é decisão do dono).
+-- (apaga as duas funções; as colunas e a tabela da decisão final FICAM —
+-- apagá-las perderia o vínculo e o histórico de casos já decididos, e isso é
+-- decisão do dono).
 
 DO $preflight_20261196$
 DECLARE
@@ -134,6 +149,18 @@ BEGIN
   IF v_tipo IS NOT NULL AND v_tipo IS DISTINCT FROM 'numeric(12,2)' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_valor_do_caso já existe como % (esperado numeric(12,2), aceitando NULL) — revise antes de aplicar.', v_tipo;
   END IF;
+
+  IF to_regclass('public.contestacoes_decisao_final') IS NOT NULL THEN
+    SELECT string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
+                      || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END, ', ' ORDER BY a.attnum)
+      INTO v_tipo
+      FROM pg_attribute a
+     WHERE a.attrelid = 'public.contestacoes_decisao_final'::regclass
+       AND a.attnum > 0 AND NOT a.attisdropped;
+    IF v_tipo IS DISTINCT FROM 'order_id uuid NOT NULL, mp_chargeback_id text NOT NULL, mp_chargeback_case_id text NOT NULL, decisao text NOT NULL, valor_do_caso numeric(12,2), origem text NOT NULL, decidido_em timestamp with time zone NOT NULL' THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.contestacoes_decisao_final já existe com outra forma (%) — revise antes de aplicar.', v_tipo;
+    END IF;
+  END IF;
 END $preflight_20261196$;
 
 ALTER TABLE public.order_refunds
@@ -152,6 +179,27 @@ COMMENT ON COLUMN public.order_refunds.mp_chargeback_valor_do_caso IS
   'Valor do CASO da contestação em reais, confirmado pelo Mercado Pago (GET '
   '/v1/chargebacks/{case_id}, currency BRL; 20261196000000). NULL = a linha nasceu de '
   'ESTIMATIVA (total pago) e só pode RESERVAR, nunca concluir.';
+
+CREATE TABLE IF NOT EXISTS public.contestacoes_decisao_final (
+  order_id uuid NOT NULL REFERENCES public.marketplace_orders(id),
+  mp_chargeback_id text NOT NULL,
+  mp_chargeback_case_id text NOT NULL,
+  decisao text NOT NULL CHECK (decisao IN ('a_favor_da_loja', 'contra_a_loja')),
+  valor_do_caso numeric(12,2) CHECK (valor_do_caso IS NULL OR valor_do_caso > 0),
+  origem text NOT NULL,
+  decidido_em timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (order_id, mp_chargeback_id)
+);
+
+COMMENT ON TABLE public.contestacoes_decisao_final IS
+  'Decisão FINAL de cada contestação (chargeback) do Mercado Pago, por pedido e CBK, com '
+  'case_id, valor do caso e procedência (20261196000000). Gravada por '
+  'registrar_contestacao_no_ledger mesmo quando não há reserva — impede que uma notificação '
+  'PENDENTE atrasada reserve depois da decisão final. Nunca reescrita nem apagada. Fora do '
+  'alcance do cliente (RLS sem política; só a função SECURITY DEFINER lê e escreve).';
+
+ALTER TABLE public.contestacoes_decisao_final ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.contestacoes_decisao_final FROM PUBLIC, anon, authenticated;
 
 DROP FUNCTION IF EXISTS public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer);
 
@@ -186,6 +234,8 @@ DECLARE
   v_linha_id uuid;
   v_linha_amount numeric(12,2);
   v_linha_status text;
+  v_final public.contestacoes_decisao_final%ROWTYPE;
+  v_tem_final boolean := false;
 BEGIN
   -- Entrada é contrato com o webhook (que já validou): violar é erro de
   -- PROGRAMAÇÃO, falha alto (500, o MP reenvia) — nunca um palpite.
@@ -221,6 +271,30 @@ BEGIN
       v_resultado := 'pedido_nao_pago';
       v_aviso := 'conferir';
       EXIT decidir;
+    END IF;
+
+    -- A decisão FINAL já gravada para este caso manda sobre notificação
+    -- atrasada (o MP entrega fora de ordem): pendente depois dela não
+    -- reserva; final no sentido OPOSTO é virada (aviso, nada mexido).
+    SELECT * INTO v_final
+      FROM public.contestacoes_decisao_final
+     WHERE order_id = p_order_id AND mp_chargeback_id = p_mp_chargeback_id;
+    v_tem_final := FOUND;
+    IF v_tem_final THEN
+      IF v_final.mp_chargeback_case_id <> p_case_id THEN
+        v_resultado := 'vinculo_divergente';
+        v_aviso := 'conferir';
+        EXIT decidir;
+      END IF;
+      IF p_decisao = 'em_analise' THEN
+        v_resultado := 'ja_decidido';
+        EXIT decidir;
+      END IF;
+      IF p_decisao <> v_final.decisao THEN
+        v_resultado := 'revertido';
+        v_aviso := 'revertida';
+        EXIT decidir;
+      END IF;
     END IF;
 
     SELECT * INTO v_linha
@@ -457,6 +531,20 @@ BEGIN
       v_aviso := 'conferir';
     END IF;
   END decidir;
+
+  -- Decisão FINAL registrada (com procedência) sempre que foi ACEITA — com
+  -- ou sem linha. Recusas por identidade/estado não gravam: nada foi
+  -- decidido sobre elas. Uma linha por caso; nunca reescrita.
+  IF p_decisao IN ('a_favor_da_loja', 'contra_a_loja')
+     AND v_resultado NOT IN ('pedido_nao_pago', 'legado_ambiguo', 'vinculo_divergente',
+                             'valor_divergente', 'status_inesperado', 'revertido') THEN
+    INSERT INTO public.contestacoes_decisao_final
+      (order_id, mp_chargeback_id, mp_chargeback_case_id, decisao, valor_do_caso, origem)
+    VALUES
+      (p_order_id, p_mp_chargeback_id, p_case_id, p_decisao, p_valor_caso,
+       'webhook-mercadopago: GET /v1/chargebacks/{case_id} coverage_applied, corroborado pelo pagamento contestado')
+    ON CONFLICT (order_id, mp_chargeback_id) DO NOTHING;
+  END IF;
 
   -- Estado CANÔNICO depois desta decisão (bloqueio 3: quem chama nunca
   -- decide o próximo caso com um retrato velho).

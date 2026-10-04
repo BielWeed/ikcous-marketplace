@@ -178,6 +178,15 @@ PROVAS.push({
       );
       assert.equal(sr.rows[0].pode, true, `service_role executa ${fn}`);
     }
+    for (const papel of ["anon", "authenticated"]) {
+      for (const priv of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {
+        const r = await cliente.query(
+          "SELECT has_table_privilege($1, 'public.contestacoes_decisao_final', $2) AS pode",
+          [papel, priv],
+        );
+        assert.equal(r.rows[0].pode, false, `${papel} sem ${priv} na decisão final`);
+      }
+    }
   },
 });
 
@@ -432,6 +441,84 @@ PROVAS.push({
 });
 
 PROVAS.push({
+  nome: "(i) decisão FINAL persistida sem reserva: a favor da loja primeiro -> o pendente atrasado não reserva; virada depois é 'revertida'",
+  corpo: async (cliente) => {
+    await pedido(cliente, O(60), { total: 100 });
+    const r1 = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "a_favor_da_loja", valorCaso: 100 });
+    assert.equal(r1.resultado, "nada_a_liberar");
+    const final = (
+      await cliente.query(
+        `SELECT mp_chargeback_case_id, decisao, num_nonnulls(origem, decidido_em) AS proc, valor_do_caso
+           FROM public.contestacoes_decisao_final WHERE order_id = $1 AND mp_chargeback_id = 'CBK-I'`,
+        [O(60)],
+      )
+    ).rows;
+    assert.equal(final.length, 1, "a decisão final fica gravada mesmo sem reserva");
+    assert.deepEqual(
+      [final[0].mp_chargeback_case_id, final[0].decisao, final[0].proc, num(final[0].valor_do_caso)],
+      ["601", "a_favor_da_loja", 2, 100],
+    );
+
+    const atrasado = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "em_analise", valorCaso: 100, estimado: 100 });
+    assert.equal(atrasado.resultado, "ja_decidido");
+    assert.equal((await estado(cliente, O(60))).linhas.length, 0, "nenhuma reserva depois da decisão final");
+
+    const virada = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "contra_a_loja", valorCaso: 100 });
+    assert.equal(virada.resultado, "revertido");
+    assert.equal(virada.aviso, "revertida");
+    const e = await estado(cliente, O(60));
+    assert.equal(e.linhas.length, 0);
+    assert.equal(e.valorEstornado, 0);
+
+    // A decisão final repetida é idempotente (uma linha só de procedência).
+    const repetida = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "a_favor_da_loja", valorCaso: 100 });
+    assert.equal(repetida.resultado, "nada_a_liberar");
+    const n = await cliente.query(
+      "SELECT count(*)::int AS n FROM public.contestacoes_decisao_final WHERE order_id = $1",
+      [O(60)],
+    );
+    assert.equal(n.rows[0].n, 1);
+  },
+});
+
+PROVAS.push({
+  nome: "(j) corrida causal: a decisão final (sem reserva) segura a trava; o pendente ATRASADO espera e depois não reserva nada",
+  corpo: async (cliente, url) => {
+    await pedido(cliente, O(70), { total: 100 });
+    const { ra, rb, parou } = await corrida(
+      url,
+      (c) => contestacao(c, { pedido: O(70), cbk: "CBK-J", caseId: "701", decisao: "a_favor_da_loja", valorCaso: 100 }),
+      (c) => contestacao(c, { pedido: O(70), cbk: "CBK-J", caseId: "701", decisao: "em_analise", estimado: 100 }),
+    );
+    assert.equal(parou, true, "o pendente parou na trava do pedido");
+    assert.equal(ra.resultado, "nada_a_liberar");
+    assert.equal(rb.resultado, "ja_decidido");
+    const e = await estado(cliente, O(70));
+    assert.equal(e.linhas.length, 0, "nenhuma reserva");
+    assert.equal(num(rb.disponivel), 100);
+  },
+});
+
+PROVAS.push({
+  nome: "(k) REF que não cabia por causa da reserva cabe depois da liberação (mesmo saldo, sem contar duas vezes)",
+  corpo: async (cliente) => {
+    await pedido(cliente, O(80), { total: 100 });
+    await contestacao(cliente, { pedido: O(80), cbk: "CBK-K", caseId: "801", decisao: "em_analise", valorCaso: 100 });
+    const antes = await externo(cliente, { pedido: O(80), ref: "REF-K", valor: 100 });
+    assert.equal(antes.resultado, "nao_cabe");
+    const lib = await contestacao(cliente, { pedido: O(80), cbk: "CBK-K", caseId: "801", decisao: "a_favor_da_loja", valorCaso: 100 });
+    assert.equal(lib.resultado, "liberado");
+    const depois = await externo(cliente, { pedido: O(80), ref: "REF-K", valor: 100 });
+    assert.equal(depois.resultado, "inserido");
+    const replay = await externo(cliente, { pedido: O(80), ref: "REF-K", valor: 100 });
+    assert.equal(replay.resultado, "ja_registrado");
+    const e = await estado(cliente, O(80));
+    assert.equal(e.valorEstornado, 100, "a devolução real conta uma vez");
+    assert.equal(e.paymentStatus, "estornado");
+  },
+});
+
+PROVAS.push({
   nome: "(h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000; rollback + reaplicar",
   corpo: async (cliente) => {
     const sql = lerMigration(MIGRATION);
@@ -448,6 +535,8 @@ PROVAS.push({
             AND attname IN ('mp_chargeback_case_id', 'mp_chargeback_valor_do_caso') AND NOT attisdropped`,
       );
       assert.equal(colunas.rows[0].n, 2, "as colunas FICAM no rollback");
+      const tabela = await cliente.query("SELECT to_regclass('public.contestacoes_decisao_final') AS t");
+      assert.notEqual(tabela.rows[0].t, null, "a decisão final (histórico) FICA no rollback");
       await cliente.query(sql);
       const voltou = await cliente.query(`SELECT to_regprocedure($1) AS f`, [FN_CONTESTACAO]);
       assert.notEqual(voltou.rows[0].f, null);
@@ -466,6 +555,22 @@ PROVAS.push({
       }
       assert.ok(erro, "o preflight recusa sem a 20261192000000");
       assert.match(erro.message, /B1_BASELINE_DIVERGENT: public\.uq_order_refunds_pedido_contestacao/);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+
+    // Tabela da decisão final com OUTRA forma: recusa, nada gravado.
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("ALTER TABLE public.contestacoes_decisao_final ADD COLUMN intrusa integer");
+      let erro = null;
+      try {
+        await cliente.query(sql);
+      } catch (e) {
+        erro = e;
+      }
+      assert.ok(erro, "o preflight recusa a tabela com outra forma");
+      assert.match(erro.message, /B1_BASELINE_DIVERGENT: public\.contestacoes_decisao_final/);
     } finally {
       await cliente.query("ROLLBACK");
     }
