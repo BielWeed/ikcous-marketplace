@@ -2379,6 +2379,11 @@ async function handler(
       // de devolver a morta.
       chaveIdempotencia: await chaveDeIdempotencia(pedido, "pix"),
       fetchImpl: deps.fetchImpl,
+      // R9 (04/10/2026): o corpo da recusa do MP traz `data.payer` (e-mail
+      // e CPF do pagador) — no log, só o resumo sem dado pessoal, igual ao
+      // cartão. O `corpoDoErro` continua voltando no resultado (o 409 de
+      // idempotência, logo abaixo, decide por ele).
+      corpoNoLog: false,
     });
     if (!r.ok) {
       // 401/403: credencial da loja (`respostaCredencialRecusada`, acima).

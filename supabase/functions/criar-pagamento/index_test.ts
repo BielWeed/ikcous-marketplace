@@ -11241,3 +11241,58 @@ Deno.test("R8: pedido de R$ 0,00 com PIX já na vaga -> a RECONSULTA não é blo
   assertEquals(mp.criacoes().length, 0);
   assertEquals(registro.chamadasUpdate, 0);
 });
+
+// =============================================================================
+// R9 (travas onde a cobrança nasce, 04/10/2026): a criação da order PIX não
+// passava `corpoNoLog: false` — o default de `criarOrder` joga o corpo INTEIRO
+// da recusa do MP no log, e esse corpo traz `data.payer` (e-mail e CPF do
+// pagador). O cartão já passava; o PIX passa a passar igual.
+// =============================================================================
+Deno.test("R9: PIX recusado (402) cujo corpo traz o pagador -> e-mail e CPF NUNCA aparecem no log nem na resposta", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "pagador-pix@exemplo.com" } }),
+  });
+  const mp = fetchMP({
+    criar: {
+      status: 402,
+      corpo: {
+        errors: [{ code: "failed" }],
+        data: {
+          ...orderDePix("failed", "failed"),
+          payer: { email: "pagador-pix@exemplo.com", identification: { type: "CPF", number: CPF_TITULAR } },
+        },
+      },
+    },
+  });
+  const logados: unknown[] = [];
+  const originais = { error: console.error, warn: console.warn, log: console.log };
+  console.error = (...a: unknown[]) => logados.push(a);
+  console.warn = (...a: unknown[]) => logados.push(a);
+  console.log = (...a: unknown[]) => logados.push(a);
+  let status: number;
+  let texto: string;
+  try {
+    const resposta = await handler(
+      requisicao(
+        { orderId: UUID, metodo: "pix", documento: { type: "CPF", number: CPF_TITULAR } },
+        montarToken(DONO_LOGADO),
+      ),
+      { supabase, fetchImpl: mp.fn },
+    );
+    status = resposta.status;
+    texto = await resposta.text();
+  } finally {
+    console.error = originais.error;
+    console.warn = originais.warn;
+    console.log = originais.log;
+  }
+
+  assertEquals(status, 502);
+  assertEquals(mp.criacoes().length, 1);
+  // A recusa CHEGOU ao log (só que resumida) — sem isto o teste passaria com
+  // um log que nem foi escrito.
+  assertEquals(JSON.stringify(logados).includes("mercadopago: orders recusou"), true);
+  const tudo = JSON.stringify(logados) + texto;
+  assertEquals(tudo.includes("pagador-pix@exemplo.com"), false);
+  assertEquals(tudo.includes(CPF_TITULAR), false);
+});
