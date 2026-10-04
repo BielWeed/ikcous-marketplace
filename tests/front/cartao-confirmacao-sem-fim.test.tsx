@@ -335,6 +335,37 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     expect(chamadasVerificar()).toBe(ESPERAS_DA_CONFIRMACAO_MS.length);
   });
 
+  it("'pago' que chega DEPOIS do limite de 35 s da tela: vira aprovado, sem segunda chamada e sem voltar ao spinner", async () => {
+    await chegarAoConfirmando();
+    // A 1ª consulta (aos 3 s) só volta aos 3 s + 36 s — o limite da tela
+    // (35 s) já venceu e a próxima tentativa já está agendada (aos 43 s).
+    criarPagamento.mockImplementationOnce(
+      () =>
+        new Promise((resolver) => {
+          setTimeout(
+            () => resolver({ verificacao: "pago", paymentId: ORDER }),
+            36_000,
+          );
+        }),
+    );
+    criarPagamento.mockImplementation(() => new Promise(() => {}));
+
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 35_500);
+    // Limite vencido, resposta ainda não chegou: a tela segue confirmando.
+    expect(hospedeiro.textContent).toContain(CONFIRMANDO);
+    expect(chamadasVerificar()).toBe(1);
+
+    await avancar(1_000);
+    expect(hospedeiro.textContent).toContain(APROVADO);
+    expect(botao("Pagar com PIX")).toBeUndefined();
+
+    await avancar(10 * 60_000);
+    expect(chamadasVerificar()).toBe(1);
+    expect(hospedeiro.textContent).toContain(APROVADO);
+    expect(girando()).toBe(false);
+    nenhumOutroPostDeCartao();
+  });
+
   it("aprovado TARDIO: o banco ainda decide nas primeiras consultas e aprova na terceira — tela de aprovado, sem PIX, e as consultas param", async () => {
     await chegarAoConfirmando();
     const aindaNoDesafio = {
