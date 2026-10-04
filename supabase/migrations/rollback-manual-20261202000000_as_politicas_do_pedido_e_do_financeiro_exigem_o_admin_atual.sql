@@ -2,7 +2,8 @@
 -- Rollback manual — as políticas do pedido, da devolução e do financeiro
 -- exigem o admin de agora (20261202000000)
 -- ============================================================================
--- Devolve as 14 políticas à expressão exata de antes (`is_admin()`, a porta do
+-- Apaga as duas políticas de SELECT criadas (order_items_select_policy e
+-- order_history_select_policy) e devolve as 14 políticas à expressão exata de antes (`is_admin()`, a porta do
 -- JWT): marketplace_order_items e marketplace_order_history da baseline
 -- 20260806000000; order_shipping_events da 20261080000000;
 -- mkt_order_payment_history_select da 20261020000000; devolucoes,
@@ -13,18 +14,21 @@
 -- NÃO apaga rls_admin_atual() nem is_admin_atual() — são da 20261197000000.
 --
 -- Depois do rollback o defeito volta: um admin rebaixado com JWT ainda válido
--- (até ~1 h) volta a LER e ESCREVER direto nestas tabelas. Reverter só faz
+-- (até ~1 h) volta a LER e ESCREVER direto nestas tabelas, e o comprador volta a
+-- poder ALTERAR itens e histórico do próprio pedido pela RLS. Reverter só faz
 -- sentido se a porta estiver recusando um admin legítimo.
 -- ORDEM: este rollback vem ANTES do da 20261197000000 (que apaga
 -- rls_admin_atual(), de que estas 14 políticas dependem).
 --
 -- DADOS: a migration não gravou nada em linha nenhuma (só escondeu e recusou),
--- então não há dado a desfazer.
+-- então não há dado a desfazer. Apagar as duas políticas de SELECT não toca em
+-- linha.
 --
 -- PRÉ-VOO: o `DO $preflight_rollback_20261202$` recusa com
 -- `B1_BASELINE_DIVERGENT` — ANTES de qualquer escrita — se alguma das 14
--- políticas (ou rls_admin_atual() / is_admin_atual()) não estiver exatamente no
--- estado que a 20261202000000 deixou: desfazer por cima de uma redefinição
+-- políticas, uma das 2 de SELECT novas (ausente ou diferente) ou
+-- rls_admin_atual() / is_admin_atual() não estiver exatamente no estado que a
+-- 20261202000000 deixou: desfazer por cima de uma redefinição
 -- POSTERIOR apagaria a dela em silêncio, e desfazer duas vezes não tem o que
 -- desfazer. Mesma transação do restante: recusa = nada gravado.
 --
@@ -66,9 +70,9 @@ BEGIN
     SELECT *
       FROM (VALUES
         ('public.marketplace_order_items', 'order_items_all_policy', '*', 'authenticated',
-         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))', E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))'),
+         E'( SELECT public.rls_admin_atual() AS rls_admin_atual)', E'( SELECT public.rls_admin_atual() AS rls_admin_atual)'),
         ('public.marketplace_order_history', 'order_history_all_policy', '*', 'authenticated',
-         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))', E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))'),
+         E'( SELECT public.rls_admin_atual() AS rls_admin_atual)', E'( SELECT public.rls_admin_atual() AS rls_admin_atual)'),
         ('public.order_shipping_events', 'order_shipping_events_select_policy', 'r', 'authenticated',
          E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders o\n  WHERE ((o.id = order_shipping_events.order_id) AND (o.user_id = ( SELECT auth.uid() AS uid))))))', NULL::text),
         ('public.order_shipping_events', 'order_shipping_events_admin_insert_policy', 'a', 'authenticated',
@@ -113,8 +117,39 @@ BEGIN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: política % em % (comando %, papéis %, USING %, WITH CHECK %) não é a que a 20261202000000 deixou — nada a desfazer, ou uma redefinição posterior está no ar; revise antes de reverter.', r.politica, r.tabela, COALESCE(v_cmd, '-'), COALESCE(v_roles, '-'), COALESCE(v_qual, 'nulo'), COALESCE(v_check, 'nulo');
     END IF;
   END LOOP;
+
+  FOR r IN
+    SELECT *
+      FROM (VALUES
+        ('public.marketplace_order_items', 'order_items_select_policy', 'r', 'authenticated',
+         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))'),
+        ('public.marketplace_order_history', 'order_history_select_policy', 'r', 'authenticated',
+         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))')
+      ) AS esperado(tabela, politica, comando, papeis, qual_desta)
+  LOOP
+    SELECT pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid),
+           p.polcmd::text, p.polpermissive,
+           array_to_string(ARRAY(SELECT CASE WHEN x = 0 THEN 'public' ELSE x::regrole::text END
+                                   FROM unnest(p.polroles) AS x ORDER BY 1), ',')
+      INTO v_qual, v_check, v_cmd, v_perm, v_roles
+      FROM pg_policy p
+     WHERE p.polrelid = to_regclass(r.tabela)
+       AND p.polname = r.politica;
+
+    IF NOT FOUND
+       OR v_cmd IS DISTINCT FROM r.comando
+       OR v_perm IS DISTINCT FROM true
+       OR v_roles IS DISTINCT FROM r.papeis
+       OR v_qual IS DISTINCT FROM r.qual_desta
+       OR v_check IS NOT NULL THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: política % em % (comando %, papéis %, USING %) não é a que a 20261202000000 criou — nada a desfazer, ou uma redefinição posterior está no ar; revise antes de reverter.', r.politica, r.tabela, COALESCE(v_cmd, '-'), COALESCE(v_roles, '-'), COALESCE(v_qual, 'nulo');
+    END IF;
+  END LOOP;
   PERFORM set_config('search_path', v_caminho, true);
 END $preflight_rollback_20261202$;
+
+DROP POLICY order_items_select_policy ON public.marketplace_order_items;
+DROP POLICY order_history_select_policy ON public.marketplace_order_history;
 
 ALTER POLICY order_items_all_policy ON public.marketplace_order_items
   USING (((SELECT public.is_admin())

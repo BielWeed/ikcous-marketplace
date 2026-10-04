@@ -4,11 +4,11 @@
 -- ("fora do escopo (outra frente): as outras tabelas que ainda usam is_admin()"
 -- da 20261197000000 e da 20261199000000).
 --
--- O DEFEITO: as 14 políticas abaixo deixam passar quem o JWT diz que é admin
--- (`public.is_admin()`, que lê `app_metadata.role` do token e só depois olha o
--- banco). O JWT vale até expirar (~1 h): um admin rebaixado continuava, nesse
--- tempo, LENDO e ESCREVENDO direto nas tabelas pelo PostgREST — por cima das
--- RPCs que a 97, a 99 e a 200 já fecharam:
+-- O DEFEITO (1/2 — a porta do admin): as 14 políticas abaixo deixam passar quem
+-- o JWT diz que é admin (`public.is_admin()`, que lê `app_metadata.role` do
+-- token e só depois olha o banco). O JWT vale até expirar (~1 h): um admin
+-- rebaixado continuava, nesse tempo, LENDO e ESCREVENDO direto nas tabelas pelo
+-- PostgREST — por cima das RPCs que a 97, a 99 e a 200 já fecharam:
 --   pedido (escrita e leitura): marketplace_order_items e
 --     marketplace_order_history (uma política ALL cada), order_shipping_events
 --     (select, insert, update e delete) e marketplace_order_payment_history
@@ -17,17 +17,42 @@
 --   financeiro da loja (leitura): fin_contas, fin_categorias, fin_caixa_sessoes
 --     e fin_lancamentos.
 --
--- O QUE MUDA: SÓ a porta de admin de cada política. `(SELECT public.is_admin())`
--- vira `(SELECT public.rls_admin_atual())` (a mesma porta que a 97 pôs em
--- marketplace_orders e order_refunds: admin em auth.users E em profiles, lidos
--- agora; service_role e postgres como antes). `ALTER POLICY` só troca a
--- expressão — nome, comando e papéis de cada política ficam como estão. O ramo
--- do DONO fica igual byte a byte (`auth.uid()` / o EXISTS do pedido do dono /
--- a devolução do dono): o cliente continua vendo e (nas duas ALL) mexendo no
--- que é dele, e um terceiro continua sem ver nada. Em
+-- O DEFEITO (2/2 — o DONO ESCREVIA no que pagou): marketplace_order_items e
+-- marketplace_order_history tinham UMA política ALL (leitura E escrita) com o
+-- ramo "o pedido é meu". Medido no banco montado: o comprador autenticado,
+-- chamando direto pela RLS (sem RPC), em pedido PAGO ou com cobrança em curso,
+-- conseguia INSERIR item novo, ALTERAR produto/variação/quantidade/preço de
+-- item existente, APAGAR item, e INSERIR/ALTERAR/APAGAR evento do histórico
+-- (inclusive um evento que simula "pago"/"approved"). Nada no banco barra: o
+-- papel authenticated tem INSERT/UPDATE/DELETE de tabela (default do Supabase;
+-- nenhuma migration revoga), não há gatilho nem CHECK que impeça (só
+-- quantity > 0 e as FKs). Código: NENHUM fluxo do app escreve nelas como o
+-- usuário — as telas só LÊEM (itens embutidos em pedidos, histórico da ficha); a
+-- criação do pedido, a mudança de status, o cancelamento e a venda no balcão
+-- são RPCs SECURITY DEFINER (dono postgres, ignoram RLS); as edges usam a chave
+-- de serviço (ignoram RLS).
+--
+-- O QUE MUDA: (a) a porta de admin das 14 políticas passa de
+-- `(SELECT public.is_admin())` para `(SELECT public.rls_admin_atual())` (a mesma
+-- da 97: admin em auth.users E em profiles, lidos agora; service_role e
+-- postgres como antes); (b) as duas políticas ALL do pedido (itens e histórico)
+-- ficam SÓ do admin de agora (ALTER POLICY, mesmo nome e comando) e a LEITURA do
+-- dono/admin passa para duas políticas de SELECT novas, `order_items_select_policy`
+-- e `order_history_select_policy` (dono OU admin de agora, o ramo do dono igual
+-- byte a byte ao de antes). Resultado: o comprador continua LENDO o que é dele
+-- (itens do pedido, linha do tempo) e um terceiro continua sem ver nada, mas
+-- NÃO escreve mais nada nessas tabelas; o admin de agora lê e escreve como
+-- antes. Nas outras 12 políticas `ALTER POLICY` só troca a expressão: nome,
+-- comando e papéis ficam como estão, e o ramo do dono (`auth.uid()` / o EXISTS do
+-- pedido do dono / a devolução do dono) fica igual byte a byte. Em
 -- mkt_order_payment_history_select a expressão era `is_admin()` sem o
 -- `(SELECT ...)`; passa a `(SELECT public.rls_admin_atual())` — avaliada UMA vez
 -- por consulta, como as outras.
+--
+-- POR QUE POLÍTICA E NÃO REVOKE: o REVOKE de tabela apagaria o grant de COLUNA
+-- (attacl) e a ACL viva de cada loja não está no repositório (o baseline foi
+-- dumpado --no-privileges); a política decide igual em qualquer loja,
+-- independente da ACL. Nenhum GRANT/REVOKE aqui.
 --
 -- QUEM PASSA, DEPOIS: o conjunto só ENCOLHE (rls_admin_atual() ⊆ is_admin()
 -- para authenticated). Admin de verdade passa como antes; service_role e
@@ -59,12 +84,15 @@
 -- usam a chave de serviço (ignora RLS).
 --
 -- DADOS EXISTENTES: nenhuma linha é lida ou reescrita ao aplicar — só troca a
--- expressão de 14 políticas. O que um admin rebaixado JÁ escreveu ou leu antes
--- desta migration fica como está.
+-- expressão de 14 políticas e cria 2 de SELECT. O que um admin rebaixado, ou um
+-- comprador, JÁ escreveu direto nessas tabelas antes desta migration fica como
+-- está (a migration não desfaz nem audita: só barra o próximo clique).
 --
--- IDEMPOTÊNCIA: `ALTER POLICY` com a mesma expressão; o preflight aceita, para
--- cada política, a expressão de antes OU a que esta migration deixa — reaplicar
--- produz o mesmo estado (provado: duas reaplicações, impressão digital igual).
+-- IDEMPOTÊNCIA: `ALTER POLICY` com a mesma expressão e `DROP POLICY IF EXISTS` +
+-- `CREATE POLICY` das duas de SELECT novas (objetos desta própria migration); o
+-- preflight aceita, para cada política, a expressão de antes OU a que esta
+-- migration deixa — reaplicar produz o mesmo estado (provado: duas
+-- reaplicações, impressão digital igual).
 --
 -- PRÉ-VOO / B1_BASELINE_DIVERGENT: o `DO $preflight_20261202$`, ANTES de
 -- qualquer escrita, recusa se: (1) `is_admin_atual()` ou `rls_admin_atual()`
@@ -72,7 +100,8 @@
 -- aplique a 97 antes); (2) alguma das 14 políticas não existir, ou o comando, o
 -- papel, o caráter permissivo ou a expressão VIVA (USING e WITH CHECK,
 -- deparseados com `search_path = pg_catalog`, nomes sempre qualificados) não
--- for nem a vigente antes desta migration nem a que ela deixa. Nenhuma outra
+-- for nem a vigente antes desta migration nem a que ela deixa; (3) uma das duas
+-- políticas de SELECT novas já existir com outra expressão. Nenhuma outra
 -- migration da pilha (92, 96, 99, 200) redefine estas políticas — conferido
 -- por busca; só a baseline, 20261020, 20261080, 20261175 e 20261177 as criam.
 --
@@ -145,10 +174,10 @@ BEGIN
       FROM (VALUES
         ('public.marketplace_order_items', 'order_items_all_policy', '*', 'authenticated',
          E'(( SELECT public.is_admin() AS is_admin) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))', E'(( SELECT public.is_admin() AS is_admin) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))',
-         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))', E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))'),
+         E'( SELECT public.rls_admin_atual() AS rls_admin_atual)', E'( SELECT public.rls_admin_atual() AS rls_admin_atual)'),
         ('public.marketplace_order_history', 'order_history_all_policy', '*', 'authenticated',
          E'(( SELECT public.is_admin() AS is_admin) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))', E'(( SELECT public.is_admin() AS is_admin) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))',
-         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))', E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))'),
+         E'( SELECT public.rls_admin_atual() AS rls_admin_atual)', E'( SELECT public.rls_admin_atual() AS rls_admin_atual)'),
         ('public.order_shipping_events', 'order_shipping_events_select_policy', 'r', 'authenticated',
          E'(( SELECT public.is_admin() AS is_admin) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders o\n  WHERE ((o.id = order_shipping_events.order_id) AND (o.user_id = ( SELECT auth.uid() AS uid))))))', NULL::text,
          E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders o\n  WHERE ((o.id = order_shipping_events.order_id) AND (o.user_id = ( SELECT auth.uid() AS uid))))))', NULL::text),
@@ -207,37 +236,71 @@ BEGIN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: política % em % (comando %, papéis %, USING %, WITH CHECK %) não é a vigente antes desta migration nem a que ela deixa — revise antes de aplicar.', r.politica, r.tabela, COALESCE(v_cmd, '-'), COALESCE(v_roles, '-'), COALESCE(v_qual, 'nulo'), COALESCE(v_check, 'nulo');
     END IF;
   END LOOP;
+
+  -- (3) As duas políticas de SELECT novas: ausentes (a migration as cria) ou
+  --     exatamente as desta migration (reaplicação).
+  FOR r IN
+    SELECT *
+      FROM (VALUES
+        ('public.marketplace_order_items', 'order_items_select_policy', 'r', 'authenticated',
+         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_items.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))'),
+        ('public.marketplace_order_history', 'order_history_select_policy', 'r', 'authenticated',
+         E'(( SELECT public.rls_admin_atual() AS rls_admin_atual) OR (EXISTS ( SELECT 1\n   FROM public.marketplace_orders mo\n  WHERE ((mo.id = marketplace_order_history.order_id) AND (mo.user_id = ( SELECT auth.uid() AS uid))))))')
+      ) AS esperado(tabela, politica, comando, papeis, qual_desta)
+  LOOP
+    SELECT pg_get_expr(p.polqual, p.polrelid), pg_get_expr(p.polwithcheck, p.polrelid),
+           p.polcmd::text, p.polpermissive,
+           array_to_string(ARRAY(SELECT CASE WHEN x = 0 THEN 'public' ELSE x::regrole::text END
+                                   FROM unnest(p.polroles) AS x ORDER BY 1), ',')
+      INTO v_qual, v_check, v_cmd, v_perm, v_roles
+      FROM pg_policy p
+     WHERE p.polrelid = to_regclass(r.tabela)
+       AND p.polname = r.politica;
+
+    IF FOUND AND (
+         v_cmd IS DISTINCT FROM r.comando
+         OR v_perm IS DISTINCT FROM true
+         OR v_roles IS DISTINCT FROM r.papeis
+         OR v_qual IS DISTINCT FROM r.qual_desta
+         OR v_check IS NOT NULL
+       ) THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: política % em % já existe com outra definição (comando %, papéis %, USING %) — revise antes de aplicar.', r.politica, r.tabela, COALESCE(v_cmd, '-'), COALESCE(v_roles, '-'), COALESCE(v_qual, 'nulo');
+    END IF;
+  END LOOP;
   PERFORM set_config('search_path', v_caminho, true);
 END $preflight_20261202$;
 
--- Só a porta de admin troca; o ramo do dono, o comando, os papéis e o nome não mudam.
-ALTER POLICY order_items_all_policy ON public.marketplace_order_items
+-- A leitura do dono (e do admin de agora) de itens e histórico passa para duas
+-- políticas de SELECT; elas nascem ANTES de as ALL ficarem só do admin.
+DROP POLICY IF EXISTS order_items_select_policy ON public.marketplace_order_items;
+CREATE POLICY order_items_select_policy ON public.marketplace_order_items
+  FOR SELECT TO authenticated
   USING (((SELECT public.rls_admin_atual())
-    OR EXISTS (
-      SELECT 1 FROM public.marketplace_orders mo
-      WHERE mo.id = marketplace_order_items.order_id
-        AND mo.user_id = (SELECT auth.uid())
-    )))
-  WITH CHECK (((SELECT public.rls_admin_atual())
     OR EXISTS (
       SELECT 1 FROM public.marketplace_orders mo
       WHERE mo.id = marketplace_order_items.order_id
         AND mo.user_id = (SELECT auth.uid())
     )));
 
-ALTER POLICY order_history_all_policy ON public.marketplace_order_history
+DROP POLICY IF EXISTS order_history_select_policy ON public.marketplace_order_history;
+CREATE POLICY order_history_select_policy ON public.marketplace_order_history
+  FOR SELECT TO authenticated
   USING (((SELECT public.rls_admin_atual())
     OR EXISTS (
       SELECT 1 FROM public.marketplace_orders mo
       WHERE mo.id = marketplace_order_history.order_id
         AND mo.user_id = (SELECT auth.uid())
-    )))
-  WITH CHECK (((SELECT public.rls_admin_atual())
-    OR EXISTS (
-      SELECT 1 FROM public.marketplace_orders mo
-      WHERE mo.id = marketplace_order_history.order_id
-        AND mo.user_id = (SELECT auth.uid())
     )));
+
+-- Só a porta de admin troca; o ramo do dono, o comando, os papéis e o nome não mudam
+-- (nas duas ALL do pedido, a política passa a ser só do admin de agora).
+ALTER POLICY order_items_all_policy ON public.marketplace_order_items
+  USING ((SELECT public.rls_admin_atual()))
+  WITH CHECK ((SELECT public.rls_admin_atual()));
+
+ALTER POLICY order_history_all_policy ON public.marketplace_order_history
+  USING ((SELECT public.rls_admin_atual()))
+  WITH CHECK ((SELECT public.rls_admin_atual()));
 
 ALTER POLICY order_shipping_events_select_policy ON public.order_shipping_events
   USING (((SELECT public.rls_admin_atual())

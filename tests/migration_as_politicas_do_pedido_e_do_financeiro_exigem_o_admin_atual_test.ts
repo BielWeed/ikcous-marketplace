@@ -6,9 +6,15 @@
 // AS POLÍTICAS DE RLS DO PEDIDO, DA DEVOLUÇÃO E DO FINANCEIRO EXIGEM O ADMIN DE
 // AGORA — prova offline do par 20261202000000 + rollback (04/10/2026). O
 // COMPORTAMENTO (ex-admin com JWT velho lê 0 e não escreve nas 14 políticas;
-// controle na política antiga; admin, dono e terceiro; rollback e preflights) é
-// provado em tests/banco/admin-atual-rls-viva.cjs, no rpc-ci; aqui fica o que
-// se prova só lendo o texto, no `npm run test:unit`.
+// o comprador dono não escreve em itens/histórico; controle na política antiga;
+// admin, dono e terceiro; rollback e preflights) é provado em
+// tests/banco/admin-atual-rls-viva.cjs, no rpc-ci; aqui fica o que se prova só
+// lendo o texto, no `npm run test:unit`.
+//
+// A migration troca a porta de 14 políticas (ALTER POLICY) e, nas duas ALL do
+// pedido (itens e histórico), TIRA o ramo do dono e cria duas políticas de
+// SELECT (dono OU admin de agora) para a leitura: DROP/CREATE POLICY só dessas
+// duas, e o rollback só as apaga.
 //
 // Cada asserção está amarrada a um risco: política trocada que não é a vigente
 // apaga em silêncio a correção de outra migration; ramo do dono que muda
@@ -154,6 +160,30 @@ const POLITICAS = [
 const VELHO = "(SELECT public.is_admin())";
 const NOVO = "(SELECT public.rls_admin_atual())";
 
+// As duas políticas de SELECT que a migration cria (e o rollback apaga), e a
+// ALL de que cada uma herda o ramo do dono.
+const NOVAS = [
+  [
+    "marketplace_order_items",
+    "order_items_select_policy",
+    "order_items_all_policy",
+  ],
+  [
+    "marketplace_order_history",
+    "order_history_select_policy",
+    "order_history_all_policy",
+  ],
+];
+const NOMES_ALL = NOVAS.map(([, , a]) => a);
+
+/** Os `CREATE POLICY ...;` da migration, por nome (texto sem comentários). */
+const criadas = {};
+for (const m of semComentarios(migration).matchAll(
+  /CREATE POLICY (\w+) ON (public\.\w+)\n\s+FOR SELECT TO authenticated\n\s+(USING [\s\S]*?);\n/g,
+)) {
+  criadas[m[1]] = { tabela: m[2], using: m[3] };
+}
+
 /** Os `ALTER POLICY nome ON tabela ...;` de um arquivo (texto sem comentários). */
 const alteres = (sql) => {
   const out = {};
@@ -196,9 +226,32 @@ Deno.test("as 14 políticas (e só elas) são alteradas, nos dois arquivos, cada
   }
 });
 
-Deno.test("só `ALTER POLICY`: nenhum GRANT/REVOKE/DROP/CREATE/ALTER TABLE/função/gatilho no par", () => {
+Deno.test("só `ALTER POLICY` (+ DROP/CREATE POLICY só das 2 de SELECT novas): nenhum GRANT/REVOKE/ALTER TABLE/função/gatilho no par", () => {
+  // As únicas DROP/CREATE POLICY permitidas: as das duas políticas de SELECT.
+  assertEquals(Object.keys(criadas).sort(), NOVAS.map(([, n]) => n).sort());
+  for (const [tabela, nome] of NOVAS) {
+    assertEquals(criadas[nome].tabela, `public.${tabela}`);
+    const dropIf = new RegExp(
+      `^DROP POLICY IF EXISTS ${nome} ON public\\.${tabela};$`,
+      "m",
+    );
+    assert(dropIf.test(semComentarios(migration)), `${nome}: DROP IF EXISTS`);
+    const drop = new RegExp(
+      `^DROP POLICY ${nome} ON public\\.${tabela};$`,
+      "m",
+    );
+    assert(drop.test(semComentarios(rollback)), `${nome}: DROP no rollback`);
+  }
+  const totalDrop = (t) =>
+    (semComentarios(t).match(/\bDROP POLICY\b/g) || []).length;
+  const totalCreate = (t) =>
+    (semComentarios(t).match(/\bCREATE POLICY\b/g) || []).length;
+  assertEquals([totalDrop(migration), totalCreate(migration)], [2, 2]);
+  assertEquals([totalDrop(rollback), totalCreate(rollback)], [2, 0]);
   for (const sql of [migration, rollback]) {
-    const c = semComentarios(sql);
+    const c = semComentarios(sql)
+      .replace(/^DROP POLICY (IF EXISTS )?\w+ ON public\.\w+;\n/gm, "")
+      .replace(/^CREATE POLICY \w+ ON public\.\w+\n[\s\S]*?;\n/gm, "");
     // Fora do bloco DO do preflight, só ALTER POLICY.
     const fora = c.replace(
       /DO \$preflight[\s\S]*?END \$preflight[a-z_0-9]*\$;/,
@@ -239,6 +292,32 @@ Deno.test("cada política: SÓ a porta de admin troca — o resto da expressão 
   for (const [, nome] of POLITICAS) {
     const n = novos[nome].corpo;
     const v = velhos[nome].corpo;
+    if (NOMES_ALL.includes(nome)) {
+      // As duas ALL ficam SÓ do admin de agora (sem o dono) e o ramo do dono
+      // de antes é, byte a byte, o da política de SELECT criada no lugar.
+      assertEquals(
+        n,
+        `  USING (${NOVO})\n  WITH CHECK (${NOVO})`,
+        `${nome}: a ALL tem de ficar só do admin de agora`,
+      );
+      assert(!/auth\.uid\(\)/.test(n), `${nome}: a ALL ainda tem o dono`);
+      assert(/auth\.uid\(\)/.test(v), `${nome}: o rollback não devolve o dono`);
+      const nova = NOVAS.find(([, , a]) => a === nome)[1];
+      const [using, check] = v.split("\n  WITH CHECK ");
+      assertEquals(
+        using.split(VELHO).join(NOVO),
+        `  ${criadas[nova].using}`,
+        `${nome}: o ramo do dono de antes não é o da SELECT nova (USING)`,
+      );
+      assertEquals(
+        `  USING ${check}`.split(VELHO).join(NOVO),
+        `  ${criadas[nova].using}`,
+        `${nome}: o ramo do dono de antes não é o da SELECT nova (CHECK)`,
+      );
+      assert(!/is_admin\(\)/.test(criadas[nova].using), nova);
+      assert(!/rls_admin_atual/.test(v), `${nome}: rollback com a porta nova`);
+      continue;
+    }
     const portaVelha =
       nome === "mkt_order_payment_history_select" ? "public.is_admin()" : VELHO;
     assert(
@@ -356,6 +435,13 @@ Deno.test("as expressões 'desta' do preflight são as 'vigentes' com SÓ a port
   const D_VELHA = "( SELECT public.is_admin() AS is_admin)";
   const D_NOVA = "( SELECT public.rls_admin_atual() AS rls_admin_atual)";
   for (const [, , nome, , , qv, cv, qn, cn] of linhas) {
+    if (NOMES_ALL.includes(nome)) {
+      // Estado "desta": só o admin de agora, sem o dono (USING e CHECK).
+      assertEquals(qn, `E'${D_NOVA}'`, `${nome}: USING`);
+      assertEquals(cn, `E'${D_NOVA}'`, `${nome}: WITH CHECK`);
+      assert(qv === cv && /auth\.uid\(\)/.test(qv), `${nome}: vigente`);
+      continue;
+    }
     const troca = (s) =>
       s === "NULL::text"
         ? s
@@ -367,6 +453,40 @@ Deno.test("as expressões 'desta' do preflight são as 'vigentes' com SÓ a port
     // `is_admin()` some do lado novo; o lado velho sempre o tem.
     assert(qv !== "NULL::text" || cv !== "NULL::text");
     assert(!/is_admin\(\)/.test(qn + cn), `${nome}: lado novo com is_admin()`);
+  }
+  // As 2 de SELECT novas: o texto esperado no preflight (3) é o da ALL de antes
+  // com a porta trocada, e é o mesmo do preflight do rollback.
+  const bloco3 = (sql) =>
+    [
+      ...sql.matchAll(
+        /\('public\.(\w+)', '(\w+)', 'r', 'authenticated',\n\s+(E'[^']*')\)/g,
+      ),
+    ].filter(([, , n]) => NOVAS.some(([, x]) => x === n));
+  const dosDois = [bloco3(preflight), bloco3(rollback)];
+  for (const achadas of dosDois) assertEquals(achadas.length, 2);
+  for (const [tabela, nova, antiga] of NOVAS) {
+    const velhaLinha = linhas.find((l) => l[2] === antiga);
+    const esperado = velhaLinha[6].split(D_VELHA).join(D_NOVA);
+    for (const achadas of dosDois) {
+      const l = achadas.find(([, , n]) => n === nova);
+      assertEquals(l[1], tabela);
+      assertEquals(l[3], esperado, `${nova}: texto esperado no preflight`);
+    }
+  }
+});
+
+Deno.test("as 2 de SELECT nascem ANTES de as ALL ficarem só do admin (o dono nunca fica sem leitura)", () => {
+  const c = semComentarios(migration);
+  for (const [, nova, antiga] of NOVAS) {
+    const iCria = c.indexOf(`CREATE POLICY ${nova} ON`);
+    const iAlter = c.indexOf(`ALTER POLICY ${antiga} ON`);
+    assert(iCria > 0 && iAlter > iCria, `${nova} antes de ${antiga}`);
+  }
+  // Rollback: a ALL volta a ter o dono ANTES? Não importa a ordem dentro da
+  // transação; importa que as duas SELECT sejam apagadas (senão o dono leria
+  // por uma política que a migration criou).
+  for (const [, nova] of NOVAS) {
+    assertStringIncludes(rollback, `DROP POLICY ${nova} ON`);
   }
 });
 
@@ -389,12 +509,15 @@ Deno.test("os preflights vêm ANTES de qualquer escrita", () => {
     }
     // Todo ALTER POLICY vem depois do preflight.
     assert(sql.indexOf("ALTER POLICY", sql.indexOf("END $preflight")) > 0);
-    assertEquals(
-      semComentarios(sql.slice(0, sql.indexOf("END $preflight"))).includes(
-        "ALTER POLICY",
-      ),
-      false,
-    );
+    for (const escrita of ["ALTER POLICY", "CREATE POLICY", "DROP POLICY"]) {
+      assertEquals(
+        semComentarios(sql.slice(0, sql.indexOf("END $preflight"))).includes(
+          escrita,
+        ),
+        false,
+        escrita,
+      );
+    }
   }
 });
 
@@ -405,7 +528,13 @@ Deno.test("o cabeçalho declara o que acontece com os dados existentes, a ordem 
   );
   assertStringIncludes(migration, "IDEMPOTÊNCIA:");
   assertStringIncludes(migration, "ORDEM: depois da 20261197000000");
+  assertStringIncludes(migration, "ROLLBACK: este vem ANTES do da 97");
   assertStringIncludes(migration, "O ANON em mkt_order_payment_history_select");
+  assertStringIncludes(
+    migration,
+    "O DEFEITO (2/2 — o DONO ESCREVIA no que pagou)",
+  );
+  assertStringIncludes(rollback, "o comprador volta a");
 });
 
 Deno.test("a prova viva roda no rpc-ci, no job do dinheiro", () => {

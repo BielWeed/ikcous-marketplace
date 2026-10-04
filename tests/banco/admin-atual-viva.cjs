@@ -1355,6 +1355,25 @@ PROVAS.push({
         antes,
         "a recusa escreveu algo",
       );
+      // As funções que dependem das portas continuam inteiras: as portas
+      // seguem no ar e há dependentes vivos (achados por busca no corpo vivo,
+      // não por lista) — nenhuma ficou chamando função removida.
+      const vivas = await cliente.query(
+        `SELECT to_regprocedure('public.is_admin_atual()') IS NOT NULL AS atual,
+                to_regprocedure('public.rls_admin_atual()') IS NOT NULL AS rls,
+                (SELECT count(*)::int FROM pg_proc p
+                   JOIN pg_namespace n ON n.oid = p.pronamespace
+                  WHERE n.nspname = 'public' AND p.prosrc ~ '(is|rls)_admin_atual') AS dependentes`,
+      );
+      assert.equal(vivas.rows[0].atual, true);
+      assert.equal(vivas.rows[0].rls, true);
+      assert.ok(
+        vivas.rows[0].dependentes > 8,
+        `esperava dependentes além das 8 da 97, achei ${vivas.rows[0].dependentes}`,
+      );
+      console.log(
+        `    (6b) dependentes vivos de is_admin_atual/rls_admin_atual no corpo: ${vivas.rows[0].dependentes}`,
+      );
 
       // (2) Só a 99 no ar (200 e 202 desfeitas): ainda recusa, por função.
       await desfazer(0);
