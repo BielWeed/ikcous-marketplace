@@ -1654,12 +1654,29 @@ const NOME_1020 = "20261020000000_lojista_registra_pagamento_recebido.sql";
 // A 20261197000000 redefine registrar_pagamento_recebido DEPOIS da 95 (guarda
 // do admin ATUAL) — ver a composição no começo da seção (12).
 const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
+// A 20261198000000 redefine admin_devolucao_reemitir_reembolso DEPOIS da 97
+// (ordem global de travas); com ela no ar, o rollback-manual da 97 recusa
+// (B1_BASELINE_DIVERGENT — correto: nunca restaurar por baixo de uma
+// redefinição posterior). Para desfazer a 97 dentro da transação, desfaz-se
+// antes a 98, na ordem inversa da aplicação (98 → 97).
+const NOME_1198 = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
 
 async function a97EstaNoAr(c) {
   const r = await c.query(
     "SELECT to_regprocedure('public.is_admin_atual()') IS NOT NULL AS sim",
   );
   return r.rows[0].sim;
+}
+
+// Desfaz a 97 SÓ na transação aberta — antes, a 98 se estiver no ar.
+async function desfazer97NaTransacao(c) {
+  const r = await c.query(
+    "SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim",
+  );
+  if (r.rows[0].sim) {
+    await c.query(lerMigracao(`rollback-manual-${NOME_1198}`));
+  }
+  await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
 }
 
 function lerMigracao(nome) {
@@ -1756,7 +1773,7 @@ PROVAS.push({
         await c.query("ROLLBACK TO SAVEPOINT sobre_a_97");
         assert.deepEqual(await hashesVivos(c), vivoAntes);
         // Daqui em diante: a 95 isolada (a 97 desfeita SÓ nesta transação).
-        await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
+        await desfazer97NaTransacao(c);
         assert.deepEqual(
           await hashesVivos(c),
           novos,
@@ -2157,7 +2174,7 @@ PROVAS.push({
         );
         // Daqui em diante, a 95 ISOLADA: a 97 desfeita SÓ nesta transação (o
         // ROLLBACK do fim a devolve — conferido depois do finally).
-        await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
+        await desfazer97NaTransacao(c);
       }
 
       const posMigration = await perfilDasFuncoes(c);

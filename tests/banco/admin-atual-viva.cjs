@@ -199,6 +199,46 @@ async function catalogo(cliente, assinatura) {
 // As duas funções que a migration cria.
 const FUNCOES_NOVAS = ["public.is_admin_atual()", "public.rls_admin_atual()"];
 
+// COMPOSIÇÃO com a 20261198000000, que redefine admin_devolucao_reemitir_
+// reembolso DEPOIS desta (o corpo da 97 com a guarda intacta + a trava das
+// linhas de order_refunds antes do pedido). As provas (1)-(4) medem a guarda
+// no corpo VIVO — com a 98 no ar, é o dela. Já os passos que DESFAZEM ou
+// REAPLICAM a 97 medem a 97 ISOLADA: com a 98 no ar, o rollback da 97 recusa
+// (B1_BASELINE_DIVERGENT, o comportamento CORRETO — nunca restaurar por baixo
+// de uma redefinição posterior) e o preflight da 97 também. Então, DENTRO da
+// transação desses passos, o rollback-manual da 98 devolve primeiro o estado
+// "97 sem 98"; o ROLLBACK do fim devolve a 98 intacta. Sem a 98 no ar, não
+// faz nada.
+const NOME_98 = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
+const CAMINHO_ROLLBACK_98 = path.join(
+  __dirname,
+  "..",
+  "..",
+  "supabase",
+  "migrations",
+  `rollback-manual-${NOME_98}`,
+);
+// O corpo de admin_devolucao_reemitir_reembolso que a 97 deixa.
+const HASH_97_REEMITIR = "7a5ce4978a989e1bebb3d048d347c0c6";
+
+async function desfazer98NaTransacao(cliente) {
+  const r = await cliente.query(
+    "SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim",
+  );
+  if (!r.rows[0].sim) return;
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_98 é constante do próprio teste (path.join de literais).
+  await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8"));
+  const reemitir = await catalogo(
+    cliente,
+    "public.admin_devolucao_reemitir_reembolso(uuid,boolean)",
+  );
+  assert.equal(
+    reemitir.hash,
+    HASH_97_REEMITIR,
+    "sem a 98, o reemitir vivo é o da 97",
+  );
+}
+
 // As políticas de RLS financeira, deparseadas com search_path = pg_catalog
 // (nomes sempre qualificados) — a mesma forma que os preflights comparam.
 async function politicas(cliente) {
@@ -929,6 +969,7 @@ PROVAS.push({
     for (const quem of ["rebaixadoPerfil", "rebaixadoAuth", "rebaixadoAmbos"]) {
       await cliente.query("BEGIN");
       try {
+        await desfazer98NaTransacao(cliente);
         await cliente.query(rollback);
         await cliente.query(`SET LOCAL ROLE ${QUEM[quem].papel}`);
         await cliente.query(
@@ -953,6 +994,7 @@ PROVAS.push({
     // service_role: o mesmo resultado com a política nova e a antiga.
     await cliente.query("BEGIN");
     try {
+      await desfazer98NaTransacao(cliente);
       await cliente.query(rollback);
       await cliente.query("SET LOCAL ROLE service_role");
       const srAntigo = (await cliente.query(CONTAGEM)).rows[0];
@@ -982,9 +1024,10 @@ PROVAS.push({
   corpo: async (cliente) => {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_MIGRATION é constante do próprio teste (path.join de literais).
     const sql = fs.readFileSync(CAMINHO_MIGRATION, "utf8");
-    const antes = await estado(cliente);
     await cliente.query("BEGIN");
     try {
+      await desfazer98NaTransacao(cliente);
+      const antes = await estado(cliente);
       await cliente.query(sql);
       assert.deepEqual(
         await estado(cliente),
@@ -1032,6 +1075,7 @@ PROVAS.push({
     for (const [rotulo, divergir, regex] of divergencias) {
       await cliente.query("BEGIN");
       try {
+        await desfazer98NaTransacao(cliente);
         await cliente.query(rollback);
         await divergir();
         const antesDeAplicar = await estado(cliente);
@@ -1064,9 +1108,10 @@ PROVAS.push({
     const rollback = fs.readFileSync(CAMINHO_ROLLBACK, "utf8");
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_MIGRATION é constante do próprio teste (path.join de literais).
     const migration = fs.readFileSync(CAMINHO_MIGRATION, "utf8");
-    const depoisDaMigration = await estado(cliente);
     await cliente.query("BEGIN");
     try {
+      await desfazer98NaTransacao(cliente);
+      const depoisDaMigration = await estado(cliente);
       await cliente.query(rollback);
       for (const a of GUARDADAS) {
         const c = await catalogo(cliente, a);
@@ -1166,6 +1211,7 @@ PROVAS.push({
     for (const [rotulo, divergir] of divergencias) {
       await cliente.query("BEGIN");
       try {
+        await desfazer98NaTransacao(cliente);
         await divergir();
         const antesDoRollback = await estado(cliente);
         await cliente.query("SAVEPOINT reverter");

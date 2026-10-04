@@ -140,14 +140,6 @@ PROVAS.push({
         [id, email, meta],
       );
     }
-    // 20261198000000 (admin ATUAL): update_order_status_atomic exige o papel
-    // admin AGORA em auth.users E em profiles (contradição nega) — o admin
-    // de verdade tem os dois (o gatilho de profiles sincroniza o papel).
-    await cliente.query(
-      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
-       ON CONFLICT (id) DO UPDATE SET role = 'admin'`,
-      [U_ADMIN],
-    );
     await cliente.query("BEGIN");
     try {
       await cliente.query("SET LOCAL ROLE anon");
@@ -446,7 +438,7 @@ PROVAS.push({
     // de verdade tem os dois (o gatilho de profiles sincroniza o papel).
     await cliente.query(
       `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
-       ON CONFLICT (id) DO UPDATE SET role = 'admin'`,
+       ON CONFLICT (id) DO NOTHING`,
       [U_ADMIN],
     );
 
