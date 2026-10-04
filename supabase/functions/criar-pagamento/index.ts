@@ -113,6 +113,7 @@ import {
 import { lerDadosDoComprador } from "../_shared/dados-antifraude.ts";
 import { lerNomeNaFatura } from "../_shared/nome-na-fatura.ts";
 import { criarOrderDeCartao } from "../_shared/order-cartao-repeticao.ts";
+import { numeroDoPedido } from "../_shared/pedido.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
 // chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
@@ -237,8 +238,11 @@ export function pareceUuid(v: unknown): boolean {
 }
 
 export function descricaoDoPedido(orderId: string): string {
-  // Mesmo formato que o painel usa para falar de pedido com o lojista.
-  return `Pedido ${orderId.slice(0, 8)}`;
+  // F6 (revisão do lote B, 04/10/2026): o número que a lojista reconhece — os
+  // 6 ÚLTIMOS caracteres, em maiúsculas, o mesmo do painel, do PDV, do
+  // WhatsApp e do push do webhook (`numeroDoPedido`, _shared/pedido.ts). Só
+  // texto dos avisos à loja (push do admin); nunca vai ao Mercado Pago.
+  return `Pedido ${numeroDoPedido(orderId)}`;
 }
 
 export function donoConfere(

@@ -727,7 +727,16 @@ Deno.test("donoConfere: pedido de convidado passa sem sessão", () => {
 Deno.test("descricaoDoPedido não vaza o id inteiro", () => {
   const d = descricaoDoPedido(UUID);
   assertEquals(d.includes(UUID), false);
-  assertEquals(d.includes("3f2a1b8c"), true);
+});
+
+// F6 (revisão do lote B, 04/10/2026): o aviso que vai à LOJA fala do pedido
+// pelo número que o painel, o PDV, o WhatsApp e o cliente já usam — os 6
+// ÚLTIMOS caracteres, em maiúsculas (`numeroDoPedido` de _shared/pedido.ts).
+// Antes ia "Pedido 3f2a1b8c" (os 8 primeiros), que a lojista não acha em
+// lugar nenhum.
+Deno.test("descricaoDoPedido usa o número da casa: 6 últimos caracteres, em maiúsculas", () => {
+  assertEquals(descricaoDoPedido(UUID), "Pedido #4F5A6B");
+  assertEquals(descricaoDoPedido(UUID).includes("3f2a1b8c"), false);
 });
 
 // --- subDoToken: JWT usa base64url, não base64 puro -------------------
