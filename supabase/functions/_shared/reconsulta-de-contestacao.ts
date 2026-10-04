@@ -51,9 +51,12 @@
  * com `updated_at` mais antigo que N. A linha de estorno do APP
  * (`solicitado_por <> 'sistema'`) nunca entra — é do executor de estorno.
  *
- * O PRAZO N = 6 HORAS. O MP reenvia notificação sem 2xx em 15 min, 30 min e
- * 6 h, depois a cada 48/96 h
- * (https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/payment-notifications):
+ * O PRAZO N = 6 HORAS. O calendário de reenvio (15 min, 30 min, 6 h, depois
+ * 48 h e 96 h) vem da página do CHECKOUT PRO
+ * (https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/payment-notifications);
+ * a página de notificações da Orders API só diz "a cada 15 min, depois o
+ * intervalo se amplia", sem números. Adoto o calendário do Checkout Pro como
+ * referência:
  * 6 h é o ponto em que a janela rápida de reenvio já passou e a espera pelo
  * MP vira dias. Menos que isso reconsultaria casos que o próprio MP ainda vai
  * entregar; mais deixaria o saldo do lojista preso por um dia útil à toa. O
@@ -83,9 +86,14 @@
  *    (a RPC nunca recebe uma identidade que o app teria de inventar);
  *  - cobrança gravada sem order do MP / order 404 / order de outro pedido, sem
  *    vínculo;
- *  - caso ilegível, de outro id, sem decisão, ou que contradiz o pagamento;
- *  - decisão CONTRA a loja sem corroboração do pagamento contestado (dinheiro
- *    que sai é irreversível).
+ *  - caso ilegível, de outro id ou sem decisão legível;
+ *  - o MESMO `case_id` em mais de um pedido (ambíguo: conta TODOS os registros
+ *    `sistema` do case_id, de qualquer estado e idade — nem só o lote, nem só
+ *    as linhas elegíveis), sem consultar o MP;
+ *  - decisão CONTRA a loja no caminho do caso conhecido (dinheiro que sai é
+ *    irreversível e aqui não há `chargebacks[]` da order para corroborar);
+ *  - linha LEGADA (sem vínculo) ao lado de uma vinculada quando o caminho da
+ *    order não rodou: conserva e avisa, nunca gira em silêncio.
  * Reserva presa SEM aviso é exatamente o defeito que esta peça existe para fechar.
  *
  * TÓPICO DA NOTIFICAÇÃO: `topic_chargebacks_wh` traz o id do CASO em `data.id`
@@ -144,6 +152,38 @@ type LinhaPresa = { id: string; idContestacao: string | null; caseId: string | n
 
 function textoOuNulo(valor: unknown): string | null {
   return typeof valor === "string" && valor.length > 0 ? valor : null;
+}
+
+/**
+ * Os pedidos DISTINTOS cujas linhas do sistema carregam este `case_id`. É a
+ * regra única do vínculo: o tópico do webhook e o cron passam por aqui; mais de
+ * um pedido = o caso é ambíguo e NADA se adivinha (nem consulta, nem decisão).
+ */
+async function pedidosComOCaso(supabase: ClienteDaReconsulta, caseId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("order_refunds")
+    .select("order_id")
+    .eq("solicitado_por", "sistema")
+    .eq("mp_chargeback_case_id", caseId);
+  if (error) throw error;
+  return [
+    ...new Set(((data ?? []) as Array<{ order_id?: unknown }>).map((l) => String(l.order_id ?? "")).filter(Boolean)),
+  ];
+}
+
+/** O aviso de caso ambíguo (mais de um pedido com o mesmo case_id): um por pedido. */
+async function avisarCasoAmbiguo(
+  avisar: AvisarAdminUmaVez,
+  pedidos: string[],
+  rotulo: string,
+): Promise<void> {
+  for (const pedido of pedidos) {
+    try {
+      await avisar(`contestacao_indefinida:${pedido}:caso_em_mais_de_um_pedido`, avisoContestacaoParaConferir(pedido));
+    } catch (erro) {
+      console.error(`${rotulo}: aviso do caso em mais de um pedido falhou`, { pedido, erro });
+    }
+  }
 }
 
 function criarReconsultor(args: {
@@ -247,6 +287,14 @@ function criarReconsultor(args: {
       paid_at: (linhaDoPedido.paid_at as string | null) ?? null,
       status: String(linhaDoPedido.status),
     };
+    // O MESMO case_id em mais de um pedido: ambíguo. Antes de qualquer consulta
+    // ao MP, conserva e avisa (a regra do tópico, no mesmo miolo do cron).
+    for (const linha of vinculadas) {
+      if ((await pedidosComOCaso(supabase, String(linha.caseId))).length > 1) {
+        console.error(`${rotulo}: o mesmo case_id está ligado a mais de um pedido — nada consultado nem decidido`, { orderId });
+        return await conservar("caso_em_mais_de_um_pedido");
+      }
+    }
     const consultarCaso = async (caseId: string) =>
       consultarContestacao({ token, caseId, vendedorId: await obterVendedor(), fetchImpl });
 
@@ -278,12 +326,15 @@ function criarReconsultor(args: {
     }
     const statusCru = String(order?.status ?? "");
     const motivoDaOrder = motivoSemOrder ??
-      `order_${statusCru.toLowerCase().replace(/[^a-z_]/g, "_").slice(0, 30)}`;
+      (statusCru === STATUS_DA_CONTESTACAO
+        ? "order_sem_chargebacks_legivel"
+        : `order_${statusCru.toLowerCase().replace(/[^a-z_]/g, "_").slice(0, 30)}`);
 
     let entregues = 0;
     let emAberto = 0;
     let conservadas = 0;
     let cbkCobertos: string[] = [];
+    let caminhoDaOrderRodou = false;
 
     // Caminho 1: pela ORDER, quando ela ainda diz `charged_back` (o MESMO
     // gatilho do webhook, status CRU). Se a lista de casos não é legível e a
@@ -292,6 +343,7 @@ function criarReconsultor(args: {
     if (order && statusCru === STATUS_DA_CONTESTACAO) {
       const leitura = lerContestacoesDaOrder(order);
       if (leitura.ok || vinculadas.length === 0) {
+        caminhoDaOrderRodou = true;
         const r = await registrarContestacao({
           supabase,
           orderId,
@@ -330,10 +382,14 @@ function criarReconsultor(args: {
       else conservadas++;
     }
 
-    // Linha SEM vínculo que nada acima cobriu: não há com o que consultar com
-    // segurança. Só conserva (a linha não some em silêncio).
-    if (semVinculo > 0 && cbkCobertos.length === 0 && !(order && statusCru === STATUS_DA_CONTESTACAO)) {
-      return await conservar(motivoDaOrder);
+    // Linha SEM vínculo que o caminho da order não cobriu (order fora de
+    // `charged_back`, 404, ou `charged_back` sem lista legível enquanto OUTRA
+    // linha do mesmo pedido tem vínculo): não há com o que consultar com
+    // segurança. Conserva e AVISA — a linha legada nunca gira em silêncio nem
+    // conta como "em aberto". Vale também ao lado de uma linha vinculada.
+    if (semVinculo > 0 && !caminhoDaOrderRodou) {
+      await conservar(motivoDaOrder); // avisa uma vez e gira todas as linhas do pedido
+      return entregues > 0 ? "entregue" : "conservada";
     }
 
     await girar(ids);
@@ -441,20 +497,13 @@ export async function recuperarContestacaoPeloCaso(args: {
   rotulo?: string;
 }): Promise<DesfechoDaReconsulta | "sem_vinculo" | "ambiguo"> {
   const rotulo = args.rotulo ?? "webhook-mercadopago";
-  const { data, error } = await args.supabase
-    .from("order_refunds")
-    .select("order_id")
-    .eq("solicitado_por", "sistema")
-    .eq("mp_chargeback_case_id", args.caseId);
-  if (error) throw error;
-  const pedidos = [
-    ...new Set(((data ?? []) as Array<{ order_id?: unknown }>).map((l) => String(l.order_id ?? "")).filter(Boolean)),
-  ];
+  const pedidos = await pedidosComOCaso(args.supabase, args.caseId);
   if (pedidos.length === 0) return "sem_vinculo";
   if (pedidos.length > 1) {
     console.error(`${rotulo}: o mesmo case_id está ligado a mais de um pedido — nada recuperado`, {
-      caseId: args.caseId,
+      pedidos: pedidos.length,
     });
+    await avisarCasoAmbiguo(args.avisar, pedidos, rotulo);
     return "ambiguo";
   }
   const { reconsultarUm } = criarReconsultor({

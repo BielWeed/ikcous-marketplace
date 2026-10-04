@@ -65,7 +65,8 @@ function linhaVinculada(id = "L1", extra: Record<string, unknown> = {}) {
 
 /** A order do MP DEPOIS de a disputa sair de `charged_back` (hipótese, não fato documentado). */
 function orderProcessada(over: Record<string, unknown> = {}) {
-  const { status = "processed", detalhe = "accredited", pagamentos = ["PAY1"], chargebacks = [] } = over;
+  // Forma da doc (get-order): transactions.payments[].id = PAY01... (Orders API).
+  const { status = "processed", detalhe = "accredited", pagamentos = [PAGAMENTO_NA_ORDER], chargebacks = [] } = over;
   return {
     id: ORDER_MP,
     status,
@@ -79,7 +80,13 @@ function orderProcessada(over: Record<string, unknown> = {}) {
   };
 }
 
-const caso = (id: string, coverage: boolean | null, pagamentos: unknown[] = ["PAY1"], amount = 149.9) => ({
+// Forma da doc (chargebacks/management): `payments` do CASO traz o id numérico da
+// API v1 (exemplo oficial: [86439942806]); o da ORDER é PAY01... — NUNCA iguais.
+// Fontes: https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/chargebacks/management
+//         https://www.mercadopago.com.br/developers/pt/reference/online-payments/checkout-api/get-order/get
+const PAGAMENTO_NA_ORDER = "PAY01J67CQQH5904WDBVZEM4JMEP3";
+const PAGAMENTO_NO_CASO = 86439942806;
+const caso = (id: string, coverage: boolean | null, pagamentos: unknown[] = [PAGAMENTO_NO_CASO], amount = 149.9) => ({
   id,
   amount,
   currency: "BRL",
@@ -362,17 +369,17 @@ Deno.test("(a) order ainda em 'charged_back' mas SEM o CBK na lista: o caso vinc
 
 // ── (b) coverage_applied false: não libera; segue a regra de perda ────────────
 
-Deno.test("(b) o mesmo caso com coverage_applied FALSE e o pagamento corroborando ('settled'): NÃO libera — a decisão 'contra_a_loja' vai ao banco (regra de perda)", async () => {
+Deno.test("(b) coverage_applied FALSE (fixtures da doc: caso.payments numérico v1, order PAY01...) -> CONSERVA e avisa, mesmo com o pagamento da order 'settled': nada de comparar espaços de id, dinheiro que sai é irreversível; 0 RPC", async () => {
   const b = bancoVivo([linhaVinculada()]);
   const m = mp({
     order: orderProcessada({ detalhe: "settled" }),
-    casos: { CASE1: { status: 200, corpo: caso("CASE1", false, ["PAY1"], 100) } },
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", false, [PAGAMENTO_NO_CASO], 100) } },
   });
-  await cron(b, m);
-  const args = doLedger(b);
-  assertEquals(args.length, 1);
-  assertEquals([args[0].p_decisao, args[0].p_valor_caso], ["contra_a_loja", 100]);
-  assert(b.linhas[0].status !== "liberado", "contra a loja nunca devolve o saldo ao vendedor");
+  const r = await cron(b, m);
+  assertEquals(doLedger(b), []);
+  assertEquals(b.linhas[0].status, "em_processamento");
+  assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:CBK1`]);
+  assertEquals([r.resumo.conservadas, r.resumo.reconsultadas], [1, 0]);
 });
 
 Deno.test("(b) coverage_applied FALSE SEM corroboração do pagamento: CONSERVA e avisa — não é resolução, dinheiro que sai é irreversível; nenhuma RPC", async () => {
@@ -405,14 +412,25 @@ Deno.test("caso vinculado ainda EM ANÁLISE no MP: nenhuma RPC, a reserva segue,
 
 // ── (d) vínculo exato: caso de outro pagamento / outro id ─────────────────────
 
-Deno.test("(d) o caso devolvido aponta para um pagamento que NÃO é deste pedido: nada é liberado, o motivo é registrado e o admin é avisado", async () => {
-  const b = bancoVivo([linhaVinculada()]);
-  const m = mp({ order: orderProcessada({ pagamentos: ["PAY1"] }), casos: { CASE1: { status: 200, corpo: caso("CASE1", true, ["PAY999"]) } } });
+Deno.test("(d) o MESMO case_id em DOIS pedidos, pelo CRON: ambíguo — conserva e avisa os dois, ZERO GET de caso, ZERO RPC, nada liberado (a mesma regra do tópico)", async () => {
+  const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2" })]);
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
   const r = await cron(b, m);
-  assertEquals(doLedger(b), []);
-  assertEquals(b.linhas[0].status, "em_processamento");
-  assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:CBK1`]);
-  assert(r.erros.some((e) => e.includes("não é deste pedido")), r.erros.join("\n"));
+  assertEquals([m.casosLidos(), doLedger(b)], [0, []], "nenhuma consulta de caso, nenhuma RPC");
+  assertEquals(b.linhas.map((l) => l.status), ["em_processamento", "em_processamento"]);
+  assertEquals(r.avisos.sort(), [`contestacao_indefinida:${OUTRO_PEDIDO}:caso_em_mais_de_um_pedido`, `contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`].sort());
+  assertEquals([r.resumo.vistas, r.resumo.conservadas, r.resumo.reconsultadas], [2, 2, 0]);
+});
+
+Deno.test("(d) o case_id é de UM pedido só (o outro pedido tem OUTRO case_id): o cron resolve normalmente — a contagem não bloqueia o caso legítimo", async () => {
+  const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", mp_chargeback_case_id: "CASE2" })]);
+  const m = mp({
+    orderStatus: 404,
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", true) }, CASE2: { status: 200, corpo: caso("CASE2", null) } },
+  });
+  const r = await cron(b, m);
+  assertEquals(b.linhas.map((l) => l.status), ["liberado", "em_processamento"]);
+  assertEquals([r.resumo.reconsultadas, r.resumo.emAberto, r.avisos], [1, 1, []]);
 });
 
 Deno.test("(d) o MP devolve OUTRO caso (id diferente do vínculo): nada é liberado nem concluído, admin avisado", async () => {
@@ -422,14 +440,6 @@ Deno.test("(d) o MP devolve OUTRO caso (id diferente do vínculo): nada é liber
   assertEquals(doLedger(b), []);
   assertEquals(r.avisos.length, 1);
   assertEquals(b.linhas[0].status, "em_processamento");
-});
-
-Deno.test("(d) o caso diz 'a favor' mas o PAGAMENTO contestado diz 'settled' (contra): conflito — conserva e avisa, nada liberado", async () => {
-  const b = bancoVivo([linhaVinculada()]);
-  const m = mp({ order: orderProcessada({ detalhe: "settled" }), casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
-  const r = await cron(b, m);
-  assertEquals(doLedger(b), []);
-  assertEquals(r.avisos.length, 1);
 });
 
 Deno.test("NUNCA se adivinha o vínculo: linha SEM case_id cuja order saiu de 'charged_back' só CONSERVA e avisa (nenhum GET de caso, nenhuma RPC)", async () => {
@@ -752,4 +762,86 @@ Deno.test("PRIVACIDADE na falha TEMPORÁRIA do /users/me (503, 429, timeout): ne
     assertEquals(tudo.includes(TOKEN_DA_LOJA), false, `${nome}: token no log/resposta`);
     assertEquals(tudo.includes(VENDEDOR), false, `${nome}: seller ID no log/resposta`);
   }
+});
+
+// ── B2: ambiguidade olha TODOS os registros 'sistema' do case_id ──────────────
+// Não só o lote de 50, nem só as linhas elegíveis: o outro pedido pode estar fora
+// do lote (jovem demais), ou já resolvido. Cron e tópico: o MESMO miolo.
+
+async function topicoAmbiguo(b: ReturnType<typeof bancoVivo>) {
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const w = await webhook(b, m);
+  return { w, m, chaves: b.rpcs.filter((x) => x.nome === "reservar_aviso_ao_lojista").map((x) => x.args.p_chave as string).sort() };
+}
+
+for (const [rotulo, outra] of [
+  ["o outro pedido está FORA do lote (linha jovem, não elegível)", { updated_at: ha(0.1) }],
+  ["o outro pedido já está RESOLVIDO (linha liberada)", { status: "liberado" }],
+] as Array<[string, Record<string, unknown>]>) {
+  Deno.test(`B2 cron: ${rotulo} -> o case_id em 2 pedidos é ambíguo: 0 GET de caso, 0 RPC, aviso, a linha elegível NÃO é liberada`, async () => {
+    const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", ...outra })]);
+    const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+    const r = await cron(b, m);
+    assertEquals([m.casosLidos(), doLedger(b)], [0, []]);
+    assertEquals(b.linhas[0].status, "em_processamento");
+    assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`]);
+    assertEquals([r.resumo.vistas, r.resumo.conservadas, r.resumo.reconsultadas], [1, 1, 0]);
+  });
+
+  Deno.test(`B2 tópico: ${rotulo} -> ambíguo: 200, 0 GET ao MP, 0 RPC de decisão, aviso para cada pedido`, async () => {
+    const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", ...outra })]);
+    const { w, m, chaves } = await topicoAmbiguo(b);
+    assertEquals([w.status, w.corpo.desfecho, m.chamadas, doLedger(b)], [200, "ambiguo", [], []]);
+    assertEquals(chaves, [`contestacao_indefinida:${OUTRO_PEDIDO}:caso_em_mais_de_um_pedido`, `contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`].sort());
+    assertEquals(b.linhas[0].status, "em_processamento");
+  });
+}
+
+Deno.test("B2: mais de 50 linhas do sistema no lote e o outro pedido do mesmo case_id fora dele -> a contagem não depende do lote (ambíguo)", async () => {
+  const linhas = [linhaVinculada("L1", { updated_at: ha(20) })];
+  for (let i = 0; i < 60; i++) {
+    linhas.push(linhaVinculada(`X${i}`, { order_id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, mp_chargeback_id: `CBX${i}`, mp_chargeback_case_id: `CASEX${i}`, updated_at: ha(8 + i / 100) }));
+  }
+  // o outro pedido do CASE1 está fora do lote de 50 (o mais novo dos elegíveis perde a vaga)
+  linhas.push(linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", updated_at: ha(6.5) }));
+  const b = bancoVivo(linhas);
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const r = await cron(b, m);
+  assertEquals(doLedger(b).filter((x) => x.p_case_id === "CASE1"), []);
+  assert(!m.chamadas.some((u) => u.endsWith("/chargebacks/CASE1")), "CASE1 não foi consultado");
+  assertEquals(r.avisos.includes(`contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`), true);
+});
+
+// ── O1: a linha legada sem vínculo ao lado de uma vinculada ────────────────────
+
+Deno.test("O1: linha LEGADA (sem vínculo) + linha vinculada no MESMO pedido, order 'charged_back' com chargebacks[] ilegível -> a vinculada resolve pelo caso e a legada CONSERVA e AVISA (não gira em silêncio, não conta como emAberto)", async () => {
+  const b = bancoVivo([
+    linhaVinculada("L1"),
+    linhaVinculada("L2", { mp_chargeback_id: null, mp_chargeback_case_id: null }),
+  ]);
+  // order em charged_back, mas sem chargebacks[] legível (lista vazia)
+  const m = mp({
+    order: orderProcessada({ status: "charged_back", detalhe: "in_process", chargebacks: [] }),
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", null) } },
+  });
+  const r = await cron(b, m);
+  assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:order_sem_chargebacks_legivel`]);
+  assertEquals([r.resumo.emAberto, r.resumo.conservadas], [0, 1], "não é 'em aberto' em silêncio");
+  assertEquals(doLedger(b), [], "o caso vinculado ainda está em análise: nada a entregar");
+  assertEquals(b.linhas.map((l) => l.status), ["em_processamento", "em_processamento"]);
+});
+
+Deno.test("O1: o mesmo, com o caso vinculado JÁ a favor da loja -> libera a vinculada E avisa pela legada (a decisão entregue vale; o desfecho é 'entregue')", async () => {
+  const b = bancoVivo([
+    linhaVinculada("L1"),
+    linhaVinculada("L2", { mp_chargeback_id: null, mp_chargeback_case_id: null }),
+  ]);
+  const m = mp({
+    order: orderProcessada({ status: "charged_back", detalhe: "reimbursed", chargebacks: [] }),
+    casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } },
+  });
+  const r = await cron(b, m);
+  assertEquals(b.linhas.map((l) => l.status), ["liberado", "em_processamento"]);
+  assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:order_sem_chargebacks_legivel`]);
+  assertEquals([r.resumo.reconsultadas, r.resumo.emAberto], [1, 0]);
 });

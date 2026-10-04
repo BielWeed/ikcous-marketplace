@@ -565,14 +565,16 @@ export async function registrarContestacao(args: {
  * pelo id EXATO (`GET /v1/chargebacks/{case_id}`, id devolvido conferido por
  * `consultarContestacao`), nunca de um palpite por valor, tempo ou pagamento.
  *
- * O que NÃO se relaxa (a régua do Lote A): a corroboração pelo pagamento.
- *  - O pagamento contestado vem do PRÓPRIO caso (`payments[]`, a identidade
- *    exata devolvida pelo MP) — só quando é UM e a order o lista. Se o
- *    `status_detail` dele diz outra coisa que o caso: CONSERVA e avisa.
- *  - Sem corroboração (order ausente, pagamento não listado, status sem
- *    leitura): 'a_favor_da_loja' LIBERA a reserva (o sentido que devolve saldo
- *    e que a RPC grava como decisão final, sem reabrir); 'contra_a_loja' NÃO
- *    conclui — dinheiro que sai, irreversível — CONSERVA e avisa.
+ * VÍNCULO: o `case_id` gravado na linha (veio da order autenticada do próprio
+ * pedido) e o `id` EXATO devolvido pelo GET do caso; a RPC confere
+ * `vinculo_divergente`. Não se compara `caso.payments` (id numérico da API v1)
+ * com `order.transactions.payments[].id` (PAY01...): são espaços de id diferentes
+ * — não se compara, não se converte, não se adivinha a correspondência.
+ *  - 'a_favor_da_loja' LIBERA a reserva (o sentido que devolve saldo e que a RPC
+ *    grava como decisão final, sem reabrir).
+ *  - 'contra_a_loja' NUNCA conclui por este caminho — dinheiro que sai,
+ *    irreversível, sem corroboração — CONSERVA e avisa (quem conclui é o caminho
+ *    da order, com `chargebacks[]` legível e o pagamento da MESMA order).
  *  - Caso ainda em análise: nada a entregar (a reserva já existe); só gira.
  * Falha transitória do MP LANÇA (o chamador repete); o resto conserva e avisa
  * UMA vez. Quem decide o dinheiro continua sendo a RPC, sob a trava do pedido.
@@ -615,40 +617,19 @@ export async function registrarContestacaoConhecida(args: {
   const peloCaso = decisaoDoCaso(consulta.caso);
   if (peloCaso === null) return await conservar("o caso não traz decisão legível (coverage_applied)");
 
-  // O pagamento contestado, pela identidade que o PRÓPRIO caso devolve.
-  let peloPagamento: DecisaoDaContestacao | null = null;
-  const idsDosPagamentos = (Array.isArray(consulta.caso.payments) ? consulta.caso.payments : [])
-    .map((p) => comoId(p))
-    .filter((p): p is string => p !== null);
-  const transacoes = corpoDaOrder?.transactions;
-  if (idsDosPagamentos.length === 1 && transacoes && typeof transacoes === "object" && !Array.isArray(transacoes)) {
-    const lista = (transacoes as Record<string, unknown>).payments;
-    const pagamento = (Array.isArray(lista) ? lista : []).find(
-      (p) => p && typeof p === "object" && comoId((p as Record<string, unknown>).id) === idsDosPagamentos[0],
-    ) as Record<string, unknown> | undefined;
-    if (pagamento && typeof pagamento.status_detail === "string") {
-      peloPagamento = decisaoDoStatusDoPagamento(pagamento.status_detail);
-    }
-  }
-  // VÍNCULO EXATO caso <-> pagamento <-> pedido: com a order à mão, TODO
-  // pagamento que o caso aponta tem de ser um pagamento DESTE pedido. Caso de
-  // outro pagamento: não libera nada, só registra e avisa.
-  if (transacoes && typeof transacoes === "object" && !Array.isArray(transacoes) && idsDosPagamentos.length > 0) {
-    const lista = (transacoes as Record<string, unknown>).payments;
-    const doPedido = (Array.isArray(lista) ? lista : [])
-      .map((p) => (p && typeof p === "object" ? comoId((p as Record<string, unknown>).id) : null))
-      .filter((p): p is string => p !== null);
-    if (!idsDosPagamentos.every((id) => doPedido.includes(id))) {
-      return await conservar("o caso aponta para um pagamento que não é deste pedido — nada liberado", {
-        pagamentosDoCaso: idsDosPagamentos,
-      });
-    }
-  }
-  if (peloPagamento !== null && peloPagamento !== peloCaso) {
-    return await conservar("o caso e o pagamento contestado não dizem a mesma coisa", { peloCaso, peloPagamento });
-  }
+  // O VÍNCULO deste caso com ESTE pedido é o `case_id` gravado na linha (veio da
+  // order autenticada do próprio pedido) com o `id` devolvido EXATO pelo GET do
+  // caso (`consultarContestacao` confere); a RPC ainda cobra `vinculo_divergente`.
+  // NÃO se compara `caso.payments` com `order.transactions.payments[].id`: pela
+  // doc do MP o primeiro é o id numérico da API v1 (ex.: 86439942806) e o segundo
+  // é PAY01..., espaços de id diferentes — nem se compara, nem se converte, nem
+  // se adivinha a correspondência. Comparar os dois conservava todo caso com a
+  // order presente e avisava o admin com um motivo falso.
+  // Sem corroboração por pagamento, só o que DEVOLVE saldo se entrega: 'a favor'
+  // libera a reserva (a RPC grava a decisão final e a lápide, sem reabrir);
+  // 'contra' (dinheiro que sai, irreversível) CONSERVA e avisa.
   if (peloCaso === "em_analise") return "em_aberto";
-  if (peloCaso === "contra_a_loja" && peloPagamento === null) {
+  if (peloCaso === "contra_a_loja") {
     return await conservar("decisão contra a loja sem corroboração do pagamento contestado — nada concluído", { peloCaso });
   }
 
