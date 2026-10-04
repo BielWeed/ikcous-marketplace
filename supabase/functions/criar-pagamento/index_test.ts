@@ -12396,3 +12396,125 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (concorrência): o webhook entregue 3x DEPOIS 
   assertEquals(ef.pushes, [PUSH_PAGO_CI]);
   assertEquals(ef.comprovantes, [UUID]);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDIÇÃO LOCAL (T0-LOCAL, 04/10/2026, sobre a prévia cccee4b8) — o que
+// acontece HOJE com um cartão aprovado já no POST de criação. Estes testes
+// DOCUMENTAM o comportamento atual (a criação nunca confirma; só o webhook,
+// atrasado, ou o cron confirmam) e NÃO mudam com o desenho "a criação confirma
+// pela prova do GET": quem muda é o (12), acima. Banco COM ESTADO + o handler
+// do webhook DE VERDADE; nada sai para a rede.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** MP falso: o POST de criação devolve o cartão APROVADO (objeto da doc); o
+ * GET por id (que só o webhook faz) devolve a mesma order. */
+function mpDaCriacaoAprovadaT0() {
+  const chamadas: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    chamadas.push(`${verbo} ${url}`);
+    if (verbo === "POST" && url.endsWith("/v1/orders")) {
+      return new Response(JSON.stringify(cartaoPagoCI()), { status: 201 });
+    }
+    if (verbo === "GET" && url.endsWith(`/v1/orders/${VAGA_CI}`)) {
+      return new Response(JSON.stringify(cartaoPagoCI()), { status: 200 });
+    }
+    throw new Error(`fetch inesperado na medição T0: ${verbo} ${url}`);
+  };
+  return { fn, chamadas };
+}
+
+async function criarCartaoAprovadoT0(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown>,
+) {
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: db as never,
+    fetchImpl: mp.fn as typeof fetch,
+    credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS,
+    alertarAdminCartaoOrfao: async () => {},
+    ...deps,
+  });
+  return { status: resposta.status, corpo: await resposta.json() };
+}
+
+Deno.test("T0-LOCAL (b): POST de cartão aprovado com webhook AUSENTE -> responde 'pago' à tela, mas o pedido segue 'aguardando': ZERO confirmar_pagamento, ZERO efeito, e a criação não faz GET", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpDaCriacaoAprovadaT0();
+  const ef = efeitosCI();
+  const r = await criarCartaoAprovadoT0(db, mp, ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.statusPagamento, "pago");
+  assertEquals(r.corpo.paymentId, VAGA_CI);
+  // A vaga foi gravada com a order, e só isso.
+  assertEquals(db.linha.gateway_payment_id, VAGA_CI);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  // Uma ÚNICA chamada ao MP: o POST. Nenhum GET por id.
+  assertEquals(mp.chamadas, ["POST https://api.mercadopago.com/v1/orders"]);
+});
+
+Deno.test("T0-LOCAL (d): o mesmo pedido, WEBHOOK ATRASADO — só quando o webhook chega o pedido vira 'pago' (RPC 1x, push 1x, comprovante 1x); entregas repetidas dão 'ja_pago'", async () => {
+  const db = bancoContandoEscritas(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpDaCriacaoAprovadaT0();
+  const ef = efeitosCI();
+  const criacao = await criarCartaoAprovadoT0(db.contado, mp, ef.deps);
+  assertEquals(criacao.corpo.statusPagamento, "pago");
+
+  // Passa o tempo, ninguém confirma: o pedido espera.
+  assertEquals(db.db.linha.payment_status, "aguardando");
+  assertEquals(confirmacoesCI(db.db), []);
+
+  // O webhook atrasado chega.
+  const w = await entregarWebhookCI(db.contado, mp, ef.deps);
+  assertEquals(w.status, 200, JSON.stringify(w.corpo));
+  assertEquals(w.corpo, { ok: true, resultado: "pago" });
+  assertEquals(db.db.linha.payment_status, "pago");
+  assertEquals(confirmacoesCI(db.db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" },
+  ]);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+
+  // O MP reenvia a notificação: nada novo.
+  const reenvio = await entregarWebhookCI(db.contado, mp, ef.deps);
+  assertEquals(reenvio.corpo, { ok: true, resultado: "ja_pago" });
+  assertEquals(ef.pushes.length, 1);
+  assertEquals(ef.comprovantes.length, 1);
+  // A única escrita direta em marketplace_orders foi a da CRIAÇÃO (reserva +
+  // gravação da vaga); a confirmação é só a RPC.
+  assertEquals(db.escritas.every((v) => !("payment_status" in v)), true);
+});
+
+Deno.test("T0-LOCAL (d, cron): o agendamento de reconciliar-pagamentos é de 10 em 10 minutos e é o ÚNICO agendamento dele nas migrations; a fila alcança o cartão 'aguardando'+'pending' com a vaga gravada", async () => {
+  const dir = new URL("../../migrations/", import.meta.url);
+  const migrations: Array<{ nome: string; texto: string }> = [];
+  for await (const e of Deno.readDir(dir)) {
+    if (e.isFile && e.name.endsWith(".sql") && !e.name.startsWith("rollback")) {
+      migrations.push({ nome: e.name, texto: await Deno.readTextFile(new URL(e.name, dir)) });
+    }
+  }
+  // `cron.schedule(` seguido do nome do job, em qualquer migration.
+  const agendadoras = migrations.filter((m) => /cron\.schedule\(\s*'reconciliar-pagamentos'/.test(m.texto));
+  assertEquals(agendadoras.map((m) => m.nome), ["20260808000100_reconciliacao.sql"]);
+  assertEquals(/cron\.schedule\(\s*'reconciliar-pagamentos',\s*'\*\/10 \* \* \* \*'/.test(agendadoras[0].texto), true);
+
+  // A última definição de `pagamentos_a_reconciliar` (a de 20261190...).
+  const definidoras = migrations
+    .filter((m) => /CREATE OR REPLACE FUNCTION public\.pagamentos_a_reconciliar\(\)/.test(m.texto))
+    .map((m) => m.nome)
+    .sort();
+  assertEquals(definidoras.at(-1), "20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql");
+  const texto = migrations.find((m) => m.nome === definidoras.at(-1))!.texto;
+  const corpo = texto.slice(texto.lastIndexOf("FUNCTION public.pagamentos_a_reconciliar()"));
+  assertEquals(corpo.includes("o.gateway_payment_id IS NOT NULL"), true);
+  assertEquals(corpo.includes("o.paid_at IS NULL"), true);
+  assertEquals(corpo.includes("o.payment_status = 'aguardando' AND o.status = 'pending'"), true);
+  assertEquals(corpo.includes("o.metodo_online IN ('credito', 'debito')"), true);
+  // Nenhuma idade mínima: o pedido aprovado entra na fila no ciclo seguinte.
+  assertEquals(/created_at\s*<|paid_at\s*<|interval '[0-9]+ minutes?'/i.test(corpo), false);
+  assertEquals(corpo.includes("LIMIT 100"), true);
+});
