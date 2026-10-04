@@ -3062,6 +3062,22 @@ async function handler(
       "webhook-mercadopago: confirmar_pagamento devolveu resultado inesperado — dinheiro pode ter entrado sem registro",
       { orderId, paymentId: idParaRpc, resultado },
     );
+  } else if (resultado === "ignorado" && statusMapeado === "pago") {
+    // Lote A (A5): pagamento APROVADO pelo MP que a RPC recusou aplicar — o
+    // pedido já estava 'recusado'/'estornado' (ou NULL histórico) com este
+    // mesmo id (confirmar_pagamento, ramo 'pago': "nao inventar transicao").
+    // Antes saía 200 em silêncio: dinheiro no MP, pedido sem pagamento no
+    // app. Só observabilidade — não muda fluxo, resposta nem chama outra
+    // RPC. Sem dado pessoal: id do pedido e do gateway só como prefixo.
+    console.error(
+      "webhook-mercadopago: confirmar_pagamento devolveu 'ignorado' para um pagamento APROVADO — conferir no painel do MP",
+      {
+        pedido8: orderId.slice(0, 8),
+        idGateway: `${String(idParaRpc).slice(0, 8)}…`,
+        statusRecebido: statusMapeado,
+        retorno: resultado,
+      },
+    );
   }
 
   return json({ ok: true, resultado }, 200);

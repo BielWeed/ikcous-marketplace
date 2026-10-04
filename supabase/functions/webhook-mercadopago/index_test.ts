@@ -1832,6 +1832,84 @@ Deno.test("RPC devolve 'divergente' ou 'inexistente' -> 200 e console.error acus
   }
 });
 
+// Lote A (A5): 'ignorado' para um status 'pago' é pagamento aprovado que a
+// RPC recusou aplicar (pedido já recusado/estornado com o mesmo id). Antes
+// saía 200 em silêncio. Só observabilidade: o fluxo e a resposta não mudam.
+const MARCA_DO_A5 = "confirmar_pagamento devolveu 'ignorado' para um pagamento APROVADO";
+
+async function entregaComResultado(statusMp: string, resultadoRpc: string) {
+  const registro = { chamadasRpc: [] };
+  // Id clássico gravado: a recusa pela rota `payment` só chega à RPC assim
+  // (PIX legado); as de Orders API são decididas pela rota `order`.
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria Cliente",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: "123456789012",
+  };
+  const supabase = clienteFalso({ rpcResultado: resultadoRpc, pedido, registro });
+  const req = await requisicaoAssinada("123456789012");
+  const fetchImpl = fetchConsulta(200, {
+    id: 123456789012,
+    status: statusMp,
+    external_reference: UUID_PEDIDO,
+    payer: { email: "maria@example.com" },
+  });
+  const erros: string[] = [];
+  const erroReal = console.error;
+  const avisoReal = console.warn;
+  const logReal = console.log;
+  console.error = (...args: unknown[]) => {
+    erros.push(args.map((v) => (typeof v === "string" ? v : JSON.stringify(v))).join(" "));
+  };
+  console.warn = () => {};
+  console.log = () => {};
+  try {
+    const resposta = await handler(req, { supabase, fetchImpl });
+    return { resposta, corpo: await resposta.json(), registro, erros };
+  } finally {
+    console.error = erroReal;
+    console.warn = avisoReal;
+    console.log = logReal;
+  }
+}
+
+Deno.test("Lote A A5 - 'ignorado' para status 'pago' -> UM console.error estruturado, sem dado pessoal; resposta e fluxo iguais", async () => {
+  const { resposta, corpo, registro, erros } = await entregaComResultado("approved", "ignorado");
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo, { ok: true, resultado: "ignorado" });
+  assertEquals(registro.chamadasRpc.length, 1, "nenhuma outra RPC");
+  const doA5 = erros.filter((e) => e.includes(MARCA_DO_A5));
+  assertEquals(doA5.length, 1, `esperado 1 log do A5; console.error recebeu: ${JSON.stringify(erros)}`);
+  const log = doA5[0];
+  assertStringIncludes(log, `"pedido8":"${UUID_PEDIDO.slice(0, 8)}"`);
+  assertStringIncludes(log, '"idGateway":"12345678');
+  assertStringIncludes(log, '"statusRecebido":"pago"');
+  assertStringIncludes(log, '"retorno":"ignorado"');
+  // Sem dado pessoal e sem identificador inteiro.
+  assert(!log.includes(UUID_PEDIDO), "o id do pedido vai truncado");
+  assert(!log.includes("123456789012"), "o id do gateway vai só como prefixo");
+  assert(!log.includes("Maria"), "sem nome do cliente");
+  assert(!log.includes("@"), "sem e-mail");
+});
+
+Deno.test("Lote A A5 - controles: 'ignorado' de um status que NÃO é 'pago', e 'ja_pago' para 'pago', não disparam o log", async () => {
+  for (const [statusMp, resultadoRpc] of [["rejected", "ignorado"], ["approved", "ja_pago"]]) {
+    const { resposta, corpo, registro, erros } = await entregaComResultado(statusMp, resultadoRpc);
+    assertEquals(resposta.status, 200, `${statusMp}/${resultadoRpc}`);
+    // O controle só vale se a entrega CHEGOU à RPC com aquele retorno.
+    assertEquals(registro.chamadasRpc.length, 1, `${statusMp}/${resultadoRpc} chegou à RPC`);
+    assertEquals(corpo.resultado, resultadoRpc);
+    assertEquals(
+      erros.filter((e) => e.includes(MARCA_DO_A5)).length,
+      0,
+      `${statusMp}/${resultadoRpc} não deveria logar o A5`,
+    );
+  }
+});
+
 // --- correção de 21/08/2026: gateway_payment_id gravado vs. id que a rota
 // `payment` do MP devolve (achado de auditoria, os três elos) ---------------
 //
