@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { abrirLoja } from "./kit-jornadas";
+import { abrirLoja, exigirRedeSemImprevistos } from "./kit-jornadas";
 import {
   type PedidoSimulado,
+  esperarTelaAssentar,
   instalarPagamentoSimulado,
   respostaPixComQr,
 } from "./pagamento-kit";
@@ -19,7 +20,7 @@ import {
  * reconsulta do MESMO QR pela edge real.
  */
 
-test.use({ serviceWorkers: "block" });
+test.afterEach(exigirRedeSemImprevistos);
 
 const PEDIDO_PENDENTE: PedidoSimulado = {
   id: "00000000-0000-4000-8000-00000000a001",
@@ -73,10 +74,14 @@ test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "T
   const tentarDeNovo = page.getByRole("button", { name: "Tentar de novo" });
   await expect(tentarDeNovo).toBeVisible();
 
-  // Nada cobra e nada relê sozinho enquanto o cliente não toca.
-  await page.waitForTimeout(1_000);
+  // Nada cobra e nada relê sozinho enquanto o cliente não toca: com a tela
+  // assentada, UMA leitura (a que falhou) e nenhuma cobrança.
+  await esperarTelaAssentar(page);
   expect(leiturasDaRetomada()).toEqual([
-    expect.objectContaining({ falhou: true }),
+    {
+      select: "total,metodo_online,gateway_payment_id,payment_status,status",
+      falhou: true,
+    },
   ]);
   expect(sim.chamadasDoPagamento).toEqual([]);
 
@@ -91,7 +96,7 @@ test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "T
   expect(sim.chamadasDoPagamento).toEqual([
     { orderId: PEDIDO_PENDENTE.id, metodo: "pix" },
   ]);
+  expect(sim.contagemPorMetodo()).toEqual({ pix: 1 });
   expect(sim.criacoesDePedido).toEqual([]);
-  expect(sim.naoPrevistas, "requisição a origem não prevista").toEqual([]);
   expect(errosNoFim().erros).toEqual([]);
 });

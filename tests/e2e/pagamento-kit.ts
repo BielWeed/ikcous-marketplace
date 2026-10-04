@@ -6,6 +6,7 @@ import {
   fichaDaLojaFixtura,
   instalarLojaFixtura,
   instalarSessaoClienteFixtura,
+  requisicoesNaoPrevistas,
 } from "./kit-jornadas";
 
 /**
@@ -24,15 +25,20 @@ import {
  *    MESMA forma do dublê dos testes de unidade —
  *    `tests/front/pagamento-com-cartao.test.tsx`, `instalarSdkFalso`), o
  *    `security.js` do Device ID e as páginas do desafio 3DS;
- *  - o websocket do realtime (aceito e mudo: nenhum evento chega, e quem
- *    descobre o pedido pago é a verificação periódica de 10 s da tela).
+ *  - o websocket do realtime (o kit das jornadas o aceita MUDO: nenhum
+ *    evento chega, e quem descobre o pedido pago é a verificação periódica de
+ *    10 s da tela).
  *
- * NADA sai para a rede: o roteador de guarda (registrado POR ÚLTIMO, então
- * roda PRIMEIRO — Playwright executa a rota mais nova antes) aborta e REGISTRA
- * qualquer requisição a uma origem não prevista; cada jornada exige essa
- * lista vazia no fim. O service worker é bloqueado nos specs
- * (`serviceWorkers: "block"`): requisição feita por ele não passaria pelas
- * rotas da página, e a jornada não depende dele.
+ * NADA sai para a rede e NADA desconhecido é respondido: cada rota daqui é
+ * uma LISTA BRANCA de MÉTODO + CAMINHO; o resto cai na guarda do kit das
+ * jornadas (`kit-jornadas.ts`), que aborta, registra e faz o teste FALHAR no
+ * `afterEach` (`exigirRedeSemImprevistos`). O service worker é bloqueado no
+ * config das jornadas: requisição feita por ele não passaria pelas rotas da
+ * página.
+ *
+ * Latência: a resposta da criação do pedido e a da edge podem ser SEGURADAS
+ * por um `Portao` que o teste fecha e abre — a janela "com a chamada em voo"
+ * existe por ESTADO, nunca por relógio.
  *
  * O que este simulador NÃO é: a edge real, o banco real, o Mercado Pago real.
  * Ele prova o que a TELA faz com cada resposta, e quantas vezes ela pergunta
@@ -49,7 +55,9 @@ const CHAVE_PUBLICA_MP_FICTICIA = "TEST-chave-ficticia-das-jornadas-e2e";
 
 export const URL_DO_SDK_MP = "https://sdk.mercadopago.com/js/v2";
 const URL_DO_SECURITY_JS = "https://www.mercadopago.com/v2/security.js";
-const URL_DA_FONTE_DO_GOOGLE = "https://fonts.googleapis.com/css2?";
+
+/** O Device ID que o `security.js` simulado entrega (formato aceito pelo app). */
+export const DEVICE_ID_SIMULADO = "dispositivo-simulado-e2e";
 
 /** Página do desafio 3DS simulada — host do Mercado Pago, servida pelo teste. */
 export const URL_DO_DESAFIO_3DS =
@@ -105,7 +113,7 @@ export interface SimuladorDePagamento {
   readonly criacoesDePedido: { rpc: string; corpo: unknown }[];
   /** Leituras de `marketplace_orders` (o `select` de cada uma). */
   readonly leiturasDePedido: { select: string; falhou: boolean }[];
-  /** Requisições a origens NÃO previstas — abortadas. Tem de ficar vazia. */
+  /** Requisições NÃO previstas (a lista da guarda do kit). Tem de ficar vazia. */
   readonly naoPrevistas: string[];
   /** URLs simuladas de terceiros que o navegador pediu (SDK, 3DS...). */
   readonly terceirosAtendidos: string[];
@@ -113,10 +121,10 @@ export interface SimuladorDePagamento {
   maximoDeCartoesEmVoo: number;
   /** Quantas leituras da RETOMADA (select com `metodo_online`) devem falhar. */
   falharLeiturasDaRetomada: number;
-  /** Atraso artificial da resposta da criação do pedido (clique duplo). */
-  atrasoDaCriacaoMs: number;
-  /** Atraso artificial de cada resposta da edge. */
-  atrasoDaEdgeMs: number;
+  /** Segura a resposta da criação do pedido enquanto estiver FECHADO. */
+  readonly portaoDaCriacao: Portao;
+  /** Segura cada resposta da edge enquanto estiver FECHADO. */
+  readonly portaoDaEdge: Portao;
   /** A resposta da edge — escrita por teste. */
   responderPagamento: (
     corpo: CorpoDoPagamento,
@@ -126,6 +134,43 @@ export interface SimuladorDePagamento {
   marcarPago: (orderId: string) => void;
   /** Quantos POSTs com este `metodo` chegaram. */
   contarPagamentos: (metodo: string) => number;
+  /** POSTs à edge por `metodo` (só os que chegaram) — para igualdade EXATA. */
+  contagemPorMetodo: () => Record<string, number>;
+}
+
+/**
+ * Um portão de LATÊNCIA controlada por estado: aberto, a resposta sai na
+ * hora; fechado, toda resposta espera até `abrir()`. `parados` diz quantas
+ * respostas estão seguradas agora — o teste espera ESTE número, nunca tempo.
+ */
+export class Portao {
+  private aberto = true;
+  private espera: Promise<void> = Promise.resolve();
+  private soltar: () => void = () => {};
+  parados = 0;
+
+  fechar(): void {
+    if (!this.aberto) return;
+    this.aberto = false;
+    this.espera = new Promise((resolver) => {
+      this.soltar = resolver;
+    });
+  }
+
+  abrir(): void {
+    this.aberto = true;
+    this.soltar();
+  }
+
+  async passar(): Promise<void> {
+    if (this.aberto) return;
+    this.parados += 1;
+    try {
+      await this.espera;
+    } finally {
+      this.parados -= 1;
+    }
+  }
 }
 
 /** O pedido mais recente criado pela tela (falha alto se nenhum). */
@@ -315,10 +360,6 @@ function corpoJson(pedido: Request): unknown {
   }
 }
 
-function esperar(ms: number) {
-  return new Promise((resolver) => setTimeout(resolver, ms));
-}
-
 /**
  * Instala loja + cliente logado + pagamento ligado + simulador. Chamar UMA vez
  * por teste, antes do primeiro `goto`. `pedidosIniciais` semeia o banco
@@ -335,12 +376,13 @@ export async function instalarPagamentoSimulado(
     chamadasDoPagamento: [],
     criacoesDePedido: [],
     leiturasDePedido: [],
-    naoPrevistas: [],
+    // A MESMA lista da guarda de rede do kit das jornadas.
+    naoPrevistas: requisicoesNaoPrevistas(page),
     terceirosAtendidos: [],
     maximoDeCartoesEmVoo: 0,
     falharLeiturasDaRetomada: 0,
-    atrasoDaCriacaoMs: 0,
-    atrasoDaEdgeMs: 150,
+    portaoDaCriacao: new Portao(),
+    portaoDaEdge: new Portao(),
     responderPagamento: respostaInesperada,
     marcarPago: (orderId) => {
       const pedido = sim.pedidos.get(orderId);
@@ -349,6 +391,14 @@ export async function instalarPagamentoSimulado(
     },
     contarPagamentos: (metodo) =>
       sim.chamadasDoPagamento.filter((c) => c.metodo === metodo).length,
+    contagemPorMetodo: () => {
+      const contagem = new Map<string, number>();
+      for (const c of sim.chamadasDoPagamento) {
+        const metodo = String(c.metodo);
+        contagem.set(metodo, (contagem.get(metodo) ?? 0) + 1);
+      }
+      return Object.fromEntries(contagem);
+    },
   };
   let cartoesEmVoo = 0;
 
@@ -372,10 +422,13 @@ export async function instalarPagamentoSimulado(
   });
   await page.addInitScript(instalarDubleDoMercadoPago);
 
-  // ── O banco e a edge simulados (rodam ANTES do kit da sessão e da loja) ──
+  // ── O banco e a edge simulados: LISTA BRANCA de método + caminho. O que
+  // não está aqui segue para os kits de baixo (sessão, loja), e o que nenhum
+  // deles conhece é negado e registrado pela guarda do kit das jornadas.
   await page.route(`${ORIGEM_DO_BANCO}/**`, async (rota: Route) => {
     const pedido = rota.request();
     const url = new URL(pedido.url());
+    const chave = `${pedido.method()} ${url.pathname}`;
     const responder = (corpo: unknown, status = 200) =>
       rota.fulfill({
         status,
@@ -383,25 +436,23 @@ export async function instalarPagamentoSimulado(
         body: JSON.stringify(corpo),
       });
 
-    // A conta fixture não tem CPF guardado (a RPC real devolve `text|null`;
-    // o "[]" genérico do kit chegaria à tela como CPF e quebraria a máscara).
-    if (url.pathname === "/rest/v1/rpc/get_my_cpf") {
+    // A conta fixture não tem CPF guardado (a RPC real devolve `text|null`).
+    if (chave === "POST /rest/v1/rpc/get_my_cpf") {
       await responder(null);
       return;
     }
 
-    if (url.pathname === "/rest/v1/config_pagamento_cartao") {
+    if (chave === "GET /rest/v1/config_pagamento_cartao") {
       await responder([{ credito: true, debito: false, parcelas_max: 1 }]);
       return;
     }
 
-    if (
-      url.pathname === "/rest/v1/rpc/create_marketplace_order_v24" ||
-      url.pathname === "/rest/v1/rpc/create_marketplace_order_v23"
-    ) {
+    // Só a v24 (pedido com pagamento pelo app). A v23 ("na entrega") NÃO
+    // está na lista: se o app a chamar aqui, a guarda nega e o teste cai.
+    if (chave === "POST /rest/v1/rpc/create_marketplace_order_v24") {
       const corpo = corpoJson(pedido) as { p_total_amount?: number } | null;
       sim.criacoesDePedido.push({
-        rpc: url.pathname.split("/").at(-1) ?? "",
+        rpc: "create_marketplace_order_v24",
         corpo,
       });
       const numero = sim.criacoesDePedido.length;
@@ -417,21 +468,12 @@ export async function instalarPagamentoSimulado(
         expires_at: new Date(agora.getTime() + 30 * 60_000).toISOString(),
         created_at: agora.toISOString(),
       });
-      if (sim.atrasoDaCriacaoMs > 0) await esperar(sim.atrasoDaCriacaoMs);
+      await sim.portaoDaCriacao.passar();
       await responder(id);
       return;
     }
 
-    if (url.pathname === "/rest/v1/marketplace_orders") {
-      if (pedido.method() !== "GET") {
-        // Nenhuma jornada daqui escreve no pedido pelo REST: escrita é
-        // não prevista (fica registrada e o teste falha).
-        sim.naoPrevistas.push(
-          `${pedido.method()} ${url.pathname}${url.search}`,
-        );
-        await rota.abort("blockedbyclient");
-        return;
-      }
+    if (chave === "GET /rest/v1/marketplace_orders") {
       const select = url.searchParams.get("select") ?? "";
       const ehLeituraDaRetomada = select.includes("metodo_online");
       if (ehLeituraDaRetomada && sim.falharLeiturasDaRetomada > 0) {
@@ -482,7 +524,7 @@ export async function instalarPagamentoSimulado(
       return;
     }
 
-    if (url.pathname === "/functions/v1/criar-pagamento") {
+    if (chave === "POST /functions/v1/criar-pagamento") {
       const corpo = (corpoJson(pedido) ?? {}) as CorpoDoPagamento;
       sim.chamadasDoPagamento.push(corpo);
       const ehCartao = corpo.metodo === "cartao";
@@ -495,7 +537,7 @@ export async function instalarPagamentoSimulado(
       }
       try {
         const resposta = sim.responderPagamento(corpo, sim);
-        if (sim.atrasoDaEdgeMs > 0) await esperar(sim.atrasoDaEdgeMs);
+        await sim.portaoDaEdge.passar();
         await responder(resposta.corpo, resposta.status);
       } finally {
         if (ehCartao) cartoesEmVoo -= 1;
@@ -506,25 +548,14 @@ export async function instalarPagamentoSimulado(
     await rota.fallback();
   });
 
-  // ── O realtime: aceito e MUDO (nunca conecta a servidor nenhum) ──
-  await page.routeWebSocket(/.*/, (ws) => {
-    const url = new URL(ws.url());
-    if (
-      url.origin.replace(/^wss:/, "https:") !== ORIGEM_DO_BANCO ||
-      !url.pathname.startsWith("/realtime/")
-    ) {
-      sim.naoPrevistas.push(`websocket ${ws.url()}`);
-      ws.close();
-    }
-    // Sem `connectToServer()`: nada sai para a rede; nada responde.
-  });
-
-  // ── Guarda (registrada por ÚLTIMO, roda PRIMEIRO) ──
+  // ── Terceiros SIMULADOS e a ficha com o pagamento ligado. Registrada por
+  // ÚLTIMO, roda PRIMEIRO; o que não é dela segue para a guarda do kit. ──
   await page.route("**/*", async (rota: Route) => {
     const pedido = rota.request();
     const url = new URL(pedido.url());
+    const ehGet = pedido.method() === "GET";
 
-    if (url.origin === ORIGEM_DO_PREVIEW) {
+    if (url.origin === ORIGEM_DO_PREVIEW && ehGet) {
       // A ficha com o pagamento ligado vai no HTML e no JSON do porteiro.
       if (pedido.resourceType() === "document") {
         const resposta = await rota.fetch();
@@ -543,27 +574,9 @@ export async function instalarPagamentoSimulado(
         await rota.fulfill({ status: 200, headers: JSON_HEADERS, body: ficha });
         return;
       }
-      await rota.fallback();
-      return;
     }
 
-    if (url.origin === ORIGEM_DO_BANCO) {
-      await rota.fallback();
-      return;
-    }
-
-    if (pedido.url().startsWith(URL_DA_FONTE_DO_GOOGLE)) {
-      // A fonte Inter do index.html: CSS vazio (a tela cai na fonte do
-      // sistema). Prevista, mas nunca vai à rede.
-      sim.terceirosAtendidos.push(pedido.url());
-      await rota.fulfill({
-        status: 200,
-        headers: { "content-type": "text/css" },
-        body: "/* fonte simulada (jornadas e2e) */",
-      });
-      return;
-    }
-    if (pedido.url() === URL_DO_SDK_MP) {
+    if (ehGet && pedido.url() === URL_DO_SDK_MP) {
       sim.terceirosAtendidos.push(pedido.url());
       // O global vem do dublê (`addInitScript`); o script só precisa
       // carregar para o `load` do carregador do app disparar.
@@ -574,18 +587,19 @@ export async function instalarPagamentoSimulado(
       });
       return;
     }
-    if (pedido.url() === URL_DO_SECURITY_JS) {
+    if (ehGet && pedido.url() === URL_DO_SECURITY_JS) {
       sim.terceirosAtendidos.push(pedido.url());
       await rota.fulfill({
         status: 200,
         headers: { "content-type": "application/javascript" },
-        body: 'window.MP_DEVICE_SESSION_ID = "dispositivo-simulado-e2e";',
+        body: `window.MP_DEVICE_SESSION_ID = "${DEVICE_ID_SIMULADO}";`,
       });
       return;
     }
     if (
-      pedido.url() === URL_DO_DESAFIO_3DS ||
-      pedido.url() === URL_DE_ORIGEM_IMPOSTORA
+      ehGet &&
+      (pedido.url() === URL_DO_DESAFIO_3DS ||
+        pedido.url() === URL_DE_ORIGEM_IMPOSTORA)
     ) {
       sim.terceirosAtendidos.push(pedido.url());
       await rota.fulfill({
@@ -596,8 +610,7 @@ export async function instalarPagamentoSimulado(
       return;
     }
 
-    sim.naoPrevistas.push(`${pedido.method()} ${pedido.url()}`);
-    await rota.abort("blockedbyclient");
+    await rota.fallback();
   });
 
   return sim;
@@ -657,4 +670,87 @@ export async function abrirLojaEFinalizar(
     await finalizar.click();
   }
   return errosNoFim;
+}
+
+/**
+ * Espera a TELA ASSENTAR — por estado, não por relógio: dá voltas no laço de
+ * eventos do navegador (uma mensagem de `MessageChannel`, que é a mesma fila
+ * em que o agendador do React trabalha, mais um quadro de animação) até uma
+ * volta inteira passar SEM nenhuma mudança no DOM. Serve para afirmar uma
+ * AUSÊNCIA ("o aviso ignorado não virou tela", "nada repetiu sozinho") só
+ * depois de o app ter processado o que já estava na fila.
+ *
+ * Limite honesto: não pega o que o app agendaria por TEMPORIZADOR para
+ * depois (um `setTimeout` de segundos); para isso valem as contagens
+ * EXATAS no fim de cada jornada.
+ */
+export async function esperarTelaAssentar(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const pingar = () =>
+      new Promise<void>((resolver) => {
+        const canal = new MessageChannel();
+        canal.port1.onmessage = () => resolver();
+        canal.port2.postMessage(null);
+      });
+    const quadro = () =>
+      new Promise<void>((resolver) => requestAnimationFrame(() => resolver()));
+    let mudancas = 0;
+    const observador = new MutationObserver((lista) => {
+      mudancas += lista.length;
+    });
+    observador.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+    });
+    try {
+      for (let volta = 0; volta < 200; volta += 1) {
+        mudancas = 0;
+        await pingar();
+        await quadro();
+        await pingar();
+        if (mudancas === 0) return;
+      }
+      throw new Error("A tela não assentou em 200 voltas do laço de eventos.");
+    } finally {
+      observador.disconnect();
+    }
+  });
+}
+
+/**
+ * UMA criação de pedido, pela v24 (pagamento pelo app), com o corpo EXATO
+ * que o checkout monta para o Boné + entrega local do endereço principal.
+ * A chave de idempotência é gerada pelo app: só a forma (uuid) é conferida.
+ */
+export function exigirCriacaoDoPedido(sim: SimuladorDePagamento): void {
+  expect(sim.criacoesDePedido).toEqual([
+    {
+      rpc: "create_marketplace_order_v24",
+      corpo: {
+        p_items: [
+          {
+            product_id: "jornada-produto-acessorios",
+            variant_id: null,
+            quantity: 1,
+          },
+        ],
+        p_total_amount: 40,
+        p_shipping_cost: 10,
+        p_payment_method: "online",
+        p_address_id: "00000000-0000-4000-8000-0000000ad000",
+        p_coupon_code: null,
+        p_customer_name: "Cliente das Jornadas",
+        p_customer_phone: "(34) 99999-0000",
+        p_observation: "Frete Escolhido: Entrega local (Prazo: 1 dias)",
+        p_address_data: null,
+        p_destination_cep: "38500-000",
+        p_shipping_option_id: "local-delivery",
+        p_idempotency_key: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+        ),
+      },
+    },
+  ]);
 }
