@@ -825,10 +825,13 @@ PROVAS.push({
     // 20261197000000: a 94 passou a exigir o admin de AGORA (is_admin_atual)
     // — o papel nas DUAS fontes, auth.users e profiles. Sem a linha em
     // profiles a 94 recusaria com 42501 antes de travar qualquer coisa, e a
-    // prova não mediria a ordem das travas.
+    // prova não mediria a ordem das travas. Mesma forma das fixtures de
+    // admin da 20261199000000 (invariantes, cartão): ON CONFLICT DO NOTHING —
+    // idempotente; um papel diferente já gravado faria a prova falhar alto
+    // (42501), nunca passar por engano.
     await cliente.query(
       `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Contestação', 'admin')
-       ON CONFLICT (id) DO UPDATE SET role = 'admin'`,
+       ON CONFLICT (id) DO NOTHING`,
       [U_ADMIN],
     );
     await criarControleOrdemAntiga(cliente);
