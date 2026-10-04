@@ -519,6 +519,49 @@ PROVAS.push({
 });
 
 PROVAS.push({
+  nome: "(l) teto do AJUSTE: CBK1 reserva 60, CBK2 reserva 40 por estimativa, CBK2 confirma 60 -> fica 40 (saldo), total reservado 100",
+  corpo: async (cliente) => {
+    await pedido(cliente, O(90), { total: 100 });
+    const r1 = await contestacao(cliente, { pedido: O(90), cbk: "CBK-L1", caseId: "901", decisao: "em_analise", valorCaso: 60, casos: 2 });
+    assert.equal(r1.resultado, "reservado");
+    assert.equal(num(r1.linha_amount), 60);
+    const r2 = await contestacao(cliente, { pedido: O(90), cbk: "CBK-L2", caseId: "902", decisao: "em_analise", estimado: 100, casos: 2 });
+    assert.equal(r2.resultado, "reservado");
+    assert.equal(num(r2.linha_amount), 40, "a estimativa só reserva o que sobra");
+    const r3 = await contestacao(cliente, { pedido: O(90), cbk: "CBK-L2", caseId: "902", decisao: "em_analise", valorCaso: 60, estimado: 100, casos: 2 });
+    assert.equal(r3.resultado, "reserva_ajustada");
+    assert.equal(num(r3.linha_amount), 40, "o ajuste para cima para no disponível");
+    assert.equal(r3.aviso, "saldo");
+    const e = await estado(cliente, O(90));
+    assert.equal(e.linhas.reduce((s, l) => s + num(l.amount), 0), 100, "reservado nunca passa do pago");
+    assert.equal(num(r3.disponivel), 0);
+    assert.equal(e.valorEstornado, 0);
+  },
+});
+
+PROVAS.push({
+  nome: "(m) corrida REAL contestação × REF: a reserva de 100 segura a trava; o REF de 100 espera e volta nao_cabe; comprometido 100",
+  corpo: async (cliente, url) => {
+    await pedido(cliente, O(95), { total: 100 });
+    const { ra, rb, parou } = await corrida(
+      url,
+      (c) => contestacao(c, { pedido: O(95), cbk: "CBK-M", caseId: "951", decisao: "em_analise", valorCaso: 100 }),
+      (c) => externo(c, { pedido: O(95), ref: "REF-M", valor: 100 }),
+    );
+    assert.equal(parou, true, "o REF parou na trava do pedido (wait_event_type = Lock)");
+    assert.equal(ra.resultado, "reservado");
+    assert.equal(rb.resultado, "nao_cabe", "o REF enxergou a reserva commitada");
+    assert.equal(rb.aviso, "saldo");
+    const e = await estado(cliente, O(95));
+    const emVoo = e.linhas
+      .filter((l) => l.status === "solicitado" || l.status === "em_processamento")
+      .reduce((s, l) => s + num(l.amount), 0);
+    assert.equal(e.valorEstornado + emVoo, 100, "comprometido (estornado + em voo) = 100, nunca 200");
+    assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-M").length, 0);
+  },
+});
+
+PROVAS.push({
   nome: "(h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000; rollback + reaplicar",
   corpo: async (cliente) => {
     const sql = lerMigration(MIGRATION);

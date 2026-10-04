@@ -3988,6 +3988,43 @@ Deno.test("Lote A R1 (bloqueio 3) - DOIS casos no mesmo pedido -> a RPC é chama
   semEscritaDireta(registro);
 });
 
+Deno.test("Lote A R1 (revisão R1-c) - DOIS casos no MESMO pagamento, pagamento 'settled' agregado, casos ainda PENDENTES -> a RPC recebe em_analise para os dois (decide pelo CASO); nada contra a loja", async () => {
+  // Com dois casos num pagamento só, o status_detail do pagamento é AGREGADO
+  // e não diz de qual caso é — 'settled' ali não pode concluir nenhum dos
+  // dois contra a loja. Quem decide é o coverage_applied de cada caso.
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
+  const order = orderContestada({ detalheOrder: "settled", detalhePagamento: "settled" });
+  (order.transactions as any).chargebacks = [
+    { id: "CBK-A", transaction_id: ID_PAGAMENTO_DA_ORDER, case_id: "111" },
+    { id: "CBK-B", transaction_id: ID_PAGAMENTO_DA_ORDER, case_id: "222" },
+  ];
+  const { fn } = fetchDaContestacao({
+    order,
+    casos: {
+      "111": { id: "111", coverage_applied: null, amount: 40, currency: "BRL" },
+      "222": { id: "222", coverage_applied: null, amount: 60, currency: "BRL" },
+    },
+  });
+  const pushes: unknown[] = [];
+  const resposta = await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  assertEquals(resposta.status, 200);
+  assertEquals(
+    registro.chamadasContestacao.map((c: any) => [c.args.p_mp_chargeback_id, c.args.p_decisao, c.args.p_valor_caso]),
+    [
+      ["CBK-A", "em_analise", 40],
+      ["CBK-B", "em_analise", 60],
+    ],
+  );
+  assertEquals(
+    registro.chamadasContestacao.some((c: any) => c.args.p_decisao === "contra_a_loja"),
+    false,
+    "o agregado do pagamento nunca conclui contra a loja",
+  );
+  semEscritaDireta(registro);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
 Deno.test("Lote A R1 - avisos da RPC: 'revertida' e 'saldo' viram UM push cada em duas entregas; 'conferir' vira o aviso de conferência", async () => {
   for (const [aviso, titulo] of [
     ["revertida", "Contestação mudou de resultado"],
