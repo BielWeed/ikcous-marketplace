@@ -6669,12 +6669,86 @@ Deno.test("S2: CARTÃO com lojista SEM chave de assinatura -> 409 terminal carta
   assertEquals(leiturasConfigCartao.length, 0);
 });
 
-Deno.test("S2: CARTÃO com lojista SEM chave e cartão em análise na vaga -> mesma recusa, sem tocar a vaga nem o MP (o `verificar` é quem resolve a dúvida)", async () => {
+// S2, revisão externa (04/10/2026): a trava separa CRIAÇÃO/troca (POST novo
+// ou cancelamento no MP) de CONSULTA da cobrança própria que já existe. Sem a
+// chave: zero POST novo — mas a outra aba que já tem um cartão vivo, em
+// análise ou em desafio 3DS continua recebendo o MESMO estado pelo GET.
+for (
+  const caso of [
+    { nome: "desafio 3DS", order: () => orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }), status: "aguardando", desafio: URL_DESAFIO },
+    { nome: "em análise", order: () => orderDeCartao("processing", "in_review", { id: ORDER_CARTAO_NA_VAGA }), status: "aguardando", desafio: undefined },
+    { nome: "aprovado", order: () => orderDeCartao("processed", "accredited", { id: ORDER_CARTAO_NA_VAGA }), status: "pago", desafio: undefined },
+  ]
+) {
+  Deno.test(`S2: segunda aba + cartão ${caso.nome} na vaga + lojista SEM chave -> a MESMA cobrança pelo GET, ZERO POST, nada gravado`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({ consultar: { status: 200, corpo: caso.order() } });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+        statusesCartaoDesconhecidosAvisados: new Set(),
+      })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200, JSON.stringify(corpo));
+    assertEquals(corpo.paymentId, ORDER_CARTAO_NA_VAGA);
+    assertEquals(corpo.statusPagamento, caso.status);
+    assertEquals(corpo.desafio3ds?.url, caso.desafio);
+    assertEquals(corpo.cartaoSemChaveDeAssinatura, undefined);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+    assertEquals(chamadasRpc.length, 0);
+  });
+}
+
+Deno.test("S2: sentinela `verificando:` sem desfecho + lojista SEM chave -> resposta de acompanhamento ('sem_registro'), ZERO POST novo", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp } = sentinelaSemOrderNoMp();
+  // 1ª chamada COM a chave: deixa o sentinela (5xx sem order no MP).
+  await emSilencio(() => chamar(db, mp, corpoCartao()));
+  const sentinela = String(db.linha.gateway_payment_id);
+  assertEquals(sentinela.startsWith("verificando:"), true);
+  const postsAntes = mp.posts.length;
+
+  // A chave de assinatura sai do cadastro; a outra aba tenta de novo.
+  const r = await emSilencio(async () => {
+    const resposta = await handler(
+      requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)),
+      {
+        supabase: db as never,
+        fetchImpl: mp.fn as typeof fetch,
+        alertarAdminCartaoOrfao: async () => {},
+        credenciaisMp: { origem: "lojista", token: TOKEN_LOJISTA_FALSO, segredoWebhook: null, publicKey: PUBLIC_KEY_LOJISTA_FALSA },
+      },
+    );
+    return { status: resposta.status, corpo: await resposta.json() };
+  });
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+  assertEquals(mp.posts.length, postsAntes, "POST novo sem a chave de assinatura");
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(db.chamadasRpc.length, 0);
+});
+
+Deno.test("S2: PIX ABERTO na vaga + pedido de cartão + lojista SEM chave -> o PIX NÃO é cancelado, 409 terminal, ZERO POST", async () => {
   const { supabase, registro, chamadasRpc } = cenarioCartao({
-    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
     registroMp: await registroMpDeTeste({ webhookSecret: null }),
   });
-  const mp = fetchMP({});
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") },
+    cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+    criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  });
 
   const resposta = await emSilencio(() =>
     handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
@@ -6682,10 +6756,36 @@ Deno.test("S2: CARTÃO com lojista SEM chave e cartão em análise na vaga -> me
   const corpo = await resposta.json();
 
   assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
   assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
-  assertEquals(mp.chamadas.length, 0);
-  assertEquals(registro.chamadasUpdate, 0);
+  assertEquals(mp.cancelamentos().length, 0, "o PIX foi cancelado antes de saber que o cartão era impossível");
+  assertEquals(mp.criacoes().length, 0);
   assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("S2: cartão MORTO na vaga + pedido de cartão + lojista SEM chave -> 409 terminal, sem liberar a vaga, ZERO POST", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+    registroMp: await registroMpDeTeste({ webhookSecret: null }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+    criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  });
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
 });
 
 Deno.test("S2 — delimitação: CARTÃO com loja nas chaves da PLATAFORMA (sem registro) NÃO é tocado (atravessa para o portão PRÓPRIO do cartão)", async () => {

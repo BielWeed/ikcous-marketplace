@@ -1485,10 +1485,21 @@ async function handler(
   // do PIX, de propósito: loja nas chaves da PLATAFORMA (`origem` diferente
   // de "lojista") continua cobrando cartão como sempre — a regra é sobre o
   // cadastro que a loja fez pela metade, não sobre quem ainda não cadastrou.
-  // `verificar` não passa por aqui (mesmo motivo do PIX acima): um cartão em
-  // dúvida ainda precisa ser resolvido. Flag própria, mesmo contrato da
-  // `pixSemChaveDeAssinatura` (marcador para o front, nunca texto).
-  if (metodo === "cartao" && credenciaisMp.origem === "lojista" && !credenciaisMp.segredoWebhook) {
+  // Flag própria, mesmo contrato da `pixSemChaveDeAssinatura` (marcador para
+  // o front, nunca texto).
+  //
+  // ONDE ela vale (revisão externa do S2, 04/10/2026): SÓ onde a decisão já é
+  // CRIAR cobrança nova ou TROCAR a forma (POST ou cancelamento no MP) — nunca
+  // aqui em cima, antes de ler o pedido. A outra aba que já tem um cartão
+  // vivo, em análise ou em desafio 3DS tem de continuar recebendo o MESMO
+  // estado pela consulta (GET), sem POST e sem ouvir que a cobrança acabou; o
+  // sentinela sem desfecho continua no acompanhamento de sempre. Os três
+  // pontos de uso: o portão do cartão (vaga livre), a troca PIX→cartão ANTES
+  // de cancelar o PIX, e a liberação da vaga morta ANTES de liberar.
+  // `verificar` nunca passa por nenhum deles.
+  const cartaoSemChaveDeAssinatura = metodo === "cartao" && credenciaisMp.origem === "lojista" &&
+    !credenciaisMp.segredoWebhook;
+  const respostaCartaoSemChaveDeAssinatura = () => {
     // Só origem e motivo em log — nenhum segredo, jamais.
     console.error(
       `criar-pagamento: cartão recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
@@ -1499,7 +1510,7 @@ async function handler(
       terminal: true,
       cartaoSemChaveDeAssinatura: true,
     }, 409);
-  }
+  };
 
   // `let`, não `const` (Fase 3.5): quando a vaga ocupada é liberada, o
   // pedido é RELIDO (tentativas novas) e o resto do handler cobra a partir
@@ -1584,6 +1595,8 @@ async function handler(
   //    já limita, isto é a defesa do servidor.
   if (dadosCartao) {
     if (pedido.user_id === null) return respostaExigeConta();
+    // S2: vaga LIVRE — a única saída daqui é um POST novo.
+    if (cartaoSemChaveDeAssinatura && decisao.acao === "criar") return respostaCartaoSemChaveDeAssinatura();
     const configCartao = await lerConfigDoCartao(supabase);
     const formaLigada = configCartao !== null &&
       (dadosCartao.paymentTypeId === "credit_card" ? configCartao.credito : configCartao.debito);
@@ -2052,6 +2065,11 @@ async function handler(
       // cegas. PIX já morto (recusado/expirado/cancelado) só precisa ser
       // liberado; PIX aberto é CANCELADO no MP antes — duas cobranças vivas
       // para o mesmo pedido é o cliente pagando duas vezes.
+      //
+      // S2: ANTES de qualquer cancelamento — sem a chave de assinatura o
+      // cartão novo é impossível, e cancelar o PIX primeiro deixaria o
+      // cliente sem cobrança nenhuma na mão.
+      if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
       if (!pixNaVaga) {
         console.warn(
           "criar-pagamento: vaga com cobrança de tipo desconhecido — troca para cartão recusada",
@@ -2132,6 +2150,10 @@ async function handler(
     // trava de criação logo abaixo — mas a liberação em si é inofensiva (a
     // RPC só solta a vaga desta cobrança/sentinela, pela MESMA string que
     // está gravada nela).
+    //
+    // S2: daqui o cartão só sai com um POST novo — sem a chave de assinatura,
+    // recusa ANTES de liberar (a vaga fica como está; nada foi tocado).
+    if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
     const liberacao = await liberarCobranca(supabase, pedido.id, idGatewayReconsulta);
     if (!liberacao.ok) {
       // Falha de banco: nada foi cobrado ainda, e o próximo retry reencontra
