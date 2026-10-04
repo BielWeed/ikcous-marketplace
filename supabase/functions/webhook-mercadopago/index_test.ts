@@ -3128,6 +3128,136 @@ Deno.test("W4b - chargeback: 'reimbursed' com a linha em_processamento -> UPDATE
   assertEquals(registro.updatesOrderRefunds[0].statusFiltro, ["em_processamento"]);
 });
 
+// =============================================================================
+// LOTE A (04/10/2026) — contestação (chargeback) e ledger de estorno.
+//
+// R1: o mapa compartilhado (`_shared/mercadopago.ts`) traduz TODO
+// `charged_back` para 'estornado' — e continua assim de propósito (o checkout
+// da `criar-pagamento` depende dele; crítica de desenho A1). O defeito era o
+// handler chamar `confirmar_pagamento(..., 'estornado')` com esse rótulo:
+// 'estornado' é IRREVERSÍVEL no SQL (20260901000000, não existe
+// estornado->pago), e uma disputa em análise (`in_process`) ou ganha pela
+// loja (`reimbursed`, valor creditado ao vendedor) marcava o pedido PAGO como
+// estornado. O pedido só vira 'estornado' por `concluir_estorno`, com o total
+// coberto (2026110000100). Doc: transaction-status do MP (URL no código).
+// =============================================================================
+
+const ID_CONTESTACAO = "CBK01J67CQQH5904WDBVZEM4JMEP3";
+const ID_PAGAMENTO_DA_ORDER = "PAY01J67CQQH5904WDBVZEM4JMEP3";
+
+/** Order CONTESTADA, na forma do GET /v1/orders/{id} (reference get-order):
+ * `transactions.chargebacks[]` com id (CBK), transaction_id (PAY) e case_id.
+ * `detalhePagamento` é o `status_detail` do PAGAMENTO contestado (A5);
+ * `detalheOrder`, o agregado da raiz. */
+function orderContestada(opts: {
+  detalheOrder?: string;
+  detalhePagamento?: string;
+  chargebacks?: Array<Record<string, unknown>> | null;
+  total?: string;
+  refunds?: Array<Record<string, unknown>>;
+} = {}): Record<string, unknown> {
+  const detalheOrder = opts.detalheOrder ?? "in_process";
+  const detalhePagamento = opts.detalhePagamento ?? detalheOrder;
+  const transactions: Record<string, unknown> = {
+    payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "charged_back", status_detail: detalhePagamento }],
+  };
+  if (opts.chargebacks !== null) {
+    transactions.chargebacks = opts.chargebacks ?? [
+      { id: ID_CONTESTACAO, transaction_id: ID_PAGAMENTO_DA_ORDER, case_id: "1234567890", status: detalhePagamento, references: [] },
+    ];
+  }
+  if (opts.refunds) transactions.refunds = opts.refunds;
+  return {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "charged_back",
+    status_detail: detalheOrder,
+    total_amount: opts.total ?? "100.00",
+    transactions,
+  };
+}
+
+function pedidoPago(total = 100): Record<string, unknown> {
+  return {
+    id: UUID_PEDIDO,
+    gateway_payment_id: ID_ORDER_TESTE,
+    total,
+    valor_estornado: 0,
+    payment_status: "pago",
+    paid_at: new Date().toISOString(),
+    status: "delivered",
+  };
+}
+
+function registroDoLedger() {
+  return {
+    chamadasRpc: [] as any[],
+    chamadasConcluirEstorno: [] as any[],
+    insertsOrderRefunds: [] as any[],
+    updatesOrderRefunds: [] as any[],
+  };
+}
+
+Deno.test("Lote A R1 - order 'charged_back' (in_process/settled/reimbursed) NUNCA chama confirmar_pagamento — 200 'contestacao_no_ledger'", async () => {
+  for (const detalhe of ["in_process", "settled", "reimbursed"]) {
+    const registro = registroDoLedger();
+    const pedido = pedidoPago();
+    const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderContestada({ detalheOrder: detalhe })),
+      enviarPushContado: async () => 1,
+    });
+
+    assertEquals(resposta.status, 200, detalhe);
+    assertEquals((await resposta.json()).resultado, "contestacao_no_ledger", detalhe);
+    assertEquals(registro.chamadasRpc.length, 0, `${detalhe}: confirmar_pagamento('estornado') é irreversível`);
+  }
+});
+
+Deno.test("Lote A R1 - rota payment (PIX legado, id clássico gravado) com 'charged_back' -> confirmar_pagamento NÃO é chamada", async () => {
+  const registro = registroDoLedger();
+  const pedido = { ...pedidoPago(), gateway_payment_id: "999" };
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+  const req = await requisicaoAssinada("999", { corpoExtra: { type: "payment" } });
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, {
+      id: 999,
+      status: "charged_back",
+      status_detail: "in_process",
+      external_reference: UUID_PEDIDO,
+      transaction_amount: 100,
+    }),
+    enviarPushContado: async () => 1,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0);
+});
+
+Deno.test("Lote A R1 - rota payment 'refunded' cuja ORDER GRAVADA está 'charged_back' (bloco A3) -> confirmar_pagamento NÃO é chamada", async () => {
+  // O bloco A3 reconsulta a order gravada e segue para a RPC quando o rótulo
+  // MAPEADO dela bate ('estornado' == 'estornado') — mas o rótulo da order
+  // contestada é o do mapa compartilhado, não o desfecho da disputa.
+  const registro = registroDoLedger();
+  const pedido = pedidoPago();
+  const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
+  const { fn: fetchImpl } = fetchInspecionavel({
+    pagamento: {
+      status: 200,
+      corpo: { id: ID_PAGAMENTO_DO_MP, status: "refunded", status_detail: "refunded", external_reference: UUID_PEDIDO },
+    },
+    order: { status: 200, corpo: orderContestada({ detalheOrder: "settled" }) },
+  });
+  const req = await requisicaoAssinada(String(ID_PAGAMENTO_DO_MP), { corpoExtra: { type: "payment" } });
+  const resposta = await handler(req, { supabase, fetchImpl, enviarPushContado: async () => 1 });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasRpc.length, 0, "a order gravada está em disputa — 'estornado' só por concluir_estorno");
+});
+
 Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {
   const registro = {
     chamadasRpc: [] as any[],

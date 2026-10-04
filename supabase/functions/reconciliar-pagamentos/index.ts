@@ -771,6 +771,9 @@ async function handler(
       // Mesma regra do webhook (`recusaLiberaAVaga`, _shared/mercadopago.ts).
       // Só a Orders API liga isto: o candidato clássico é PIX legado.
       let liberarAVaga = false;
+      // Lote A (04/10/2026, R1/A2): o `status` CRU que o MP devolveu, nas duas
+      // rotas — a guarda da contestação (abaixo) olha ESTE, não o mapeado.
+      let statusBrutoConfiavel = "";
 
       // Achado S5/N3 (3ª revisão de risco, 26/09/2026): a vaga pode estar
       // com o SENTINELA (`verificando:...`, Achado B2) em vez de um id de
@@ -840,6 +843,7 @@ async function handler(
         }
         statusMapeado = mapearStatus(consultaClassica.status);
         statusBrutoParaLog = consultaClassica.status;
+        statusBrutoConfiavel = String(consultaClassica.status ?? "");
         valorAprovado = typeof consultaClassica.valor === "number" ? consultaClassica.valor : undefined;
       } else {
         // Candidato NOVO — `gateway_payment_id` é um id de ORDER (prefixo
@@ -880,6 +884,7 @@ async function handler(
         const statusDetailRaiz = String(order.status_detail ?? "");
         statusMapeado = mapearStatusOrder(statusRaiz, statusDetailRaiz);
         statusBrutoParaLog = `${statusRaiz}:${statusDetailRaiz}`;
+        statusBrutoConfiavel = statusRaiz;
         valorAprovado = extrairValorDaOrder(order);
         liberarAVaga = recusaLiberaAVaga(order, statusMapeado);
       }
@@ -889,6 +894,28 @@ async function handler(
       // webhook: fica para o próximo ciclo de reconciliação. Mas "não
       // decide" não é "não conta": entra em ignorados (não confirmou, não é
       // falha), para o corpo continuar auditável sem abrir o log.
+      // CONTESTAÇÃO (chargeback) NÃO PASSA POR `confirmar_pagamento` — Lote A
+      // (04/10/2026, R1/A2). O mapa compartilhado (`_shared/mercadopago.ts`)
+      // traduz todo `charged_back` para 'estornado' (e continua assim: o
+      // checkout da `criar-pagamento` depende dele), mas aqui 'estornado' é
+      // IRREVERSÍVEL — e no pedido 'aguardando'+'pending' a RPC ainda CANCELA
+      // e devolve o estoque — para uma disputa que pode estar em análise
+      // (`in_process`) ou ganha pela loja (`reimbursed`, valor creditado ao
+      // vendedor — doc transaction-status do MP). Quem registra a contestação
+      // é o ledger, pelo webhook (`registrarDesfechoDoEstorno`); o pedido só
+      // vira 'estornado' por `concluir_estorno`, com o total coberto. Aqui o
+      // candidato é ignorado com log — fica na fila até expirar ou o webhook
+      // resolver, nunca é cancelado por isto.
+      if (statusBrutoConfiavel === "charged_back") {
+        console.warn(
+          "reconciliar-pagamentos: contestação (chargeback) no MP — NÃO chama confirmar_pagamento (o ledger da contestação é do webhook)",
+          candidato.order_id,
+          statusBrutoParaLog,
+        );
+        ignorados++;
+        continue;
+      }
+
       if (statusMapeado === null) {
         console.warn(
           "reconciliar-pagamentos: status desconhecido do MP",

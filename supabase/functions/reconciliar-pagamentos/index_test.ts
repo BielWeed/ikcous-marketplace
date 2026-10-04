@@ -614,6 +614,70 @@ Deno.test("order expirada (expired:expired) -> NÃO chama confirmar_pagamento, i
   assertEquals(registro.chamadasConfirmar.length, 0);
 });
 
+// --- 5b. contestação (chargeback): o mapa compartilhado diz 'estornado', mas
+// a reconciliação NÃO confirma — Lote A (04/10/2026, R1/A2). `confirmar_
+// pagamento('estornado')` é IRREVERSÍVEL e, no pedido 'aguardando'+'pending',
+// ainda CANCELA e devolve o estoque — para uma disputa que pode estar em
+// análise (in_process) ou ter sido ganha pela loja (reimbursed). O ledger da
+// contestação é do webhook; aqui o candidato só é ignorado, com log.
+
+Deno.test("Lote A — order 'charged_back' (os três detalhes) -> NÃO chama confirmar_pagamento, ignorados:1", async () => {
+  for (const detalhe of ["in_process", "settled", "reimbursed"]) {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder = "ORDTST03CHARGEDBACK";
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "estornado", registro });
+    const fetchImpl = fetchConsulta(200, {
+      id: idOrder,
+      status: "charged_back",
+      status_detail: detalhe,
+      total_amount: "149.90",
+    });
+    const avisoReal = console.warn;
+    console.warn = () => {};
+    let resposta: Response;
+    try {
+      resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    } finally {
+      console.warn = avisoReal;
+    }
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200, detalhe);
+    assertEquals(corpo.ignorados, 1, detalhe);
+    assertEquals(corpo.falhas, 0, detalhe);
+    assertEquals(registro.chamadasConfirmar.length, 0, `${detalhe}: confirmar_pagamento NÃO pode rodar para contestação`);
+  }
+});
+
+Deno.test("Lote A — candidato LEGADO com pagamento clássico 'charged_back' -> NÃO chama confirmar_pagamento, ignorados:1", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: "999" }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "estornado", registro });
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/payments/999")) {
+      return new Response(
+        JSON.stringify({ id: 999, status: "charged_back", status_detail: "in_process" }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`fetch inesperado nos testes: ${url}`);
+  };
+  const avisoReal = console.warn;
+  console.warn = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  } finally {
+    console.warn = avisoReal;
+  }
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorados, 1);
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
 // --- 6. candidato legado (id clássico) -> vai DIRETO para o endpoint clássico ----
 //
 // O MP não devolve 404 para um id sem forma de order — devolve 400

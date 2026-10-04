@@ -1502,6 +1502,12 @@ async function handler(
   // com o sentinela "verificando:" que `criar-pagamento` grava num 409
   // `idempotency_key_already_used`, Achado B2 em `criar-pagamento/index.ts`).
   let ordemDeCartaoNaNotificacao = false;
+  // Lote A (04/10/2026, R1): o `status` CRU que o MP devolveu na consulta
+  // autenticada (nunca o do corpo do webhook), nas duas rotas — é ele que
+  // decide se a notificação é uma CONTESTAÇÃO (ver o desvio logo depois do
+  // passo do ledger, mais abaixo). O rótulo mapeado não serve: o mapa
+  // compartilhado traduz todo `charged_back` para 'estornado'.
+  let statusBrutoConfiavel = "";
 
   if (rota === "payment") {
     const consulta = await consultarPagamento({
@@ -1523,6 +1529,7 @@ async function handler(
 
     // Usa o status que o MP DEVOLVEU, nunca o do corpo do webhook.
     statusMapeado = mapearStatus(consulta.status);
+    statusBrutoConfiavel = String(consulta.status ?? "");
     externalReference = consulta.externalReference;
     idParaRpc = String(consulta.id);
     statusBrutoParaLog = consulta.status;
@@ -1634,6 +1641,7 @@ async function handler(
     }
 
     statusMapeado = statusBanco;
+    statusBrutoConfiavel = statusRaiz;
     // MEDIDO: `external_reference` também fica na RAIZ da order — mesma
     // invariante que o caminho clássico já protege (o pedido NUNCA sai do
     // corpo do webhook; sai da resposta autenticada do MP).
@@ -1964,6 +1972,42 @@ async function handler(
         return json({ error: "Erro ao registrar o desfecho do estorno." }, 500);
       }
     }
+  }
+
+  // CONTESTAÇÃO (chargeback) NÃO PASSA POR `confirmar_pagamento` — Lote A
+  // (04/10/2026, R1). O mapa compartilhado (`_shared/mercadopago.ts`) traduz
+  // `charged_back` (clássico) e `charged_back:in_process/settled/reimbursed`
+  // (Orders) para 'estornado', e continua assim de propósito: o checkout da
+  // `criar-pagamento` lê esse rótulo (crítica de desenho A1 do lote). Mas
+  // aqui 'estornado' iria para `confirmar_pagamento`, onde é IRREVERSÍVEL
+  // (20260901000000 — não existe estornado->pago, e não deve existir): uma
+  // disputa EM ANÁLISE (`in_process`) ou GANHA pela loja (`reimbursed` =
+  // valor creditado ao vendedor) marcava o pedido pago como estornado.
+  // Semântica oficial (transaction-status):
+  // https://www.mercadopago.com.br/developers/en/docs/checkout-api-orders/payment-management/status/transaction-status
+  // — `in_process` = disputa em andamento; `settled` = valor devolvido ao
+  // COMPRADOR; `reimbursed` = valor creditado ao VENDEDOR. A página de
+  // status da ORDER
+  // (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/status/order-status)
+  // descreve `reimbursed` como "valor devolvido ao pagador" — o contrário. A
+  // divergência é da doc do MP; vale a do STATUS DA TRANSAÇÃO, e por isso o
+  // ledger decide pelo `status_detail` do PAGAMENTO contestado, nunca pelo
+  // agregado da order (`registrarDesfechoDoEstorno`, ramo B).
+  //
+  // O passo do ledger (acima) já registrou o que havia para registrar: a
+  // reserva, a conclusão (que vira 'estornado' SÓ quando o total estornado
+  // cobre o pago — `concluir_estorno`, 2026110000100) ou a liberação. Daqui
+  // em diante nada muda no pedido: 200 com rótulo próprio. Vale para as duas
+  // rotas; o bloco A3 (rota `payment`, mais abaixo) tem a guarda gêmea para
+  // a ORDER GRAVADA contestada notificada como outro status.
+  if (statusBrutoConfiavel === "charged_back") {
+    console.log(
+      "webhook-mercadopago: contestação (chargeback) tratada pelo ledger — confirmar_pagamento NÃO é chamada",
+      dataIdStr,
+      rota,
+      statusBrutoParaLog,
+    );
+    return json({ ok: true, resultado: "contestacao_no_ledger" }, 200);
   }
 
   if (statusMapeado === null) {
@@ -2401,6 +2445,18 @@ async function handler(
           return json({ error: consultaGravado.erro }, 500);
         }
         const orderGravada = consultaGravado.order as Record<string, unknown>;
+        // Lote A (R1): a ORDER GRAVADA em contestação nunca chega a
+        // `confirmar_pagamento` — o rótulo 'estornado' que o mapa dá a ela não
+        // é o desfecho da disputa (ver o desvio da contestação, acima). O
+        // ledger já rodou com ESTA order (guarda B1, que a reconsulta quando a
+        // notificação clássica é de estorno).
+        if (String(orderGravada.status ?? "") === "charged_back") {
+          console.log(
+            "webhook-mercadopago: rota `payment` — a ORDER GRAVADA está em contestação (chargeback); confirmar_pagamento NÃO é chamada",
+            { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco, statusMapeado },
+          );
+          return json({ ok: true, resultado: "contestacao_no_ledger" }, 200);
+        }
         const statusDoGravado = mapearStatusOrder(
           String(orderGravada.status ?? ""),
           String(orderGravada.status_detail ?? ""),
