@@ -11,6 +11,7 @@ import {
   MENSAGEM_ERRO_LOGIN_GENERICA,
   MENSAGEM_ERRO_LOGIN_GENERICA_LOJISTA,
 } from "@/lib/mensagens-auth";
+import { esquecerTodosOsPedidosPendentesDoCheckout } from "@/lib/pedido-pendente-do-checkout";
 import { supabase } from "@/lib/supabase";
 import { limparCachesDeAdmin } from "@/utils/admin_cache";
 import {
@@ -131,6 +132,12 @@ function clearLocalUserData() {
   // da correção: pede ao SW que jogue fora o que não é público. Disparar-e-
   // esquecer, nunca lança — o logout não espera o SW nem depende dele.
   pedirAoSwPurgarArquivosPrivados();
+  // Recarga do checkout (04/10/2026): o id do pedido em pagamento que a aba
+  // guarda para o PIX sobreviver ao F5 (src/lib/pedido-pendente-do-checkout.ts)
+  // é da sessão de quem saiu. Mora no `sessionStorage`, não no
+  // `localStorage` varrido abaixo; o próprio módulo protege o acesso (nunca
+  // lança), por isso fica antes do `return` sem `window`.
+  esquecerTodosOsPedidosPendentesDoCheckout();
   if (typeof window === "undefined") return;
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");

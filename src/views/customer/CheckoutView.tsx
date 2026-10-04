@@ -70,6 +70,10 @@ import {
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  esquecerPedidoPendenteDoCheckout,
+  guardarPedidoPendenteDoCheckout,
+} from "@/lib/pedido-pendente-do-checkout";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -595,6 +599,12 @@ interface CheckoutViewProps {
   // Frente 10 (29/09/2026): id do pedido cujo pagamento está sendo retomado
   // do card do pedido — liga a tela de pagamento DIRETO, sem carrinho.
   readonly retomarPedidoId?: string;
+  // Recarga (04/10/2026): o `retomarPedidoId` veio do registro da aba
+  // (pedido-pendente-do-checkout.ts), não de um toque do cliente — o pedido
+  // que a leitura prova não ser dele, não existir ou não ser de pagamento
+  // online sai de cena calado, e o pago entre a saída e a volta mostra a
+  // confirmação.
+  readonly retomadaDaRecarga?: boolean;
 }
 
 export function CheckoutView({
@@ -605,7 +615,8 @@ export function CheckoutView({
   onClearCart: propOnClearCart,
   onNavigate,
   onSetBackOverride,
-  retomarPedidoId,
+  retomarPedidoId: retomarPedidoIdRecebido,
+  retomadaDaRecarga = false,
 }: CheckoutViewProps) {
   const {
     config,
@@ -1409,6 +1420,23 @@ export function CheckoutView({
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
   // cartão por uma cobrança PIX criada sozinha.
   const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
+  // Recarga (04/10/2026): o pedido que veio do registro da aba e que a
+  // leitura provou não ser deste cliente, não existir ou não ser de pagamento
+  // online sai de cena CALADO — daqui em diante o checkout é o de sempre, e
+  // nenhum caminho que lê `retomarPedidoId` (a verificação, a escolha da
+  // forma, o "Pagar com PIX" da verificação) enxerga o id descartado.
+  const [retomadaDescartada, setRetomadaDescartada] = useState<string | null>(
+    null,
+  );
+  const retomarPedidoId =
+    retomarPedidoIdRecebido !== undefined &&
+    retomarPedidoIdRecebido !== retomadaDescartada
+      ? retomarPedidoIdRecebido
+      : undefined;
+  // Recarga: pago entre a saída e a volta — a tela de confirmado, nada monta.
+  const [retomadaJaPaga, setRetomadaJaPaga] = useState(false);
+  // O dono que a leitura da recarga confere (e de quem é o registro da aba).
+  const idDoUsuarioDaRetomada = user?.id;
   // F4: `"falhou"` mostra a mensagem; `"relendo"` é o intervalo entre o toque
   // em "Tentar de novo" e a resposta (a mensagem fica, sem o botão, em vez de
   // piscar o checkout vazio). `tentativaDaRetomada` refaz a leitura.
@@ -1473,15 +1501,61 @@ export function CheckoutView({
     supabase
       .from("marketplace_orders")
       .select(
-        "total, metodo_online, gateway_payment_id, payment_status, status",
+        "total, metodo_online, gateway_payment_id, payment_status, status, user_id",
       )
       .eq("id", retomarPedidoId)
       .maybeSingle()
       .then(({ data, error }) => {
         if (!vivo || respondeu) return;
+        // Recarga: o id veio do registro da aba, não de um toque — o que não
+        // é pedido de pagamento online DESTE cliente sai de cena calado
+        // (`retomadaDescartada`), e o checkout segue o fluxo de sempre. Erro
+        // de leitura NÃO é descarte: o aviso com "Tentar de novo" de sempre.
+        const descartarCalado = () => {
+          respondeu = true;
+          clearTimeout(relogio);
+          setFalhaDaRetomada(null);
+          setRetomadaDescartada(pedidoRetomado);
+        };
+        if (retomadaDaRecarga && !error && !data) {
+          descartarCalado();
+          return;
+        }
         if (error || !data) {
           falhar();
           return;
+        }
+        if (retomadaDaRecarga) {
+          const {
+            user_id: dono,
+            payment_status: pagamento,
+            status: situacao,
+          } = data as {
+            user_id?: unknown;
+            payment_status?: unknown;
+            status?: unknown;
+          };
+          // O dono é conferido na LINHA, não só pela RLS: a política de
+          // leitura deixa o admin ver pedido alheio. Sem sessão, sem dono.
+          // Pedido de entrega tem `payment_status` NULL (ou
+          // `recebido_na_entrega`) — nunca passou por pagamento online.
+          if (
+            typeof dono !== "string" ||
+            dono !== idDoUsuarioDaRetomada ||
+            typeof pagamento !== "string" ||
+            pagamento === "recebido_na_entrega"
+          ) {
+            descartarCalado();
+            return;
+          }
+          if (pagamento === "pago" && situacao !== "cancelled") {
+            respondeu = true;
+            clearTimeout(relogio);
+            setFalhaDaRetomada(null);
+            setValorDoPedido(Number((data as { total: unknown }).total ?? 0));
+            setRetomadaJaPaga(true);
+            return;
+          }
         }
         respondeu = true;
         clearTimeout(relogio);
@@ -1577,7 +1651,12 @@ export function CheckoutView({
       vivo = false;
       clearTimeout(relogio);
     };
-  }, [retomarPedidoId, tentativaDaRetomada]);
+  }, [
+    retomarPedidoId,
+    tentativaDaRetomada,
+    retomadaDaRecarga,
+    idDoUsuarioDaRetomada,
+  ]);
   // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
   // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
   // método retoma o da última tentativa quando legível. O gateway_payment_id
@@ -1654,6 +1733,37 @@ export function CheckoutView({
     setOrderId(pedidoDaEscolha);
     setAguardandoPagamento(true);
   };
+  // Recarga (04/10/2026): o registro da aba (SÓ o id do pedido — ver
+  // pedido-pendente-do-checkout.ts) acompanha o pedido que ESTA tela está
+  // pagando ou retomando, para a recarga voltar a ele. Some quando o pedido
+  // sai de pendente (pago, pago fora do prazo, morto no servidor, não aguarda
+  // mais) e quando não há pedido em pagamento na tela (checkout de carrinho,
+  // pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
+  // continua retomável (a mesma regra do "Retomar pagamento" do card).
+  // Nada é limpo ao desmontar de propósito: a recarga não desmonta, e a
+  // saída do checkout é limpa pelo App (handleNavigate).
+  const pedidoEmPagamentoNaTela =
+    aguardandoPagamento && orderId !== "" ? orderId : (retomarPedidoId ?? null);
+  const pedidoSaiuDePendente =
+    statusPagamentoPix !== null ||
+    (pedidoEmPagamentoNaTela !== null &&
+      pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
+    retomadaSemPagamentoPendente ||
+    retomadaJaPaga;
+  const pedidoParaARecarga = pedidoSaiuDePendente
+    ? null
+    : pedidoEmPagamentoNaTela;
+  useEffect(() => {
+    if (!idDoUsuarioDaRetomada) return;
+    if (pedidoParaARecarga) {
+      guardarPedidoPendenteDoCheckout(
+        idDoUsuarioDaRetomada,
+        pedidoParaARecarga,
+      );
+    } else {
+      esquecerPedidoPendenteDoCheckout(idDoUsuarioDaRetomada);
+    }
+  }, [idDoUsuarioDaRetomada, pedidoParaARecarga]);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -3509,6 +3619,16 @@ export function CheckoutView({
           Ver meus pedidos
         </Button>
       </div>
+    );
+  }
+
+  if (retomadaJaPaga && retomarPedidoId) {
+    return (
+      <PagamentoConfirmadoView
+        orderId={retomarPedidoId}
+        valor={valorDoPedido}
+        onNavigate={onNavigate}
+      />
     );
   }
 
