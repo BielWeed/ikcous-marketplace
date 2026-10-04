@@ -90,18 +90,31 @@ const FORMA_DO_ID_DO_VENDEDOR = /^[0-9]{1,20}$/;
  * a identidade da conta dona do token, sem parse do token, sem env nova, sem
  * `app_settings` novo e sem nenhum dado do comprador, do corpo ou da query.
  *
- * SOMENTE LEITURA: um GET, rota fixa, sem corpo. Falha (sem resposta, rede,
- * 4xx/5xx, corpo ilegível, `id` fora da forma numérica positiva) -> `null`, e
- * quem consulta o caso CONSERVA e avisa o admin. Nem o token nem o id vão ao log.
+ * SOMENTE LEITURA: um GET, rota fixa, sem corpo. Dois tipos de falha:
+ *  - PERMANENTE (401/403/4xx, 3xx, corpo ilegível, `id` fora da forma numérica
+ *    positiva) -> `null`, e quem consulta o caso CONSERVA e avisa o admin;
+ *  - TEMPORÁRIA (rede, timeout, 429, 5xx) -> LANÇA `FalhaTemporariaDoVendedor`,
+ *    o MESMO contrato da consulta do caso (`transitorio`): quem chama não toca a
+ *    linha, conta falha e tenta de novo no próximo ciclo (tópico: 500, o MP
+ *    reenvia). Nunca vira "fonte inválida" — isso adiaria 6 h uma falha de segundos.
+ * Nem o token nem o id vão ao log.
  */
+export class FalhaTemporariaDoVendedor extends Error {
+  constructor(motivo: string) {
+    super(`users/me (seller ID) indisponível agora: ${motivo}`);
+    this.name = "FalhaTemporariaDoVendedor";
+  }
+}
+
 export async function resolverVendedorIdDoMp(args: {
   token: string;
   fetchImpl?: typeof fetch;
   tempoLimiteMs?: number;
 }): Promise<string | null> {
   const f = args.fetchImpl ?? fetch;
+  let resposta: Response;
   try {
-    const resposta = await fetchComTempo(
+    resposta = await fetchComTempo(
       f,
       `${BASE_URL_PADRAO}/users/me`,
       // `redirect: "manual"`: o Authorization NUNCA acompanha um redirecionamento
@@ -109,6 +122,15 @@ export async function resolverVendedorIdDoMp(args: {
       { method: "GET", headers: { Authorization: `Bearer ${args.token}` }, redirect: "manual" },
       args.tempoLimiteMs,
     );
+  } catch (_erro) {
+    console.error("mercadopago: users/me (seller ID) sem resposta (rede/timeout) — tenta de novo no próximo ciclo");
+    throw new FalhaTemporariaDoVendedor("rede/timeout");
+  }
+  if (resposta.status === 429 || resposta.status >= 500) {
+    console.error("mercadopago: users/me (seller ID) indisponível", resposta.status);
+    throw new FalhaTemporariaDoVendedor(`status ${resposta.status}`);
+  }
+  try {
     if (!resposta.ok || resposta.status >= 300) {
       console.error("mercadopago: users/me (seller ID) recusou ou redirecionou", resposta.status);
       return null;
@@ -123,7 +145,7 @@ export async function resolverVendedorIdDoMp(args: {
     }
     return id;
   } catch (_erro) {
-    console.error("mercadopago: users/me (seller ID) falhou (rede/timeout/corpo ilegível)");
+    console.error("mercadopago: users/me (seller ID) com corpo ilegível");
     return null;
   }
 }
@@ -131,8 +153,9 @@ export async function resolverVendedorIdDoMp(args: {
 /**
  * Um resolvedor POR EXECUÇÃO (uma requisição do webhook, um ciclo do cron):
  * a identidade do dono do token não muda dentro dela, então o `/users/me` sai
- * UMA vez (mesmo com vários casos) e o resultado — inclusive `null` — é
- * lembrado só na memória daquela execução. Nunca persistido, nunca entre
+ * UMA vez (mesmo com vários casos) e o resultado definitivo — inclusive `null`
+ * de fonte inválida — é lembrado só na memória daquela execução; falha
+ * temporária não é lembrada. Nunca persistido, nunca entre
  * execuções: token trocado pelo lojista vale na execução seguinte.
  */
 export function criarResolvedorDeVendedor(args: {
@@ -140,7 +163,18 @@ export function criarResolvedorDeVendedor(args: {
   fetchImpl?: typeof fetch;
 }): () => Promise<string | null> {
   let memo: Promise<string | null> | null = null;
-  return () => (memo ??= resolverVendedorIdDoMp(args));
+  return () => {
+    if (memo) return memo;
+    const consulta = resolverVendedorIdDoMp(args);
+    memo = consulta;
+    // Só o resultado DEFINITIVO (id, ou null de fonte inválida) é lembrado. A falha
+    // TEMPORÁRIA não: a chamada seguinte da mesma execução tenta de novo, para não
+    // marcar como definitivo (nem conservar/girar) o que é só indisponibilidade.
+    consulta.catch(() => {
+      if (memo === consulta) memo = null;
+    });
+    return consulta;
+  };
 }
 
 export async function consultarContestacao(args: {

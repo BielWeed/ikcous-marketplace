@@ -8,6 +8,7 @@ import {
   lerContestacoesDaOrder,
   valorDoCaso,
   criarResolvedorDeVendedor,
+  FalhaTemporariaDoVendedor,
   resolverVendedorIdDoMp,
 } from "./contestacao.ts";
 
@@ -135,14 +136,13 @@ Deno.test("resolverVendedorIdDoMp: UM GET em /users/me com o Authorization da lo
   assertEquals((chamadas[0].init?.headers as Record<string, string>).Authorization, "Bearer T-A");
 });
 
-Deno.test("resolverVendedorIdDoMp: fonte INVÁLIDA (401, 5xx, rede, corpo ilegível, id ausente/zero/negativo/texto/gigante/objeto) -> null, nunca um palpite", async () => {
+Deno.test("resolverVendedorIdDoMp: fonte PERMANENTEMENTE inválida (401/403, corpo ilegível, id ausente/zero/negativo/texto/gigante/objeto) -> null, nunca um palpite", async () => {
   const erroReal = console.error;
   console.error = () => {};
   try {
     const respostas: Array<[string, () => Response | Promise<Response>]> = [
       ["401", () => new Response("{}", { status: 401 })],
-      ["500", () => new Response("{}", { status: 500 })],
-      ["rede", () => Promise.reject(new TypeError("rede caiu"))],
+      ["403", () => new Response("{}", { status: 403 })],
       ["corpo ilegível", () => new Response("<html>", { status: 200 })],
       ["corpo array", () => new Response("[1]", { status: 200 })],
       ["sem id", () => new Response(JSON.stringify({ nickname: "x" }), { status: 200 })],
@@ -155,6 +155,35 @@ Deno.test("resolverVendedorIdDoMp: fonte INVÁLIDA (401, 5xx, rede, corpo ilegí
     ];
     for (const [nome, resposta] of respostas) {
       assertEquals(await resolverVendedorIdDoMp({ token: "T-A", fetchImpl: mpUsersMe([], resposta) }), null, nome);
+    }
+  } finally {
+    console.error = erroReal;
+  }
+});
+
+Deno.test("resolverVendedorIdDoMp: falha TEMPORÁRIA (5xx, 429, rede, timeout) LANÇA FalhaTemporariaDoVendedor — não vira null (null = fonte inválida, que conserva e avisa)", async () => {
+  const erroReal = console.error;
+  console.error = () => {};
+  try {
+    const temporarias: Array<[string, () => Response | Promise<Response>]> = [
+      ["500", () => new Response("{}", { status: 500 })],
+      ["503", () => new Response("{}", { status: 503 })],
+      ["429", () => new Response("{}", { status: 429 })],
+      ["rede", () => Promise.reject(new TypeError("rede caiu"))],
+      ["timeout", () => Promise.reject(new DOMException("aborted", "AbortError"))],
+    ];
+    for (const [nome, resposta] of temporarias) {
+      let lancou: unknown = null;
+      try {
+        await resolverVendedorIdDoMp({ token: "T-A", fetchImpl: mpUsersMe([], resposta) });
+      } catch (e) {
+        lancou = e;
+      }
+      assertEquals(lancou instanceof FalhaTemporariaDoVendedor, true, nome);
+    }
+    // 3xx e 4xx permanentes seguem null.
+    for (const status of [301, 302, 400, 401, 403, 404]) {
+      assertEquals(await resolverVendedorIdDoMp({ token: "T-A", fetchImpl: mpUsersMe([], () => new Response(null, { status })) }), null, String(status));
     }
   } finally {
     console.error = erroReal;
@@ -174,8 +203,21 @@ Deno.test("criarResolvedorDeVendedor: UM /users/me por execução (mesmo com vá
   const erroReal = console.error;
   console.error = () => {};
   try {
-    const obterFalho = criarResolvedorDeVendedor({ token: "T-A", fetchImpl: mpUsersMe(falhas, () => new Response("{}", { status: 503 })) });
+    const obterFalho = criarResolvedorDeVendedor({ token: "T-A", fetchImpl: mpUsersMe(falhas, () => new Response("{}", { status: 401 })) });
     assertEquals([await obterFalho(), await obterFalho()], [null, null]);
+    // A falha TEMPORÁRIA NÃO é lembrada como definitiva: a chamada seguinte da mesma execução tenta de novo (e lança de novo).
+    const temp: Array<{ url: string; init?: RequestInit }> = [];
+    const obterTemp = criarResolvedorDeVendedor({ token: "T-A", fetchImpl: mpUsersMe(temp, () => new Response("{}", { status: 503 })) });
+    for (let i = 0; i < 2; i++) {
+      let lancou = false;
+      try {
+        await obterTemp();
+      } catch (_e) {
+        lancou = true;
+      }
+      assertEquals(lancou, true);
+    }
+    assertEquals(temp.length, 2);
   } finally {
     console.error = erroReal;
   }
@@ -192,7 +234,10 @@ Deno.test("resolverVendedorIdDoMp: nem o token nem o id vão ao log", async () =
   console.error = (...a: unknown[]) => linhas.push(a.map((x) => JSON.stringify(x)).join(" "));
   try {
     await resolverVendedorIdDoMp({ token: "T-SEGREDO", fetchImpl: mpUsersMe([], () => new Response(JSON.stringify({ id: 99887766 }), { status: 401 })) });
-    await resolverVendedorIdDoMp({ token: "T-SEGREDO", fetchImpl: mpUsersMe([], () => Promise.reject(new Error("T-SEGREDO 99887766"))) });
+    await resolverVendedorIdDoMp({ token: "T-SEGREDO", fetchImpl: mpUsersMe([], () => Promise.reject(new Error("T-SEGREDO 99887766"))) }).catch((e) => {
+      // a falha temporária lança, mas a mensagem do erro também não carrega token nem id
+      linhas.push(String(e.message));
+    });
     await resolverVendedorIdDoMp({ token: "T-SEGREDO", fetchImpl: mpUsersMe([], () => new Response(JSON.stringify({ id: "abc99887766" }), { status: 200 })) });
   } finally {
     console.error = erroReal;

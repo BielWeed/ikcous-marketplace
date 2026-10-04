@@ -96,7 +96,7 @@ function mp(opts: {
   orderStatus?: number;
   casos?: Record<string, { status: number; corpo?: unknown }>;
   /** O que `GET /users/me` do token da loja devolve (padrão: o vendedor dono). */
-  usersMe?: { status: number; corpo?: unknown } | "rede" | "redireciona";
+  usersMe?: { status: number; corpo?: unknown } | "rede" | "timeout" | "redireciona" | "ok_depois";
   /** Quem é o vendedor DONO do caso para o MP (padrão VENDEDOR). */
   vendedorDoCaso?: string;
   /** O token que o MP aceita no GET do caso (padrão: o da loja). */
@@ -112,6 +112,7 @@ function mp(opts: {
       const h = new Headers(init?.headers);
       consultasUsersMe.push({ autorizacao: h.get("Authorization"), metodo: init?.method, url: u });
       if (opts.usersMe === "rede") return Promise.reject(new TypeError("rede caiu"));
+      if (opts.usersMe === "timeout") return Promise.reject(new DOMException("aborted", "AbortError"));
       if (opts.usersMe === "redireciona") {
         // 302 para OUTRO host; um fetch que seguisse levaria o Authorization junto.
         if (init?.redirect === "manual") return Promise.resolve(new Response(null, { status: 302, headers: { Location: "https://fora.example/captura" } }));
@@ -596,11 +597,10 @@ Deno.test("seller ID: DOIS casos do mesmo pedido -> um /users/me só (memória d
   assertEquals(b.linhas.map((l) => l.status), ["liberado", "liberado"]);
 });
 
-Deno.test("seller ID: fonte INVÁLIDA no /users/me (401, 500, rede, forma errada, zero) -> o cron CONSERVA: nenhum GET de caso, nenhuma RPC, a reserva fica, admin avisado", async () => {
+Deno.test("seller ID: fonte PERMANENTEMENTE inválida no /users/me (401, 403, forma errada, zero, sem id) -> o cron CONSERVA: nenhum GET de caso, nenhuma RPC, a reserva fica, admin avisado", async () => {
   const fontes: Array<[string, { status: number; corpo?: unknown } | "rede"]> = [
     ["401", { status: 401 }],
-    ["500", { status: 500 }],
-    ["rede", "rede"],
+    ["403", { status: 403 }],
     ["id texto", { status: 200, corpo: { id: "abc" } }],
     ["id zero", { status: 200, corpo: { id: 0 } }],
     ["sem id", { status: 200, corpo: { nickname: "x" } }],
@@ -674,4 +674,49 @@ Deno.test("seller ID: /users/me responde 302 para OUTRO host -> fonte inválida:
   assertEquals([w.status, w.corpo.desfecho], [200, "conservada"]);
   assertEquals(m2.chamadas.some((u) => u.includes("fora.example")), false);
   assertEquals([m2.casosLidos(), doLedger(b2)], [0, []]);
+});
+
+// ── falha TEMPORÁRIA do /users/me: não é "fonte inválida" ──────────────────────
+// 503, 429 e timeout/rede são o mesmo contrato da reconsulta para o GET do caso:
+// NÃO tocam a linha (updated_at intacto), não avisam, e a linha volta no PRÓXIMO
+// ciclo (10 min), não em 6 h. Só a fonte permanentemente inválida conserva e avisa.
+for (
+  const [nome, usersMe] of [
+    ["503", { status: 503 }],
+    ["429", { status: 429 }],
+    ["timeout", "timeout"],
+    ["rede", "rede"],
+  ] as Array<[string, { status: number } | "timeout" | "rede"]>
+) {
+  Deno.test(`seller ID: /users/me com falha TEMPORÁRIA (${nome}) no caminho PADRÃO do cron -> dinheiro conservado, ZERO GET de caso, ZERO RPC, updated_at INTACTO, sem aviso; o próximo ciclo TENTA DE NOVO e resolve`, async () => {
+    const b = bancoVivo([linhaVinculada()]);
+    const antes = JSON.stringify(b.linhas);
+    const m = mp({ order: orderProcessada(), usersMe, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+    const r1 = await cron(b, m);
+    assertEquals(m.consultasUsersMe.length, 1, "o /users/me foi tentado");
+    assertEquals(m.casosLidos(), 0, "ZERO GET do caso");
+    assertEquals(doLedger(b), [], "ZERO RPC de decisão");
+    assertEquals(JSON.stringify(b.linhas), antes, "linha INTACTA (status e updated_at)");
+    assertEquals(b.toques, [], "nenhum update na linha");
+    assertEquals(r1.avisos, [], "falha temporária não avisa o admin (como o GET do caso)");
+    assertEquals([r1.resumo.falhas, r1.resumo.conservadas, r1.resumo.reconsultadas], [1, 0, 0]);
+
+    // Próximo ciclo (10 min depois), MP de volta: a linha ainda é elegível e é tentada DE NOVO.
+    const m2 = mpGanho();
+    const r2 = await cron(b, m2, AGORA + 10 * 60 * 1000);
+    assertEquals(r2.resumo.vistas, 1, "a linha continua elegível (updated_at antigo)");
+    assertEquals(m2.consultasUsersMe.length, 1, "tentou de novo");
+    assertEquals([b.linhas[0].status, r2.resumo.reconsultadas, doLedger(b).length], ["liberado", 1, 1]);
+  });
+}
+
+Deno.test("seller ID: /users/me com falha TEMPORÁRIA (503) no tópico do webhook -> 500 (o MP reenvia), nenhum GET de caso, nenhuma RPC, linha intacta", async () => {
+  const b = bancoVivo([linhaVinculada()]);
+  const antes = JSON.stringify(b.linhas);
+  const m = mp({ order: orderProcessada(), usersMe: { status: 503 }, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const w = await webhook(b, m);
+  assertEquals([w.status, m.casosLidos(), doLedger(b), JSON.stringify(b.linhas)], [500, 0, [], antes]);
+  // O reenvio do MP, com o /users/me de volta, resolve.
+  const w2 = await webhook(b, mpGanho());
+  assertEquals([w2.status, w2.corpo.desfecho, b.linhas[0].status], [200, "entregue", "liberado"]);
 });
