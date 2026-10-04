@@ -34,6 +34,7 @@ import {
   consultarOrder,
   fetchComTempo,
   idEhClassico,
+  resumoSemDadoPessoal,
 } from "./mercadopago.ts";
 
 export type LinhaEstorno = {
@@ -235,6 +236,12 @@ function acharCodigo(corpo: unknown): string | null {
     ((typeof c.code === "string" || typeof c.code === "number")
       ? String(c.code)
       : null);
+}
+
+/** R9: o que do erro de parse pode ir ao log — o NOME (`SyntaxError`),
+ * nunca a mensagem (o V8 cola nela o começo do corpo recebido). */
+function nomeDoErro(err: unknown): string {
+  return err instanceof Error ? err.name : typeof err;
 }
 
 function comoObjeto(corpo: unknown): Record<string, unknown> {
@@ -1090,7 +1097,9 @@ export async function confirmarPorConsulta(args: {
   try {
     corpo = comoObjeto(await resposta.json());
   } catch (err) {
-    console.error("estorno: confirmação com corpo ilegível", err);
+    // R9: só o NOME do erro — a mensagem do erro de parse do V8 cola o começo
+    // do corpo (`Unexpected token 'J', "Josefina A"...`), que é do pagador.
+    console.error("estorno: confirmação com corpo ilegível", nomeDoErro(err));
     return {
       tipo: "tentar_depois",
       motivo: "resposta ilegível ao confirmar o estorno",
@@ -1299,13 +1308,21 @@ export async function executarEstorno(args: {
   try {
     corpo = await resposta.json();
   } catch (err) {
-    console.error("estorno: resposta com corpo ilegível", resposta.status, err);
+    console.error("estorno: resposta com corpo ilegível", resposta.status, nomeDoErro(err));
     corpo = null;
   }
   if (!resposta.ok) {
-    // M2: o corpo do erro do MP vai para o log da função (padrão da casa),
-    // nunca para o texto do lojista — e sem ele o POST reprovado some.
-    console.error("estorno: mercado pago recusou o POST", resposta.status, corpo);
+    // M2: o erro do MP vai para o log da função (padrão da casa), nunca para
+    // o texto do lojista — e sem ele o POST reprovado some. R9 (Lote A,
+    // 04/10/2026): só o RESUMO (status, códigos, caminho do campo) — o corpo
+    // cru traz o pagador (e-mail, CPF, nome) e a frase da recusa ecoa o
+    // valor. A decisão (`interpretarResposta`, abaixo) continua lendo o corpo
+    // inteiro: a idempotência e o veredito não mudam.
+    console.error(
+      "estorno: mercado pago recusou o POST",
+      resposta.status,
+      resumoSemDadoPessoal(corpo),
+    );
   }
 
   let resultado = interpretarResposta(

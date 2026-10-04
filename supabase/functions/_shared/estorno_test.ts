@@ -717,7 +717,7 @@ Deno.test("Lote A A6 - executarEstorno repassa idsJaReivindicados à leitura da 
     pedido: pedidoOrder(),
     token: TOKEN,
     buscar: duble.f,
-    consultarTransacaoDaOrder: async () => "PAY01XYZEXEMPLODETRANSA1",
+    consultarTransacaoDaOrder: () => Promise.resolve("PAY01XYZEXEMPLODETRANSA1"),
     idsJaReivindicados: ["REF_DA_OUTRA"],
   });
   assertEquals(r.tipo, "concluido");
@@ -2497,4 +2497,156 @@ Deno.test("E51 - AC2-a: a soma livre se compara com linha.amount, NUNCA com valo
     (resultado as { motivo: string }).motivo,
     MOTIVO_DEVOLVIDO_POR_FORA_EM_PARCELAS,
   );
+});
+
+// ---------------------------------------------------------------------------
+// R9 (Lote A, 04/10/2026) — o log do executor NUNCA carrega dado do pagador
+// ---------------------------------------------------------------------------
+// O corpo de erro do MP (Payments clássica e Orders) pode trazer o pagador
+// (e-mail, CPF, nome, token do cartão) e a frase da recusa pode ecoar o valor
+// recusado. E o erro do `resposta.json()` também vaza: o V8 cola o começo do
+// corpo na mensagem (`Unexpected token 'M', "Maria 123..." is not valid JSON`).
+// O log fica só com status, códigos e nome do erro.
+
+const PII = {
+  email: "cliente.r9@exemplo.com",
+  cpf: "52998224725",
+  nome: "Josefina Albuquerque",
+  tokenCartao: "ff8080814c11e237014c1ff593b5r9r9",
+};
+
+/** Texto do que foi logado — `Error` vira `nome: mensagem` (JSON.stringify
+ * de um Error dá "{}" e esconderia exatamente o vazamento da mensagem). */
+function textoDoLog(chamadas: unknown[][]): string {
+  return chamadas
+    .map((args) =>
+      args
+        .map((a) =>
+          a instanceof Error
+            ? `${a.name}: ${a.message}`
+            : typeof a === "string"
+            ? a
+            : JSON.stringify(a)
+        )
+        .join(" ")
+    )
+    .join("\n");
+}
+
+async function comLogCapturado(fn: () => Promise<unknown>): Promise<string> {
+  const chamadas: unknown[][] = [];
+  const real = console.error;
+  console.error = (...args: unknown[]) => {
+    chamadas.push(args);
+  };
+  try {
+    await fn();
+  } finally {
+    console.error = real;
+  }
+  return textoDoLog(chamadas);
+}
+
+function semDadoPessoal(texto: string, corpoCru?: string) {
+  for (const [rotulo, valor] of Object.entries(PII)) {
+    assertEquals(texto.includes(valor), false, `${rotulo} vazou no log: ${texto}`);
+  }
+  assertEquals(texto.includes("Josefina"), false, `nome vazou no log: ${texto}`);
+  assertEquals(texto.includes(TOKEN), false, "o token de acesso nunca vai ao log");
+  if (corpoCru !== undefined) {
+    assertEquals(texto.includes(corpoCru), false, "o corpo cru foi para o log");
+  }
+}
+
+/** fetch que responde um corpo de texto qualquer (o `fetchDuble` sempre
+ * serializa JSON — aqui o corpo é cru de propósito). */
+function fetchTextoCru(status: number, corpo: string): typeof fetch {
+  return (() => Promise.resolve(new Response(corpo, { status }))) as unknown as typeof fetch;
+}
+
+Deno.test("R9-a - POST recusado (Payments e Orders) com o pagador no corpo: o log tem status e codigos, nunca e-mail, CPF, nome, token nem o corpo cru", async () => {
+  const corpoPayments = {
+    message: `invalid payer ${PII.email}`,
+    error: "bad_request",
+    status: 400,
+    cause: [{ code: 4046, description: `payer ${PII.nome} ${PII.cpf} invalid` }],
+    payer: {
+      email: PII.email,
+      first_name: PII.nome,
+      identification: { type: "CPF", number: PII.cpf },
+    },
+    payment_method: { token: PII.tokenCartao },
+  };
+  const cruPayments = JSON.stringify(corpoPayments);
+  const logPayments = await comLogCapturado(() =>
+    executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoPagoCom(),
+      token: TOKEN,
+      buscar: fetchTextoCru(400, cruPayments),
+    })
+  );
+  semDadoPessoal(logPayments, cruPayments);
+  assertStringIncludes(logPayments, "estorno: mercado pago recusou o POST");
+  assertStringIncludes(logPayments, "400");
+  assertStringIncludes(logPayments, "4046");
+  assertStringIncludes(logPayments, "bad_request");
+
+  const corpoOrders = {
+    error: "invalid_request",
+    error_messages: [{ code: "refund_amount_exceeds", message: `payer ${PII.email} ${PII.cpf}` }],
+    errors: [{ code: "invalid_refund", message: `refund for ${PII.nome}`, details: [`payer.email ${PII.email}`] }],
+    data: {
+      status: "processed",
+      payer: { email: PII.email, identification: { number: PII.cpf }, first_name: PII.nome },
+      transactions: { payments: [{ status_detail: "accredited", payment_method: { token: PII.tokenCartao } }] },
+    },
+  };
+  const cruOrders = JSON.stringify(corpoOrders);
+  const logOrders = await comLogCapturado(() =>
+    executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoOrder(),
+      token: TOKEN,
+      consultarTransacaoDaOrder: consultaTransacaoFalsa,
+      buscar: ((entrada: string | URL | Request) => {
+        assertStringIncludes(String(entrada), "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund");
+        return Promise.resolve(new Response(cruOrders, { status: 400 }));
+      }) as unknown as typeof fetch,
+    })
+  );
+  semDadoPessoal(logOrders, cruOrders);
+  assertStringIncludes(logOrders, "400");
+  assertStringIncludes(logOrders, "refund_amount_exceeds");
+  assertStringIncludes(logOrders, "invalid_refund");
+});
+
+Deno.test("R9-b - POST com corpo NAO-JSON que traz o pagador: nem a mensagem do erro de parse (o V8 cola o corpo nela) vai ao log", async () => {
+  const cru = `${PII.nome} ${PII.cpf}`;
+  const log = await comLogCapturado(() =>
+    executarEstorno({
+      linha: linhaCom(),
+      pedido: pedidoPagoCom(),
+      token: TOKEN,
+      buscar: fetchTextoCru(400, cru),
+    })
+  );
+  semDadoPessoal(log, cru);
+  assertStringIncludes(log, "estorno: resposta com corpo ilegível");
+  assertStringIncludes(log, "SyntaxError");
+});
+
+Deno.test("R9-c - confirmação (GET) com corpo NAO-JSON que traz o pagador: o log tem só o nome do erro", async () => {
+  const cru = `${PII.nome} ${PII.cpf}`;
+  const log = await comLogCapturado(() =>
+    confirmarPorConsulta({
+      buscar: fetchTextoCru(200, cru),
+      token: TOKEN,
+      linha: linhaCom(),
+      pedido: pedidoPagoCom(),
+    })
+  );
+  semDadoPessoal(log, cru);
+  assertStringIncludes(log, "estorno: confirmação com corpo ilegível");
+  assertStringIncludes(log, "SyntaxError");
 });
