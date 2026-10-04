@@ -207,8 +207,8 @@ const FUNCOES_NOVAS = ["public.is_admin_atual()", "public.rls_admin_atual()"];
 // (B1_BASELINE_DIVERGENT, o comportamento CORRETO — nunca restaurar por baixo
 // de uma redefinição posterior) e o preflight da 97 também. Então, DENTRO da
 // transação desses passos, o rollback-manual da 98 devolve primeiro o estado
-// "97 sem 98"; o ROLLBACK do fim devolve a 98 intacta. Sem a 98 no ar, não
-// faz nada.
+// "97 sem 98"; o ROLLBACK do fim devolve a 98 intacta. A 98 é AFIRMADA pelo
+// hash antes (nenhum "pula se não estiver no ar"): sem ela, a prova falha.
 const NOME_98 = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
 const CAMINHO_ROLLBACK_98 = path.join(
   __dirname,
@@ -218,14 +218,21 @@ const CAMINHO_ROLLBACK_98 = path.join(
   "migrations",
   `rollback-manual-${NOME_98}`,
 );
-// O corpo de admin_devolucao_reemitir_reembolso que a 97 deixa.
+// O corpo de admin_devolucao_reemitir_reembolso que a 97 deixa, e o que a 98
+// deixa (a 98 só acrescenta a trava das linhas antes do pedido).
 const HASH_97_REEMITIR = "7a5ce4978a989e1bebb3d048d347c0c6";
+const HASH_98_REEMITIR = "422cfaa8c53cefc1913b9e082442631d";
 
 async function desfazer98NaTransacao(cliente) {
-  const r = await cliente.query(
-    "SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim",
+  const antes = await catalogo(
+    cliente,
+    "public.admin_devolucao_reemitir_reembolso(uuid,boolean)",
   );
-  if (!r.rows[0].sim) return;
+  assert.equal(
+    antes.hash,
+    HASH_98_REEMITIR,
+    "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
+  );
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_98 é constante do próprio teste (path.join de literais).
   await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8"));
   const reemitir = await catalogo(

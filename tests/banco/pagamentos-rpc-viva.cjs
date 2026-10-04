@@ -1668,14 +1668,20 @@ async function a97EstaNoAr(c) {
   return r.rows[0].sim;
 }
 
-// Desfaz a 97 SÓ na transação aberta — antes, a 98 se estiver no ar.
+// Desfaz a 97 SÓ na transação aberta — antes, a 98. A 98 é AFIRMADA pelo
+// hash do reemitir que ela deixa (nenhum "pula se não estiver no ar"): sem
+// ela, a prova falha aqui.
 async function desfazer97NaTransacao(c) {
   const r = await c.query(
-    "SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim",
+    `SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc
+      WHERE oid = to_regprocedure('public.admin_devolucao_reemitir_reembolso(uuid,boolean)')`,
   );
-  if (r.rows[0].sim) {
-    await c.query(lerMigracao(`rollback-manual-${NOME_1198}`));
-  }
+  assert.equal(
+    r.rows[0]?.h,
+    "422cfaa8c53cefc1913b9e082442631d",
+    "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
+  );
+  await c.query(lerMigracao(`rollback-manual-${NOME_1198}`));
   await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
 }
 
