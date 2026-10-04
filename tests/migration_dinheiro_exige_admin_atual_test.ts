@@ -488,17 +488,33 @@ Deno.test("o rollback apaga as duas funções novas SÓ DEPOIS de restaurar corp
 });
 
 Deno.test("contrato com a edge estornar-pagamento: a MESMA autoridade atual (app_metadata do Auth E profiles)", () => {
+  // 20261198000000 (04/10/2026): a regra saiu da estornar-pagamento para
+  // _shared/admin-atual.ts — UMA conferência, usada também pela ação
+  // `cancelar` da criar-pagamento. O contrato continua o mesmo, agora no
+  // módulo compartilhado, e a edge tem de chamá-lo.
   const edge = norm(
     lerArquivo("supabase/functions/estornar-pagamento/index.ts"),
   );
   assertStringIncludes(
     edge,
-    "return profile.role === 'admin' && user.app_metadata?.role === 'admin'",
+    'import { adminAtualDaSessao } from "../_shared/admin-atual.ts"',
+  );
+  assertStringIncludes(
+    edge,
+    "const adminId = await adminAtualDaSessao(authHeader, {",
+  );
+  assertStringIncludes(edge, "return adminId !== null");
+  const regra = norm(lerArquivo("supabase/functions/_shared/admin-atual.ts"));
+  assertStringIncludes(
+    regra,
+    'return perfil.role === "admin" && user.app_metadata?.role === "admin" ? user.id : null;',
   );
   // O papel vem do getUser() (Auth carrega do banco), nunca de um decode do JWT.
-  assertStringIncludes(edge, "await userClient.auth.getUser()");
-  assert(
-    !/atob\(|jwtDecode|decodeJwt/.test(edge),
-    "a edge não pode decidir pelo JWT decodificado",
-  );
+  assertStringIncludes(regra, "await doUsuario.auth.getUser()");
+  for (const texto of [edge, regra]) {
+    assert(
+      !/atob\(|jwtDecode|decodeJwt/.test(texto),
+      "a edge não pode decidir pelo JWT decodificado",
+    );
+  }
 });

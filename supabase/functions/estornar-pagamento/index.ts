@@ -61,6 +61,9 @@ import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts"
 // refund (RPC autorizar_post_do_estorno, 20261196000000) — uma leitura da
 // resposta, dois chamadores (esta edge e o cron reconciliar-pagamentos).
 import { autorizacaoPeloBanco, type AutorizacaoDoPost } from "../_shared/estorno.ts"
+// A regra do admin de AGORA mora num lugar só (a mesma de is_admin_atual(),
+// 20261197000000) — a ação `cancelar` da criar-pagamento usa a mesma.
+import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -150,33 +153,21 @@ function readKey(newVar: string, legacyVar: string): string {
  *     nunca as claims do JWT — um JWT velho dizendo admin não decide nada;
  *   - `profiles.role`, lido com service role.
  * Papéis contraditórios (rebaixado só em uma das fontes) NÃO autorizam
- * dinheiro.
+ * dinheiro. A regra mora em `_shared/admin-atual.ts` (04/10/2026), a mesma da
+ * ação `cancelar` da criar-pagamento.
  */
 async function verifyIsAdmin(
     authHeader: string | null,
     supabaseUrl: string,
     serviceRoleKey: string,
 ): Promise<boolean> {
-    if (!authHeader) return false
-    try {
-        const anonKey = readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
-        const userClient = createClient(supabaseUrl, anonKey, {
-            global: { headers: { Authorization: authHeader } },
-        })
-        const { data: { user }, error: userError } = await userClient.auth.getUser()
-        if (userError || !user) return false
-        const systemClient = createClient(supabaseUrl, serviceRoleKey)
-        const { data: profile, error: profileError } = await systemClient
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
-        if (profileError || !profile) return false
-        return profile.role === 'admin' && user.app_metadata?.role === 'admin'
-    } catch (err) {
-        console.error('[estornar-pagamento] Falha no check de admin:', err)
-        return false
-    }
+    const adminId = await adminAtualDaSessao(authHeader, {
+        url: supabaseUrl,
+        chavePublica: readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY'),
+        chaveDeServico: serviceRoleKey,
+        rotulo: '[estornar-pagamento]',
+    })
+    return adminId !== null
 }
 
 /**

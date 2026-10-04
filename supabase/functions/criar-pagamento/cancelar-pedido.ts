@@ -57,7 +57,7 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import type { CredenciaisMp } from "../_shared/credenciais-mp.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { adminAtualDaSessao, type OpcoesDoAdminAtual } from "../_shared/admin-atual.ts";
 import { readKey } from "../_shared/webpush.ts";
 
 /** O que a tela faz com a resposta — contrato com src/hooks/useOrders.ts. */
@@ -286,62 +286,26 @@ export async function cancelarPedidoPelaEdge(args: ArgsCancelarPedido): Promise<
   return responder("recuperavel");
 }
 
-/**
- * Costura de teste da conferência de admin: em produção nada é passado (lê o
- * ambiente e usa o `fetch` global). Os testes injetam um Auth/PostgREST falso
- * para rodar ESTA função de verdade, não um dublê dela.
- */
-export type OpcoesDaConferenciaDeAdmin = {
-  fetchImpl?: typeof fetch;
-  url?: string;
-  chavePublica?: string;
-  chaveDeServico?: string;
-};
+/** Costura de teste da conferência de admin (ver `_shared/admin-atual.ts`). */
+export type OpcoesDaConferenciaDeAdmin = Partial<OpcoesDoAdminAtual>;
 
 /**
- * Admin de AGORA — a mesma autoridade da `is_admin_atual()` (migration
- * 20261197000000, outra frente): o papel `admin` tem de estar, AO MESMO TEMPO,
- * em `auth.users` (o `app_metadata.role` que o servidor de Auth devolve em
- * `getUser` — lido do banco a cada chamada, nunca do JWT, que pode ser de
- * antes de um rebaixamento) E em `profiles.role` (lido com a chave de
- * serviço). Contradição entre os dois (rebaixado num lado só) = NÃO é admin.
- * Este é o portão ANTES de qualquer efeito no Mercado Pago: um ex-admin com
- * o perfil ainda "admin" não pode anular a cobrança de pedido alheio só
- * porque a RPC negaria depois. Qualquer falha vira "não é admin" — o lado
- * seguro. A RPC confere de novo, sob o lock, com as mesmas duas fontes.
- * TODO(20261197000000): quando a `is_admin_atual()` estiver no ar em todas
- * as lojas, esta conferência pode perguntar a ela.
+ * Admin de AGORA — a MESMA conferência de `estornar-pagamento` (a regra mora em
+ * `_shared/admin-atual.ts`, igual à `is_admin_atual()` da 20261197000000):
+ * papel `admin` em `auth.users` (o `app_metadata` que o Auth devolve em
+ * `getUser`, lido do banco a cada chamada, nunca do JWT) E em
+ * `profiles.role`; contradição = NÃO é admin. Portão ANTES de qualquer efeito
+ * no Mercado Pago. A RPC confere de novo, sob o lock.
  */
 export async function verificarAdminAtualReal(
   authorization: string | null,
   opcoes: OpcoesDaConferenciaDeAdmin = {},
 ): Promise<string | null> {
-  if (!authorization) return null;
-  try {
-    const url = opcoes.url ?? Deno.env.get("SUPABASE_URL") ?? "";
-    const chavePublica = opcoes.chavePublica ?? readKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY");
-    const chaveDeServico = opcoes.chaveDeServico ?? readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY");
-    const comFetch = opcoes.fetchImpl ? { fetch: opcoes.fetchImpl } : {};
-    const doUsuario = createClient(url, chavePublica, {
-      global: { ...comFetch, headers: { Authorization: authorization } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    const { data: { user }, error } = await doUsuario.auth.getUser();
-    if (error || !user?.id) return null;
-    const papelNoAuth = (user.app_metadata as Record<string, unknown> | null | undefined)?.role;
-    if (papelNoAuth !== "admin") return null;
-    const { data: perfil, error: erroPerfil } = await createClient(url, chaveDeServico, {
-      global: comFetch,
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (erroPerfil || !perfil) return null;
-    return perfil.role === "admin" ? user.id : null;
-  } catch (erro) {
-    console.error("criar-pagamento: cancelar — falha na conferência de admin", erro);
-    return null;
-  }
+  return await adminAtualDaSessao(authorization, {
+    url: opcoes.url ?? Deno.env.get("SUPABASE_URL") ?? "",
+    chavePublica: opcoes.chavePublica ?? readKey("SUPABASE_PUBLISHABLE_KEYS", "SUPABASE_ANON_KEY"),
+    chaveDeServico: opcoes.chaveDeServico ?? readKey("SUPABASE_SECRET_KEYS", "SUPABASE_SERVICE_ROLE_KEY"),
+    fetchImpl: opcoes.fetchImpl,
+    rotulo: "criar-pagamento: cancelar —",
+  });
 }
