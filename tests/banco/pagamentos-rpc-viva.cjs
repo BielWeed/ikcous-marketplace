@@ -692,19 +692,22 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(6) cliente cancelou pelo app (update_order_status_atomic real): 'pago' -> 'pago_apos_expirar'; 'recusado' não credita de novo; 'estornado' só marca",
+  nome: "(6) cliente cancelou pelo app (cancelar_pedido_com_cobranca real, a porta da edge): 'pago' -> 'pago_apos_expirar'; 'recusado' não credita de novo; 'estornado' só marca",
   corpo: async (c) => {
+    // 20261198000000: pedido aguardando com a cobrança na vaga só se cancela
+    // pela edge (anula no MP antes) — `update_order_status_atomic` recusa
+    // (prova em tests/banco/cancelar-pedido-viva.cjs). A porta que a edge
+    // usa é esta RPC de service role, com o cliente como ator e CAS na vaga.
     const cancelarComoCliente = async (pedido) => {
-      await logar(c, U_CLIENTE);
       const r = await comPapel(
         c,
-        "authenticated",
-        "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
-        [pedido.id],
+        "service_role",
+        "SELECT public.cancelar_pedido_com_cobranca($1::uuid, $2::uuid, $3::text, 'aguardando') AS r",
+        [pedido.id, U_CLIENTE, pedido.gateway],
         { commit: true },
       );
-      await logar(c, "");
       if (!r.ok) throw r.erro;
+      assert.equal(r.rows[0].r.cancelado, true, "a porta da edge cancelou");
     };
 
     // O cancelamento do app devolve o estoque e NÃO escreve payment_status.

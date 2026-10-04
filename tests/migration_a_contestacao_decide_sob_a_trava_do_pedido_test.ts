@@ -178,6 +178,7 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/cartao-online-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
     "tests/banco/contestacao-viva.cjs",
+    "tests/banco/cancelar-pedido-viva.cjs",
     "tests/banco/invariantes-dinheiro.cjs",
   ]) {
     assertStringIncludes(bloqueante, prova);
@@ -201,7 +202,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   assert(/- name: Aplica as migrations do zero\n\s+id: aplica\n\s+run: node tests\/banco\/aplicar-migrations\.cjs/.test(bloqueante));
   const passos = bloqueante.split(/\n {6}- /).slice(1);
   const provas = passos.filter((p) => /tests\/banco\/(rodar-isolado\.cjs|invariantes-dinheiro\.cjs)/.test(p));
-  assertEquals(provas.length, 9, "as 9 provas de dinheiro");
+  assertEquals(provas.length, 10, "as 10 provas de dinheiro");
   // Inclusive a da 20261199000000 (portas do painel), que entrou depois.
   assertEquals(
     provas.filter((p) => p.includes("tests/banco/admin-atual-portas-viva.cjs")).length,
@@ -213,6 +214,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     provas.filter((p) => p.includes("tests/banco/admin-atual-devolucao-viva.cjs")).length,
     1,
     "a prova da decisão da devolução (200) está no job do dinheiro",
+  );
+  // E a da 20261198000000 (cancelar anula a cobrança): dinheiro, bloqueante.
+  assertEquals(
+    provas.filter((p) => p.includes("tests/banco/cancelar-pedido-viva.cjs")).length,
+    1,
+    "a prova do cancelamento (98) está no job do dinheiro",
   );
   for (const passo of provas) {
     assertStringIncludes(

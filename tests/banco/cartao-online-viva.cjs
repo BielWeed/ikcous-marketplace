@@ -24,8 +24,12 @@
  *       update_order_status_atomic recusa o CLIENTE (nunca o admin) quando o
  *       pedido está 'aguardando' com uma cobrança de cartão em jogo (vaga
  *       gravada com metodo_online credito/debito, OU o sentinela
- *       `verificando:`); PIX 'aguardando' e admin continuam cancelando como
- *       antes; pedido já PAGO segue o ledger do estorno automático de sempre.
+ *       `verificando:`); pedido já PAGO segue o ledger do estorno automático
+ *       de sempre. ATUALIZADO pela 20261198000000 (S1): PIX 'aguardando' com
+ *       a cobrança na vaga e o ADMIN com cartão vivo também deixam de
+ *       cancelar pela porta do front (a recusa é a do bypass da 98, não a
+ *       desta guarda) — o cancelamento vai pela edge, que anula a cobrança
+ *       no MP antes (prova em tests/banco/cancelar-pedido-viva.cjs).
  *       Casos A/B/C/D/F/G do laudo de revisão (rodadas 2 e 3, `prova-
  *       rev80.cjs`), portados para a suíte viva do CI. O caso E (vaga E
  *       metodo_online NULL) é um GAP CONHECIDO, documentado no próprio
@@ -136,6 +140,14 @@ PROVAS.push({
         [id, email, meta],
       );
     }
+    // 20261198000000 (admin ATUAL): update_order_status_atomic exige o papel
+    // admin AGORA em auth.users E em profiles (contradição nega) — o admin
+    // de verdade tem os dois (o gatilho de profiles sincroniza o papel).
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'admin'`,
+      [U_ADMIN],
+    );
     await cliente.query("BEGIN");
     try {
       await cliente.query("SET LOCAL ROLE anon");
@@ -372,6 +384,9 @@ PROVAS.push({
 });
 
 const MENSAGEM_CARTAO_VIVO = /cobrança no cartão em confirmação com o banco/;
+// 20261198000000 (S1): a porta do front recusa cancelar com cobrança na vaga.
+const MENSAGEM_BYPASS_98 =
+  /cobrança aberta no Mercado Pago e não pode ser cancelado por aqui/;
 
 async function criarPedidoParaCancelamento(
   cliente,
@@ -414,7 +429,7 @@ async function assertRecusaCartaoVivo(promessa) {
 }
 
 PROVAS.push({
-  nome: "(e) update_order_status_atomic (20261180000000) recusa o cliente com cartão vivo; PIX e admin continuam",
+  nome: "(e) update_order_status_atomic (20261180000000) recusa o cliente com cartão vivo; desde a 20261198000000 PIX na vaga e admin também vão pela edge",
   corpo: async (cliente) => {
     for (const [id, email, meta] of [
       [U_CLIENTE, "cliente-cancela@cartao.teste", "{}"],
@@ -426,6 +441,14 @@ PROVAS.push({
         [id, email, meta],
       );
     }
+    // 20261198000000 (admin ATUAL): update_order_status_atomic exige o papel
+    // admin AGORA em auth.users E em profiles (contradição nega) — o admin
+    // de verdade tem os dois (o gatilho de profiles sincroniza o papel).
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'admin'`,
+      [U_ADMIN],
+    );
 
     // A: crédito com id real na vaga — a cobrança pode ser aprovada a
     // qualquer momento (3DS/antifraude). O cliente NÃO cancela.
@@ -463,15 +486,27 @@ PROVAS.push({
     });
     await assertRecusaCartaoVivo(cancelarComo(cliente, U_CLIENTE, O_SENTINELA));
 
-    // D: PIX aguardando — nada muda, o cliente cancela como sempre.
+    // D: PIX aguardando COM a cobrança na vaga. Até a 20261198000000 o
+    // cliente cancelava aqui direto — e o PIX seguia pagável no MP (defeito
+    // S1). Desde a 98 a guarda da 80 continua sem olhar PIX (não é ela que
+    // recusa), mas a porta do front recusa pelo BYPASS: o cancelamento vai
+    // pela edge, que anula o PIX antes (tests/banco/cancelar-pedido-viva.cjs).
     await criarPedidoParaCancelamento(cliente, O_PIX_AGUARDANDO, {
       metodo: "pix",
       vaga: "ORD-CANCELA-PIX",
     });
-    await cancelarComo(cliente, U_CLIENTE, O_PIX_AGUARDANDO);
+    await assert.rejects(
+      cancelarComo(cliente, U_CLIENTE, O_PIX_AGUARDANDO),
+      (erro) => {
+        assert.equal(erro.code, "P0001");
+        assert.match(erro.message, MENSAGEM_BYPASS_98);
+        assert.doesNotMatch(erro.message, MENSAGEM_CARTAO_VIVO);
+        return true;
+      },
+    );
     assert.equal(
       (await estadoDoPedidoAposCancelar(cliente, O_PIX_AGUARDANDO)).status,
-      "cancelled",
+      "pending",
     );
 
     // E — GAP CONHECIDO (ver o cabeçalho deste arquivo e o cabeçalho da
@@ -523,16 +558,21 @@ PROVAS.push({
       "cartão já pago e cancelado antes do envio abre UMA linha no ledger do estorno, igual a qualquer outra forma de pagamento",
     );
 
-    // G: ADMIN cancela um pedido com cartão vivo — a guarda mora só no ramo
-    // do cliente; a reconciliação do painel depende disto continuar assim.
+    // G: ADMIN e cartão vivo. A guarda da 80 continua só no ramo do
+    // cliente — mas desde a 20261198000000 o admin também não cancela pela
+    // porta do front com a cobrança na vaga (bypass fechado; cartão em
+    // análise ninguém cancela, decisão do plano S1). O caminho é a edge.
     await criarPedidoParaCancelamento(cliente, O_ADMIN_CARTAO, {
       metodo: "credito",
       vaga: "ORD-CANCELA-ADMIN",
     });
-    await cancelarComo(cliente, U_ADMIN, O_ADMIN_CARTAO);
+    await assert.rejects(
+      cancelarComo(cliente, U_ADMIN, O_ADMIN_CARTAO),
+      MENSAGEM_BYPASS_98,
+    );
     assert.equal(
       (await estadoDoPedidoAposCancelar(cliente, O_ADMIN_CARTAO)).status,
-      "cancelled",
+      "pending",
     );
   },
 });

@@ -161,6 +161,14 @@ jobs:
       - name: Prova viva da contestação (migration 20261196000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/contestacao-viva.cjs
+      # Migration 20261198000000 (S1): cancelar pedido online com cobrança
+      # aberta só pela edge, que anula no MP antes; o banco cancela por RPC
+      # com CAS, devolve o REMANESCENTE do estorno (R11) e o entregue não
+      # devolve estoque — com duas conexões reais na ordem global de travas.
+      # CLONE próprio.
+      - name: Prova viva do cancelamento que anula a cobrança (migration 20261198000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
