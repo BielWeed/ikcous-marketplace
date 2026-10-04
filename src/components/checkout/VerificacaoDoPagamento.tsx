@@ -229,10 +229,21 @@ function situacaoDoPontoDePartida(
     : { tipo: "indisponivel" };
 }
 
-/** Erro da consulta: só `terminal: true` literal é terminal. */
+/**
+ * Erro da consulta: só `terminal: true` literal é terminal — e nunca o 503.
+ * F3 (04/10/2026): a edge também marca `terminal: true` no 503 "Pagamento
+ * indisponível." (credencial do Mercado Pago que não pôde ser lida agora),
+ * que não fala do pedido. A consulta não cobra nada, então esse caso cai em
+ * "indisponível" e mantém "Verificar de novo" (com o limite de toques de
+ * sempre). Mesma régua do cartão (confirmacao-do-cartao.ts, achado M1).
+ */
 function situacaoDoErro(erro: unknown): Situacao {
-  const e = erro as { terminal?: unknown; message?: unknown } | null;
-  if (e?.terminal === true) {
+  const e = erro as {
+    terminal?: unknown;
+    message?: unknown;
+    httpStatus?: unknown;
+  } | null;
+  if (e?.terminal === true && e.httpStatus !== 503) {
     return {
       tipo: "terminal",
       mensagem: textoNaoVazio(e.message) ? e.message : MENSAGEM_TERMINAL_PADRAO,

@@ -345,7 +345,16 @@ export function dispararPagamentoPix({
       // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
       // 409/etc. da edge function, nunca reconstruído a partir do texto da
       // mensagem — texto que muda quebraria uma comparação por igualdade.
-      const terminal = err?.terminal === true;
+      //
+      // F3 (fase 3 dos pagamentos, 04/10/2026): o 503 NÃO é terminal, mesmo
+      // marcado. A edge também grava `terminal: true` no 503 "Pagamento
+      // indisponível." (a credencial do Mercado Pago não pôde ser lida
+      // AGORA), que não fala do pedido — o PIX nem foi criado, e repetir é
+      // seguro: a edge reavalia `podeCobrar` e reconsulta a vaga por CAS,
+      // nunca cria uma segunda cobrança. Mesma régua do cartão
+      // (confirmacao-do-cartao.ts, achado M1): `terminal` com 409/404/403 e
+      // sem status legível segue terminal como sempre foi.
+      const terminal = err?.terminal === true && err?.httpStatus !== 503;
       const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
       const categoria = terminal ? "terminal" : "recuperavel";
       // Terceiro argumento OMITIDO quando não há sinal (não `undefined`
