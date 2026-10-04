@@ -245,9 +245,13 @@ Deno.test("contrato com a edge: mesmas RPCs, argumento e ESTADOS do SQL, chave c
     webhook.split("dormir: deps.dormir ?? dormirDeVerdade,").length - 1,
     2,
   );
+  // Os DOIS ramos do aviso de cobrança duplicada recebem o push contado E a
+  // pausa injetáveis, juntos e nessa ordem. Contar só o `enviarPushContado` no
+  // arquivo inteiro deixou de medir isso quando a contestação (lote A, aviso
+  // ao admin por `avisarAdminUmaVez`) passou a usar a mesma dependência.
   assertEquals(
-    webhook.split(
-      "enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,",
+    c.split(
+      "await avisarCobrancaDuplicadaUmaVez({ supabase, enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal, dormir: deps.dormir ?? dormirDeVerdade,",
     ).length - 1,
     2,
   );
