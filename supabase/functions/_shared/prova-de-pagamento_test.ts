@@ -215,6 +215,9 @@ for (
     },
     { nome: "moeda USD", montar: () => base({ ...cartao(), currency: "USD" }), motivo: "moeda" },
     { nome: "país URY", montar: () => base({ ...cartao(), country_code: "URY" }), motivo: "pais" },
+    // Só "BR" e "BRA" são o Brasil: o prefixo "BR" não basta (BRN é Brunei).
+    { nome: "país BRN (Brunei, começa com BR)", montar: () => base({ ...cartao(), country_code: "BRN" }), motivo: "pais" },
+    { nome: "país \"BRAZIL\" (por extenso)", montar: () => base({ ...cartao(), country_code: "BRAZIL" }), motivo: "pais" },
     { nome: "order do tipo qr (presencial)", montar: () => base({ ...cartao(), type: "qr" }), motivo: "tipo" },
     {
       nome: "DOIS pagamentos na order",

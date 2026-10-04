@@ -12191,6 +12191,66 @@ Deno.test("CONFIRMAÇÃO IMEDIATA (R-releitura): o pg_cron EXPIRA o pedido duran
   assertEquals(ef.pushes.length + ef.atrasados.length, 0);
 });
 
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-vaga-trocada): a vaga é lida como A, o GET de A volta PAGO, e a vaga vira B antes da releitura -> ZERO RPC, ZERO efeito, nenhum 'dinheiro aprovado sem registro' falso (a prova usa a vaga RELIDA, não o id consultado)", async () => {
+  const OUTRA_VAGA = "ORDTST04OUTRAVAGADEPOISDOGET0";
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({
+    orders: [cartaoPagoCI()],
+    // Durante o GET de A: o pedido troca de cobrança (a vaga foi liberada e
+    // outra aba ocupou com B). A releitura da reconsulta passa a ver B.
+    aoConsultar: () => {
+      db.linha.gateway_payment_id = OUTRA_VAGA;
+    },
+  });
+  const ef = efeitosCI();
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const erros: unknown[][] = [];
+  const avisos: unknown[][] = [];
+  const erroOriginal = console.error;
+  const avisoOriginal = console.warn;
+  console.error = (...a: unknown[]) => {
+    erros.push(a);
+  };
+  console.warn = (...a: unknown[]) => {
+    avisos.push(a);
+  };
+  let r: Response;
+  try {
+    r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: contado as never,
+      fetchImpl: mp.fn as typeof fetch,
+      alertarAdminCartaoOrfao: async () => {},
+      ...ef.deps,
+    });
+  } finally {
+    console.error = erroOriginal;
+    console.warn = avisoOriginal;
+  }
+  const corpo = await r.json();
+
+  // A resposta é a de sempre: a order DA VAGA LIDA (A) está paga.
+  assertEquals(r.status, 200, JSON.stringify(corpo));
+  assertEquals(corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  // Nada foi confirmado: a RPC nem foi chamada (com a vaga B no banco ela só
+  // devolveria 'divergente' e a rota gritaria "dinheiro aprovado sem registro").
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(db.linha.gateway_payment_id, OUTRA_VAGA);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  assertEquals(
+    erros.some((a) => String(a[0]).includes("desfecho inesperado")),
+    false,
+    "alarme falso de dinheiro aprovado sem registro",
+  );
+  // A recusa é por vaga e deixa rastro no log (a prova nomeia quem recusou).
+  assertEquals(
+    avisos.some((a) => String(a[0]).includes("sem PROVA") && (a[1] as Record<string, unknown>)?.motivo === "vaga"),
+    true,
+    JSON.stringify(avisos),
+  );
+  assertEquals(mp.posts, []);
+});
+
 Deno.test("CONFIRMAÇÃO IMEDIATA (R-rpc-falha): reconsulta com a RPC lançando -> a MESMA resposta, nunca 503", async () => {
   const { contado } = bancoContandoEscritas(pedidoCI(), {
     antesDeConfirmar: () => Promise.reject(new Error("banco caiu")),
