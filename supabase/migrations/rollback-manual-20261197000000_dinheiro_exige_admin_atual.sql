@@ -118,13 +118,15 @@ BEGIN
   -- inversa da aplicação. O conjunto "da própria 97" é o que a 97 define:
   -- as seis RPCs, is_admin_atual(), rls_admin_atual() e as cinco políticas
   -- de marketplace_orders e order_refunds.
+  -- A busca no corpo não distingue caixa (~*): o plpgsql também não, então
+  -- PUBLIC.IS_ADMIN_ATUAL() chama a mesma função.
   SELECT string_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
                     ', ' ORDER BY n.nspname, p.proname)
     INTO v_dependentes
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-     AND p.prosrc ~ '(is|rls)_admin_atual'
+     AND p.prosrc ~* '(is|rls)_admin_atual'
      AND p.oid <> ALL (ARRAY(
            SELECT to_regprocedure(s)::oid
              FROM unnest(ARRAY[
@@ -148,8 +150,8 @@ BEGIN
     FROM pg_policy pol
     JOIN pg_class c ON c.oid = pol.polrelid
     JOIN pg_namespace ns ON ns.oid = c.relnamespace
-   WHERE (pg_get_expr(pol.polqual, pol.polrelid) ~ '(is|rls)_admin_atual'
-          OR pg_get_expr(pol.polwithcheck, pol.polrelid) ~ '(is|rls)_admin_atual')
+   WHERE (pg_get_expr(pol.polqual, pol.polrelid) ~* '(is|rls)_admin_atual'
+          OR pg_get_expr(pol.polwithcheck, pol.polrelid) ~* '(is|rls)_admin_atual')
      AND (ns.nspname || '.' || c.relname, pol.polname) NOT IN (
            ('public.marketplace_orders', 'marketplace_orders_select_policy'),
            ('public.marketplace_orders', 'marketplace_orders_admin_update_policy'),

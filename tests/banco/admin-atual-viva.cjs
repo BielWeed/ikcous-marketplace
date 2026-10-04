@@ -1342,12 +1342,15 @@ PROVAS.push({
 
     await cliente.query("BEGIN");
     try {
-      // (1) Tudo no ar: recusa, nomeando função E política dependentes, sem escrever.
+      // (1) Tudo no ar (202, 200, 99 e a 98 com o reemitir dela): recusa sem
+      //     escrever. Com a 98 no ar a PRIMEIRA guarda a pegar é a do hash do
+      //     reemitir (a 98 redefine o corpo da 97); a dos dependentes vem logo
+      //     depois e é medida em (1b), sem a 98.
       const antes = await digitalDoRollback(cliente);
       await cliente.query("SAVEPOINT todas");
       await assert.rejects(
         cliente.query(rollback),
-        /B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
+        /B1_BASELINE_DIVERGENT: corpo vivo de public\.admin_devolucao_reemitir_reembolso/,
       );
       await cliente.query("ROLLBACK TO SAVEPOINT todas");
       assert.equal(
@@ -1373,6 +1376,29 @@ PROVAS.push({
       );
       console.log(
         `    (6b) dependentes vivos de is_admin_atual/rls_admin_atual no corpo: ${vivas.rows[0].dependentes}`,
+      );
+
+      // (1b) Só a 98 desfeita (202, 200 e 99 no ar): a guarda dos dependentes
+      //      recusa nomeando as funções da 99 E da 200, sem escrever — o caso
+      //      que antes deixava dezenas de funções chamando is_admin_atual()
+      //      removida (ex.: crm_clientes -> 42883).
+      await desfazer(3);
+      const sem98 = await digitalDoRollback(cliente);
+      await cliente.query("SAVEPOINT sem98");
+      await assert.rejects(cliente.query(rollback), (e) => {
+        assert.match(
+          e.message,
+          /^B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
+        );
+        assert.ok(e.message.includes("public.painel_inicio()"), e.message);
+        assert.ok(e.message.includes("admin_devolucao_decidir"), e.message);
+        return true;
+      });
+      await cliente.query("ROLLBACK TO SAVEPOINT sem98");
+      assert.equal(
+        await digitalDoRollback(cliente),
+        sem98,
+        "a recusa (sem a 98) escreveu algo",
       );
 
       // (2) Só a 99 no ar (200 e 202 desfeitas): ainda recusa, por função.
@@ -1428,11 +1454,65 @@ PROVAS.push({
     await cliente.query("BEGIN");
     try {
       await desfazerPosterioresNaTransacao(cliente);
+      // O1: o plpgsql não distingue maiúsculas de minúsculas, então uma função
+      // futura que chame `PUBLIC.IS_ADMIN_ATUAL()` (ou RLS_ADMIN_ATUAL) é
+      // dependente do mesmo jeito. A guarda do rollback da 97 busca no corpo
+      // VIVO sem distinguir caixa: o rollback RECUSA, nomeando a função, sem
+      // escrever. (Política não tem este caso: pg_get_expr devolve o nome já
+      // em minúsculas.)
+      for (const corpo of [
+        "PERFORM PUBLIC.IS_ADMIN_ATUAL();",
+        "PERFORM Public.Rls_Admin_Atual();",
+      ]) {
+        await cliente.query("SAVEPOINT maiusculas");
+        await cliente.query(
+          `CREATE FUNCTION public.zz_o1_dependente_em_maiusculas() RETURNS void
+             LANGUAGE plpgsql AS $f$ BEGIN ${corpo} END $f$`,
+        );
+        const antesO1 = await digitalDoRollback(cliente);
+        await cliente.query("SAVEPOINT recusa");
+        await assert.rejects(cliente.query(rollback), (e) => {
+          assert.match(
+            e.message,
+            /^B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
+          );
+          assert.ok(
+            e.message.includes("public.zz_o1_dependente_em_maiusculas()"),
+            e.message,
+          );
+          return true;
+        });
+        await cliente.query("ROLLBACK TO SAVEPOINT recusa");
+        assert.equal(
+          await digitalDoRollback(cliente),
+          antesO1,
+          "a recusa (maiúsculas) escreveu algo",
+        );
+        await cliente.query("ROLLBACK TO SAVEPOINT maiusculas");
+      }
       await cliente.query(rollback);
       const r = await cliente.query(
         "SELECT to_regprocedure('public.is_admin_atual()') IS NULL AS some, to_regprocedure('public.rls_admin_atual()') IS NULL AS some2",
       );
       assert.deepEqual(r.rows[0], { some: true, some2: true });
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    // (5) I2: o que o banco RECUSA é só o rollback da 97 com algum dependente
+    //     no ar (provado acima); a ORDEM entre os quatro dependentes é só
+    //     recomendada (inversa da aplicação: 202, 200, 99, 98). Medido nas 120
+    //     ordens: as 24 em que a 97 vem por último passam. Aqui, uma ordem
+    //     fora da recomendada (98, 99, 200, 202) também passa.
+    await cliente.query("BEGIN");
+    try {
+      for (const i of [3, 2, 1, 0]) {
+        if (await noAr(i)) await desfazer(i);
+      }
+      await cliente.query(rollback);
+      const r = await cliente.query(
+        "SELECT to_regprocedure('public.is_admin_atual()') IS NULL AS some",
+      );
+      assert.equal(r.rows[0].some, true);
     } finally {
       await cliente.query("ROLLBACK");
     }

@@ -547,10 +547,10 @@ Deno.test("o rollback da 97 RECUSA (antes de escrever) enquanto função ou pol�
   const bloco = preflight.slice(preflight.indexOf("NOT IN ("));
   for (const par of politicas) assertStringIncludes(bloco, par);
   // Recusa nomeando o quê, sem escrever (o bloco vem antes de qualquer CREATE/DROP).
-  assertStringIncludes(preflight, "p.prosrc ~ '(is|rls)_admin_atual'");
+  assertStringIncludes(preflight, "p.prosrc ~* '(is|rls)_admin_atual'");
   assertStringIncludes(
     preflight,
-    "pg_get_expr(pol.polqual, pol.polrelid) ~ '(is|rls)_admin_atual'",
+    "pg_get_expr(pol.polqual, pol.polrelid) ~* '(is|rls)_admin_atual'",
   );
   assertStringIncludes(preflight, "funções fora da 20261197000000 ainda usam");
   assertStringIncludes(
