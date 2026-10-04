@@ -41,12 +41,16 @@
  *        desfazer, histórico; pedido de ENTREGA e venda de BALCÃO (RPC real
  *        registrar_venda_presencial).
  *        (9e) o 'desfazer' também vale para pedido de entrega já 'delivered'.
+ *        (9f) p_recebido NULL é recusado (22004) DEPOIS da autorização e sem
+ *        gravar nada; (9g) a recusa NÃO espera o lock de quem grava (A3).
  *   (10) bordas de transição: 'pago'/'recusado'/'estornado' sobre pedido que
  *        o lojista já adiantou (processing/shipping/delivered/new); status
  *        de gateway desconhecido; 'pago' depois de 'recusado'; 'recusado'
- *        sobre payment_status NULL com cobrança gravada (ACHADO).
+ *        sobre payment_status NULL com cobrança gravada -> 'ignorado' (A1).
  *   (11) CONCORRÊNCIA: dois registrar_pagamento_recebido ao mesmo tempo
  *        gravam UMA linha de histórico.
+ *   (12) preflight B1_BASELINE_DIVERGENT e rollback-manual da migration
+ *        20261195000000 aplicados de verdade, dentro de BEGIN/ROLLBACK.
  *
  * Linhas marcadas `ACHADO:` abaixo documentam comportamento ATUAL que merece
  * olhar do dono do produto — o teste afirma o que o banco FAZ hoje, para o
@@ -57,6 +61,9 @@
  */
 
 const assert = require("node:assert");
+const { createHash } = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const { Client } = require("pg");
 const {
   falhar,
@@ -1140,22 +1147,6 @@ PROVAS.push({
     r = await registrar(c, "authenticated", U_ADMIN, vendaId, false);
     assert.equal(r.rows[0].r.ja_estava, true);
     assert.equal((await historicoDoRecebimento(c, vendaId)).length, 2);
-
-    // ACHADO: p_recebido = NULL cai no ELSE do `IF p_recebido` e se comporta
-    // como DESFAZER (grava linha 'desfeito'). Registra de volta e mede.
-    r = await registrar(c, "authenticated", U_ADMIN, vendaId, true);
-    assert.equal(r.rows[0].r.ja_estava, false);
-    r = await registrar(c, "authenticated", U_ADMIN, vendaId, null);
-    assert.equal(r.ok, true, "NULL não é recusado");
-    assert.equal(r.rows[0].r.payment_status, null, "NULL desfaz o recebimento");
-    assert.deepEqual((await historicoDoRecebimento(c, vendaId)).slice(-1), [
-      {
-        acao: "desfeito",
-        antes: "recebido_na_entrega",
-        depois: null,
-        created_by: U_ADMIN,
-      },
-    ]);
   },
 });
 
@@ -1230,6 +1221,173 @@ PROVAS.push({
         created_by: null,
       },
     ]);
+  },
+});
+
+PROVAS.push({
+  nome: "(9f) registrar_pagamento_recebido com p_recebido NULL: 22004 DEPOIS da autorização, sem gravar nada (20261195000000)",
+  corpo: async (c) => {
+    const MENSAGEM =
+      /Informe se o pagamento foi recebido \(true\) ou desfeito \(false\)\./;
+    // A3 CORRIGIDO: NULL caía no ELSE de `IF p_recebido` e se comportava como
+    // DESFAZER. Agora é recusado com null_value_not_allowed (22004) — depois
+    // do is_admin() (quem não é admin continua vendo 'Não autorizado') e antes
+    // de qualquer leitura com lock ou escrita.
+    const entrega = () =>
+      novoPedido(c, {
+        paymentMethod: "cash",
+        paymentStatus: null,
+        gateway: null,
+        metodoOnline: null,
+      });
+
+    // (a) entrega já recebida: o NULL NÃO pode desfazer o recebimento.
+    const recebido = await entrega();
+    let r = await registrar(c, "authenticated", U_ADMIN, recebido.id, true);
+    assert.equal(r.ok, true, r.erro?.message);
+    // (b) entrega sem pagamento registrado.
+    const semPagamento = await entrega();
+    // (c) pedido pago pelo site.
+    const online = await novoPedido(c, {
+      paymentMethod: "online",
+      paymentStatus: "aguardando",
+    });
+    // (d) pedido cancelado.
+    const cancelado = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: null,
+      status: "cancelled",
+      gateway: null,
+      metodoOnline: null,
+    });
+
+    for (const [rotulo, pedido] of [
+      ["entrega já recebida", recebido],
+      ["entrega sem pagamento", semPagamento],
+      ["pedido online", online],
+      ["pedido cancelado", cancelado],
+    ]) {
+      const antes = await foto(c, pedido);
+      const historicoAntes = await historicoDoRecebimento(c, pedido.id);
+      r = await registrar(c, "authenticated", U_ADMIN, pedido.id, null);
+      assert.equal(r.ok, false, `${rotulo}: NULL tinha de ser recusado`);
+      assert.equal(r.erro.code, "22004", `${rotulo}: SQLSTATE`);
+      assert.match(r.erro.message, MENSAGEM, rotulo);
+      assert.deepEqual(
+        await foto(c, pedido),
+        antes,
+        `${rotulo}: linha intacta`,
+      );
+      assert.deepEqual(
+        await historicoDoRecebimento(c, pedido.id),
+        historicoAntes,
+        `${rotulo}: histórico intacto`,
+      );
+    }
+    assert.equal(
+      (await foto(c, recebido)).linha.payment_status,
+      "recebido_na_entrega",
+      "o recebimento sobreviveu ao NULL",
+    );
+
+    // A autorização vem ANTES: quem não é admin vê 'Não autorizado', nunca o
+    // erro de NULL; anon nem executa.
+    const antes = await foto(c, recebido);
+    for (const quem of [U_CLIENTE, U_OUTRO]) {
+      r = await registrar(c, "authenticated", quem, recebido.id, null);
+      assert.equal(r.ok, false);
+      assert.notEqual(
+        r.erro.code,
+        "22004",
+        "não-admin não pode ver o erro do NULL",
+      );
+      assert.match(r.erro.message, /Não autorizado/);
+    }
+    r = await registrar(c, "anon", "", recebido.id, null);
+    assert.equal(r.ok, false);
+    assert.match(r.erro.message, /permission denied/);
+    assert.deepEqual(await foto(c, recebido), antes);
+
+    // service_role (is_admin() libera o papel): o NULL também é recusado.
+    r = await registrar(c, "service_role", "", semPagamento.id, null);
+    assert.equal(r.ok, false);
+    assert.equal(r.erro.code, "22004");
+
+    // Pedido inexistente + NULL: o NULL é recusado antes de procurar o pedido.
+    r = await registrar(c, "authenticated", U_ADMIN, uuid("7eeeeeee", 3), null);
+    assert.equal(r.ok, false);
+    assert.equal(r.erro.code, "22004");
+
+    // Entrada válida segue igual (a cobertura completa está em (9a)–(9e)).
+    r = await registrar(c, "authenticated", U_ADMIN, recebido.id, false);
+    assert.equal(r.ok, true, r.erro?.message);
+    assert.equal(r.rows[0].r.payment_status, null);
+  },
+});
+
+PROVAS.push({
+  nome: "(9g) CONCORRÊNCIA: A segura a linha (registrar true, sem commit) e B chama com NULL — recusa IMEDIATA (22004), sem esperar o lock; 1 linha de histórico",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      paymentMethod: "cash",
+      paymentStatus: null,
+      gateway: null,
+      metodoOnline: null,
+    });
+    const A = await novaConexao(URL_BANCO);
+    const B = await novaConexao(URL_BANCO);
+    let abertaA = false;
+    try {
+      await logar(A, U_ADMIN);
+      await logar(B, U_ADMIN);
+      await A.query("BEGIN");
+      abertaA = true;
+      await A.query("SET LOCAL ROLE authenticated");
+      const ra = (
+        await A.query(
+          "SELECT public.registrar_pagamento_recebido($1::uuid, true) AS r",
+          [p.id],
+        )
+      ).rows[0].r;
+      assert.equal(ra.ja_estava, false);
+
+      await B.query("BEGIN");
+      await B.query("SET LOCAL ROLE authenticated");
+      const rb = await Promise.race([
+        B.query(
+          "SELECT public.registrar_pagamento_recebido($1::uuid, NULL::boolean) AS r",
+          [p.id],
+        ).then(
+          () => ({ ok: true }),
+          (erro) => ({ ok: false, erro }),
+        ),
+        sleep(8000).then(() => "TRAVOU"),
+      ]);
+      assert.notEqual(
+        rb,
+        "TRAVOU",
+        "B ficou ESPERANDO o lock de A: a recusa do NULL tem de vir ANTES do SELECT ... FOR UPDATE",
+      );
+      assert.equal(rb.ok, false);
+      assert.equal(rb.erro.code, "22004");
+      await B.query("ROLLBACK");
+
+      await A.query("COMMIT");
+      abertaA = false;
+    } finally {
+      if (abertaA) await A.query("ROLLBACK").catch(() => {});
+      await B.query("ROLLBACK").catch(() => {});
+      await A.end().catch(() => {});
+      await B.end().catch(() => {});
+    }
+    const f = await foto(c, p);
+    assert.equal(f.linha.payment_status, "recebido_na_entrega");
+    assert.equal(f.linha.pagamento_recebido_por, U_ADMIN);
+    assert.equal(
+      (await historicoDoRecebimento(c, p.id)).length,
+      1,
+      "UMA linha de histórico (a do A)",
+    );
   },
 });
 
@@ -1344,19 +1502,14 @@ PROVAS.push({
     );
     assert.deepEqual(await avisosDoPedido(c, i.id), []);
 
-    // ACHADO (revisão Opus): 'recusado' sobre payment_status NULL com
-    // gateway_payment_id gravado e status 'pending' ATRAVESSA a guarda
-    // `IF v_pedido.payment_status <> 'aguardando'`
-    // (20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql:573):
-    // NULL <> 'aguardando' é NULL, o IF não dispara, e a função DEVOLVE o
-    // estoque e CANCELA o pedido — enquanto o 'pago' do mesmo pedido dá
-    // 'ignorado' (o ramo do pago só age em 'expirado'/'aguardando').
-    // Assimetria: hoje NÃO alcançável —
-    // criar-pagamento só grava cobrança em 'aguardando'; só uma linha
-    // histórica com NULL + cobrança cairia aqui. Afirmamos o comportamento
-    // ATUAL; a função não foi mudada. Ao corrigir a guarda (ex.: `IS DISTINCT
-    // FROM 'aguardando'`), o esperado aqui passa a ser 'ignorado', com estoque
-    // intacto, status e payment_status inalterados e sem stock_returned_at.
+    // A1 CORRIGIDO (20261195000000): 'recusado' sobre payment_status NULL com
+    // gateway_payment_id gravado e status 'pending' atravessava a guarda
+    // `IF v_pedido.payment_status <> 'aguardando'` (NULL <> x é NULL) e
+    // DEVOLVIA o estoque e CANCELAVA o pedido, enquanto o 'pago' do mesmo
+    // pedido dava 'ignorado'. A guarda agora é `IS DISTINCT FROM
+    // 'aguardando'`: NULL -> 'ignorado', linha inteira, estoque e carimbo
+    // intactos. (Hoje não alcançável em produção: criar-pagamento só grava
+    // cobrança em 'aguardando'.)
     const nuloRecusado = await novoPedido(c, {
       paymentStatus: null,
       metodoOnline: "pix",
@@ -1368,12 +1521,19 @@ PROVAS.push({
     assert.notEqual(nuloAntes.linha.gateway_payment_id, null);
     assert.equal(
       await confirmar(c, nuloRecusado.id, nuloRecusado.gateway, "recusado"),
-      "recusado",
+      "ignorado",
     );
-    const nuloDepois = await foto(c, nuloRecusado);
-    assert.equal(nuloDepois.linha.payment_status, "recusado");
-    assert.equal(nuloDepois.linha.status, "cancelled");
-    esperaDevolvido(nuloDepois, nuloRecusado, true, "NULL + recusado devolve");
+    assert.deepEqual(
+      await foto(c, nuloRecusado),
+      nuloAntes,
+      "NULL + recusado: nada muda (linha inteira)",
+    );
+    esperaDevolvido(
+      await foto(c, nuloRecusado),
+      nuloRecusado,
+      false,
+      "NULL + recusado não devolve estoque",
+    );
 
     const nuloPago = await novoPedido(c, {
       paymentStatus: null,
@@ -1462,6 +1622,189 @@ PROVAS.push({
       await A.end().catch(() => {});
       await B.end().catch(() => {});
     }
+  },
+});
+
+// ---------------------------------------------------------------------------
+// (12) preflight e rollback-manual da 20261195000000, aplicados de VERDADE
+// ---------------------------------------------------------------------------
+
+const NOME_1194 = "20261195000000_recusado_e_recebido_recusam_nulo.sql";
+const NOME_901 = "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql";
+const NOME_1020 = "20261020000000_lojista_registra_pagamento_recebido.sql";
+
+function lerMigracao(nome) {
+  const caminho = path.join(
+    __dirname,
+    "..",
+    "..",
+    "supabase",
+    "migrations",
+    nome,
+  );
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- `nome` é uma das constantes literais NOME_* deste arquivo (ou "rollback-manual-" + uma delas), nunca entrada de fora.
+  return fs.readFileSync(caminho, "utf8").replace(/\r\n/g, "\n");
+}
+
+const md5 = (texto) => createHash("md5").update(texto).digest("hex");
+
+function corpoConfirmarDe(sql) {
+  return sql.match(
+    /CREATE OR REPLACE FUNCTION public\.confirmar_pagamento\([\s\S]*?AS \$confirmar\$([\s\S]*?)\$confirmar\$;/,
+  )[1];
+}
+function corpoRegistrarDe(sql) {
+  return sql.match(
+    /CREATE OR REPLACE FUNCTION public\.registrar_pagamento_recebido\([\s\S]*?AS \$\$([\s\S]*?)\$\$;/,
+  )[1];
+}
+
+async function hashesVivos(c) {
+  const consulta = `SELECT md5(replace(prosrc, E'\\r', '')) AS h
+       FROM pg_proc
+      WHERE oid = to_regprocedure($1::text)`;
+  const r1 = await c.query(consulta, [
+    "public.confirmar_pagamento(uuid,text,text)",
+  ]);
+  const r2 = await c.query(consulta, [
+    "public.registrar_pagamento_recebido(uuid,boolean)",
+  ]);
+  return { confirmar: r1.rows[0].h, registrar: r2.rows[0].h };
+}
+
+PROVAS.push({
+  nome: "(12) a 20261195000000: o banco tem o corpo do ARQUIVO; reaplicar passa; corpo divergente de cada função recusa B1_BASELINE_DIVERGENT; o rollback-manual devolve o corpo e o comportamento ANTIGOS — tudo desfeito no ROLLBACK",
+  corpo: async (c) => {
+    const sqlMigracao = lerMigracao(NOME_1194);
+    const sqlRollback = lerMigracao(`rollback-manual-${NOME_1194}`);
+    const novos = {
+      confirmar: md5(corpoConfirmarDe(sqlMigracao)),
+      registrar: md5(corpoRegistrarDe(sqlMigracao)),
+    };
+    const antigos = {
+      confirmar: md5(corpoConfirmarDe(lerMigracao(NOME_901))),
+      registrar: md5(corpoRegistrarDe(lerMigracao(NOME_1020))),
+    };
+    assert.notEqual(novos.confirmar, antigos.confirmar);
+    assert.notEqual(novos.registrar, antigos.registrar);
+
+    // O que está vivo é o que o arquivo deixa (cadeia do zero OU upgrade).
+    assert.deepEqual(await hashesVivos(c), novos);
+
+    const idsDeFixture = [];
+    await c.query("BEGIN");
+    try {
+      // 1. Reaplicar o ARQUIVO sobre o corpo novo: passa e não muda nada.
+      await c.query(sqlMigracao);
+      assert.deepEqual(await hashesVivos(c), novos, "reaplicar é idempotente");
+
+      // 2. Corpo DIVERGENTE de cada função: recusa B1_BASELINE_DIVERGENT, e o
+      // corpo divergente continua vivo (o CREATE não avançou por cima dele).
+      const divergentes = [
+        [
+          "confirmar_pagamento",
+          (h) => h.confirmar,
+          novos.confirmar,
+          `CREATE OR REPLACE FUNCTION public.confirmar_pagamento(p_order_id uuid, p_payment_id text, p_status text)
+           RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+           AS $d$ BEGIN RETURN 'divergente-de-prova'; END; $d$`,
+          /B1_BASELINE_DIVERGENT: corpo vivo de confirmar_pagamento/,
+        ],
+        [
+          "registrar_pagamento_recebido",
+          (h) => h.registrar,
+          novos.registrar,
+          `CREATE OR REPLACE FUNCTION public.registrar_pagamento_recebido(p_order_id uuid, p_recebido boolean)
+           RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+           AS $d$ BEGIN RETURN '{}'::jsonb; END; $d$`,
+          /B1_BASELINE_DIVERGENT: corpo vivo de registrar_pagamento_recebido/,
+        ],
+      ];
+      for (const [rotulo, hashDe, novo, ddl, regex] of divergentes) {
+        await c.query("SAVEPOINT limpo");
+        await c.query(ddl);
+        const divergente = hashDe(await hashesVivos(c));
+        assert.notEqual(divergente, novo, rotulo);
+        await c.query("SAVEPOINT antes_da_migracao");
+        await assert.rejects(() => c.query(sqlMigracao), regex, rotulo);
+        await c.query("ROLLBACK TO SAVEPOINT antes_da_migracao");
+        assert.equal(
+          hashDe(await hashesVivos(c)),
+          divergente,
+          `${rotulo}: o corpo divergente segue vivo (nada gravado)`,
+        );
+        await c.query("ROLLBACK TO SAVEPOINT limpo");
+      }
+      assert.deepEqual(await hashesVivos(c), novos);
+
+      // 3. O rollback-manual devolve os corpos ANTIGOS, byte a byte...
+      await c.query(sqlRollback);
+      assert.deepEqual(
+        await hashesVivos(c),
+        antigos,
+        "rollback = corpo vigente antigo",
+      );
+
+      // ... e o comportamento ANTIGO: NULL em 'recusado' devolve estoque e
+      // cancela; NULL em registrar_pagamento_recebido desfaz o recebimento.
+      const nulo = await novoPedido(c, {
+        paymentStatus: null,
+        metodoOnline: "pix",
+        itens: [{ qtd: 3 }],
+      });
+      idsDeFixture.push(nulo.id);
+      const rc = await c.query(
+        "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'recusado') AS r",
+        [nulo.id, nulo.gateway],
+      );
+      assert.equal(rc.rows[0].r, "recusado", "comportamento antigo (A1)");
+      const depoisAntigo = await foto(c, nulo);
+      assert.equal(depoisAntigo.linha.status, "cancelled");
+      esperaDevolvido(
+        depoisAntigo,
+        nulo,
+        true,
+        "antigo: NULL + recusado devolvia",
+      );
+
+      const recebido = await novoPedido(c, {
+        paymentMethod: "cash",
+        paymentStatus: "recebido_na_entrega",
+        gateway: null,
+        metodoOnline: null,
+      });
+      idsDeFixture.push(recebido.id);
+      await logar(c, U_ADMIN);
+      const rr = await c.query(
+        "SELECT public.registrar_pagamento_recebido($1::uuid, NULL::boolean) AS r",
+        [recebido.id],
+      );
+      assert.equal(
+        rr.rows[0].r.payment_status,
+        null,
+        "comportamento antigo (A3)",
+      );
+
+      // 4. E reaplicar a migration sobre os corpos ANTIGOS (o caminho de
+      // upgrade) deixa os corpos novos.
+      await c.query(sqlMigracao);
+      assert.deepEqual(
+        await hashesVivos(c),
+        novos,
+        "upgrade a partir do vigente antigo",
+      );
+    } finally {
+      await c.query("ROLLBACK");
+      await logar(c, "");
+    }
+
+    // Tudo desfeito: corpos novos de volta e as fixtures do teste não ficaram.
+    assert.deepEqual(await hashesVivos(c), novos);
+    const sobras = await c.query(
+      "SELECT count(*)::int AS n FROM public.marketplace_orders WHERE id = ANY($1::uuid[])",
+      [idsDeFixture],
+    );
+    assert.equal(sobras.rows[0].n, 0);
   },
 });
 
