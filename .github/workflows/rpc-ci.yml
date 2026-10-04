@@ -189,6 +189,16 @@ jobs:
       - name: Prova viva da ordem das travas composta (96, 97, 98 e reemissão)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/ordem-das-travas-composta-viva.cjs
+      # O ENVELOPE do aplicar-migrations.yml (impressão digital no limite de
+      # cada DDL: REPEATABLE READ, FP antes/depois, RAISE antes do COMMIT) e o
+      # gate de transporte: o trecho do workflow é extraído e executado aqui
+      # contra um Postgres de verdade — as 10 migrations 92..202 e a cadeia de
+      # rollback-manual passam; mutantes (UPDATE/INSERT/DELETE de topo, DROP de
+      # coluna/tabela, coluna nova com valor, COMMIT de topo) são recusados
+      # com nada gravado. Monta o SEU banco-base pré-92 (CLONE próprio).
+      - name: Prova viva da impressão digital do apply (envelope do aplicar-migrations)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/impressao-digital-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

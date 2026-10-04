@@ -123,6 +123,16 @@ jobs:
           if [ "$(echo "$PEDIDAS" | tr -d '[:space:]')" = "cobranca" ]; then
             PEDIDAS="criar-pagamento webhook-mercadopago reconciliar-pagamentos estornar-pagamento credenciais-mercado-pago"
           fi
+          # MODO SÓ LISTAR (só ikcous-publicada): `functions` exatamente
+          # "listar" mede o que está no ar ANTES de decidir a lista de deploy.
+          # Só `supabase functions list`; nenhum deploy (o expected_sha acima
+          # continua exigido). Nas outras lojas "listar" segue o caminho de
+          # sempre (e é recusado: não existe supabase/functions/listar).
+          MODO=publicar
+          if [ "$PROJETO" = "ikcous-publicada" ] && [ "$(echo "$PEDIDAS" | tr -d '[:space:]')" = "listar" ]; then
+            MODO=listar
+            PEDIDAS=""
+          fi
           NOMES=""
           for n in $(echo "$PEDIDAS" | tr ',' ' '); do
             if ! [[ "$n" =~ ^[a-z][a-z0-9-]+$ ]]; then
@@ -145,13 +155,14 @@ jobs:
               *) NOMES="${NOMES:+$NOMES }$n" ;;
             esac
           done
-          if [ -z "$NOMES" ]; then
+          if [ -z "$NOMES" ] && [ "$MODO" != "listar" ]; then
             echo "::error::nenhuma function informada"; exit 1
           fi
           echo "Projeto: $PROJETO ($REF)"
-          echo "Functions: $NOMES"
+          echo "Functions: $NOMES (modo: $MODO)"
           echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "nomes=$NOMES" >> "$GITHUB_OUTPUT"
+          echo "modo=$MODO" >> "$GITHUB_OUTPUT"
 
       - name: Confere o segredo
         if: inputs.projeto != 'savy' && inputs.projeto != 'ikcous-publicada'
@@ -243,14 +254,33 @@ jobs:
             echo "::error::segredo SUPABASE_ACCESS_TOKEN_IKCOUS ausente no repositório"; exit 1
           fi
 
-      - name: Prova somente leitura do banco CAF antes de publicar
+      # O que está no ar ANTES do deploy, registrado no próprio run: o desfazer
+      # das edges é redeploy do SHA anterior, e a versão/updated_at de cada
+      # function no instante anterior ao deploy tem de ficar à mão. Roda
+      # também no modo "listar" (que só faz isto).
+      - name: Lista o que está no ar ANTES
         if: inputs.projeto == 'ikcous-publicada'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
+          REF: ${{ steps.alvo.outputs.ref }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## No ar ANTES em \`$REF\`"
+            echo
+            echo '```'
+            supabase functions list --project-ref "$REF"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Prova somente leitura do banco CAF antes de publicar
+        if: inputs.projeto == 'ikcous-publicada' && steps.alvo.outputs.modo != 'listar'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
         run: node scripts/publicacao/verificar-pagamentos-ikcous.cjs --site-publicado-caf
 
       - name: Publica IKCOUS publicada, uma function por vez
-        if: inputs.projeto == 'ikcous-publicada'
+        if: inputs.projeto == 'ikcous-publicada' && steps.alvo.outputs.modo != 'listar'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
           REF: ${{ steps.alvo.outputs.ref }}
@@ -264,7 +294,7 @@ jobs:
           done
 
       - name: Lista o que ficou publicado na IKCOUS publicada
-        if: inputs.projeto == 'ikcous-publicada'
+        if: inputs.projeto == 'ikcous-publicada' && steps.alvo.outputs.modo != 'listar'
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}
           REF: ${{ steps.alvo.outputs.ref }}

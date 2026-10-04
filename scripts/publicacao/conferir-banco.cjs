@@ -197,7 +197,17 @@ const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
 const REFS_POR_PROJETO = {
   loja: "cafkrminfnokvgjqtkle",
   sandbox: "lofznuxcvezrhxsgjqyg",
+  // O alvo CAF EXPLÍCITO (04/10/2026): o mesmo ref de `loja`, mas pelo segredo
+  // de NOME `SUPABASE_ACCESS_TOKEN_IKCOUS` (o que publicar-functions.yml já usa
+  // para a CAF) e só com `expected_sha` igual ao do run (conferido no workflow
+  // ANTES de qualquer requisição). `loja` e `sandbox` NÃO mudam de significado.
+  "ikcous-publicada": "cafkrminfnokvgjqtkle",
 };
+
+/** O alvo que exige o segredo próprio da CAF (e nunca cai em outro). */
+const PROJETO_CAF = "ikcous-publicada";
+const SEM_ACESSO_CAF =
+  "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto";
 
 /**
  * Resolve "loja"/"sandbox" para o ref de 20 letras minúsculas — nunca
@@ -210,7 +220,9 @@ const REFS_POR_PROJETO = {
  */
 function resolverRef(projeto) {
   if (!Object.hasOwn(REFS_POR_PROJETO, projeto)) {
-    throw new Error(`projeto desconhecido: "${projeto}" (use loja ou sandbox)`);
+    throw new Error(
+      `projeto desconhecido: "${projeto}" (use loja, sandbox ou ikcous-publicada)`,
+    );
   }
   const ref = REFS_POR_PROJETO[projeto];
   if (!/^[a-z]{20}$/.test(ref)) {
@@ -543,6 +555,14 @@ function escreverResumo(markdown) {
   if (destino) fs.appendFileSync(destino, `${markdown}\n`);
 }
 
+/** Erro de HTTP com o status à mão: o `main` precisa distinguir 401/403 (sem
+ * acesso à CAF = PARADA, nunca outro segredo) de qualquer outra falha. */
+function erroDeHttp(status, texto) {
+  const erro = new Error(`HTTP ${status}: ${texto.slice(0, 500)}`);
+  erro.status = status;
+  return erro;
+}
+
 /** POST genérico para a Management API. Falha (lança) em HTTP ≠ 2xx ou
  * erro no corpo — mesmo critério de `aplicar-migrations.yml`. Nunca loga
  * o token: ele só entra no header Authorization. */
@@ -556,7 +576,7 @@ async function chamarManagementApi(caminho, { token, corpo }) {
     body: JSON.stringify(corpo),
   });
   const texto = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${texto.slice(0, 500)}`);
+  if (!r.ok) throw erroDeHttp(r.status, texto);
   if (texto.includes('"error"') || texto.includes('"message":"')) {
     throw new Error(texto.slice(0, 500));
   }
@@ -600,7 +620,7 @@ async function buscarBackups({ ref, token }) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const corpo = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${corpo.slice(0, 500)}`);
+  if (!r.ok) throw erroDeHttp(r.status, corpo);
   return JSON.parse(corpo);
 }
 
@@ -791,16 +811,31 @@ async function rodarLedger({ ref, token, faixa }) {
 }
 
 async function main() {
-  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  const projeto = process.env.PROJETO || "loja";
+  const ehCaf = projeto === PROJETO_CAF;
+  // CAF explícita: SÓ o segredo próprio dela. Sem ele, PARA — nunca tenta
+  // SUPABASE_ACCESS_TOKEN (o de `loja`/`sandbox`) nem outro alvo.
+  const token = ehCaf
+    ? process.env.SUPABASE_ACCESS_TOKEN_IKCOUS
+    : process.env.SUPABASE_ACCESS_TOKEN;
   if (!token) {
-    console.error("SEM SUPABASE_ACCESS_TOKEN");
+    console.error(ehCaf ? SEM_ACESSO_CAF : "SEM SUPABASE_ACCESS_TOKEN");
+    process.exit(1);
+    return;
+  }
+  if (ehCaf && process.env.LEDGER) {
+    // O ledger GRAVA em supabase_migrations.schema_migrations e as faixas dele
+    // (72..83) não são deste lote: a CAF explícita só lê.
+    console.error(
+      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script)",
+    );
     process.exit(1);
     return;
   }
 
   let ref;
   try {
-    ref = resolverRef(process.env.PROJETO || "loja");
+    ref = resolverRef(projeto);
   } catch (erro) {
     console.error("FALHOU:", erro.message);
     process.exit(1);
@@ -824,7 +859,11 @@ async function main() {
     }
     await rodarConsulta({ ref, token, consulta });
   } catch (erro) {
-    console.error("FALHOU:", erro.message);
+    if (ehCaf && (erro.status === 401 || erro.status === 403)) {
+      console.error(`FALHOU: ${SEM_ACESSO_CAF} (HTTP ${erro.status})`);
+    } else {
+      console.error("FALHOU:", erro.message);
+    }
     process.exit(1);
   }
 }

@@ -927,6 +927,234 @@ Deno.test({
   },
 });
 
+// ---------------------------------------------------------------------------
+// 8a..8g (04/10/2026) — as consultas do lote do método de publicação na CAF.
+// ---------------------------------------------------------------------------
+const CONSULTAS_8 = [
+  "8a-antes-92-a-202-objetos-e-corpos",
+  "8b-papeis-contraditorios",
+  "8c-subtotal-divergente",
+  "8d-orfas-pos-drain",
+  "8e-conferir-92-a-202-aplicado",
+  "8f-conferir-201",
+  "8g-cron-reconciliar",
+];
+
+/** O SQL sem comentários de linha (o cabeçalho EXPLICA o que a consulta não faz). */
+function sqlSemComentarios(sql: string): string {
+  return sql
+    .split(/\r?\n/)
+    .map((l) => l.replace(/--.*$/, ""))
+    .join("\n");
+}
+
+Deno.test("8a..8g — estão no menu do workflow, são UM SELECT só leitura, e a saída é item/esperado/vivo/ok", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const m = yaml.match(/consulta:[\s\S]*?options:\n((?:\s{6,}- .+\n?)+)/);
+  assert(m, "não achei as options de `consulta`");
+  const opcoes = m[1].split("\n").map((l) => l.replace(/^\s*-\s*/, "").trim());
+  for (const nome of CONSULTAS_8) {
+    await t.step(nome, async () => {
+      assert(opcoes.includes(nome), `falta a opção ${nome} no workflow`);
+      const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+      assertEquals(contarStatements(sql), 1, `${nome}: exatamente 1 statement`);
+      const limpo = sqlSemComentarios(sql);
+      assert(
+        /^\s*(WITH|SELECT)\b/i.test(limpo),
+        `${nome}: tem de começar por WITH/SELECT`,
+      );
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          limpo.replace(/'(?:[^']|'')*'/g, "''"),
+        ),
+        `${nome}: palavra de escrita fora de comentário/string`,
+      );
+      assert(
+        /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok/.test(
+          limpo,
+        ),
+        `${nome}: a saída final tem de ser item, esperado, vivo, ok`,
+      );
+      assert(/ORDER BY ok, item/.test(limpo), `${nome}: reprovadas primeiro`);
+    });
+  }
+  await t.step("8b, 8c, 8d e 8g têm controle de visibilidade", async () => {
+    for (const nome of CONSULTAS_8.filter((n) => /^8[bcdg]/.test(n))) {
+      const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+      assert(
+        sqlSemComentarios(sql).includes("'controle:"),
+        `${nome}: sem linha de controle de visibilidade`,
+      );
+    }
+  });
+  await t.step(
+    "8g nunca seleciona `command` nem `return_message` do cron",
+    async () => {
+      const limpo = sqlSemComentarios(
+        await Deno.readTextFile(`${CONSULTAS_DIR}/8g-cron-reconciliar.sql`),
+      );
+      assert(
+        !/\b(command|return_message)\b/i.test(limpo),
+        "8g leria o comando do job (que consulta segredos do vault) ou a mensagem de retorno",
+      );
+    },
+  );
+  await t.step(
+    "8c cita de onde vem a fórmula (a RPC que grava subtotal)",
+    async () => {
+      const sql = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertStringIncludes(
+        sql,
+        "20260951000000_frete_do_pedido_e_do_proprio_carrinho.sql",
+      );
+      assertStringIncludes(sql, "SUM(oi.quantity * oi.price)");
+    },
+  );
+});
+
+Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 desta árvore REALMENTE definem", async (t) => {
+  const { createHash } = require("node:crypto");
+  const nomes: string[] = [];
+  for await (const e of Deno.readDir(MIGRATIONS_DIR)) {
+    if (
+      e.isFile &&
+      /^2026119[2-9]|^2026120[0-2]/.test(e.name) &&
+      !e.name.startsWith("rollback") &&
+      e.name.endsWith(".sql")
+    )
+      nomes.push(e.name);
+  }
+  nomes.sort();
+  assertEquals(
+    nomes.length,
+    10,
+    "esperava as 10 migrations 92..202 (a 93 não existe)",
+  );
+  const textos: Record<string, string> = {};
+  for (const n of nomes)
+    textos[n] = await Deno.readTextFile(`${MIGRATIONS_DIR}/${n}`);
+
+  const pares = (sql: string) =>
+    new Map<string, string>(
+      [...sql.matchAll(/\('([a-z_0-9]+)', '([0-9a-f]{32})'\)/g)].map(
+        (x) => [x[1], x[2]] as [string, string],
+      ),
+    );
+  const sql8a = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/8a-antes-92-a-202-objetos-e-corpos.sql`,
+  );
+  const sql8e = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/8e-conferir-92-a-202-aplicado.sql`,
+  );
+  const base = pares(sql8a);
+  const final = pares(sql8e);
+
+  /** Corpo da ÚLTIMA definição da função nas migrations 92..202. */
+  function corpoFinal(fn: string): string {
+    let ultima: { n: string; i: number } | null = null;
+    for (const n of nomes) {
+      const re = new RegExp(
+        `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`,
+        "gi",
+      );
+      let r: RegExpExecArray | null;
+      while ((r = re.exec(textos[n]))) ultima = { n, i: r.index };
+    }
+    assert(ultima, `${fn}: nenhuma migration 92..202 a define`);
+    const resto = textos[ultima.n].slice(ultima.i);
+    const abre = /\bAS\s+(\$[a-z_0-9]*\$)/i.exec(resto);
+    assert(abre, `${fn}: não achei o corpo`);
+    const ini = abre.index + abre[0].length;
+    const fim = resto.indexOf(abre[1], ini);
+    assert(fim > ini, `${fn}: não achei o fechamento do corpo`);
+    return resto.slice(ini, fim);
+  }
+
+  await t.step(
+    "as listas têm o tamanho esperado (61 funções finais, 53 de base, 8 novas)",
+    () => {
+      assertEquals(final.size, 61);
+      assertEquals(base.size, 53);
+      const novas = [...final.keys()].filter((f) => !base.has(f)).sort();
+      assertEquals(novas.length, 8);
+      for (const f of novas) assertStringIncludes(sql8a, `('${f}')`);
+      for (const f of base.keys())
+        assert(final.has(f), `${f} está na base e não no final`);
+    },
+  );
+
+  await t.step(
+    "todo md5 FINAL de 8e é o md5 do corpo da última definição da função na árvore",
+    () => {
+      for (const [fn, h] of final) {
+        const calculado = createHash("md5")
+          .update(corpoFinal(fn).replace(/\r/g, ""))
+          .digest("hex");
+        assertEquals(
+          calculado,
+          h,
+          `${fn}: o corpo na árvore mudou — recalcule 8e`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "todo md5 de BASE de 8a aparece literalmente no preflight de uma migration 92..202",
+    () => {
+      const todo = Object.values(textos).join("\n");
+      for (const [fn, h] of base) {
+        assertStringIncludes(
+          todo,
+          h,
+          `${fn}: o baseline de 8a não está em nenhum preflight`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "as funções de 8a/8e são exatamente as que 92..202 criam ou substituem",
+    () => {
+      const definidas = new Set<string>();
+      for (const n of nomes) {
+        for (const x of textos[n].matchAll(
+          /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z_0-9]+)\s*\(/gi,
+        ))
+          definidas.add(x[1]);
+      }
+      assertEquals([...definidas].sort(), [...final.keys()].sort());
+    },
+  );
+
+  await t.step(
+    "a base do liberar_cobranca_do_pedido em 8a é a que o pin do script usa",
+    async () => {
+      // a 92..202 não a redefine (guarda em ci_verificar_pagamentos_config_cartao_test.ts)
+      for (const n of nomes) {
+        assert(
+          !/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.liberar_cobranca_do_pedido\s*\(/i.test(
+            textos[n],
+          ),
+          `${n} redefine liberar_cobranca_do_pedido: a BASE de 8a deixa de valer`,
+        );
+      }
+      assertStringIncludes(sql8a, "bae7882a60430547ee32b4b2092580a8");
+      const {
+        hashesEsperados,
+      } = require("../scripts/publicacao/verificar-pagamentos-ikcous.cjs");
+      assertEquals(
+        hashesEsperados().liberar,
+        "bae7882a60430547ee32b4b2092580a8",
+        "a BASE de 8a tem de ser o mesmo md5 que a prova do publicar-functions pina",
+      );
+    },
+  );
+});
+
 Deno.test("ehCaractereDeIdentificador — a regra real do Postgres (rodada 3)", () => {
   const { ehCaractereDeIdentificador } = require(SCRIPT);
   for (const ch of ["a", "Z", "0", "_", "$"]) {

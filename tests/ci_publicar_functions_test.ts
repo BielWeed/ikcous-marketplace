@@ -620,3 +620,184 @@ Deno.test("o bloco de validação, rodado de verdade", async (t) => {
     assertEquals(r.outputs.ref, undefined);
   });
 });
+
+// ---------------------------------------------------------------------------
+// "No ar ANTES" e modo SÓ LISTAR (ikcous-publicada) — lote do método de
+// publicação na CAF, 04/10/2026. O desfazer das edges é redeploy do SHA
+// anterior: a versão/updated_at de cada function no instante ANTES do deploy
+// tem de ficar registrada no próprio run; e `functions: listar` mede isso sem
+// publicar nada, antes de decidir a lista de deploy.
+// ---------------------------------------------------------------------------
+/** Os passos do job, na ordem: [nome, texto do passo]. Sem comentários. */
+function passosDoWorkflow(yaml: string): [string, string][] {
+  const corpo = semComentarios(yaml);
+  const partes = corpo.split(/\n {6}- /).slice(1);
+  return partes.map((p) => {
+    const m = p.match(/name: (.+)/);
+    return [m ? m[1].trim() : p.split("\n")[0].trim(), p] as [string, string];
+  });
+}
+
+/** Avalia o `if:` de um passo (só as formas que este workflow usa). */
+function seRoda(passo: string, projeto: string, modo: string): boolean {
+  const m = passo.match(/\n\s+if: (.+)/);
+  if (!m) return true;
+  const expr = m[1].replace("${{", "").replace("}}", "").trim();
+  assert(/^[\w.' =!&|-]+$/.test(expr), `if com forma não prevista: ${expr}`);
+  const js = expr
+    .replaceAll("inputs.projeto", JSON.stringify(projeto))
+    .replaceAll("steps.alvo.outputs.modo", JSON.stringify(modo))
+    .replaceAll("==", "===")
+    .replaceAll("!=", "!==");
+  return new Function(`return (${js});`)() === true;
+}
+
+Deno.test("publicar-functions: o passo 'Lista o que está no ar ANTES' existe só para ikcous-publicada, antes do deploy, igual ao de depois", async () => {
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const passos = passosDoWorkflow(yaml);
+  const nomes = passos.map(([n]) => n);
+  const iAntes = nomes.indexOf("Lista o que está no ar ANTES");
+  const iPublica = nomes.indexOf(
+    "Publica IKCOUS publicada, uma function por vez",
+  );
+  const iDepois = nomes.indexOf(
+    "Lista o que ficou publicado na IKCOUS publicada",
+  );
+  assert(iAntes >= 0, "passo ANTES ausente");
+  assert(
+    iAntes < iPublica && iPublica < iDepois,
+    "ordem: ANTES < deploy < depois",
+  );
+  const antes = passos[iAntes][1];
+  const depois = passos[iDepois][1];
+  assertStringIncludes(antes, "if: inputs.projeto == 'ikcous-publicada'\n");
+  assert(
+    !antes.includes("steps.alvo.outputs.modo"),
+    "o ANTES roda também no modo listar",
+  );
+  assertStringIncludes(antes, "${{ secrets.SUPABASE_ACCESS_TOKEN_IKCOUS }}");
+  assert(
+    !antes.includes("secrets.SUPABASE_ACCESS_TOKEN }}") &&
+      !antes.includes("_SAVY"),
+  );
+  assertStringIncludes(antes, 'supabase functions list --project-ref "$REF"');
+  assertStringIncludes(antes, 'echo "## No ar ANTES em \\`$REF\\`"');
+  assertStringIncludes(antes, 'tee -a "$GITHUB_STEP_SUMMARY"');
+  // idêntico ao de depois, trocando só o título e o if
+  const corpoDe = (p: string) => p.slice(p.indexOf("run: |"));
+  assertEquals(
+    corpoDe(antes).replace("No ar ANTES em", "Publicado em"),
+    corpoDe(depois),
+    "o run do ANTES é o mesmo do 'Lista o que ficou publicado na IKCOUS publicada', só com outro título",
+  );
+  // não roda para nenhuma outra loja, em nenhum modo
+  for (const projeto of ["savy", "almeida", "sandbox", "loja"]) {
+    for (const modo of ["publicar", "listar"]) {
+      assertEquals(seRoda(antes, projeto, modo), false, `${projeto}/${modo}`);
+    }
+  }
+  assertEquals(seRoda(antes, "ikcous-publicada", "publicar"), true);
+  assertEquals(seRoda(antes, "ikcous-publicada", "listar"), true);
+});
+
+Deno.test("publicar-functions: com `listar` NENHUM passo de deploy (nem a prova do banco) roda; com nome real o comportamento é o de sempre", async () => {
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const passos = passosDoWorkflow(yaml);
+  const deploys = passos.filter(([, p]) =>
+    p.includes("supabase functions deploy"),
+  );
+  assertEquals(
+    deploys.length,
+    3,
+    "os três passos de deploy (padrão, Savy, IKCOUS)",
+  );
+  for (const [nome, p] of deploys) {
+    assertEquals(
+      seRoda(p, "ikcous-publicada", "listar"),
+      false,
+      `${nome} não pode rodar em listar`,
+    );
+  }
+  const prova = passos.find(([n]) =>
+    n.startsWith("Prova somente leitura do banco CAF"),
+  );
+  assertEquals(seRoda(prova[1], "ikcous-publicada", "listar"), false);
+  const depois = passos.find(
+    ([n]) => n === "Lista o que ficou publicado na IKCOUS publicada",
+  );
+  assertEquals(
+    seRoda(depois[1], "ikcous-publicada", "listar"),
+    false,
+    "nada foi publicado: sem a lista de depois",
+  );
+  // com nome real: exatamente UM deploy por projeto, o de sempre
+  const esperado: Record<string, string> = {
+    "ikcous-publicada": "Publica IKCOUS publicada, uma function por vez",
+    savy: "Publica Savy, uma function por vez",
+    almeida: "Publica, uma function por vez, sempre pelo nome",
+    sandbox: "Publica, uma function por vez, sempre pelo nome",
+    loja: "Publica, uma function por vez, sempre pelo nome",
+  };
+  for (const [projeto, nomeDoPasso] of Object.entries(esperado)) {
+    const rodam = deploys
+      .filter(([, p]) => seRoda(p, projeto, "publicar"))
+      .map(([n]) => n);
+    assertEquals(rodam, [nomeDoPasso], projeto);
+  }
+  assertEquals(
+    seRoda(prova[1], "ikcous-publicada", "publicar"),
+    true,
+    "a prova segue rodando antes do deploy",
+  );
+  // o segredo e o setup-cli continuam rodando no listar (o list precisa deles)
+  const segredo = passos.find(
+    ([n]) => n === "Confere o segredo IKCOUS publicada",
+  );
+  assertEquals(seRoda(segredo[1], "ikcous-publicada", "listar"), true);
+});
+
+Deno.test("publicar-functions: `functions` exatamente `listar` em ikcous-publicada valida (SHA continua exigido), sem nome, modo listar; nas outras lojas e misturado a outros nomes segue recusado", async () => {
+  const sha = "a".repeat(40);
+  const r = await validar("ikcous-publicada", "listar", sha);
+  assertEquals(r.codigo, 0, r.stdout + r.stderr);
+  assertEquals(r.outputs.modo, "listar");
+  assertEquals(r.outputs.nomes, "");
+  assertEquals(r.outputs.ref, REF_IKCOUS_PUBLICADA);
+  const comEspaco = await validar("ikcous-publicada", "  listar \n", sha);
+  assertEquals(comEspaco.outputs.modo, "listar");
+  // expected_sha NÃO é afrouxado
+  for (const expected of ["", "b".repeat(40), "a".repeat(39), "g".repeat(40)]) {
+    const s = await validar("ikcous-publicada", "listar", expected);
+    assertEquals(s.codigo, 1, expected);
+    assertStringIncludes(s.stdout, "exige expected_sha");
+    assertEquals(s.outputs, {});
+  }
+  // fora de ikcous-publicada, "listar" é um nome como outro qualquer: não existe a function
+  for (const projeto of ["savy", "almeida", "sandbox", "loja"]) {
+    const s = await validar(
+      projeto,
+      "listar",
+      projeto === "sandbox" || projeto === "loja" ? "" : sha,
+    );
+    assertEquals(s.codigo, 1, projeto);
+    assertEquals(s.outputs, {}, projeto);
+  }
+  // misturado com outro nome, não é o modo listar
+  for (const pedido of [
+    "listar,criar-pagamento",
+    "criar-pagamento listar",
+    "listar,",
+  ]) {
+    const s = await validar("ikcous-publicada", pedido, sha);
+    assertEquals(s.codigo, 1, pedido);
+    assertEquals(s.outputs, {});
+  }
+  // com nome real, modo publicar e o resto igual
+  const real = await validar("ikcous-publicada", "cobranca", sha);
+  assertEquals(real.codigo, 0);
+  assertEquals(real.outputs.modo, "publicar");
+  assertEquals(real.outputs.nomes, AS_CINCO_DA_COBRANCA);
+  const loja = await validar("loja", "credenciais-mercado-pago");
+  assertEquals(loja.outputs.modo, "publicar");
+  assertEquals(loja.outputs.nomes, "credenciais-mercado-pago");
+});

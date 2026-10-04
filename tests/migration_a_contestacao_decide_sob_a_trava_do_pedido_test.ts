@@ -309,6 +309,7 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
     "tests/banco/contestacao-viva.cjs",
     "tests/banco/cancelar-pedido-viva.cjs",
     "tests/banco/ordem-das-travas-composta-viva.cjs",
+    "tests/banco/impressao-digital-viva.cjs",
     "tests/banco/invariantes-dinheiro.cjs",
   ]) {
     assertStringIncludes(bloqueante, prova);
@@ -392,6 +393,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cancelar-pedido-viva.cjs",
     // Ordem das travas COMPOSTA (96 x 98 x 97/94/89 x reemitir, ciclo de 3).
     "tests/banco/ordem-das-travas-composta-viva.cjs",
+    // O envelope do aplicar-migrations.yml: impressão digital, gate de transporte e cadeia de rollback-manual.
+    "tests/banco/impressao-digital-viva.cjs",
     "tests/banco/invariantes-dinheiro.cjs",
     // send-order-whatsapp: cada select da edge executa no schema real.
     "tests/banco/whatsapp-edge-consultas-viva.cjs",
