@@ -321,6 +321,12 @@ function clienteFalso(opts: {
   // `pedido.valor_estornado` (como a RPC real, 2026110000100) — para o teste
   // ler o acumulado CANÔNICO no fim e numa reentrega. Opt-in.
   concluirSomaNoPedido?: boolean;
+  // Lote A (bloqueios 1/3/5/6): as RPCs da 20261196000000 — o dinheiro da
+  // contestação é decidido no BANCO, sob a trava do pedido (prova viva:
+  // tests/banco/contestacao-viva.cjs). O dublê só registra a chamada e
+  // devolve o retorno que o teste roteirizar (default: 'reservado').
+  contestacaoNoLedger?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
+  estornoExternoNaContestacao?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
 }) {
   const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   let leiturasNaBarreira = 0;
@@ -391,6 +397,16 @@ function clienteFalso(opts: {
           },
           error: null,
         };
+      }
+      if (nome === "registrar_contestacao_no_ledger") {
+        (opts.registro as any)?.chamadasContestacao?.push({ args });
+        return opts.contestacaoNoLedger?.(args) ??
+          { data: { resultado: "reservado", aviso: null, valor_estornado: 0, em_voo: 0, disponivel: 0 }, error: null };
+      }
+      if (nome === "registrar_estorno_externo_na_contestacao") {
+        (opts.registro as any)?.chamadasExternoNaContestacao?.push({ args });
+        return opts.estornoExternoNaContestacao?.(args) ??
+          { data: { resultado: "inserido", aviso: null, valor_estornado: Number(args.p_valor), em_voo: 0, disponivel: 0 }, error: null };
       }
       if (nome === "reservar_aviso_ao_lojista") {
         opts.registro?.chamadasReservar?.push({ args });
@@ -3191,66 +3207,42 @@ Deno.test("cartão — Achado S4 (W7): a leitura do id gravado falha 1x num esto
   assertEquals(registro.chamadasConcluirEstorno.length, 1);
 });
 
-Deno.test("W4 - chargeback: 'in_process' cria linha 'sistema' em_processamento (reserva com o CBK, sem RPC); 'settled' com essa linha -> RPC concluir_estorno (soma)", async () => {
-  // Lote A (R1): reescrito — a decisão sai do CASO (GET /v1/chargebacks/
-  // {case_id}, `coverage_applied`) corroborado pelo status do PAGAMENTO
-  // contestado, nunca do agregado da order; a linha leva o CBK.
+Deno.test("W4 - chargeback: 'in_process' -> RPC sob a trava com em_analise; 'settled' -> contra_a_loja; nenhuma escrita direta no ledger", async () => {
+  // Lote A (bloqueios 1/3/5/6): a decisão sai do CASO (GET /v1/chargebacks/
+  // {case_id}, `coverage_applied`) corroborado pelo PAGAMENTO contestado; o
+  // dinheiro é da RPC `registrar_contestacao_no_ledger` (pedido travado).
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
   const inProcess = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "in_process" }),
     caso: { id: "1234567890", coverage_applied: null, amount: 100, currency: "BRL" },
   });
-
   const resp1 = await semLogs(() => entregarContestacao(supabase, inProcess.fn));
   assertEquals(resp1.status, 200);
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].status, "em_processamento");
-  assertEquals(registro.insertsOrderRefunds[0].mp_status, "charged_back");
-  assertEquals(registro.insertsOrderRefunds[0].mp_status_detail, "in_process");
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, null);
-  assertEquals(registro.insertsOrderRefunds[0].mp_chargeback_id, ID_CONTESTACAO);
-  assertEquals(registro.insertsOrderRefunds[0].amount, 100);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-
-  // Segunda notificação (mesma disputa): a linha do CBK existe, nada novo.
-  await semLogs(() => entregarContestacao(supabase, inProcess.fn));
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-
   const settled = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "settled" }),
     caso: { id: "1234567890", coverage_applied: false, amount: 100, currency: "BRL" },
   });
   const resp2 = await semLogs(() => entregarContestacao(supabase, settled.fn));
   assertEquals(resp2.status, 200);
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
-  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_status, "charged_back");
-  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_status_detail, "settled");
-  assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, null);
+
+  assertEquals(registro.chamadasContestacao.map((c: any) => c.args.p_decisao), ["em_analise", "contra_a_loja"]);
+  assertEquals(registro.chamadasContestacao.map((c: any) => c.args.p_mp_chargeback_id), [ID_CONTESTACAO, ID_CONTESTACAO]);
+  semEscritaDireta(registro);
 });
 
-Deno.test("W4b - chargeback: 'reimbursed' (caso a favor da loja) com a linha em_processamento -> UPDATE 'recusado' condicional (.in(['em_processamento'])), sem RPC, nunca soma", async () => {
+Deno.test("W4b - chargeback: 'reimbursed' (caso a favor da loja) -> RPC com a_favor_da_loja; a edge nunca soma nem libera direto", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
-  const inProcess = fetchDaContestacao({
-    order: orderContestada({ detalheOrder: "in_process" }),
-    caso: { id: "1234567890", coverage_applied: null, amount: 100, currency: "BRL" },
-  });
-  await semLogs(() => entregarContestacao(supabase, inProcess.fn));
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].amount, 100);
-
   const reimbursed = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "reimbursed" }),
     caso: { id: "1234567890", coverage_applied: true, amount: 100, currency: "BRL" },
   });
-  const resp2 = await semLogs(() => entregarContestacao(supabase, reimbursed.fn));
-  assertEquals(resp2.status, 200);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(registro.updatesOrderRefunds.length, 1);
-  assertEquals(registro.updatesOrderRefunds[0].valores.status, "recusado");
-  assertEquals(registro.updatesOrderRefunds[0].valores.mp_status_detail, "reimbursed");
-  assertEquals(registro.updatesOrderRefunds[0].statusFiltro, ["em_processamento"]);
+  const resp = await semLogs(() => entregarContestacao(supabase, reimbursed.fn));
+  assertEquals(resp.status, 200);
+  assertEquals(registro.chamadasContestacao.length, 1);
+  assertEquals(registro.chamadasContestacao[0].args.p_decisao, "a_favor_da_loja");
+  semEscritaDireta(registro);
 });
 
 // =============================================================================
@@ -3320,7 +3312,16 @@ function registroDoLedger() {
     chamadasConcluirEstorno: [] as any[],
     insertsOrderRefunds: [] as any[],
     updatesOrderRefunds: [] as any[],
+    chamadasContestacao: [] as any[],
+    chamadasExternoNaContestacao: [] as any[],
   };
+}
+
+/** Nenhuma escrita DIRETA no ledger pela edge (a contestação é da RPC). */
+function semEscritaDireta(registro: ReturnType<typeof registroDoLedger>, rotulo = "") {
+  assertEquals(registro.insertsOrderRefunds.length, 0, `${rotulo} insert direto`);
+  assertEquals(registro.updatesOrderRefunds.length, 0, `${rotulo} update direto`);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0, `${rotulo} concluir_estorno pela edge`);
 }
 
 Deno.test("Lote A R1 - order 'charged_back' (in_process/settled/reimbursed) NUNCA chama confirmar_pagamento — 200 'contestacao_no_ledger'", async () => {
@@ -3717,13 +3718,17 @@ Deno.test("Lote A R2 - 23505 sem linha casando a chave (outra restrição) -> N�
 function fetchDaContestacao(opts: {
   order: Record<string, unknown>;
   caso?: Record<string, unknown>;
+  // Um caso POR case_id (multicaso): o fim da URL escolhe.
+  casos?: Record<string, Record<string, unknown>>;
   statusCaso?: number;
 }) {
   const chamadas: string[] = [];
   const fn = async (url: string, _init?: RequestInit) => {
     chamadas.push(url);
     if (url.includes("/v1/chargebacks/")) {
-      return new Response(JSON.stringify(opts.caso ?? {}), { status: opts.statusCaso ?? 200 });
+      const caseId = url.slice(url.lastIndexOf("/") + 1);
+      const caso = opts.casos ? new Map(Object.entries(opts.casos)).get(caseId) : opts.caso;
+      return new Response(JSON.stringify(caso ?? {}), { status: opts.statusCaso ?? 200 });
     }
     if (url.includes("/v1/orders/")) return new Response(JSON.stringify(opts.order), { status: 200 });
     return new Response("{}", { status: 404 });
@@ -3781,7 +3786,12 @@ function semLogs<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
-Deno.test("Lote A R1 - in_process (caso pendente, pagamento in_process) -> UMA reserva com o CBK e o VALOR DO CASO (37,50), nada concluído, pedido segue pago", async () => {
+/** O retorno da RPC no dublê (estado canônico incluso). */
+function retornoDaRpc(resultado: string, extra: Record<string, unknown> = {}) {
+  return { data: { resultado, aviso: null, valor_estornado: 0, em_voo: 0, disponivel: 0, ...extra }, error: null };
+}
+
+Deno.test("Lote A R1 - in_process (caso pendente) -> a RPC sob a trava recebe em_analise, CBK, case_id, o VALOR DO CASO (37,50) e a estimativa SEPARADA; nada direto", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
   const { fn, chamadas } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "in_process" }), caso: CASO_EM_ANALISE });
@@ -3789,105 +3799,72 @@ Deno.test("Lote A R1 - in_process (caso pendente, pagamento in_process) -> UMA r
 
   assertEquals(resposta.status, 200);
   assertStringIncludes(chamadas.join(" | "), "/v1/chargebacks/1234567890");
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  const reserva = registro.insertsOrderRefunds[0];
-  assertEquals(reserva.status, "em_processamento");
-  assertEquals(reserva.mp_chargeback_id, ID_CONTESTACAO);
-  assertEquals(reserva.mp_status, "charged_back");
-  assertEquals(reserva.amount, 37.5);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(registro.chamadasRpc.length, 0);
-});
-
-Deno.test("Lote A R1 - in_process com o caso SEM valor em reais -> reserva pelo total pago, e o motivo diz que é ESTIMATIVA", async () => {
-  const registro = registroDoLedger();
-  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
-  const { fn } = fetchDaContestacao({
-    order: orderContestada({ detalheOrder: "in_process" }),
-    caso: { id: "1234567890", coverage_applied: null, amount: 37.5, currency: "ARS" },
+  assertEquals(registro.chamadasContestacao.length, 1);
+  assertEquals(registro.chamadasContestacao[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_mp_chargeback_id: ID_CONTESTACAO,
+    p_case_id: "1234567890",
+    p_decisao: "em_analise",
+    p_valor_caso: 37.5,
+    p_valor_estimado: 100,
+    p_casos_na_order: 1,
   });
-  await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].amount, 100);
-  assertStringIncludes(String(registro.insertsOrderRefunds[0].motivo), "estimativa");
+  semEscritaDireta(registro);
+  assertEquals(registro.chamadasRpc.length, 0, "confirmar_pagamento nunca");
 });
 
-Deno.test("Lote A R1-NULL - duas entregas PARALELAS do mesmo in_process -> UMA reserva (o CBK é a identidade), as duas 200", async () => {
+Deno.test("Lote A R1 (bloqueio 1) - caso SEM valor em reais confiável (outra moeda, ausente) -> p_valor_caso NULL; a estimativa vai SEPARADA e nunca no lugar do valor do caso", async () => {
+  const casos: Array<[string, Record<string, unknown>, string]> = [
+    ["in_process", { id: "1234567890", coverage_applied: null, amount: 37.5, currency: "ARS" }, "em_analise"],
+    ["settled", { id: "1234567890", coverage_applied: false, amount: 100, currency: "ARS" }, "contra_a_loja"],
+    ["settled", { id: "1234567890", coverage_applied: false, currency: "BRL" }, "contra_a_loja"],
+  ];
+  for (const [detalhe, caso, decisao] of casos) {
+    const registro = registroDoLedger();
+    const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
+    const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: detalhe }), caso });
+    await semLogs(() => entregarContestacao(supabase, fn));
+    assertEquals(registro.chamadasContestacao.length, 1, JSON.stringify(caso));
+    const args = registro.chamadasContestacao[0].args;
+    assertEquals(args.p_decisao, decisao);
+    assertEquals(args.p_valor_caso, null, `${JSON.stringify(caso)}: estimativa não vira valor do caso`);
+    assertEquals(args.p_valor_estimado, 100);
+    semEscritaDireta(registro, JSON.stringify(caso));
+  }
+});
+
+Deno.test("Lote A R1 - settled (caso contra a loja + pagamento settled) -> RPC contra_a_loja com o valor do caso; a edge não conclui nada direto", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({
     pedido: pedidoPago(),
     registro,
-    orderRefundsRows: [],
-    indicesUnicosDoLedger: true,
-    barreiraLeituraOrderRefunds: 2,
+    orderRefundsRows: [linhaDaReserva()],
+    contestacaoNoLedger: () => retornoDaRpc("concluido", { valor_estornado: 40 }),
   });
-  const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "in_process" }), caso: CASO_EM_ANALISE });
-  const [a, b] = await semLogs(() => Promise.all([entregarContestacao(supabase, fn), entregarContestacao(supabase, fn)]));
-  assertEquals([a.status, b.status], [200, 200]);
-  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
-  assertEquals(fila.filter((r) => r.mp_chargeback_id === ID_CONTESTACAO).length, 1);
-});
-
-Deno.test("Lote A R1 - settled (caso contra a loja + pagamento settled) com a reserva -> concluir_estorno NA reserva; confirmar_pagamento nunca", async () => {
-  const registro = registroDoLedger();
-  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
-  const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_CONTRA_A_LOJA });
-  const resposta = await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(resposta.status, 200);
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
-  assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "reserva-cbk");
-  assertEquals(registro.insertsOrderRefunds.length, 0);
-  assertEquals(registro.chamadasRpc.length, 0);
-});
-
-Deno.test("Lote A R1 - settled com o caso MENOR que a reserva estimada (40 de 100) -> a reserva cai para 40 ANTES de concluir (só desce, nunca sobe)", async () => {
-  const registro = registroDoLedger();
-  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({
     order: orderContestada({ detalheOrder: "settled" }),
     caso: { ...CASO_CONTRA_A_LOJA, amount: 40 },
   });
-  await semLogs(() => entregarContestacao(supabase, fn));
-  const ajuste = registro.updatesOrderRefunds.find((u: any) => u.valores.amount !== undefined);
-  assertEquals(ajuste?.valores.amount, 40);
-  assertEquals(ajuste?.statusFiltro, ["em_processamento"]);
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
-  assertEquals((registro as any).valorEstornadoAcumulado, 40);
+  const resposta = await semLogs(() => entregarContestacao(supabase, fn));
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasContestacao.length, 1);
+  assertEquals(registro.chamadasContestacao[0].args.p_decisao, "contra_a_loja");
+  assertEquals(registro.chamadasContestacao[0].args.p_valor_caso, 40);
+  semEscritaDireta(registro);
+  assertEquals(registro.chamadasRpc.length, 0);
 });
 
-Deno.test("Lote A R1-NULL - duas entregas PARALELAS de settled SEM reserva -> UMA linha concluída, soma UMA vez", async () => {
-  const registro = registroDoLedger();
-  const supabase = clienteFalso({
-    pedido: pedidoPago(),
-    registro,
-    orderRefundsRows: [],
-    indicesUnicosDoLedger: true,
-    barreiraLeituraOrderRefunds: 2,
-  });
-  const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_CONTRA_A_LOJA });
-  const [a, b] = await semLogs(() => Promise.all([entregarContestacao(supabase, fn), entregarContestacao(supabase, fn)]));
-  assertEquals([a.status, b.status], [200, 200]);
-  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
-  const linhas = fila.filter((r) => r.mp_chargeback_id === ID_CONTESTACAO);
-  assertEquals(linhas.length, 1);
-  assertEquals(linhas[0].status, "concluido");
-  assertEquals((registro as any).valorEstornadoAcumulado, 100);
-});
-
-Deno.test("Lote A R1 - reimbursed (caso a favor da loja + pagamento reimbursed) com a reserva -> libera (recusado condicional), nunca soma, pedido segue pago", async () => {
+Deno.test("Lote A R1 - reimbursed (caso a favor da loja + pagamento reimbursed) -> RPC a_favor_da_loja; nunca soma", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "reimbursed" }), caso: CASO_A_FAVOR_DA_LOJA });
   await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(registro.updatesOrderRefunds.length, 1);
-  assertEquals(registro.updatesOrderRefunds[0].valores.status, "recusado");
-  assertEquals(registro.updatesOrderRefunds[0].statusFiltro, ["em_processamento"]);
-  assertStringIncludes(String(registro.updatesOrderRefunds[0].valores.ultimo_erro), "a favor da loja");
+  assertEquals(registro.chamadasContestacao.map((c: any) => c.args.p_decisao), ["a_favor_da_loja"]);
+  semEscritaDireta(registro);
   assertEquals(registro.chamadasRpc.length, 0);
 });
 
-Deno.test("Lote A R1 - 'reimbursed' só no AGREGADO da order (pagamento in_process, caso pendente) -> NADA é liberado", async () => {
+Deno.test("Lote A R1 - 'reimbursed' só no AGREGADO da order (pagamento in_process, caso pendente) -> a RPC recebe em_analise (nada a liberar)", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({
@@ -3895,24 +3872,23 @@ Deno.test("Lote A R1 - 'reimbursed' só no AGREGADO da order (pagamento in_proce
     caso: CASO_EM_ANALISE,
   });
   await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(registro.updatesOrderRefunds.length, 0);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.chamadasContestacao.map((c: any) => c.args.p_decisao), ["em_analise"]);
+  semEscritaDireta(registro);
 });
 
-Deno.test("Lote A R1 - CONFLITO (pagamento settled, caso ainda pendente) -> conserva a reserva, aviso ao admin UMA vez em duas entregas", async () => {
+Deno.test("Lote A R1 - CONFLITO (pagamento settled, caso ainda pendente) -> nenhuma RPC (a reserva fica), aviso ao admin UMA vez em duas entregas", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_EM_ANALISE });
   const pushes: unknown[] = [];
   await semLogs(() => entregarContestacao(supabase, fn, pushes));
   await semLogs(() => entregarContestacao(supabase, fn, pushes));
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(registro.updatesOrderRefunds.length, 0);
-  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasContestacao.length, 0);
+  semEscritaDireta(registro);
   assertEquals(pushes.length, 1, "aviso uma vez só");
 });
 
-Deno.test("Lote A R1 - CONFLITO só no PAGAMENTO (item sem status; pagamento settled, caso a favor da loja) -> nada liberado, nada concluído", async () => {
+Deno.test("Lote A R1 - CONFLITO só no PAGAMENTO (item sem status; pagamento settled, caso a favor da loja) -> nenhuma RPC", async () => {
   // Isola a corroboração pelo pagamento contestado: o item da contestação
   // não traz status, então só o pagamento contradiz o caso.
   const registro = registroDoLedger();
@@ -3925,23 +3901,24 @@ Deno.test("Lote A R1 - CONFLITO só no PAGAMENTO (item sem status; pagamento set
     caso: CASO_A_FAVOR_DA_LOJA,
   });
   await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(registro.updatesOrderRefunds.length, 0);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.chamadasContestacao.length, 0);
+  semEscritaDireta(registro);
 });
 
-Deno.test("Lote A R1 - SEM CBK legível (sem chargebacks[]) -> nenhuma reserva (nenhuma linha NULL duplicável), aviso ao admin uma vez", async () => {
+Deno.test("Lote A R1 - SEM CBK legível (sem chargebacks[]) -> nenhuma RPC (nenhuma linha sem identidade), nenhum GET de caso, aviso ao admin uma vez", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [] });
   const { fn, chamadas } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "in_process", chargebacks: null }) });
   const pushes: unknown[] = [];
   await semLogs(() => entregarContestacao(supabase, fn, pushes));
   await semLogs(() => entregarContestacao(supabase, fn, pushes));
-  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasContestacao.length, 0);
+  semEscritaDireta(registro);
   assertEquals(pushes.length, 1);
   assertEquals(chamadas.some((u) => u.includes("/v1/chargebacks/")), false);
 });
 
-Deno.test("Lote A R1 - rota payment (PIX legado) 'charged_back' -> sem CBK: nenhuma reserva, aviso ao admin", async () => {
+Deno.test("Lote A R1 - rota payment (PIX legado) 'charged_back' -> sem CBK: nenhuma RPC, aviso ao admin", async () => {
   const registro = registroDoLedger();
   const pedido = { ...pedidoPago(), gateway_payment_id: "999" };
   const supabase = clienteFalso({ pedido, registro, orderRefundsRows: [] });
@@ -3964,47 +3941,107 @@ Deno.test("Lote A R1 - rota payment (PIX legado) 'charged_back' -> sem CBK: nenh
     })
   );
   assertEquals(resposta.status, 200);
-  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasContestacao.length, 0);
+  semEscritaDireta(registro);
   assertEquals(pushes.length, 1);
 });
 
-Deno.test("Lote A R1 - linha ANTIGA (sistema, charged_back, em_processamento, sem CBK) é ADOTADA (UPDATE grava o CBK), nunca duplicada; o settled seguinte conclui ELA", async () => {
+Deno.test("Lote A R1 (bloqueio 3) - DOIS casos no mesmo pedido -> a RPC é chamada para CADA um, na ordem, com p_casos_na_order 2; a edge não pula o 2º por um saldo lido no começo", async () => {
+  // Antes: a reserva do CBK1 (100) liberada por UPDATE não mudava o retrato
+  // local, e o CBK2 era pulado ("além do que o pedido pode reservar").
   const registro = registroDoLedger();
+  const roteiro = [
+    retornoDaRpc("liberado", { disponivel: 100 }),
+    retornoDaRpc("reservado", { disponivel: 0 }),
+  ];
   const supabase = clienteFalso({
     pedido: pedidoPago(),
     registro,
-    orderRefundsRows: [linhaDaReserva({ id: "reserva-antiga", mp_chargeback_id: undefined })],
-    indicesUnicosDoLedger: true,
+    orderRefundsRows: [linhaDaReserva({ mp_chargeback_id: "CBK-1" })],
+    contestacaoNoLedger: () => roteiro.shift()!,
   });
-  const inProcess = fetchDaContestacao({ order: orderContestada({ detalheOrder: "in_process" }), caso: CASO_EM_ANALISE });
-  await semLogs(() => entregarContestacao(supabase, inProcess.fn));
-  assertEquals(registro.insertsOrderRefunds.length, 0);
-  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
-  assertEquals(fila.find((r) => r.id === "reserva-antiga")?.mp_chargeback_id, ID_CONTESTACAO);
-
-  const settled = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_CONTRA_A_LOJA });
-  await semLogs(() => entregarContestacao(supabase, settled.fn));
-  assertEquals(registro.insertsOrderRefunds.length, 0);
-  assertEquals(registro.chamadasConcluirEstorno.map((c: any) => c.args.p_refund_id), ["reserva-antiga"]);
+  const order = orderContestada({ detalheOrder: "in_process" });
+  (order.transactions as any).payments = [
+    { id: "PAY-1", status: "charged_back", status_detail: "reimbursed" },
+    { id: "PAY-2", status: "charged_back", status_detail: "in_process" },
+  ];
+  (order.transactions as any).chargebacks = [
+    { id: "CBK-1", transaction_id: "PAY-1", case_id: "111", status: "reimbursed" },
+    { id: "CBK-2", transaction_id: "PAY-2", case_id: "222", status: "in_process" },
+  ];
+  const { fn } = fetchDaContestacao({
+    order,
+    casos: {
+      "111": { id: "111", coverage_applied: true, amount: 100, currency: "BRL" },
+      "222": { id: "222", coverage_applied: null, amount: 100, currency: "BRL" },
+    },
+  });
+  const resposta = await semLogs(() => entregarContestacao(supabase, fn));
+  assertEquals(resposta.status, 200);
+  assertEquals(
+    registro.chamadasContestacao.map((c: any) => [c.args.p_mp_chargeback_id, c.args.p_case_id, c.args.p_decisao, c.args.p_casos_na_order]),
+    [
+      ["CBK-1", "111", "a_favor_da_loja", 2],
+      ["CBK-2", "222", "em_analise", 2],
+    ],
+  );
+  semEscritaDireta(registro);
 });
 
-Deno.test("Lote A R1 - decisão REVERTIDA (reserva já concluída, agora caso a favor da loja) -> aviso ao admin, nada reaberto", async () => {
+Deno.test("Lote A R1 - avisos da RPC: 'revertida' e 'saldo' viram UM push cada em duas entregas; 'conferir' vira o aviso de conferência", async () => {
+  for (const [aviso, titulo] of [
+    ["revertida", "Contestação mudou de resultado"],
+    ["saldo", "Contestação maior que o saldo do pedido"],
+    ["conferir", "Contestação de pagamento para conferir"],
+  ]) {
+    const registro = registroDoLedger();
+    const supabase = clienteFalso({
+      pedido: pedidoPago(),
+      registro,
+      orderRefundsRows: [],
+      contestacaoNoLedger: () => retornoDaRpc(`desfecho_${aviso}`, { aviso }),
+    });
+    const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_CONTRA_A_LOJA });
+    const pushes: any[] = [];
+    await semLogs(() => entregarContestacao(supabase, fn, pushes));
+    await semLogs(() => entregarContestacao(supabase, fn, pushes));
+    assertEquals(pushes.length, 1, aviso);
+    assertEquals(pushes[0].title, titulo, aviso);
+  }
+});
+
+Deno.test("Lote A R1 - RPC com erro, ou retorno ilegível -> 500 (o MP reenvia); nada escrito pela edge", async () => {
+  for (const roteiro of [
+    { data: null, error: { message: "could not obtain lock (dublê)" } },
+    { data: { sem: "resultado" }, error: null },
+    { data: null, error: null },
+  ]) {
+    const registro = registroDoLedger();
+    const supabase = clienteFalso({
+      pedido: pedidoPago(),
+      registro,
+      orderRefundsRows: [],
+      contestacaoNoLedger: () => roteiro,
+    });
+    const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_CONTRA_A_LOJA });
+    const resposta = await semLogs(() => entregarContestacao(supabase, fn));
+    assertEquals(resposta.status, 500, JSON.stringify(roteiro));
+    semEscritaDireta(registro);
+  }
+});
+
+Deno.test("Lote A R1 - duas entregas PARALELAS do mesmo caso -> as duas chegam à RPC com os mesmos argumentos (a serialização é a trava do pedido no banco: contestacao-viva (d)), as duas 200", async () => {
   const registro = registroDoLedger();
-  const supabase = clienteFalso({
-    pedido: { ...pedidoPago(), payment_status: "estornado", valor_estornado: 100 },
-    registro,
-    orderRefundsRows: [linhaDaReserva({ status: "concluido", concluido_em: "2026-10-02T00:00:00.000Z" })],
-  });
-  const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "reimbursed" }), caso: CASO_A_FAVOR_DA_LOJA });
-  const pushes: any[] = [];
-  await semLogs(() => entregarContestacao(supabase, fn, pushes));
-  assertEquals(registro.updatesOrderRefunds.length, 0);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(pushes.length, 1);
-  assertStringIncludes(String(pushes[0].title), "Contestação");
+  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [], barreiraLeituraOrderRefunds: 2 });
+  const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), caso: CASO_CONTRA_A_LOJA });
+  const [a, b] = await semLogs(() => Promise.all([entregarContestacao(supabase, fn), entregarContestacao(supabase, fn)]));
+  assertEquals([a.status, b.status], [200, 200]);
+  assertEquals(registro.chamadasContestacao.length, 2);
+  assertEquals(registro.chamadasContestacao[0].args, registro.chamadasContestacao[1].args);
+  semEscritaDireta(registro);
 });
 
-Deno.test("Lote A R1 (bloqueio 4) - o GET do caso devolve OUTRO caso -> nada concluído nem liberado, reserva conservada, aviso ao admin UMA vez", async () => {
+Deno.test("Lote A R1 (bloqueio 4) - o GET do caso devolve OUTRO caso -> nenhuma RPC (a reserva fica), aviso ao admin UMA vez", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({
@@ -4015,26 +4052,22 @@ Deno.test("Lote A R1 (bloqueio 4) - o GET do caso devolve OUTRO caso -> nada con
   const r1 = await semLogs(() => entregarContestacao(supabase, fn, pushes));
   const r2 = await semLogs(() => entregarContestacao(supabase, fn, pushes));
   assertEquals([r1.status, r2.status], [200, 200]);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(registro.updatesOrderRefunds.length, 0);
-  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(registro.chamadasContestacao.length, 0);
+  semEscritaDireta(registro);
   assertEquals(pushes.length, 1);
 });
 
-Deno.test("Lote A R1 - consulta do CASO falha (500) -> 500 (o MP reenvia = reconsulta), nada gravado", async () => {
+Deno.test("Lote A R1 - consulta do CASO falha (500) -> 500 (o MP reenvia = reconsulta), nenhuma RPC", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({ order: orderContestada({ detalheOrder: "settled" }), statusCaso: 500 });
   const resposta = await semLogs(() => entregarContestacao(supabase, fn));
   assertEquals(resposta.status, 500);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
-  assertEquals(registro.updatesOrderRefunds.length, 0);
+  assertEquals(registro.chamadasContestacao.length, 0);
+  semEscritaDireta(registro);
 });
 
-Deno.test("Lote A R1 - débito da contestação TAMBÉM listado em refunds[] como processed -> conta UMA vez (só a reserva conclui; nenhum estorno externo)", async () => {
-  // Pedido de 200, contestação de 100: sem a guarda, o refund 'processed' de
-  // 100 entrava como estorno externo (sobravam 100 disponíveis) E a reserva
-  // concluía — 200 estornados por uma contestação de 100.
+Deno.test("Lote A R1 - refund 'processed' TAMBÉM listado numa order contestada -> a contestação vai à RPC uma vez; nenhum estorno externo direto", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(200), registro, orderRefundsRows: [linhaDaReserva()] });
   const { fn } = fetchDaContestacao({
@@ -4046,9 +4079,9 @@ Deno.test("Lote A R1 - débito da contestação TAMBÉM listado em refunds[] com
     caso: CASO_CONTRA_A_LOJA,
   });
   await semLogs(() => entregarContestacao(supabase, fn));
+  assertEquals(registro.chamadasContestacao.length, 1);
   assertEquals(registro.insertsOrderRefunds.length, 0);
-  assertEquals(registro.chamadasConcluirEstorno.map((c: any) => c.args.p_refund_id), ["reserva-cbk"]);
-  assertEquals((registro as any).valorEstornadoAcumulado, 100);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
 
 Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {

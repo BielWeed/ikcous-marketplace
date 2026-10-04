@@ -757,37 +757,31 @@ function ehViolacaoDeUnicidade(erro: unknown): boolean {
 async function recuperarLinhaJaRegistrada(args: {
   supabase: ReturnType<typeof createClient>;
   orderId: string;
-  mpRefundId: string | null;
-  // Lote A (R1-NULL): a mesma recuperação para a CONTESTAÇÃO — índice único
-  // (order_id, mp_chargeback_id). Na contestação decidida contra a loja, a
-  // linha existente pode ser a RESERVA em análise (em_processamento) que
-  // outra entrega criou: o desfecho é concluir ELA.
-  mpChargebackId?: string | null;
+  mpRefundId: string;
   mpStatus: string;
   mpStatusDetail: string | null;
   erroOriginal: unknown;
 }): Promise<DesfechoDaInsercao> {
   const { supabase, orderId, mpRefundId, mpStatus, mpStatusDetail, erroOriginal } = args;
-  const mpChargebackId = args.mpChargebackId ?? null;
+  // Só o REFUND (mp_refund_id) passa por aqui: a contestação (CBK) é gravada
+  // pela RPC sob a trava do pedido (20261196000000) — bloqueio 5 da revisão:
+  // concluir uma reserva de contestação achada aqui concluía a ESTIMATIVA.
   const { data: linhas, error: erroLeitura } = await supabase
     .from("order_refunds")
-    .select("id, status, solicitado_por, mp_refund_id, mp_chargeback_id, concluido_em")
+    .select("id, status, solicitado_por, mp_refund_id, concluido_em")
     .eq("order_id", orderId);
   if (erroLeitura) throw erroLeitura;
-  const existente = ((linhas ?? []) as Array<Record<string, unknown>>).find((l) =>
-    mpChargebackId !== null ? l.mp_chargeback_id === mpChargebackId : l.mp_refund_id === mpRefundId
-  );
+  const existente = ((linhas ?? []) as Array<Record<string, unknown>>).find((l) => l.mp_refund_id === mpRefundId);
   if (!existente) throw erroOriginal;
 
   console.log(
-    "webhook-mercadopago: estorno/contestação já registrado por outra entrega (índice único) — nada inserido",
+    "webhook-mercadopago: estorno já registrado por outra entrega (índice único) — nada inserido",
     orderId,
-    mpChargebackId ?? mpRefundId,
+    mpRefundId,
   );
   const concluidaSemCarimbo = existente.status === "concluido" &&
     (existente.concluido_em === null || existente.concluido_em === undefined);
-  const reservaAberta = mpChargebackId !== null && existente.status === "em_processamento";
-  if (existente.solicitado_por !== "sistema" || !(concluidaSemCarimbo || reservaAberta)) return "ja_registrado";
+  if (existente.solicitado_por !== "sistema" || !concluidaSemCarimbo) return "ja_registrado";
 
   const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
     p_refund_id: existente.id,
@@ -898,14 +892,10 @@ async function inserirEstornoConcluido(args: {
   valorOriginal: number;
   motivoBase: string;
   mpRefundId: string | null;
-  // Lote A (R1-NULL): a contestação decidida contra a loja sem reserva prévia
-  // nasce concluída COM o CBK — o índice único recusa a 2ª entrega.
-  mpChargebackId?: string | null;
   mpStatus: string;
   mpStatusDetail: string | null;
 }): Promise<DesfechoDaInsercao> {
   const { supabase, orderId, amount, valorOriginal, motivoBase, mpRefundId, mpStatus, mpStatusDetail } = args;
-  const mpChargebackId = args.mpChargebackId ?? null;
   const clampou = amount < valorOriginal;
   const motivo = motivoBase + (clampou ? `, valor no MP R$ ${valorOriginal.toFixed(2)}` : "");
 
@@ -920,7 +910,6 @@ async function inserirEstornoConcluido(args: {
       mp_refund_id: mpRefundId,
       mp_status: mpStatus,
       mp_status_detail: mpStatusDetail,
-      ...(mpChargebackId !== null ? { mp_chargeback_id: mpChargebackId } : {}),
     })
     .select("id")
     .maybeSingle();
@@ -928,12 +917,11 @@ async function inserirEstornoConcluido(args: {
     // Lote A (R2): o MESMO refund já registrado por outra entrega — ver
     // `recuperarLinhaJaRegistrada`. Só para refund COM id: sem id não há
     // índice que recuse, e o 23505 seria de outra restrição.
-    if (ehViolacaoDeUnicidade(erroInsert) && (mpRefundId !== null || mpChargebackId !== null)) {
+    if (ehViolacaoDeUnicidade(erroInsert) && mpRefundId !== null) {
       return await recuperarLinhaJaRegistrada({
         supabase,
         orderId,
         mpRefundId,
-        mpChargebackId,
         mpStatus,
         mpStatusDetail,
         erroOriginal: erroInsert,
@@ -976,58 +964,60 @@ async function inserirEstornoConcluido(args: {
 }
 
 /**
- * CONTESTAÇÃO (chargeback) NO LEDGER — Lote A (04/10/2026, R1/R1-NULL). Ramo
- * B de `registrarDesfechoDoEstorno`. Fontes e vocabulário no cabeçalho de
- * `_shared/contestacao.ts`.
+ * CONTESTAÇÃO (chargeback) NO LEDGER — Lote A (04/10/2026, R1/R1-NULL e
+ * bloqueios 1/3/5/6 da revisão). Ramo B de `registrarDesfechoDoEstorno`.
+ * Fontes e vocabulário no cabeçalho de `_shared/contestacao.ts`.
  *
- * IDENTIDADE: `transactions.chargebacks[].id` (CBK) na coluna
- * `mp_chargeback_id`, com índice único parcial (order_id, mp_chargeback_id)
- * (migration 20261192000000). Antes, a reserva nascia com `mp_refund_id`
- * NULL e o dedupe era "existe alguma linha sistema+charged_back": duas
- * entregas paralelas criavam DUAS reservas, a liberação achava só a
- * primeira, e um SEGUNDO caso no mesmo pedido era bloqueado pela linha do
- * primeiro (inclusive já recusada). Sem CBK legível: NÃO reserva (uma linha
- * sem identidade é duplicável) e avisa o admin uma vez.
+ * QUEM DECIDE O DINHEIRO: a RPC `registrar_contestacao_no_ledger`
+ * (migration 20261196000000), com o PEDIDO TRAVADO (FOR UPDATE) — reserva,
+ * adota linha antiga, ajusta, conclui e libera numa transação só, contra o
+ * estado RELIDO sob a trava, e devolve o estado canônico. Aqui NÃO existe
+ * mais retrato local do ledger nem conta de saldo: duas entregas paralelas
+ * (mesmo caso, ou casos diferentes do mesmo pedido) se serializam no banco.
+ * Antes, cada entrega decidia sobre o que leu no começo — reservas somavam
+ * acima do pago (60+60 em 100), a liberação do CBK1 não liberava o saldo do
+ * CBK2, e a reserva ESTIMADA de outra entrega era concluída às cegas.
  *
- * DECISÃO: pelo CASO (GET /v1/chargebacks/{case_id}, `coverage_applied`),
- * corroborado pelo `status_detail` do PAGAMENTO contestado (o de
- * `transactions.payments[]` cujo id é `chargebacks[].transaction_id`) quando
- * o caso é o único daquele pagamento, e pelo `status` do item quando vier.
- * Nunca pelo agregado da order. Desconhecido ou conflito: CONSERVA a reserva
- * (nada liberado, nada concluído) e avisa o admin uma vez; a próxima
- * notificação do MP reconsulta. Consulta do caso com falha transitória:
- * lança (500, o MP reenvia — é a reconsulta).
+ * IDENTIDADE: `transactions.chargebacks[].id` (CBK), ligada ao `case_id`
+ * (`mp_chargeback_case_id`). Sem CBK legível: nada vai à RPC (uma linha sem
+ * identidade é duplicável) e o admin é avisado uma vez.
  *
- *   em análise      -> RESERVA (linha em_processamento; o pedido segue pago;
- *                      a reserva já desconta do saldo — v_em_voo,
- *                      registrar_estorno_manual, financeiro: não muda);
- *   contra a loja   -> CONCLUI pela `concluir_estorno` (o pedido só vira
- *                      'estornado' quando o total estornado cobre o pago —
- *                      2026110000100), a reserva antes ajustada PARA BAIXO ao
- *                      valor do caso; sem reserva prévia, nasce concluída;
- *   a favor da loja -> LIBERA a reserva (recusado condicional), nunca soma.
- * Decisão REVERTIDA (concluída e agora a favor, ou liberada e agora contra):
- * aviso ao admin, nada reaberto — não existe volta automática de dinheiro.
+ * DECISÃO (o que vai à RPC): pelo CASO (GET /v1/chargebacks/{case_id},
+ * `coverage_applied`, com o id devolvido conferido), corroborado pelo
+ * `status_detail` do PAGAMENTO contestado quando o caso é o único daquele
+ * pagamento, e pelo `status` do item quando vier. Nunca pelo agregado da
+ * order. Desconhecido ou conflito: nada vai à RPC (a reserva fica como
+ * está) e o admin é avisado uma vez; a próxima notificação reconsulta.
+ * Consulta do caso com falha transitória: lança (500, o MP reenvia).
  *
- * VALOR: o do CASO, em reais, quando a consulta traz; senão o total pago,
- * limitado ao disponível, e o motivo da linha diz que é ESTIMATIVA.
+ * VALOR: `p_valor_caso` é SÓ o valor do caso em reais (BRL, positivo);
+ * senão NULL. `p_valor_estimado` é o total pago. A RPC só RESERVA com a
+ * estimativa — concluir exige o valor do caso, e só se couber no saldo.
+ *
+ * AVISO: a RPC devolve `aviso` ('conferir', 'saldo', 'revertida'); cada um
+ * vira UM push ao admin por (pedido, caso, desfecho) — `avisarAdminUmaVez`.
+ * Erro da RPC: lança (500, o MP reenvia; cada chamada é atômica e
+ * idempotente, os casos já gravados não se repetem).
  */
 async function registrarContestacao(args: {
   supabase: ReturnType<typeof createClient>;
   orderId: string;
   corpo: Record<string, unknown>;
   ehPayments: boolean;
-  linhasBanco: Array<Record<string, unknown>>;
   pedido: PedidoParaEstorno;
-  disponivel: () => number;
   consultarCaso: (caseId: string) => Promise<ResultadoDaConsultaDoCaso>;
   avisar: AvisarAdminUmaVez;
 }): Promise<void> {
-  const { supabase, orderId, corpo, ehPayments, linhasBanco, pedido, disponivel, consultarCaso, avisar } = args;
+  const { supabase, orderId, corpo, ehPayments, pedido, consultarCaso, avisar } = args;
   const idCobranca = String(corpo.id ?? "");
   const avisoConferir = {
     title: "Contestação de pagamento para conferir",
     body: `${numeroDoPedido(orderId)} · o Mercado Pago avisou de uma contestação que o app não conseguiu registrar sozinho — confira no painel do Mercado Pago antes de mexer neste pedido`,
+    url: "/admin-orders",
+  };
+  const avisoSaldo = {
+    title: "Contestação maior que o saldo do pedido",
+    body: `${numeroDoPedido(orderId)} · a contestação do Mercado Pago não cabe no que ainda pode ser devolvido deste pedido — o app reservou o que dava e não concluiu nada; confira no painel do Mercado Pago`,
     url: "/admin-orders",
   };
   const avisoRevertida = {
@@ -1057,8 +1047,8 @@ async function registrarContestacao(args: {
   }
 
   const valorPagoBruto = extrairValorDaOrder(corpo);
-  const valorPago = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) && valorPagoBruto > 0
-    ? valorPagoBruto
+  const valorEstimado = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) && valorPagoBruto > 0
+    ? Number(valorPagoBruto.toFixed(2))
     : null;
 
   for (const item of leitura.itens) {
@@ -1071,7 +1061,7 @@ async function registrarContestacao(args: {
       }
       await conservaEAvisa(
         `contestacao_indefinida:${orderId}:${item.idContestacao}`,
-        `caso da contestação ilegível (status ${consulta.status})`,
+        `caso da contestação ilegível ou de outro caso (status ${consulta.status})`,
       );
       continue;
     }
@@ -1090,202 +1080,54 @@ async function registrarContestacao(args: {
       );
       continue;
     }
-    const valorCaso = valorDoCaso(consulta.caso);
-    const estimativa = valorCaso === null
-      ? " — valor estimado pelo total pago (estimativa: o caso do Mercado Pago não informou o valor em reais)"
-      : "";
 
-    // A linha DESTA contestação: pelo CBK; senão a linha ANTIGA (nascida antes
-    // do CBK, sem ele) é ADOTADA — nunca duplicada. Só com um caso só e uma
-    // antiga só: mais de um, não há como saber qual é qual.
-    let linha = linhasBanco.find((l) => l.mp_chargeback_id === item.idContestacao);
-    if (!linha) {
-      const antigas = linhasBanco.filter((l) =>
-        l.solicitado_por === "sistema" && l.mp_status === "charged_back" &&
-        l.status === "em_processamento" &&
-        (l.mp_chargeback_id === null || l.mp_chargeback_id === undefined)
-      );
-      if (antigas.length > 0) {
-        if (antigas.length > 1 || leitura.itens.length > 1) {
-          await conservaEAvisa(
-            `contestacao_indefinida:${orderId}:${item.idContestacao}:linhas_antigas`,
-            "há reserva antiga de contestação sem identidade e não dá para saber de qual caso ela é",
-          );
-          continue;
-        }
-        const { error: erroAdocao } = await supabase
-          .from("order_refunds")
-          .update({ mp_chargeback_id: item.idContestacao, updated_at: new Date().toISOString() })
-          .eq("id", antigas[0].id)
-          .is("mp_chargeback_id", null);
-        if (erroAdocao) throw erroAdocao;
-        antigas[0].mp_chargeback_id = item.idContestacao;
-        linha = antigas[0];
-      }
+    const { data, error } = await supabase.rpc("registrar_contestacao_no_ledger", {
+      p_order_id: orderId,
+      p_mp_chargeback_id: item.idContestacao,
+      p_case_id: item.caseId,
+      p_decisao: peloCaso,
+      p_valor_caso: valorDoCaso(consulta.caso),
+      p_valor_estimado: valorEstimado,
+      p_casos_na_order: leitura.itens.length,
+    });
+    if (error) throw error;
+    const retorno = (data ?? null) as Record<string, unknown> | null;
+    const resultado = typeof retorno?.resultado === "string" ? retorno.resultado : null;
+    if (resultado === null) {
+      throw new Error("webhook-mercadopago: registrar_contestacao_no_ledger devolveu retorno ilegível — o MP reenvia");
     }
+    console.log("webhook-mercadopago: contestação registrada sob a trava do pedido", {
+      orderId,
+      idContestacao: item.idContestacao,
+      decisao: peloCaso,
+      resultado,
+    });
+    // Estado CANÔNICO depois desta decisão (bloqueio 3): nada aqui decide
+    // com o acumulado lido no começo da entrega.
+    const valorEstornado = Number(retorno?.valor_estornado);
+    if (Number.isFinite(valorEstornado)) pedido.valor_estornado = valorEstornado;
 
-    if (peloCaso === "em_analise") {
-      if (linha) continue; // já reservada (ou já decidida): nada novo
-      const base = valorCaso ?? valorPago;
-      if (base === null) {
-        console.error(
-          "webhook-mercadopago: contestação em análise sem valor legível — pulando (não é 'não sei' = 0)",
-          orderId,
-          item.idContestacao,
-        );
-        continue;
-      }
-      const livre = disponivel();
-      if (livre <= 0) {
-        console.error("webhook-mercadopago: contestação além do que o pedido pode reservar", orderId, item.idContestacao);
-        continue;
-      }
-      const amount = Math.min(base, livre);
-      const { error: erroReserva } = await supabase.from("order_refunds").insert({
-        order_id: orderId,
-        amount,
-        solicitado_por: "sistema",
-        status: "em_processamento",
-        motivo: `contestação (chargeback) em análise no Mercado Pago${estimativa}`,
-        mp_status: "charged_back",
-        mp_status_detail: "in_process",
-        mp_refund_id: null,
-        mp_chargeback_id: item.idContestacao,
-        ultimo_erro: null,
-      });
-      if (erroReserva) {
-        if (ehViolacaoDeUnicidade(erroReserva)) {
-          console.log("webhook-mercadopago: contestação já reservada por outra entrega (índice único)", orderId, item.idContestacao);
-          continue;
-        }
-        throw erroReserva;
-      }
-      // A reserva nova desconta do disponível do próximo caso deste lote.
-      linhasBanco.push({
-        amount,
-        status: "em_processamento",
-        solicitado_por: "sistema",
-        mp_status: "charged_back",
-        mp_chargeback_id: item.idContestacao,
-      });
-      continue;
-    }
-
-    if (peloCaso === "contra_a_loja") {
-      if (linha) {
-        const concluidaComCarimbo = linha.status === "concluido" && Boolean(linha.concluido_em);
-        if (concluidaComCarimbo) continue; // idempotente: já registrada
-        if (linha.status === "recusado") {
-          console.error("webhook-mercadopago: contestação LIBERADA e agora decidida contra a loja — nada reaberto", orderId, item.idContestacao);
-          await avisar(`contestacao_revertida:${orderId}:${item.idContestacao}:contra`, avisoRevertida);
-          continue;
-        }
-        if (linha.status !== "em_processamento" && linha.status !== "concluido") {
-          await conservaEAvisa(
-            `contestacao_indefinida:${orderId}:${item.idContestacao}:status_${String(linha.status)}`,
-            `linha da contestação em status inesperado (${String(linha.status)})`,
-          );
-          continue;
-        }
-        let amountDaLinha = Number(linha.amount);
-        if (linha.status === "em_processamento" && valorCaso !== null && valorCaso < amountDaLinha) {
-          // A reserva foi ESTIMADA pelo total pago; o caso é menor: só desce.
-          const { error: erroAjuste } = await supabase
-            .from("order_refunds")
-            .update({ amount: valorCaso, updated_at: new Date().toISOString() })
-            .eq("id", linha.id)
-            .in("status", ["em_processamento"]);
-          if (erroAjuste) throw erroAjuste;
-          amountDaLinha = valorCaso;
-        } else if (valorCaso !== null && valorCaso > amountDaLinha) {
-          console.warn(
-            "webhook-mercadopago: caso da contestação MAIOR que a reserva — conclui a reserva; a diferença fica para conferência",
-            { orderId, idContestacao: item.idContestacao, valorCaso, amountDaLinha },
-          );
-          await avisar(`contestacao_valor_maior:${orderId}:${item.idContestacao}`, avisoConferir);
-        }
-        const { data: dataConcluir, error: erroConcluir } = await supabase.rpc("concluir_estorno", {
-          p_refund_id: linha.id,
-          p_mp_refund_id: null,
-          p_mp_status: "charged_back",
-          p_mp_status_detail: "settled",
-        });
-        if (erroConcluir) {
-          if (String((erroConcluir as { message?: string }).message ?? "").includes("estorno_acima_do_total")) {
-            console.error(
-              "webhook-mercadopago: concluir_estorno (contestação contra a loja) recusou — acima do total",
-              orderId,
-              item.idContestacao,
-              erroConcluir,
-            );
-            continue;
-          }
-          throw erroConcluir;
-        }
-        await acumularConclusao({ supabase, orderId, pedido, dataRpc: dataConcluir, amount: amountDaLinha });
-        linha.status = "concluido";
-        continue;
-      }
-      // Sem reserva prévia (o in_process nunca chegou): nasce concluída, com o CBK.
-      const base = valorCaso ?? valorPago;
-      if (base === null) {
-        console.error(
-          "webhook-mercadopago: contestação contra a loja sem valor legível — pulando (não é 'não sei' = 0)",
-          orderId,
-          item.idContestacao,
-        );
-        continue;
-      }
-      const livre = disponivel();
-      if (livre <= 0) {
-        console.error("webhook-mercadopago: contestação além do que o pedido pode registrar", orderId, item.idContestacao);
-        continue;
-      }
-      const amount = Math.min(base, livre);
-      const desfecho = await inserirEstornoConcluido({
-        supabase,
+    if (retorno?.aviso === "revertida") {
+      console.error("webhook-mercadopago: contestação mudou de resultado depois de registrada — nada reaberto", {
         orderId,
-        amount,
-        valorOriginal: base,
-        motivoBase: `contestação (chargeback) decidida a favor do comprador no Mercado Pago${estimativa}`,
-        mpRefundId: null,
-        mpChargebackId: item.idContestacao,
-        mpStatus: "charged_back",
-        mpStatusDetail: "settled",
+        idContestacao: item.idContestacao,
+        decisao: peloCaso,
       });
-      if (desfecho === "inserido") {
-        pedido.valor_estornado = Number((pedido.valor_estornado + amount).toFixed(2));
-      } else if (desfecho === "ja_registrado") {
-        pedido.valor_estornado = await releValorEstornado(supabase, orderId);
-      }
-      continue;
+      await avisar(`contestacao_revertida:${orderId}:${item.idContestacao}:${peloCaso}`, avisoRevertida);
+    } else if (retorno?.aviso === "saldo") {
+      console.error("webhook-mercadopago: contestação não cabe no saldo do pedido — nada concluído além do que cabe", {
+        orderId,
+        idContestacao: item.idContestacao,
+        resultado,
+      });
+      await avisar(`contestacao_saldo:${orderId}:${item.idContestacao}:${resultado}`, avisoSaldo);
+    } else if (retorno?.aviso !== null && retorno?.aviso !== undefined) {
+      await conservaEAvisa(
+        `contestacao_indefinida:${orderId}:${item.idContestacao}:${resultado}`,
+        `a RPC não registrou a decisão (${resultado})`,
+        { idContestacao: item.idContestacao },
+      );
     }
-
-    // a_favor_da_loja
-    if (!linha) {
-      console.log("webhook-mercadopago: contestação decidida a favor da loja sem reserva — nada a liberar", orderId, item.idContestacao);
-      continue;
-    }
-    if (linha.status === "em_processamento") {
-      const { error: erroLiberar } = await supabase
-        .from("order_refunds")
-        .update({
-          status: "recusado",
-          mp_status_detail: "reimbursed",
-          // transaction-status: reimbursed = valor creditado ao VENDEDOR.
-          ultimo_erro: "o Mercado Pago decidiu a contestação a favor da loja: o valor foi creditado a você",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", linha.id)
-        .in("status", ["em_processamento"]);
-      if (erroLiberar) throw erroLiberar;
-      continue;
-    }
-    if (linha.status === "concluido") {
-      console.error("webhook-mercadopago: contestação CONCLUÍDA e agora decidida a favor da loja — nada reaberto", orderId, item.idContestacao);
-      await avisar(`contestacao_revertida:${orderId}:${item.idContestacao}:a_favor`, avisoRevertida);
-    }
-    // recusado: já liberada — nada.
   }
 }
 
@@ -1631,9 +1473,7 @@ async function registrarDesfechoDoEstorno(args: {
       orderId,
       corpo,
       ehPayments,
-      linhasBanco,
       pedido,
-      disponivel: () => Number((pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2)),
       consultarCaso: args.consultarCaso,
       avisar: args.avisar,
     });
