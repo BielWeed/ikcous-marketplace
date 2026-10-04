@@ -423,6 +423,28 @@ function idComoString(valor: unknown): string {
  * linha ficaria presa em 500 — e sem o índice, um refund creditava DUAS
  * linhas (o P0 quebrado pelo POST, não pela consulta).
  */
+/**
+ * B1 (revisão Opus de 14d77a5b, 04/10/2026): a resposta traz ALGUM refund,
+ * com id, do valor desta linha — reivindicado ou não. Quando há e todos já
+ * são de outras linhas, `refundDaLinhaNaResposta` devolve null, e isso NÃO
+ * pode virar "concluido sem id": o refund do valor da linha existe, só que
+ * já está creditado a outra linha (o webhook pode ter casado o refund DESTA
+ * chave com outra linha do mesmo valor). Concluir sem id grava
+ * concluir_estorno(linha, NULL), que soma sem a guarda do índice único
+ * (order_id, mp_refund_id) — a devolução sai em dobro no ledger.
+ */
+function respostaTemRefundDoValorDaLinha(
+  c: Record<string, unknown>,
+  linha: LinhaEstorno,
+): boolean {
+  const centavosDaLinha = emCentavos(linha.amount);
+  return refundsDaOrder(c).some((r) => {
+    const temId = (typeof r.id === "string" && r.id !== "") || typeof r.id === "number";
+    const valor = Number(r.amount);
+    return temId && Number.isFinite(valor) && emCentavos(valor) === centavosDaLinha;
+  });
+}
+
 function refundDaLinhaNaResposta(
   c: Record<string, unknown>,
   linha: LinhaEstorno,
@@ -669,6 +691,15 @@ function interpretarOrders(
       // Sem candidato legível do valor da linha: contrato do E14 original —
       // concluido com id vazio, quem preenche é a consulta (GET).
       const refundDaLinha = refundDaLinhaNaResposta(c, linha, idsJaReivindicados);
+      if (refundDaLinha === null && respostaTemRefundDoValorDaLinha(c, linha)) {
+        // B1: o refund do valor da linha está na resposta, mas já é de
+        // OUTRA linha — a consulta (GET), que passa pelo índice único,
+        // decide. Nunca "concluido sem id" aqui (ver a função acima).
+        return {
+          tipo: "tentar_depois",
+          motivo: "o Mercado Pago devolveu um reembolso que já está registrado em outra devolução deste pedido — vou conferir pela consulta",
+        };
+      }
       if (
         refundDaLinha !== null &&
         String(refundDaLinha.status ?? "") !== STATUS_REFUND_CONCLUIDO
@@ -1534,11 +1565,13 @@ export async function executarEstorno(args: {
     );
   }
 
+  // O pedido RELIDO na autorização (B1, de passagem): é o mesmo POST que
+  // acabou de sair com ele.
   let resultado = interpretarResposta(
     resposta.status,
     corpo,
     linha,
-    pedido,
+    pedidoRelido,
     args.idsJaReivindicados ?? [],
   );
 
@@ -1562,7 +1595,7 @@ export async function executarEstorno(args: {
       buscar,
       token,
       linha,
-      pedido,
+      pedido: pedidoRelido,
       codigo: resultado.codigo,
       idsJaReivindicados: args.idsJaReivindicados,
     });

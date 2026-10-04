@@ -1054,6 +1054,46 @@ PROVAS.push({
 });
 
 PROVAS.push({
+  nome: "(w) B1: o REF-A já creditado à linha B nunca soma de novo pela linha A — com id o índice único recusa (23505); sem id a soma passaria (por isso o executor NUNCA conclui sem id quando a resposta traz o refund)",
+  corpo: async (cliente) => {
+    // Pedido 100, linhas B e A de 50 (ambas do app, em voo). O webhook casou
+    // o REF-A (que é o refund da chave de A) com B: B concluída com REF-A.
+    await pedido(cliente, O(146), { total: 100 });
+    const b = await linhaDoApp(cliente, O(146), 50);
+    const a = await linhaDoApp(cliente, O(146), 50);
+    await cliente.query("SELECT public.concluir_estorno($1, 'REF-A', 'processed', 'partially_refunded')", [b]);
+    assert.equal((await estado(cliente, O(146))).valorEstornado, 50);
+
+    // O caminho que o executor usa agora (tentar_depois -> consulta -> o id
+    // do refund): concluir A com REF-A é recusado pela guarda (b) e NADA soma.
+    let erro = null;
+    try {
+      await cliente.query("SELECT public.concluir_estorno($1, 'REF-A', 'processed', 'refunded')", [a]);
+    } catch (e) {
+      erro = e;
+    }
+    assert.ok(erro, "concluir A com o REF-A de B precisa falhar");
+    assert.equal(erro.code, "23505", `índice único (order_id, mp_refund_id): ${erro && erro.message}`);
+    const depois = await estado(cliente, O(146));
+    assert.equal(depois.valorEstornado, 50, "o cliente recebeu 50: o ledger fica em 50");
+    assert.equal(depois.linhas.find((l) => l.id === a).status, "em_processamento", "A segue reservada, sem soma");
+
+    // Controle (o defeito B1 de 14d77a5b): concluir A SEM id não passa pela
+    // guarda (b) e soma em dobro. Desfeito no ROLLBACK — é a prova de que a
+    // defesa do banco não cobre o id vazio, e por isso o executor não pode
+    // mandá-lo quando a resposta do MP traz o refund daquele valor.
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("SELECT public.concluir_estorno($1, NULL, 'processed', 'refunded')", [a]);
+      assert.equal((await estado(cliente, O(146))).valorEstornado, 100, "sem id, o banco soma de novo (dobro)");
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    assert.equal((await estado(cliente, O(146))).valorEstornado, 50);
+  },
+});
+
+PROVAS.push({
   nome: "(h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000; rollback + reaplicar",
   corpo: async (cliente) => {
     const sql = lerMigration(MIGRATION);

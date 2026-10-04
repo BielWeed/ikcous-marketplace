@@ -709,8 +709,10 @@ Deno.test("Lote A A6 - Orders 201 com dois parciais do MESMO valor: o id já rei
   assertEquals(comLista.tipo, "concluido");
   assertEquals((comLista as { mp_refund_id: string }).mp_refund_id, "REF_DESTA");
 
-  // Todos os do valor certo já são de outras linhas: vazio (a CONSULTA
-  // esclarece), nunca um id repetido.
+  // Todos os do valor certo já são de outras linhas: NÃO conclui (B1 da
+  // revisão Opus de 14d77a5b — antes este caso concluía com id vazio, e o
+  // concluir_estorno(linha, NULL) somava sem a guarda do índice único). A
+  // CONSULTA, que passa pela guarda, decide.
   const todosReivindicados = interpretarResposta(
     201,
     RESPOSTA_DOIS_PARCIAIS_IGUAIS,
@@ -718,9 +720,66 @@ Deno.test("Lote A A6 - Orders 201 com dois parciais do MESMO valor: o id já rei
     pedidoOrder(),
     ["REF_DA_OUTRA", "REF_DESTA"],
   );
-  assertEquals(todosReivindicados.tipo, "concluido");
-  assertEquals((todosReivindicados as { mp_refund_id: string }).mp_refund_id, "");
+  assertEquals(todosReivindicados.tipo, "tentar_depois");
 });
+
+// ── B1 (revisão Opus de 14d77a5b, 04/10/2026): devolução gravada em DOBRO ──
+// Pedido 100, linhas B e A de 50. O POST de A saiu e o MP criou REF-A, mas o
+// webhook casou REF-A com B (B concluída com REF-A). O cron repete o POST de
+// A (mesma chave); o MP devolve, idempotente, a order com o ÚNICO refund
+// REF-A — já reivindicado por B. Antes: `concluido` com id "" -> os
+// chamadores gravavam concluir_estorno(A, NULL) -> 100 'estornado' no
+// ledger, cliente recebeu 50. Agora: resposta que traz refund do valor da
+// linha, todos já de outras linhas -> `tentar_depois`; a consulta (GET), que
+// passa pelo índice único (order_id, mp_refund_id), decide. `concluido` sem
+// id só quando a resposta NÃO traz refund nenhum daquele valor (E14/E14d).
+
+const RESPOSTA_SO_COM_REF_DE_OUTRA_LINHA = {
+  id: "ORDTST01",
+  status: "processed",
+  status_detail: "partially_refunded",
+  transactions: {
+    refunds: [{ id: "REF-A", status: "processed", amount: "50.00", date_created: "2026-10-04T10:00:00Z" }],
+  },
+};
+
+Deno.test("B1 - resposta do POST cujo ÚNICO refund do valor da linha já é de outra linha: NUNCA concluido (sem id), tentar_depois", () => {
+  const r = interpretarResposta(
+    201,
+    RESPOSTA_SO_COM_REF_DE_OUTRA_LINHA,
+    linhaCom({ amount: 50, status: "em_processamento", tentativas: 2 }),
+    pedidoOrder({ valor_estornado: 50 }),
+    ["REF-A"],
+  );
+  assertEquals(r.tipo, "tentar_depois");
+  // Controle: o MESMO corpo, sem a reivindicação, conclui com REF-A.
+  const livre = interpretarResposta(
+    201,
+    RESPOSTA_SO_COM_REF_DE_OUTRA_LINHA,
+    linhaCom({ amount: 50 }),
+    pedidoOrder(),
+  );
+  assertEquals(livre.tipo, "concluido");
+  assertEquals((livre as { mp_refund_id: string }).mp_refund_id, "REF-A");
+});
+
+Deno.test("B1 - executarEstorno ponta a ponta (autorizado) com REF-A reivindicado por outra linha: tentar_depois, nunca concluido sem id", async () => {
+  const mp = fetchDuble([
+    { metodo: "POST", trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund", status: 201, corpo: RESPOSTA_SO_COM_REF_DE_OUTRA_LINHA },
+  ]);
+  const pedido = pedidoOrder({ valor_estornado: 50 });
+  const r = await executarEstornoReal({
+    linha: linhaCom({ amount: 50, status: "em_processamento", tentativas: 2 }),
+    pedido,
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    idsJaReivindicados: ["REF-A"],
+    autorizarAntesDoPost: () => Promise.resolve({ decisao: "autorizado", pedido }),
+  });
+  assertEquals(r.tipo, "tentar_depois");
+});
+
 
 Deno.test("Lote A A6 - executarEstorno repassa idsJaReivindicados à leitura da resposta do POST", async () => {
   const duble = fetchDuble([
