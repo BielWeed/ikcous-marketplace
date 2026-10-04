@@ -112,4 +112,11 @@ Deno.test("o aviso do rollback diz que, sem os índices, a edge nova CONCLUI e S
   assertStringIncludes(aviso, "CONCLUI e SOMA");
   assertStringIncludes(aviso, "webhook ANTIGO");
   assertStringIncludes(aviso, "defeito anterior à 20261192000000");
+  // C1/C2 medidos: as RPCs da 96 conferem a duplicata sob a trava do pedido
+  // e ficam com 1 linha mesmo sem índice — o aviso não pode negar isso.
+  assert(!aviso.includes("nenhuma função confere"), "contradiz C1/C2");
+  assertStringIncludes(aviso, "registrar_estorno_externo_do_mp");
+  assertStringIncludes(aviso, "registrar_contestacao_no_ledger");
+  // A contestação duplicada pelo webhook antigo NÃO foi medida.
+  assert(!aviso.includes("ou da mesma contestação"), "afirmação não medida");
 });
