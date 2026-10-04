@@ -145,6 +145,15 @@ jobs:
       - name: Prova viva do admin atual nas portas do painel (migration 20261199000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-portas-viva.cjs
+      # Migration 20261200000000 (a decisão da devolução exige o admin de
+      # agora): o ex-admin com JWT velho (rebaixado só no profiles ou só no
+      # auth.users) é recusado em admin_devolucao_decidir/registrar/reprovar
+      # com a recusa de sempre e SEM escrever; admin, service_role e postgres
+      # como antes; cliente e anon recusam; controle sem a guarda escreve;
+      # rollback só troca os 3 corpos. CLONE próprio.
+      - name: Prova viva do admin atual na decisão da devolução (migration 20261200000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-devolucao-viva.cjs
       # Migration 20261196000000 (Lote A): a contestação decide sob a trava do
       # pedido — corridas REAIS entre duas conexões (a 2ª comprovadamente
       # parada na trava), estimativa que só reserva, multicaso, refund regular
