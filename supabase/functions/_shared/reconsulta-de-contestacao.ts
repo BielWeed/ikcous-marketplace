@@ -87,9 +87,10 @@
  *  - cobrança gravada sem order do MP / order 404 / order de outro pedido, sem
  *    vínculo;
  *  - caso ilegível, de outro id ou sem decisão legível;
- *  - o MESMO `case_id` em mais de um pedido (ambíguo: conta TODOS os registros
- *    `sistema` do case_id, de qualquer estado e idade — nem só o lote, nem só
- *    as linhas elegíveis), sem consultar o MP;
+ *  - o MESMO `case_id` em mais de um pedido (ambíguo: o servidor responde se
+ *    EXISTE outro pedido com linha `sistema` desse case_id — `neq` + `limit 1`,
+ *    de qualquer estado e idade, imune ao limite de linhas do PostgREST), sem
+ *    consultar o MP;
  *  - decisão CONTRA a loja no caminho do caso conhecido (dinheiro que sai é
  *    irreversível e aqui não há `chargebacks[]` da order para corroborar);
  *  - linha LEGADA (sem vínculo) ao lado de uma vinculada quando o caminho da
@@ -146,7 +147,8 @@ export interface ResumoDaReconsulta {
   falhas: number;
 }
 
-export type DesfechoDaReconsulta = "entregue" | "em_aberto" | "resolvida_antes" | "conservada";
+// "ambiguo": o mesmo case_id em mais de um pedido (conservada + aviso, sem consultar o MP).
+export type DesfechoDaReconsulta = "entregue" | "em_aberto" | "resolvida_antes" | "conservada" | "ambiguo";
 
 type LinhaPresa = { id: string; idContestacao: string | null; caseId: string | null };
 
@@ -155,35 +157,32 @@ function textoOuNulo(valor: unknown): string | null {
 }
 
 /**
- * Os pedidos DISTINTOS cujas linhas do sistema carregam este `case_id`. É a
- * regra única do vínculo: o tópico do webhook e o cron passam por aqui; mais de
- * um pedido = o caso é ambíguo e NADA se adivinha (nem consulta, nem decisão).
+ * A GUARDA do vínculo — regra única do tópico do webhook e do cron: existe OUTRO
+ * pedido com linha do sistema carregando este `case_id`? Se sim, o caso é
+ * ambíguo e NADA se adivinha (nem consulta ao MP, nem decisão).
+ *
+ * Pergunta ao SERVIDOR se EXISTE (`neq order_id` + `limit 1`), em vez de listar
+ * os pedidos e deduplicar em memória: o PostgREST limita as linhas por resposta
+ * (`db-max-rows`, https://docs.postgrest.org/en/stable/references/configuration.html#db-max-rows)
+ * e uma lista truncada não prova "todos os registros". Sem filtro de estado, de
+ * idade nem de elegibilidade — o outro pedido pode estar fora do lote ou já
+ * resolvido. Erro na consulta LANÇA (falha temporária: o cron conta falha e não
+ * toca a linha; o tópico devolve 500): nunca vale como "não ambíguo".
  */
-async function pedidosComOCaso(supabase: ClienteDaReconsulta, caseId: string): Promise<string[]> {
+async function existeOutroPedidoComOCaso(
+  supabase: ClienteDaReconsulta,
+  caseId: string,
+  orderId: string,
+): Promise<boolean> {
   const { data, error } = await supabase
     .from("order_refunds")
     .select("order_id")
     .eq("solicitado_por", "sistema")
-    .eq("mp_chargeback_case_id", caseId);
+    .eq("mp_chargeback_case_id", caseId)
+    .neq("order_id", orderId)
+    .limit(1);
   if (error) throw error;
-  return [
-    ...new Set(((data ?? []) as Array<{ order_id?: unknown }>).map((l) => String(l.order_id ?? "")).filter(Boolean)),
-  ];
-}
-
-/** O aviso de caso ambíguo (mais de um pedido com o mesmo case_id): um por pedido. */
-async function avisarCasoAmbiguo(
-  avisar: AvisarAdminUmaVez,
-  pedidos: string[],
-  rotulo: string,
-): Promise<void> {
-  for (const pedido of pedidos) {
-    try {
-      await avisar(`contestacao_indefinida:${pedido}:caso_em_mais_de_um_pedido`, avisoContestacaoParaConferir(pedido));
-    } catch (erro) {
-      console.error(`${rotulo}: aviso do caso em mais de um pedido falhou`, { pedido, erro });
-    }
-  }
+  return ((data ?? []) as unknown[]).length > 0;
 }
 
 function criarReconsultor(args: {
@@ -290,9 +289,10 @@ function criarReconsultor(args: {
     // O MESMO case_id em mais de um pedido: ambíguo. Antes de qualquer consulta
     // ao MP, conserva e avisa (a regra do tópico, no mesmo miolo do cron).
     for (const linha of vinculadas) {
-      if ((await pedidosComOCaso(supabase, String(linha.caseId))).length > 1) {
+      if (await existeOutroPedidoComOCaso(supabase, String(linha.caseId), orderId)) {
         console.error(`${rotulo}: o mesmo case_id está ligado a mais de um pedido — nada consultado nem decidido`, { orderId });
-        return await conservar("caso_em_mais_de_um_pedido");
+        await conservar("caso_em_mais_de_um_pedido");
+        return "ambiguo";
       }
     }
     const consultarCaso = async (caseId: string) =>
@@ -463,7 +463,7 @@ export async function reconsultarContestacoesPresas(args: {
       if (desfecho === "entregue") resumo.reconsultadas++;
       else if (desfecho === "em_aberto") resumo.emAberto++;
       else if (desfecho === "resolvida_antes") resumo.resolvidasAntes++;
-      else resumo.conservadas++;
+      else resumo.conservadas++; // conservada ou ambígua: nada decidido, admin avisado
     } catch (erro) {
       // Um pedido não custa a vez do seguinte; a linha NÃO é tocada, então
       // volta já no próximo ciclo.
@@ -495,17 +495,19 @@ export async function recuperarContestacaoPeloCaso(args: {
   caseId: string;
   agora?: () => number;
   rotulo?: string;
-}): Promise<DesfechoDaReconsulta | "sem_vinculo" | "ambiguo"> {
+}): Promise<DesfechoDaReconsulta | "sem_vinculo"> {
   const rotulo = args.rotulo ?? "webhook-mercadopago";
-  const pedidos = await pedidosComOCaso(args.supabase, args.caseId);
-  if (pedidos.length === 0) return "sem_vinculo";
-  if (pedidos.length > 1) {
-    console.error(`${rotulo}: o mesmo case_id está ligado a mais de um pedido — nada recuperado`, {
-      pedidos: pedidos.length,
-    });
-    await avisarCasoAmbiguo(args.avisar, pedidos, rotulo);
-    return "ambiguo";
-  }
+  // O PRIMEIRO pedido que carrega este case_id (o pedido nunca sai do corpo da
+  // notificação). Se o outro existe, a guarda do MESMO miolo do cron decide.
+  const { data, error } = await args.supabase
+    .from("order_refunds")
+    .select("order_id")
+    .eq("solicitado_por", "sistema")
+    .eq("mp_chargeback_case_id", args.caseId)
+    .limit(1);
+  if (error) throw error;
+  const primeiro = ((data ?? []) as Array<{ order_id?: unknown }>)[0]?.order_id;
+  if (typeof primeiro !== "string" || primeiro.length === 0) return "sem_vinculo";
   const { reconsultarUm } = criarReconsultor({
     supabase: args.supabase,
     token: args.token,
@@ -515,5 +517,5 @@ export async function recuperarContestacaoPeloCaso(args: {
     agora: args.agora ?? Date.now,
     rotulo,
   });
-  return await reconsultarUm(pedidos[0], { caseId: args.caseId });
+  return await reconsultarUm(primeiro, { caseId: args.caseId });
 }

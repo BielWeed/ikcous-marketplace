@@ -155,7 +155,16 @@ function mp(opts: {
 }
 
 /** Banco VIVO: linhas mutáveis, RPC do ledger que muda a linha e grava a lápide. */
-function bancoVivo(linhas: Array<Record<string, unknown>>, opts: { pedido?: Record<string, unknown> } = {}) {
+function bancoVivo(
+  linhas: Array<Record<string, unknown>>,
+  opts: {
+    pedido?: Record<string, unknown>;
+    /** O `db-max-rows` do PostgREST: nenhuma resposta passa de N linhas, o resto ficaria em outra página. */
+    maxRows?: number;
+    /** A consulta de EXISTÊNCIA (a que usa `neq`) falha. */
+    erroNaExistencia?: boolean;
+  } = {},
+) {
   const lapides: string[] = [];
   const rpcs: Array<{ nome: string; args: Record<string, unknown> }> = [];
   const toques: unknown[] = [];
@@ -182,6 +191,10 @@ function bancoVivo(linhas: Array<Record<string, unknown>>, opts: { pedido?: Reco
         filtros.push(["lt", c, v]);
         return q;
       },
+      neq(c: string, v: unknown) {
+        filtros.push(["neq", c, v]);
+        return q;
+      },
       order() {
         return q;
       },
@@ -190,10 +203,16 @@ function bancoVivo(linhas: Array<Record<string, unknown>>, opts: { pedido?: Reco
         return q;
       },
       then(res: (v: unknown) => void, rej?: (e: unknown) => void) {
+        if (opts.erroNaExistencia && filtros.some(([op]) => op === "neq")) {
+          return Promise.resolve({ data: null, error: { message: "statement timeout" } }).then(res, rej);
+        }
         const r = linhas.filter((l) =>
-          filtros.every(([op, c, v]) => (op === "eq" ? Reflect.get(l, c) === v : String(Reflect.get(l, c)) < String(v)))
+          filtros.every(([op, c, v]) =>
+            op === "eq" ? Reflect.get(l, c) === v : op === "neq" ? Reflect.get(l, c) !== v : String(Reflect.get(l, c)) < String(v)
+          )
         );
-        return Promise.resolve({ data: r.slice(0, teto).map((l) => ({ ...l })), error: null }).then(res, rej);
+        const limite = Math.min(teto, opts.maxRows ?? Infinity);
+        return Promise.resolve({ data: r.slice(0, limite).map((l) => ({ ...l })), error: null }).then(res, rej);
       },
     };
     return q;
@@ -788,11 +807,11 @@ for (const [rotulo, outra] of [
     assertEquals([r.resumo.vistas, r.resumo.conservadas, r.resumo.reconsultadas], [1, 1, 0]);
   });
 
-  Deno.test(`B2 tópico: ${rotulo} -> ambíguo: 200, 0 GET ao MP, 0 RPC de decisão, aviso para cada pedido`, async () => {
+  Deno.test(`B2 tópico: ${rotulo} -> ambíguo: 200, 0 GET ao MP, 0 RPC de decisão, aviso`, async () => {
     const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", ...outra })]);
     const { w, m, chaves } = await topicoAmbiguo(b);
     assertEquals([w.status, w.corpo.desfecho, m.chamadas, doLedger(b)], [200, "ambiguo", [], []]);
-    assertEquals(chaves, [`contestacao_indefinida:${OUTRO_PEDIDO}:caso_em_mais_de_um_pedido`, `contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`].sort());
+    assertEquals(chaves, [`contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`], "o aviso sai pelo pedido resolvido; o outro avisa no seu próprio ciclo");
     assertEquals(b.linhas[0].status, "em_processamento");
   });
 }
@@ -844,4 +863,46 @@ Deno.test("O1: o mesmo, com o caso vinculado JÁ a favor da loja -> libera a vin
   assertEquals(b.linhas.map((l) => l.status), ["liberado", "em_processamento"]);
   assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:order_sem_chargebacks_legivel`]);
   assertEquals([r.resumo.reconsultadas, r.resumo.emAberto], [1, 0]);
+});
+
+// ── B2 na BORDA PAGINADA: o PostgREST limita as linhas por resposta (db-max-rows) ──
+// https://docs.postgrest.org/en/stable/references/configuration.html#db-max-rows
+// Um `select(order_id)` + dedupe em memória só vê a primeira página: o outro pedido
+// do mesmo case_id pode não aparecer e a guarda "provaria" o contrário do que
+// afirma. A guarda pergunta ao SERVIDOR se EXISTE OUTRO order_id com esse case_id
+// (neq + limit 1), sem filtro de estado, idade nem elegibilidade.
+
+Deno.test("B2 borda paginada, CRON: o dublê só entrega 1 linha por resposta (a página 1 só traz o pedido A) -> mesmo assim é ambíguo: 0 GET ao MP, 0 RPC, aviso, nada liberado", async () => {
+  const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", updated_at: ha(0.1) })], { maxRows: 1 });
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const r = await cron(b, m);
+  assertEquals([m.casosLidos(), doLedger(b)], [0, []]);
+  assertEquals(b.linhas[0].status, "em_processamento");
+  assertEquals(r.avisos, [`contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`]);
+});
+
+Deno.test("B2 borda paginada, TÓPICO: idem — o primeiro pedido resolvido e a MESMA guarda: ambíguo, 200, 0 GET ao MP, 0 RPC, aviso", async () => {
+  const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", status: "liberado" })], { maxRows: 1 });
+  const { w, m, chaves } = await topicoAmbiguo(b);
+  assertEquals([w.status, w.corpo.desfecho, m.chamadas, doLedger(b)], [200, "ambiguo", [], []]);
+  assertEquals(chaves, [`contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`]);
+  assertEquals(b.linhas[0].status, "em_processamento");
+});
+
+Deno.test("B2: com a borda paginada, o caso de UM pedido só continua resolvendo (a guarda não bloqueia o legítimo)", async () => {
+  const b = bancoVivo([linhaVinculada("L1"), linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2", mp_chargeback_case_id: "CASE2" })], { maxRows: 1 });
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  await cron(b, m);
+  assertEquals(b.linhas[0].status, "liberado");
+});
+
+Deno.test("B2: ERRO na consulta de existência -> CONSERVA como falha TEMPORÁRIA (nunca 'não ambíguo'): cron falhas+1, 0 GET ao MP, 0 RPC, linha intacta, sem aviso; o tópico responde 500", async () => {
+  const b = bancoVivo([linhaVinculada("L1")], { erroNaExistencia: true });
+  const antes = JSON.stringify(b.linhas);
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const r = await cron(b, m);
+  assertEquals([m.casosLidos(), doLedger(b), JSON.stringify(b.linhas), r.avisos], [0, [], antes, []]);
+  assertEquals([r.resumo.falhas, r.resumo.conservadas, r.resumo.reconsultadas], [1, 0, 0]);
+  const w = await webhook(bancoVivo([linhaVinculada("L1")], { erroNaExistencia: true }), mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } }));
+  assertEquals(w.status, 500);
 });
