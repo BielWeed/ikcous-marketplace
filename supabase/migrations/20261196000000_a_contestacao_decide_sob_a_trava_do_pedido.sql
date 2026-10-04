@@ -40,8 +40,9 @@
 --   * `registrar_contestacao_no_ledger(...)`: calcula, reserva, adota linha
 --     antiga, ajusta, conclui e libera numa transação só, com o pedido
 --     travado (`SELECT ... FOR UPDATE` em marketplace_orders — a MESMA trava
---     da solicitar_estorno e das RPCs de devolução), e devolve o estado
---     CANÔNICO (valor_estornado, em voo, disponível, a linha do caso).
+--     da solicitar_estorno e das RPCs de devolução; ver ORDEM GLOBAL DAS
+--     TRAVAS abaixo), e devolve o estado CANÔNICO (valor_estornado, em voo,
+--     disponível, a linha do caso).
 --   * `registrar_estorno_externo_do_mp(...)`: TODO refund que o MP já
 --     processou e nenhuma linha reivindicou (REF..., feito no painel ou
 --     regular numa order contestada), sob a mesma trava: entra INTEIRO e
@@ -75,6 +76,47 @@
 --   Divergência de vínculo (case_id ou valor confirmado diferente do
 --   gravado), pedido não pago, linha antiga ambígua, decisão revertida:
 --   nada muda, aviso.
+--
+-- ORDEM GLOBAL DAS TRAVAS (decisão de 04/10/2026, deadlock 94 x 96):
+--   LINHAS de order_refunds do pedido (ORDER BY id, FOR UPDATE) -> PEDIDO
+--   (marketplace_orders FOR UPDATE) -> cálculo do saldo. É a ordem que a
+--   concluir_estorno (2026110000100) impõe — ela trava a LINHA (UPDATE) e só
+--   depois o PEDIDO (UPDATE) e não pode ser invertida — e que a
+--   registrar_estorno_manual (89/94) já segue. As duas funções daqui travam
+--   primeiro as linhas que podem ESCREVER, em ordem de id, e só então o
+--   pedido; linha nascida DEPOIS da trava das linhas não precisa de trava
+--   prévia: a trava do pedido continua serializando o saldo agregado.
+--   Quais linhas: as do SISTEMA (contestação e refund externo — as únicas
+--   que estas funções alteram ou concluem) e, na do refund externo, a linha
+--   que já carrega o MESMO mp_refund_id. As linhas do app (cliente/lojista)
+--   só são LIDAS (soma em voo) e não entram na trava: assim a
+--   admin_devolucao_reemitir_reembolso (que trava pedido -> linha 'lojista'
+--   recusada) não ganha um ciclo novo com estas funções.
+--   Mapa das funções vivas que travam pedido e order_refunds juntos (medido
+--   no texto das migrations em 04/10/2026):
+--     concluir_estorno ............ linha -> pedido                (referência)
+--     registrar_estorno_manual (94) linhas vivas -> pedido -> relê/trava
+--                                   linhas vivas nascidas na espera (este
+--                                   3o passo é linha DEPOIS do pedido)
+--     registrar_contestacao_no_ledger,
+--     registrar_estorno_externo_do_mp (esta) linhas sistema -> pedido
+--     solicitar_estorno (75) ...... pedido -> INSERT linha        (não trava
+--                                   linha existente: sem ciclo)
+--     update_order_status_atomic (80), admin_devolucao_concluir (75)
+--                                   pedido -> INSERT linha        (idem)
+--     admin_devolucao_reemitir_reembolso (75) pedido -> linha FOR UPDATE
+--                                   (DIVERGE: pedido antes da linha; a linha
+--                                   é a 'lojista' recusada da devolução —
+--                                   ciclo só com quem trave essa mesma linha
+--                                   antes do pedido, o que nenhuma função
+--                                   daqui faz)
+--     confirmar_pagamento / registrar_pagamento_recebido (95): só o pedido.
+--   Janela residual (aceita, documentada): uma linha do sistema que nasce
+--   entre a trava das linhas e a trava do pedido (outra entrega já
+--   commitada) não foi travada antes; se uma concluir_estorno dela estiver
+--   esperando o pedido enquanto esta função a altera, o Postgres desfaz uma
+--   das duas com 40P01 — erro alto, nada gravado pela metade; o webhook
+--   devolve 500 e o MP reentrega. O mesmo vale para o 3o passo da 94.
 --
 -- DADOS EXISTENTES: nada é reescrito. As duas colunas novas nascem NULL em
 -- todas as linhas (sem default, sem backfill); a tabela da decisão final nasce
@@ -261,6 +303,17 @@ BEGIN
   IF p_casos_na_order IS NULL OR p_casos_na_order < 1 THEN
     RAISE EXCEPTION 'contestacao_entrada_invalida: casos na order tem de ser >= 1.';
   END IF;
+
+  -- ORDEM GLOBAL (cabeçalho): primeiro as LINHAS do sistema deste pedido, em
+  -- ordem de id — as únicas que esta função altera ou conclui —, depois o
+  -- PEDIDO. É a ordem da concluir_estorno (linha -> pedido) e da
+  -- registrar_estorno_manual; pedido primeiro dava deadlock com as duas.
+  PERFORM 1
+     FROM public.order_refunds linha_do_sistema
+    WHERE linha_do_sistema.order_id = p_order_id
+      AND linha_do_sistema.solicitado_por = 'sistema'
+    ORDER BY linha_do_sistema.id
+      FOR UPDATE OF linha_do_sistema;
 
   -- A TRAVA: tudo abaixo vê o pedido e o ledger depois de qualquer outra
   -- entrega (ou solicitar_estorno) que segurava o mesmo pedido.
@@ -582,7 +635,8 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer) IS
-  'Contestação (chargeback) do Mercado Pago no ledger, com o pedido TRAVADO (FOR UPDATE): '
+  'Contestação (chargeback) do Mercado Pago no ledger, com as linhas do sistema e depois o '
+  'pedido TRAVADOS (FOR UPDATE, ordem linha -> pedido da concluir_estorno): '
   'reserva, adota linha antiga, ajusta, conclui (só com o valor do CASO em BRL e só se couber '
   'no saldo) e libera, numa transação; devolve o estado canônico. Estimativa só reserva. '
   'Só a service_role executa (webhook-mercadopago). 20261196000000.';
@@ -623,6 +677,15 @@ BEGIN
   IF p_valor IS NULL OR p_valor <= 0 THEN
     RAISE EXCEPTION 'estorno_externo_entrada_invalida: valor não positivo.';
   END IF;
+
+  -- ORDEM GLOBAL (cabeçalho): LINHAS antes do PEDIDO — as do sistema (esta
+  -- função conclui a órfã) e a que já carrega este refund (relida abaixo).
+  PERFORM 1
+     FROM public.order_refunds linha_tocada
+    WHERE linha_tocada.order_id = p_order_id
+      AND (linha_tocada.solicitado_por = 'sistema' OR linha_tocada.mp_refund_id = p_mp_refund_id)
+    ORDER BY linha_tocada.id
+      FOR UPDATE OF linha_tocada;
 
   SELECT total, COALESCE(valor_estornado, 0), payment_status
     INTO v_total, v_estornado, v_payment_status
@@ -699,7 +762,8 @@ $fn$;
 
 COMMENT ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text) IS
   'Refund do Mercado Pago que nenhuma linha reivindicou (feito no painel, ou regular numa '
-  'order contestada), com o pedido TRAVADO: entra inteiro e concluído se couber no dinheiro '
+  'order contestada), com as linhas tocadas e depois o pedido TRAVADOS (linha -> pedido): '
+  'entra inteiro e concluído se couber no dinheiro '
   'real (total - estornado - reserva de contestação em voo; a linha do app sem confirmação não '
   'reduz); senão não entra nem consome a identidade (nao_cabe, aviso) — nunca recorta. Um refund '
   'credita uma linha. Só a service_role. 20261196000000.';

@@ -81,12 +81,35 @@ Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas 
 
 Deno.test("20261196: as duas funções travam o PEDIDO (FOR UPDATE) antes de decidir, e só a service_role executa", () => {
   const [contestacao, externo] = corpos(migration);
-  for (const corpo of [contestacao, externo]) {
+  // ORDEM GLOBAL (04/10/2026): as LINHAS (ORDER BY id) antes do PEDIDO — a
+  // ordem da concluir_estorno e da registrar_estorno_manual.
+  for (const { corpo, apelido, travaDasLinhas } of [
+    {
+      corpo: contestacao,
+      apelido: "linha_do_sistema",
+      travaDasLinhas:
+        /FROM public\.order_refunds linha_do_sistema\s+WHERE linha_do_sistema\.order_id = p_order_id[\s\S]*?ORDER BY linha_do_sistema\.id\s+FOR UPDATE OF linha_do_sistema;/,
+    },
+    {
+      corpo: externo,
+      apelido: "linha_tocada",
+      travaDasLinhas:
+        /FROM public\.order_refunds linha_tocada\s+WHERE linha_tocada\.order_id = p_order_id[\s\S]*?ORDER BY linha_tocada\.id\s+FOR UPDATE OF linha_tocada;/,
+    },
+  ]) {
     const trava = corpo.search(/FROM public\.marketplace_orders\s+WHERE id = p_order_id\s+FOR UPDATE;/);
     assert(trava > 0, "trava do pedido");
+    const travaLinhas = corpo.search(travaDasLinhas);
+    assert(travaLinhas > 0 && travaLinhas < trava, `${apelido}: linhas travadas ANTES do pedido`);
     const primeiraEscrita = corpo.search(/\b(INSERT INTO|UPDATE public\.order_refunds|PERFORM public\.concluir_estorno)\b/);
     assert(primeiraEscrita > trava, "nenhuma escrita antes da trava");
   }
+  assertStringIncludes(contestacao, "AND linha_do_sistema.solicitado_por = 'sistema'");
+  assertStringIncludes(
+    externo,
+    "AND (linha_tocada.solicitado_por = 'sistema' OR linha_tocada.mp_refund_id = p_mp_refund_id)",
+  );
+  assertStringIncludes(migration, "ORDEM GLOBAL DAS TRAVAS");
   for (const fn of [
     "public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)",
     "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)",

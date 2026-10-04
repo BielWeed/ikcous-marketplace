@@ -22,6 +22,18 @@
  *   (g) vínculo: mesmo CBK com outro case_id, valor confirmado diferente,
  *       linha antiga ambígua, pedido não pago, decisão revertida -> nada
  *       muda, aviso; linha antiga única é adotada.
+ *   (q) ORDEM GLOBAL DAS TRAVAS (linha -> pedido) × concluir_estorno: a
+ *       conexão A segura a linha do caso (o 1o passo da concluir_estorno) e B
+ *       chama a contestação, que PARA na trava da linha (wait_event Lock)
+ *       sem ter travado o pedido; A conclui e B segue — nenhum 40P01. O
+ *       CONTROLE (a mesma função com a trava das linhas removida, criada a
+ *       partir do corpo VIVO) dá 40P01 no mesmo roteiro.
+ *   (r) a mesma prova × registrar_estorno_manual (corpo da 94): A segura a
+ *       linha viva (o 1o passo da 94) e chama a 94; sem 40P01 (a 94 recusa
+ *       com 22023, disputa em curso); o CONTROLE dá 40P01.
+ *   (s) a mesma prova para registrar_estorno_externo_do_mp × concluir_estorno
+ *       (a linha órfã do mesmo refund): sem 40P01, somado uma vez; o
+ *       CONTROLE dá 40P01.
  *   (h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000;
  *       rollback + reaplicar dentro de BEGIN/ROLLBACK.
  *
@@ -645,6 +657,242 @@ PROVAS.push({
       .reduce((s, l) => s + num(l.amount), 0);
     assert.equal(e.valorEstornado + emVoo, 100, "comprometido (estornado + em voo) = 100, nunca 200");
     assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-M").length, 0);
+  },
+});
+
+/**
+ * Roteiro do cruzamento de travas: A abre a transação e SEGURA uma trava
+ * (`seguraA`), B chama a função sob prova e precisa PARAR numa trava
+ * (wait_event Lock); então A termina o próprio trabalho (`terminaA`). Com a
+ * ordem certa B espera A e os dois terminam; com a ordem invertida A e B se
+ * esperam em cruz e o Postgres desfaz um deles com 40P01. Devolve o
+ * desfecho de cada lado (`ok` ou o código do erro).
+ */
+async function cruzamento(url, { preparaA, seguraA, chamaB, terminaA }) {
+  const a = await novaConexao(url);
+  const b = await novaConexao(url);
+  const obs = await novaConexao(url);
+  const desfecho = (promessa) =>
+    promessa.then(
+      () => ({ ok: true }),
+      (e) => ({ ok: false, codigo: e.code, mensagem: e.message }),
+    );
+  try {
+    if (preparaA) await preparaA(a);
+    const pidB = (await b.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+    await a.query("BEGIN");
+    await seguraA(a);
+    await b.query("BEGIN");
+    const promessaB = desfecho(chamaB(b));
+    const parouB = await esperarTrava(obs, pidB);
+    const ra = await desfecho(terminaA(a));
+    await a.query(ra.ok ? "COMMIT" : "ROLLBACK");
+    const rb = await promessaB;
+    await b.query(rb.ok ? "COMMIT" : "ROLLBACK");
+    return { ra, rb, parouB };
+  } finally {
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+    await obs.end().catch(() => {});
+  }
+}
+
+const FN_CONTROLE = "public.contestacao_ordem_antiga_controle";
+
+/**
+ * O CONTROLE: a função VIVA (pg_get_functiondef) com a trava das linhas
+ * removida — pedido primeiro, a ordem de antes —, com outro nome. Construída
+ * do corpo vivo, não redigitada: o controle difere da função sob prova
+ * exatamente na linha que decide a ordem.
+ */
+async function criarControle(cliente, { fn, apelido, nomeOriginal, nomeControle }) {
+  const def = (
+    await cliente.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [fn])
+  ).rows[0].d;
+  const inicio = def.indexOf(`PERFORM 1\n     FROM public.order_refunds ${apelido}`);
+  const marcaFim = `FOR UPDATE OF ${apelido};`;
+  let corpo = def;
+  if (inicio >= 0) {
+    const fim = def.indexOf(marcaFim, inicio);
+    assert.ok(fim > inicio, "o controle acha o fim da trava das linhas");
+    corpo = def.slice(0, inicio) + def.slice(fim + marcaFim.length);
+  }
+  assert.ok(!corpo.includes(apelido), "o controle não trava as linhas antes do pedido");
+  corpo = corpo.replace(`FUNCTION ${nomeOriginal}(`, `FUNCTION ${nomeControle}(`);
+  assert.ok(corpo.includes(`${nomeControle}(`));
+  await cliente.query(corpo);
+}
+
+function criarControleOrdemAntiga(cliente) {
+  return criarControle(cliente, {
+    fn: FN_CONTESTACAO,
+    apelido: "linha_do_sistema",
+    nomeOriginal: "public.registrar_contestacao_no_ledger",
+    nomeControle: FN_CONTROLE,
+  });
+}
+
+const FN_CONTROLE_EXTERNO = "public.externo_ordem_antiga_controle";
+
+async function chamarContestacao(c, fn, o) {
+  const r = await c.query(`SELECT ${fn}($1, $2, $3, $4, $5, $6, $7) AS r`, [
+    o.pedido,
+    o.cbk,
+    o.caseId,
+    o.decisao,
+    o.valorCaso ?? null,
+    o.estimado ?? null,
+    1,
+  ]);
+  return r.rows[0].r;
+}
+
+async function linhaDoCaso(cliente, pedidoId, cbk) {
+  return (
+    await cliente.query(
+      "SELECT id FROM public.order_refunds WHERE order_id = $1 AND mp_chargeback_id = $2",
+      [pedidoId, cbk],
+    )
+  ).rows[0].id;
+}
+
+const U_ADMIN = "62222222-2222-2222-2222-222222222222";
+
+PROVAS.push({
+  nome: "(q) ordem linha -> pedido × concluir_estorno: B para na trava da LINHA, A conclui, nenhum 40P01; o CONTROLE (pedido primeiro) dá 40P01",
+  corpo: async (cliente, url) => {
+    await criarControleOrdemAntiga(cliente);
+    try {
+      for (const [n, fn, esperado] of [
+        [130, "public.registrar_contestacao_no_ledger", "sem_deadlock"],
+        [131, FN_CONTROLE, "deadlock"],
+      ]) {
+        const cbk = `CBK-Q${n}`;
+        await pedido(cliente, O(n), { total: 100 });
+        const r0 = await contestacao(cliente, {
+          pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40,
+        });
+        assert.equal(r0.resultado, "reservado");
+        const linha = await linhaDoCaso(cliente, O(n), cbk);
+        const { ra, rb, parouB } = await cruzamento(url, {
+          // O 1o passo da concluir_estorno: a LINHA (UPDATE), antes do pedido.
+          seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [linha]),
+          chamaB: (b) =>
+            chamarContestacao(b, fn, { pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40 }),
+          terminaA: (a) =>
+            a.query("SELECT public.concluir_estorno($1, NULL, 'charged_back', 'settled') AS r", [linha]),
+        });
+        assert.equal(parouB, true, `${fn}: B parou numa trava (wait_event Lock)`);
+        const codigos = [ra, rb].filter((x) => !x.ok).map((x) => x.codigo);
+        if (esperado === "sem_deadlock") {
+          assert.deepEqual(codigos, [], `${fn}: nenhum erro (${JSON.stringify([ra, rb])})`);
+          const e = await estado(cliente, O(n));
+          assert.equal(e.valorEstornado, 40, "concluído uma vez: 40");
+          assert.equal(e.linhas.length, 1);
+          assert.equal(e.linhas[0].status, "concluido");
+        } else {
+          assert.deepEqual(codigos, ["40P01"], `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`);
+        }
+      }
+    } finally {
+      await cliente.query(`DROP FUNCTION IF EXISTS ${FN_CONTROLE}(uuid, text, text, text, numeric, numeric, integer)`);
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(r) ordem linha -> pedido × registrar_estorno_manual (94): sem 40P01 (a 94 recusa com 22023); o CONTROLE dá 40P01",
+  corpo: async (cliente, url) => {
+    await cliente.query(
+      `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, 'admin@contestacao.teste', '{"role":"admin"}'::jsonb)
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
+    await criarControleOrdemAntiga(cliente);
+    try {
+      for (const [n, fn, esperado] of [
+        [132, "public.registrar_contestacao_no_ledger", "sem_deadlock"],
+        [133, FN_CONTROLE, "deadlock"],
+      ]) {
+        const cbk = `CBK-R${n}`;
+        await pedido(cliente, O(n), { total: 100 });
+        const r0 = await contestacao(cliente, {
+          pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40,
+        });
+        assert.equal(r0.resultado, "reservado");
+        const linha = await linhaDoCaso(cliente, O(n), cbk);
+        const { ra, rb, parouB } = await cruzamento(url, {
+          preparaA: (a) => a.query("SELECT set_config('app.rpc.user_id', $1, false)", [U_ADMIN]),
+          // O 1o passo da 94: as linhas VIVAS do pedido, antes do pedido.
+          seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [linha]),
+          chamaB: (b) =>
+            chamarContestacao(b, fn, { pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40 }),
+          terminaA: (a) => a.query("SELECT public.registrar_estorno_manual($1) AS r", [O(n)]),
+        });
+        assert.equal(parouB, true, `${fn}: B parou numa trava (wait_event Lock)`);
+        if (esperado === "sem_deadlock") {
+          assert.equal(ra.ok, false);
+          assert.equal(ra.codigo, "22023", `a 94 recusa (disputa em curso), não 40P01: ${ra.mensagem}`);
+          assert.equal(rb.ok, true, `a contestação termina: ${rb.mensagem}`);
+          const e = await estado(cliente, O(n));
+          assert.equal(e.valorEstornado, 0);
+          assert.equal(e.linhas.length, 1);
+          assert.equal(e.linhas[0].status, "em_processamento", "a reserva continua");
+        } else {
+          const codigos = [ra, rb].filter((x) => !x.ok).map((x) => x.codigo);
+          assert.ok(codigos.includes("40P01"), `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`);
+        }
+      }
+    } finally {
+      await cliente.query(`DROP FUNCTION IF EXISTS ${FN_CONTROLE}(uuid, text, text, text, numeric, numeric, integer)`);
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(s) ordem linha -> pedido no refund externo × concluir_estorno da órfã: sem 40P01, soma uma vez; o CONTROLE dá 40P01",
+  corpo: async (cliente, url) => {
+    await criarControle(cliente, {
+      fn: FN_EXTERNO,
+      apelido: "linha_tocada",
+      nomeOriginal: "public.registrar_estorno_externo_do_mp",
+      nomeControle: FN_CONTROLE_EXTERNO,
+    });
+    try {
+      for (const [n, fn, esperado] of [
+        [134, "public.registrar_estorno_externo_do_mp", "sem_deadlock"],
+        [135, FN_CONTROLE_EXTERNO, "deadlock"],
+      ]) {
+        const ref = `REF-S${n}`;
+        await pedido(cliente, O(n), { total: 100 });
+        const linha = (
+          await cliente.query(
+            `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, motivo, mp_refund_id)
+             VALUES ($1, 30, 'sistema', 'concluido', 'estorno feito fora do app (Mercado Pago)', $2)
+             RETURNING id`,
+            [O(n), ref],
+          )
+        ).rows[0].id;
+        const { ra, rb, parouB } = await cruzamento(url, {
+          seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [linha]),
+          chamaB: (b) =>
+            b.query(`SELECT ${fn}($1, $2, 30, 'processed', 'partially_refunded') AS r`, [O(n), ref]),
+          terminaA: (a) => a.query("SELECT public.concluir_estorno($1, NULL, NULL, NULL) AS r", [linha]),
+        });
+        assert.equal(parouB, true, `${fn}: B parou numa trava (wait_event Lock)`);
+        const codigos = [ra, rb].filter((x) => !x.ok).map((x) => x.codigo);
+        if (esperado === "sem_deadlock") {
+          assert.deepEqual(codigos, [], `${fn}: nenhum erro (${JSON.stringify([ra, rb])})`);
+          const e = await estado(cliente, O(n));
+          assert.equal(e.valorEstornado, 30, "a órfã soma UMA vez");
+          assert.equal(e.linhas.length, 1, "nenhuma linha nova para o mesmo refund");
+        } else {
+          assert.deepEqual(codigos, ["40P01"], `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`);
+        }
+      }
+    } finally {
+      await cliente.query(`DROP FUNCTION IF EXISTS ${FN_CONTROLE_EXTERNO}(uuid, text, numeric, text, text)`);
+    }
   },
 });
 
