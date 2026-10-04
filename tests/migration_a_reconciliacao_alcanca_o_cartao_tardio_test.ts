@@ -265,7 +265,13 @@ Deno.test("contrato com a edge: o cron chama o carimbo com OS MESMOS nomes de ar
   // ('pago' ou 'pago_apos_expirar'). O cron não tem mais porta de push própria.
   assertStringIncludes(c, "if (desfechoComEfeito(resultado)) {");
   assertStringIncludes(c, "await aplicarEfeitosDoPagamentoConfirmado({");
-  assertEquals(cron.split("dispararPushAoAdminReal").length - 1, 0, "nenhuma porta de push própria no cron");
-  const efeitos = norm(lerArquivo("supabase/functions/_shared/efeitos-do-pagamento.ts"));
+  assertEquals(
+    cron.split("dispararPushAoAdminReal").length - 1,
+    0,
+    "nenhuma porta de push própria no cron",
+  );
+  const efeitos = norm(
+    lerArquivo("supabase/functions/_shared/efeitos-do-pagamento.ts"),
+  );
   assertStringIncludes(efeitos, 'if (resultado === "pago_apos_expirar") {');
 });

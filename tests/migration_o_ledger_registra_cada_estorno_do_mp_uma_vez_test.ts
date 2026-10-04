@@ -45,26 +45,48 @@ const DEF_INDICE_CONTESTACAO =
   "CREATE UNIQUE INDEX uq_order_refunds_pedido_contestacao ON public.order_refunds USING btree (order_id, mp_chargeback_id) WHERE (mp_chargeback_id IS NOT NULL)";
 
 Deno.test("avaliarFase0 não recusa o par; nenhum dos dois abre ou fecha transação de nível superior", () => {
-  const res = avaliarFase0({ sqlMigration: migration, sqlRollback: rollback, temRollback: true });
-  assertEquals(res.recusado, false, `motivos: ${(res.motivos || []).join("; ")}`);
+  const res = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(
+    res.recusado,
+    false,
+    `motivos: ${(res.motivos || []).join("; ")}`,
+  );
   assertEquals(detectarTransacaoExplicita(removerRuido(migration)).achados, []);
   assertEquals(detectarTransacaoExplicita(removerRuido(rollback)).achados, []);
 });
 
 Deno.test("o preflight é o PRIMEIRO comando e recusa com RAISE EXCEPTION (divergência e duplicata com contagem)", () => {
   const codigo = semComentarios(migration);
-  const primeiro = codigo.search(/\b(DO|CREATE|ALTER|REVOKE|GRANT|COMMENT|DROP|INSERT|UPDATE|DELETE)\b/);
-  assertEquals(codigo.slice(primeiro, primeiro + "DO $preflight_20261192$".length), "DO $preflight_20261192$");
+  const primeiro = codigo.search(
+    /\b(DO|CREATE|ALTER|REVOKE|GRANT|COMMENT|DROP|INSERT|UPDATE|DELETE)\b/,
+  );
+  assertEquals(
+    codigo.slice(primeiro, primeiro + "DO $preflight_20261192$".length),
+    "DO $preflight_20261192$",
+  );
   const bloco = migration.slice(
     migration.indexOf("DO $preflight_20261192$"),
     migration.indexOf("END $preflight_20261192$;"),
   );
   assert(!/RAISE\s+(NOTICE|WARNING|INFO|LOG|DEBUG)/i.test(bloco));
-  assertStringIncludes(bloco, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_refund_mp");
+  assertStringIncludes(
+    bloco,
+    "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_refund_mp",
+  );
   assertStringIncludes(bloco, "RAISE EXCEPTION 'LEDGER_DUPLICADO: % par(es)");
   assertStringIncludes(bloco, "HAVING count(*) > 1");
-  assertStringIncludes(bloco, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_contestacao");
-  assertStringIncludes(bloco, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_id já existe como %");
+  assertStringIncludes(
+    bloco,
+    "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_contestacao",
+  );
+  assertStringIncludes(
+    bloco,
+    "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_id já existe como %",
+  );
   assertStringIncludes(bloco, "par(es) (pedido, mp_chargeback_id)");
 });
 
@@ -80,7 +102,10 @@ Deno.test("a definição do índice é a MESMA no preflight da migration, no do 
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_order_refunds_pedido_contestacao\n  ON public.order_refunds (order_id, mp_chargeback_id)\n  WHERE mp_chargeback_id IS NOT NULL;",
   );
   // A coluna é aditiva e nasce NULL (sem default, sem backfill, sem NOT NULL).
-  assertStringIncludes(semComentarios(migration), "ADD COLUMN IF NOT EXISTS mp_chargeback_id text;");
+  assertStringIncludes(
+    semComentarios(migration),
+    "ADD COLUMN IF NOT EXISTS mp_chargeback_id text;",
+  );
   assertStringIncludes(
     semComentarios(migration),
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_order_refunds_pedido_refund_mp\n  ON public.order_refunds (order_id, mp_refund_id)\n  WHERE mp_refund_id IS NOT NULL;",
@@ -89,7 +114,10 @@ Deno.test("a definição do índice é a MESMA no preflight da migration, no do 
 
 Deno.test("a migration não reescreve nem apaga linha do ledger (resolver duplicata é decisão do dono)", () => {
   const codigo = semComentarios(migration);
-  assert(!/\b(DELETE|UPDATE|INSERT|TRUNCATE)\b/i.test(codigo), "nenhuma escrita de dado");
+  assert(
+    !/\b(DELETE|UPDATE|INSERT|TRUNCATE)\b/i.test(codigo),
+    "nenhuma escrita de dado",
+  );
   assert(!/\bDROP\b/i.test(codigo), "nada é apagado");
   const codigoRollback = semComentarios(rollback);
   assert(!/\b(DELETE|UPDATE|INSERT|TRUNCATE)\b/i.test(codigoRollback));
@@ -107,7 +135,10 @@ Deno.test("o aviso do rollback diz que, sem os índices, a edge nova CONCLUI e S
     .map((l) => l.replace(/^--\s?/, ""))
     .join(" ")
     .replace(/\s+/g, " ");
-  assert(!aviso.includes("só deixa de acontecer"), "o aviso antigo subestimava o C5");
+  assert(
+    !aviso.includes("só deixa de acontecer"),
+    "o aviso antigo subestimava o C5",
+  );
   assertStringIncludes(aviso, "concluir_estorno");
   assertStringIncludes(aviso, "CONCLUI e SOMA");
   assertStringIncludes(aviso, "webhook ANTIGO");

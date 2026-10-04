@@ -120,10 +120,8 @@ function consulta(tabela = ""): unknown {
   const alvo: unknown = new Proxy(() => {}, {
     get(_destino, propriedade) {
       if (propriedade === "then") {
-        return (
-          res: (v: unknown) => unknown,
-          rej?: (e: unknown) => unknown,
-        ) => Promise.resolve(resolvido).then(res, rej);
+        return (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+          Promise.resolve(resolvido).then(res, rej);
       }
       if (propriedade === "maybeSingle") {
         return () =>
@@ -259,7 +257,13 @@ describe("T0-LOCAL — cartão aprovado já no POST: a tela espera o banco, e o 
     // Relógio falso DESDE O INÍCIO: o intervalo de 10 s do CheckoutView e o
     // aviso de 60 s da tela do cartão nascem nele.
     vi.useFakeTimers({
-      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+      toFake: [
+        "setTimeout",
+        "clearTimeout",
+        "setInterval",
+        "clearInterval",
+        "Date",
+      ],
     });
     create = instalarSdkFalso();
     hospedeiro = document.createElement("div");
@@ -297,7 +301,9 @@ describe("T0-LOCAL — cartão aprovado já no POST: a tela espera o banco, e o 
   }
 
   /** Formulário → o cliente toca "Pagar" → o POST volta aprovado. */
-  async function pagarEChegarNoAprovado(ate: "aprovado" | "desafio" = "aprovado") {
+  async function pagarEChegarNoAprovado(
+    ate: "aprovado" | "desafio" = "aprovado",
+  ) {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
       raiz.render(

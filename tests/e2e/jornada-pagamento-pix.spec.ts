@@ -93,78 +93,75 @@ test("PIX: QR e copiar aparecem, e a confirmação vem quando o banco vira pago 
 // sem QR). Controle medido em 04/10/2026: no build de 4a882a7b (sem a
 // retomada) esta jornada FALHA em "QR code do PIX" depois do reload; com a
 // retomada, passa.
-test(
-  "PIX PENDENTE + recarregar a aba: retoma o MESMO pedido e o MESMO QR, lido do servidor, sem criar pedido nem cobrança nova",
-  async ({ page }) => {
-    test.setTimeout(90_000);
-    const sim = await instalarPagamentoSimulado(page);
-    // A edge simulada RECONSULTA: a mesma cobrança (mesmo paymentId e QR) para
-    // o mesmo pedido, quantas vezes for perguntada — nunca uma segunda.
-    const cobrancaPorPedido = new Map<
-      string,
-      ReturnType<typeof respostaPixComQr>
-    >();
-    sim.responderPagamento = (corpo) => {
-      if (corpo.metodo !== "pix") {
-        return { status: 500, corpo: { error: "método não previsto" } };
-      }
-      const orderId = String(corpo.orderId);
-      const existente = cobrancaPorPedido.get(orderId);
-      if (existente) return existente;
-      const nova = respostaPixComQr(orderId);
-      cobrancaPorPedido.set(orderId, nova);
-      const pedido = sim.pedidos.get(orderId);
-      if (pedido) {
-        pedido.metodo_online = "pix";
-        pedido.gateway_payment_id = (
-          nova.corpo as { paymentId: string }
-        ).paymentId;
-      }
-      return nova;
-    };
+test("PIX PENDENTE + recarregar a aba: retoma o MESMO pedido e o MESMO QR, lido do servidor, sem criar pedido nem cobrança nova", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const sim = await instalarPagamentoSimulado(page);
+  // A edge simulada RECONSULTA: a mesma cobrança (mesmo paymentId e QR) para
+  // o mesmo pedido, quantas vezes for perguntada — nunca uma segunda.
+  const cobrancaPorPedido = new Map<
+    string,
+    ReturnType<typeof respostaPixComQr>
+  >();
+  sim.responderPagamento = (corpo) => {
+    if (corpo.metodo !== "pix") {
+      return { status: 500, corpo: { error: "método não previsto" } };
+    }
+    const orderId = String(corpo.orderId);
+    const existente = cobrancaPorPedido.get(orderId);
+    if (existente) return existente;
+    const nova = respostaPixComQr(orderId);
+    cobrancaPorPedido.set(orderId, nova);
+    const pedido = sim.pedidos.get(orderId);
+    if (pedido) {
+      pedido.metodo_online = "pix";
+      pedido.gateway_payment_id = (
+        nova.corpo as { paymentId: string }
+      ).paymentId;
+    }
+    return nova;
+  };
 
-    const errosNoFim = await abrirLojaEFinalizar(page, "pix");
-    await esperarQrDoPix(page);
-    exigirCriacaoDoPedido(sim);
-    const pedido = ultimoPedido(sim);
-    const qrAntes = await page
-      .getByAltText("QR code do PIX")
-      .getAttribute("src");
+  const errosNoFim = await abrirLojaEFinalizar(page, "pix");
+  await esperarQrDoPix(page);
+  exigirCriacaoDoPedido(sim);
+  const pedido = ultimoPedido(sim);
+  const qrAntes = await page.getByAltText("QR code do PIX").getAttribute("src");
 
-    // Marca da conversa com a edge ANTES de recarregar: o que vier depois dela
-    // é a tela PERGUNTANDO ao servidor (o QR vem da edge, não de memória
-    // do navegador).
-    const antes = sim.chamadasDoPagamento.length;
-    await page.reload();
-    // Depois de recarregar: a MESMA tela de PIX do MESMO pedido.
-    await esperarQrDoPix(page);
-    await expect(
-      page.getByText(`Pedido #${numeroDoPedido(pedido.id)}`),
-    ).toBeVisible();
-    expect(await page.getByAltText("QR code do PIX").getAttribute("src")).toBe(
-      qrAntes,
-    );
-    await expect(page.getByText(CODIGO_PIX_SIMULADO)).toBeVisible();
+  // Marca da conversa com a edge ANTES de recarregar: o que vier depois dela
+  // é a tela PERGUNTANDO ao servidor (o QR vem da edge, não de memória
+  // do navegador).
+  const antes = sim.chamadasDoPagamento.length;
+  await page.reload();
+  // Depois de recarregar: a MESMA tela de PIX do MESMO pedido.
+  await esperarQrDoPix(page);
+  await expect(
+    page.getByText(`Pedido #${numeroDoPedido(pedido.id)}`),
+  ).toBeVisible();
+  expect(await page.getByAltText("QR code do PIX").getAttribute("src")).toBe(
+    qrAntes,
+  );
+  await expect(page.getByText(CODIGO_PIX_SIMULADO)).toBeVisible();
 
-    // Depois do reload a tela PERGUNTOU ao servidor, uma vez, pelo MESMO
-    // pedido (nada de QR lembrado do lado do navegador).
-    expect(sim.chamadasDoPagamento.slice(antes)).toEqual([
-      { orderId: pedido.id, metodo: "pix" },
-    ]);
-    // 1 pedido, 0 criação nova; toda pergunta à edge é do MESMO pedido e
-    // devolveu a MESMA cobrança.
-    expect(sim.pedidos.size).toBe(1);
-    expect(sim.criacoesDePedido).toHaveLength(1);
-    expect(sim.chamadasDoPagamento.every((c) => c.orderId === pedido.id)).toBe(
-      true,
-    );
-    expect(sim.contagemPorMetodo()).toEqual({
-      pix: sim.chamadasDoPagamento.length,
-    });
-    expect(cobrancaPorPedido.size).toBe(1);
-    expect(errosNoFim().erros).toEqual([]);
-  },
-);
+  // Depois do reload a tela PERGUNTOU ao servidor, uma vez, pelo MESMO
+  // pedido (nada de QR lembrado do lado do navegador).
+  expect(sim.chamadasDoPagamento.slice(antes)).toEqual([
+    { orderId: pedido.id, metodo: "pix" },
+  ]);
+  // 1 pedido, 0 criação nova; toda pergunta à edge é do MESMO pedido e
+  // devolveu a MESMA cobrança.
+  expect(sim.pedidos.size).toBe(1);
+  expect(sim.criacoesDePedido).toHaveLength(1);
+  expect(sim.chamadasDoPagamento.every((c) => c.orderId === pedido.id)).toBe(
+    true,
+  );
+  expect(sim.contagemPorMetodo()).toEqual({
+    pix: sim.chamadasDoPagamento.length,
+  });
+  expect(cobrancaPorPedido.size).toBe(1);
+  expect(errosNoFim().erros).toEqual([]);
+});
 
 test('PIX com 503 passageiro (terminal: true): a tela oferece "Tentar de novo" e a segunda chamada traz o QR', async ({
   page,
