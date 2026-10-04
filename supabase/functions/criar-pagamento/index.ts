@@ -23,13 +23,29 @@
  *    ou prazo vencido — checado ANTES da checagem de cobrança existente, de
  *    propósito: pedido expirado com cobrança recusa, não reconsulta).
  *
- * O QUE ELA NÃO FAZ
+ * QUANDO ELA CONFIRMA PAGAMENTO (04/10/2026 — confirmação imediata)
  *
- * Não confirma pagamento. Nunca. Quem escreve 'pago' é o webhook (Fase 3), e é
- * por isso que esta função grava só `gateway_payment_id` (e, desde a Fase
- * 3.5, `metodo_online`/`parcelas`) e devolve o que a tela precisa desenhar.
- * Nem o cartão aprovado na hora muda isso: a resposta diz "pago" para a tela
- * seguir, e quem grava é o webhook/reconciliação (`confirmar_pagamento`).
+ * A CRIAÇÃO continua NUNCA confirmando: o cartão aprovado na hora no POST
+ * responde "pago" para a tela seguir, e quem grava é o webhook/reconciliação
+ * (`confirmar_pagamento`). O POST não prova nada sozinho — o objeto dele não é
+ * o GET autenticado da vaga relida.
+ *
+ * A CONSULTA, sim, confirma — e só com PROVA: no `verificar` (cartão e PIX) e
+ * nos ramos pagos da reconsulta ((a) cartão, (e) PIX), quando o GET
+ * /v1/orders/{id} da vaga RELIDA passa por `provarPagamentoPelaConsulta`
+ * (`_shared/prova-de-pagamento.ts`: id = vaga, `external_reference` = pedido,
+ * raiz `processed:accredited`, total ±R$ 0,05 do total relido, valor PAGO
+ * capturado, nenhuma contradição) com o pedido ainda 'aguardando' e de um
+ * dono autenticado, ela chama a MESMA RPC do webhook
+ * (`confirmarPagamentoProvado`, `_shared/efeitos-do-pagamento.ts`). A RPC
+ * decide sob `FOR UPDATE` e devolve a transição para UMA chamada só: quem
+ * recebeu 'pago'/'pago_apos_expirar' dispara os efeitos do webhook (push ao
+ * lojista, comprovante ou aviso atrasado ao cliente) fora do caminho da
+ * resposta; quem recebeu 'ja_pago' (o webhook chegou antes) não dispara nada.
+ * O defeito que isto fecha: no ensaio TEST c35ce4dd a tela dizia "Pagamento
+ * aprovado! Confirmando seu pedido..." e o banco só virava 'pago' ~2 min
+ * depois, pela reconciliação. Sem prova, falha da RPC ou desfecho
+ * inesperado: o contrato de antes, sem efeito e sem cobrança nova.
  *
  * CARTÃO (Fase 3.5, 26/09/2026 — spec `2026-09-26-cartao-online-design.md`)
  *
@@ -138,6 +154,15 @@ import * as webpush from "jsr:@negrel/webpush@0.3.0";
 // (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
 import { type CredenciaisMp, resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
+// Confirmação imediata (04/10/2026): a régua da prova e a RPC + efeitos do
+// webhook — ver o cabeçalho deste arquivo e `confirmarNaHoraSeProvado`.
+import { ORIGEM_GET_POR_ID, provarPagamentoPelaConsulta } from "../_shared/prova-de-pagamento.ts";
+import {
+  aplicarEfeitosDoPagamentoConfirmado,
+  confirmarPagamentoProvado,
+  type DepsDosEfeitos,
+  desfechoComEfeito,
+} from "../_shared/efeitos-do-pagamento.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1014,6 +1039,72 @@ async function adotarOrderNoSentinela(
 }
 
 /**
+ * Confirmação imediata (04/10/2026 — ver o cabeçalho do arquivo): com a order
+ * do GET por id da vaga e a LINHA RELIDA do banco nas mãos, confirma o pedido
+ * se — e só se — a linha ainda está 'aguardando' e a order PROVA o pagamento
+ * (`provarPagamentoPelaConsulta`). A RPC é AGUARDADA (quem chama responde
+ * pelo desfecho dela); os efeitos NÃO — saem por `dispararSemEsperarCliente`
+ * (`EdgeRuntime.waitUntil` no Edge; no runner de teste, teto de 5 s), e só
+ * quando ESTA chamada recebeu a transição ('pago'/'pago_apos_expirar').
+ *
+ * Devolve o desfecho da RPC, ou `null` quando ela nem foi chamada (sem prova,
+ * linha fora de 'aguardando') ou falhou — nesses casos quem chama segue o
+ * contrato de antes. Nunca lança, nunca faz POST no MP. Log sem dado do
+ * pagador: ids, motivo da recusa, desfecho.
+ */
+async function confirmarNaHoraSeProvado(args: {
+  supabase: ReturnType<typeof createClient>;
+  pedidoId: string;
+  idConsultado: string;
+  order: Record<string, unknown>;
+  linha: Record<string, unknown>;
+  efeitos: DepsDosEfeitos;
+}): Promise<string | null> {
+  const { supabase, pedidoId, idConsultado, order, linha, efeitos } = args;
+  if (linha.payment_status !== "aguardando") return null;
+  const prova = provarPagamentoPelaConsulta({
+    origem: ORIGEM_GET_POR_ID,
+    idConsultado,
+    vagaRelida: linha.gateway_payment_id,
+    pedidoId,
+    totalRelido: linha.total,
+    order,
+  });
+  if (!prova.provado) {
+    console.warn("criar-pagamento: order paga sem PROVA para a confirmação imediata — fica para webhook/reconciliação", {
+      orderId: pedidoId,
+      paymentId: idConsultado,
+      motivo: prova.motivo,
+    });
+    return null;
+  }
+  const confirmacao = await confirmarPagamentoProvado({ supabase, pedidoId, vaga: idConsultado });
+  if (!confirmacao.ok) return null;
+  const resultado = confirmacao.resultado;
+  if (desfechoComEfeito(resultado)) {
+    try {
+      await dispararSemEsperarCliente(
+        aplicarEfeitosDoPagamentoConfirmado({ supabase, orderId: pedidoId, resultado, ...efeitos }),
+        5000,
+      );
+    } catch (_erro) {
+      // `aplicarEfeitosDoPagamentoConfirmado` não lança; isto é só a cerca.
+      console.error("criar-pagamento: efeitos da confirmação imediata falharam", { orderId: pedidoId });
+    }
+  } else if (resultado !== "ja_pago") {
+    // 'divergente'/'inexistente'/'ignorado'/desconhecido: a prova passou e a
+    // RPC não confirmou — dinheiro aprovado sem registro, mesmo nível de log
+    // do webhook para esses dois rótulos.
+    console.error("criar-pagamento: confirmação imediata — confirmar_pagamento devolveu desfecho inesperado", {
+      orderId: pedidoId,
+      paymentId: idConsultado,
+      resultado,
+    });
+  }
+  return resultado;
+}
+
+/**
  * C2 (desenho A1 §3/§4, corrigido pelo veredito A2, 02/10/2026): o modo
  * `metodo: "verificar"` — a ÚNICA recuperação de um pedido de cartão em
  * dúvida, sem cobrança nenhuma. Chamado depois de `donoConfere` e da trava
@@ -1044,8 +1135,11 @@ async function verificarVagaDoPedido(args: {
   pedido: Record<string, unknown>;
   json: (corpo: unknown, status: number) => Response;
   respostaIndisponivel: () => Response;
+  // Confirmação imediata (04/10/2026): os efeitos do pagamento confirmado
+  // (`confirmarNaHoraSeProvado`); em produção, os reais.
+  efeitos: DepsDosEfeitos;
 }): Promise<Response> {
-  const { supabase, mpToken, fetchImpl, pedido, json, respostaIndisponivel } = args;
+  const { supabase, mpToken, fetchImpl, pedido, json, respostaIndisponivel, efeitos } = args;
   const pedidoId = String(pedido.id);
   const pagoNaEntrada = corpoDePagoConfirmado(pedido);
   if (pagoNaEntrada !== null) return json(pagoNaEntrada, 200);
@@ -1122,7 +1216,7 @@ async function verificarVagaDoPedido(args: {
   // Responde sobre a vaga ATUAL.
   const { data: relida, error: erroRelida } = await supabase
     .from("marketplace_orders")
-    .select("payment_status, status, expires_at, gateway_payment_id")
+    .select("payment_status, status, expires_at, gateway_payment_id, total")
     .eq("id", pedidoId)
     .maybeSingle();
   if (erroRelida || !relida) return respostaIndisponivel();
@@ -1144,6 +1238,35 @@ async function verificarVagaDoPedido(args: {
   if (idEhClassico(vagaAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
   const ordemAtual = ordensJaConsultadas.get(vagaAtual) ?? await consultarPorId(vagaAtual);
   if (ordemAtual === null) return respostaIndisponivel();
+  // Confirmação imediata (04/10/2026), cartão E PIX: a order da vaga RELIDA
+  // veio do GET por id e diz paga — com PROVA, confirma pela RPC do webhook
+  // e responde pelo BANCO. Sem prova, ou RPC sem transição/ja_pago
+  // ('divergente', 'ignorado', erro): segue o contrato de antes, logo abaixo.
+  if (mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? "")) === "pago") {
+    const resultado = await confirmarNaHoraSeProvado({
+      supabase,
+      pedidoId,
+      idConsultado: vagaAtual,
+      order: ordemAtual,
+      linha: atual,
+      efeitos,
+    });
+    if (resultado === "pago" || resultado === "pago_apos_expirar" || resultado === "ja_pago") {
+      let confirmada: Record<string, unknown> | null = null;
+      try {
+        const { data, error } = await supabase
+          .from("marketplace_orders")
+          .select("payment_status, status, expires_at, gateway_payment_id")
+          .eq("id", pedidoId)
+          .maybeSingle();
+        if (!error && data) confirmada = data as Record<string, unknown>;
+      } catch (_erro) {
+        // A RPC já confirmou: a releitura é só para responder pelo banco.
+      }
+      const corpoConfirmado = confirmada ? corpoDePagoConfirmado(confirmada) : null;
+      return json(corpoConfirmado ?? { verificacao: "pago", paymentId: vagaAtual, expiraEm }, 200);
+    }
+  }
   if (!orderEhDeCartao(ordemAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
   if (orderMortaPeloPar(ordemAtual)) return json({ verificacao: "recusado", paymentId: null, expiraEm }, 200);
   const statusAtual = mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? ""));
@@ -1322,9 +1445,23 @@ async function handler(
     // determinística. Em produção nunca é passado — cai no
     // `resolverCredenciaisMp` de verdade.
     credenciaisMp?: CredenciaisMp;
+    // Confirmação imediata (04/10/2026): os efeitos do pagamento confirmado
+    // por esta função — mesma costura (e mesmos nomes) de `deps.enviarPush`/
+    // `enviarComprovante`/`enviarAvisoAtrasado` do `webhook-mercadopago`. Em
+    // produção nunca são passados — caem nos reais de
+    // `_shared/efeitos-do-pagamento.ts`.
+    enviarPush?: DepsDosEfeitos["enviarPush"];
+    enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
+    enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  const efeitos: DepsDosEfeitos = {
+    enviarPush: deps.enviarPush,
+    enviarComprovante: deps.enviarComprovante,
+    enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+  };
 
   const json = (corpo: unknown, status: number) =>
     new Response(JSON.stringify(corpo), {
@@ -1596,6 +1733,7 @@ async function handler(
       pedido: pedido as Record<string, unknown>,
       json,
       respostaIndisponivel,
+      efeitos,
     });
   }
 
@@ -1969,6 +2107,32 @@ async function handler(
     // de cartão isso fecha (409), nunca cancela às cegas.
     const pixNaVaga = tipoNaVaga === "bank_transfer";
     const cobrancaMorta = statusNaVaga === "recusado" || statusNaVaga === "expirado";
+    // Confirmação imediata (04/10/2026) nos ramos pagos (a)/(e): relê a linha
+    // (a vaga e o total VIGENTES, não os da leitura do início) e confirma com
+    // PROVA (`confirmarNaHoraSeProvado`). Só pedido com DONO autenticado
+    // (`donoConfere` já casou o `sub` com `user_id`): o de convidado fica com
+    // o webhook. Falha de leitura/RPC: nada — a resposta é a de sempre.
+    const confirmarNaReconsulta = async (ordem: Record<string, unknown>): Promise<void> => {
+      if (pedido.user_id === null || pedido.user_id === undefined) return;
+      try {
+        const { data: linhaAtual, error: erroLinha } = await supabase
+          .from("marketplace_orders")
+          .select("payment_status, status, expires_at, gateway_payment_id, total")
+          .eq("id", pedido.id)
+          .maybeSingle();
+        if (erroLinha || !linhaAtual) return;
+        await confirmarNaHoraSeProvado({
+          supabase,
+          pedidoId: String(pedido.id),
+          idConsultado: idGatewayReconsulta,
+          order: ordem,
+          linha: linhaAtual as Record<string, unknown>,
+          efeitos,
+        });
+      } catch (_erro) {
+        console.error("criar-pagamento: confirmação imediata na reconsulta falhou", { orderId: pedido.id });
+      }
+    };
 
     if (orderEhDeCartao(orderNaVaga)) {
       // (b) Cartão recusado, cancelado ou expirado (desafio 3DS abandonado):
@@ -1977,9 +2141,12 @@ async function handler(
       // o pedido até expirar.
       if (!cobrancaMorta) {
         const paymentIdNaVaga = String(orderNaVaga.id ?? idGatewayReconsulta);
-        // (a) Já pago: nada a cobrar de novo — a tela segue; quem grava
-        // 'pago' no banco é o webhook/reconciliação.
+        // (a) Já pago: nada a cobrar de novo — a tela segue. Com PROVA, esta
+        // consulta confirma na hora (`confirmarNaReconsulta`, acima); sem ela,
+        // quem grava 'pago' é o webhook/reconciliação. A resposta é a MESMA
+        // nos dois casos.
         if (statusNaVaga === "pago") {
+          await confirmarNaReconsulta(orderNaVaga);
           return json(
             { paymentId: paymentIdNaVaga, statusPagamento: "pago", expiraEm: pedido.expires_at },
             200,
@@ -2160,7 +2327,9 @@ async function handler(
       }
     } else {
       // (e) Pedido de PIX com PIX na vaga — ou (a) PIX já pago, para
-      // qualquer forma pedida: o comportamento de sempre, o MESMO QR.
+      // qualquer forma pedida: o comportamento de sempre, o MESMO QR. Pago
+      // com PROVA confirma na hora (`confirmarNaReconsulta`); a resposta não muda.
+      if (statusNaVaga === "pago") await confirmarNaReconsulta(orderNaVaga);
       const extraido = extrairQrCode(orderNaVaga);
       return json(
         {
