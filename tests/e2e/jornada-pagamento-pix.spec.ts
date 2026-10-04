@@ -87,13 +87,13 @@ test("PIX: QR e copiar aparecem, e a confirmação vem quando o banco vira pago 
   expect(errosNoFim().erros).toEqual([]);
 });
 
-// DEPENDE DE MUDANÇA NO APP (ainda não feita — outro executor): hoje, ao
-// recarregar a aba com o PIX pendente, o checkout perde o pedido: o
-// `checkoutRetomadaId` volta a `null` (App.tsx), o histórico não guarda a
-// retomada e o `orderId` do CheckoutView nasce `""` — o cliente cai num
-// checkout vazio, sem QR. Esta jornada é o CONTRATO que a mudança tem de
-// cumprir; o coordenador a ativa (tira o `fixme`) depois da mudança.
-test.fixme(
+// CONTRATO da retomada na recarga (src/lib/pedido-pendente-do-checkout.ts +
+// App.tsx): antes dela, recarregar a aba com o PIX pendente perdia o pedido
+// (`checkoutRetomadaId` voltava a `null` e o cliente caía num checkout vazio,
+// sem QR). Controle medido em 04/10/2026: no build de 4a882a7b (sem a
+// retomada) esta jornada FALHA em "QR code do PIX" depois do reload; com a
+// retomada, passa.
+test(
   "PIX PENDENTE + recarregar a aba: retoma o MESMO pedido e o MESMO QR, lido do servidor, sem criar pedido nem cobrança nova",
   async ({ page }) => {
     test.setTimeout(90_000);
