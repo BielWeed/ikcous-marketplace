@@ -2592,7 +2592,14 @@ const AppContent = () => {
 
     const isPrivateView = privateViews.includes(currentView);
 
-    if (authLoading && isPrivateView) {
+    // Recarga: o checkout da CARGA ainda espera o App decidir (sessão
+    // atrasada) — o MESMO carregamento do boot, nunca uma área vazia.
+    const esperandoARecargaDoCheckout =
+      currentView === "checkout" &&
+      cargaNoCheckout &&
+      !recargaDoCheckoutDecidida;
+
+    if ((authLoading && isPrivateView) || esperandoARecargaDoCheckout) {
       return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
           <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />

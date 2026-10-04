@@ -105,7 +105,19 @@ vi.mock("@/views/customer/HomeView", () => ({
   HomeView: () => <div data-testid="home" />,
 }));
 vi.mock("@/views/customer/CartView", () => ({
-  CartView: () => <div data-testid="tela-carrinho" />,
+  CartView: ({
+    onNavigate,
+  }: { readonly onNavigate: (view: string) => void }) => (
+    <div data-testid="tela-carrinho">
+      <button
+        type="button"
+        data-testid="ir-para-checkout"
+        onClick={() => onNavigate("checkout")}
+      >
+        Fechar pedido
+      </button>
+    </div>
+  ),
 }));
 vi.mock("@/views/customer/ProductView", () => ({
   ProductView: () => <div data-testid="tela-produto" />,
@@ -128,7 +140,17 @@ vi.mock("@/components/ui/custom/Header", async (importarOriginal) => ({
   Header: () => null,
 }));
 vi.mock("@/components/ui/custom/BottomNav", () => ({
-  BottomNav: () => null,
+  BottomNav: ({
+    onNavigate,
+  }: { readonly onNavigate: (view: string) => void }) => (
+    <button
+      type="button"
+      data-testid="ir-para-carrinho"
+      onClick={() => onNavigate("cart")}
+    >
+      Carrinho
+    </button>
+  ),
 }));
 vi.mock("@/components/ui/custom/CartReminder", () => ({
   CartReminder: () => null,
@@ -520,6 +542,9 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
     await assentarAEs();
   };
 
+  const naTela = (marca: string) =>
+    container?.querySelector(`[data-testid="${marca}"]`) ?? null;
+
   const textoDaTela = () => container?.textContent ?? "";
 
   async function sessaoChega() {
@@ -534,6 +559,21 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
   // O checkout de carrinho vazio (visitante, sem pedido): o formulário de
   // dados e a escolha da forma de pagamento. Era o que a recarga mostrava.
   const checkoutVazioNaTela = () => textoDaTela().includes("Meio de Pagamento");
+
+  const carregandoNaTela = () =>
+    textoDaTela().includes("Carregando marketplace...");
+
+  const clicar = async (marca: string) => {
+    await esperarAte(() => naTela(marca) !== null);
+    const botao = container?.querySelector<HTMLButtonElement>(
+      `[data-testid="${marca}"]`,
+    );
+    if (!botao) throw new Error(`botão ${marca} não encontrado`);
+    await act(async () => {
+      botao.click();
+    });
+    await avancar(500);
+  };
 
   const pagamentoRetomadoNaTela = () =>
     textoDaTela().includes(QR_DO_PEDIDO) && textoDaTela().includes(FINALIZE);
@@ -557,6 +597,8 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
     // carrinho vazio NÃO montou (o App espera a sessão).
     expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
     expect(checkoutVazioNaTela()).toBe(false);
+    // ...e a espera mostra o carregamento de sempre, nunca uma área vazia.
+    expect(carregandoNaTela()).toBe(true);
     expect(criarPagamento).not.toHaveBeenCalled();
 
     await sessaoChega();
@@ -591,10 +633,12 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
     await carregarEm("/checkout");
     await avancar(3000);
     expect(checkoutVazioNaTela()).toBe(false);
+    expect(carregandoNaTela()).toBe(true);
 
     // O teto vence sem sessão: o checkout de sempre (vazio), SEM retomada.
     await avancar(PRAZO_DA_SESSAO_NA_RECARGA_MS);
     expect(checkoutVazioNaTela()).toBe(true);
+    expect(carregandoNaTela()).toBe(false);
     expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
 
     // A sessão chega tarde, com o checkout vazio já montado: a ausência de
@@ -603,6 +647,28 @@ describe("App + AuthProvider — o PIX pendente sobrevive à recarga com a sess�
     expect(lerPedidoPendenteDoCheckout("user-1")).toBe(PEDIDO);
     expect(criarPagamento).not.toHaveBeenCalled();
     expect(createOrder).not.toHaveBeenCalled();
+  });
+
+  it("o cliente navega DURANTE a espera da sessão e abre um checkout novo: ele abre na hora, sem esperar a sessão nem o teto", async () => {
+    guardarPedidoPendenteDoCheckout("user-1", PEDIDO);
+
+    await carregarEm("/checkout");
+    await avancar(3000);
+    expect(carregandoNaTela()).toBe(true);
+
+    // Sai do checkout pelo menu e volta pelo "Fechar pedido" do carrinho.
+    await clicar("ir-para-carrinho");
+    await esperarAte(() => naTela("tela-carrinho") !== null);
+    await clicar("ir-para-checkout");
+    await esperarAte(checkoutVazioNaTela);
+
+    // O checkout NOVO (sem retomada, sem herdar o registro velho) abre
+    // agora: a sessão não chegou e o teto (8 s) está longe de vencer.
+    expect(checkoutVazioNaTela()).toBe(true);
+    expect(carregandoNaTela()).toBe(false);
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(lerPedidoPendenteDoCheckout("user-1")).toBeNull();
   });
 
   it("sem registro nenhum: o checkout abre no mesmo instante de sempre (nenhum quadro em branco a mais)", async () => {
