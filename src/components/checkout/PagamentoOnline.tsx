@@ -399,6 +399,9 @@ export function PagamentoOnline({
   onCobrancaEmDuvida,
   onCartaoEmCurso,
   cartaoEncerrado,
+  onCartaoEncerradoPelaConsulta,
+  sessaoAtiva = true,
+  onEntrarDeNovo,
 }: {
   orderId: string;
   valor: number;
@@ -422,6 +425,11 @@ export function PagamentoOnline({
   // C6 (P1): repassados à tela do cartão — ver `CartaoEmCurso`.
   onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
   cartaoEncerrado?: CartaoEmCurso | null;
+  // Confirmação do cartão sem fim (03/10/2026): repassados à tela do cartão
+  // — ver `confirmacao-do-cartao.ts` e `PagamentoComCartao`.
+  onCartaoEncerradoPelaConsulta?: (cartao: CartaoEmCurso) => void;
+  sessaoAtiva?: boolean;
+  onEntrarDeNovo?: () => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
   // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
@@ -494,6 +502,10 @@ export function PagamentoOnline({
           onCobrancaEmDuvida={onCobrancaEmDuvida}
           onCartaoEmCurso={onCartaoEmCurso}
           cartaoEncerrado={cartaoEncerrado}
+          onCartaoEncerradoPelaConsulta={onCartaoEncerradoPelaConsulta}
+          onVerMeusPedidos={onVerMeusPedidos}
+          sessaoAtiva={sessaoAtiva}
+          onEntrarDeNovo={onEntrarDeNovo}
         />
       );
     }

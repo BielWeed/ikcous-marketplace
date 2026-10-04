@@ -3874,6 +3874,26 @@ export function CheckoutView({
             // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
             onCartaoEmCurso={registrarCartaoEmCurso}
             cartaoEncerrado={cartaoEncerrado}
+            // Confirmação do cartão sem fim (03/10/2026): a consulta sem
+            // cobrança da tela do cartão (`verificar`) provou a vaga desta
+            // tentativa solta — a MESMA marca que a leitura da vaga (C6)
+            // grava, para a regra L1b reconhecer a tentativa se o pedido
+            // fechar depois.
+            onCartaoEncerradoPelaConsulta={(cartao) => {
+              if (cartao.orderId !== orderId) return;
+              cartaoEncerradoRef.current = cartao;
+              setCartaoEncerrado(cartao);
+            }}
+            // Sem sessão a consulta do cartão é recusada pela edge (404 de
+            // dono) e a verificação periódica nem roda: a tela do cartão
+            // pede para entrar de novo em vez de girar. Defesa em
+            // profundidade: no app, o App.tsx monta esta tela com a chave
+            // `checkout-${user.id}` — trocar de usuário (A→B) ou sair
+            // DESMONTA tudo, e a limpeza dos efeitos descarta a consulta
+            // pendente do usuário anterior (nenhuma resposta dele pinta a
+            // tela do outro).
+            sessaoAtiva={Boolean(user?.id)}
+            onEntrarDeNovo={() => onNavigate("auth")}
             onTrocarParaPix={(cartaoAindaVivo) => {
               if (cartaoAindaVivo) marcarCobrancaIncerta(orderId);
               // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
