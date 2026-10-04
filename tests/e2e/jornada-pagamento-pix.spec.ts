@@ -1,4 +1,5 @@
 import { type Page, expect, test } from "@playwright/test";
+import { numeroDoPedido } from "../../src/lib/numero-do-pedido";
 import { exigirRedeSemImprevistos } from "./kit-jornadas";
 import {
   CODIGO_PIX_SIMULADO,
@@ -130,17 +131,26 @@ test.fixme(
       .getByAltText("QR code do PIX")
       .getAttribute("src");
 
+    // Marca da conversa com a edge ANTES de recarregar: o que vier depois dela
+    // é a tela PERGUNTANDO ao servidor (o QR vem da edge, não de memória
+    // do navegador).
+    const antes = sim.chamadasDoPagamento.length;
     await page.reload();
     // Depois de recarregar: a MESMA tela de PIX do MESMO pedido.
     await esperarQrDoPix(page);
     await expect(
-      page.getByText(`Pedido #${pedido.id.slice(0, 8)}`),
+      page.getByText(`Pedido #${numeroDoPedido(pedido.id)}`),
     ).toBeVisible();
     expect(await page.getByAltText("QR code do PIX").getAttribute("src")).toBe(
       qrAntes,
     );
     await expect(page.getByText(CODIGO_PIX_SIMULADO)).toBeVisible();
 
+    // Depois do reload a tela PERGUNTOU ao servidor, uma vez, pelo MESMO
+    // pedido (nada de QR lembrado do lado do navegador).
+    expect(sim.chamadasDoPagamento.slice(antes)).toEqual([
+      { orderId: pedido.id, metodo: "pix" },
+    ]);
     // 1 pedido, 0 criação nova; toda pergunta à edge é do MESMO pedido e
     // devolveu a MESMA cobrança.
     expect(sim.pedidos.size).toBe(1);

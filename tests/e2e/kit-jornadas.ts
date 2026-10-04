@@ -25,8 +25,11 @@ import {
  *     molde do kit `tests/browser-identity-app` (contratos medidos lá):
  *     `v_store_config`, `categorias` e `vw_produtos_public`.
  *  4. Logos/imagens da marca (Storage público) recebem um PNG 1x1.
- *  5. Qualquer outra leitura do banco recebe lista vazia — a jornada
- *     precisa de catálogo, não de resto.
+ *  5. Qualquer outra leitura do banco (e qualquer outra requisição que não
+ *     tenha resposta definida) é NEGADA, registrada e faz o teste FALHAR no
+ *     `afterEach` (`exigirRedeSemImprevistos`) — nunca recebe lista vazia por
+ *     padrão. A jornada precisa de catálogo, e o resto tem de ser pedido
+ *     por quem escreve o teste.
  *
  * A identidade da ficha é VALIDADA AQUI contra o módulo de verdade
  * (`cloneStoreIdentity`/`identityRevision` de `src/lib/storeIdentity.ts`):

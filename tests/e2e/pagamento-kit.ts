@@ -30,12 +30,20 @@ import {
  *    evento chega, e quem descobre o pedido pago é a verificação periódica de
  *    10 s da tela).
  *
- * NADA sai para a rede e NADA desconhecido é respondido: cada rota daqui é
+ * NENHUM DADO sai para a rede e NADA desconhecido é respondido: cada rota daqui é
  * uma LISTA BRANCA de MÉTODO + CAMINHO; o resto cai na guarda do kit das
  * jornadas (`kit-jornadas.ts`), que aborta, registra e faz o teste FALHAR no
  * `afterEach` (`exigirRedeSemImprevistos`). O service worker é bloqueado no
  * config das jornadas: requisição feita por ele não passaria pelas rotas da
  * página.
+ *
+ * LIMITE DA GUARDA (honesto): o `page.route` só vê requisição de aplicação. As
+ * dicas `<link rel="preconnect">` do `index.html` (fontes, Unsplash e a origem
+ * Supabase de produção) são resolvidas pelo próprio navegador — DNS + TCP/TLS
+ * até o host, fora das rotas — e por isso NÃO passam pelo `page.route`: não são
+ * vistas nem negadas aqui. Mas preconnect só abre o canal: não leva caminho,
+ * cabeçalho de sessão nem corpo; nenhum dado do teste (pedido, cliente, chave)
+ * sai por ele.
  *
  * Latência: a resposta da criação do pedido e a da edge podem ser SEGURADAS
  * por um `Portao` que o teste fecha e abre — a janela "com a chamada em voo"

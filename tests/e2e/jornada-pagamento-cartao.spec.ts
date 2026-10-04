@@ -51,6 +51,21 @@ function exigirSdkSimulado(sim: SimuladorDePagamento) {
   expect(sim.terceirosAtendidos).toContain(URL_DO_SDK_MP);
 }
 
+/**
+ * O SDK foi iniciado com a chave PÚBLICA FICTÍCIA do kit (a que a ficha da
+ * loja fixture entrega) e com mais nenhuma: prova que o Brick não recebeu
+ * chave de outra origem. O dublê grava cada chave em `__mpSimulado.chaves`.
+ */
+async function exigirChaveFicticiaDoSdk(page: Page) {
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __mpSimulado: { chaves: string[] } })
+          .__mpSimulado.chaves,
+    ),
+  ).toEqual(["TEST-chave-ficticia-das-jornadas-e2e"]);
+}
+
 /** Formulário do cartão montado e o Device ID já colhido (antes do toque). */
 async function esperarFormularioDoCartao(page: Page) {
   await expect(
@@ -121,6 +136,7 @@ test("cartão aprovado: UM envio à edge, e a confirmação só vem quando o ban
   expect(sim.contagemPorMetodo()).toEqual({ cartao: 1 });
   expect(sim.criacoesDePedido).toHaveLength(1);
   exigirSdkSimulado(sim);
+  await exigirChaveFicticiaDoSdk(page);
   expect(errosNoFim().erros).toEqual([]);
 });
 
@@ -307,6 +323,8 @@ test('3DS: o desafio do Mercado Pago abre no quadro, só o aviso vindo do Mercad
     { orderId: pedido.id, metodo: "verificar" },
   ]);
   expect(sim.terceirosAtendidos).toContain(URL_DO_DESAFIO_3DS);
+  // O pedido do 3DS também nasceu de UMA criação, com o corpo exato.
+  exigirCriacaoDoPedido(sim);
   exigirSdkSimulado(sim);
   expect(errosNoFim().erros).toEqual([]);
 });
