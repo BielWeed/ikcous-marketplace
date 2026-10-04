@@ -8,6 +8,10 @@ import {
   CAMINHO_IDENTIDADE_JSON,
   FICHA_DA_LOJA_ID,
 } from "../config/fichaDaLojaContract";
+import {
+  TIPO_PURGAR_ARQUIVOS_PRIVADOS,
+  ehArquivoPublicoDoStorage,
+} from "../lib/arquivo-publico-do-storage";
 
 const sw = self as any;
 
@@ -53,6 +57,32 @@ const getVersion = () => {
 const CACHE_NAME = `app-cache-${getVersion()}`;
 const IMAGE_CACHE_NAME = "supabase-images-cache";
 const MAX_IMAGE_ENTRIES = 100;
+
+/**
+ * Apaga da gaveta de imagens tudo que não é arquivo PÚBLICO do Storage (R12,
+ * 04/10/2026). Duas portas chamam: o `activate` (limpa o que versões antigas
+ * do SW guardaram — elas aceitavam endereço assinado e download autenticado)
+ * e a mensagem de logout (`TIPO_PURGAR_ARQUIVOS_PRIVADOS`). Idempotente: rodar
+ * de novo sobre a gaveta já limpa não apaga nada. Nunca rejeita — falha de
+ * disco aqui não pode derrubar o `activate` nem virar unhandled rejection.
+ */
+async function purgarArquivosPrivadosDaGaveta(): Promise<void> {
+  try {
+    const cache = await caches.open(IMAGE_CACHE_NAME);
+    const chaves = await cache.keys();
+    for (const chave of chaves) {
+      let publico = false;
+      try {
+        publico = ehArquivoPublicoDoStorage(new URL(chave.url));
+      } catch {
+        publico = false;
+      }
+      if (!publico) await cache.delete(chave);
+    }
+  } catch (e) {
+    console.warn("[SW] Falha ao purgar arquivos privados da gaveta:", e);
+  }
+}
 
 // self.__WB_MANIFEST is the injection point for the precache manifest
 // We must include it even if we handle caching manually to satisfy Workbox.
@@ -119,6 +149,7 @@ sw.addEventListener("activate", (event: any) => {
             }),
           );
         }),
+      purgarArquivosPrivadosDaGaveta(),
     ]),
   );
 });
@@ -300,12 +331,15 @@ sw.addEventListener("fetch", (event: any) => {
     return;
   }
 
-  // Se for Supabase, ignorar exceto se for imagens (Storage)
+  // Se for Supabase, ignorar exceto se for arquivo PÚBLICO do Storage (R12,
+  // 04/10/2026). Endereço assinado (`/object/sign/...?token=`), download
+  // autenticado, transformação assinada, upload e qualquer outra forma vão
+  // direto à rede, sem passar pela gaveta: a cópia sobreviveria ao logout e
+  // seria servida por endereço a quem usasse o aparelho depois. Pedido com
+  // `Authorization` também fica de fora — quem o assina é a sessão de alguém.
   if (url.hostname.includes("supabase.co")) {
-    const isSupabaseImage =
-      url.pathname.includes("/storage/v1/object/") ||
-      url.pathname.includes("/storage/v1/render/");
-    if (!isSupabaseImage) return;
+    if (!ehArquivoPublicoDoStorage(url)) return;
+    if (event.request.headers.has("authorization")) return;
 
     event.respondWith(
       caches.open(IMAGE_CACHE_NAME).then((cache) => {
@@ -426,6 +460,14 @@ sw.addEventListener("message", (event: any) => {
     sw.skipWaiting();
   }
 
+  // Logout (R12): a página pede para jogar fora da gaveta de imagens o que
+  // não é público. Só o TIPO é lido — nenhuma URL que venha na mensagem é
+  // buscada nem guardada.
+  if (event.data?.type === TIPO_PURGAR_ARQUIVOS_PRIVADOS) {
+    const purga = purgarArquivosPrivadosDaGaveta();
+    event.waitUntil?.(purga);
+  }
+
   // Manual cache purge support
   if (event.data?.type === "MANUAL_PURGE") {
     caches.keys().then((cacheNames) => {
@@ -454,6 +496,13 @@ sw.addEventListener("message", (event: any) => {
           "[SW] Blocked cache warming for untrusted host:",
           parsedUrl.hostname,
         );
+        return;
+      }
+      // Mesma regra do ramo de fetch (R12): do Supabase, só arquivo PÚBLICO
+      // do Storage entra na gaveta — nunca endereço assinado, autenticado ou
+      // resposta de REST que a página tenha mandado aquecer.
+      if (isSupabase && !ehArquivoPublicoDoStorage(parsedUrl)) {
+        console.warn("[SW] Blocked cache warming for non-public storage URL");
         return;
       }
 
