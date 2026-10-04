@@ -10,6 +10,7 @@ import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente
 import { useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import {
   type LinhaDevolucaoDoCliente,
@@ -499,7 +500,7 @@ export function OrderDetailsView({
   };
 
   const handleWhatsAppSupport = () => {
-    const message = `Olá! Tenho uma dúvida sobre meu pedido #${orderId.slice(0, 8)}.`;
+    const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -737,7 +738,7 @@ export function OrderDetailsView({
               }
             }}
           >
-            <span className="font-mono">#{order.id.slice(0, 8)}</span>
+            <span className="font-mono">#{numeroDoPedido(order.id)}</span>
             {/* Laudo Opus 07/09 (C2): `zinc-550` é token VIVO — o
                 tailwind.config.js define os tons intermediários
                 550/650/750/850 de propósito. */}

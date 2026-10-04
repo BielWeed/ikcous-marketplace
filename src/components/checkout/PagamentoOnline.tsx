@@ -10,6 +10,7 @@ import {
   esquecerConfigDoCartao,
 } from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -777,7 +778,7 @@ function PagamentoComPix({
           </h2>
           {orderId && (
             <p className="text-xs text-zinc-500">
-              Pedido #{orderId.slice(0, 8)}
+              Pedido #{numeroDoPedido(orderId)}
             </p>
           )}
         </header>
@@ -827,7 +828,7 @@ function PagamentoComPix({
           )}
           {orderId && (
             <p className="text-xs text-zinc-500">
-              Pedido #{orderId.slice(0, 8)}
+              Pedido #{numeroDoPedido(orderId)}
             </p>
           )}
         </header>

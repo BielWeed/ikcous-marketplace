@@ -10,6 +10,7 @@ import {
   parcelasMaximasNoBrick,
   tiposDeCartaoAceitos,
 } from "@/lib/config-do-cartao";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -1365,7 +1366,9 @@ export function PagamentoComCartao({
           </p>
         )}
         {orderId && (
-          <p className="text-xs text-zinc-500">Pedido #{orderId.slice(0, 8)}</p>
+          <p className="text-xs text-zinc-500">
+            Pedido #{numeroDoPedido(orderId)}
+          </p>
         )}
       </header>
 

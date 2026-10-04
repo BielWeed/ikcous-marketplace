@@ -69,6 +69,7 @@ import {
   primeiraFormaDePagamentoDisponivel,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -3435,7 +3436,7 @@ export function CheckoutView({
     if (!lojaTemWhatsappNoCheckout) return;
     let phone = numeroLimpoDoCheckout;
     if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
-    const mensagem = `Olá! Meu pedido #${idDoPedido.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const mensagem = `Olá! Meu pedido #${numeroDoPedido(idDoPedido)} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -5929,7 +5930,7 @@ function SuccessView({
     if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
       numeroLimpo = `55${numeroLimpo}`;
     }
-    const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
+    const mensagem = `Olá! Quero acompanhar o meu pedido #${numeroDoPedido(orderId)}.`;
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -5959,9 +5960,7 @@ function SuccessView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Identificador:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
@@ -6043,9 +6042,7 @@ function PagamentoConfirmadoView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Pedido:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-emerald-700">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
@@ -6121,7 +6118,7 @@ function PagamentoForaDoPrazoView({
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }
-    const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
+    const mensagem = `Olá! Paguei o pedido #${numeroDoPedido(orderId)}, mas o prazo de reserva venceu. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -6149,9 +6146,7 @@ function PagamentoForaDoPrazoView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Pedido:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-amber-600">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
