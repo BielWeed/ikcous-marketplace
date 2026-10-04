@@ -2864,7 +2864,12 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // responde o 409 "Este pedido não é de pagamento online." no ponto em que
   // toda criação passa (leva `terminal: true`: a forma do pedido não muda
   // com "Tentar de novo"). 60 + 1 = 61.
-  assertEquals(achados, 61);
+  //
+  // 62, não mais 61: S2 (04/10/2026) — o cartão do LOJISTA sem a chave de
+  // assinatura do webhook responde o 409 "Para pagar com cartão, a loja
+  // precisa cadastrar…" (leva `terminal: true` e a flag
+  // `cartaoSemChaveDeAssinatura`, mesmo contrato do PIX). 61 + 1 = 62.
+  assertEquals(achados, 62);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -6629,15 +6634,61 @@ Deno.test("POLÍTICA PIX — lojista COM chave de assinatura: PIX criado normalm
   assertEquals(mp.criacoes().length, 1);
 });
 
-Deno.test("POLÍTICA PIX — delimitação: CARTÃO com lojista SEM chave de assinatura NÃO é tocado pelo gate do PIX (atravessa para o portão PRÓPRIO do cartão)", async () => {
-  // Prova pela diferença: sem a chave, o pedido de CARTÃO não pode morrer no
-  // 409 do PIX — ele atravessa o gate novo e bate no portão do CARTÃO (config
-  // ausente -> a mensagem PRÓPRIA do cartão, sem flag do PIX). Se um dia o
-  // gate do PIX engolir o cartão, este teste cai na mensagem errada.
-  const { supabase } = cenarioCartao({
-    configCartao: null,
+// S2 (04/10/2026): até aqui este teste provava o contrário — "o cartão com
+// lojista SEM chave atravessa o gate". A decisão do dono de 30/09 (pagamento
+// pelo app só com as 3 chaves) superou a de 29/09: o cartão do LOJISTA sem a
+// chave de assinatura também para, com a flag própria. A delimitação que
+// continua valendo é a da ORIGEM: loja nas chaves da plataforma não é tocada.
+Deno.test("S2: CARTÃO com lojista SEM chave de assinatura -> 409 terminal cartaoSemChaveDeAssinatura, ZERO chamadas ao MP, nada gravado", async () => {
+  const { supabase, registro, chamadasRpc, leiturasConfigCartao } = cenarioCartao({
     registroMp: await registroMpDeTeste({ webhookSecret: null }),
   });
+  const mp = fetchMP({}); // qualquer chamada ao MP estoura
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+  assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+  assertEquals(
+    corpo.error,
+    "Para pagar com cartão, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+  );
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(leiturasConfigCartao.length, 0);
+});
+
+Deno.test("S2: CARTÃO com lojista SEM chave e cartão em análise na vaga -> mesma recusa, sem tocar a vaga nem o MP (o `verificar` é quem resolve a dúvida)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+    registroMp: await registroMpDeTeste({ webhookSecret: null }),
+  });
+  const mp = fetchMP({});
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+Deno.test("S2 — delimitação: CARTÃO com loja nas chaves da PLATAFORMA (sem registro) NÃO é tocado (atravessa para o portão PRÓPRIO do cartão)", async () => {
+  // Prova pela diferença: sem registro do lojista, o pedido de CARTÃO não
+  // pode morrer no 409 da chave de assinatura — ele atravessa e bate no
+  // portão do CARTÃO (config ausente -> a mensagem PRÓPRIA do cartão, sem
+  // flag nenhuma). Se a trava um dia engolir a plataforma, cai aqui.
+  const { supabase } = cenarioCartao({ configCartao: null, registroMp: null });
   const mp = fetchMP({});
 
   const resposta = await handler(
@@ -6649,8 +6700,37 @@ Deno.test("POLÍTICA PIX — delimitação: CARTÃO com lojista SEM chave de ass
   assertEquals(resposta.status, 409);
   assertEquals(corpo.error, "Esta forma de pagamento não está disponível nesta loja.");
   assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, undefined);
   assertEquals(corpo.terminal, undefined);
   assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("S2 — delimitação: CARTÃO com loja nas chaves da PLATAFORMA cobra normalmente (200, UMA order no MP)", async () => {
+  const { supabase } = cenarioCartao({ registroMp: null });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200, JSON.stringify(corpo));
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("S2 — delimitação: CARTÃO com lojista COM chave de assinatura cobra normalmente (200, UMA order no MP)", async () => {
+  const { supabase } = cenarioCartao(); // registro default: lojista COM chave
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.criacoes().length, 1);
 });
 
 // =============================================================================

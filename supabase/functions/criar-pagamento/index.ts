@@ -1441,8 +1441,10 @@ async function handler(
   // banco): o PIX só existe para loja com a CHAVE DE ASSINATURA DO WEBHOOK
   // DO MERCADO PAGO CADASTRADA PELA PRÓPRIA LOJA (registro cifrado em
   // app_settings). A chave global do ambiente (MP_WEBHOOK_SECRET da
-  // plataforma) NÃO substitui o cadastro da loja. CARTÃO e demais meios
-  // NÃO são afetados por esta regra — é deliberação do dono, não generalização.
+  // plataforma) NÃO substitui o cadastro da loja. (Dizia "CARTÃO e demais
+  // meios NÃO são afetados por esta regra — deliberação do dono". A decisão
+  // do dono de 30/09/2026 — pagamento pelo app só com as 3 chaves — superou
+  // essa: ver a trava do CARTÃO logo abaixo, S2 de 04/10/2026.)
   //
   // O PORQUÊ: sem a chave própria, as notificações de pagamento da loja não
   // têm como ser validadas com o segredo DELA — a confirmação cairia no
@@ -1475,6 +1477,28 @@ async function handler(
         pixSemChaveDeAssinatura: true,
       }, 409);
     }
+  }
+  // S2 (travas onde a cobrança nasce, 04/10/2026): o CARTÃO do LOJISTA sem a
+  // chave de assinatura do webhook para no MESMO 409 terminal do PIX —
+  // decisão do dono de 30/09/2026 (pagamento pelo app só com as 3 chaves
+  // cadastradas). O caso é mais restrito que o
+  // do PIX, de propósito: loja nas chaves da PLATAFORMA (`origem` diferente
+  // de "lojista") continua cobrando cartão como sempre — a regra é sobre o
+  // cadastro que a loja fez pela metade, não sobre quem ainda não cadastrou.
+  // `verificar` não passa por aqui (mesmo motivo do PIX acima): um cartão em
+  // dúvida ainda precisa ser resolvido. Flag própria, mesmo contrato da
+  // `pixSemChaveDeAssinatura` (marcador para o front, nunca texto).
+  if (metodo === "cartao" && credenciaisMp.origem === "lojista" && !credenciaisMp.segredoWebhook) {
+    // Só origem e motivo em log — nenhum segredo, jamais.
+    console.error(
+      `criar-pagamento: cartão recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
+    );
+    return json({
+      error:
+        "Para pagar com cartão, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+      terminal: true,
+      cartaoSemChaveDeAssinatura: true,
+    }, 409);
   }
 
   // `let`, não `const` (Fase 3.5): quando a vaga ocupada é liberada, o
