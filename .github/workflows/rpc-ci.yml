@@ -127,5 +127,13 @@ jobs:
       # byte a byte e preflights recusando sem escrita. CLONE próprio.
       - name: Prova viva do admin atual no dinheiro (migration 20261197000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-viva.cjs
+      # Migration 20261199000000 (as portas do painel exigem o admin de
+      # agora): a autopromoção do rebaixado só no app_metadata falha; o
+      # ex-admin com JWT velho é recusado nas 39 RPCs do painel (dado de
+      # cliente, números da loja, caixa, estoque, config) com a recusa de
+      # sempre; admin, dono, service_role e postgres como antes; controles sem
+      # a correção passam; rollback só troca os 42 corpos. CLONE próprio.
+      - name: Prova viva do admin atual nas portas do painel (migration 20261199000000)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-portas-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs

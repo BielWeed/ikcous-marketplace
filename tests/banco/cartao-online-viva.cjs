@@ -178,6 +178,13 @@ PROVAS.push({
         ),
       /Acesso negado/,
     );
+    // 20261199000000 (admin ATUAL): salvar a config do cartão exige o papel
+    // admin AGORA em auth.users E em profiles — o admin da prova tem os dois.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin prova', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
     await logar(cliente, U_ADMIN);
     await assert.rejects(
       () =>

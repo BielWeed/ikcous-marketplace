@@ -465,6 +465,15 @@ PROVAS.push({
        ON CONFLICT (id) DO NOTHING`,
       [U_ADMIN_2],
     );
+    // 20261199000000 (admin ATUAL): a venda no balcão exige o papel admin
+    // AGORA em auth.users E em profiles — os dois admins da prova têm os dois
+    // (o gatilho de profiles sincroniza o papel).
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES
+         ($1, 'Admin prova', 'admin'), ($2, 'Admin prova 2', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN, U_ADMIN_2],
+    );
     // Um pedido da VITRINE carimbado com uma chave conhecida: é o controle
     // negativo da guarda de idempotência (canal diferente).
     await cliente.query(

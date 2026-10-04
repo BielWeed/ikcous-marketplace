@@ -506,12 +506,14 @@ PROVAS.push({
       [P_ESTOQUE],
     );
     // Rebaixamento pelo app: profiles.role, feito por um admin (o gatilho
-    // tr_prevent_role_change exige is_admin() de quem muda papel); o gatilho
-    // de sincronia leva a auth.users — as DUAS fontes dizem customer.
+    // tr_prevent_role_change exige is_admin() de quem muda papel e, desde a
+    // 20261199000000, também is_admin_atual(): o admin LOGADO de agora); o
+    // gatilho de sincronia leva a auth.users — as DUAS fontes dizem customer.
     await cliente.query("BEGIN");
-    await cliente.query("SELECT set_config('request.jwt.claims', $1, true)", [
-      claims(U_ADMIN, "admin"),
-    ]);
+    await cliente.query(
+      "SELECT set_config('request.jwt.claims', $1, true), set_config('app.rpc.user_id', $2, true)",
+      [claims(U_ADMIN, "admin"), U_ADMIN],
+    );
     await cliente.query(
       "UPDATE public.profiles SET role = 'customer' WHERE id = ANY($1::uuid[])",
       [[U_REBAIXADO_AMBOS, U_REBAIXADO_PERFIL]],
