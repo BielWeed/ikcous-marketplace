@@ -569,6 +569,7 @@ export function PagamentoOnline({
       valor={valor}
       onErro={onErro}
       pedidoMortoNoServidor={pedidoMortoNoServidor}
+      onVerMeusPedidos={onVerMeusPedidos}
     />
   );
 }
@@ -578,10 +579,14 @@ function PagamentoComPix({
   valor,
   onErro,
   pedidoMortoNoServidor = false,
+  onVerMeusPedidos,
 }: {
   orderId: string;
   valor: number;
   pedidoMortoNoServidor?: boolean;
+  // Saída do aviso de pedido morto: leva à lista de pedidos. Ausente = o
+  // botão não aparece (nunca um botão mudo).
+  onVerMeusPedidos?: () => void;
   // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
@@ -795,6 +800,15 @@ function PagamentoComPix({
             confirmação aparece aqui. Se ainda não pagou, faça um pedido novo.
           </p>
         </div>
+        {onVerMeusPedidos && (
+          <button
+            type="button"
+            onClick={onVerMeusPedidos}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Ver meus pedidos
+          </button>
+        )}
       </section>
     );
   }

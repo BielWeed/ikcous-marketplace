@@ -117,6 +117,7 @@ vi.mock("@/hooks/useConfigDoCartao", async () => {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const PEDIDO = "ped-999";
+const irPara = vi.fn();
 const PEDIDO_LIDO = {
   data: { total: 149.9, metodo_online: "pix" },
   error: null,
@@ -131,6 +132,7 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
     lerPedido.mockReset().mockResolvedValue(PEDIDO_LIDO);
     lerPoll.mockReset();
     propsCapturadasDoPagamento = null;
+    irPara.mockReset();
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
@@ -149,7 +151,7 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
     await act(async () => {
       raiz.render(
         <CheckoutView
-          onNavigate={() => {}}
+          onNavigate={irPara}
           onSetBackOverride={() => {}}
           retomarPedidoId={PEDIDO}
         />,
@@ -196,6 +198,18 @@ describe("CheckoutView — pedido morto no servidor chega ao PagamentoOnline", (
     await montarNaTelaDoPix();
     await lerOServidor({ payment_status: "aguardando", status: "cancelled" });
     expect(propsCapturadasDoPagamento?.pedidoMortoNoServidor).toBe(true);
+  });
+
+  it("'aguardando' + 'cancelled': a saída do aviso ('Ver meus pedidos') leva à lista de pedidos", async () => {
+    await montarNaTelaDoPix();
+    await lerOServidor({ payment_status: "aguardando", status: "cancelled" });
+
+    const verMeusPedidos = propsCapturadasDoPagamento?.onVerMeusPedidos as
+      | (() => void)
+      | undefined;
+    expect(verMeusPedidos).toBeTypeOf("function");
+    verMeusPedidos?.();
+    expect(irPara).toHaveBeenCalledWith("orders");
   });
 
   it("CONTROLE: 'aguardando' + 'pending' (pedido vivo) mantém falso", async () => {

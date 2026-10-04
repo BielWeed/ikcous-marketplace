@@ -52,7 +52,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function renderizar(pedidoMortoNoServidor?: boolean) {
+async function renderizar(
+  pedidoMortoNoServidor?: boolean,
+  onVerMeusPedidos?: () => void,
+) {
   await act(async () => {
     raiz.render(
       <PagamentoOnline
@@ -60,6 +63,7 @@ async function renderizar(pedidoMortoNoServidor?: boolean) {
         valor={100}
         onErro={() => {}}
         pedidoMortoNoServidor={pedidoMortoNoServidor}
+        onVerMeusPedidos={onVerMeusPedidos}
       />,
     );
   });
@@ -117,5 +121,32 @@ describe("PagamentoOnline (PIX) — pedido morto no servidor", () => {
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "Este código não vale mais.",
     );
+  });
+
+  // Saída do aviso: o cliente que já pagou (ou que quer conferir) precisa de
+  // um caminho até a lista de pedidos; "faça um pedido novo" sozinho o deixa
+  // numa tela sem botão.
+  it("com o pedido morto e a saída conhecida: 'Ver meus pedidos' leva à lista de pedidos", async () => {
+    const aoVerMeusPedidos = vi.fn();
+    await renderizar(true, aoVerMeusPedidos);
+
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      (b.textContent ?? "").includes("Ver meus pedidos"),
+    );
+    expect(botao).toBeDefined();
+    act(() => {
+      botao?.click();
+    });
+    expect(aoVerMeusPedidos).toHaveBeenCalledTimes(1);
+  });
+
+  it("CONTROLE: sem a saída conhecida não nasce botão mudo", async () => {
+    await renderizar(true);
+    expect(texto()).not.toContain("Ver meus pedidos");
+  });
+
+  it("CONTROLE: com o pedido vivo o botão não aparece (o PIX segue sendo pago aqui)", async () => {
+    await renderizar(false, vi.fn());
+    expect(texto()).not.toContain("Ver meus pedidos");
   });
 });
