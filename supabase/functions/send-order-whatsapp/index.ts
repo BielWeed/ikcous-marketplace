@@ -1,13 +1,41 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { numeroDoPedido } from "../_shared/pedido.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req: Request) => {
+interface DadosDaMensagem {
+    orderId: string
+    customerName: string
+    itemsList?: string
+    totalPrice: number | string
+    paymentMethod: string
+}
+
+// Texto que o cliente recebe no WhatsApp. Separado do handler para o teste
+// medir a mensagem sem rede nem banco.
+export function montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod }: DadosDaMensagem): string {
+    const paymentLabel = paymentMethod === 'pix' ? 'Pix' : paymentMethod === 'card' ? 'Cartão' : 'Dinheiro'
+
+    return `*Pedido Confirmado!* 🛍️\n\n` +
+        `Olá *${customerName}*, recebemos seu pedido *${numeroDoPedido(orderId)}* com sucesso!\n\n` +
+        `*Resumo do Pedido:*\n${itemsList}\n\n` +
+        `*Total:* R$ ${Number(totalPrice).toFixed(2).replace('.', ',')}\n` +
+        `*Pagamento:* ${paymentLabel}\n\n` +
+        `Agradecemos a preferência!`;
+}
+
+// Em teste o módulo só é importado: não sobe o servidor.
+const emTeste =
+    Deno.mainModule.endsWith('_test.ts') ||
+    Deno.mainModule.endsWith('_test.js') ||
+    Deno.mainModule.includes('index_test')
+
+if (!emTeste) serve(async (req: Request) => {
     // Handle CORS
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -65,14 +93,7 @@ serve(async (req: Request) => {
 
         // 3. Montar a mensagem
         const itemsList = items?.map((item: any) => `- ${item.product_name} (${item.quantity}x)`).join('\n')
-        const paymentLabel = paymentMethod === 'pix' ? 'Pix' : paymentMethod === 'card' ? 'Cartão' : 'Dinheiro'
-
-        const message = `*Pedido Confirmado!* 🛍️\n\n` +
-            `Olá *${customerName}*, recebemos seu pedido *#${orderId.slice(-6)}* com sucesso!\n\n` +
-            `*Resumo do Pedido:*\n${itemsList}\n\n` +
-            `*Total:* R$ ${Number(totalPrice).toFixed(2).replace('.', ',')}\n` +
-            `*Pagamento:* ${paymentLabel}\n\n` +
-            `Agradecemos a preferência!`;
+        const message = montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod })
 
         // 4. Enviar para a Evolution API
         let formattedNumber = customerWhatsapp.replace(/\D/g, '')
