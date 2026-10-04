@@ -33,6 +33,10 @@
 --                    colunas/tipos certos e RLS ligada. Sem isto uma loja que
 --                    nunca recebeu a 90/91 passaria na 8a (a 90 só COMENTA o
 --                    liberar_cobranca_do_pedido, então a BASE acima não a vê).
+--                    Estas 5 casam pela ASSINATURA exata (nome e tipos) além do
+--                    md5: o `vivo` mostra `assinatura md5` de cada sobrecarga
+--                    achada, então uma versão com outro tipo de argumento (ou
+--                    uma sobrecarga a mais) reprova e aparece escrita.
 --   * nova <fn>    — 8 funções que 92..202 CRIAM: têm de estar ausentes.
 --   * coluna/tabela/índice/política — o que 92..202 cria: tem de estar ausente
 --                    (5 colunas de `order_refunds`, a tabela
@@ -104,18 +108,30 @@ WITH corpos AS (
     ('solicitar_estorno', 'ee9fe85d9b18b0e38e23cf48dd3b1111'),
     ('update_order_status_atomic', 'ed2f7fd3e0177c027720049b2fe55d3b'),
     ('upsert_store_config', '37a81b0351637a90b7a5a8e10a7d3e82')
-), base_90_91(fn, h) AS (VALUES
+), corpos_sig AS (
+  -- UMA linha por sobrecarga, com a assinatura (nome + tipos dos argumentos,
+  -- como o Postgres os imprime: varchar vira `character varying`).
+  SELECT p.proname,
+         p.proname || '(' || oidvectortypes(p.proargtypes) || ')' AS assinatura,
+         md5(replace(p.prosrc, E'\r', '')) AS h
+    FROM pg_proc p
+    JOIN pg_namespace ns ON ns.oid = p.pronamespace
+   WHERE ns.nspname = 'public'
+), base_90_91(fn, assinatura, h) AS (VALUES
     -- O que as migrations 20261190 e 20261191 deixam no banco (elas CRIAM
     -- reconciliacao_visitas / marcar_visitas_da_reconciliacao e REDEFINEM
     -- pagamentos_a_reconciliar; a 91 CRIA avisos_ao_lojista e as 3 funcoes de
     -- aviso). A 90 so COMENTA liberar_cobranca_do_pedido (a BASE acima). Se estas
     -- linhas reprovam, a 90 e/ou a 91 NAO estao na loja: a fila 92..202 nao pode
     -- ir antes delas. Medido num banco com todas as migrations < 20261192.
-    ('pagamentos_a_reconciliar', 'a8aae3c132cac141c27091a4e3648cf4'),
-    ('marcar_visitas_da_reconciliacao', '072dca9dd2f0d0a2911b69f72fc8f5c0'),
-    ('reservar_aviso_ao_lojista', '1aed7ca9e2c55d1ea61e9773367faf06'),
-    ('confirmar_aviso_ao_lojista', '55de4b72c2b48ab960313961c56125fd'),
-    ('liberar_aviso_ao_lojista', 'd505bca7be99fc5e74a76a47ccd2b796')
+    -- A linha casa pela ASSINATURA exata (a do CREATE FUNCTION da migration) E
+    -- pelo md5: uma sobrecarga com outro tipo (reservar_aviso_ao_lojista(character
+    -- varying) com o mesmo corpo) NAO passa.
+    ('pagamentos_a_reconciliar', 'pagamentos_a_reconciliar()', 'a8aae3c132cac141c27091a4e3648cf4'),
+    ('marcar_visitas_da_reconciliacao', 'marcar_visitas_da_reconciliacao(uuid[], uuid[], text[])', '072dca9dd2f0d0a2911b69f72fc8f5c0'),
+    ('reservar_aviso_ao_lojista', 'reservar_aviso_ao_lojista(text)', '1aed7ca9e2c55d1ea61e9773367faf06'),
+    ('confirmar_aviso_ao_lojista', 'confirmar_aviso_ao_lojista(text)', '55de4b72c2b48ab960313961c56125fd'),
+    ('liberar_aviso_ao_lojista', 'liberar_aviso_ao_lojista(text)', 'd505bca7be99fc5e74a76a47ccd2b796')
 ), tabelas_90_91(tabela, coluna, tipo, migration) AS (VALUES
     ('reconciliacao_visitas', 'order_id', 'uuid', '90'),
     ('reconciliacao_visitas', 'visitado_em', 'timestamp with time zone', '90'),
@@ -150,8 +166,10 @@ WITH corpos AS (
   SELECT 'base ' || b.fn, b.h, COALESCE(c.h, 'AUSENTE')
     FROM base b LEFT JOIN corpos c ON c.proname = b.fn
   UNION ALL
-  SELECT 'base 90/91 ' || b.fn, b.h, COALESCE(c.h, 'AUSENTE')
-    FROM base_90_91 b LEFT JOIN corpos c ON c.proname = b.fn
+  SELECT 'base 90/91 ' || b.fn, b.assinatura || ' ' || b.h,
+         COALESCE((SELECT string_agg(s.assinatura || ' ' || s.h, ', ' ORDER BY s.assinatura, s.h)
+                     FROM corpos_sig s WHERE s.proname = b.fn), 'AUSENTE')
+    FROM base_90_91 b
   UNION ALL
   SELECT 'tabela ' || t.tabela || ' existe (' || t.migration || ')', 'EXISTE',
          CASE WHEN to_regclass('public.' || t.tabela) IS NOT NULL THEN 'EXISTE' ELSE 'AUSENTE' END

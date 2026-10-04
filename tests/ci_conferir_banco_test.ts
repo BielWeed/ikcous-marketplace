@@ -1057,11 +1057,20 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
     assert(i >= 0 && j > i, `não achei o trecho ${de} … ${ate} em 8a`);
     return sql.slice(i, j);
   };
-  const base = pares(
-    fatia(sql8a, "base(fn, h) AS (VALUES", "base_90_91(fn, h) AS (VALUES"),
-  );
-  const base9091 = pares(
-    fatia(sql8a, "base_90_91(fn, h) AS (VALUES", "tabelas_90_91("),
+  const base = pares(fatia(sql8a, "base(fn, h) AS (VALUES", "corpos_sig AS ("));
+  // base_90_91 tem 3 colunas: fn, assinatura exata e md5.
+  const trio9091 = [
+    ...fatia(
+      sql8a,
+      "base_90_91(fn, assinatura, h) AS (VALUES",
+      "tabelas_90_91(",
+    ).matchAll(
+      /\('([a-z_0-9]+)', '([a-z_0-9]+\([a-z_0-9[\], ]*\))', '([0-9a-f]{32})'\)/g,
+    ),
+  ];
+  const base9091 = new Map<string, string>(trio9091.map((x) => [x[1], x[3]]));
+  const assinaturas9091 = new Map<string, string>(
+    trio9091.map((x) => [x[1], x[2]]),
   );
   const final = pares(sql8e);
 
@@ -1169,6 +1178,33 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
         confirmar_aviso_ao_lojista: [m91, rb91],
         liberar_aviso_ao_lojista: [m91, rb91],
       };
+      // a ASSINATURA em 8a = a do CREATE FUNCTION da migration (tipos, na ordem)
+      const assinaturaDe = (texto: string, fn: string) => {
+        const r = new RegExp(
+          `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(([^)]*)\\)`,
+          "i",
+        ).exec(texto);
+        assert(r, `${fn}: não definida nesta migration`);
+        const tipos = r[1]
+          .split(",")
+          .map((a) =>
+            a
+              .trim()
+              .replace(/\s+/g, " ")
+              .replace(/ DEFAULT .*$/i, ""),
+          )
+          .filter((a) => a !== "")
+          .map((a) => a.split(" ").slice(1).join(" "));
+        return `${fn}(${tipos.join(", ")})`;
+      };
+      assertEquals(assinaturas9091.size, 5);
+      for (const [fn, assinatura] of assinaturas9091) {
+        assertEquals(
+          assinatura,
+          assinaturaDe(donos[fn][0], fn),
+          `${fn}: a assinatura em 8a difere da do CREATE FUNCTION na migration 90/91`,
+        );
+      }
       for (const [fn, h] of base9091) {
         const [mig, rb] = donos[fn];
         assertEquals(

@@ -1774,6 +1774,78 @@ async function main() {
       );
     }
 
+    // Ressalva do revisor: as 5 funções da 90/91 casam pela ASSINATURA exata.
+    // reservar_aviso_ao_lojista(character varying) com o MESMO corpo da (text)
+    // não pode dar verde.
+    {
+      const ASSIN_OK =
+        "reservar_aviso_ao_lojista(text) 1aed7ca9e2c55d1ea61e9773367faf06";
+      const trocarPorVarchar = async (db, manterTexto) => {
+        await usar(db, async (c) => {
+          const r = await c.query(
+            `SELECT pg_get_functiondef('public.reservar_aviso_ao_lojista(text)'::regprocedure) AS d`,
+          );
+          const def = r.rows[0].d;
+          const comVarchar = def.replace(
+            "reservar_aviso_ao_lojista(p_chave text)",
+            "reservar_aviso_ao_lojista(p_chave character varying)",
+          );
+          assert.notEqual(
+            comVarchar,
+            def,
+            "a definição tem a assinatura (p_chave text)",
+          );
+          if (!manterTexto) {
+            await c.query(
+              "DROP FUNCTION public.reservar_aviso_ao_lojista(text)",
+            );
+          }
+          await c.query(comVarchar);
+        });
+      };
+      const sig = await clone(nomeBase, "ip_j_sig");
+      await trocarPorVarchar(sig, false);
+      const rSig = await consulta(sig, "8a-antes-92-a-202-objetos-e-corpos");
+      // o MESMO corpo (md5 igual): só a assinatura mudou
+      assert.deepEqual(
+        reprovadas(rSig).map((x) => x.item),
+        ["base 90/91 reservar_aviso_ao_lojista"],
+        "assinatura trocada: a 8a reprova EXATAMENTE a linha dela",
+      );
+      const linhaSig = linha(rSig, "base 90/91 reservar_aviso_ao_lojista");
+      assert.equal(linhaSig.esperado, ASSIN_OK);
+      assert.equal(
+        linhaSig.vivo,
+        "reservar_aviso_ao_lojista(character varying) 1aed7ca9e2c55d1ea61e9773367faf06",
+        "o vivo mostra a assinatura ERRADA achada (com o md5 igual)",
+      );
+      console.log(`    8a, assinatura trocada: ${linhaSig.vivo}`);
+      // sobrecarga a mais (a (text) fica e entra uma (character varying)): reprova e mostra as duas
+      const dupla = await clone(nomeBase, "ip_j_sig2");
+      await trocarPorVarchar(dupla, true);
+      const rDupla = await consulta(
+        dupla,
+        "8a-antes-92-a-202-objetos-e-corpos",
+      );
+      assert.deepEqual(
+        reprovadas(rDupla).map((x) => x.item),
+        ["base 90/91 reservar_aviso_ao_lojista"],
+      );
+      assert.match(
+        linha(rDupla, "base 90/91 reservar_aviso_ao_lojista").vivo,
+        /^reservar_aviso_ao_lojista\(character varying\) [0-9a-f]{32}, reservar_aviso_ao_lojista\(text\) [0-9a-f]{32}$/,
+      );
+      // a base pré-92 completa continua com 0 reprovadas
+      assert.deepEqual(
+        reprovadas(a_antes),
+        [],
+        "base pré-92 completa: 0 reprovadas",
+      );
+      ok(
+        "(j) 8a: reservar_aviso_ao_lojista(character varying) com o MESMO corpo no lugar da (text) → reprova EXATAMENTE a linha dela e o vivo mostra a assinatura errada; (text)+(varchar) juntas também reprovam; base pré-92 completa → 0 reprovadas",
+      );
+    }
+
     const e_depois = await consulta(cheio, "8e-conferir-92-a-202-aplicado");
     assert.deepEqual(reprovadas(e_depois), [], "8e depois da fila: tudo ok");
     assert.ok(
