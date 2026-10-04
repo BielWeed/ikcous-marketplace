@@ -21,7 +21,7 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
-import { MOTIVO_SALDO_MUDOU_ANTES_DO_POST } from "../_shared/estorno.ts";
+import { MOTIVO_LINHA_INCERTA, MOTIVO_SALDO_MUDOU_ANTES_DO_POST } from "../_shared/estorno.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes MP-1/MP-2 do fim deste arquivo. Desde a tarefa mp-6
 // o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
@@ -3009,4 +3009,108 @@ Deno.test("LEASE-C3 - autorizado: os dois caminhos perguntam ao banco UMA vez ca
     ["rl3", "rl4"],
   );
   assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").map((c) => c.chave).sort(), ["rl3", "rl4"]);
+});
+
+
+// ── LINHA INCERTA (Lote A, 04/10/2026 — achado do coordenador em 1a823e3f):
+// a 2ª passada do cron numa linha em_processamento (tentativas >= 1: o POST
+// anterior pode ter chegado ao MP) com o pedido já em 90 NUNCA a termina; a
+// prova externa (consulta ao MP mostrando o refund) conclui. A linha
+// 'solicitado' (nunca marcada, nunca POSTada) continua recusada como antes.
+
+Deno.test("INCERTA-C1 - retry de linha em_processamento (tentativas 2) com o pedido em 90: tentar_depois, ZERO POST, nada terminal, reserva preservada", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 90 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "ri1", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    // A consulta não esclarece (sem refunds) — é o caminho que levaria ao retry.
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 20 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta; ZERO POST novo");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou" || a.valores.status === "recusado"),
+    false,
+    "nada terminal: a reserva fica",
+  );
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "ri1" && String(a.valores.ultimo_erro ?? "").includes(MOTIVO_LINHA_INCERTA),
+    ),
+    true,
+  );
+});
+
+Deno.test("INCERTA-C2 (controle) - linha 'solicitado' (nunca marcada) com o pedido em 90: recusado como antes, zero chamada ao MP", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 90 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "ri2", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(corpo.estornos.falhos, 1);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.id === "ri2" && a.valores.status === "recusado"),
+    true,
+  );
+});
+
+Deno.test("INCERTA-C3 - prova externa: a consulta ao MP mostra o refund da linha incerta -> conclui pela RPC, ZERO POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 20 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "ri3", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 3, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["REF_ANTIGO"],
+  });
+  const mp = fetchDubleReconciliacao([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 40,
+        refunds: [
+          { id: "REF_ANTIGO", amount: 20, status: "approved" },
+          { id: "REF_DA_INCERTA", amount: 20, status: "approved" },
+        ],
+      },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"]);
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(registro.chamadasConcluirEstorno.map((c) => c.args.p_mp_refund_id), ["REF_DA_INCERTA"]);
 });

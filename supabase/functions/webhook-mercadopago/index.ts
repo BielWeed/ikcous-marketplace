@@ -1221,8 +1221,9 @@ async function registrarDesfechoDoEstorno(args: {
   // 60, e a reentrega pulava o REF já "reivindicado" — os 10 nunca voltavam.
   // Não cabe no dinheiro real (estornado + reserva de contestação): nada é
   // gravado, a identidade fica livre (a reentrega tenta de novo) e o admin é
-  // avisado uma vez. O APP incerto não é liberado aqui: o executor dele o
-  // recusa antes de qualquer POST (`guardaAntesDeChamar`).
+  // avisado uma vez. O APP não é liberado aqui: quando o saldo acaba, o
+  // executor dele não manda POST — recusa a linha nova e SEGURA a incerta
+  // (`linhaPodeJaTerChegadoAoMp`, _shared/estorno.ts) até o MP dar veredito.
   for (const refund of refundsConcluidos) {
     const refundId = typeof refund.id === "string" || typeof refund.id === "number"
       ? String(refund.id)

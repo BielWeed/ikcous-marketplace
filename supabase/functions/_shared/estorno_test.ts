@@ -17,6 +17,7 @@ import {
   MOTIVO_NAO_COBRE_CONSERVADOR,
   refundsDaOrder,
   MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
+  MOTIVO_LINHA_INCERTA,
   type LinhaEstorno,
   type PedidoParaEstorno,
 } from "./estorno.ts";
@@ -2913,4 +2914,133 @@ Deno.test("LEASE-6 - autorizacaoPeloBanco: chama autorizar_post_do_estorno com a
     nome: "autorizar_post_do_estorno",
     args: { p_refund_id: linha.id, p_valor: 20 },
   });
+});
+
+// ---------------------------------------------------------------------------
+// LINHA INCERTA (Lote A, 04/10/2026 — achado do coordenador em 1a823e3f)
+// ---------------------------------------------------------------------------
+// A guarda de entrada rodava sobre o RETRATO do chamador e devolvia
+// `recusado` (terminal: a linha sai da reserva) também para uma linha cujo
+// POST anterior pode ter chegado ao MP. Sequência do defeito: 1ª passada,
+// a autorização diz nao_cabe -> tentar_depois (certo); o cron seguinte lê o
+// pedido já com 90 confirmados -> a guarda de entrada recusa por saldo -> a
+// linha vira terminal e LIBERA a reserva sem veredito do MP.
+//
+// Critério de "incerta" (o que o código já grava): a linha já foi MARCADA
+// antes desta execução — `tentativas > 1` (todo chamador soma 1 na marca
+// que antecede o executor, e toda marca antecede um POST possível) — ou já
+// carrega um `mp_refund_id` do MP. Nada no projeto devolve uma linha a
+// 'solicitado' (só INSERT nasce assim), então a linha que chega com
+// tentativas 1 e sem id do MP nunca teve POST.
+
+function incertaCom(extras: Partial<LinhaEstorno> = {}): LinhaEstorno {
+  return linhaCom({ amount: 20, status: "em_processamento", tentativas: 2, ...extras });
+}
+
+Deno.test("INCERTA-1 - 1ª passada: o banco diz nao_cabe -> tentar_depois, nenhum POST (a linha segue reservada)", async () => {
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const r = await executarEstornoReal({
+    linha: linhaCom({ amount: 20, status: "em_processamento", tentativas: 1 }),
+    pedido: pedidoOrder({ valor_estornado: 20 }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    autorizarAntesDoPost: () => Promise.resolve({ decisao: "nao_cabe", disponivel: 10 }),
+  });
+  assertEquals(r.tipo, "tentar_depois");
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
+});
+
+Deno.test("INCERTA-2 - 2ª passada com o pedido já em 90 confirmados: a linha INCERTA (tentativas 2) NUNCA vira recusado — tentar_depois, ZERO chamada ao MP, reserva preservada", async () => {
+  const banco = bancoFalso({
+    total: 100,
+    valor_estornado: 90,
+    em_voo_outras: 0,
+    payment_status: "pago",
+    status_da_linha: "em_processamento",
+  });
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const r = await executarEstornoReal({
+    linha: incertaCom(),
+    pedido: pedidoOrder({ valor_estornado: 90 }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    autorizarAntesDoPost: banco.autorizar,
+  });
+  assertEquals(r.tipo, "tentar_depois", "nunca terminal sem veredito do MP");
+  assertEquals(mp.chamadas.length, 0, "zero POST novo");
+  assertEquals(banco.perguntas.length, 0, "nem chega a pedir autorização");
+  assertStringIncludes((r as { motivo: string }).motivo, MOTIVO_LINHA_INCERTA);
+});
+
+Deno.test("INCERTA-3 - linha que já carrega mp_refund_id também é incerta (tentativas 1): tentar_depois", async () => {
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const r = await executarEstornoReal({
+    linha: incertaCom({ tentativas: 1, mp_refund_id: "REF_DA_PROPRIA_LINHA" }),
+    pedido: pedidoOrder({ valor_estornado: 90 }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    autorizarAntesDoPost: () => Promise.resolve({ decisao: "nao_cabe", disponivel: 10 }),
+  });
+  assertEquals(r.tipo, "tentar_depois");
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("INCERTA-4 - incerta com o pedido já 'estornado' (saldo zero por outro nome): tentar_depois, nunca recusado", async () => {
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const r = await executarEstornoReal({
+    linha: incertaCom({ tentativas: 3 }),
+    pedido: pedidoOrder({ valor_estornado: 100, payment_status: "estornado" }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    autorizarAntesDoPost: () => Promise.resolve({ decisao: "nao_cabe", disponivel: 0 }),
+  });
+  assertEquals(r.tipo, "tentar_depois");
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("INCERTA-5 (controle) - linha NOVA, sem POST algum (tentativas 1, sem id do MP), saldo insuficiente: recusado como antes, zero chamada", async () => {
+  const mp = fetchDuble([POST_ORDERS_OK]);
+  const r = await executarEstornoReal({
+    linha: linhaCom({ amount: 20, status: "em_processamento", tentativas: 1 }),
+    pedido: pedidoOrder({ valor_estornado: 90 }),
+    token: TOKEN,
+    buscar: mp.f,
+    consultarTransacaoDaOrder: consultaTransacaoFalsa,
+    autorizarAntesDoPost: () => Promise.resolve({ decisao: "nao_cabe", disponivel: 10 }),
+  });
+  assertEquals(r, { tipo: "recusado", motivo: "valor maior que o disponível para devolver" });
+  assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("INCERTA-6 - prova externa: a consulta ao MP mostra o refund da linha incerta -> concluido (o caminho que já existe libera a reserva com veredito)", async () => {
+  const mp = fetchDuble([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 40,
+        refunds: [
+          { id: "REF_ANTIGO", amount: 20, status: "approved" },
+          { id: "REF_DA_INCERTA", amount: 20, status: "approved" },
+        ],
+      },
+    },
+  ]);
+  const r = await confirmarPorConsulta({
+    buscar: mp.f,
+    token: TOKEN,
+    linha: incertaCom({ tentativas: 3 }),
+    pedido: pedidoPagoCom({ valor_estornado: 20 }),
+    idsJaReivindicados: ["REF_ANTIGO"],
+  });
+  assertEquals(r.tipo, "concluido");
+  assertEquals((r as { mp_refund_id: string }).mp_refund_id, "REF_DA_INCERTA");
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
 });

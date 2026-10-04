@@ -114,6 +114,33 @@ export type AutorizacaoDoPost =
 export const MOTIVO_SALDO_MUDOU_ANTES_DO_POST =
   "o saldo do pedido mudou enquanto a devolução era preparada (outra devolução já foi registrada pelo Mercado Pago) — nada foi enviado; confira o pedido no painel do Mercado Pago";
 
+/**
+ * Sufixo do motivo quando a guarda de entrada recusaria uma linha INCERTA
+ * (ver `linhaPodeJaTerChegadoAoMp`): nada é enviado e a reserva fica.
+ */
+export const MOTIVO_LINHA_INCERTA =
+  "uma tentativa anterior desta devolução pode já ter chegado ao Mercado Pago — nada novo foi enviado e o valor segue reservado até o Mercado Pago confirmar ou negar";
+
+/**
+ * A linha pode JÁ ter chegado ao MP? (Lote A, 04/10/2026 — achado do
+ * coordenador em 1a823e3f.) Critério pelo que o código já grava:
+ *   * `tentativas > 1` — todo chamador soma 1 na MARCA que antecede o
+ *     executor (edge: tentativas lidas + 1; cron: idem nos dois caminhos), e
+ *     toda marca antecede um POST possível. Chegar aqui com mais de 1 é ter
+ *     sido marcada antes desta execução: um POST com a chave desta linha
+ *     (sempre `linha.id`) pode ter saído e voltado sem resposta legível.
+ *   * `mp_refund_id` presente — o MP já devolveu um id para esta linha.
+ * Nada no projeto devolve uma linha a 'solicitado' (só INSERT nasce assim),
+ * então a linha que chega com tentativas 1 e sem id do MP nunca teve POST.
+ * Resíduo conhecido: dois cliques simultâneos na MESMA linha nova leem
+ * tentativas 0 e gravam 1 ambos (a métrica perde um ponto, comentário da
+ * edge); os dois POSTs, se saírem, usam a mesma chave e o MP os junta.
+ */
+export function linhaPodeJaTerChegadoAoMp(linha: LinhaEstorno): boolean {
+  return Number(linha.tentativas ?? 0) > 1 ||
+    (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "");
+}
+
 type ChamarRpc = (
   nome: string,
   args: Record<string, unknown>,
@@ -1374,7 +1401,25 @@ export async function executarEstorno(args: {
       fetchComTempo(fetch, typeof input === "string" ? input : String(input), init));
 
   const guarda = guardaAntesDeChamar(linha, pedido, new Date());
-  if (!guarda.ok) return { tipo: "recusado", motivo: guarda.motivo };
+  if (!guarda.ok) {
+    // Linha INCERTA (ver `linhaPodeJaTerChegadoAoMp`): a guarda sobre o
+    // retrato NUNCA a termina. `recusado` libera a reserva, e um POST
+    // anterior desta linha pode ter chegado ao MP — saldo insuficiente aqui
+    // é exatamente o caso em que outra devolução entrou depois dele. Nada é
+    // enviado; a reserva fica até a consulta ao MP (o caminho que já existe
+    // no cron) achar o refund (conclui) ou o MP dar veredito negativo. Vale
+    // para toda recusa da guarda: pedido já 'estornado' é saldo zero por
+    // outro nome, e o prazo de 180 dias não apaga um POST que já saiu.
+    if (linhaPodeJaTerChegadoAoMp(linha)) {
+      console.error(
+        "estorno: a guarda recusaria uma linha que pode já ter chegado ao MP — nada enviado, reserva preservada",
+        linha.id,
+        guarda.motivo,
+      );
+      return { tipo: "tentar_depois", motivo: `${guarda.motivo}; ${MOTIVO_LINHA_INCERTA}` };
+    }
+    return { tipo: "recusado", motivo: guarda.motivo };
+  }
 
   let transacaoDaOrder: string | null | undefined;
   if (!idEhClassico(pedido.gateway_payment_id)) {

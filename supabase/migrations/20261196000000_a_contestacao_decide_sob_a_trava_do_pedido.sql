@@ -54,8 +54,11 @@
 --     já devolveu de fato: antes, pedido 100 com REF 20 concluído, APP 20
 --     solicitado e um REF novo de 70 gravava 60 (o clamp descontava o APP) e
 --     a reentrega pulava o REF já "reivindicado" — os 10 nunca voltavam. O
---     APP não é liberado aqui: o executor dele o recusa antes de qualquer
---     POST (guardaAntesDeChamar: valor > total - valor_estornado).
+--     APP não é liberado aqui: quando o saldo acaba, o executor dele não
+--     manda POST — recusa a linha NOVA (nunca enviada) e SEGURA a linha
+--     INCERTA (um POST anterior pode ter chegado ao MP) em em_processamento
+--     até a consulta ao MP dar veredito; e autorizar_post_do_estorno, abaixo,
+--     confere o saldo de novo sob a trava imediatamente antes de todo POST.
 --
 --   * `autorizar_post_do_estorno(refund, valor)`: a pergunta que o
 --     executor de estorno (edge estornar-pagamento e cron
@@ -737,8 +740,8 @@ BEGIN
     -- Dinheiro REAL: o que já saiu (valor_estornado) e a reserva de
     -- contestação em voo (linhas 'sistema' — o valor que o MP segura na
     -- disputa). A linha do APP ainda sem confirmação do MP é intenção: não
-    -- reduz um refund que o MP já processou (o executor dela recusa sozinho
-    -- quando o saldo acabar, antes de qualquer POST).
+    -- reduz um refund que o MP já processou (quando o saldo acabar, o
+    -- executor dela não manda POST: recusa a linha nova, segura a incerta).
     SELECT COALESCE(sum(amount), 0) INTO v_em_voo
       FROM public.order_refunds
      WHERE order_id = p_order_id AND status IN ('solicitado', 'em_processamento')

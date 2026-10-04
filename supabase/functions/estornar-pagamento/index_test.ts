@@ -133,7 +133,7 @@ const AUTH_JWT_VELHO_ADMIN = "Bearer " + [
 
 globalThis.fetch = fetchAdminFalso
 const { handler } = await import("./index.ts")
-const { MOTIVO_SALDO_MUDOU_ANTES_DO_POST } = await import("../_shared/estorno.ts")
+const { MOTIVO_LINHA_INCERTA, MOTIVO_SALDO_MUDOU_ANTES_DO_POST } = await import("../_shared/estorno.ts")
 globalThis.fetch = fetchNativo
 
 async function comFetch(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
@@ -1256,4 +1256,48 @@ Deno.test("LEASE-E2 - com executor injetado, a edge passa autorizarAntesDoPost e
     assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 30 }])
     assertEquals(resposta?.decisao, "autorizado")
     assertEquals(resposta?.pedido?.id, PEDIDO_PAGO.id)
+})
+
+
+// ── LINHA INCERTA (Lote A, 04/10/2026 — achado do coordenador em 1a823e3f):
+// o clique numa linha que JÁ estava em_processamento (tentativas lidas >= 1:
+// a edge marca 2) com o pedido já sem saldo NUNCA vira recusado — a reserva
+// fica. Linha nova (solicitado, tentativas 0) sem saldo: recusado como antes.
+// Módulo REAL do executor (sem injetar), igual ao F5b.
+
+Deno.test("INCERTA-E1 - clique numa linha já em processamento (POST anterior possível) com o pedido em 90: 202, ZERO POST, nada terminal, motivo no ultimo_erro", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20, status: "em_processamento", tentativas: 1 },
+        pedido: { ...PEDIDO_PAGO, valor_estornado: 90 },
+    })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 202)
+    assertEquals((await resposta.json()).status, "em_processamento")
+    assertEquals(mp.registro.chamadas, 0, "zero chamada ao MP")
+    assertEquals(registro.finais.length, 0, "nada terminal: a reserva fica")
+    const adiamento = registro.atualizacoes.find((u: any) => u.valores && "ultimo_erro" in u.valores)
+    assertEquals(String(adiamento?.valores.ultimo_erro).includes(MOTIVO_LINHA_INCERTA), true)
+})
+
+Deno.test("INCERTA-E2 (controle) - linha NOVA (solicitado, tentativas 0) com o pedido em 90: recusado como antes, zero chamada ao MP", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20 },
+        pedido: { ...PEDIDO_PAGO, valor_estornado: 90 },
+    })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "recusado")
+    assertEquals(mp.registro.chamadas, 0)
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.status, "recusado")
 })
