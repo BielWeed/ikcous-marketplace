@@ -1389,9 +1389,8 @@ async function handler(
   // do cliente continua existindo depois dela, igual a antes. Este 503 NÃO
   // traz `terminal: true` — DIFERENTE do "sem credencial do Mercado Pago"
   // (D1, logo abaixo), que traz, porque os dois têm escalas de conserto
-  // diferentes (04/10/2026: o front lê QUALQUER 503 como passageiro, com ou
-  // sem `terminal` — só 409/404 com `terminal: true` encerram a tela; ver o
-  // comentário do D1):
+  // diferentes (o que o front faz com o `terminal` de um 503 depende de
+  // QUEM chamou — ver o contrato no comentário do D1):
   // chave de service role é ajuste de operador em MINUTOS (dentro da
   // janela de 30 min do PIX, retentar é o comportamento certo); chaves do
   // Mercado Pago numa loja nova são cadastro na aplicação MP do lojista —
@@ -1438,14 +1437,22 @@ async function handler(
       `criar-pagamento: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
     );
     // Laudo 0109 (D1): sem chave, TENTAR DE NOVO bate na mesma recusa —
-    // é falha de configuração do operador, não do cliente. O `terminal: true`
-    // daqui NÃO encerra mais a tela (04/10/2026, contrato real do front): um
-    // 503 é lido como PASSAGEIRO — "Tentar de novo"/"Verificar de novo" — com
-    // ou sem `terminal`, porque ele fala do SERVIDOR, não do pedido (ver
-    // `desfechoDoErroDaConsulta` em src/components/checkout/
-    // confirmacao-do-cartao.ts: só 409/404 com `terminal: true` encerram).
-    // Para encerrar a tela, a resposta tem de ser 409/404. Status e corpo
-    // ficam como estão de propósito — mudar o status é outra decisão.
+    // é falha de configuração do operador, não do cliente. O que o front faz
+    // com o `terminal: true` deste 503 depende de QUEM chamou (contrato
+    // medido no código do front em 04/10/2026):
+    // - ENVIO DO CARTÃO (`enviarPagamentoComCartao`, src/components/checkout/
+    //   PagamentoComCartao.tsx): `terminal: true` é terminal com QUALQUER
+    //   status, 503 incluído — a tela do cartão encerra (caixa vermelha
+    //   terminal, sem "Tentar de novo").
+    // - CRIAÇÃO DO PIX (`dispararPagamentoPix`, PagamentoOnline.tsx, F3): o
+    //   503 é recuperável mesmo marcado (`terminal && httpStatus !== 503`) —
+    //   "Tentar de novo".
+    // - CONSULTAS que não cobram — confirmação do cartão
+    //   (`desfechoDoErroDaConsulta`, confirmacao-do-cartao.ts) e a
+    //   verificação (`situacaoDoErro`, VerificacaoDoPagamento.tsx): só
+    //   409/404 com `terminal: true` encerram; o 503 é passageiro.
+    // Status e corpo ficam como estão de propósito — mudar o status é outra
+    // decisão.
     return json({ error: "Pagamento indisponível.", terminal: true }, 503);
   }
 
@@ -2342,9 +2349,10 @@ async function handler(
   // de conserto do D1 lá em cima — token revogado ou sem permissão se
   // resolve no cadastro do lojista, em horas ou dias, e "Tentar de novo"
   // dentro dos 30 min da reserva só bate na mesma recusa. O `terminal: true`
-  // NÃO tira o cliente do loop (04/10/2026, contrato real do front): 503 é
-  // passageiro para a tela, com ou sem `terminal` — só 409/404 com
-  // `terminal: true` encerram (ver o comentário do D1, lá em cima). Status e
+  // tem o MESMO efeito que no D1, lá em cima (contrato do front por quem
+  // chama): no envio do cartão ele ENCERRA a tela; na criação do PIX o 503
+  // segue recuperável ("Tentar de novo"); as consultas que não cobram nunca
+  // chegam aqui (o POST de criação é só destes dois). Status e
   // corpo ficam como estão neste lote. A frase é fixa: o corpo do MP
   // (conta, detalhe da credencial) continua só no log de criarOrder. Vale
   // igual para PIX e cartão (uma resposta só, as duas chamam daqui).
