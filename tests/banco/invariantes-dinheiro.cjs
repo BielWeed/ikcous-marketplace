@@ -1192,7 +1192,7 @@ PROVAS.push({
       const recusa = await codigoDoErro(cliente.query(migration));
       assert.ok(
         recusa && /LEDGER_DUPLICADO: 1 par/.test(recusa.message),
-        `preflight recusa com a contagem (veio: ${recusa && recusa.message})`,
+        `preflight recusa com a contagem (veio: ${recusa?.message})`,
       );
     } finally {
       await cliente.query("ROLLBACK");

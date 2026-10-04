@@ -72,7 +72,7 @@ async function pedido(cliente, id, { total, paymentStatus = "pago", valorEstorna
 
 async function contestacao(cliente, o) {
   const r = await cliente.query(
-    `SELECT public.registrar_contestacao_no_ledger($1, $2, $3, $4, $5, $6, $7) AS r`,
+    "SELECT public.registrar_contestacao_no_ledger($1, $2, $3, $4, $5, $6, $7) AS r",
     [
       o.pedido,
       o.cbk,
@@ -527,7 +527,7 @@ PROVAS.push({
     try {
       await cliente.query(sql);
       await cliente.query(rollback);
-      const sumiu = await cliente.query(`SELECT to_regprocedure($1) AS f`, [FN_CONTESTACAO]);
+      const sumiu = await cliente.query("SELECT to_regprocedure($1) AS f", [FN_CONTESTACAO]);
       assert.equal(sumiu.rows[0].f, null, "o rollback apaga a função");
       const colunas = await cliente.query(
         `SELECT count(*)::int AS n FROM pg_attribute
@@ -538,7 +538,7 @@ PROVAS.push({
       const tabela = await cliente.query("SELECT to_regclass('public.contestacoes_decisao_final') AS t");
       assert.notEqual(tabela.rows[0].t, null, "a decisão final (histórico) FICA no rollback");
       await cliente.query(sql);
-      const voltou = await cliente.query(`SELECT to_regprocedure($1) AS f`, [FN_CONTESTACAO]);
+      const voltou = await cliente.query("SELECT to_regprocedure($1) AS f", [FN_CONTESTACAO]);
       assert.notEqual(voltou.rows[0].f, null);
     } finally {
       await cliente.query("ROLLBACK");
