@@ -76,7 +76,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // com 500 antes da assinatura, porque o MP está assinando com o segredo DO
 // LOJISTA.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
-import * as webpush from "jsr:@negrel/webpush@0.3.0";
 import {
   avaliarAssinatura,
   buscarOrdersDoPedido,
@@ -98,29 +97,31 @@ import {
   TOLERANCIA_DE_VALOR,
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
-import {
-  carregarChavesVapid,
-  comTempoLimite,
-  corsHeaders,
-  enviarParaInscritos,
-  readKey,
-  resumir,
-} from "../_shared/webpush.ts";
-import { enviarComprovantePedido } from "../_shared/comprovante.ts";
+import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
   consultarContestacao,
-  decisaoDoCaso,
-  decisaoDoStatusDoPagamento,
-  lerContestacoesDaOrder,
+  registrarContestacao,
   type ResultadoDaConsultaDoCaso,
-  valorDoCaso,
 } from "../_shared/contestacao.ts";
-// PEÇA 5 (12/09/2026): `dispararAvisoDePagamentoAtrasadoReal`, mais abaixo,
-// fala SMTP direto (sem passar por `_shared/comprovante.ts`, que não é
-// arquivo desta peça) e usa `escaparHtml` para o mesmo motivo que
-// `_shared/comprovante.ts` já usa: nome de loja é texto que ALGUÉM digitou.
-import { enviarEmail, remetenteConfigurado } from "../_shared/smtp.ts";
-import { escaparHtml } from "../_shared/pedido.ts";
+// FASE 2 (04/10/2026): o push ao lojista, o comprovante ao cliente e o aviso de
+// pagamento atrasado saem do módulo ÚNICO dos três caminhos que confirmam
+// pagamento (imediata, este webhook e o cron) — `_shared/efeitos-do-pagamento.ts`.
+// O push contado e o "aviso ao admin uma vez" moram em `aviso-ao-lojista.ts`.
+import {
+  type AvisarAdminUmaVez,
+  avisarAdminUmaVez as avisarAdminUmaVezCompartilhado,
+  dispararPushContadoReal,
+} from "../_shared/aviso-ao-lojista.ts";
+import {
+  aplicarEfeitosDoPagamentoConfirmado,
+  type DepsDosEfeitos,
+  desfechoComEfeito,
+} from "../_shared/efeitos-do-pagamento.ts";
+// Os testes e o contrato antigo importam estes dois DAQUI: a definição é uma só.
+export {
+  assuntoDoAvisoDePagamentoAtrasado,
+  htmlDoAvisoDePagamentoAtrasado,
+} from "../_shared/efeitos-do-pagamento.ts";
 // T5 do plano de estorno pelo app (08/09/2026): o webhook é o segundo
 // caminho (e o único, para estorno feito FORA do app) que registra o
 // desfecho de uma devolução — reusa a MESMA decisão pura do P0
@@ -195,21 +196,18 @@ const json = (corpo: unknown, status = 200) =>
   });
 
 /**
- * Dispara o push de "pedido pago" para os admins inscritos. Mesmo padrão de
- * `notify-new-order/index.ts:194-243`: carrega VAPID, monta o
- * `ApplicationServer`, busca os admins em `profiles` e as inscrições em
- * `push_subscriptions`, envia via `enviarParaInscritos`.
+ * Push aos admins inscritos — o mecanismo mora em `_shared/aviso-ao-lojista.ts`
+ * (`dispararPushContadoReal`), compartilhado com a reconciliação e a
+ * confirmação imediata. Estes dois são só o prefixo de log deste arquivo.
  *
- * Erros aqui NUNCA sobem: o pedido já está marcado 'pago' no banco quando
- * esta função roda, e uma falha de push não pode virar 500 — isso faria o MP
- * reenviar um evento que já foi tratado com sucesso, e reprocessar a RPC de
- * novo só para cair em 'ja_pago'. Só loga.
+ * Erros NUNCA sobem: o pedido já está marcado 'pago' no banco quando o push
+ * roda, e uma falha de push não pode virar 500 — isso faria o MP reenviar um
+ * evento que já foi tratado com sucesso. Só loga.
  *
- * C-P (02/10/2026): o miolo mora em `disparoPushContadoReal`, que devolve
- * QUANTAS inscrições receberam o push — o aviso de cobrança duplicada precisa
- * disso para só dar a reserva por gasta quando o push CHEGOU. Esta função
- * mantém a assinatura e o comportamento de sempre (mesmos logs, nunca lança,
- * devolve void) para os outros pushes deste arquivo.
+ * C-P (02/10/2026): `disparoPushContadoReal` devolve QUANTAS inscrições
+ * receberam o push — o aviso de cobrança duplicada precisa disso para só dar a
+ * reserva por gasta quando o push CHEGOU. `disparoPushReal` mantém a
+ * assinatura de sempre (devolve void) para os outros pushes deste arquivo.
  */
 async function disparoPushReal(args: {
   supabase: ReturnType<typeof createClient>;
@@ -218,68 +216,13 @@ async function disparoPushReal(args: {
   await disparoPushContadoReal(args);
 }
 
-/**
- * O miolo de `disparoPushReal`, devolvendo quantas inscrições receberam o
- * push (`resumir(itens).enviados`). 0 quando não há admin, não há inscrição,
- * nenhuma entrega deu certo ou algo lançou (logado, nunca sobe).
- */
-async function disparoPushContadoReal(args: {
+function disparoPushContadoReal(args: {
   supabase: ReturnType<typeof createClient>;
   aviso: { title: string; body: string; url: string };
 }): Promise<number> {
-  const { supabase, aviso } = args;
-  try {
-    const { data: admins, error: erroAdmins } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "admin");
-    if (erroAdmins) throw erroAdmins;
-
-    const ids = (admins ?? []).map((a: any) => a.id);
-    if (ids.length === 0) {
-      console.warn("webhook-mercadopago: nenhum admin cadastrado, aviso de pagamento sem destino");
-      return 0;
-    }
-
-    const { data: inscricoes, error: erroInscricoes } = await supabase
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .in("user_id", ids);
-    if (erroInscricoes) throw erroInscricoes;
-
-    if (!inscricoes || inscricoes.length === 0) {
-      console.warn("webhook-mercadopago: nenhum admin inscrito para push");
-      return 0;
-    }
-
-    const vapidKeys = await carregarChavesVapid(
-      Deno.env.get("VAPID_PUBLIC_KEY"),
-      Deno.env.get("VAPID_PRIVATE_KEY"),
-    );
-    const servidor = await webpush.ApplicationServer.new({
-      contactInformation: Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
-      vapidKeys,
-    });
-
-    const itens = await enviarParaInscritos({
-      servidor,
-      inscricoes,
-      mensagem: JSON.stringify(aviso),
-      rotulo: "webhook-mercadopago",
-      aoDetectarMorta: (endpoint: string) =>
-        supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
-    });
-
-    const resumo = resumir(itens);
-    console.log(
-      `webhook-mercadopago: aviso de pagamento → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
-    );
-    return resumo.enviados;
-  } catch (erro) {
-    console.error("webhook-mercadopago: falha ao disparar push de pagamento", erro);
-    return 0;
-  }
+  return dispararPushContadoReal({ ...args, rotulo: "webhook-mercadopago" });
 }
+
 
 /**
  * C-P (02/10/2026) — pausas da reconsulta de quem encontra o aviso
@@ -294,6 +237,7 @@ async function disparoPushContadoReal(args: {
 const PAUSAS_DO_AVISO_EM_ENVIO_MS = [1000, 2500, 4500];
 
 const dormirDeVerdade = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 
 /**
  * C-P (02/10/2026) — o push "Cobrança de cartão duplicada?" sai UMA vez por
@@ -412,308 +356,20 @@ async function avisarCobrancaDuplicadaUmaVez(args: {
 }
 
 /**
- * Lote A (04/10/2026): aviso ao admin UMA vez por chave — a mesma reserva com
- * prazo da C-P (`reservar_/confirmar_/liberar_aviso_ao_lojista`, migration
- * 20261191000000), sem a espera "singleflight": quem encontra 'em_envio' ou
- * 'enviado' não avisa (a dona avisa; se o push dela não chegar a ninguém, ela
- * libera e a próxima entrega do MP tenta de novo). Usado pela contestação que
- * o app não consegue registrar sozinho (sem CBK, conflito, decisão revertida).
- * Falha da reserva → avisa mesmo assim (falha aberta, como a C-P). Nunca
- * lança: o aviso não pode derrubar o registro do dinheiro.
+ * Lote A (04/10/2026): aviso ao admin UMA vez por chave — `avisarAdminUmaVez`
+ * de `_shared/aviso-ao-lojista.ts` (a mesma reserva com prazo da C-P, sem a
+ * espera "singleflight"), com o prefixo de log deste arquivo. Usado pela
+ * contestação que o app não consegue registrar sozinho (sem CBK, conflito,
+ * decisão revertida) e, desde a FASE 2, também pela reconsulta periódica do
+ * cron (`reconciliar-pagamentos`), que chama o MESMO miolo.
  */
-type AvisarAdminUmaVez = (chave: string, aviso: { title: string; body: string; url: string }) => Promise<void>;
-
-async function avisarAdminUmaVez(args: {
+function avisarAdminUmaVez(args: {
   supabase: ReturnType<typeof createClient>;
   enviarPushContado: typeof disparoPushContadoReal;
   chave: string;
   aviso: { title: string; body: string; url: string };
 }): Promise<void> {
-  const { supabase, enviarPushContado, chave, aviso } = args;
-  let estado: string | null = null;
-  try {
-    const { data, error } = await supabase.rpc("reservar_aviso_ao_lojista", { p_chave: chave });
-    if (error) throw error;
-    estado = typeof data === "string" ? data : null;
-  } catch (erro) {
-    console.error("webhook-mercadopago: reservar_aviso_ao_lojista falhou — avisa mesmo assim (falha aberta)", { chave, erro });
-  }
-  if (estado === "enviado" || estado === "em_envio") return;
-
-  let entregues = 0;
-  try {
-    entregues = await enviarPushContado({ supabase, aviso });
-  } catch (erro) {
-    console.error("webhook-mercadopago: push ao admin falhou", { chave, erro });
-  }
-  if (estado !== "reservado") return;
-  const rpc = entregues > 0 ? "confirmar_aviso_ao_lojista" : "liberar_aviso_ao_lojista";
-  try {
-    const { error } = await supabase.rpc(rpc, { p_chave: chave });
-    if (error) throw error;
-  } catch (erro) {
-    console.error(`webhook-mercadopago: ${rpc} falhou — a reserva expira sozinha em 2 minutos`, { chave, erro });
-  }
-}
-
-/**
- * Manda ao CLIENTE o comprovante do pedido (PEDIDO-070) chamando DIRETO o
- * miolo de `send-order-confirmation` — `_shared/comprovante.ts` — em vez de
- * `supabase.functions.invoke`. É o mesmo movimento que `notify-new-order`
- * já faz para reusar a `send-push` via `_shared/webpush.ts` (ver o
- * cabeçalho daquele arquivo): a function de origem não pode ser importada
- * pelo `index.ts` dela mesma porque chama `serve()` no topo, então o miolo
- * mora em `_shared` e os dois chamadores importam de lá.
- *
- * REDESENHO DE 25/08/2026 — POR QUE NÃO A QUARTA CORREÇÃO NA PORTA HTTP
- *   O comprovante foi consertado três vezes chamando `send-order-
- *   confirmation` pela porta pública (desenhada para o navegador): (1) faltava
- *   a chamada; (2) o texto mentia no pagamento atrasado — incompatibilidade
- *   de CONTRATO; (3) a chave (JWT novo x legado) — incompatibilidade de
- *   AUTENTICAÇÃO. As rodadas 2 e 3 são o mesmo defeito com roupa diferente:
- *   cada volta descobria mais um jeito de a porta HTTP não servir a um
- *   chamador servidor. A correção não é acertar o contrato da porta pela
- *   quarta vez — é não passar por ela: chamando a função direto, por
- *   import, não existe mais fronteira nenhuma para autenticar. Some o HTTP,
- *   o `verify_jwt`, o header forçado, a chave legada enquistada e a
- *   dependência do calendário de desligamento das chaves legadas
- *   (INFRA-260, #126) — não porque a INFRA-260 foi concluída, mas porque
- *   esta chamada específica deixou de depender dela.
- *
- * SÓ PARA `resultado === "pago"` — achado de revisão de contexto limpo,
- * 25/08/2026, mantido no redesenho. O chamador (mais abaixo) restringe este
- * disparo a 'pago', mesmo o push ao lojista saindo também para
- * 'pago_apos_expirar'. Motivo: `enviarComprovantePedido`
- * (`_shared/comprovante.ts`) só sabe ler o literal 'pago' —
- * `aguardandoPagamento` compara `payment_status !== 'pago'`, e
- * 'pago_apos_expirar' cai nesse `true`. Disparar para esse retorno faria o
- * comprovante mentir DUAS vezes: diria que o pagamento ainda está
- * "aguardando confirmação" (já foi confirmado — é por isso que chegamos
- * aqui) e que o pedido "entra na fila de separação" (o pedido segue
- * `status='cancelled'`, estoque já devolvido; nunca entra em separação). E
- * não há segunda chance: `reivindicar_email_de_confirmacao` é reserva única
- * e definitiva, então o e-mail certo nunca poderia ser mandado depois.
- *
- * PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): 'pago_apos_expirar'
- * deixa de ficar mudo — ver `dispararAvisoDePagamentoAtrasadoReal`, mais
- * abaixo, que manda um texto PRÓPRIO e honesto (nunca este comprovante
- * padrão) e compete pela MESMA reserva. `_shared/comprovante.ts` não é
- * arquivo desta peça (outro executor do lote edita em paralelo) — por isso o
- * texto novo não virou um parâmetro ali, e mora duplicado aqui e em
- * `reconciliar-pagamentos/index.ts` (mesmo nome de função). Consolidar as
- * duas cópias em `_shared/comprovante.ts` é candidato a tarefa própria, com
- * revisão própria — a sessão principal decide, não este executor.
- *
- * A REPETIÇÃO NÃO PRECISA DE TRAVA AQUI
- *   O MP é reentrante por natureza (reenvia a mesma notificação até receber
- *   200), mas `enviarComprovantePedido` já reserva o envio com
- *   `reivindicar_email_de_confirmacao` — um UPDATE condicional atômico em
- *   que só a primeira chamada ganha (a MESMA trava que já protege o
- *   caminho do front, chamando a MESMA RPC, sem mudar uma linha dela).
- *   Reenvio do MP chamando esta função de novo é seguro: a chamada seguinte
- *   cai em `ja_enviado` e não manda nada. Além disso, esta função só é
- *   alcançada quando `confirmar_pagamento` (RPC, `FOR UPDATE`) devolve
- *   'pago' — um reenvio que chegue depois de o pagamento já ter sido
- *   registrado recebe 'ja_pago' e nem tenta chamar o comprovante de novo
- *   (ver o teste "push dispara em exatamente 2 dos 9 retornos possíveis").
- *
- * Erros aqui NUNCA sobem, pela mesma razão do push (`disparoPushReal`,
- * acima): o pedido já está 'pago' no banco quando esta função roda, e uma
- * falha de e-mail não pode virar 500 — isso faria o MP reenviar um evento
- * que já foi tratado com sucesso. Só loga — tanto a exceção inesperada
- * (`catch`) quanto o desfecho `{ ok: false, motivo }` que
- * `enviarComprovantePedido` devolve sem lançar (SMTP não configurado,
- * pedido sem e-mail, reserva já gasta por outro chamador etc.).
- */
-async function dispararComprovanteReal(args: {
-  supabase: ReturnType<typeof createClient>;
-  orderId: string;
-}): Promise<void> {
-  const { supabase, orderId } = args;
-  try {
-    const desfecho = await enviarComprovantePedido({ supabase, orderId });
-    if (!desfecho.ok) {
-      console.error(
-        "webhook-mercadopago: comprovante ao cliente não enviado",
-        { orderId, motivo: desfecho.motivo },
-      );
-    }
-  } catch (erro) {
-    console.error(
-      "webhook-mercadopago: falha ao disparar comprovante ao cliente",
-      erro,
-    );
-  }
-}
-
-/**
- * PEÇA 5 (revisão de dinheiro-não-recebido, 12/09/2026): o texto HONESTO
- * para 'pago_apos_expirar' — nunca o HTML de `_shared/comprovante.ts`
- * (`htmlDoPedido`), que mentiria "aguardando confirmação" e "entra na fila
- * de separação" para um pedido já confirmado e `status='cancelled'` (ver o
- * comentário de `dispararAvisoDePagamentoAtrasadoReal`, abaixo). Pura e
- * EXPORTADA para o teste conferir o TEXTO sem tocar SMTP nem banco — mesmo
- * padrão de `formatarBRL`/`numeroDoPedido`, acima.
- *
- * Não promete estoque disponível nem reenvio automático (a política do dono
- * é HONRAR o pagamento tardio, mas a reanálise ainda é manual — não há botão
- * de reanálise pelo cliente hoje): diz só o que já é fato — o pagamento
- * chegou, o pedido foi cancelado antes disso, e a loja vai resolver.
- *
- * NUNCA afirmar "prazo" nem "automaticamente" aqui (achado bloqueante da
- * revisão, 12/09/2026): `confirmar_pagamento` devolve 'pago_apos_expirar' por
- * DOIS caminhos (migration 20260810000000, linhas 118-125 e 173-180) — a
- * varredura de 30 min (aí sim é "prazo" e "automático") E o cliente que
- * CANCELA pelo app com o QR na mão e paga o PIX segundos depois, dentro da
- * janela (aí "prazo" e "automático" são as duas mentiras). Mesmo motivo do
- * "fora do fluxo", não "fora do prazo" do push acima: só "já estava
- * cancelado" e "estoque já tinha voltado" são verdade nos dois casos.
- */
-export function htmlDoAvisoDePagamentoAtrasado(args: {
-  orderId: string;
-  nomeDaLoja: string;
-}): string {
-  const { orderId, nomeDaLoja } = args;
-  const loja = String(nomeDaLoja ?? "").trim();
-  return `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px; border: 1px solid #e4e4e7; border-radius: 24px; color: #18181b;">
-      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a1a1aa;">
-        Pedido ${escaparHtml(numeroDoPedido(orderId))}
-      </p>
-      ${loja ? `<p style="margin: 0 0 20px; font-size: 18px; font-weight: 800;">${escaparHtml(loja)}</p>` : ""}
-      <p style="margin: 0 0 16px; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        Recebemos a confirmação do seu pagamento para este pedido, mas ele já estava cancelado e o estoque já tinha voltado para a loja quando o pagamento foi confirmado — por isso não entrou na fila de separação.
-      </p>
-      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #3f3f46;">
-        A loja já foi avisada do pagamento e vai entrar em contato para resolver (reenvio, se ainda houver estoque, ou devolução do valor pago).
-      </p>
-    </div>
-  `;
-}
-
-export function assuntoDoAvisoDePagamentoAtrasado(orderId: string, nomeDaLoja: string): string {
-  const loja = String(nomeDaLoja ?? "").trim();
-  const numero = numeroDoPedido(orderId);
-  return loja ? `Pedido ${numero} · ${loja}` : `Pedido ${numero}`;
-}
-
-/**
- * Manda ao CLIENTE um aviso HONESTO de pagamento confirmado FORA do prazo
- * (PEÇA 5, revisão de dinheiro-não-recebido, 12/09/2026) — o gêmeo de
- * `dispararComprovanteReal`, acima, para o retorno 'pago_apos_expirar' da
- * RPC, que aquela função nunca atende (ver o parágrafo "PEÇA 5" no
- * comentário dela).
- *
- * MESMA trava anti-duplicata do comprovante padrão: os dois competem pela
- * MESMA reserva (`reivindicar_email_de_confirmacao`, UPDATE condicional
- * atômico, só a PRIMEIRA chamada ganha) — um pedido nunca recebe os dois
- * textos, e um reenvio do MP (ou a `reconciliar-pagamentos`, que chama esta
- * MESMA função duplicada) que chegue depois de qualquer um dos dois cai em
- * `reservou !== true` e não manda nada.
- *
- * Mesma forma de erro do resto do arquivo: NUNCA lança para quem chama — o
- * pedido já está 'pago_apos_expirar' no banco quando isto roda, e uma falha
- * de e-mail não pode virar 500 (o MP reenviaria um evento já tratado).
- */
-async function dispararAvisoDePagamentoAtrasadoReal(args: {
-  supabase: ReturnType<typeof createClient>;
-  orderId: string;
-}): Promise<void> {
-  const { supabase, orderId } = args;
-  try {
-    // Falha fechada ANTES de reservar — mesmo motivo do comprovante padrão
-    // (`_shared/comprovante.ts`): reservar sem poder enviar deixaria o
-    // pedido marcado "já avisado" para sempre, sem o cliente ter recebido
-    // nada.
-    if (!remetenteConfigurado()) {
-      console.error(
-        "webhook-mercadopago: SMTP não configurado — aviso de pagamento atrasado não enviado",
-        orderId,
-      );
-      return;
-    }
-
-    const { data: pedido, error: erroPedido } = await supabase
-      .from("marketplace_orders")
-      .select("id, user_id, customer_data")
-      .eq("id", orderId)
-      .maybeSingle();
-    if (erroPedido) throw erroPedido;
-    if (!pedido) {
-      console.warn(
-        "webhook-mercadopago: pedido do aviso de pagamento atrasado não encontrado",
-        orderId,
-      );
-      return;
-    }
-
-    // Mesma ordem de `emailDoCliente` (`_shared/comprovante.ts`): o e-mail
-    // que a pessoa digitou NAQUELE pedido primeiro; o da conta só quando o
-    // pedido não traz nenhum.
-    let destinatario = String(
-      (pedido as Record<string, unknown>).customer_data
-        ? ((pedido as Record<string, unknown>).customer_data as Record<string, unknown>).email ?? ""
-        : "",
-    ).trim();
-    if (!destinatario && (pedido as Record<string, unknown>).user_id) {
-      const { data: conta } = await supabase.auth.admin.getUserById(
-        String((pedido as Record<string, unknown>).user_id),
-      );
-      destinatario = String(conta?.user?.email ?? "").trim();
-    }
-    if (!destinatario) {
-      console.warn(
-        "webhook-mercadopago: pedido pago_apos_expirar sem e-mail de cliente",
-        orderId,
-      );
-      return;
-    }
-
-    // A TRAVA anti-duplicata — ver o docstring desta função.
-    const { data: reservou, error: erroReserva } = await supabase.rpc(
-      "reivindicar_email_de_confirmacao",
-      { p_order_id: orderId },
-    );
-    if (erroReserva) throw erroReserva;
-    if (reservou !== true) return; // já enviado (padrão ou este mesmo aviso)
-
-    const { data: config } = await supabase
-      .from("store_config")
-      .select("store_name")
-      .limit(1)
-      .maybeSingle();
-    const nomeDaLoja = (config as Record<string, unknown> | null)?.store_name ?? "";
-
-    try {
-      await enviarEmail({
-        para: destinatario,
-        assunto: assuntoDoAvisoDePagamentoAtrasado(orderId, String(nomeDaLoja ?? "")),
-        html: htmlDoAvisoDePagamentoAtrasado({ orderId, nomeDaLoja: String(nomeDaLoja ?? "") }),
-      });
-    } catch (erroEnvio) {
-      // Devolve a reserva: o SMTP recusou, então ninguém recebeu nada — uma
-      // tentativa posterior tem de ser possível (mesmo padrão do comprovante
-      // padrão).
-      await supabase
-        .rpc("liberar_email_de_confirmacao", { p_order_id: orderId })
-        .then(undefined, (erroLiberar: unknown) => {
-          console.error(
-            "webhook-mercadopago: liberar reserva do aviso de pagamento atrasado falhou",
-            orderId,
-            erroLiberar,
-          );
-        });
-      throw erroEnvio;
-    }
-
-    console.log(`webhook-mercadopago: aviso de pagamento atrasado enviado para ${orderId}`);
-  } catch (erro) {
-    console.error(
-      "webhook-mercadopago: falha ao enviar aviso de pagamento atrasado ao cliente",
-      orderId,
-      erro,
-    );
-  }
+  return avisarAdminUmaVezCompartilhado({ ...args, rotulo: "webhook-mercadopago" });
 }
 
 /** Terminal de sucesso de um refund INDIVIDUAL na Payments API clássica —
@@ -776,174 +432,6 @@ async function acumularConclusao(args: {
     return;
   }
   pedido.valor_estornado = await releValorEstornado(supabase, orderId);
-}
-
-/**
- * CONTESTAÇÃO (chargeback) NO LEDGER — Lote A (04/10/2026, R1/R1-NULL e
- * bloqueios 1/3/5/6 da revisão). Ramo B de `registrarDesfechoDoEstorno`.
- * Fontes e vocabulário no cabeçalho de `_shared/contestacao.ts`.
- *
- * QUEM DECIDE O DINHEIRO: a RPC `registrar_contestacao_no_ledger`
- * (migration 20261196000000), com o PEDIDO TRAVADO (FOR UPDATE) — reserva,
- * adota linha antiga, ajusta, conclui e libera numa transação só, contra o
- * estado RELIDO sob a trava, e devolve o estado canônico. Aqui NÃO existe
- * mais retrato local do ledger nem conta de saldo: duas entregas paralelas
- * (mesmo caso, ou casos diferentes do mesmo pedido) se serializam no banco.
- * Antes, cada entrega decidia sobre o que leu no começo — reservas somavam
- * acima do pago (60+60 em 100), a liberação do CBK1 não liberava o saldo do
- * CBK2, e a reserva ESTIMADA de outra entrega era concluída às cegas.
- *
- * IDENTIDADE: `transactions.chargebacks[].id` (CBK), ligada ao `case_id`
- * (`mp_chargeback_case_id`). Sem CBK legível: nada vai à RPC (uma linha sem
- * identidade é duplicável) e o admin é avisado uma vez.
- *
- * DECISÃO (o que vai à RPC): pelo CASO (GET /v1/chargebacks/{case_id},
- * `coverage_applied`, com o id devolvido conferido), corroborado pelo
- * `status_detail` do PAGAMENTO contestado quando o caso é o único daquele
- * pagamento, e pelo `status` do item quando vier. Nunca pelo agregado da
- * order. Desconhecido ou conflito: nada vai à RPC (a reserva fica como
- * está) e o admin é avisado uma vez; a próxima notificação reconsulta.
- * Consulta do caso com falha transitória: lança (500, o MP reenvia).
- *
- * VALOR: `p_valor_caso` é SÓ o valor do caso em reais (BRL, positivo);
- * senão NULL. `p_valor_estimado` é o total pago. A RPC só RESERVA com a
- * estimativa — concluir exige o valor do caso, e só se couber no saldo.
- *
- * AVISO: a RPC devolve `aviso` ('conferir', 'saldo', 'revertida'); cada um
- * vira UM push ao admin por (pedido, caso, desfecho) — `avisarAdminUmaVez`.
- * Erro da RPC: lança (500, o MP reenvia; cada chamada é atômica e
- * idempotente, os casos já gravados não se repetem).
- */
-async function registrarContestacao(args: {
-  supabase: ReturnType<typeof createClient>;
-  orderId: string;
-  corpo: Record<string, unknown>;
-  ehPayments: boolean;
-  pedido: PedidoParaEstorno;
-  consultarCaso: (caseId: string) => Promise<ResultadoDaConsultaDoCaso>;
-  avisar: AvisarAdminUmaVez;
-}): Promise<void> {
-  const { supabase, orderId, corpo, ehPayments, pedido, consultarCaso, avisar } = args;
-  const idCobranca = String(corpo.id ?? "");
-  const avisoConferir = {
-    title: "Contestação de pagamento para conferir",
-    body: `${numeroDoPedido(orderId)} · o Mercado Pago avisou de uma contestação que o app não conseguiu registrar sozinho — confira no painel do Mercado Pago antes de mexer neste pedido`,
-    url: "/admin-orders",
-  };
-  const avisoSaldo = {
-    title: "Contestação maior que o saldo do pedido",
-    body: `${numeroDoPedido(orderId)} · a contestação do Mercado Pago não cabe no que ainda pode ser devolvido deste pedido — o app reservou o que dava e não concluiu nada; confira no painel do Mercado Pago`,
-    url: "/admin-orders",
-  };
-  const avisoRevertida = {
-    title: "Contestação mudou de resultado",
-    body: `${numeroDoPedido(orderId)} · o Mercado Pago mudou a decisão de uma contestação já registrada — confira no painel do Mercado Pago; o app não desfaz isso sozinho`,
-    url: "/admin-orders",
-  };
-  const conservaEAvisa = async (chave: string, motivo: string, extra: Record<string, unknown> = {}) => {
-    console.error(
-      "webhook-mercadopago: contestação sem decisão confiável — reserva CONSERVADA, nada liberado nem concluído",
-      { orderId, motivo, ...extra },
-    );
-    await avisar(chave, avisoConferir);
-  };
-
-  if (ehPayments) {
-    await conservaEAvisa(
-      `contestacao_indefinida:${orderId}:${idCobranca}`,
-      "pagamento clássico não traz a identidade do caso (transactions.chargebacks[])",
-    );
-    return;
-  }
-  const leitura = lerContestacoesDaOrder(corpo);
-  if (!leitura.ok) {
-    await conservaEAvisa(`contestacao_indefinida:${orderId}:${idCobranca}`, leitura.motivo);
-    return;
-  }
-
-  const valorPagoBruto = extrairValorDaOrder(corpo);
-  const valorEstimado = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) && valorPagoBruto > 0
-    ? Number(valorPagoBruto.toFixed(2))
-    : null;
-
-  for (const item of leitura.itens) {
-    const consulta = await consultarCaso(item.caseId);
-    if (!consulta.ok) {
-      if (consulta.transitorio) {
-        throw new Error(
-          `webhook-mercadopago: consulta do caso da contestação falhou (status ${consulta.status}) — o MP reenvia`,
-        );
-      }
-      await conservaEAvisa(
-        `contestacao_indefinida:${orderId}:${item.idContestacao}`,
-        `caso da contestação ilegível ou de outro caso (status ${consulta.status})`,
-      );
-      continue;
-    }
-
-    const peloCaso = decisaoDoCaso(consulta.caso);
-    const peloPagamento = decisaoDoStatusDoPagamento(item.detalheDoPagamento);
-    const peloItem = decisaoDoStatusDoPagamento(item.statusDoItem);
-    const conflito = peloCaso === null ||
-      (item.casosNoPagamento === 1 && peloPagamento !== peloCaso) ||
-      (peloItem !== null && peloItem !== peloCaso);
-    if (peloCaso === null || conflito) {
-      await conservaEAvisa(
-        `contestacao_indefinida:${orderId}:${item.idContestacao}:${peloCaso}:${peloPagamento}`,
-        "o caso, o pagamento contestado e o item da contestação não dizem a mesma coisa",
-        { idContestacao: item.idContestacao, peloCaso, peloPagamento, peloItem },
-      );
-      continue;
-    }
-
-    const { data, error } = await supabase.rpc("registrar_contestacao_no_ledger", {
-      p_order_id: orderId,
-      p_mp_chargeback_id: item.idContestacao,
-      p_case_id: item.caseId,
-      p_decisao: peloCaso,
-      p_valor_caso: valorDoCaso(consulta.caso),
-      p_valor_estimado: valorEstimado,
-      p_casos_na_order: leitura.itens.length,
-    });
-    if (error) throw error;
-    const retorno = (data ?? null) as Record<string, unknown> | null;
-    const resultado = typeof retorno?.resultado === "string" ? retorno.resultado : null;
-    if (resultado === null) {
-      throw new Error("webhook-mercadopago: registrar_contestacao_no_ledger devolveu retorno ilegível — o MP reenvia");
-    }
-    console.log("webhook-mercadopago: contestação registrada sob a trava do pedido", {
-      orderId,
-      idContestacao: item.idContestacao,
-      decisao: peloCaso,
-      resultado,
-    });
-    // Estado CANÔNICO depois desta decisão (bloqueio 3): nada aqui decide
-    // com o acumulado lido no começo da entrega.
-    const valorEstornado = Number(retorno?.valor_estornado);
-    if (Number.isFinite(valorEstornado)) pedido.valor_estornado = valorEstornado;
-
-    if (retorno?.aviso === "revertida") {
-      console.error("webhook-mercadopago: contestação mudou de resultado depois de registrada — nada reaberto", {
-        orderId,
-        idContestacao: item.idContestacao,
-        decisao: peloCaso,
-      });
-      await avisar(`contestacao_revertida:${orderId}:${item.idContestacao}:${peloCaso}`, avisoRevertida);
-    } else if (retorno?.aviso === "saldo") {
-      console.error("webhook-mercadopago: contestação não cabe no saldo do pedido — nada concluído além do que cabe", {
-        orderId,
-        idContestacao: item.idContestacao,
-        resultado,
-      });
-      await avisar(`contestacao_saldo:${orderId}:${item.idContestacao}:${resultado}`, avisoSaldo);
-    } else if (retorno?.aviso !== null && retorno?.aviso !== undefined) {
-      await conservaEAvisa(
-        `contestacao_indefinida:${orderId}:${item.idContestacao}:${resultado}`,
-        `a RPC não registrou a decisão (${resultado})`,
-        { idContestacao: item.idContestacao },
-      );
-    }
-  }
 }
 
 /**
@@ -1205,6 +693,7 @@ async function registrarDesfechoDoEstorno(args: {
       pedido,
       consultarCaso: args.consultarCaso,
       avisar: args.avisar,
+      rotulo: "webhook-mercadopago",
     });
   }
 
@@ -1309,13 +798,13 @@ async function handler(
   deps: {
     supabase?: ReturnType<typeof createClient>;
     fetchImpl?: typeof fetch;
-    enviarPush?: typeof disparoPushReal;
+    enviarPush?: DepsDosEfeitos["enviarPush"];
     // C-P: o push do aviso de cobrança duplicada, que diz quantas inscrições o receberam.
     enviarPushContado?: typeof disparoPushContadoReal;
     // C-P rodada 3: a espera da reconsulta do aviso 'em_envio' (injetável no teste).
     dormir?: (ms: number) => Promise<void>;
-    enviarComprovante?: typeof dispararComprovanteReal;
-    enviarAvisoAtrasado?: typeof dispararAvisoDePagamentoAtrasadoReal;
+    enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
+    enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -2627,64 +2116,26 @@ async function handler(
     return json({ error: "Erro ao confirmar pagamento." }, 500);
   }
 
-  // Só estes dois retornos disparam push. `ja_pago`/`ja_estornado`/`ignorado`
-  // são reenvio do MP encontrando um estado que já foi tratado — 200, sem
-  // push, é o que impede o reenvio de virar spam para o lojista.
-  // `divergente`/`inexistente` NÃO são esse caso benigno: significam que a
-  // confirmação (já aprovada pelo MP) não bate com o pedido, e por isso são
-  // logados como erro no bloco abaixo, não silenciados.
-  if (resultado === "pago" || resultado === "pago_apos_expirar") {
-    // A RPC devolve só um texto — o push precisa de nome/número/valor, que
-    // vêm de uma leitura extra do pedido.
-    let pedido: Record<string, unknown> | null = null;
-    try {
-      const { data } = await supabase
-        .from("marketplace_orders")
-        .select("id, customer_name, total, total_amount")
-        .eq("id", orderId)
-        .maybeSingle();
-      pedido = data ?? null;
-    } catch (erro) {
-      // Pedido já está pago no banco; deixar o lojista sem aviso porque essa
-      // leitura cosmética falhou é pior que mandar o push sem o valor.
-      console.error("webhook-mercadopago: leitura do pedido para o push falhou", erro);
-    }
-
-    const valor = pedido?.total ?? pedido?.total_amount;
-    const aviso =
-      resultado === "pago_apos_expirar"
-        ? {
-            // "fora do fluxo", não "fora do prazo": a RPC devolve este
-            // mesmo valor tanto quando o pedido EXPIROU quanto quando foi
-            // CANCELADO pelo app e pago depois — "prazo" só é verdade na
-            // primeira rota. O corpo continua igual: "estoque já devolvido"
-            // já é verdade nas duas.
-            title: "Pagamento fora do fluxo",
-            body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)} · estoque já devolvido`,
-            url: "/admin-orders",
-          }
-        : {
-            title: "Pedido pago",
-            body: `${numeroDoPedido(orderId)} · ${formatarBRL(valor)}`,
-            url: "/admin-orders",
-          };
-
-    const enviarPush = deps.enviarPush ?? disparoPushReal;
-    await enviarPush({ supabase, aviso });
-
-    // PEDIDO-070: o cliente também precisa saber que o pagamento entrou.
-    // 'pago' recebe o comprovante padrão; 'pago_apos_expirar' NUNCA pode
-    // receber esse mesmo texto (ver "SÓ PARA resultado === 'pago'" no
-    // comentário de `dispararComprovanteReal`, acima) — recebe o aviso
-    // honesto de `dispararAvisoDePagamentoAtrasadoReal` (PEÇA 5,
-    // 12/09/2026), que compete pela MESMA reserva contra duplicidade.
-    if (resultado === "pago") {
-      const enviarComprovante = deps.enviarComprovante ?? dispararComprovanteReal;
-      await enviarComprovante({ supabase, orderId });
-    } else if (resultado === "pago_apos_expirar") {
-      const enviarAvisoAtrasado = deps.enviarAvisoAtrasado ?? dispararAvisoDePagamentoAtrasadoReal;
-      await enviarAvisoAtrasado({ supabase, orderId });
-    }
+  // Os efeitos do pagamento confirmado (push ao lojista, comprovante ao cliente
+  // ou aviso de pagamento atrasado) moram em `_shared/efeitos-do-pagamento.ts`,
+  // o módulo ÚNICO dos três caminhos que confirmam (imediata, webhook, cron).
+  // Só 'pago' e 'pago_apos_expirar' disparam: são o retorno de QUEM FEZ a
+  // transição sob o `FOR UPDATE` da RPC. `ja_pago`/`ja_estornado`/`ignorado`
+  // são reenvio do MP (ou o outro caminho) encontrando um estado que já foi
+  // tratado — 200, sem efeito, é o que impede o reenvio de virar spam para o
+  // lojista. `divergente`/`inexistente` NÃO são esse caso benigno: significam
+  // que a confirmação (já aprovada pelo MP) não bate com o pedido, e por isso
+  // são logados como erro no bloco abaixo, não silenciados. Falha de push ou
+  // de e-mail nunca sobe (o módulo engole e loga): o pedido já está pago.
+  if (desfechoComEfeito(resultado)) {
+    await aplicarEfeitosDoPagamentoConfirmado({
+      supabase,
+      orderId,
+      resultado,
+      enviarPush: deps.enviarPush,
+      enviarComprovante: deps.enviarComprovante,
+      enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
+    });
   } else if (resultado === "divergente" || resultado === "inexistente") {
     // error, não warn: ao contrário dos outros retornos deste laço (ja_pago,
     // ignorado...), estes dois chegam com o pagamento JÁ APROVADO pelo MP —

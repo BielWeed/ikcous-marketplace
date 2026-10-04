@@ -1,7 +1,14 @@
 // @ts-nocheck
 /**
- * EFEITOS DO PAGAMENTO CONFIRMADO — a confirmação NA HORA pela consulta do
- * cliente (`criar-pagamento`, 04/10/2026) e o que ela dispara depois.
+ * EFEITOS DO PAGAMENTO CONFIRMADO — o módulo ÚNICO dos avisos que saem quando
+ * um pedido vira 'pago', qualquer que seja o caminho que o confirmou: a
+ * confirmação NA HORA pela consulta do cliente (`criar-pagamento`,
+ * 04/10/2026), o webhook do MP (`webhook-mercadopago`) e a reconciliação
+ * (`reconciliar-pagamentos`, o cron). FASE 2 (04/10/2026): até aqui só a
+ * confirmação imediata usava este módulo; o webhook e o cron faziam os efeitos
+ * por conta própria — e o cron não mandava o push "Pedido pago" ao lojista
+ * (medido em `_shared/efeitos-por-caminho_test.ts`; o pedido c35ce4dd foi
+ * fechado por esse caminho).
  *
  * DUAS PEÇAS:
  *
@@ -12,43 +19,46 @@
  *    aprovar. Erro e exceção viram `{ ok: false }` — nunca lança: quem chama
  *    segue o contrato de antes (a confirmação fica para webhook/reconciliação).
  *
- * 2. `aplicarEfeitosDoPagamentoConfirmado` — os efeitos DO WEBHOOK
- *    (`webhook-mercadopago/index.ts`, bloco depois de `confirmar_pagamento`),
- *    não os da reconciliação: 'pago' → push "Pedido pago" ao lojista +
- *    comprovante ao cliente; 'pago_apos_expirar' → push "Pagamento fora do
- *    fluxo" + o aviso HONESTO de pagamento atrasado. QUALQUER outro desfecho
- *    ('ja_pago', 'divergente', 'inexistente', 'ignorado', erro) → nada, nem a
- *    leitura do pedido.
+ * 2. `aplicarEfeitosDoPagamentoConfirmado` — 'pago' → push "Pedido pago" ao
+ *    lojista + comprovante ao cliente; 'pago_apos_expirar' → push "Pagamento
+ *    fora do fluxo" + o aviso HONESTO de pagamento atrasado. QUALQUER outro
+ *    desfecho ('ja_pago', 'divergente', 'inexistente', 'ignorado', erro) →
+ *    nada, nem a leitura do pedido.
  *
- * POR QUE OS EFEITOS NÃO SAEM EM DOBRO com o webhook chegando ao mesmo tempo:
+ * POR QUE OS EFEITOS NÃO SAEM EM DOBRO com dois caminhos chegando juntos:
  * a RPC devolve 'pago'/'pago_apos_expirar' para UMA chamada só — a que fez a
  * transição sob `FOR UPDATE`; a outra espera o lock e lê 'ja_pago'
  * (`tests/banco/pagamentos-rpc-viva.cjs`, prova (13)). Quem recebeu
- * 'ja_pago' não dispara nada, seja o webhook, seja esta rota. O comprovante
- * tem ainda a reserva própria (`reivindicar_email_de_confirmacao`).
+ * 'ja_pago' não dispara nada, seja o webhook, o cron ou a confirmação
+ * imediata. O comprovante tem ainda a reserva própria
+ * (`reivindicar_email_de_confirmacao`). O push NÃO tem reserva própria: a
+ * garantia dele é só essa transição única — por isso a regra "efeito só
+ * depois de a RPC dizer que ESTE chamador confirmou" não tem exceção.
  *
- * POR QUE TEXTO COPIADO, E NÃO IMPORTADO DO WEBHOOK: `webhook-mercadopago/
- * index.ts` chama `serve()` no import (guardado só contra o runner de teste),
- * e está sendo editado por outro lote. As cópias aqui são presas ao original
- * por TESTE DE PARIDADE (`efeitos-do-pagamento_test.ts` para o e-mail;
- * `criar-pagamento/index_test.ts` roda o handler do webhook e compara o push
- * byte a byte). Mesmo raciocínio do aviso atrasado, que já vivia duplicado no
- * webhook e na reconciliação: esta é a terceira cópia, com prova de que é igual.
+ * O TEXTO MORA AQUI, UMA VEZ: `webhook-mercadopago/index.ts` e
+ * `reconciliar-pagamentos/index.ts` chamam `serve()` no import (guardado só
+ * contra o runner de teste), então um não pode importar do outro; a solução
+ * é este módulo `_shared`. Os dois reexportam `htmlDoAvisoDePagamentoAtrasado`
+ * e `assuntoDoAvisoDePagamentoAtrasado` só para os testes antigos.
  *
  * NADA AQUI LANÇA para quem chama: o pedido já está pago no banco quando os
  * efeitos rodam, e uma falha de push/e-mail não pode mudar a resposta ao
- * cliente. Cada efeito tem o próprio `try/catch` — um push que lança não
- * impede o comprovante.
+ * cliente nem virar "falha" do candidato da reconciliação. Cada efeito tem o
+ * próprio `try/catch` — um push que lança não impede o comprovante.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import * as webpush from "jsr:@negrel/webpush@0.3.0";
+import { dispararPushContadoReal } from "./aviso-ao-lojista.ts";
 import { enviarComprovantePedido } from "./comprovante.ts";
 import { escaparHtml, formatarBRL, numeroDoPedido } from "./pedido.ts";
 import { enviarEmail, remetenteConfigurado } from "./smtp.ts";
-import { carregarChavesVapid, enviarParaInscritos, resumir } from "./webpush.ts";
+import { comTempoLimite } from "./webpush.ts";
 
 type Supabase = ReturnType<typeof createClient>;
 type Aviso = { title: string; body: string; url: string };
+
+/** O teto de espera que o cron usa (`tetoDoPushMs`): o push continua em voo e,
+ * no Edge Runtime, `comTempoLimite` mantém o isolado vivo. */
+export const TETO_DO_PUSH_MS = 5000;
 
 export type DepsDosEfeitos = {
   enviarPush?: (args: { supabase: Supabase; aviso: Aviso }) => Promise<void>;
@@ -100,10 +110,10 @@ export async function confirmarPagamentoProvado(args: {
 }
 
 /**
- * O push ao lojista — CÓPIA do texto do webhook (`webhook-mercadopago/
- * index.ts`, bloco `resultado === "pago" || "pago_apos_expirar"`). "fora do
- * fluxo", não "fora do prazo": a RPC devolve 'pago_apos_expirar' tanto para o
- * pedido EXPIRADO quanto para o CANCELADO pelo app e pago depois.
+ * O texto do push ao lojista — O ÚNICO, dos três caminhos. "fora do fluxo",
+ * não "fora do prazo": a RPC devolve 'pago_apos_expirar' tanto para o pedido
+ * EXPIRADO quanto para o CANCELADO pelo app e pago depois; "estoque já
+ * devolvido" é verdade nas duas rotas.
  */
 export function avisoAoLojista(orderId: string, resultado: string, valor: unknown): Aviso | null {
   if (resultado === "pago_apos_expirar") {
@@ -127,12 +137,18 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
   supabase: Supabase;
   orderId: string;
   resultado: unknown;
+  /** Teto de espera pelo push ao lojista. Ausente = sem teto (o que cada
+   * chamador já fazia antes da FASE 2: a confirmação imediata tem o próprio
+   * teto em volta de TUDO, `dispararSemEsperarCliente`; o cron passa
+   * `TETO_DO_PUSH_MS`). Opção da chamada, não dublê de teste. */
+  tetoDoPushMs?: number;
 } & DepsDosEfeitos): Promise<void> {
   const { supabase, orderId, resultado } = args;
   if (!desfechoComEfeito(resultado)) return;
   try {
-    // Mesma leitura cosmética do webhook: o valor do push. Falhou → push sem
-    // o valor (deixar o lojista sem aviso é pior).
+    // Leitura cosmética: o valor do push. A RPC devolve só um texto — nome,
+    // número e valor vêm desta leitura. Falhou → push sem o valor (deixar o
+    // lojista sem aviso é pior).
     let pedido: Record<string, unknown> | null = null;
     try {
       const { data } = await supabase
@@ -148,7 +164,13 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
 
     const enviarPush = args.enviarPush ?? dispararPushAoLojistaReal;
     try {
-      if (aviso) await enviarPush({ supabase, aviso });
+      // A rejeição de um `enviarPush` injetado cai no catch abaixo, como a de
+      // qualquer efeito. Com teto (o cron: um push service lento não pode
+      // prender o laço de candidatos), a espera é limitada por `comTempoLimite`.
+      if (aviso) {
+        const emVoo = enviarPush({ supabase, aviso });
+        await (args.tetoDoPushMs ? comTempoLimite(emVoo, args.tetoDoPushMs) : emVoo);
+      }
     } catch (_erro) {
       console.error("efeitos-do-pagamento: push ao lojista falhou", { orderId, resultado });
     }
@@ -170,60 +192,35 @@ export async function aplicarEfeitosDoPagamentoConfirmado(args: {
 }
 
 /**
- * Push aos admins inscritos — o miolo de `disparoPushContadoReal` do webhook
- * (mesmas leituras, mesma montagem VAPID, mesmo `enviarParaInscritos`). Nunca
- * lança.
+ * Push aos admins inscritos (`aviso-ao-lojista.ts`, o mecanismo único — as
+ * mesmas leituras, a mesma montagem VAPID, o mesmo `enviarParaInscritos`).
+ * Nunca lança.
  */
 export async function dispararPushAoLojistaReal(args: { supabase: Supabase; aviso: Aviso }): Promise<void> {
-  const { supabase, aviso } = args;
-  try {
-    const { data: admins, error: erroAdmins } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("role", "admin");
-    if (erroAdmins) throw erroAdmins;
-    const ids = (admins ?? []).map((a: { id: string }) => a.id);
-    if (ids.length === 0) {
-      console.warn("efeitos-do-pagamento: nenhum admin cadastrado, aviso de pagamento sem destino");
-      return;
-    }
-    const { data: inscricoes, error: erroInscricoes } = await supabase
-      .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
-      .in("user_id", ids);
-    if (erroInscricoes) throw erroInscricoes;
-    if (!inscricoes || inscricoes.length === 0) {
-      console.warn("efeitos-do-pagamento: nenhum admin inscrito para push");
-      return;
-    }
-    const vapidKeys = await carregarChavesVapid(
-      Deno.env.get("VAPID_PUBLIC_KEY"),
-      Deno.env.get("VAPID_PRIVATE_KEY"),
-    );
-    const servidor = await webpush.ApplicationServer.new({
-      contactInformation: Deno.env.get("VAPID_SUBJECT") ?? "mailto:admin@example.org",
-      vapidKeys,
-    });
-    const itens = await enviarParaInscritos({
-      servidor,
-      inscricoes,
-      mensagem: JSON.stringify(aviso),
-      rotulo: "criar-pagamento",
-      aoDetectarMorta: (endpoint: string) =>
-        supabase.from("push_subscriptions").delete().eq("endpoint", endpoint),
-    });
-    const resumo = resumir(itens);
-    console.log(
-      `efeitos-do-pagamento: aviso de pagamento → ${resumo.enviados} entregues, ${resumo.falharam} falharam`,
-    );
-  } catch (_erro) {
-    console.error("efeitos-do-pagamento: falha ao disparar push de pagamento");
-  }
+  await dispararPushContadoReal({ supabase: args.supabase, aviso: args.aviso, rotulo: "efeitos-do-pagamento" });
 }
 
-/** Comprovante ao cliente — a MESMA peça do webhook (`_shared/comprovante.ts`,
- * reserva `reivindicar_email_de_confirmacao`). Só para 'pago' (ver o
- * comentário "SÓ PARA resultado === 'pago'" no webhook). Nunca lança. */
+/**
+ * Comprovante ao cliente — `_shared/comprovante.ts`, o miolo de
+ * `send-order-confirmation`, chamado DIRETO (sem a porta HTTP pública, que
+ * foi consertada três vezes: faltava a chamada, o texto mentia no pagamento
+ * atrasado, a chave JWT nova x legada). Reserva única por pedido:
+ * `reivindicar_email_de_confirmacao`, um UPDATE condicional atômico em que só
+ * a primeira chamada ganha — repetição não precisa de trava aqui.
+ *
+ * SÓ PARA 'pago' (achado de revisão de contexto limpo, 25/08/2026):
+ * `enviarComprovantePedido` só sabe ler o literal 'pago' (`aguardandoPagamento`
+ * compara `payment_status !== 'pago'`, e 'pago_apos_expirar' cai nesse
+ * `true`). Para 'pago_apos_expirar' o comprovante mentiria DUAS vezes — diria
+ * "aguardando confirmação" (já foi confirmado) e "entra na fila de separação"
+ * (o pedido segue `cancelled`, estoque já devolvido) — e, como a reserva é
+ * única e definitiva, o e-mail certo nunca poderia ser mandado depois. Esse
+ * retorno recebe `dispararAvisoDePagamentoAtrasadoReal`, abaixo.
+ *
+ * Nunca lança: nem a exceção inesperada, nem o `{ ok: false, motivo }` que
+ * `enviarComprovantePedido` devolve sem lançar (SMTP não configurado, pedido
+ * sem e-mail, reserva já gasta por outro chamador).
+ */
 export async function dispararComprovanteReal(args: { supabase: Supabase; orderId: string }): Promise<void> {
   const { supabase, orderId } = args;
   try {
@@ -237,11 +234,13 @@ export async function dispararComprovanteReal(args: { supabase: Supabase; orderI
 }
 
 /**
- * O texto HONESTO de 'pago_apos_expirar' — CÓPIA de
- * `htmlDoAvisoDePagamentoAtrasado` do webhook (paridade provada em
- * `efeitos-do-pagamento_test.ts`). Nunca afirmar "prazo" nem
- * "automaticamente": a RPC devolve 'pago_apos_expirar' também para o pedido
- * que o cliente CANCELOU pelo app.
+ * O texto HONESTO de 'pago_apos_expirar' (PEÇA 5, 12/09/2026) — nunca o HTML
+ * do comprovante padrão. Nunca afirmar "prazo" nem "automaticamente": a RPC
+ * devolve 'pago_apos_expirar' por DOIS caminhos (a varredura de 30 min, e o
+ * cliente que CANCELA pelo app com o QR na mão e paga o PIX segundos depois)
+ * — só "já estava cancelado" e "estoque já tinha voltado" são verdade nos
+ * dois. Não promete estoque nem reenvio automático: diz só o que é fato — o
+ * pagamento chegou, o pedido foi cancelado antes, e a loja vai resolver.
  */
 export function htmlDoAvisoDePagamentoAtrasado(args: {
   orderId: string;
@@ -272,12 +271,10 @@ export function assuntoDoAvisoDePagamentoAtrasado(orderId: string, nomeDaLoja: s
 }
 
 /**
- * Aviso de pagamento atrasado ao cliente — CÓPIA do
- * `dispararAvisoDePagamentoAtrasadoReal` do webhook: falha fechada antes de
- * reservar, mesma ordem de e-mail (o do pedido, depois o da conta), MESMA
- * reserva do comprovante (`reivindicar_email_de_confirmacao` — um pedido
- * nunca recebe os dois textos), devolve a reserva se o SMTP recusar. Nunca
- * lança.
+ * Aviso de pagamento atrasado ao cliente: falha fechada antes de reservar,
+ * e-mail do pedido e depois o da conta, MESMA reserva do comprovante
+ * (`reivindicar_email_de_confirmacao` — um pedido nunca recebe os dois
+ * textos), devolve a reserva se o SMTP recusar. Nunca lança.
  */
 export async function dispararAvisoDePagamentoAtrasadoReal(args: {
   supabase: Supabase;

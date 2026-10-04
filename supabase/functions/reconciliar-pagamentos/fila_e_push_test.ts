@@ -2,8 +2,9 @@
 /**
  * C-D (02/10/2026) — o que a edge acrescenta à fila nova da reconciliação
  * (migration 20261190000000): o carimbo do rodízio e da cobrança terminal
- * (`marcar_visitas_da_reconciliacao`, NÃO FATAL) e o push ao admin SÓ para o
- * literal `pago_apos_expirar` (falha aberto). Nada toca rede nem banco: o
+ * (`marcar_visitas_da_reconciliacao`, NÃO FATAL) e o push ao admin quando o
+ * cron confirma ('pago' desde a FASE 2, 04/10/2026; 'pago_apos_expirar' desde
+ * a C-D; falha aberto, sempre pelo módulo `_shared/efeitos-do-pagamento.ts`). Nada toca rede nem banco: o
  * cliente Supabase, o MP e o push são dublês. O comportamento contra o SQL
  * real (PGlite, com a migration aplicada do arquivo) foi provado à parte.
  */
@@ -141,7 +142,17 @@ Deno.test("C-D - 'pago_apos_expirar' -> UM push ao admin ('Pagamento fora do flu
   assertEquals(marcar(r.chamadas).map((c) => c.args), [{ p_visitados: [PEDIDO_1], p_terminais: [], p_cobrancas_terminais: [] }]);
 });
 
-for (const resultado of ["pago", "ja_pago", "ignorado", "divergente", "ja_estornado"]) {
+Deno.test("FASE 2 - 'pago' -> UM push ao lojista ('Pedido pago', #pedido, valor); até 04/10 o cron vendia em silêncio (pedido c35ce4dd)", async () => {
+  const r = await rodar({
+    candidatos: [{ order_id: PEDIDO_1, gateway_payment_id: ORDER_1 }],
+    orders: { [ORDER_1]: orderMp(ORDER_1, "processed", "accredited") },
+    confirmar: () => "pago",
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.pushes, [{ title: "Pedido pago", body: "#4F5A6B · R$ 149,90", url: "/admin-orders" }]);
+});
+
+for (const resultado of ["ja_pago", "ignorado", "divergente", "ja_estornado"]) {
   Deno.test(`C-D - '${resultado}' -> NENHUM push ao admin desta porta`, async () => {
     const r = await rodar({
       candidatos: [{ order_id: PEDIDO_1, gateway_payment_id: ORDER_1 }],
@@ -166,7 +177,7 @@ Deno.test("C-D - push que LANÇA nao para a reconciliacao: os dois candidatos sa
   assertEquals([r.corpo.verificados, r.corpo.confirmados, r.corpo.falhas], [2, 2, 0]);
   assertEquals(r.chamadas.filter((c) => c.nome === "confirmar_pagamento").length, 2);
   assertEquals(marcar(r.chamadas)[0].args.p_visitados, [PEDIDO_1, PEDIDO_2]);
-  assert(r.erros.some((e) => e.includes("push de pagamento fora do fluxo falhou")), r.erros.join("\n"));
+  assert(r.erros.some((e) => e.includes("push ao lojista falhou")), r.erros.join("\n"));
 });
 
 Deno.test("C-D - push que NUNCA responde: o handler segue depois do teto de 5 s", async () => {

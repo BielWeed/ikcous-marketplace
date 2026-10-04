@@ -49,9 +49,9 @@ const NADA: Efeitos = [0, 0, 0];
 const ESPERADO_DO_WEBHOOK = (resultado: string): Efeitos =>
   resultado === "pago" ? [1, 1, 0] : resultado === "pago_apos_expirar" ? [1, 0, 1] : NADA;
 
-/** O que o CRON dispara, por retorno da RPC — a coluna que mudou na FASE 2. */
-const ESPERADO_DO_CRON = (resultado: string): Efeitos =>
-  resultado === "pago" ? [0, 1, 0] : resultado === "pago_apos_expirar" ? [1, 0, 1] : NADA;
+/** O que o CRON dispara, por retorno da RPC — depois da FASE 2 é IGUAL ao webhook
+ * (antes, 'pago' era [0, 1, 0]: sem o push "Pedido pago" ao lojista). */
+const ESPERADO_DO_CRON = (resultado: string): Efeitos => ESPERADO_DO_WEBHOOK(resultado);
 
 async function assinar(dataId: string, ts: number, xRequestId: string): Promise<string> {
   const manifesto = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
@@ -222,4 +222,113 @@ Deno.test("MATRIZ — a RPC dublê é de fato chamada uma vez por caminho (a mat
     assertEquals(chamadas.filter((n) => n === "confirmar_pagamento").length, 1, nome);
   }
   assert(true);
+});
+
+// --- a FASE 2: os dois caminhos usam o MESMO módulo, uma vez por pedido -------
+
+/** Banco dublê com a atomicidade da RPC real (`FOR UPDATE`): quem chega primeiro
+ * recebe 'pago'; todo o resto, 'ja_pago'. Compartilhado entre os dois caminhos. */
+function bancoAtomico() {
+  let pago = false;
+  return () => {
+    if (pago) return "ja_pago";
+    pago = true;
+    return "pago";
+  };
+}
+
+for (const ordem of ["webhook primeiro", "cron primeiro", "ao mesmo tempo"] as const) {
+  Deno.test(`MATRIZ — o mesmo pedido chegando pelos DOIS caminhos (${ordem}): push e comprovante saem UMA vez só`, async () => {
+    const { contagem, deps } = contadorDeEfeitos();
+    const decidir = bancoAtomico();
+    const rodarWebhook = async () =>
+      handlerDoWebhook(await requisicaoDoWebhook(), { supabase: supabaseDuble(decidir), fetchImpl: fetchDoMp, ...deps });
+    const rodarCron = async () =>
+      handlerDoCron(requisicaoDoCron(), { supabase: supabaseDuble(decidir), fetchImpl: fetchDoMp, ...deps });
+    await mudo(async () => {
+      if (ordem === "webhook primeiro") {
+        await rodarWebhook();
+        await rodarCron();
+      } else if (ordem === "cron primeiro") {
+        await rodarCron();
+        await rodarWebhook();
+      } else {
+        await Promise.all([rodarWebhook(), rodarCron()]);
+      }
+    });
+    assertEquals(contagem, [1, 1, 0], ordem);
+  });
+}
+
+Deno.test("MATRIZ — falha de push NUNCA bloqueia: o webhook responde 200, o comprovante sai e o pedido segue confirmado", async () => {
+  const { contagem, deps } = contadorDeEfeitos();
+  const chamadas: string[] = [];
+  const resposta = await mudo(async () =>
+    handlerDoWebhook(await requisicaoDoWebhook(), {
+      supabase: supabaseDuble(() => "pago", chamadas),
+      fetchImpl: fetchDoMp,
+      ...deps,
+      enviarPush: () => Promise.reject(new Error("push fora do ar")),
+    })
+  );
+  assertEquals(resposta.status, 200);
+  assertEquals((await resposta.json()).resultado, "pago");
+  assertEquals(contagem, [0, 1, 0], "o comprovante ao cliente sai mesmo com o push morto");
+  assertEquals(chamadas.filter((n) => n === "confirmar_pagamento").length, 1);
+});
+
+Deno.test("MATRIZ — falha de e-mail NUNCA bloqueia: o webhook responde 200 e o push ao lojista já saiu", async () => {
+  const { contagem, deps } = contadorDeEfeitos();
+  const resposta = await mudo(async () =>
+    handlerDoWebhook(await requisicaoDoWebhook(), {
+      supabase: supabaseDuble(() => "pago"),
+      fetchImpl: fetchDoMp,
+      ...deps,
+      enviarComprovante: () => Promise.reject(new Error("SMTP fora do ar")),
+    })
+  );
+  assertEquals(resposta.status, 200);
+  assertEquals(contagem, [1, 0, 0]);
+});
+
+Deno.test("MATRIZ — cron: push e e-mail que lançam NÃO viram falha do candidato (o pedido JÁ está pago): confirmados 1, falhas 0", async () => {
+  const { deps } = contadorDeEfeitos();
+  const resposta = await mudo(() =>
+    handlerDoCron(requisicaoDoCron(), {
+      supabase: supabaseDuble(() => "pago"),
+      fetchImpl: fetchDoMp,
+      ...deps,
+      enviarPush: () => Promise.reject(new Error("push fora do ar")),
+      enviarComprovante: () => Promise.reject(new Error("SMTP fora do ar")),
+    })
+  );
+  const corpo = await resposta.json();
+  assertEquals([corpo.verificados, corpo.confirmados, corpo.ignorados, corpo.falhas], [1, 1, 0, 0]);
+});
+
+Deno.test("MATRIZ — erro da RPC (nem o banco disse 'pago'): NENHUM efeito, nos dois caminhos", async () => {
+  const comErro = (chamadas: string[]) => ({
+    ...supabaseDuble(() => "pago", chamadas),
+    rpc: (nome: string) => {
+      chamadas.push(nome);
+      if (nome === "pagamentos_a_reconciliar") {
+        return Promise.resolve({ data: [{ order_id: PEDIDO, gateway_payment_id: ORDER_MP }], error: null });
+      }
+      if (nome === "confirmar_pagamento") return Promise.resolve({ data: null, error: { message: "deadlock detected" } });
+      return Promise.resolve({ data: 1, error: null });
+    },
+  });
+  const web = contadorDeEfeitos();
+  const respostaWeb = await mudo(async () =>
+    handlerDoWebhook(await requisicaoDoWebhook(), { supabase: comErro([]), fetchImpl: fetchDoMp, ...web.deps })
+  );
+  assertEquals(respostaWeb.status, 500, "o MP reenvia");
+  assertEquals(web.contagem, NADA);
+
+  const cron = contadorDeEfeitos();
+  const respostaCron = await mudo(() =>
+    handlerDoCron(requisicaoDoCron(), { supabase: comErro([]), fetchImpl: fetchDoMp, ...cron.deps })
+  );
+  assertEquals((await respostaCron.json()).falhas, 1);
+  assertEquals(cron.contagem, NADA);
 });
