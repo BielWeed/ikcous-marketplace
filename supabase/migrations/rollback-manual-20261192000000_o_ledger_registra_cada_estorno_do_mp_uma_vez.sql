@@ -8,11 +8,21 @@
 -- apagá-la perderia a identidade das contestações já registradas (dado de
 -- dinheiro) — se um dia for preciso, é decisão do dono, com o SQL mostrado.
 --
--- Depois do rollback o defeito volta: duas entregas simultâneas do mesmo
--- estorno feito fora do app (ou da mesma contestação) podem gravar duas
--- linhas (somando em dobro em `valor_estornado`). As edges novas continuam
--- funcionando sem os índices (o 23505 só deixa de acontecer) — a coluna
--- continua lá para elas.
+-- ATENÇÃO — DEPOIS DESTE ROLLBACK O MESMO ESTORNO DO MP PODE SOMAR DUAS VEZES
+-- em `marketplace_orders.valor_estornado`, inclusive com as edges NOVAS no ar.
+-- Os índices são a ÚNICA barreira; nenhuma função confere a duplicata sozinha:
+--
+--   * Edge nova (medido na revisão, caso C5): `concluir_estorno` chamada com
+--     um `mp_refund_id` que JÁ é de outra linha do mesmo pedido CONCLUI e SOMA.
+--     Com o índice, o 23505 barra e o pedido fica em 50; sem o índice, o mesmo
+--     id do MP fecha a segunda linha e o pedido vai a 100.
+--   * webhook ANTIGO (casos C4b e C6): duas entregas do mesmo estorno feito
+--     fora do app (ou da mesma contestação) gravam duas linhas e somam em
+--     dobro. É o defeito anterior à 20261192000000, que volta inteiro.
+--
+-- Sem os índices, a falta do 23505 não é inofensiva: é a perda da trava que
+-- impede dinheiro devolvido contado em dobro. A coluna `mp_chargeback_id`
+-- continua lá para as edges novas, mas sozinha não protege nada.
 --
 -- NO WINDOWS: rode `$env:PGCLIENTENCODING='UTF8'` no PowerShell ANTES do psql.
 --

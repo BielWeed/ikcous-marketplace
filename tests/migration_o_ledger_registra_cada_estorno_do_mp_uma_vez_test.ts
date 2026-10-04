@@ -96,3 +96,20 @@ Deno.test("a migration não reescreve nem apaga linha do ledger (resolver duplic
   // O rollback NÃO apaga a coluna (identidade de contestação já registrada).
   assert(!/DROP\s+COLUMN/i.test(codigoRollback));
 });
+
+Deno.test("o aviso do rollback diz que, sem os índices, a edge nova CONCLUI e SOMA o mesmo estorno do MP duas vezes", () => {
+  // Quem opera lê este cabeçalho ANTES de rodar o rb92. Medido pelo revisor
+  // (C5): sem o índice, concluir_estorno com um mp_refund_id que já é de outra
+  // linha do pedido conclui e soma (1 id, valor_estornado 100 em vez de 50).
+  const aviso = rollback
+    .split("\n")
+    .filter((l) => l.startsWith("--"))
+    .map((l) => l.replace(/^--\s?/, ""))
+    .join(" ")
+    .replace(/\s+/g, " ");
+  assert(!aviso.includes("só deixa de acontecer"), "o aviso antigo subestimava o C5");
+  assertStringIncludes(aviso, "concluir_estorno");
+  assertStringIncludes(aviso, "CONCLUI e SOMA");
+  assertStringIncludes(aviso, "webhook ANTIGO");
+  assertStringIncludes(aviso, "defeito anterior à 20261192000000");
+});
