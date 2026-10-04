@@ -188,5 +188,15 @@ no código, sem religar a integração:
 - **O que vale do corpo:** só `order_id` (UUID). Telefone, nome, total e forma de
   pagamento são lidos do banco pelo id; pedido inexistente devolve 404.
 - **Log:** só o número do pedido. Nenhum telefone, nome ou retorno da Evolution.
+- **Configuração da Evolution:** nenhuma tabela do schema atual a guarda (as
+  colunas `store_config.whatsapp_api_*` foram removidas em 01/06/2026). A edge
+  não consulta mais colunas que não existem: responde 503 `success: false`
+  ("WhatsApp não configurado nesta loja") sem tentar enviar. Prova no banco real:
+  `tests/banco/whatsapp-edge-consultas-viva.cjs`.
+- **Falha do gateway:** HTTP 4xx/5xx da Evolution devolve 502 `success: false`,
+  com texto fixo — a resposta dela, o telefone e a chave não são devolvidos nem
+  registrados.
+- **Forma de pagamento:** pelo rótulo comum `rotuloDoPagamento` (`_shared/pedido.ts`),
+  que lê `payment_method` e `metodo_online`; forma desconhecida sai "Não informado".
 
 Os testes (`index_test.ts`) prendem isso com dublês da Evolution e do banco.

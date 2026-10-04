@@ -37,12 +37,14 @@ on:
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
       - "supabase/migrations/**"
       - "tests/banco/**"
+      - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
   workflow_dispatch:
 
@@ -238,3 +240,8 @@ jobs:
       # de entradas fictícias -- 0 divergências.
       - name: Prova viva do CPF da janela (migration 20261182000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs
+      # send-order-whatsapp (04/10/2026): cada `.from().select()` da edge é
+      # executado no schema real — coluna removida (as `whatsapp_api_*` de
+      # store_config) reprova, em vez de passar num dublê de banco.
+      - name: Prova viva das consultas da send-order-whatsapp
+        run: node tests/banco/whatsapp-edge-consultas-viva.cjs
