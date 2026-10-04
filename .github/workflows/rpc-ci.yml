@@ -135,5 +135,11 @@ jobs:
       # a correção passam; rollback só troca os 42 corpos. CLONE próprio.
       - name: Prova viva do admin atual nas portas do painel (migration 20261199000000)
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-portas-viva.cjs
+      # Migration 20261196000000 (Lote A): a contestação decide sob a trava do
+      # pedido — corridas REAIS entre duas conexões (a 2ª comprovadamente
+      # parada na trava), estimativa que só reserva, multicaso, refund regular
+      # numa order contestada. CLONE próprio.
+      - name: Prova viva da contestação (migration 20261196000000)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/contestacao-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs
