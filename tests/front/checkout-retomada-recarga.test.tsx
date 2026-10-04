@@ -740,6 +740,23 @@ describe("CheckoutView — o pagamento pendente sobrevive à recarga da página"
     expect(hospedeiro.textContent).toContain(FINALIZE);
   });
 
+  it("checkout montado SEM usuário (a sessão ainda a caminho) e depois COM ele: o registro NÃO é apagado por ausência de decisão", async () => {
+    // R1 da revisão: com a rede lenta, o checkout (de carrinho, sem pedido)
+    // monta antes de a sessão chegar; quando ela chega, "nenhum pedido em
+    // pagamento na tela" NÃO é uma decisão sobre o pedido do registro.
+    guardarPedidoPendenteDoCheckout(USUARIO.id, PEDIDO);
+    usuarioAtual = null;
+    await renderizarNaMesmaInstancia(undefined);
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+
+    usuarioAtual = USUARIO;
+    await renderizarNaMesmaInstancia(undefined);
+
+    expect(lerPedidoPendenteDoCheckout(USUARIO.id)).toBe(PEDIDO);
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(createOrder).not.toHaveBeenCalled();
+  });
+
   it("troca de conta (A → B) e logout na mesma instância: a confirmação de A não vaza", async () => {
     linhaDoPedido({ payment_status: "pago", status: "processing" });
     await renderizarNaMesmaInstancia(PEDIDO);

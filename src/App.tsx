@@ -16,8 +16,10 @@ import {
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
 import {
+  PRAZO_DA_SESSAO_NA_RECARGA_MS,
   esquecerPedidoPendenteDoCheckout,
   esquecerTodosOsPedidosPendentesDoCheckout,
+  existeAlgumPedidoPendenteDoCheckout,
   lerPedidoPendenteDoCheckout,
 } from "@/lib/pedido-pendente-do-checkout";
 
@@ -568,8 +570,30 @@ const AppContent = () => {
   // checkout", e nada é restaurado por cima da navegação dele.
   const navegouAntesDaRecargaRef = useRef(false);
   const idDoUsuarioDaRecarga = user?.id;
+  // Sessão ATRASADA (rede lenta: o `getSession` perde a corrida de 3 s do
+  // AuthContext e a sessão chega depois): carga em /checkout COM registro na
+  // aba e SEM usuário ainda não é "não há pedido" — é "não sei de quem é o
+  // registro". O App espera a sessão (o estado do AuthContext, sem sondagem)
+  // por no máximo PRAZO_DA_SESSAO_NA_RECARGA_MS; vencido, o checkout abre
+  // como hoje, sem retomada e SEM apagar o registro. Sem registro na carga,
+  // nada espera: o caminho normal não ganha nenhum quadro em branco a mais.
+  const [haRegistroNaCarga] = useState(
+    () => cargaNoCheckout && existeAlgumPedidoPendenteDoCheckout(),
+  );
+  const [prazoDaSessaoVencido, setPrazoDaSessaoVencido] = useState(false);
+  const aguardaASessaoDaRecarga =
+    haRegistroNaCarga && !idDoUsuarioDaRecarga && !prazoDaSessaoVencido;
+  useEffect(() => {
+    if (!aguardaASessaoDaRecarga || recargaDoCheckoutDecidida) return;
+    const relogio = setTimeout(
+      () => setPrazoDaSessaoVencido(true),
+      PRAZO_DA_SESSAO_NA_RECARGA_MS,
+    );
+    return () => clearTimeout(relogio);
+  }, [aguardaASessaoDaRecarga, recargaDoCheckoutDecidida]);
   useEffect(() => {
     if (recargaDoCheckoutDecidida || authLoading) return;
+    if (aguardaASessaoDaRecarga) return;
     // Só o dono do registro o lê (a chave tem o id dele); visitante não tem
     // pedido online. Nada aqui decide se o pedido ainda é cobrável: isso é
     // a leitura do pedido no CheckoutView, sob RLS, antes de montar nada.
@@ -591,6 +615,7 @@ const AppContent = () => {
   }, [
     recargaDoCheckoutDecidida,
     authLoading,
+    aguardaASessaoDaRecarga,
     cargaNoCheckout,
     idDoUsuarioDaRecarga,
   ]);
@@ -834,6 +859,11 @@ const AppContent = () => {
       setCheckoutRetomadaId(opts?.retomarPedidoId ?? null);
       setRetomadaDaRecarga(false);
       navegouAntesDaRecargaRef.current = true;
+      // O cliente navegou: a carga deixou de ser "o F5 no checkout" e não há
+      // mais decisão a esperar — nem a sessão atrasada pode segurar o
+      // checkout novo que ele acabou de abrir. (Carga fora do checkout não
+      // passa por aqui de propósito: ali a decisão apaga o registro velho.)
+      if (cargaNoCheckout) setRecargaDoCheckoutDecidida(true);
       // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
       // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
       // isso precisa vencer o gate de formulário sujo, nunca abrir o
@@ -1195,6 +1225,7 @@ const AppContent = () => {
       isTransitionSupported,
       prefetchViewPromise,
       saveCurrentScroll,
+      cargaNoCheckout,
     ],
   );
 

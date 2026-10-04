@@ -21,9 +21,13 @@
 // SecurityError (até o ACESSO a `globalThis.sessionStorage` pode lançar)
 // nunca derrubam o checkout — leitura que falha é "não há pedido guardado".
 //
-// Quem limpa: o CheckoutView (pedido saiu de pendente; nada em pagamento na
-// tela), o App (o cliente saiu do checkout ou entrou num checkout novo; a
-// carga da página fora do checkout) e o AuthContext (logout).
+// Quem limpa: o CheckoutView (o pedido saiu de pendente, ou o pedido que estava
+// na tela deixou de estar), o App (o cliente saiu do checkout ou entrou num
+// checkout novo; a carga da página fora do checkout) e o AuthContext (logout).
+// NINGUÉM apaga por AUSÊNCIA de decisão: checkout montado sem usuário (a
+// sessão ainda a caminho) não é "nenhum pedido pendente" — só uma decisão
+// tomada PARA aquele usuário (a leitura do pedido, a saída do cliente, o
+// logout) apaga o registro.
 
 const PREFIXO_DA_CHAVE = "ikcous:checkout-pedido-pendente:";
 
@@ -90,5 +94,31 @@ export function esquecerTodosOsPedidosPendentesDoCheckout(): void {
     }
   } catch {
     // Idem.
+  }
+}
+
+/**
+ * Teto da espera pela sessão na CARGA de /checkout com registro na aba.
+ *
+ * O `getSession` do boot pode perder a corrida de 3 s do AuthContext (rede
+ * lenta) e a sessão chegar DEPOIS ("Applying late session"): até ela chegar o
+ * App não sabe de quem é o registro. Com registro na aba e sem usuário ainda,
+ * o App espera a sessão (o estado do AuthContext, sem sondagem) por NO MÁXIMO
+ * este tempo; vencido, o checkout abre como sempre — sem retomada, e SEM
+ * apagar o registro. Só vale quando há registro: sem ele, nada espera.
+ */
+export const PRAZO_DA_SESSAO_NA_RECARGA_MS = 8000;
+
+/** Há registro de QUALQUER usuário nesta aba? (a carga sem usuário ainda decide por isto) */
+export function existeAlgumPedidoPendenteDoCheckout(): boolean {
+  try {
+    const store = armazem();
+    if (!store) return false;
+    for (let i = 0; i < store.length; i++) {
+      if (store.key(i)?.startsWith(PREFIXO_DA_CHAVE)) return true;
+    }
+    return false;
+  } catch {
+    return false;
   }
 }

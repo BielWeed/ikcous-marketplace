@@ -1770,6 +1770,13 @@ export function CheckoutView({
   const pedidoParaARecarga = pedidoSaiuDePendente
     ? null
     : pedidoEmPagamentoNaTela;
+  // O registro só se apaga por uma DECISÃO: o pedido que esta instância
+  // acompanhava saiu de cena (pago, morto, descartado pela leitura, pagamento
+  // cancelado na tela). "Nenhum pedido na tela" SEM nunca ter acompanhado um
+  // NÃO é decisão: com a rede lenta este checkout monta antes de a sessão
+  // chegar (sem usuário, sem pedido), e apagar aqui desfazia a recarga — o
+  // registro do usuário que acabou de chegar sumia sem ninguém tê-lo lido.
+  const pedidoQueEstaTelaAcompanhouRef = useRef<string | null>(null);
   useEffect(() => {
     if (!idDoUsuarioDaRetomada) return;
     if (pedidoParaARecarga) {
@@ -1777,8 +1784,10 @@ export function CheckoutView({
         idDoUsuarioDaRetomada,
         pedidoParaARecarga,
       );
-    } else {
+      pedidoQueEstaTelaAcompanhouRef.current = pedidoParaARecarga;
+    } else if (pedidoQueEstaTelaAcompanhouRef.current !== null) {
       esquecerPedidoPendenteDoCheckout(idDoUsuarioDaRetomada);
+      pedidoQueEstaTelaAcompanhouRef.current = null;
     }
   }, [idDoUsuarioDaRetomada, pedidoParaARecarga]);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
