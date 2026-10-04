@@ -3934,8 +3934,13 @@ export function useOrders(
   // pendente) — aqui a mudança de `user?.id` é o próprio gatilho que falta.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // O desmonte (e a re-execução por `user?.id`) cancela o que ainda estiver
+    // esperando o segundo de espera: sem isto a sincronização rodava DEPOIS do
+    // desmonte, contra um `localStorage` que já não é o da tela.
+    const timersPendentes = new Set<ReturnType<typeof setTimeout>>();
     const handleOnlineSync = () => {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        timersPendentes.delete(timer);
         syncOfflineOrderUpdates().then((filaAvancou) => {
           if (filaAvancou) {
             recarregarAposReconexaoRef
@@ -3944,6 +3949,7 @@ export function useOrders(
           }
         });
       }, 1000);
+      timersPendentes.add(timer);
     };
 
     window.addEventListener("online", handleOnlineSync);
@@ -3952,6 +3958,8 @@ export function useOrders(
     }
     return () => {
       window.removeEventListener("online", handleOnlineSync);
+      for (const timer of timersPendentes) clearTimeout(timer);
+      timersPendentes.clear();
     };
   }, [user?.id]);
 
