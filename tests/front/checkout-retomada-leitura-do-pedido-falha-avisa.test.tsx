@@ -155,14 +155,14 @@ describe("CheckoutView — retomada cuja leitura do pedido falha", () => {
     }
   }
 
-  async function renderizar() {
+  async function renderizar(pedido: string = PEDIDO) {
     const { CheckoutView } = await import("@/views/customer/CheckoutView");
     await act(async () => {
       raiz.render(
         <CheckoutView
           onNavigate={onNavigate}
           onSetBackOverride={() => {}}
-          retomarPedidoId={PEDIDO}
+          retomarPedidoId={pedido}
         />,
       );
     });
@@ -309,5 +309,38 @@ describe("CheckoutView — retomada cuja leitura do pedido falha", () => {
     // O cliente decide: a leitura atrasada não liga cobrança sozinha.
     expect(botoes()).toEqual(["Tentar de novo", "Ver meus pedidos"]);
     semPagamentoNemCheckoutVazio();
+  });
+
+  // R3 (revisão da fase 3): o aviso é DO PEDIDO que falhou.
+  it("R3: trocar o pedido retomado limpa o aviso do anterior — o aviso do A não fica sobre a leitura do B", async () => {
+    lerPedido
+      .mockResolvedValueOnce({ data: null, error: { message: "falhou" } })
+      .mockReturnValueOnce(new Promise(() => {})); // B ainda lendo
+    await renderizar("ped-A");
+    expect(botoes()).toEqual(["Tentar de novo", "Ver meus pedidos"]);
+
+    await renderizar("ped-B");
+
+    expect(texto()).not.toContain("Não foi possível abrir o pagamento");
+    semPagamentoNemCheckoutVazio();
+    expect(lerPedido).toHaveBeenCalledTimes(2);
+  });
+
+  it("R3: desmontar antes dos 15 s limpa o relógio — nenhum timer sobra e nada falha depois", async () => {
+    vi.useFakeTimers();
+    lerPedido.mockReturnValue(new Promise(() => {}));
+    await renderizar();
+    expect(vi.getTimerCount()).toBeGreaterThan(0); // o relógio da leitura
+
+    await act(async () => {
+      raiz.render(<div />); // desmonta o CheckoutView
+    });
+    expect(vi.getTimerCount()).toBe(0);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(texto()).not.toContain("Não foi possível abrir o pagamento");
+    expect(botoes()).toEqual([]);
   });
 });

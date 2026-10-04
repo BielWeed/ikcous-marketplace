@@ -1411,9 +1411,18 @@ export function CheckoutView({
   // F4: `"falhou"` mostra a mensagem; `"relendo"` é o intervalo entre o toque
   // em "Tentar de novo" e a resposta (a mensagem fica, sem o botão, em vez de
   // piscar o checkout vazio). `tentativaDaRetomada` refaz a leitura.
-  const [retomadaFalhouNaLeitura, setRetomadaFalhouNaLeitura] = useState<
-    "falhou" | "relendo" | null
-  >(null);
+  //
+  // R3 (revisão): o estado carrega o PEDIDO a que pertence (mesmo desenho de
+  // `pedidoComCobrancaIncerta`) — se `retomarPedidoId` mudar, o aviso do
+  // pedido A não fica por cima da leitura do B, sem precisar de efeito.
+  const [falhaDaRetomada, setFalhaDaRetomada] = useState<{
+    readonly pedido: string;
+    readonly estado: "falhou" | "relendo";
+  } | null>(null);
+  const retomadaFalhouNaLeitura =
+    falhaDaRetomada !== null && falhaDaRetomada.pedido === retomarPedidoId
+      ? falhaDaRetomada.estado
+      : null;
   const [tentativaDaRetomada, setTentativaDaRetomada] = useState(0);
   // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
   // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
@@ -1435,6 +1444,7 @@ export function CheckoutView({
   // DEPOIS de `data` chegar. Uma leitura por toque, sem repetição automática.
   useEffect(() => {
     if (!retomarPedidoId) return;
+    const pedidoRetomado = retomarPedidoId;
     let vivo = true;
     // Só a PRIMEIRA saída vale: o estouro e a resposta correm lado a lado, e
     // a resposta que chega depois do aviso não liga cobrança por baixo da
@@ -1448,7 +1458,7 @@ export function CheckoutView({
       if (!vivo || respondeu) return;
       respondeu = true;
       clearTimeout(relogio);
-      setRetomadaFalhouNaLeitura("falhou");
+      setFalhaDaRetomada({ pedido: pedidoRetomado, estado: "falhou" });
     };
     // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
     // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
@@ -1474,7 +1484,7 @@ export function CheckoutView({
         }
         respondeu = true;
         clearTimeout(relogio);
-        setRetomadaFalhouNaLeitura(null);
+        setFalhaDaRetomada(null);
         // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
         // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
         // no servidor (metodo_online costuma vir null nesse estado, mas o
@@ -3478,7 +3488,10 @@ export function CheckoutView({
             </p>
             <Button
               onClick={() => {
-                setRetomadaFalhouNaLeitura("relendo");
+                setFalhaDaRetomada({
+                  pedido: retomarPedidoId,
+                  estado: "relendo",
+                });
                 setTentativaDaRetomada((n) => n + 1);
               }}
               className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
