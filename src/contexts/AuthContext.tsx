@@ -1,3 +1,4 @@
+import { pedirAoSwPurgarArquivosPrivados } from "@/lib/arquivo-publico-do-storage";
 import { cpfValido } from "@/lib/cpf";
 import { gravarCpfDaConta } from "@/lib/cpf-da-conta";
 import {
@@ -125,6 +126,11 @@ function clearLocalUserData() {
   // `window`, e assim continua valendo em qualquer ambiente que chame esta
   // função.
   limparCachesDeAdmin();
+  // R12 (04/10/2026) — a gaveta de imagens do service worker pode ter
+  // guardado endereço ASSINADO de bucket privado (foto de devolução) antes
+  // da correção: pede ao SW que jogue fora o que não é público. Disparar-e-
+  // esquecer, nunca lança — o logout não espera o SW nem depende dele.
+  pedirAoSwPurgarArquivosPrivados();
   if (typeof window === "undefined") return;
   localStorage.removeItem("marketplace_cart_v1");
   localStorage.removeItem("ikcous_recently_viewed");
@@ -707,6 +713,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // SIGNED_OUT (abaixo) não pegaria essa troca direta uid→uid.
       if (previousUserId && currentUserId && previousUserId !== currentUserId) {
         limparCachesDeAdmin();
+        // R12 — mesma troca uid→uid: o que a conta anterior abriu por
+        // endereço assinado não pode ficar na gaveta do SW para a próxima.
+        pedirAoSwPurgarArquivosPrivados();
       }
 
       // Only set loading screen for explicit critical transitions (login/logout).
