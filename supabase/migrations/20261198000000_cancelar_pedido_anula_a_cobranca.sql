@@ -49,9 +49,17 @@
 --   6. ADMIN ATUAL na porta do front: `update_order_status_atomic` deixa de
 --      usar `is_admin()` (que aceita o `app_metadata` do JWT — admin
 --      rebaixado com token velho seguia mudando pedido de OUTRO cliente,
---      com estorno e estoque) e passa a exigir o papel admin AGORA em
---      `auth.users` E `profiles` (contradição nega). A sessão de servidor
---      (role postgres/service_role) segue aceita, como em is_admin().
+--      com estorno e estoque) e passa a perguntar à `public.is_admin_atual()`
+--      da 20261197000000: papel admin AGORA em `auth.users` E `profiles`
+--      (contradição nega); a sessão de servidor (role postgres/service_role)
+--      segue aceita, como em is_admin(). UMA regra só no banco.
+--   7. ORDEM GLOBAL DE TRAVAS em `admin_devolucao_reemitir_reembolso`: o
+--      corpo da 20261197000000 travava o PEDIDO e depois a linha recusada de
+--      order_refunds — o inverso de concluir_estorno, registrar_estorno_
+--      manual e do cancelamento (abaixo): cancelar × reemitir podia dar
+--      deadlock (40P01). Agora ela trava as linhas do pedido (ORDER BY id)
+--      ANTES do pedido; o resto do corpo é o da 97 byte a byte (inclusive a
+--      guarda `is_admin_atual()`).
 --
 -- COMO A REGRA CONTINUA NUM LUGAR SÓ: o código de `update_order_status_atomic`
 -- (o da 20261180000000, copiado verbatim com as mudanças acima) muda para
@@ -63,10 +71,18 @@
 -- o ator que a edge autenticou e `p_pela_edge = true`. Nenhuma das duas copia
 -- a regra de cancelamento (estoque, estorno, histórico).
 --
--- ADMIN ATUAL (item 5 do plano): as duas portas não confiam no papel do JWT — leem o
--- papel de AGORA nas duas fontes que a `is_admin_atual()` da 20261197000000
--- (outra frente, ainda não aplicada) lê: `auth.users.raw_app_meta_data` E
--- `profiles.role`. Não depende dela; o TODO no corpo aponta a troca.
+-- ADMIN ATUAL (item 5 do plano): as duas portas não confiam no papel do JWT.
+-- A do front (`update_order_status_atomic`) pergunta à `is_admin_atual()` da
+-- 20261197000000 — a sessão É o usuário. A da edge
+-- (`cancelar_pedido_com_cobranca`) NÃO pode perguntar a ela: roda como
+-- service_role, e `is_admin_atual()` devolve TRUE para a sessão de servidor
+-- (ramo (a) dela) — todo chamador da edge viraria admin. Ela confere o ATOR
+-- que a edge autenticou (`p_ator`) nas MESMAS duas fontes que a
+-- `is_admin_atual()` lê (`auth.users.raw_app_meta_data` E `profiles.role`),
+-- aplicadas ao parâmetro. Se a 97 ganhar uma versão com o usuário por
+-- parâmetro, esta conferência passa a ser ela (a prova (b)/(h) de
+-- tests/banco/cancelar-pedido-viva.cjs fica vermelha se alguém trocar por
+-- `is_admin_atual()` sem parâmetro).
 --
 -- O QUE NÃO MUDA:
 --   - assinatura, `SECURITY DEFINER`, `search_path` e ACL de
@@ -105,15 +121,16 @@
 -- `order_refunds` ou `devolucoes`; (b) o corpo VIVO de
 -- `update_order_status_atomic`, por `md5(replace(prosrc, E'\r', ''))`, não for
 -- o da 20261180000000 (`ed2f7fd3e0177c027720049b2fe55d3b`) nem o que esta
--- migration deixa (`e2a821a1fb498740bc4356e3f22bf022`); (c) qualquer das três
+-- migration deixa (`c8df4feb3f53b90922a6c8398371e394`); (c) qualquer das três
 -- funções novas já existir com um corpo que não é o desta migration. Os
 -- hashes estão amarrados ao texto por
 -- tests/migration_cancelar_pedido_anula_a_cobranca_test.ts. O DO roda na
 -- MESMA transação do resto: recusa = nada gravado.
 --
--- ORDEM DE APLICAÇÃO: depois da 20261180000000 (o corpo que esta copia) e
--- ANTES de publicar a edge `criar-pagamento` com a ação `cancelar` e o front
--- que a chama. Independente da 20261197000000. ATENÇÃO: com esta migration
+-- ORDEM DE APLICAÇÃO: 92 → 94 → 95 → 96 → 97 → 98 — DEPOIS da 20261197000000
+-- (usa `is_admin_atual()` e redefine o corpo que ela deixa em
+-- `admin_devolucao_reemitir_reembolso`) e ANTES de publicar a edge
+-- `criar-pagamento` com a ação `cancelar` e o front que a chama. ATENÇÃO: com esta migration
 -- no ar e o front ANTIGO, cancelar pedido online com cobrança na vaga passa a
 -- ser recusado com a mensagem clara do item 2 (nenhum dinheiro em risco; o
 -- cancelamento espera o front novo).
@@ -125,7 +142,7 @@
 --
 -- FICHA DE VERIFICAÇÃO:
 --   1. `md5(replace(prosrc, E'\r', ''))` de update_order_status_atomic =
---      e2a821a1fb498740bc4356e3f22bf022; as três funções novas existem.
+--      c8df4feb3f53b90922a6c8398371e394; as três funções novas existem.
 --   2. Cliente dono de pedido 'pending'/'aguardando' com PIX na vaga:
 --      `update_order_status_atomic(<id>, 'cancelled')` — RAISE "não pode ser
 --      cancelado por aqui"; admin, a mesma recusa.
@@ -136,8 +153,10 @@
 --
 -- ROLLBACK MANUAL:
 -- rollback-manual-20261198000000_cancelar_pedido_anula_a_cobranca.sql
--- restaura, byte a byte, o corpo da 20261180000000 e apaga as três funções
--- novas. Aplicar com `psql -1 -f`.
+-- restaura, byte a byte, o corpo da 20261180000000 de
+-- `update_order_status_atomic` e o da 20261197000000 de
+-- `admin_devolucao_reemitir_reembolso`, e apaga as três funções novas.
+-- Aplicar com `psql -1 -f`.
 
 DO $preflight_20261198$
 DECLARE
@@ -161,9 +180,27 @@ BEGIN
    WHERE oid = to_regprocedure('public.update_order_status_atomic(uuid,text,text,boolean)');
   IF v_hash IS NULL OR v_hash NOT IN (
     'ed2f7fd3e0177c027720049b2fe55d3b', -- corpo que a 20261180000000 deixa (vigente até aqui)
-    'e2a821a1fb498740bc4356e3f22bf022'  -- corpo que ESTA migration deixa — reaplicação idempotente
+    'c8df4feb3f53b90922a6c8398371e394'  -- corpo que ESTA migration deixa — reaplicação idempotente
   ) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de update_order_status_atomic (hash %) não é o da 20261180000000 nem o desta migration — capture o corpo vivo e revise antes de aplicar.', COALESCE(v_hash, 'ausente');
+  END IF;
+
+  -- A 20261197000000 tem de estar no ar: a casca pergunta à is_admin_atual().
+  SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
+    FROM pg_proc
+   WHERE oid = to_regprocedure('public.is_admin_atual()');
+  IF v_hash IS DISTINCT FROM '519842163e48cc377ac1337ffb9db936' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.is_admin_atual() ausente ou com outro corpo (hash %) — aplique a 20261197000000 antes da 20261198000000.', COALESCE(v_hash, 'ausente');
+  END IF;
+
+  SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
+    FROM pg_proc
+   WHERE oid = to_regprocedure('public.admin_devolucao_reemitir_reembolso(uuid,boolean)');
+  IF v_hash IS NULL OR v_hash NOT IN (
+    '7a5ce4978a989e1bebb3d048d347c0c6', -- corpo que a 20261197000000 deixa
+    '422cfaa8c53cefc1913b9e082442631d'  -- corpo que ESTA migration deixa em admin_devolucao_reemitir_reembolso
+  ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo de admin_devolucao_reemitir_reembolso (hash %) não é o da 20261197000000 nem o desta migration.', COALESCE(v_hash, 'ausente');
   END IF;
 
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
@@ -183,7 +220,7 @@ BEGIN
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
     FROM pg_proc
    WHERE oid = to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)');
-  IF v_hash IS NOT NULL AND v_hash <> '794ea92e745cdafec5d87dcd2fb69fb7' THEN
+  IF v_hash IS NOT NULL AND v_hash <> 'e924c8fd33bb87e86a4a3fbd4fefde4e' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.cancelar_pedido_com_cobranca já existe com outro corpo (hash %).', v_hash;
   END IF;
 END $preflight_20261198$;
@@ -463,41 +500,16 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-    v_ator UUID := auth.uid();
-    v_admin_atual BOOLEAN;
 BEGIN
     -- 20261198000000: a regra inteira (inclusive a guarda do cartão vivo da
     -- 20261180000000 — `verificando:` — e a recusa do cancelamento com
     -- cobrança na vaga) mora em public.pedido__mudar_status. Esta porta é a
     -- do front: o ator é a sessão (auth.uid()) e nunca é a edge
-    -- (`p_pela_edge` false).
-    --
-    -- ADMIN ATUAL, não o do JWT: `public.is_admin()` aceita o `app_metadata`
-    -- do token — um admin rebaixado com o JWT de antes (válido até expirar)
-    -- seguiria cancelando pedido pago/offline de OUTRO cliente (com estorno e
-    -- devolução de estoque). Aqui o papel `admin` tem de estar AGORA nas duas
-    -- fontes: `auth.users.raw_app_meta_data` E `profiles.role`; contradição
-    -- = não é admin (o dono continua pelo caminho dele: `user_id`). A sessão
-    -- de servidor (role postgres/service_role) segue como em is_admin().
-    -- TODO(20261197000000): trocar estas leituras pela is_admin_atual()
-    -- quando ela estiver no ar em todas as lojas — a mesma regra.
-    v_admin_atual :=
-        COALESCE(current_setting('role', true), '') IN ('postgres', 'service_role')
-        OR (
-            EXISTS (
-                SELECT 1 FROM auth.users u
-                 WHERE u.id = v_ator
-                   AND (u.raw_app_meta_data ->> 'role') = 'admin'
-            )
-            AND EXISTS (
-                SELECT 1 FROM public.profiles p
-                 WHERE p.id = v_ator
-                   AND p.role = 'admin'
-            )
-        );
+    -- (`p_pela_edge` false). Admin é o ATUAL — public.is_admin_atual() da
+    -- 20261197000000 (auth.users E profiles agora; contradição nega; sessão
+    -- de servidor aceita), nunca o is_admin() que confia no JWT.
     RETURN public.pedido__mudar_status(
-        p_order_id, p_new_status, p_notes, v_ator, v_admin_atual, false
+        p_order_id, p_new_status, p_notes, auth.uid(), public.is_admin_atual(), false
     );
 END;
 $$;
@@ -567,9 +579,11 @@ BEGIN
         RAISE EXCEPTION 'Pedido não encontrado.';
     END IF;
 
-    -- TODO(20261197000000): trocar por public.is_admin_atual() quando ela
-    -- aceitar o ator por parâmetro (hoje ela lê auth.uid(), que aqui é a
-    -- chave de serviço). Mesmas duas fontes que ela lê, nunca o JWT.
+    -- Admin ATUAL do ATOR (não da sessão): esta função roda como
+    -- service_role, e public.is_admin_atual() devolve TRUE para a sessão de
+    -- servidor — chamá-la aqui faria de todo chamador da edge um admin. As
+    -- MESMAS duas fontes que ela lê (20261197000000), aplicadas a p_ator;
+    -- nunca o JWT. Ver o cabeçalho (ADMIN ATUAL).
     v_ator_admin := EXISTS (
             SELECT 1 FROM auth.users u
              WHERE u.id = p_ator
@@ -622,3 +636,139 @@ $$;
 
 REVOKE ALL ON FUNCTION public.cancelar_pedido_com_cobranca(uuid, uuid, text, text, text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.cancelar_pedido_com_cobranca(uuid, uuid, text, text, text) TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- 5. admin_devolucao_reemitir_reembolso — o corpo da 20261197000000 com UMA
+--    mudança: trava as linhas de order_refunds do pedido ANTES do pedido
+--    (item 7 do cabeçalho). Guarda is_admin_atual() da 97 intacta.
+-- ---------------------------------------------------------------------------
+-- ACL herdada (CREATE OR REPLACE); nenhum GRANT/REVOKE aqui.
+CREATE OR REPLACE FUNCTION public.admin_devolucao_reemitir_reembolso(
+  p_devolucao_id uuid,
+  p_manual boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_d public.devolucoes%ROWTYPE;
+  v_o public.marketplace_orders%ROWTYPE;
+  v_refund public.order_refunds%ROWTYPE;
+  v_em_voo numeric(12, 2);
+  v_ja_manual numeric(12, 2);
+  v_disponivel numeric(12, 2);
+  v_pago_pelo_app boolean;
+  v_novo_refund_id uuid;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  -- Papel ATUAL (auth.users E profiles), não o do JWT: admin rebaixado para aqui (20261197000000).
+  IF NOT public.is_admin_atual() THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v_d FROM public.devolucoes WHERE id = p_devolucao_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Devolução não encontrada.' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_d.status <> 'concluida' OR v_d.resolucao_final <> 'reembolso' THEN
+    RAISE EXCEPTION 'Só uma devolução concluída com reembolso pode reemitir o reembolso.' USING ERRCODE = '22023';
+  END IF;
+  IF v_d.valor_reembolso IS NULL OR v_d.valor_reembolso <= 0 THEN
+    RAISE EXCEPTION 'Esta devolução não tem valor de reembolso.' USING ERRCODE = '22023';
+  END IF;
+  -- Achado 2: manual é FINAL. Sem refund_id (nunca passou pelo MP) ou já
+  -- convertida para manual por uma reemissão anterior — nada a reemitir.
+  IF v_d.reembolso_manual THEN
+    RAISE EXCEPTION 'Esta devolução já foi resolvida manualmente (fora do app); não há reembolso para reemitir.'
+      USING ERRCODE = '22023';
+  END IF;
+  IF v_d.refund_id IS NULL THEN
+    RAISE EXCEPTION 'Esta devolução não tem um reembolso recusado para reemitir.' USING ERRCODE = '22023';
+  END IF;
+
+  -- 20261198000000 (ORDEM GLOBAL DE TRAVAS): as linhas de order_refunds do
+  -- pedido, por id, ANTES do pedido — a ordem de concluir_estorno,
+  -- registrar_estorno_manual e do cancelamento. A 97 travava o pedido e só
+  -- depois a linha recusada (abaixo): deadlock com quem trava na ordem certa.
+  PERFORM 1
+     FROM public.order_refunds r
+    WHERE r.order_id = v_d.order_id
+    ORDER BY r.id
+      FOR UPDATE;
+
+  SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;
+
+  -- Achado 2 (revalida como o achado H, sem a trava de estoque — esta RPC
+  -- não reestoca nada, então stock_returned_at não é assunto dela).
+  IF v_o.status <> 'delivered' THEN
+    RAISE EXCEPTION 'O pedido desta devolução não está mais entregue (status atual: %). Fale com o financeiro antes de reemitir.',
+      v_o.status USING ERRCODE = '22023';
+  END IF;
+  IF v_o.payment_status IS NULL
+     OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') THEN
+    RAISE EXCEPTION 'Este pedido não tem pagamento registrado para devolver.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_refund FROM public.order_refunds WHERE id = v_d.refund_id FOR UPDATE;
+  IF NOT FOUND OR v_refund.status <> 'recusado' THEN
+    RAISE EXCEPTION 'O reembolso desta devolução não foi recusado (status atual: %). Nada para reemitir.',
+      COALESCE(v_refund.status, 'desconhecido') USING ERRCODE = '22023';
+  END IF;
+
+  IF p_manual THEN
+    UPDATE public.devolucoes
+       SET refund_id = NULL, reembolso_manual = true, updated_at = now()
+     WHERE id = p_devolucao_id;
+    PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
+      'Reembolso reemitido manualmente (fora do app) após recusa pelo Mercado Pago.');
+    RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', true, 'refund_id', NULL);
+  END IF;
+
+  -- Achado 2: mesma regra de elegibilidade de 180 dias da conclusão — o
+  -- executor recusaria de novo, e a linha 'recusado' ficaria para sempre
+  -- sem caminho de refazer se insistíssemos no MP aqui.
+  v_pago_pelo_app := v_o.payment_method = 'online'
+                     AND v_o.payment_status IN ('pago', 'pago_apos_expirar')
+                     AND v_o.gateway_payment_id IS NOT NULL
+                     AND v_o.paid_at IS NOT NULL
+                     AND now() - v_o.paid_at <= interval '180 days';
+  IF NOT v_pago_pelo_app THEN
+    RAISE EXCEPTION 'Este pedido não é mais elegível para reembolso pelo Mercado Pago (prazo de 180 dias ou forma de pagamento). Reemita como manual (p_manual = true).'
+      USING ERRCODE = '22023';
+  END IF;
+
+  -- Achado 3: desconta reembolso manual JÁ CONCLUÍDO de OUTRA devolução do
+  -- mesmo pedido — mesma trava da conclusão.
+  SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
+    FROM public.devolucoes d
+   WHERE d.order_id = v_o.id AND d.status = 'concluida' AND d.reembolso_manual AND d.id <> v_d.id;
+
+  -- Mesma trava de saldo da conclusão: total − já devolvido − em voo (menos a
+  -- própria linha recusada, que não compete por saldo com a reemissão dela)
+  -- − reembolso manual de outra devolução do mesmo pedido.
+  SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
+   WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento')
+     AND r.id <> v_d.refund_id;
+  v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual, 0);
+  IF v_d.valor_reembolso > v_disponivel THEN
+    RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
+      v_d.valor_reembolso, v_disponivel USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+  VALUES (v_o.id, v_d.valor_reembolso, 'Reemissão da devolução ' || v_d.protocolo, 'lojista', 'solicitado')
+  RETURNING id INTO v_novo_refund_id;
+
+  UPDATE public.devolucoes
+     SET refund_id = v_novo_refund_id, reembolso_manual = false, updated_at = now()
+   WHERE id = p_devolucao_id;
+
+  PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
+    'Reembolso reemitido pelo Mercado Pago após recusa anterior.');
+
+  RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', false, 'refund_id', v_novo_refund_id);
+END;
+$$;

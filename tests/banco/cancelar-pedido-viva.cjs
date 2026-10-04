@@ -47,6 +47,12 @@
  *       registrar_estorno_manual nas duas ordens terminam sem deadlock e com
  *       o remanescente certo. CONTROLE: a ordem invertida (pedido antes das
  *       linhas) contra concluir_estorno dá deadlock (40P01).
+ *   (k) admin_devolucao_reemitir_reembolso segue a MESMA ordem global
+ *       (a 97 travava pedido → linha): com duas conexões, quem já segura as
+ *       linhas faz a reemissão esperar ANTES de travar o pedido;
+ *       cancelar × reemitir e reemitir × concluir_estorno, nas duas ordens,
+ *       sem 40P01. CONTROLE: o corpo da 97 (copiado com outro nome) no
+ *       mesmo cenário dá deadlock (40P01).
  *   (i) ENTREGUE → cancelar → reativar → cancelar: o carimbo do fato
  *       histórico (`cancelled_after_shipping`) segura o estoque e o estorno
  *       nas duas vezes; o retorno físico explícito
@@ -71,7 +77,12 @@ const CAMINHO_98 = path.join(PASTA, NOME_98);
 const CAMINHO_ROLLBACK_98 = path.join(PASTA, `rollback-manual-${NOME_98}`);
 
 const HASH_80 = "ed2f7fd3e0177c027720049b2fe55d3b";
-const HASH_98 = "e2a821a1fb498740bc4356e3f22bf022";
+const HASH_98 = "c8df4feb3f53b90922a6c8398371e394";
+// admin_devolucao_reemitir_reembolso: o corpo que a 20261197000000 deixa e o
+// que a 98 deixa (ordem global de travas).
+const HASH_97_REEMITIR = "7a5ce4978a989e1bebb3d048d347c0c6";
+const HASH_98_REEMITIR = "422cfaa8c53cefc1913b9e082442631d";
+const NOME_97 = "20261197000000_dinheiro_exige_admin_atual.sql";
 
 const U_CLIENTE = "98111111-1111-1111-1111-111111111111";
 const U_OUTRO = "98333333-3333-3333-3333-333333333333";
@@ -272,6 +283,14 @@ async function linhasDeEstorno(cliente, id) {
     [id],
   );
   return r.rows.map((l) => ({ ...l, amount: Number(l.amount) }));
+}
+
+async function md5Reemitir(cliente) {
+  const r = await cliente.query(
+    `SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc
+      WHERE oid = to_regprocedure('public.admin_devolucao_reemitir_reembolso(uuid,boolean)')`,
+  );
+  return r.rows[0]?.h ?? null;
 }
 
 async function md5Vivo(cliente) {
@@ -1267,6 +1286,248 @@ PROVAS.push({
   },
 });
 
+let protocolo = 0;
+
+/**
+ * Devolução CONCLUÍDA com reembolso RECUSADO pelo MP (o caso que a
+ * reemissão existe para refazer), num pedido entregue e pago pelo app
+ * (total 100). A linha recusada é de 30.
+ */
+async function devolucaoRecusada(cliente) {
+  protocolo += 1;
+  const vaga = `ORD98DEV${protocolo}`;
+  const p = await criarPedido(cliente, {
+    status: "delivered",
+    paymentStatus: "pago",
+    paidAt: new Date().toISOString(),
+    vaga,
+    metodo: "pix",
+  });
+  const linha = await cliente.query(
+    `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+     VALUES ($1, 30, 'devolução recusada pelo MP', 'lojista', 'recusado') RETURNING id`,
+    [p.pedidoId],
+  );
+  const dev = await cliente.query(
+    `INSERT INTO public.devolucoes
+       (protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+        modalidade, metodo_retorno, status, valor_itens, valor_reembolso, refund_id,
+        reembolso_manual, prazo_ate, politica, concluida_em)
+     VALUES ($1, $2, $3, 'arrependimento', 'desisti', 'reembolso', 'reembolso',
+             'local', 'entrega_na_loja', 'concluida', 30, 30, $4,
+             false, current_date + 7, '{}'::jsonb, now())
+     RETURNING id`,
+    [`DEV98-${protocolo}`, p.pedidoId, U_CLIENTE, linha.rows[0].id],
+  );
+  return {
+    ...p,
+    vaga,
+    linhaRecusada: linha.rows[0].id,
+    devolucaoId: dev.rows[0].id,
+  };
+}
+
+/**
+ * A conexão A segura as LINHAS do pedido (o 1º passo de quem segue a ordem
+ * global); a B chama `sqlB`. Espera B bloquear, e então A tenta travar o
+ * PEDIDO. Com a ordem global, B ainda não pegou o pedido: A trava e solta, B
+ * conclui. Com a ordem invertida, B já segura o pedido: deadlock (40P01).
+ * Devolve os códigos de erro e o resultado de B.
+ */
+async function linhasDepoisPedido(
+  url,
+  observador,
+  pedidoId,
+  sqlB,
+  argsB,
+  rotulo,
+) {
+  const a = await conectar(url);
+  const b = await conectar(url);
+  const codigos = [];
+  let resultadoB = null;
+  try {
+    await a.query("BEGIN");
+    await a.query(
+      "SELECT 1 FROM public.order_refunds WHERE order_id = $1 ORDER BY id FOR UPDATE",
+      [pedidoId],
+    );
+    const pidB = await pid(b);
+    await b.query("BEGIN");
+    await b.query("SET LOCAL ROLE service_role");
+    const promessaB = b
+      .query(sqlB, argsB)
+      .then((r) => {
+        resultadoB = r.rows[0]?.r ?? null;
+      })
+      .catch((e) => {
+        codigos.push(e.code);
+      });
+    await esperarBloqueio(observador, pidB, rotulo);
+    await a.query("SET LOCAL lock_timeout = '5s'");
+    await a
+      .query(
+        "SELECT 1 FROM public.marketplace_orders WHERE id = $1 FOR UPDATE",
+        [pedidoId],
+      )
+      .catch((e) => {
+        codigos.push(e.code);
+      });
+    await a.query(codigos.length ? "ROLLBACK" : "COMMIT").catch(() => {});
+    await promessaB;
+    await b.query(codigos.length ? "ROLLBACK" : "COMMIT").catch(() => {});
+  } finally {
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+  }
+  return { codigos, resultadoB };
+}
+
+const SQL_REEMITIR =
+  "SELECT public.admin_devolucao_reemitir_reembolso($1::uuid, false) AS r";
+
+PROVAS.push({
+  nome: "(k) admin_devolucao_reemitir_reembolso trava as linhas ANTES do pedido: cancelar × reemitir e reemitir × concluir_estorno sem deadlock; o corpo da 97 dá 40P01",
+  corpo: async (cliente, url) => {
+    assert.equal(await md5Reemitir(cliente), HASH_98_REEMITIR);
+
+    // K1 — quem segura as linhas faz a reemissão esperar antes do pedido.
+    {
+      const d = await devolucaoRecusada(cliente);
+      const { codigos, resultadoB } = await linhasDepoisPedido(
+        url,
+        cliente,
+        d.pedidoId,
+        SQL_REEMITIR,
+        [d.devolucaoId],
+        "K1",
+      );
+      assert.deepEqual(codigos, [], "K1: sem 40P01 nem lock_timeout");
+      assert.equal(resultadoB.reembolso_manual, false);
+      assert.ok(resultadoB.refund_id, "K1: a reemissão abriu a linha nova");
+    }
+
+    // K2 — cancelar × reemitir, nas duas ordens (2 conexões de verdade).
+    {
+      const d = await devolucaoRecusada(cliente);
+      const { rA, rB } = await emSequencia(
+        url,
+        cliente,
+        (con) =>
+          con.query(SQL_REEMITIR, [d.devolucaoId]).then((r) => r.rows[0].r),
+        (con) =>
+          con
+            .query(
+              "SELECT public.cancelar_pedido_com_cobranca($1::uuid, $2::uuid, $3::text, 'pago') AS r",
+              [d.pedidoId, U_ADMIN, d.vaga],
+            )
+            .then((r) => r.rows[0].r),
+        "K2 reemitir→cancelar",
+      );
+      assert.ok(rA.refund_id);
+      assert.equal(rB.cancelado, true);
+    }
+    {
+      const d = await devolucaoRecusada(cliente);
+      let erroB = null;
+      const { rA } = await emSequencia(
+        url,
+        cliente,
+        (con) =>
+          con
+            .query(
+              "SELECT public.cancelar_pedido_com_cobranca($1::uuid, $2::uuid, $3::text, 'pago') AS r",
+              [d.pedidoId, U_ADMIN, d.vaga],
+            )
+            .then((r) => r.rows[0].r),
+        (con) =>
+          con
+            .query(SQL_REEMITIR, [d.devolucaoId])
+            .then((r) => r.rows[0].r)
+            .catch((e) => {
+              erroB = e;
+              return null;
+            }),
+        "K2 cancelar→reemitir",
+      );
+      assert.equal(rA.cancelado, true);
+      // O pedido deixou de estar entregue enquanto a reemissão esperava: ela
+      // recusa pela regra dela (22023) — nunca deadlock.
+      assert.equal(erroB?.code, "22023");
+      assert.match(erroB.message, /não está mais entregue/);
+    }
+
+    // K3 — reemitir × concluir_estorno (outra linha do mesmo pedido em
+    // processamento), nas duas ordens.
+    for (const reemitirPrimeiro of [true, false]) {
+      const d = await devolucaoRecusada(cliente);
+      const outra = await cliente.query(
+        `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+         VALUES ($1, 20, 'outra devolução em voo', 'lojista', 'em_processamento') RETURNING id`,
+        [d.pedidoId],
+      );
+      const reemitir = (con) =>
+        con.query(SQL_REEMITIR, [d.devolucaoId]).then((r) => r.rows[0].r);
+      const concluir = (con) =>
+        con
+          .query(
+            "SELECT public.concluir_estorno($1::uuid, $2, 'approved', 'accredited') AS r",
+            [outra.rows[0].id, `MPREF98K3${reemitirPrimeiro ? "a" : "b"}`],
+          )
+          .then((r) => r.rows[0].r);
+      const { rA, rB } = await emSequencia(
+        url,
+        cliente,
+        reemitirPrimeiro ? reemitir : concluir,
+        reemitirPrimeiro ? concluir : reemitir,
+        `K3 ${reemitirPrimeiro ? "reemitir→concluir" : "concluir→reemitir"}`,
+      );
+      const re = reemitirPrimeiro ? rA : rB;
+      const co = reemitirPrimeiro ? rB : rA;
+      assert.ok(re.refund_id);
+      assert.equal(co.concluido, true);
+    }
+
+    // K4 — CONTROLE: o corpo da 97 (pedido → linha), copiado com outro nome,
+    // no MESMO cenário do K1 dá deadlock. É o que a 98 corrige.
+    const m97 = fs
+      .readFileSync(path.join(PASTA, NOME_97), "utf8")
+      .replace(/\r\n/g, "\n");
+    const i97 = m97.indexOf(
+      "CREATE OR REPLACE FUNCTION public.admin_devolucao_reemitir_reembolso(",
+    );
+    const corpo97 = m97
+      .slice(i97, m97.indexOf("\n$$;", i97) + 4)
+      .replace(
+        "public.admin_devolucao_reemitir_reembolso(",
+        "public.reemitir_97_controle_98(",
+      );
+    await cliente.query(corpo97);
+    await cliente.query(
+      "GRANT EXECUTE ON FUNCTION public.reemitir_97_controle_98(uuid, boolean) TO service_role",
+    );
+    try {
+      const d = await devolucaoRecusada(cliente);
+      const { codigos } = await linhasDepoisPedido(
+        url,
+        cliente,
+        d.pedidoId,
+        "SELECT public.reemitir_97_controle_98($1::uuid, false) AS r",
+        [d.devolucaoId],
+        "K4",
+      );
+      assert.ok(
+        codigos.includes("40P01"),
+        `o corpo da 97 devia dar deadlock; códigos: ${JSON.stringify(codigos)}`,
+      );
+    } finally {
+      await cliente.query(
+        "DROP FUNCTION IF EXISTS public.reemitir_97_controle_98(uuid, boolean)",
+      );
+    }
+  },
+});
+
 PROVAS.push({
   nome: "(e) corrida com duas conexões: cancelar × confirmar_pagamento('pago') — nunca estado incoerente, estoque 1x",
   corpo: async (cliente, url) => {
@@ -1348,12 +1609,18 @@ PROVAS.push({
       // Reaplicar a 98 por cima dela mesma: idempotente.
       await cliente.query(sql98);
       assert.equal(await md5Vivo(cliente), HASH_98);
+      assert.equal(await md5Reemitir(cliente), HASH_98_REEMITIR);
 
       await cliente.query(sqlRollback);
       assert.equal(
         await md5Vivo(cliente),
         HASH_80,
         "o rollback devolve o corpo da 80 byte a byte",
+      );
+      assert.equal(
+        await md5Reemitir(cliente),
+        HASH_97_REEMITIR,
+        "o rollback devolve o reemitir da 97 byte a byte",
       );
       const restantes = await cliente.query(
         `SELECT proname FROM pg_proc WHERE pronamespace = 'public'::regnamespace
@@ -1363,9 +1630,10 @@ PROVAS.push({
       // Rollback repetido: idempotente.
       await cliente.query(sqlRollback);
       assert.equal(await md5Vivo(cliente), HASH_80);
-      // E a 98 aplica de novo por cima da 80.
+      // E a 98 aplica de novo por cima da 80/97.
       await cliente.query(sql98);
       assert.equal(await md5Vivo(cliente), HASH_98);
+      assert.equal(await md5Reemitir(cliente), HASH_98_REEMITIR);
 
       // Corpo de uma migration POSTERIOR: preflight da 98 e guarda do
       // rollback recusam.

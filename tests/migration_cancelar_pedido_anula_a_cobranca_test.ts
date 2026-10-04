@@ -34,12 +34,14 @@ const DIR = fromFileUrl(new URL(".", import.meta.url));
 const PASTA = `${DIR}../supabase/migrations`;
 const NOME = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
 const NOME_80 = "20261180000000_cliente_nao_cancela_com_cartao_vivo.sql";
+const NOME_97 = "20261197000000_dinheiro_exige_admin_atual.sql";
 
 const ler = (n) =>
   Deno.readTextFileSync(`${PASTA}/${n}`).replace(/\r\n/g, "\n");
 const migration = ler(NOME);
 const rollback = ler(`rollback-manual-${NOME}`);
 const migration80 = ler(NOME_80);
+const migration97 = ler(NOME_97);
 
 const norm = (s) => s.replace(/\s+/g, " ").trim();
 const md5 = (s) => createHash("md5").update(s).digest("hex");
@@ -68,6 +70,9 @@ function corpo(sql, nome) {
 }
 
 const HASH_80 = "ed2f7fd3e0177c027720049b2fe55d3b";
+// Corpos que a 20261197000000 deixa (o preflight da 98 exige os dois).
+const HASH_97_REEMITIR = "7a5ce4978a989e1bebb3d048d347c0c6";
+const HASH_97_ADMIN_ATUAL = "519842163e48cc377ac1337ffb9db936";
 const NOVAS = [
   "pedido__saldo_a_estornar",
   "pedido__mudar_status",
@@ -99,7 +104,18 @@ Deno.test("o preflight cita o md5 REAL de cada corpo que esta migration deixa (e
     migration.indexOf("END $preflight_20261198$;"),
   );
   assertStringIncludes(preflight, `'${HASH_80}'`);
-  for (const nome of ["update_order_status_atomic", ...NOVAS]) {
+  assertEquals(
+    md5(corpo(migration97, "admin_devolucao_reemitir_reembolso")),
+    HASH_97_REEMITIR,
+  );
+  assertEquals(md5(corpo(migration97, "is_admin_atual")), HASH_97_ADMIN_ATUAL);
+  assertStringIncludes(preflight, `'${HASH_97_REEMITIR}'`);
+  assertStringIncludes(preflight, `'${HASH_97_ADMIN_ATUAL}'`);
+  for (const nome of [
+    "update_order_status_atomic",
+    "admin_devolucao_reemitir_reembolso",
+    ...NOVAS,
+  ]) {
     assertStringIncludes(
       preflight,
       `'${md5(corpo(migration, nome))}'`,
@@ -108,10 +124,14 @@ Deno.test("o preflight cita o md5 REAL de cada corpo que esta migration deixa (e
   }
 });
 
-Deno.test("o rollback devolve update_order_status_atomic da 80 BYTE A BYTE e apaga as três funções novas", () => {
+Deno.test("o rollback devolve update_order_status_atomic da 80 e admin_devolucao_reemitir_reembolso da 97 BYTE A BYTE e apaga as três funções novas", () => {
   assertEquals(
     funcao(rollback, "update_order_status_atomic"),
     funcao(migration80, "update_order_status_atomic"),
+  );
+  assertEquals(
+    funcao(rollback, "admin_devolucao_reemitir_reembolso"),
+    funcao(migration97, "admin_devolucao_reemitir_reembolso"),
   );
   for (const assinatura of [
     "public.cancelar_pedido_com_cobranca(uuid, uuid, text, text, text)",
@@ -130,6 +150,11 @@ Deno.test("o rollback devolve update_order_status_atomic da 80 BYTE A BYTE e apa
     `'${md5(corpo(migration, "update_order_status_atomic"))}'`,
   );
   assertStringIncludes(guarda, `'${HASH_80}'`);
+  assertStringIncludes(
+    guarda,
+    `'${md5(corpo(migration, "admin_devolucao_reemitir_reembolso"))}'`,
+  );
+  assertStringIncludes(guarda, `'${HASH_97_REEMITIR}'`);
   assert(
     rollback.indexOf("DO $guarda_rollback_20261198$") <
       rollback.indexOf(
@@ -139,23 +164,27 @@ Deno.test("o rollback devolve update_order_status_atomic da 80 BYTE A BYTE e apa
   );
 });
 
-Deno.test("a casca update_order_status_atomic: mesma assinatura, ator da sessão, admin ATUAL (auth.users E profiles, nunca is_admin() do JWT), nunca a edge, e mantém o literal verificando:", () => {
+Deno.test("a casca update_order_status_atomic: mesma assinatura, ator da sessão, admin ATUAL pela is_admin_atual() da 97 (nunca is_admin() do JWT), nunca a edge, e mantém o literal verificando:", () => {
   const casca = funcao(migration, "update_order_status_atomic");
   assertStringIncludes(
     norm(casca),
     "CREATE OR REPLACE FUNCTION public.update_order_status_atomic( p_order_id uuid, p_new_status text, p_notes text DEFAULT NULL, p_silent boolean DEFAULT FALSE ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$",
   );
   const limpa = norm(semComentarios(casca));
-  for (const trecho of [
-    "v_ator UUID := auth.uid();",
-    "v_admin_atual := COALESCE(current_setting('role', true), '') IN ('postgres', 'service_role') OR ( EXISTS ( SELECT 1 FROM auth.users u WHERE u.id = v_ator AND (u.raw_app_meta_data ->> 'role') = 'admin' ) AND EXISTS ( SELECT 1 FROM public.profiles p WHERE p.id = v_ator AND p.role = 'admin' ) );",
-    "RETURN public.pedido__mudar_status( p_order_id, p_new_status, p_notes, v_ator, v_admin_atual, false );",
-  ]) {
-    assertStringIncludes(limpa, trecho);
-  }
+  assertStringIncludes(
+    limpa,
+    "RETURN public.pedido__mudar_status( p_order_id, p_new_status, p_notes, auth.uid(), public.is_admin_atual(), false );",
+  );
   // S1 (achado do coordenador, 04/10): o is_admin() antigo confia no
   // app_metadata do JWT — admin rebaixado com token velho passaria.
-  assert(!limpa.includes("is_admin()"), "a casca não pode usar is_admin()");
+  assert(
+    !limpa.includes(" public.is_admin()"),
+    "a casca não pode usar is_admin()",
+  );
+  assert(
+    !limpa.includes("(public.is_admin()"),
+    "a casca não pode usar is_admin()",
+  );
   // rollback-manual-20261175000000 procura este literal no corpo VIVO para
   // recusar reverter a 75 por baixo da guarda do cartão vivo.
   assertStringIncludes(
@@ -278,6 +307,33 @@ Deno.test("a porta da edge confere service role, dono/admin ATUAL nas duas fonte
   );
 });
 
+Deno.test("admin_devolucao_reemitir_reembolso é o corpo da 97 com SÓ a trava das linhas ANTES do pedido (ordem global)", () => {
+  const trava = `  -- 20261198000000 (ORDEM GLOBAL DE TRAVAS): as linhas de order_refunds do
+  -- pedido, por id, ANTES do pedido — a ordem de concluir_estorno,
+  -- registrar_estorno_manual e do cancelamento. A 97 travava o pedido e só
+  -- depois a linha recusada (abaixo): deadlock com quem trava na ordem certa.
+  PERFORM 1
+     FROM public.order_refunds r
+    WHERE r.order_id = v_d.order_id
+    ORDER BY r.id
+      FOR UPDATE;
+
+`;
+  const ancora =
+    "  SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;\n";
+  const de97 = funcao(migration97, "admin_devolucao_reemitir_reembolso");
+  assertEquals(de97.split(ancora).length, 2);
+  assertEquals(
+    funcao(migration, "admin_devolucao_reemitir_reembolso"),
+    de97.replace(ancora, trava + ancora),
+  );
+  // A guarda da 97 continua lá.
+  assertStringIncludes(
+    funcao(migration, "admin_devolucao_reemitir_reembolso"),
+    "IF NOT public.is_admin_atual() THEN",
+  );
+});
+
 Deno.test("nenhuma migration POSTERIOR redefine as funções desta (esta não ressuscita corpo velho)", () => {
   const definem = (nomeDaFuncao) =>
     [...Deno.readDirSync(PASTA)]
@@ -295,4 +351,7 @@ Deno.test("nenhuma migration POSTERIOR redefine as funções desta (esta não re
   assertEquals(definidoras[definidoras.length - 1], NOME);
   assert(definidoras.includes(NOME_80));
   for (const nome of NOVAS) assertEquals(definem(nome), [NOME]);
+  const reemitir = definem("admin_devolucao_reemitir_reembolso");
+  assertEquals(reemitir[reemitir.length - 1], NOME);
+  assert(reemitir.includes(NOME_97));
 });

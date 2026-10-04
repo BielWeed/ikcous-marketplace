@@ -1,17 +1,21 @@
 -- ============================================================================
 -- Rollback manual — cancelar pedido anula a cobrança primeiro (20261198000000)
 -- ============================================================================
--- Restaura, BYTE A BYTE, o `public.update_order_status_atomic` que a
--- 20261180000000 deixou (o texto abaixo é o daquele arquivo, sem mudança —
--- tests/migration_cancelar_pedido_anula_a_cobranca_test.ts prova a igualdade)
--- e apaga as três funções que a 20261198000000 criou:
+-- Restaura, BYTE A BYTE:
+--   - `public.update_order_status_atomic` que a 20261180000000 deixou (o
+--     texto abaixo é o daquele arquivo, sem mudança);
+--   - `public.admin_devolucao_reemitir_reembolso` que a 20261197000000
+--     deixou (idem — o da 97, com a guarda is_admin_atual());
+-- (tests/migration_cancelar_pedido_anula_a_cobranca_test.ts prova as duas
+-- igualdades) e apaga as três funções que a 20261198000000 criou:
 -- `cancelar_pedido_com_cobranca`, `pedido__mudar_status` e
--- `pedido__saldo_a_estornar`. ACL de update_order_status_atomic intocada
--- (CREATE OR REPLACE preserva; a migration também não a tocou).
+-- `pedido__saldo_a_estornar`. ACLs intocadas (CREATE OR REPLACE preserva; a
+-- migration também não as tocou).
 --
 -- O QUE VOLTA A VALER: o cancelamento direto pelo front de pedido com
 -- cobrança aberta (o defeito S1), o estorno do cancelamento sem o saldo
--- remanescente (R11) e o 'delivered' -> 'cancelled' devolvendo estoque.
+-- remanescente (R11), o 'delivered' -> 'cancelled' devolvendo estoque, o
+-- is_admin() do JWT na porta do front e a ordem pedido -> linha do reemitir.
 --
 -- ANTES DE RODAR: a edge `criar-pagamento` publicada com a ação `cancelar`
 -- chama `cancelar_pedido_com_cobranca`. Sem a função, essa ação responde
@@ -19,12 +23,15 @@
 -- order que ela já tiver feito) — reverta a edge e o front primeiro, ou
 -- aceite que o botão Cancelar de pedido online fique recusando até lá.
 --
--- GUARDA DE ORDEM (obrigação deixada pela 20261180000000 para quem a
--- redefinisse): só restaura se o corpo vivo de update_order_status_atomic for
--- o desta migration (e2a821a1fb498740bc4356e3f22bf022) ou já o da 80
--- (ed2f7fd3e0177c027720049b2fe55d3b — rollback repetido, idempotente).
--- Qualquer outro corpo é de uma migration POSTERIOR: restaurar a 80 por baixo
--- dela apagaria a guarda dela em silêncio.
+-- GUARDA DE ORDEM (obrigação deixada pela 20261180000000 e pela
+-- 20261197000000 para quem as redefinisse): só restaura se o corpo vivo de
+-- update_order_status_atomic for o desta migration
+-- (c8df4feb3f53b90922a6c8398371e394) ou já o da 80
+-- (ed2f7fd3e0177c027720049b2fe55d3b), E o de admin_devolucao_reemitir_
+-- reembolso for o desta migration (422cfaa8c53cefc1913b9e082442631d) ou já o
+-- da 97 (7a5ce4978a989e1bebb3d048d347c0c6) — rollback repetido é idempotente.
+-- Qualquer outro corpo é de uma migration POSTERIOR: restaurar por baixo dela
+-- apagaria a guarda dela em silêncio.
 --
 -- Executar via `psql -1 -f` (nunca pelo db-apply). Sem BEGIN/COMMIT de nível
 -- superior neste arquivo — regra da casa.
@@ -38,10 +45,20 @@ BEGIN
     FROM pg_proc
    WHERE oid = to_regprocedure('public.update_order_status_atomic(uuid,text,text,boolean)');
   IF v_hash IS NULL OR v_hash NOT IN (
-    'e2a821a1fb498740bc4356e3f22bf022', -- corpo que a 20261198000000 deixa
+    'c8df4feb3f53b90922a6c8398371e394', -- corpo que a 20261198000000 deixa
     'ed2f7fd3e0177c027720049b2fe55d3b'  -- já é o da 20261180000000 (rollback repetido)
   ) THEN
     RAISE EXCEPTION 'corpo vivo de update_order_status_atomic (hash %) não é o da 20261198000000 nem o da 20261180000000 — uma migration posterior o redefiniu; reverta-a antes.', COALESCE(v_hash, 'ausente');
+  END IF;
+
+  SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
+    FROM pg_proc
+   WHERE oid = to_regprocedure('public.admin_devolucao_reemitir_reembolso(uuid,boolean)');
+  IF v_hash IS NULL OR v_hash NOT IN (
+    '422cfaa8c53cefc1913b9e082442631d', -- corpo que a 20261198000000 deixa
+    '7a5ce4978a989e1bebb3d048d347c0c6'  -- já é o da 20261197000000 (rollback repetido)
+  ) THEN
+    RAISE EXCEPTION 'corpo vivo de admin_devolucao_reemitir_reembolso (hash %) não é o da 20261198000000 nem o da 20261197000000 — uma migration posterior o redefiniu; reverta-a antes.', COALESCE(v_hash, 'ausente');
   END IF;
 END $guarda_rollback_20261198$;
 
@@ -248,6 +265,126 @@ BEGIN
     VALUES (p_order_id, v_old_status, p_new_status, p_notes, v_caller_id);
 
     RETURN v_result;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.admin_devolucao_reemitir_reembolso(
+  p_devolucao_id uuid,
+  p_manual boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_d public.devolucoes%ROWTYPE;
+  v_o public.marketplace_orders%ROWTYPE;
+  v_refund public.order_refunds%ROWTYPE;
+  v_em_voo numeric(12, 2);
+  v_ja_manual numeric(12, 2);
+  v_disponivel numeric(12, 2);
+  v_pago_pelo_app boolean;
+  v_novo_refund_id uuid;
+BEGIN
+  IF NOT public.is_admin() THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  -- Papel ATUAL (auth.users E profiles), não o do JWT: admin rebaixado para aqui (20261197000000).
+  IF NOT public.is_admin_atual() THEN
+    RAISE EXCEPTION 'Acesso negado.' USING ERRCODE = '42501';
+  END IF;
+  SELECT * INTO v_d FROM public.devolucoes WHERE id = p_devolucao_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Devolução não encontrada.' USING ERRCODE = 'P0002';
+  END IF;
+  IF v_d.status <> 'concluida' OR v_d.resolucao_final <> 'reembolso' THEN
+    RAISE EXCEPTION 'Só uma devolução concluída com reembolso pode reemitir o reembolso.' USING ERRCODE = '22023';
+  END IF;
+  IF v_d.valor_reembolso IS NULL OR v_d.valor_reembolso <= 0 THEN
+    RAISE EXCEPTION 'Esta devolução não tem valor de reembolso.' USING ERRCODE = '22023';
+  END IF;
+  -- Achado 2: manual é FINAL. Sem refund_id (nunca passou pelo MP) ou já
+  -- convertida para manual por uma reemissão anterior — nada a reemitir.
+  IF v_d.reembolso_manual THEN
+    RAISE EXCEPTION 'Esta devolução já foi resolvida manualmente (fora do app); não há reembolso para reemitir.'
+      USING ERRCODE = '22023';
+  END IF;
+  IF v_d.refund_id IS NULL THEN
+    RAISE EXCEPTION 'Esta devolução não tem um reembolso recusado para reemitir.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_o FROM public.marketplace_orders WHERE id = v_d.order_id FOR UPDATE;
+
+  -- Achado 2 (revalida como o achado H, sem a trava de estoque — esta RPC
+  -- não reestoca nada, então stock_returned_at não é assunto dela).
+  IF v_o.status <> 'delivered' THEN
+    RAISE EXCEPTION 'O pedido desta devolução não está mais entregue (status atual: %). Fale com o financeiro antes de reemitir.',
+      v_o.status USING ERRCODE = '22023';
+  END IF;
+  IF v_o.payment_status IS NULL
+     OR v_o.payment_status NOT IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega') THEN
+    RAISE EXCEPTION 'Este pedido não tem pagamento registrado para devolver.' USING ERRCODE = '22023';
+  END IF;
+
+  SELECT * INTO v_refund FROM public.order_refunds WHERE id = v_d.refund_id FOR UPDATE;
+  IF NOT FOUND OR v_refund.status <> 'recusado' THEN
+    RAISE EXCEPTION 'O reembolso desta devolução não foi recusado (status atual: %). Nada para reemitir.',
+      COALESCE(v_refund.status, 'desconhecido') USING ERRCODE = '22023';
+  END IF;
+
+  IF p_manual THEN
+    UPDATE public.devolucoes
+       SET refund_id = NULL, reembolso_manual = true, updated_at = now()
+     WHERE id = p_devolucao_id;
+    PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
+      'Reembolso reemitido manualmente (fora do app) após recusa pelo Mercado Pago.');
+    RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', true, 'refund_id', NULL);
+  END IF;
+
+  -- Achado 2: mesma regra de elegibilidade de 180 dias da conclusão — o
+  -- executor recusaria de novo, e a linha 'recusado' ficaria para sempre
+  -- sem caminho de refazer se insistíssemos no MP aqui.
+  v_pago_pelo_app := v_o.payment_method = 'online'
+                     AND v_o.payment_status IN ('pago', 'pago_apos_expirar')
+                     AND v_o.gateway_payment_id IS NOT NULL
+                     AND v_o.paid_at IS NOT NULL
+                     AND now() - v_o.paid_at <= interval '180 days';
+  IF NOT v_pago_pelo_app THEN
+    RAISE EXCEPTION 'Este pedido não é mais elegível para reembolso pelo Mercado Pago (prazo de 180 dias ou forma de pagamento). Reemita como manual (p_manual = true).'
+      USING ERRCODE = '22023';
+  END IF;
+
+  -- Achado 3: desconta reembolso manual JÁ CONCLUÍDO de OUTRA devolução do
+  -- mesmo pedido — mesma trava da conclusão.
+  SELECT COALESCE(sum(d.valor_reembolso), 0) INTO v_ja_manual
+    FROM public.devolucoes d
+   WHERE d.order_id = v_o.id AND d.status = 'concluida' AND d.reembolso_manual AND d.id <> v_d.id;
+
+  -- Mesma trava de saldo da conclusão: total − já devolvido − em voo (menos a
+  -- própria linha recusada, que não compete por saldo com a reemissão dela)
+  -- − reembolso manual de outra devolução do mesmo pedido.
+  SELECT COALESCE(sum(r.amount), 0) INTO v_em_voo FROM public.order_refunds r
+   WHERE r.order_id = v_o.id AND r.status IN ('solicitado', 'em_processamento')
+     AND r.id <> v_d.refund_id;
+  v_disponivel := GREATEST(v_o.total - COALESCE(v_o.valor_estornado, 0) - v_em_voo - v_ja_manual, 0);
+  IF v_d.valor_reembolso > v_disponivel THEN
+    RAISE EXCEPTION 'O reembolso (R$ %) passa do que ainda pode ser devolvido deste pedido (R$ %).',
+      v_d.valor_reembolso, v_disponivel USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+  VALUES (v_o.id, v_d.valor_reembolso, 'Reemissão da devolução ' || v_d.protocolo, 'lojista', 'solicitado')
+  RETURNING id INTO v_novo_refund_id;
+
+  UPDATE public.devolucoes
+     SET refund_id = v_novo_refund_id, reembolso_manual = false, updated_at = now()
+   WHERE id = p_devolucao_id;
+
+  PERFORM public.devolucao__registrar_evento(p_devolucao_id, 'concluida', 'concluida', 'loja',
+    'Reembolso reemitido pelo Mercado Pago após recusa anterior.');
+
+  RETURN jsonb_build_object('id', p_devolucao_id, 'reembolso_manual', false, 'refund_id', v_novo_refund_id);
 END;
 $$;
 
