@@ -3,7 +3,7 @@
 /**
  * PROVA VIVA COMPOSTA da ORDEM GLOBAL DAS TRAVAS do dinheiro, contra o
  * Postgres EFÊMERO com as migrations aplicadas do zero (a pilha REAL: 92, 94,
- * 95, 96, 97, 98, 99 — e o que vier depois).
+ * 95, 96, 97, 98, 99, 200, 201 — e o que vier depois).
  *
  * A REGRA: quem mexe no ledger do estorno trava PRIMEIRO as linhas de
  * `order_refunds` do pedido (por id) e SÓ DEPOIS o pedido
@@ -49,8 +49,12 @@
  *       em L1 — ninguém segura o pedido esperando linha — e as três terminam
  *       sem 40P01. CONTROLE: C3 com o pedido primeiro fecha o ciclo
  *       C1 -> C3 -> C2 -> C1 e dá 40P01.
- *   (h) a ordem dos rollbacks: 99 -> 98 -> 97 -> 96 passa; a 97 antes da 98
- *       recusa sem gravar nada.
+ *   (h) a ordem dos rollbacks: da última migration até a 96, na ordem
+ *       inversa (hoje 201 -> 200 -> 99 -> 98 -> 97 -> 96), passa; a 97 antes
+ *       da 98 recusa sem gravar nada.
+ *   (i) REF externo × cancelar, nas duas direções (a linha do sistema)
+ *   (j) REF externo × concluir_estorno do MESMO refund, nas duas direções (a
+ *       linha que já carrega o id do refund): concluído uma vez
  *
  * Nenhum caso é pulado: se uma RPC da composição não existir com a
  * assinatura esperada, a prova (0) FALHA — prova pulada conta como falha.
@@ -156,6 +160,27 @@ const RPC = {
         x.valorCaso ?? null,
         x.estimado ?? null,
       ]),
+  },
+  externo: {
+    assinatura:
+      "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)",
+    nome: "public.registrar_estorno_externo_do_mp",
+    papel: "servico",
+    pedidoNoCorpo: "p_order_id",
+    // As linhas do sistema e a que já carrega este refund — o subconjunto
+    // que a 96 trava antes do pedido.
+    primeiroPasso: (con, x) =>
+      con.query(
+        `SELECT 1 FROM public.order_refunds r
+          WHERE r.order_id = $1 AND (r.solicitado_por = 'sistema' OR r.mp_refund_id = $2)
+          ORDER BY r.id FOR UPDATE`,
+        [x.pedido, x.refExterno],
+      ),
+    chamar: (con, fn, x) =>
+      con.query(
+        `SELECT ${fn}($1::uuid, $2, $3, 'approved', 'accredited') AS r`,
+        [x.pedido, x.refExterno, x.valorExterno],
+      ),
   },
   autorizar: {
     assinatura: "public.autorizar_post_do_estorno(uuid, numeric)",
@@ -628,6 +653,26 @@ async function fxDevolucaoSolicitada(cliente) {
   return d;
 }
 
+/** Contestação reservada (sistema, 40) + um refund de 30 feito no painel do
+ * MP que nenhuma linha reivindica: o REF externo trava a linha do sistema. */
+async function fxExternoComReserva(cliente) {
+  const x = await fxContestacao(cliente);
+  protocolo += 1;
+  return { ...x, refExterno: `MPREF-PAINEL-${protocolo}`, valorExterno: 30 };
+}
+
+/** Linha do lojista em processamento (30) que JÁ carrega o id do refund no
+ * MP (o POST saiu): o webhook do mesmo refund (REF externo) e a conclusão
+ * dela chegam juntos — os dois travam a MESMA linha. */
+async function fxRefundDaLinha(cliente) {
+  const x = await fxEmProcessamento(cliente);
+  await cliente.query(
+    "UPDATE public.order_refunds SET mp_refund_id = $2 WHERE id = $1",
+    [x.linhaConcluir, x.refConcluir],
+  );
+  return { ...x, refExterno: x.refConcluir, valorExterno: 30 };
+}
+
 /** Devolução recusada + uma reserva de contestação (sistema, 40). */
 async function fxDevolucaoContestada(cliente) {
   const d = await devolucaoRecusada(cliente);
@@ -662,11 +707,6 @@ PROVAS.push({
         rpc.nome,
         rpc.assinatura,
       ]),
-      [
-        "externo",
-        "public.registrar_estorno_externo_do_mp",
-        "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)",
-      ],
       [
         "mudar_status",
         "public.pedido__mudar_status",
@@ -1113,6 +1153,90 @@ PROVAS.push({
 });
 
 /** O rollback-manual da migration `prefixo` (ex.: "20261198000000"). */
+PROVAS.push({
+  nome: "(i) REF externo (96) × cancelar (98), nas duas direções: B para na linha do sistema, sem 40P01; CONTROLE 40P01",
+  corpo: async (cliente, url) => {
+    await parNumaDirecao(cliente, url, {
+      rotulo: "i1 REF externo segura a linha do sistema, cancelar espera",
+      A: RPC.externo,
+      B: RPC.cancelar,
+      fixture: fxExternoComReserva,
+      conferir: ({ ra, rb, estado }) => {
+        OK(ra, "i1 REF externo");
+        OK(rb, "i1 cancelar");
+        assert.equal(ra.r.resultado, "inserido");
+        assert.equal(rb.r.cancelado, true);
+        assert.equal(estado.status, "cancelled");
+        assert.equal(estado.estornado, 30, "i1: o refund do painel entrou uma vez");
+        // O cancelamento esperou o REF: viu 30 já estornado e 40 reservado,
+        // e abriu só o remanescente (30). Compromisso total = 100.
+        assert.deepEqual(
+          estado.linhas
+            .map(([v, s, por]) => `${v} ${s} ${por}`)
+            .sort(),
+          [
+            "30 concluido sistema",
+            "30 solicitado lojista",
+            "40 em_processamento sistema",
+          ],
+        );
+      },
+    });
+    await parNumaDirecao(cliente, url, {
+      rotulo: "i2 cancelar segura as linhas, REF externo espera",
+      A: RPC.cancelar,
+      B: RPC.externo,
+      fixture: fxExternoComReserva,
+      conferir: ({ ra, rb, estado }) => {
+        OK(ra, "i2 cancelar");
+        OK(rb, "i2 REF externo");
+        assert.equal(ra.r.cancelado, true);
+        assert.equal(estado.status, "cancelled");
+        // O REF externo esperou o cancelamento e entrou inteiro: a 96 decide
+        // pelo dinheiro REAL (estornado + reserva do sistema) e não conta a
+        // linha do app ainda sem POST (o remanescente de 60) — quem segura
+        // esse POST é a autorizar_post_do_estorno. A trava só garante que
+        // ninguém decidiu sobre retrato velho; a regra do saldo é da 96.
+        assert.equal(rb.r.resultado, "inserido");
+        assert.equal(estado.estornado, 30, "i2: o refund do painel entrou uma vez");
+        console.log(`    [i2] linhas: ${JSON.stringify(estado.linhas)}`);
+      },
+    });
+  },
+});
+
+PROVAS.push({
+  nome: "(j) REF externo (96) × concluir_estorno (89) do MESMO refund, nas duas direções: B para na linha, concluído uma vez, sem 40P01; CONTROLE 40P01",
+  corpo: async (cliente, url) => {
+    await parNumaDirecao(cliente, url, {
+      rotulo: "j1 concluir segura a linha do refund, REF externo espera",
+      A: RPC.concluir,
+      B: RPC.externo,
+      fixture: fxRefundDaLinha,
+      conferir: ({ ra, rb, estado }) => {
+        OK(ra, "j1 concluir");
+        OK(rb, "j1 REF externo");
+        assert.equal(rb.r.resultado, "ja_registrado", "j1: um refund credita UMA linha");
+        assert.equal(estado.estornado, 30, "j1: concluído uma vez (30)");
+        assert.deepEqual(estado.linhas, [[30, "concluido", "lojista"]]);
+      },
+    });
+    await parNumaDirecao(cliente, url, {
+      rotulo: "j2 REF externo segura a linha do refund, concluir espera",
+      A: RPC.externo,
+      B: RPC.concluir,
+      fixture: fxRefundDaLinha,
+      conferir: ({ ra, rb, estado }) => {
+        OK(ra, "j2 REF externo");
+        OK(rb, "j2 concluir");
+        assert.equal(ra.r.resultado, "ja_registrado", "j2: um refund credita UMA linha");
+        assert.equal(estado.estornado, 30, "j2: concluído uma vez (30)");
+        assert.deepEqual(estado.linhas, [[30, "concluido", "lojista"]]);
+      },
+    });
+  },
+});
+
 function rollbackDe(prefixo) {
   const nome = fs
     .readdirSync(PASTA)
@@ -1122,7 +1246,7 @@ function rollbackDe(prefixo) {
 }
 
 PROVAS.push({
-  nome: "(h) ordem dos rollbacks na pilha viva: 99 → 98 → 97 → 96 passa inteira; a 97 ANTES da 98 recusa (B1_BASELINE_DIVERGENT, o reemitir é o da 98) sem gravar nada — tudo desfeito no ROLLBACK",
+  nome: "(h) ordem dos rollbacks na pilha viva: da última até a 96 (201 → 200 → 99 → 98 → 97 → 96) passa inteira; a 97 ANTES da 98 recusa (B1_BASELINE_DIVERGENT, o reemitir é o da 98) sem gravar nada — tudo desfeito no ROLLBACK",
   corpo: async (cliente) => {
     const vivo = (assinatura) =>
       cliente
@@ -1144,13 +1268,23 @@ PROVAS.push({
       assert.equal(await vivo(FN_97), true, "a recusa não apagou a 97");
       assert.equal(await vivo(FN_98), true, "a recusa não apagou a 98");
 
-      // Na ordem inversa da aplicação: cada uma passa.
-      for (const prefixo of [
-        "20261199000000",
-        "20261198000000",
-        "20261197000000",
+      // Na ordem inversa da aplicação: TODA migration da 96 em diante (a
+      // pilha que vier depois entra sozinha — hoje 201, 200, 99, 98, 97, 96),
+      // cada uma pelo seu rollback-manual, e cada uma passa. Migration sem
+      // rollback nessa faixa FALHA aqui, não é pulada.
+      const pilha = MIGRATIONS.map((n) => n.slice(0, 14))
+        .filter((p) => p >= "20261196000000")
+        .reverse();
+      for (const obrigatoria of [
         "20261196000000",
+        "20261197000000",
+        "20261198000000",
+        "20261199000000",
       ]) {
+        assert.ok(pilha.includes(obrigatoria), `a pilha tem a ${obrigatoria}`);
+      }
+      console.log(`    [h] rollbacks na ordem: ${pilha.join(" -> ")}`);
+      for (const prefixo of pilha) {
         await cliente.query(rollbackDe(prefixo));
       }
       assert.equal(await vivo(FN_98), false, "a 98 saiu");
