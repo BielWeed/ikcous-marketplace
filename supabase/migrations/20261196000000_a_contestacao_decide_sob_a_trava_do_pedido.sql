@@ -149,19 +149,33 @@
 --     registrar_contestacao_no_ledger,
 --     registrar_estorno_externo_do_mp (esta) linhas sistema -> pedido
 --     autorizar_post_do_estorno (esta) a linha do POST -> pedido
---                                   (a linha do POST está em_processamento;
---                                   a reemitir, abaixo, só trava linha
---                                   recusada — nunca a mesma linha)
+--                                   (trava a linha ANTES de olhar o status
+--                                   dela — ver o ciclo da reemitir abaixo)
 --     solicitar_estorno (75/97) ... pedido -> INSERT linha        (não trava
 --                                   linha existente: sem ciclo)
 --     update_order_status_atomic (80), admin_devolucao_concluir (75/97)
 --                                   pedido -> INSERT linha        (idem)
 --     admin_devolucao_reemitir_reembolso (75/97) pedido -> linha FOR UPDATE
---                                   (DIVERGE: pedido antes da linha; a linha
---                                   é a 'lojista' recusada da devolução —
---                                   ciclo só com quem trave essa mesma linha
---                                   antes do pedido, o que nenhuma função
---                                   daqui faz)
+--                                   (DIVERGE: pedido antes da linha. CICLO
+--                                   QUE EXISTE HOJE, medido na revisão Opus
+--                                   de 14d77a5b com três conexões: uma
+--                                   terceira segura o pedido; a reemitir
+--                                   entra na fila do pedido; a
+--                                   autorizar_post_do_estorno trava a linha
+--                                   'lojista' RECUSADA da devolução — ela
+--                                   trava antes de ver que o status não é
+--                                   em_processamento — e entra na fila do
+--                                   pedido; a terceira solta, a reemitir
+--                                   pega o pedido e espera a linha: 40P01,
+--                                   uma das duas é desfeita inteira, nada
+--                                   gravado pela metade. Quem chama a
+--                                   autorizar só o faz com linha que acabou
+--                                   de marcar em_processamento, então na
+--                                   prática exige uma linha recusada sendo
+--                                   reemitida no mesmo instante de uma
+--                                   chamada com id velho. A correção da
+--                                   ordem é da 20261198000000, outro lote;
+--                                   esta migration não a reordena.)
 --     confirmar_pagamento / registrar_pagamento_recebido (95/97): só o pedido.
 --   Janela residual (aceita, documentada): uma linha do sistema que nasce
 --   entre a trava das linhas e a trava do pedido (outra entrega já
