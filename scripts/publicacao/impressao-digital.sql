@@ -37,6 +37,16 @@
 --     saida (resultado = tabela_nova, com a contagem de linhas que nasceu).
 --   Tabela ausente ou sem PK nas 11 recusa (falha fechado: nao mede = nao libera).
 --
+-- LIMITES DECLARADOS (o que esta impressao digital NAO cobre):
+--   * O conteudo (count e md5 das linhas) cobre SO as 11 tabelas listadas acima.
+--     DML (UPDATE/INSERT/DELETE) em QUALQUER OUTRA tabela de public NAO alarma.
+--     O que vale para toda tabela de public e so o DROP TABLE (recusa, acima).
+--   * Um ALTER TABLE que reescreve a tabela (por exemplo ADD COLUMN com DEFAULT
+--     volatil, ou ALTER COLUMN ... TYPE) pode mudar o to_jsonb das colunas que
+--     ja existiam e dar alarme FALSO; isso falha fechado (recusa, nada grava). Nenhuma
+--     das migrations 92..202 faz isso (so ADD COLUMN nullable sem DEFAULT e SET
+--     DEFAULT em coluna existente, que nao reescrevem linha).
+--
 -- SAIDA: so contagens e hashes; nenhum conteudo de linha. A ultima consulta
 -- antes do COMMIT devolve uma linha por tabela (linhas/md5 antes e depois, as
 -- colunas novas); o workflow imprime como FP_ANTES / FP_DEPOIS. A secao `fresca`

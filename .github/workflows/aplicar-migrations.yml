@@ -18,7 +18,12 @@ name: Aplicar migrations (Supabase)
 # expected_sha (40 hex) igual ao GITHUB_SHA conferido no PRIMEIRO passo, antes de
 # qualquer requisição; sem o segredo, ou com 401/403 da API, o run PARA com
 # "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto"
-# (nunca tenta outro segredo nem outro alvo). `loja` e `sandbox` não mudam.
+# (nunca tenta outro segredo nem outro alvo). `loja` e `sandbox` mantêm o mapeamento
+# de ref e o segredo de antes (SUPABASE_ACCESS_TOKEN), MAS o gate de transporte, a
+# guarda de controle de transação do corpo (BEGIN/COMMIT/… de topo recusam) e o
+# envelope REPEATABLE READ com impressão digital passam a valer para TODO alvo,
+# inclusive loja e sandbox. É só mais restritivo: nada que passava antes deixa de
+# ser aplicável por um motivo novo além dessas três travas.
 #
 # USO: Actions → Run workflow → migracoes = arquivos de supabase/migrations/
 # separados por vírgula, NA ORDEM (fila serializada). Vazio = só fingerprint.

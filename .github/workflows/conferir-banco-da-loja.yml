@@ -19,15 +19,20 @@
 # job que ESCREVE é o `ledger`, e só quando `confirmar` for exatamente
 # `GRAVAR` — e só depois de uma pré-checagem do schema da própria faixa.
 #
-# PROJETO: fechado em "loja"/"sandbox" (nunca um ref de texto livre — a
+# PROJETO: fechado em "loja"/"sandbox"/"ikcous-publicada" (nunca um ref de texto livre — a
 # rodada 2 da revisão provou que `projeto_ref` cru habilitava
 # "<ref>/restart#" e "x/../outroref.../database/query#" com o mesmo token,
 # que vale para TODOS os projetos da conta). O ref de 20 letras é resolvido
 # DENTRO do script (`resolverRef`), nunca aqui.
 #
 # CREDENCIAL: o mesmo segredo `SUPABASE_ACCESS_TOKEN` que
-# aplicar-migrations.yml e publicar-functions.yml já usam. Nenhuma
-# credencial nova.
+# aplicar-migrations.yml e publicar-functions.yml já usam, para `loja` e
+# `sandbox` (mapeamento e segredo de antes, sem mudança). Só `ikcous-publicada`
+# (a CAF explícita) usa o segredo de NOME `SUPABASE_ACCESS_TOKEN_IKCOUS` — o
+# mesmo que publicar-functions.yml já usa para a CAF —, nunca o legado, e sem
+# fallback entre os dois. Nenhuma credencial nova. As consultas 8a..8g rodam por
+# aqui contra qualquer um dos três alvos; o job `ledger` continua só para as
+# faixas 72..83 e NUNCA roda para `ikcous-publicada`.
 #
 # CONCORRÊNCIA: o job `ledger` compartilha o grupo `banco-da-loja` com
 # `aplicar-migrations.yml` — o ledger não roda enquanto uma migration está

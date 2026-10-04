@@ -1146,6 +1146,42 @@ async function main() {
         "(f) rb96 com o DEFAULT true da 201 ainda no ar → recusa pela guarda do arquivo (ordem: 201 antes da 96)",
       );
     }
+    // rb95 e rb94 com a 97 no ar (a 97 redefine registrar_pagamento_recebido e
+    // registrar_estorno_manual): recusam pela guarda do próprio arquivo, nomeando
+    // a função, e não gravam nada.
+    {
+      const db3 = await clone(cheio, "ip_f_rb95_rb94");
+      const hAntes = await hashDoEsquema(db3);
+      const dadosAntes = await fpDeDados(db3);
+      for (const [rb, funcao] of [
+        [CADEIA_DE_ROLLBACK[7], "registrar_pagamento_recebido"],
+        [CADEIA_DE_ROLLBACK[8], "registrar_estorno_manual"],
+      ]) {
+        await usar(db3, async (c) => {
+          const erro = await esperaRecusa(
+            aplicarComoOWorkflow(c, rb, ler(rb)),
+            ["B1_BASELINE_DIVERGENT", funcao],
+            `${rb} com a 97 no ar`,
+          );
+          console.log(
+            `    mensagem que decidiu (${rb.slice(16, 30)} com a 97 no ar): ${erro.message.slice(0, 260)}`,
+          );
+        });
+        assert.equal(
+          await hashDoEsquema(db3),
+          hAntes,
+          `${rb}: esquema intacto`,
+        );
+        assert.deepEqual(
+          await fpDeDados(db3),
+          dadosAntes,
+          `${rb}: dado intacto`,
+        );
+      }
+      ok(
+        "(f) rb95 (nomeia registrar_pagamento_recebido) e rb94 (nomeia registrar_estorno_manual) com a 97 no ar → B1_BASELINE_DIVERGENT do próprio arquivo; esquema e dado intactos",
+      );
+    }
     // a cadeia inteira, na ordem
     await usar(db, async (c) => {
       for (const rb of CADEIA_DE_ROLLBACK) {
@@ -1657,15 +1693,86 @@ async function main() {
       cheio,
       "8a-antes-92-a-202-objetos-e-corpos",
     );
+    // Com a 92..202 aplicadas a 8a reprova tudo o que 92..202 cria/substitui; seguem
+    // ok SÓ o controle, a BASE do liberar (nenhuma 92..202 a redefine) e os 15
+    // itens da 90/91 (que a 92..202 não toca).
+    const seguemOk = a_depois.filter((r) => r.ok === true).map((r) => r.item);
     assert.equal(
-      reprovadas(a_depois).length,
-      a_depois.length - 2,
-      "8a no banco com 92..202 aplicadas: tudo reprova, menos o controle e a BASE do liberar (nenhuma 92..202 a redefine)",
+      seguemOk.length,
+      2 + 15,
+      `8a com 92..202 aplicadas: esperava 17 ok (controle, BASE, 15 da 90/91), vieram ${seguemOk.length}: ${seguemOk.join(" | ")}`,
+    );
+    assert.ok(
+      seguemOk.every((i) =>
+        /^(controle:|BASE liberar|base 90\/91 |tabela (reconciliacao_visitas|avisos_ao_lojista) existe|coluna (reconciliacao_visitas|avisos_ao_lojista)\.|RLS ligada em (reconciliacao_visitas|avisos_ao_lojista))/.test(
+          i,
+        ),
+      ),
+      `8a: itens ok inesperados: ${seguemOk.join(" | ")}`,
     );
     assert.equal(linha(a_depois, "BASE liberar_cobranca_do_pedido").ok, true);
     ok(
-      `(j) 8a: pré-92 → ${a_antes.length}/${a_antes.length} ok (base do liberar bae7882a…); com 92..202 aplicadas → ${reprovadas(a_depois).length} reprovadas (controle e BASE do liberar seguem ok)`,
+      `(j) 8a: pré-92 → ${a_antes.length}/${a_antes.length} ok (base do liberar bae7882a…; inclui as 15 linhas da 90/91); com 92..202 aplicadas → ${reprovadas(a_depois).length} reprovadas (seguem ok só o controle, a BASE do liberar e as 15 da 90/91)`,
     );
+
+    // B1 (revisão Opus): uma loja SEM a 90/91 não pode passar na 8a. Base pré-92
+    // com os rollbacks REAIS rb91 e rb90 aplicados (direto, não pelo envelope:
+    // o envelope recusa DROP TABLE por desenho — aqui o alvo é a CONSULTA).
+    {
+      const RB91 =
+        "rollback-manual-20261191000000_aviso_de_cobranca_duplicada_sai_uma_vez.sql";
+      const RB90 =
+        "rollback-manual-20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql";
+      const sem91 = await clone(nomeBase, "ip_j_sem91");
+      await usar(sem91, (c) => c.query(ler(RB91)));
+      const r91 = reprovadas(
+        await consulta(sem91, "8a-antes-92-a-202-objetos-e-corpos"),
+      ).map((x) => x.item);
+      assert.deepEqual(
+        r91.sort(),
+        [
+          "RLS ligada em avisos_ao_lojista (91)",
+          "base 90/91 confirmar_aviso_ao_lojista",
+          "base 90/91 liberar_aviso_ao_lojista",
+          "base 90/91 reservar_aviso_ao_lojista",
+          "coluna avisos_ao_lojista.chave e text (91)",
+          "coluna avisos_ao_lojista.enviado e boolean (91)",
+          "coluna avisos_ao_lojista.reservado_em e timestamp with time zone (91)",
+          "tabela avisos_ao_lojista existe (91)",
+        ].sort(),
+        "sem a 91: a 8a reprova EXATAMENTE as 8 linhas da 91 (3 corpos, tabela, 3 colunas, RLS)",
+      );
+      const sem90 = await clone(sem91, "ip_j_sem90");
+      await usar(sem90, (c) => c.query(ler(RB90)));
+      const r90 = reprovadas(
+        await consulta(sem90, "8a-antes-92-a-202-objetos-e-corpos"),
+      ).map((x) => x.item);
+      console.log(
+        `    8a sem a 90 e sem a 91 reprova: ${r90.sort().join(" | ")}`,
+      );
+      assert.deepEqual(
+        r90.sort(),
+        [
+          ...r91,
+          "RLS ligada em reconciliacao_visitas (90)",
+          "base 90/91 marcar_visitas_da_reconciliacao",
+          "base 90/91 pagamentos_a_reconciliar",
+          "coluna reconciliacao_visitas.cobranca_terminal e text (90)",
+          "coluna reconciliacao_visitas.order_id e uuid (90)",
+          "coluna reconciliacao_visitas.visitado_em e timestamp with time zone (90)",
+          "tabela reconciliacao_visitas existe (90)",
+        ].sort(),
+        "sem a 90 e a 91: reprova as 8 da 91 + as 7 da 90 (2 corpos, tabela, 3 colunas, RLS)",
+      );
+      // só a 90 faltando? a 91 não depende dela: rb90 sozinha não reprova nada da 91
+      assert.ok(
+        !r90.some((i) => /liberar_cobranca/.test(i)),
+        "a BASE do liberar não reprova (a 90 só comenta; o corpo é o mesmo)",
+      );
+      ok(
+        "(j) 8a: SEM a 91 → reprova exatamente as 8 linhas da 91; SEM a 90 e a 91 (rb91+rb90 reais) → reprova exatamente 15 (a BASE do liberar segue ok, porque a 90 só comenta)",
+      );
+    }
 
     const e_depois = await consulta(cheio, "8e-conferir-92-a-202-aplicado");
     assert.deepEqual(reprovadas(e_depois), [], "8e depois da fila: tudo ok");

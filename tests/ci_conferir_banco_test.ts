@@ -1049,7 +1049,20 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
   const sql8e = await Deno.readTextFile(
     `${CONSULTAS_DIR}/8e-conferir-92-a-202-aplicado.sql`,
   );
-  const base = pares(sql8a);
+  // 8a tem DUAS listas de md5: `base` (as 53 funções que 92..202 substituem) e
+  // `base_90_91` (o que a 90/91 já têm de ter deixado). Cada uma é lida do seu CTE.
+  const fatia = (sql: string, de: string, ate: string) => {
+    const i = sql.indexOf(de);
+    const j = sql.indexOf(ate, i);
+    assert(i >= 0 && j > i, `não achei o trecho ${de} … ${ate} em 8a`);
+    return sql.slice(i, j);
+  };
+  const base = pares(
+    fatia(sql8a, "base(fn, h) AS (VALUES", "base_90_91(fn, h) AS (VALUES"),
+  );
+  const base9091 = pares(
+    fatia(sql8a, "base_90_91(fn, h) AS (VALUES", "tabelas_90_91("),
+  );
   const final = pares(sql8e);
 
   /** Corpo da ÚLTIMA definição da função nas migrations 92..202. */
@@ -1111,6 +1124,99 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           todo,
           h,
           `${fn}: o baseline de 8a não está em nenhum preflight`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "8a — a lista base_90_91 (5 funções): o md5 é o do corpo que a 90/91 desta árvore deixam, e consta no pré-voo do rollback delas",
+    async () => {
+      assertEquals([...base9091.keys()].sort(), [
+        "confirmar_aviso_ao_lojista",
+        "liberar_aviso_ao_lojista",
+        "marcar_visitas_da_reconciliacao",
+        "pagamentos_a_reconciliar",
+        "reservar_aviso_ao_lojista",
+      ]);
+      const arq = async (prefixo: string) => {
+        const achados: string[] = [];
+        for await (const e of Deno.readDir(MIGRATIONS_DIR))
+          if (e.isFile && e.name.startsWith(prefixo)) achados.push(e.name);
+        assertEquals(achados.length, 1, `esperava 1 arquivo ${prefixo}*`);
+        return await Deno.readTextFile(`${MIGRATIONS_DIR}/${achados[0]}`);
+      };
+      const m90 = await arq("20261190000000_");
+      const m91 = await arq("20261191000000_");
+      const rb90 = await arq("rollback-manual-20261190000000_");
+      const rb91 = await arq("rollback-manual-20261191000000_");
+      const corpoDe = (texto: string, fn: string) => {
+        const r = new RegExp(
+          `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`,
+          "i",
+        ).exec(texto);
+        assert(r, `${fn}: não definida nesta migration`);
+        const resto = texto.slice(r.index);
+        const abre = /\bAS\s+(\$[a-z_0-9]*\$)/i.exec(resto);
+        assert(abre, `${fn}: sem corpo`);
+        const ini = abre.index + abre[0].length;
+        return resto.slice(ini, resto.indexOf(abre[1], ini));
+      };
+      const donos: Record<string, [string, string]> = {
+        pagamentos_a_reconciliar: [m90, rb90],
+        marcar_visitas_da_reconciliacao: [m90, rb90],
+        reservar_aviso_ao_lojista: [m91, rb91],
+        confirmar_aviso_ao_lojista: [m91, rb91],
+        liberar_aviso_ao_lojista: [m91, rb91],
+      };
+      for (const [fn, h] of base9091) {
+        const [mig, rb] = donos[fn];
+        assertEquals(
+          createHash("md5")
+            .update(corpoDe(mig, fn).replace(/\r/g, ""))
+            .digest("hex"),
+          h,
+          `${fn}: o corpo na migration 90/91 mudou — recalcule o baseline de 8a`,
+        );
+        assertStringIncludes(
+          rb,
+          h,
+          `${fn}: o pré-voo do rollback não tem o mesmo md5`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "8a — as tabelas/colunas da 90/91 em 8a existem nas migrations (nome, coluna e RLS)",
+    async () => {
+      const m90 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql`,
+      );
+      const m91 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261191000000_aviso_de_cobranca_duplicada_sai_uma_vez.sql`,
+      );
+      const bloco = fatia(sql8a, "tabelas_90_91(tabela", "novas(fn)");
+      const linhas = [
+        ...bloco.matchAll(
+          /\('([a-z_]+)', '([a-z_]+)', '([a-z ]+)', '(9[01])'\)/g,
+        ),
+      ];
+      assertEquals(linhas.length, 6);
+      for (const [, tabela, coluna, , mig] of linhas) {
+        const texto = mig === "90" ? m90 : m91;
+        const ini = texto.indexOf(
+          `CREATE TABLE IF NOT EXISTS public.${tabela}`,
+        );
+        assert(ini >= 0, `${tabela}: CREATE TABLE não achado na ${mig}`);
+        const def = texto.slice(ini, texto.indexOf(");", ini));
+        assert(
+          def.includes(coluna),
+          `${tabela}.${coluna}: não está no CREATE TABLE da ${mig}`,
+        );
+        assertStringIncludes(
+          texto,
+          `ALTER TABLE public.${tabela} ENABLE ROW LEVEL SECURITY`,
         );
       }
     },

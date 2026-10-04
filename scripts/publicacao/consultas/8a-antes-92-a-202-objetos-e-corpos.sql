@@ -21,11 +21,18 @@
 --                    com o corpo `bae7882a…`. Se o corpo for outro, a linha
 --                    mostra `base diferente: <md5 vivo>` e NADA aqui ajusta
 --                    nada: é decisão de quem lê.
---   * base <fn>    — 53 funções que 92..202 redefinem: o md5 vivo é o do
+--   * base <fn>    — 53 funções (as de `base 90/91` são à parte, abaixo) que 92..202 redefinem: o md5 vivo é o do
 --                    baseline que o preflight da primeira migration que a
 --                    substitui exige (cada valor aparece literalmente num
 --                    preflight da árvore; a guarda de
 --                    tests/ci_conferir_banco_test.ts confere isso).
+--   * base 90/91   — o que as migrations 20261190 e 20261191 JÁ têm de ter
+--                    deixado: 5 corpos (pagamentos_a_reconciliar,
+--                    marcar_visitas_da_reconciliacao e as 3 funções de aviso),
+--                    as tabelas reconciliacao_visitas e avisos_ao_lojista com as
+--                    colunas/tipos certos e RLS ligada. Sem isto uma loja que
+--                    nunca recebeu a 90/91 passaria na 8a (a 90 só COMENTA o
+--                    liberar_cobranca_do_pedido, então a BASE acima não a vê).
 --   * nova <fn>    — 8 funções que 92..202 CRIAM: têm de estar ausentes.
 --   * coluna/tabela/índice/política — o que 92..202 cria: tem de estar ausente
 --                    (5 colunas de `order_refunds`, a tabela
@@ -97,6 +104,25 @@ WITH corpos AS (
     ('solicitar_estorno', 'ee9fe85d9b18b0e38e23cf48dd3b1111'),
     ('update_order_status_atomic', 'ed2f7fd3e0177c027720049b2fe55d3b'),
     ('upsert_store_config', '37a81b0351637a90b7a5a8e10a7d3e82')
+), base_90_91(fn, h) AS (VALUES
+    -- O que as migrations 20261190 e 20261191 deixam no banco (elas CRIAM
+    -- reconciliacao_visitas / marcar_visitas_da_reconciliacao e REDEFINEM
+    -- pagamentos_a_reconciliar; a 91 CRIA avisos_ao_lojista e as 3 funcoes de
+    -- aviso). A 90 so COMENTA liberar_cobranca_do_pedido (a BASE acima). Se estas
+    -- linhas reprovam, a 90 e/ou a 91 NAO estao na loja: a fila 92..202 nao pode
+    -- ir antes delas. Medido num banco com todas as migrations < 20261192.
+    ('pagamentos_a_reconciliar', 'a8aae3c132cac141c27091a4e3648cf4'),
+    ('marcar_visitas_da_reconciliacao', '072dca9dd2f0d0a2911b69f72fc8f5c0'),
+    ('reservar_aviso_ao_lojista', '1aed7ca9e2c55d1ea61e9773367faf06'),
+    ('confirmar_aviso_ao_lojista', '55de4b72c2b48ab960313961c56125fd'),
+    ('liberar_aviso_ao_lojista', 'd505bca7be99fc5e74a76a47ccd2b796')
+), tabelas_90_91(tabela, coluna, tipo, migration) AS (VALUES
+    ('reconciliacao_visitas', 'order_id', 'uuid', '90'),
+    ('reconciliacao_visitas', 'visitado_em', 'timestamp with time zone', '90'),
+    ('reconciliacao_visitas', 'cobranca_terminal', 'text', '90'),
+    ('avisos_ao_lojista', 'chave', 'text', '91'),
+    ('avisos_ao_lojista', 'reservado_em', 'timestamp with time zone', '91'),
+    ('avisos_ao_lojista', 'enviado', 'boolean', '91')
 ), novas(fn) AS (VALUES
     ('autorizar_post_do_estorno'),
     ('cancelar_pedido_com_cobranca'),
@@ -123,6 +149,24 @@ WITH corpos AS (
   UNION ALL
   SELECT 'base ' || b.fn, b.h, COALESCE(c.h, 'AUSENTE')
     FROM base b LEFT JOIN corpos c ON c.proname = b.fn
+  UNION ALL
+  SELECT 'base 90/91 ' || b.fn, b.h, COALESCE(c.h, 'AUSENTE')
+    FROM base_90_91 b LEFT JOIN corpos c ON c.proname = b.fn
+  UNION ALL
+  SELECT 'tabela ' || t.tabela || ' existe (' || t.migration || ')', 'EXISTE',
+         CASE WHEN to_regclass('public.' || t.tabela) IS NOT NULL THEN 'EXISTE' ELSE 'AUSENTE' END
+    FROM (SELECT DISTINCT tabela, migration FROM tabelas_90_91) t
+  UNION ALL
+  SELECT 'coluna ' || t.tabela || '.' || t.coluna || ' e ' || t.tipo || ' (' || t.migration || ')', t.tipo,
+         COALESCE((SELECT format_type(a.atttypid, a.atttypmod)
+                     FROM pg_attribute a
+                    WHERE a.attrelid = to_regclass('public.' || t.tabela)
+                      AND a.attname = t.coluna AND a.attnum > 0 AND NOT a.attisdropped), 'AUSENTE')
+    FROM tabelas_90_91 t
+  UNION ALL
+  SELECT 'RLS ligada em ' || t.tabela || ' (' || t.migration || ')', 'true',
+         COALESCE((SELECT c.relrowsecurity::text FROM pg_class c WHERE c.oid = to_regclass('public.' || t.tabela)), 'AUSENTE')
+    FROM (SELECT DISTINCT tabela, migration FROM tabelas_90_91) t
   UNION ALL
   SELECT 'nova ' || n.fn || ' ainda nao existe', 'ausente',
          CASE WHEN c.h IS NULL THEN 'ausente' ELSE 'EXISTE' END
