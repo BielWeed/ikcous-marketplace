@@ -86,6 +86,16 @@
 -- PIX ainda aberto continua como está (a migration não anula nada no MP); o
 -- que muda é só o próximo cancelamento.
 --
+-- ORDEM GLOBAL DE TRAVAS (decisão do integrador, 04/10/2026): toda função
+-- que trava o pedido E linhas de estorno juntos trava PRIMEIRO as linhas de
+-- `order_refunds` do pedido (`... WHERE order_id = p ORDER BY id FOR UPDATE`)
+-- e DEPOIS o pedido (`marketplace_orders ... FOR UPDATE`) — a ordem de
+-- concluir_estorno (2026110000100) e registrar_estorno_manual (89/94/97).
+-- Aqui: `cancelar_pedido_com_cobranca` sempre, e `pedido__mudar_status`
+-- quando o destino é 'cancelled' (o único que lê/escreve o ledger). Ordem
+-- invertida contra essas duas = deadlock (40P01); a prova (j) de
+-- tests/banco/cancelar-pedido-viva.cjs mede as duas ordens.
+--
 -- IDEMPOTÊNCIA: `CREATE OR REPLACE` em tudo; REVOKE/GRANT repetidos dão o
 -- mesmo ACL. O preflight aceita o estado de antes E o que esta migration
 -- deixa.
@@ -166,14 +176,14 @@ BEGIN
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
     FROM pg_proc
    WHERE oid = to_regprocedure('public.pedido__mudar_status(uuid,text,text,uuid,boolean,boolean)');
-  IF v_hash IS NOT NULL AND v_hash <> '63cf5d1918c8cd2fd5adb60cc6c06a59' THEN
+  IF v_hash IS NOT NULL AND v_hash <> '4623b27a07468553d6ac00a888e04db4' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.pedido__mudar_status já existe com outro corpo (hash %).', v_hash;
   END IF;
 
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
     FROM pg_proc
    WHERE oid = to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)');
-  IF v_hash IS NOT NULL AND v_hash <> '4fe7ad82043f7392c4a548efe075c143' THEN
+  IF v_hash IS NOT NULL AND v_hash <> '794ea92e745cdafec5d87dcd2fb69fb7' THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.cancelar_pedido_com_cobranca já existe com outro corpo (hash %).', v_hash;
   END IF;
 END $preflight_20261198$;
@@ -256,6 +266,19 @@ BEGIN
     -- Antes de qualquer leitura: sem sessão, nem existência de pedido se revela.
     IF v_caller_id IS NULL THEN
         RAISE EXCEPTION 'Não autorizado: é preciso estar autenticado para alterar um pedido.';
+    END IF;
+
+    -- 20261198: ORDEM GLOBAL DE TRAVAS (ver o cabeçalho) — o cancelamento lê
+    -- e escreve o ledger do estorno, então trava PRIMEIRO as linhas de
+    -- order_refunds do pedido (por id) e SÓ DEPOIS o pedido, como
+    -- concluir_estorno e registrar_estorno_manual. Os outros status não
+    -- tocam no ledger e não pegam esta trava.
+    IF p_new_status = 'cancelled' THEN
+        PERFORM 1
+           FROM public.order_refunds r
+          WHERE r.order_id = p_order_id
+          ORDER BY r.id
+            FOR UPDATE;
     END IF;
 
     -- Get current status and lock row
@@ -524,6 +547,15 @@ BEGIN
     IF p_ator IS NULL THEN
         RAISE EXCEPTION 'Não autorizado: é preciso estar autenticado para alterar um pedido.';
     END IF;
+
+    -- ORDEM GLOBAL DE TRAVAS: as linhas de order_refunds do pedido ANTES do
+    -- pedido (pedido__mudar_status, chamada lá embaixo, repete a trava das
+    -- linhas — já são desta transação, não espera).
+    PERFORM 1
+       FROM public.order_refunds r
+      WHERE r.order_id = p_order_id
+      ORDER BY r.id
+        FOR UPDATE;
 
     SELECT id, status, user_id, payment_status, gateway_payment_id, updated_at
       INTO v_pedido

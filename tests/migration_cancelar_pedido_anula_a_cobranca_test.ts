@@ -176,6 +176,10 @@ const MUDANCAS: [string, string][] = [
     "v_caller_id UUID := p_ator; v_is_admin BOOLEAN := COALESCE(p_ator_admin, false);",
   ],
   [
+    "estar autenticado para alterar um pedido.'; END IF; SELECT status, user_id,",
+    "estar autenticado para alterar um pedido.'; END IF; IF p_new_status = 'cancelled' THEN PERFORM 1 FROM public.order_refunds r WHERE r.order_id = p_order_id ORDER BY r.id FOR UPDATE; END IF; SELECT status, user_id,",
+  ],
+  [
     "v_gateway_payment_id TEXT; v_total NUMERIC; v_ja_manual NUMERIC;",
     "v_gateway_payment_id TEXT; v_canal TEXT; v_total NUMERIC; v_saldo NUMERIC;",
   ],
@@ -258,7 +262,7 @@ Deno.test("a porta da edge confere service role, dono/admin ATUAL nas duas fonte
   );
   for (const trecho of [
     "IF COALESCE(current_setting('role', true), '') NOT IN ('postgres', 'service_role') THEN",
-    "FOR UPDATE;",
+    "PERFORM 1 FROM public.order_refunds r WHERE r.order_id = p_order_id ORDER BY r.id FOR UPDATE; SELECT id, status, user_id, payment_status, gateway_payment_id, updated_at INTO v_pedido FROM public.marketplace_orders WHERE id = p_order_id FOR UPDATE;",
     "(u.raw_app_meta_data ->> 'role') = 'admin'",
     "p.role = 'admin'",
     "IF v_pedido.gateway_payment_id IS DISTINCT FROM p_vaga_esperada OR v_pedido.payment_status IS DISTINCT FROM p_pagamento_esperado THEN",

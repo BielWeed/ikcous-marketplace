@@ -39,6 +39,14 @@
  *       vaga ocupada é transitório: a porta do front recusa até o dono e o
  *       admin coerente; a da edge (com a prova do MP) cancela. Controles:
  *       admin atual coerente e dono seguem cancelando.
+ *   (j) ORDEM GLOBAL DE TRAVAS (linhas de order_refunds ANTES do pedido),
+ *       com duas conexões de verdade: quem já segura as linhas do estorno
+ *       (o 1º passo de concluir_estorno/registrar_estorno_manual) faz o
+ *       cancelamento ESPERAR antes de travar o pedido — e consegue travar o
+ *       pedido em seguida, sem 40P01; cancelar × concluir_estorno e ×
+ *       registrar_estorno_manual nas duas ordens terminam sem deadlock e com
+ *       o remanescente certo. CONTROLE: a ordem invertida (pedido antes das
+ *       linhas) contra concluir_estorno dá deadlock (40P01).
  *   (i) ENTREGUE → cancelar → reativar → cancelar: o carimbo do fato
  *       histórico (`cancelled_after_shipping`) segura o estoque e o estorno
  *       nas duas vezes; o retorno físico explícito
@@ -980,6 +988,284 @@ async function correr(url, observador, { primeiro, segundo }) {
     await b.end().catch(() => {});
   }
 }
+
+async function conectar(url) {
+  const c = new Client({ connectionString: url });
+  await c.connect();
+  return c;
+}
+
+async function pid(con) {
+  return (await con.query("SELECT pg_backend_pid() AS p")).rows[0].p;
+}
+
+/** Espera a conexão `alvo` ficar bloqueada num lock (visto pelo superusuário). */
+async function esperarBloqueio(observador, pidAlvo, rotulo) {
+  for (let i = 0; i < 150; i += 1) {
+    const w = await observador.query(
+      "SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1",
+      [pidAlvo],
+    );
+    if (w.rows[0]?.wait_event_type === "Lock") return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.fail(`${rotulo}: a conexão devia estar esperando um lock`);
+}
+
+/** Pedido pago em processing (total 100) com UMA linha de estorno. */
+async function pagoComLinha(cliente, statusDaLinha, valor = 30) {
+  const p = await criarPedido(cliente, {
+    status: "processing",
+    paymentStatus: "pago",
+    paidAt: new Date().toISOString(),
+  });
+  const r = await cliente.query(
+    `INSERT INTO public.order_refunds (order_id, amount, motivo, solicitado_por, status)
+     VALUES ($1, $2, 'prova da ordem de travas', 'lojista', $3) RETURNING id`,
+    [p.pedidoId, valor, statusDaLinha],
+  );
+  return { ...p, linhaId: r.rows[0].id };
+}
+
+const SQL_CANCELAR_PAGO =
+  "SELECT public.cancelar_pedido_com_cobranca($1::uuid, $2::uuid, NULL, 'pago') AS r";
+
+/**
+ * Roda `primeiro` numa transação aberta de A, dispara `segundo` em B, espera B
+ * bloquear, comita A e devolve os dois resultados. Qualquer 40P01 sobe.
+ */
+async function emSequencia(url, observador, primeiro, segundo, rotulo) {
+  const a = await conectar(url);
+  const b = await conectar(url);
+  try {
+    await a.query("BEGIN");
+    await a.query("SET LOCAL ROLE service_role");
+    const rA = await primeiro(a);
+    const pidB = await pid(b);
+    await b.query("BEGIN");
+    await b.query("SET LOCAL ROLE service_role");
+    const promessaB = segundo(b);
+    promessaB.catch(() => {});
+    await esperarBloqueio(observador, pidB, rotulo);
+    await a.query("COMMIT");
+    const rB = await promessaB;
+    await b.query("COMMIT");
+    return { rA, rB };
+  } finally {
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+  }
+}
+
+PROVAS.push({
+  nome: "(j) ordem global de travas: linhas do estorno ANTES do pedido — cancelar × concluir_estorno e × registrar_estorno_manual sem deadlock; a ordem invertida dá 40P01",
+  corpo: async (cliente, url) => {
+    // J1 — o alinhamento em si: A segura SÓ as linhas do estorno (o 1º passo
+    // de concluir_estorno/registrar_estorno_manual). O cancelamento tem de
+    // esperar ANTES de travar o pedido: A consegue travar o pedido em
+    // seguida (sem 40P01) e só então solta.
+    {
+      const p = await pagoComLinha(cliente, "solicitado");
+      const a = await conectar(url);
+      const b = await conectar(url);
+      try {
+        await a.query("BEGIN");
+        await a.query(
+          "SELECT 1 FROM public.order_refunds WHERE order_id = $1 ORDER BY id FOR UPDATE",
+          [p.pedidoId],
+        );
+        // O pid ANTES de disparar: o pg enfileira consultas por conexão, e
+        // perguntar o pid de B com B bloqueada travaria a própria prova.
+        const pidB = await pid(b);
+        await b.query("BEGIN");
+        await b.query("SET LOCAL ROLE service_role");
+        const promessaB = b.query(SQL_CANCELAR_PAGO, [p.pedidoId, U_ADMIN]);
+        promessaB.catch(() => {});
+        await esperarBloqueio(cliente, pidB, "J1");
+        // O passo 2 de quem segura as linhas: travar o pedido. Com a ordem
+        // global, o cancelamento NÃO pegou o pedido antes — isto não espera.
+        await a.query("SET LOCAL lock_timeout = '3s'");
+        await a.query(
+          "SELECT 1 FROM public.marketplace_orders WHERE id = $1 FOR UPDATE",
+          [p.pedidoId],
+        );
+        await a.query("COMMIT");
+        const rB = (await promessaB).rows[0].r;
+        await b.query("COMMIT");
+        assert.equal(rB.cancelado, true, "J1: o cancelamento conclui depois");
+        // Remanescente: 100 − 30 em voo = 70 (sob a trava, sem reservar 100).
+        assert.deepEqual(
+          (await linhasDeEstorno(cliente, p.pedidoId)).map((l) => l.amount),
+          [30, 70],
+        );
+      } finally {
+        await a.end().catch(() => {});
+        await b.end().catch(() => {});
+      }
+    }
+
+    // J2 — concluir_estorno (linha em_processamento de 30) × cancelar, nas
+    // duas ordens. Sem 40P01; o remanescente é 70 nos dois casos.
+    {
+      const p = await pagoComLinha(cliente, "em_processamento");
+      const { rA, rB } = await emSequencia(
+        url,
+        cliente,
+        (con) =>
+          con
+            .query(
+              "SELECT public.concluir_estorno($1::uuid, 'MPREF98J2', 'approved', 'accredited') AS r",
+              [p.linhaId],
+            )
+            .then((r) => r.rows[0].r),
+        (con) =>
+          con
+            .query(SQL_CANCELAR_PAGO, [p.pedidoId, U_ADMIN])
+            .then((r) => r.rows[0].r),
+        "J2 concluir→cancelar",
+      );
+      assert.equal(rA.concluido, true);
+      assert.equal(rB.cancelado, true);
+      assert.deepEqual(
+        (await linhasDeEstorno(cliente, p.pedidoId)).map((l) => [
+          l.amount,
+          l.status,
+        ]),
+        [
+          [30, "concluido"],
+          [70, "solicitado"],
+        ],
+      );
+    }
+    {
+      const p = await pagoComLinha(cliente, "em_processamento");
+      const { rA, rB } = await emSequencia(
+        url,
+        cliente,
+        (con) =>
+          con
+            .query(SQL_CANCELAR_PAGO, [p.pedidoId, U_ADMIN])
+            .then((r) => r.rows[0].r),
+        (con) =>
+          con
+            .query(
+              "SELECT public.concluir_estorno($1::uuid, 'MPREF98J2B', 'approved', 'accredited') AS r",
+              [p.linhaId],
+            )
+            .then((r) => r.rows[0].r),
+        "J2 cancelar→concluir",
+      );
+      assert.equal(rA.cancelado, true);
+      assert.equal(rB.concluido, true);
+      // O cancelamento viu 30 EM VOO: 100 − 30 = 70; a conclusão depois só
+      // move os 30 para confirmado. Total devolvido = 100, nunca 130.
+      assert.deepEqual(
+        (await linhasDeEstorno(cliente, p.pedidoId)).map((l) => l.amount),
+        [30, 70],
+      );
+    }
+
+    // J3 — registrar_estorno_manual (corpo 94) × cancelar, nas duas ordens.
+    {
+      const p = await pagoComLinha(cliente, "solicitado");
+      const { rA, rB } = await emSequencia(
+        url,
+        cliente,
+        (con) =>
+          con
+            .query("SELECT public.registrar_estorno_manual($1::uuid) AS r", [
+              p.pedidoId,
+            ])
+            .then((r) => r.rows[0].r),
+        (con) =>
+          con
+            .query(SQL_CANCELAR_PAGO, [p.pedidoId, U_ADMIN])
+            .then((r) => r.rows[0].r),
+        "J3 registrar→cancelar",
+      );
+      assert.equal(rA.ok, true);
+      // O pagamento virou 'estornado' enquanto o cancelamento esperava: o CAS
+      // ('pago') recusa e devolve o pedido relido — nada de estorno novo.
+      assert.equal(rB.cancelado, false);
+      assert.equal(rB.motivo, "cobranca_mudou");
+      assert.deepEqual(
+        (await linhasDeEstorno(cliente, p.pedidoId)).map((l) => l.status),
+        ["recusado"],
+      );
+    }
+    {
+      const p = await pagoComLinha(cliente, "solicitado");
+      let erroB = null;
+      const { rA } = await emSequencia(
+        url,
+        cliente,
+        (con) =>
+          con
+            .query(SQL_CANCELAR_PAGO, [p.pedidoId, U_ADMIN])
+            .then((r) => r.rows[0].r),
+        (con) =>
+          con
+            .query("SELECT public.registrar_estorno_manual($1::uuid) AS r", [
+              p.pedidoId,
+            ])
+            .then((r) => r.rows[0].r)
+            .catch((e) => {
+              erroB = e;
+              return null;
+            }),
+        "J3 cancelar→registrar",
+      );
+      assert.equal(rA.cancelado, true);
+      assert.notEqual(erroB?.code, "40P01", "sem deadlock");
+    }
+
+    // J4 — CONTROLE: a ordem INVERTIDA (pedido antes das linhas) contra o
+    // concluir_estorno real dá deadlock. É o que a ordem global evita.
+    {
+      const p = await pagoComLinha(cliente, "em_processamento");
+      const a = await conectar(url);
+      const b = await conectar(url);
+      const codigos = [];
+      try {
+        await a.query("BEGIN");
+        await a.query(
+          "SELECT 1 FROM public.marketplace_orders WHERE id = $1 FOR UPDATE",
+          [p.pedidoId],
+        );
+        const pidB = await pid(b);
+        await b.query("BEGIN");
+        await b.query("SET LOCAL ROLE service_role");
+        const promessaB = b
+          .query(
+            "SELECT public.concluir_estorno($1::uuid, 'MPREF98J4', 'approved', 'accredited')",
+            [p.linhaId],
+          )
+          .catch((e) => {
+            codigos.push(e.code);
+          });
+        await esperarBloqueio(cliente, pidB, "J4");
+        await a
+          .query(
+            "SELECT 1 FROM public.order_refunds WHERE order_id = $1 ORDER BY id FOR UPDATE",
+            [p.pedidoId],
+          )
+          .catch((e) => {
+            codigos.push(e.code);
+          });
+        await promessaB;
+        await a.query("ROLLBACK").catch(() => {});
+        await b.query("ROLLBACK").catch(() => {});
+      } finally {
+        await a.end().catch(() => {});
+        await b.end().catch(() => {});
+      }
+      assert.ok(
+        codigos.includes("40P01"),
+        `a ordem invertida devia dar deadlock; códigos: ${JSON.stringify(codigos)}`,
+      );
+    }
+  },
+});
 
 PROVAS.push({
   nome: "(e) corrida com duas conexões: cancelar × confirmar_pagamento('pago') — nunca estado incoerente, estoque 1x",
