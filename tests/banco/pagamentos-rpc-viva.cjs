@@ -2019,7 +2019,10 @@ PROVAS.push({
     // que tem de estar de volta depois do ROLLBACK do fim.
     const com97 = await a97EstaNoAr(c);
     const vivoInicial = await perfilDasFuncoes(c);
-    passo(com97 ? "estado vivo pós-20261197" : "estado pós-20261195", vivoInicial);
+    passo(
+      com97 ? "estado vivo pós-20261197" : "estado pós-20261195",
+      vivoInicial,
+    );
     assert.equal(
       vivoInicial[0].md5,
       novos.confirmar,
