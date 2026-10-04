@@ -153,9 +153,19 @@ async function main() {
         : ""
     }`,
   );
+  // Job BLOQUEANTE: pulado NÃO é verde. O provisionador emula pg_cron, então
+  // pular um arquivo significa banco divergente de toda loja — foi um pulo
+  // (a 20260901 inteira) que escondeu o corpo errado de confirmar_pagamento
+  // até a 20261195 recusar (PR 766).
+  if (pulados.length > 0) {
+    sair(
+      "FALHOU",
+      `${pulados.length} arquivo(s) PULADOS por provisionamento mesmo com o pg_cron emulado — o banco do zero ficou diferente do de uma loja. Confira o passo 6 do provisionar-efemero.cjs.\n${pulados.join("\n")}`,
+    );
+  }
   sair(
     "OK",
-    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${emulados.length} deles com pg_cron/pg_net emulado, ${pulados.length} pulados por provisionamento).`,
+    `A raiz inteira aplicou num banco zerado (${aplicados} aplicados, ${emulados.length} deles com pg_cron/pg_net emulado, 0 pulados por provisionamento).`,
   );
 }
 

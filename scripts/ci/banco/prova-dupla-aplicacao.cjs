@@ -174,9 +174,17 @@ async function main() {
       `${quebrouPromessa.length} arquivo(s) que PROMETEM idempotência (só formas CREATE OR REPLACE / IF NOT EXISTS / DROP IF EXISTS / GRANT…) explodiram na 2ª passada — a promessa do desenho não se cumpre. Veja o relatório acima.`,
     );
   }
+  // Job BLOQUEANTE: arquivo pulado na 2ª passada não foi provado — não é verde
+  // (mesma régua da 1ª passada, aplicar-migrations.cjs).
+  if (pulados.length > 0) {
+    sair(
+      "FALHOU",
+      `${pulados.length} arquivo(s) PULADOS por provisionamento na 2ª passada mesmo com o pg_cron emulado: ${pulados.join(", ")}`,
+    );
+  }
   sair(
     "OK",
-    `Dupla aplicação provada: ${limpoNaSegunda.length} limpos na 2ª, ${colidiuSemPromessa.length} colisões de quem NÃO promete (relatório), ${pulados.length} pulados.`,
+    `Dupla aplicação provada: ${limpoNaSegunda.length} limpos na 2ª, ${colidiuSemPromessa.length} colisões de quem NÃO promete (relatório), 0 pulados.`,
   );
 }
 
