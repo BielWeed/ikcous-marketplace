@@ -163,6 +163,9 @@ import {
   type DepsDosEfeitos,
   desfechoComEfeito,
 } from "../_shared/efeitos-do-pagamento.ts";
+// S1 (04/10/2026): a ação `cancelar` — anula a cobrança no MP antes de
+// cancelar no banco. Ver o cabeçalho de cancelar-pedido.ts.
+import { cancelarPedidoPelaEdge, verificarAdminAtualReal } from "./cancelar-pedido.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1453,6 +1456,9 @@ async function handler(
     enviarPush?: DepsDosEfeitos["enviarPush"];
     enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
     enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
+    // S1 (04/10/2026): conferência do admin de AGORA na ação `cancelar`. Em
+    // produção nunca é passado — cai em `verificarAdminAtualReal`.
+    verificarAdminAtual?: (authorization: string | null) => Promise<string | null>;
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -1507,7 +1513,9 @@ async function handler(
   const metodo = body.metodo;
   // C2 (02/10/2026): `"verificar"` é a consulta SEM cobrança (só GET no MP e
   // CAS no banco) — ver `verificarVagaDoPedido`.
-  if (metodo !== "pix" && metodo !== "cartao" && metodo !== "verificar") {
+  // S1 (04/10/2026): `"cancelar"` cancela o pedido anulando ANTES a cobrança
+  // no MP — ver cancelar-pedido.ts; ramo próprio logo depois do client.
+  if (metodo !== "pix" && metodo !== "cartao" && metodo !== "verificar" && metodo !== "cancelar") {
     return json({ error: "Forma de pagamento inválida." }, 400);
   }
   // Corpo do cartão validado ANTES de qualquer leitura de banco ou chamada
@@ -1553,6 +1561,22 @@ async function handler(
       console.error("criar-pagamento: falha ao criar o client do Supabase", err);
       return json({ error: "Pagamento indisponível." }, 503);
     }
+  }
+
+  // S1 (04/10/2026): a ação `cancelar` decide ANTES das credenciais e de
+  // `podeCobrar` — cancelar pedido sem cobrança não depende do MP, e o pedido
+  // com cobrança resolve as credenciais lá dentro, só quando precisa.
+  if (metodo === "cancelar") {
+    return await cancelarPedidoPelaEdge({
+      supabase,
+      pedidoId: String(body.orderId),
+      sub: subDoToken(req.headers.get("Authorization")),
+      authorization: req.headers.get("Authorization"),
+      json,
+      obterCredenciais: async () => deps.credenciaisMp ?? await resolverCredenciaisMp(supabase),
+      verificarAdminAtual: deps.verificarAdminAtual ?? verificarAdminAtualReal,
+      fetchImpl: deps.fetchImpl,
+    });
   }
 
   // Tarefa mp-2 (15/09/2026): QUEM cobra este cliente — a chave do LOJISTA
