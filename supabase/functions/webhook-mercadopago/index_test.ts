@@ -326,7 +326,7 @@ function clienteFalso(opts: {
   // tests/banco/contestacao-viva.cjs). O dublê só registra a chamada e
   // devolve o retorno que o teste roteirizar (default: 'reservado').
   contestacaoNoLedger?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
-  estornoExternoNaContestacao?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
+  estornoExternoDoMp?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
 }) {
   const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
   let leiturasNaBarreira = 0;
@@ -403,10 +403,63 @@ function clienteFalso(opts: {
         return opts.contestacaoNoLedger?.(args) ??
           { data: { resultado: "reservado", aviso: null, valor_estornado: 0, em_voo: 0, disponivel: 0 }, error: null };
       }
-      if (nome === "registrar_estorno_externo_na_contestacao") {
-        (opts.registro as any)?.chamadasExternoNaContestacao?.push({ args });
-        return opts.estornoExternoNaContestacao?.(args) ??
-          { data: { resultado: "inserido", aviso: null, valor_estornado: Number(args.p_valor), em_voo: 0, disponivel: 0 }, error: null };
+      if (nome === "registrar_estorno_externo_do_mp") {
+        (opts.registro as any)?.chamadasExternoDoMp?.push({ args });
+        const roteirizado = opts.estornoExternoDoMp?.(args);
+        if (roteirizado) return roteirizado;
+        // Espelho da RPC real (20261196000000; provada em
+        // tests/banco/contestacao-viva.cjs, (f)/(k)/(n)/(o)): um refund credita
+        // UMA linha; entra INTEIRO e concluído se couber no dinheiro real
+        // (total - estornado - reserva 'sistema' em voo — a linha do app sem
+        // confirmação NÃO reduz); senão nao_cabe, sem linha.
+        const p = (opts.pedido ?? {}) as Record<string, unknown>;
+        const estornadoAgora = () =>
+          opts.concluirSomaNoPedido
+            ? Number(p.valor_estornado ?? 0)
+            : Number(((Number(p.valor_estornado ?? 0)) + valorEstornadoAcumulado).toFixed(2));
+        const emVooSistema = () =>
+          filaOrderRefunds
+            .filter((r) => r.order_id === args.p_order_id && r.solicitado_por === "sistema" &&
+              (r.status === "solicitado" || r.status === "em_processamento"))
+            .reduce((a, r) => a + Number(r.amount ?? 0), 0);
+        const emVooTodas = () =>
+          filaOrderRefunds
+            .filter((r) => r.order_id === args.p_order_id && (r.status === "solicitado" || r.status === "em_processamento"))
+            .reduce((a, r) => a + Number(r.amount ?? 0), 0);
+        const estado = (resultado: string, aviso: string | null) => ({
+          data: {
+            resultado,
+            aviso,
+            valor_estornado: estornadoAgora(),
+            em_voo: emVooTodas(),
+            disponivel: Number((Number(p.total ?? 0) - estornadoAgora() - emVooTodas()).toFixed(2)),
+          },
+          error: null,
+        });
+        if (filaOrderRefunds.some((r) => r.order_id === args.p_order_id && r.mp_refund_id === args.p_mp_refund_id)) {
+          return estado("ja_registrado", null);
+        }
+        const valor = Number(args.p_valor);
+        if (valor > Number((Number(p.total ?? 0) - estornadoAgora() - emVooSistema()).toFixed(2))) {
+          return estado("nao_cabe", "saldo");
+        }
+        proximoIdInserido++;
+        filaOrderRefunds.push({
+          id: `sistema-${proximoIdInserido}`,
+          order_id: args.p_order_id,
+          amount: valor,
+          solicitado_por: "sistema",
+          status: "concluido",
+          motivo: "estorno feito fora do app (Mercado Pago)",
+          mp_refund_id: args.p_mp_refund_id,
+          mp_status: args.p_mp_status,
+          mp_status_detail: args.p_mp_status_detail,
+          concluido_em: "2026-10-04T00:00:00.000Z",
+        });
+        valorEstornadoAcumulado += valor;
+        if (opts.concluirSomaNoPedido) p.valor_estornado = Number((Number(p.valor_estornado ?? 0) + valor).toFixed(2));
+        if (opts.registro) (opts.registro as any).valorEstornadoAcumulado = valorEstornadoAcumulado;
+        return estado("inserido", null);
       }
       if (nome === "reservar_aviso_ao_lojista") {
         opts.registro?.chamadasReservar?.push({ args });
@@ -3050,20 +3103,25 @@ Deno.test("W3 - order 'refunded' SEM linha, refund processed 100 (r3) -> UMA lin
   const req1 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
   const resposta1 = await handler(req1, { supabase, fetchImpl });
   assertEquals(resposta1.status, 200);
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "r3");
-  assertEquals(registro.insertsOrderRefunds[0].status, "concluido");
-  assertEquals(registro.insertsOrderRefunds[0].solicitado_por, "sistema");
-  assertEquals(registro.insertsOrderRefunds[0].motivo, "estorno feito fora do app (Mercado Pago)");
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  // Lote A: a linha nasce pela RPC sob a trava (registrar_estorno_externo_do_mp),
+  // nunca por INSERT direto da edge.
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  const r3 = linhasDoRefund(registro, "r3");
+  assertEquals(r3.length, 1);
+  assertEquals(r3[0].status, "concluido");
+  assertEquals(r3[0].solicitado_por, "sistema");
+  assertEquals(r3[0].amount, 100);
+  assertEquals(r3[0].motivo, "estorno feito fora do app (Mercado Pago)");
+  assertEquals((registro as any).valorEstornadoAcumulado, 100);
 
   // MESMA notificação de novo — o dublê (fila VIVA) agora devolve a linha
-  // com mp_refund_id 'r3' já gravada -> zero inserções, zero RPC nova.
+  // com mp_refund_id 'r3' já gravada -> nada novo, nada somado.
   const req2 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
   const resposta2 = await handler(req2, { supabase, fetchImpl });
   assertEquals(resposta2.status, 200);
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(linhasDoRefund(registro, "r3").length, 1);
+  assertEquals((registro as any).valorEstornadoAcumulado, 100);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
 
 // =============================================================================
@@ -3132,12 +3190,14 @@ Deno.test("W9 - rota payment (id clássico ≠ ORD gravado): refund da ORDER gra
   assertEquals(resposta.status, 200);
   // A guarda B1 reconsultou a ORDER gravada (além do pagamento clássico).
   assertStringIncludes(chamadas.join(" | "), `/v1/orders/${ID_ORDER_TESTE}`);
-  // O refund 'r9' da ORDER — formato Order — é o que entra no ledger.
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "r9");
-  assertEquals(registro.insertsOrderRefunds[0].status, "concluido");
-  assertEquals(registro.insertsOrderRefunds[0].solicitado_por, "sistema");
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  // O refund 'r9' da ORDER — formato Order — é o que entra no ledger (pela
+  // RPC sob a trava, inteiro).
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  const r9 = linhasDoRefund(registro, "r9");
+  assertEquals(r9.length, 1);
+  assertEquals(r9[0].status, "concluido");
+  assertEquals(r9[0].solicitado_por, "sistema");
+  assertEquals(r9[0].amount, 100);
 });
 
 // Achado S4 (3ª revisão de risco, 26/09/2026, W7 do harness do 3º revisor):
@@ -3198,13 +3258,14 @@ Deno.test("cartão — Achado S4 (W7): a leitura do id gravado falha 1x num esto
   assertEquals(registro.chamadasRpc.length, 0, "não chega nem a confirmar_pagamento");
   assertEquals(pedido.payment_status, "pago", "estorno legítimo AINDA não aplicado — nem pela RPC nem pelo ledger");
 
+  assertEquals(((registro as any).filaOrderRefunds as unknown[]).length, 0, "nem pela RPC");
+
   // MP reenvia (a leitura já não falha mais) -> registra igual ao W3.
   const req2 = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
   const resposta2 = await handler(req2, { supabase, fetchImpl });
   assertEquals(resposta2.status, 200);
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "r7");
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(linhasDoRefund(registro, "r7").map((r) => r.amount), [100]);
+  assertEquals((registro as any).valorEstornadoAcumulado, 100);
 });
 
 Deno.test("W4 - chargeback: 'in_process' -> RPC sob a trava com em_analise; 'settled' -> contra_a_loja; nenhuma escrita direta no ledger", async () => {
@@ -3313,8 +3374,13 @@ function registroDoLedger() {
     insertsOrderRefunds: [] as any[],
     updatesOrderRefunds: [] as any[],
     chamadasContestacao: [] as any[],
-    chamadasExternoNaContestacao: [] as any[],
+    chamadasExternoDoMp: [] as any[],
   };
+}
+
+/** As linhas da fila VIVA do dublê com este refund do MP. */
+function linhasDoRefund(registro: unknown, refundId: string): Array<Record<string, unknown>> {
+  return ((registro as any).filaOrderRefunds as Array<Record<string, unknown>>).filter((r) => r.mp_refund_id === refundId);
 }
 
 /** Nenhuma escrita DIRETA no ledger pela edge (a contestação é da RPC). */
@@ -3411,13 +3477,17 @@ async function duasEntregasParalelas(supabase: unknown, corpo: Record<string, un
   return await Promise.all([handler(reqA, deps), handler(reqB, deps)]);
 }
 
-Deno.test("Lote A R2 - controle: SEM o índice único, duas entregas paralelas do mesmo refund externo gravam DUAS linhas (a corrida é real no dublê)", async () => {
+Deno.test("Lote A R2 - duas entregas paralelas do mesmo refund externo -> as duas chegam à RPC sob a trava com o MESMO refund inteiro (a serialização é do banco: contestacao-viva (n)/(o)); a edge não insere nada", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [], barreiraLeituraOrderRefunds: 2 });
   const [a, b] = await duasEntregasParalelas(supabase, orderComRefundExterno());
   assertEquals([a.status, b.status], [200, 200]);
-  const linhas = (registro as any).filaOrderRefunds.filter((r: any) => r.mp_refund_id === "r-ext-20");
-  assertEquals(linhas.length, 2, "o defeito do R2 — o índice da migration é quem fecha");
+  assertEquals(registro.chamadasExternoDoMp.map((c: any) => [c.args.p_mp_refund_id, c.args.p_valor]), [
+    ["r-ext-20", 20],
+    ["r-ext-20", 20],
+  ]);
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(linhasDoRefund(registro, "r-ext-20").length, 1);
 });
 
 Deno.test("Lote A R2 - com o índice único: duas entregas paralelas do mesmo refund externo -> UMA linha, soma 20 (não 40), as duas 200", async () => {
@@ -3438,16 +3508,15 @@ Deno.test("Lote A R2 - com o índice único: duas entregas paralelas do mesmo re
   assertEquals((registro as any).valorEstornadoAcumulado, 20);
 });
 
-Deno.test("Lote A R2 - 23505 com a linha existente AINDA sem concluido_em (a outra entrega caiu entre o INSERT e a RPC) -> esta conclui a linha existente", async () => {
+Deno.test("Lote A R2 - a linha do MESMO refund aparece entre a leitura e a gravação (outra entrega) -> a RPC responde ja_registrado; nada inserido de novo, nada somado em dobro", async () => {
+  // Quem conclui a linha órfã da outra entrega (concluido sem concluido_em)
+  // é a própria RPC, sob a trava — provado no banco: contestacao-viva (p).
   const registro = registroDoLedger();
   let jaInjetou = false;
   const supabase = clienteFalso({
     pedido: pedidoPago(),
     registro,
     orderRefundsRows: [],
-    indicesUnicosDoLedger: true,
-    // A linha da outra entrega nasce DEPOIS da leitura inicial desta (o
-    // passo de recuperação do começo não a vê) e ANTES do INSERT desta.
     aposLerOrderRefunds: (fila) => {
       if (jaInjetou) return;
       jaInjetou = true;
@@ -3458,7 +3527,7 @@ Deno.test("Lote A R2 - 23505 com a linha existente AINDA sem concluido_em (a out
         status: "concluido",
         solicitado_por: "sistema",
         mp_refund_id: "r-ext-20",
-        concluido_em: null,
+        concluido_em: "2026-10-04T00:00:00.000Z",
       });
     },
   });
@@ -3470,14 +3539,10 @@ Deno.test("Lote A R2 - 23505 com a linha existente AINDA sem concluido_em (a out
   });
 
   assertEquals(resposta.status, 200);
-  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
-  assertEquals(fila.filter((r) => r.mp_refund_id === "r-ext-20").length, 1);
-  assertEquals(
-    registro.chamadasConcluirEstorno.some((c: any) => c.args.p_refund_id === "linha-da-outra-entrega"),
-    true,
-    "a linha da janela de falha é concluída por quem esbarrou nela",
-  );
-  assertEquals((registro as any).valorEstornadoAcumulado, 20);
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+  assertEquals(linhasDoRefund(registro, "r-ext-20").length, 1);
+  assertEquals((registro as any).valorEstornadoAcumulado ?? 0, 0, "a RPC não somou de novo o que a outra entrega já somou");
+  semEscritaDireta(registro);
 });
 
 Deno.test("Lote A R2 - bloqueio da revisão: refund 20 já concluído por OUTRA entrega entre a leitura do ledger e a do pedido + refund 70 novo -> grava 70 (não 60), total 90; a reentrega continua 90", async () => {
@@ -3614,7 +3679,7 @@ Deno.test("Lote A R2 - bloqueio da revisão (05:24): linha do APP pendente de 20
   assertEquals(pedido.valor_estornado, 90);
 });
 
-Deno.test("Lote A R2 - linha 'sistema' órfã da janela de falha (concluido sem concluido_em) concluída no começo do passo entra no acumulado: refund externo seguinte limitado pelo total certo", async () => {
+Deno.test("Lote A R2 - linha 'sistema' órfã da janela de falha (concluido sem concluido_em) concluída no começo do passo entra no acumulado: o refund externo seguinte que passaria do total NÃO é recortado (nao_cabe)", async () => {
   // Pedido de 100. Linha órfã de 30 (crash entre INSERT e RPC de um ciclo
   // anterior) é concluída AGORA pela recuperação W6 — soma 30 no banco. O
   // refund externo de 80 que chega junto só tem 70 disponíveis: sem contar a
@@ -3678,35 +3743,35 @@ Deno.test("Lote A R2 - linha 'sistema' órfã da janela de falha (concluido sem 
   } finally {
     console.error = erroReal;
   }
-  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
-  const r80 = fila.filter((r) => r.mp_refund_id === "r-80");
-  assertEquals(r80.length, 1);
-  assertEquals(r80[0].amount, 70, "limitado ao que sobra depois da órfã (100 - 30)");
-  assertEquals(pedido.valor_estornado, 100);
+  // Lote A (revisão): a órfã de 30 conclui no começo (W6) e o REF de 80 NÃO
+  // é recortado para 70 — 30 + 80 passa do pago, então o MP e o ledger
+  // discordam: nada gravado, aviso, a identidade fica livre.
+  assertEquals(registro.chamadasExternoDoMp.map((c: any) => [c.args.p_mp_refund_id, c.args.p_valor]), [["r-80", 80]]);
+  assertEquals(linhasDoRefund(registro, "r-80").length, 0, "nunca gravado truncado");
+  assertEquals(pedido.valor_estornado, 30);
 });
 
-Deno.test("Lote A R2 - 23505 sem linha casando a chave (outra restrição) -> NÃO engole: 500, o MP reenvia", async () => {
+Deno.test("Lote A R2 - erro de banco na RPC do refund externo (inclusive 23505 de outra restrição) -> NÃO engole: 500, o MP reenvia", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({
     pedido: pedidoPago(),
     registro,
     orderRefundsRows: [],
-    erroOrderRefundsInsert: { code: "23505", message: "duplicate key value violates unique constraint \"order_refunds_pkey\"" },
+    estornoExternoDoMp: () => ({
+      data: null,
+      error: { code: "23505", message: "duplicate key value violates unique constraint \"order_refunds_pkey\"" },
+    }),
   });
   const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
-  const erroReal = console.error;
-  console.error = () => {};
-  let resposta: Response;
-  try {
-    resposta = await handler(req, {
+  const resposta = await semLogs(() =>
+    handler(req, {
       supabase,
       fetchImpl: fetchConsulta(200, orderComRefundExterno()),
       enviarPushContado: async () => 1,
-    });
-  } finally {
-    console.error = erroReal;
-  }
+    })
+  );
   assertEquals(resposta.status, 500);
+  semEscritaDireta(registro);
 });
 
 // ── R1 (ledger da contestação) — decide pelo CASO, corroborado pelo PAGAMENTO
@@ -4126,8 +4191,8 @@ Deno.test("Lote A (bloqueio 2) - REF processed numa order contestada entra como 
   const { fn } = fetchDaContestacao({ order: orderContestadaComRef(), caso: CASO_CONTRA_A_LOJA });
   const resposta = await semLogs(() => entregarContestacao(supabase, fn));
   assertEquals(resposta.status, 200);
-  assertEquals(registro.chamadasExternoNaContestacao.length, 1, "o REF não é descartado por suspeita");
-  assertEquals(registro.chamadasExternoNaContestacao[0].args, {
+  assertEquals(registro.chamadasExternoDoMp.length, 1, "o REF não é descartado por suspeita");
+  assertEquals(registro.chamadasExternoDoMp[0].args, {
     p_order_id: UUID_PEDIDO,
     p_mp_refund_id: "REF01PROVA",
     p_valor: 100,
@@ -4144,7 +4209,7 @@ Deno.test("Lote A (bloqueio 2) - REF que NÃO cabe no saldo (sobreposição inco
     pedido: pedidoPago(100),
     registro,
     orderRefundsRows: [linhaDaReserva()],
-    estornoExternoNaContestacao: () => ({
+    estornoExternoDoMp: () => ({
       data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: 0, em_voo: 100, disponivel: 0 },
       error: null,
     }),
@@ -4153,8 +4218,8 @@ Deno.test("Lote A (bloqueio 2) - REF que NÃO cabe no saldo (sobreposição inco
   const pushes: any[] = [];
   await semLogs(() => entregarContestacao(supabase, fn, pushes));
   await semLogs(() => entregarContestacao(supabase, fn, pushes));
-  assertEquals(registro.chamadasExternoNaContestacao.length, 2);
-  assertEquals(registro.chamadasExternoNaContestacao[0].args.p_valor, 100, "nunca recortado para caber");
+  assertEquals(registro.chamadasExternoDoMp.length, 2);
+  assertEquals(registro.chamadasExternoDoMp[0].args.p_valor, 100, "nunca recortado para caber");
   const doRef = pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago"));
   assertEquals(doRef.length, 1, "um aviso só");
   semEscritaDireta(registro);
@@ -4166,7 +4231,7 @@ Deno.test("Lote A (bloqueio 2) - erro da RPC do REF -> 500 (o MP reenvia); REF j
     pedido: pedidoPago(200),
     registro: registroErro,
     orderRefundsRows: [linhaDaReserva()],
-    estornoExternoNaContestacao: () => ({ data: null, error: { message: "lock timeout (dublê)" } }),
+    estornoExternoDoMp: () => ({ data: null, error: { message: "lock timeout (dublê)" } }),
   });
   const { fn } = fetchDaContestacao({ order: orderContestadaComRef(), caso: CASO_CONTRA_A_LOJA });
   const resposta = await semLogs(() => entregarContestacao(supabaseErro, fn));
@@ -4183,7 +4248,7 @@ Deno.test("Lote A (bloqueio 2) - erro da RPC do REF -> 500 (o MP reenvia); REF j
     ],
   });
   await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(registro.chamadasExternoNaContestacao.length, 0, "um refund credita UMA linha");
+  assertEquals(registro.chamadasExternoDoMp.length, 0, "um refund credita UMA linha");
 });
 
 Deno.test("Lote A (ordem) - MESMO GET com REF processed 100 + caso FINAL a favor da loja, reserva antiga de 100 -> a contestação decide ANTES do REF: libera e o REF entra inteiro no mesmo evento", async () => {
@@ -4206,7 +4271,7 @@ Deno.test("Lote A (ordem) - MESMO GET com REF processed 100 + caso FINAL a favor
       }
       return retornoDaRpc("ja_liberado", { disponivel: 100 - estornado });
     },
-    estornoExternoNaContestacao: (args) => {
+    estornoExternoDoMp: (args) => {
       ordem.push(`ref:${args.p_mp_refund_id}`);
       if (reservaAtiva) {
         return { data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: estornado, em_voo: 100, disponivel: 0 }, error: null };
@@ -4245,7 +4310,7 @@ Deno.test("Lote A (bloqueio 0) - order que JÁ teve contestação no ledger, ago
     pedido: pedidoPago(100),
     registro,
     orderRefundsRows: [linhaDaReserva()],
-    estornoExternoNaContestacao: () => ({
+    estornoExternoDoMp: () => ({
       data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: 0, em_voo: 100, disponivel: 0 },
       error: null,
     }),
@@ -4274,10 +4339,126 @@ Deno.test("Lote A (bloqueio 0) - order que JÁ teve contestação no ledger, ago
     } as any)
   );
   assertEquals(resposta.status, 200);
-  assertEquals(registro.chamadasExternoNaContestacao.length, 1);
-  assertEquals(registro.chamadasExternoNaContestacao[0].args.p_valor, 100);
+  assertEquals(registro.chamadasExternoDoMp.length, 1);
+  assertEquals(registro.chamadasExternoDoMp[0].args.p_valor, 100);
   semEscritaDireta(registro);
   assertEquals(pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago")).length, 1);
+});
+
+Deno.test("Lote A (REF inteiro) - pedido 100, REF antigo 20 concluído, APP 20 solicitado SEM POST, REF novo 70 -> a RPC recebe 70 INTEIRO (nunca 60); total 90; o APP não é tocado; replay depois da liberação do APP: 90, nenhum POST", async () => {
+  // O defeito (pré-existente, ramo SEM contestação): o clamp descontava a
+  // linha do APP (intenção, sem POST) e gravava o REF de 70 como 60; a
+  // reentrega pulava o REF já reivindicado e os 10 nunca voltavam.
+  const registro = registroDoLedger();
+  const pedido = { ...pedidoPago(100), valor_estornado: 20 };
+  const linhaApp = {
+    id: "linha-do-app-20",
+    order_id: UUID_PEDIDO,
+    amount: 20,
+    status: "solicitado",
+    solicitado_por: "lojista",
+    mp_refund_id: null,
+    tentativas: 0,
+    concluido_em: null,
+    created_at: "2026-10-04T00:00:00.000Z",
+  };
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    concluirSomaNoPedido: true,
+    orderRefundsRows: [
+      {
+        id: "linha-ref-20",
+        order_id: UUID_PEDIDO,
+        amount: 20,
+        status: "concluido",
+        solicitado_por: "sistema",
+        mp_refund_id: "REF-20",
+        concluido_em: "2026-10-03T00:00:00.000Z",
+        created_at: "2026-10-03T00:00:00.000Z",
+      },
+      linhaApp,
+    ],
+  });
+  const corpo = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "processed" }],
+      refunds: [
+        { id: "REF-20", amount: "20.00", status: "processed" },
+        { id: "REF-70", amount: "70.00", status: "processed" },
+      ],
+    },
+  };
+  const urls: Array<{ url: string; metodo: string }> = [];
+  const fetchImpl = async (url: string, init?: RequestInit) => {
+    urls.push({ url: String(url), metodo: String(init?.method ?? "GET") });
+    return new Response(JSON.stringify(corpo), { status: 200 });
+  };
+  const entregar = async () =>
+    await semLogs(async () =>
+      handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+        supabase,
+        fetchImpl,
+        enviarPushContado: async () => 1,
+      } as any)
+    );
+
+  assertEquals((await entregar()).status, 200);
+  assertEquals(registro.chamadasExternoDoMp.map((c: any) => [c.args.p_mp_refund_id, c.args.p_valor]), [["REF-70", 70]]);
+  assertEquals(pedido.valor_estornado, 90);
+  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
+  assertEquals(fila.filter((r) => r.mp_refund_id === "REF-70").map((r) => r.amount), [70]);
+  assertEquals(fila.find((r) => r.id === "linha-do-app-20")?.status, "solicitado", "o APP incerto não é liberado pela edge");
+  assertEquals(registro.insertsOrderRefunds.length, 0, "nenhum INSERT direto com valor recortado");
+
+  // O APP sai de cena; o MP reenvia: nada novo, 90, resta 10.
+  (fila.find((r) => r.id === "linha-do-app-20") as Record<string, unknown>).status = "falhou";
+  assertEquals((await entregar()).status, 200);
+  assertEquals(pedido.valor_estornado, 90);
+  assertEquals(fila.filter((r) => r.mp_refund_id === "REF-70").length, 1);
+  assertEquals(urls.filter((u) => u.metodo !== "GET").length, 0, "a edge nunca faz POST de estorno");
+  semEscritaDireta(registro);
+});
+
+Deno.test("Lote A (REF inteiro) - REF que NÃO cabe no dinheiro real (ledger diz 40 + MP diz 80 num pedido de 100) -> nao_cabe, nada recortado, aviso UMA vez; a identidade fica livre", async () => {
+  const registro = registroDoLedger();
+  const pedido = { ...pedidoPago(100), valor_estornado: 40 };
+  const supabase = clienteFalso({ pedido, registro, concluirSomaNoPedido: true, orderRefundsRows: [] });
+  const corpo = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "processed" }],
+      refunds: [{ id: "REF-80", amount: "80.00", status: "processed" }],
+    },
+  };
+  const pushes: any[] = [];
+  const entregar = async () =>
+    await semLogs(async () =>
+      handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+        supabase,
+        fetchImpl: fetchConsulta(200, corpo),
+        enviarPushContado: async (args: any) => {
+          pushes.push(args.aviso);
+          return 1;
+        },
+      } as any)
+    );
+  assertEquals((await entregar()).status, 200);
+  assertEquals((await entregar()).status, 200);
+  assertEquals(registro.chamadasExternoDoMp.map((c: any) => c.args.p_valor), [80, 80], "a reentrega tenta de novo, sempre inteiro");
+  assertEquals(pedido.valor_estornado, 40);
+  assertEquals(((registro as any).filaOrderRefunds as unknown[]).length, 0);
+  assertEquals(pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago")).length, 1);
+  semEscritaDireta(registro);
 });
 
 Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {
@@ -4481,27 +4662,15 @@ Deno.test("W8 - estorno externo maior que o disponível (pedido já totalmente e
   assertEquals(registro.chamadasConcluirEstorno.length, 0);
 });
 
-Deno.test("W8b - RPC concluir_estorno recusa com 'estorno_acima_do_total' mesmo com a guarda passando -> console.error e SEGUE (200), nunca 500", async () => {
-  const registro = {
-    chamadasRpc: [] as any[],
-    chamadasConcluirEstorno: [] as any[],
-    insertsOrderRefunds: [] as any[],
-  };
-  const pedido = {
-    id: UUID_PEDIDO,
-    gateway_payment_id: ID_ORDER_TESTE,
-    total: 100,
-    valor_estornado: 0,
-    payment_status: "pago",
-    paid_at: new Date().toISOString(),
-    status: "delivered",
-  };
+Deno.test("W8b - (Lote A) a RPC do refund externo devolve nao_cabe (o banco recusa por segurança) -> 200 com aviso, nada gravado nem recortado, nunca 500", async () => {
+  const registro = registroDoLedger();
   const supabase = clienteFalso({
-    pedido,
+    pedido: pedidoPago(100),
     registro,
     orderRefundsRows: [],
-    erroConcluirEstorno: () => ({
-      message: "estorno_acima_do_total: recusa de segurança do banco (item 6 do brief).",
+    estornoExternoDoMp: () => ({
+      data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: 0, em_voo: 0, disponivel: 100 },
+      error: null,
     }),
   });
   const corpoOrder = {
@@ -4514,15 +4683,23 @@ Deno.test("W8b - RPC concluir_estorno recusa com 'estorno_acima_do_total' mesmo 
       refunds: [{ id: "r8b", amount: "100.00", status: "processed" }],
     },
   };
+  const pushes: any[] = [];
   const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
-  const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
+  const resposta = await semLogs(() =>
+    handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpoOrder),
+      enviarPushContado: async (args: any) => {
+        pushes.push(args.aviso);
+        return 1;
+      },
+    } as any)
+  );
 
-  assertEquals(resposta.status, 200);
-  // A guarda deixou passar (disponivel = 100), o INSERT aconteceu, e a RPC
-  // recusou pelo nome — o handler TOLERA (nunca lança 500): reenviar não
-  // muda a conta.
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.chamadasConcluirEstorno.length, 1);
+  assertEquals(resposta.status, 200, "reenviar não muda a conta: 200, não 500");
+  assertEquals(registro.chamadasExternoDoMp.map((c: any) => c.args.p_valor), [100]);
+  semEscritaDireta(registro);
+  assertEquals(pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago")).length, 1);
 });
 
 Deno.test("W9 - dois refunds processed de 10 (ra, rb) e duas linhas pendentes de 10 -> cada linha recebe um id DIFERENTE (mutação m1: apagar o filtro de reivindicados derruba)", async () => {
@@ -4651,15 +4828,14 @@ Deno.test("PROBE-A (BLOQUEIA-1) - pedido 100, linha pendente 40 concluída por r
 
   assertEquals(resposta.status, 200);
   // A linha pendente conclui com r1 (valor exato: 40).
-  assertEquals(registro.chamadasConcluirEstorno.length, 2);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-proba");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r1");
-  // rext (externo, não reivindicado) tem de registrar os R$60 INTEIROS — com
-  // o bug, `disponivel` = 100 − 40(memória) − 40(linha-proba recontada por
-  // somaEmCurso) = 20, e o insert sairia com amount 20.
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "rext");
-  assertEquals(registro.insertsOrderRefunds[0].amount, 60);
+  // rext (externo, não reivindicado) registra os R$60 INTEIROS pela RPC
+  // sob a trava (o saldo é lido no banco, não no retrato do lote).
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(linhasDoRefund(registro, "rext").map((r) => r.amount), [60]);
+  assertEquals((registro as any).valorEstornadoAcumulado, 100);
 });
 
 Deno.test("PROBE-B (BLOQUEIA-1) - pedido 100, linha em_processamento 50 concluída por r1, externo rext 50 -> linha 'sistema' de 50 inserida, valor_estornado final 100", async () => {
@@ -4708,15 +4884,13 @@ Deno.test("PROBE-B (BLOQUEIA-1) - pedido 100, linha em_processamento 50 concluí
   const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
 
   assertEquals(resposta.status, 200);
-  assertEquals(registro.chamadasConcluirEstorno.length, 2);
+  assertEquals(registro.chamadasConcluirEstorno.length, 1);
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_refund_id, "linha-probb");
   assertEquals(registro.chamadasConcluirEstorno[0].args.p_mp_refund_id, "r1");
-  // Com o bug, disponivel = 100 − 50(memória) − 50(linha-probb recontada) = 0
-  // -> a GUARDA barra e rext NUNCA é inserido: o cliente ficaria com só R$50
-  // no ledger, apesar de o MP ter devolvido os R$100 inteiros.
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "rext");
-  assertEquals(registro.insertsOrderRefunds[0].amount, 50);
+  // O cliente não pode ficar com só R$50 no ledger quando o MP devolveu os
+  // R$100 inteiros: rext entra inteiro pela RPC.
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(linhasDoRefund(registro, "rext").map((r) => r.amount), [50]);
   assertEquals((registro as any).valorEstornadoAcumulado, 100);
 });
 
@@ -4726,7 +4900,7 @@ Deno.test("PROBE-B (BLOQUEIA-1) - pedido 100, linha em_processamento 50 concluí
 // apaga o filtro `l.solicitado_por !== "sistema"` do laço de pendentes.
 // =============================================================================
 
-Deno.test("MUT-X (I-B) - pedido 100, linha 40 concluída por r1, externo rext 80 -> disponivel usa o valor_estornado ACUMULADO EM MEMÓRIA (60), não o valor do banco antes do lote (apagar 'pedido.valor_estornado = ...' derruba: disponivel viraria 100 e o insert sairia com 80)", async () => {
+Deno.test("MUT-X (I-B, Lote A) - pedido 100, linha 40 concluída por r1, externo rext 80 -> 40 + 80 passa do pago: rext NÃO entra nem é recortado para 60 (nao_cabe); o acumulado fica 40", async () => {
   const registro = {
     chamadasRpc: [] as any[],
     chamadasConcluirEstorno: [] as any[],
@@ -4772,11 +4946,12 @@ Deno.test("MUT-X (I-B) - pedido 100, linha 40 concluída por r1, externo rext 80
   const resposta = await handler(req, { supabase, fetchImpl: fetchConsulta(200, corpoOrder) });
 
   assertEquals(resposta.status, 200);
-  assertEquals(registro.insertsOrderRefunds.length, 1);
-  assertEquals(registro.insertsOrderRefunds[0].mp_refund_id, "rext");
-  // disponivel correto = 100 − 40(memória) − 0(somaEmCurso, linha já
-  // concluída pelo BLOQUEIA-1) = 60; rext (80) clampa em 60.
-  assertEquals(registro.insertsOrderRefunds[0].amount, 60);
+  // Lote A (revisão): 40 já concluído + rext 80 passa do pago (100). O MP e
+  // o ledger discordam — rext NÃO é recortado para 60 (nunca valor menor que
+  // o refund): nada gravado, a identidade fica livre, o admin é avisado.
+  assertEquals(registro.insertsOrderRefunds.length, 0);
+  assertEquals(linhasDoRefund(registro, "rext").length, 0);
+  assertEquals((registro as any).valorEstornadoAcumulado, 40);
 });
 
 Deno.test("MUT-Y (dinheiro já saiu) - linha 'sistema' em_processamento de chargeback NÃO entra no laço de pendentes nem é concluída por um refund 'refunded' real do MESMO valor (apagar 'l.solicitado_por !== sistema' derruba)", async () => {

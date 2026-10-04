@@ -48,7 +48,7 @@ const MIGRATION = "20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql
 const FN_CONTESTACAO =
   "public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)";
 const FN_EXTERNO =
-  "public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text)";
+  "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)";
 
 const num = (v) => Math.round(Number(v) * 100) / 100;
 
@@ -88,7 +88,7 @@ async function contestacao(cliente, o) {
 
 async function externo(cliente, o) {
   const r = await cliente.query(
-    `SELECT public.registrar_estorno_externo_na_contestacao($1, $2, $3, 'processed', 'partially_refunded') AS r`,
+    `SELECT public.registrar_estorno_externo_do_mp($1, $2, $3, 'processed', 'partially_refunded') AS r`,
     [o.pedido, o.ref, o.valor],
   );
   return r.rows[0].r;
@@ -515,6 +515,93 @@ PROVAS.push({
     const e = await estado(cliente, O(80));
     assert.equal(e.valorEstornado, 100, "a devolução real conta uma vez");
     assert.equal(e.paymentStatus, "estornado");
+  },
+});
+
+PROVAS.push({
+  nome: "(n) REF do MP nunca é truncado: pedido 100, REF antigo 20, APP 20 solicitado SEM POST, REF novo 70 -> entra 70 inteiro (90); replay e liberação do APP: 90, resta 10",
+  corpo: async (cliente) => {
+    await pedido(cliente, O(100), { total: 100 });
+    const antigo = await externo(cliente, { pedido: O(100), ref: "REF-N20", valor: 20 });
+    assert.equal(antigo.resultado, "inserido");
+    // A linha do APP pedida pela loja e ainda sem POST ao MP (solicitado):
+    // é intenção, não dinheiro que saiu.
+    const app = await cliente.query(
+      `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, motivo)
+       VALUES ($1, 20, 'lojista', 'solicitado', 'devolução pedida pela loja (prova n)') RETURNING id`,
+      [O(100)],
+    );
+    const novo = await externo(cliente, { pedido: O(100), ref: "REF-N70", valor: 70 });
+    assert.equal(novo.resultado, "inserido", "o que o MP já devolveu entra inteiro: 20 + 70 cabe nos 100 pagos");
+    let e = await estado(cliente, O(100));
+    const r70 = e.linhas.filter((l) => l.mp_refund_id === "REF-N70");
+    assert.equal(r70.length, 1);
+    assert.equal(num(r70[0].amount), 70, "nunca 60");
+    assert.equal(r70[0].status, "concluido");
+    assert.equal(e.valorEstornado, 90);
+    const linhaApp = e.linhas.find((l) => l.id === app.rows[0].id);
+    assert.equal(linhaApp.status, "solicitado", "o APP incerto não é liberado sem prova");
+
+    // Replay do MP: nada novo.
+    const replay = await externo(cliente, { pedido: O(100), ref: "REF-N70", valor: 70 });
+    assert.equal(replay.resultado, "ja_registrado");
+    // O APP sai de cena (o executor o recusa: 20 > 100 - 90) e o MP reenvia.
+    await cliente.query("UPDATE public.order_refunds SET status = 'falhou' WHERE id = $1", [app.rows[0].id]);
+    const depois = await externo(cliente, { pedido: O(100), ref: "REF-N70", valor: 70 });
+    assert.equal(depois.resultado, "ja_registrado");
+    assert.equal(num(depois.valor_estornado), 90, "saldo confirmado 90, sem contagem dupla");
+    assert.equal(num(depois.disponivel), 10, "remanescente 10");
+    e = await estado(cliente, O(100));
+    assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-N70").length, 1);
+    assert.equal(e.valorEstornado, 90);
+
+    // O que NÃO cabe no dinheiro real (90 + 20 > 100): não entra, não é
+    // recortado, e a identidade fica livre para a reconciliação.
+    const excesso = await externo(cliente, { pedido: O(100), ref: "REF-N-EXCESSO", valor: 20 });
+    assert.equal(excesso.resultado, "nao_cabe");
+    assert.equal(excesso.aviso, "saldo");
+    e = await estado(cliente, O(100));
+    assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-N-EXCESSO").length, 0);
+    assert.equal(e.valorEstornado, 90);
+  },
+});
+
+PROVAS.push({
+  nome: "(o) dois REF diferentes em conexões paralelas (70 e 70 num pedido de 100): o 2º espera a trava e volta nao_cabe; nada truncado",
+  corpo: async (cliente, url) => {
+    await pedido(cliente, O(110), { total: 100 });
+    const { ra, rb, parou } = await corrida(
+      url,
+      (c) => externo(c, { pedido: O(110), ref: "REF-O1", valor: 70 }),
+      (c) => externo(c, { pedido: O(110), ref: "REF-O2", valor: 70 }),
+    );
+    assert.equal(parou, true, "o 2º REF parou na trava do pedido");
+    assert.equal(ra.resultado, "inserido");
+    assert.equal(rb.resultado, "nao_cabe");
+    const e = await estado(cliente, O(110));
+    assert.equal(e.valorEstornado, 70);
+    assert.deepEqual(e.linhas.map((l) => [l.mp_refund_id, num(l.amount)]), [["REF-O1", 70]]);
+  },
+});
+
+PROVAS.push({
+  nome: "(p) linha 'sistema' órfã do MESMO refund (concluido sem concluido_em): a RPC responde ja_registrado e a conclui UMA vez",
+  corpo: async (cliente) => {
+    await pedido(cliente, O(120), { total: 100 });
+    await cliente.query(
+      `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, motivo, mp_refund_id)
+       VALUES ($1, 30, 'sistema', 'concluido', 'estorno feito fora do app (Mercado Pago)', 'REF-P')`,
+      [O(120)],
+    );
+    const r1 = await externo(cliente, { pedido: O(120), ref: "REF-P", valor: 30 });
+    assert.equal(r1.resultado, "ja_registrado");
+    assert.equal(num(r1.valor_estornado), 30, "a órfã somou agora");
+    const r2 = await externo(cliente, { pedido: O(120), ref: "REF-P", valor: 30 });
+    assert.equal(r2.resultado, "ja_registrado");
+    assert.equal(num(r2.valor_estornado), 30, "e não soma de novo");
+    const e = await estado(cliente, O(120));
+    assert.equal(e.linhas.length, 1);
+    assert.notEqual(e.linhas[0].concluido_em, null);
   },
 });
 

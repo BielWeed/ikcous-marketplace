@@ -726,97 +726,6 @@ const STATUS_REFUND_APROVADO_PAYMENTS = "approved";
  * (`STATUS_REFUND_CONCLUIDO`), via `refundsDaOrder` + este filtro. */
 const STATUS_REFUND_CONCLUIDO_ORDERS = "processed";
 
-/** 23505 = violação de índice único (Postgres, repassado pelo PostgREST). */
-function ehViolacaoDeUnicidade(erro: unknown): boolean {
-  return String((erro as { code?: unknown } | null)?.code ?? "") === "23505";
-}
-
-/**
- * Lote A (04/10/2026, R2): o INSERT de uma linha `sistema` esbarrou no índice
- * único parcial (order_id, mp_refund_id) da migration 20261192000000 — OUTRA
- * entrega do MP (paralela, ou um ciclo que caiu entre o INSERT e a RPC) já
- * registrou o MESMO refund. É "já registrado", nunca 500 (o MP reenviaria
- * para sempre e a resposta não mudaria): relê o ledger do pedido e, se a
- * linha existente é `sistema` já `concluido` mas sem `concluido_em` (a outra
- * entrega caiu antes da RPC), conclui ELA — `concluir_estorno` é idempotente
- * (P13), então duas entregas concluindo a mesma linha somam UMA vez.
- *
- * Linha de OUTRA origem com o mesmo id (o clique do lojista que gravou o id
- * do refund depois da nossa leitura) não é tocada aqui: o executor dela
- * (edge/cron) conclui. Nenhuma linha casa a chave → o 23505 veio de OUTRA
- * restrição: relança o erro original (500, o MP reenvia) — nunca engolir uma
- * violação que não se entende.
- *
- * Devolve "ja_registrado" (ou "recusado", se a conclusão da linha órfã
- * esbarrou em `estorno_acima_do_total`) — NUNCA "inserido": o valor desta
- * linha NÃO é dinheiro novo DESTA entrega, e quem chama não pode somá-lo ao
- * acumulado em memória (bloqueio da revisão do Lote A: somar contava o mesmo
- * refund duas vezes no clamp do próximo — pedido de 100, refunds 20 e 70,
- * terminava gravando 60 em vez de 70). Quem chama relê o acumulado do banco.
- */
-async function recuperarLinhaJaRegistrada(args: {
-  supabase: ReturnType<typeof createClient>;
-  orderId: string;
-  mpRefundId: string;
-  mpStatus: string;
-  mpStatusDetail: string | null;
-  erroOriginal: unknown;
-}): Promise<DesfechoDaInsercao> {
-  const { supabase, orderId, mpRefundId, mpStatus, mpStatusDetail, erroOriginal } = args;
-  // Só o REFUND (mp_refund_id) passa por aqui: a contestação (CBK) é gravada
-  // pela RPC sob a trava do pedido (20261196000000) — bloqueio 5 da revisão:
-  // concluir uma reserva de contestação achada aqui concluía a ESTIMATIVA.
-  const { data: linhas, error: erroLeitura } = await supabase
-    .from("order_refunds")
-    .select("id, status, solicitado_por, mp_refund_id, concluido_em")
-    .eq("order_id", orderId);
-  if (erroLeitura) throw erroLeitura;
-  const existente = ((linhas ?? []) as Array<Record<string, unknown>>).find((l) => l.mp_refund_id === mpRefundId);
-  if (!existente) throw erroOriginal;
-
-  console.log(
-    "webhook-mercadopago: estorno já registrado por outra entrega (índice único) — nada inserido",
-    orderId,
-    mpRefundId,
-  );
-  const concluidaSemCarimbo = existente.status === "concluido" &&
-    (existente.concluido_em === null || existente.concluido_em === undefined);
-  if (existente.solicitado_por !== "sistema" || !concluidaSemCarimbo) return "ja_registrado";
-
-  const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
-    p_refund_id: existente.id,
-    p_mp_refund_id: mpRefundId,
-    p_mp_status: mpStatus,
-    p_mp_status_detail: mpStatusDetail,
-  });
-  if (erroConcluir) {
-    if (String((erroConcluir as { message?: string }).message ?? "").includes("estorno_acima_do_total")) {
-      console.error(
-        "webhook-mercadopago: concluir_estorno (linha já registrada por outra entrega) recusou — acima do total",
-        orderId,
-        mpRefundId,
-        erroConcluir,
-      );
-      return "recusado";
-    }
-    throw erroConcluir;
-  }
-  return "ja_registrado";
-}
-
-/**
- * Desfecho de `inserirEstornoConcluido` (Lote A, bloqueio da revisão):
- *   "inserido"      — ESTA entrega gravou a linha e somou o valor dela
- *                     (`concluir_estorno`): só este soma no acumulado em
- *                     memória de quem chama;
- *   "ja_registrado" — outra entrega já tinha a linha do mesmo refund (23505):
- *                     o acumulado em memória está VELHO — quem chama relê o
- *                     `valor_estornado` do banco antes do próximo clamp;
- *   "recusado"      — a RPC recusou (`estorno_acima_do_total`) ou o INSERT não
- *                     devolveu a linha: nada somado.
- */
-type DesfechoDaInsercao = "inserido" | "ja_registrado" | "recusado";
-
 /**
  * Relê o `valor_estornado` do pedido — a fonte canônica do acumulado
  * (`concluir_estorno` é o único que o soma). Usada depois de um 23505: o
@@ -867,100 +776,6 @@ async function acumularConclusao(args: {
     return;
   }
   pedido.valor_estornado = await releValorEstornado(supabase, orderId);
-}
-
-/**
- * Insere uma linha `sistema` já `concluido` e chama `concluir_estorno` na
- * sequência — o padrão que A4 (estorno feito fora do app) e B/settled-sem-
- * linha (chargeback cujo `in_process` nunca chegou) COMPARTILHAM: "nasce
- * concluido, nunca solicitado" (pré-requisito 3 do plano — linha nova é
- * dinheiro NOVO; esta linha é dinheiro que JÁ saiu). `valorOriginal` só
- * difere de `amount` quando o clamp (disponível < valor do MP) reduziu —
- * nesse caso o motivo ganha o valor real do MP, para o lojista não estranhar
- * a diferença.
- *
- * Erro nomeado `estorno_acima_do_total` (a RPC recusou por segurança) →
- * console.error e "recusado" (SEGUE — 200 no fim, item 6 do brief: reenviar
- * não muda a conta e 500 aqui viraria reenvio infinito). 23505 do índice
- * único → "ja_registrado" (`recuperarLinhaJaRegistrada`). Qualquer outro erro
- * de banco → lança (o chamador devolve 500 — fila do MP).
- */
-async function inserirEstornoConcluido(args: {
-  supabase: ReturnType<typeof createClient>;
-  orderId: string;
-  amount: number;
-  valorOriginal: number;
-  motivoBase: string;
-  mpRefundId: string | null;
-  mpStatus: string;
-  mpStatusDetail: string | null;
-}): Promise<DesfechoDaInsercao> {
-  const { supabase, orderId, amount, valorOriginal, motivoBase, mpRefundId, mpStatus, mpStatusDetail } = args;
-  const clampou = amount < valorOriginal;
-  const motivo = motivoBase + (clampou ? `, valor no MP R$ ${valorOriginal.toFixed(2)}` : "");
-
-  const { data: linhaInserida, error: erroInsert } = await supabase
-    .from("order_refunds")
-    .insert({
-      order_id: orderId,
-      amount,
-      solicitado_por: "sistema",
-      status: "concluido",
-      motivo,
-      mp_refund_id: mpRefundId,
-      mp_status: mpStatus,
-      mp_status_detail: mpStatusDetail,
-    })
-    .select("id")
-    .maybeSingle();
-  if (erroInsert) {
-    // Lote A (R2): o MESMO refund já registrado por outra entrega — ver
-    // `recuperarLinhaJaRegistrada`. Só para refund COM id: sem id não há
-    // índice que recuse, e o 23505 seria de outra restrição.
-    if (ehViolacaoDeUnicidade(erroInsert) && mpRefundId !== null) {
-      return await recuperarLinhaJaRegistrada({
-        supabase,
-        orderId,
-        mpRefundId,
-        mpStatus,
-        mpStatusDetail,
-        erroOriginal: erroInsert,
-      });
-    }
-    throw erroInsert;
-  }
-  if (!linhaInserida) {
-    console.error(
-      "webhook-mercadopago: insert do estorno fora do app não devolveu a linha",
-      orderId,
-      mpRefundId,
-    );
-    return "recusado";
-  }
-
-  const { data: dataConcluir, error: erroConcluir } = await supabase.rpc("concluir_estorno", {
-    p_refund_id: (linhaInserida as Record<string, unknown>).id,
-    p_mp_refund_id: mpRefundId,
-    p_mp_status: mpStatus,
-    p_mp_status_detail: mpStatusDetail,
-  });
-  if (erroConcluir) {
-    if (String((erroConcluir as { message?: string }).message ?? "").includes("estorno_acima_do_total")) {
-      console.error(
-        "webhook-mercadopago: concluir_estorno (estorno fora do app) recusou — acima do total",
-        orderId,
-        mpRefundId,
-        erroConcluir,
-      );
-      return "recusado";
-    }
-    throw erroConcluir;
-  }
-  // Mesma regra de `acumularConclusao`: "inserido" (soma em memória) só se a
-  // RPC diz que concluiu AGORA; qualquer outra resposta, o chamador relê.
-  return (dataConcluir as { ja_concluida?: unknown } | null)?.ja_concluida === false
-    ? "inserido"
-    : "ja_registrado";
 }
 
 /**
@@ -1366,16 +1181,10 @@ async function registrarDesfechoDoEstorno(args: {
       // Lote A: só soma se a RPC concluiu AGORA; `ja_concluida` (outra
       // entrega concluiu a mesma linha) relê do banco — `acumularConclusao`.
       await acumularConclusao({ supabase, orderId, pedido, dataRpc: dataConcluir, amount: linha.amount });
-      // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): `somaEmCurso` (abaixo)
-      // percorre `linhasBanco` como foi lida no INÍCIO do passo — sem
-      // marcar esta linha como concluída AQUI, no objeto local, ela
-      // continua contando como 'solicitado'/'em_processamento' nesse
-      // array, e o valor dela seria descontado DUAS vezes do `disponivel`
-      // do estorno externo (uma via `pedido.valor_estornado`, acima; outra
-      // via `somaEmCurso`). Mutar o objeto local é seguro: `linhaBanco` é a
-      // MESMA referência que `linhasBanco` guarda (ambos vêm do mesmo
-      // SELECT desta chamada) — `somaEmCurso`, chamada mais abaixo NESTE
-      // MESMO lote, já enxerga o status atualizado.
+      // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): o retrato local acompanha
+      // a conclusão. O saldo do estorno externo agora é lido no banco, sob a
+      // trava (`registrar_estorno_externo_do_mp`) — o retrato não decide mais
+      // dinheiro, mas fica coerente para qualquer leitura seguinte do lote.
       linhaBanco.status = "concluido";
     }
     // tentar_depois → nada (o cron continua com ela).
@@ -1399,24 +1208,21 @@ async function registrarDesfechoDoEstorno(args: {
     });
   }
 
-  // Pedido em CONTEXTO DE CONTESTAÇÃO: a order está charged_back agora, ou o
-  // ledger já tem linha de contestação (CBK, ou reserva antiga sistema +
-  // charged_back). Nele, todo refund externo passa pela RPC sob a trava —
-  // sem o clamp sobre o retrato lido no começo (bloqueio 0 da revisão: a
-  // order que saiu de charged_back para refunded caía no INSERT direto).
-  const contextoDeContestacao = status === "charged_back" ||
-    linhasBanco.some((l) =>
-      (l.mp_chargeback_id !== null && l.mp_chargeback_id !== undefined) ||
-      (l.solicitado_por === "sistema" && l.mp_status === "charged_back")
-    );
-
   // Item 4 do passo A: refunds "processed"/"approved" que SOBRARAM fora de
-  // `reivindicados` = estorno feito FORA do app (painel do MP).
-  const somaEmCurso = (rows: Array<Record<string, unknown>>) =>
-    rows
-      .filter((l) => l.status === "solicitado" || l.status === "em_processamento")
-      .reduce((acc, l) => acc + Number(l.amount ?? 0), 0);
-
+  // `reivindicados` = estorno feito FORA do app (painel do MP) — ou o refund
+  // REGULAR numa order contestada (REF tem identidade própria; nenhum
+  // contrato do MP liga REF a CBK — doc refund-order/post).
+  //
+  // Lote A (revisão, defeito pré-existente): TODO refund daqui entra pela RPC
+  // `registrar_estorno_externo_do_mp` (20261196000000), com o pedido TRAVADO,
+  // e entra INTEIRO ou não entra. Antes, um clamp sobre o retrato lido no
+  // começo descontava a linha do APP ainda sem POST (intenção, não dinheiro):
+  // pedido 100, REF 20 concluído, APP 20 solicitado, REF novo 70 -> gravava
+  // 60, e a reentrega pulava o REF já "reivindicado" — os 10 nunca voltavam.
+  // Não cabe no dinheiro real (estornado + reserva de contestação): nada é
+  // gravado, a identidade fica livre (a reentrega tenta de novo) e o admin é
+  // avisado uma vez. O APP incerto não é liberado aqui: o executor dele o
+  // recusa antes de qualquer POST (`guardaAntesDeChamar`).
   for (const refund of refundsConcluidos) {
     const refundId = typeof refund.id === "string" || typeof refund.id === "number"
       ? String(refund.id)
@@ -1429,9 +1235,8 @@ async function registrarDesfechoDoEstorno(args: {
     // `CHECK (amount > 0)` no banco (500 em laço, o MP reenvia para
     // sempre); `amount <= 0` também violaria o mesmo CHECK, e não-positivo
     // não tem leitura de negócio aqui (refund de valor zero/negativo não é
-    // um refund). Pula este refund (nenhum insert, nenhuma RPC); o resto do
-    // handler continua (confirmar_pagamento do status atual roda do mesmo
-    // jeito).
+    // um refund). Pula este refund (nenhuma RPC); o resto do handler
+    // continua (confirmar_pagamento do status atual roda do mesmo jeito).
     if (!Number.isFinite(valorRefundBruto) || valorRefundBruto <= 0) {
       console.error(
         "webhook-mercadopago: refund sem valor legível ou não-positivo — pulando (não é 'não sei' = 0)",
@@ -1440,83 +1245,36 @@ async function registrarDesfechoDoEstorno(args: {
       );
       continue;
     }
-    const valorRefund = valorRefundBruto;
+    const valorRefund = Number(valorRefundBruto.toFixed(2));
 
-    // Lote A (bloqueio 2 da revisão): na order CONTESTADA, o refund REGULAR
-    // (REF..., POST /v1/orders/{id}/refund — doc refund-order/post) tem
-    // identidade própria; nenhum contrato do MP liga um REF a um CBK, e
-    // descartá-lo por suspeita de ser o débito da contestação era dedup
-    // inventado. Ele entra pela RPC `registrar_estorno_externo_na_contestacao`
-    // (20261196000000), com o pedido TRAVADO — a mesma trava da contestação:
-    // inteiro se couber no saldo (total - estornado - em voo, onde a reserva
-    // da contestação conta); senão NÃO entra nem é recortado (sobreposição
-    // inconclusiva) e o admin é avisado uma vez — a reserva continua
-    // bloqueando novas devoluções até a conferência.
-    if (contextoDeContestacao) {
-      const { data, error } = await supabase.rpc("registrar_estorno_externo_na_contestacao", {
-        p_order_id: orderId,
-        p_mp_refund_id: refundId,
-        p_valor: Number(valorRefund.toFixed(2)),
-        p_mp_status: status,
-        p_mp_status_detail: statusDetail || null,
-      });
-      if (error) throw error;
-      const retornoExterno = (data ?? null) as Record<string, unknown> | null;
-      if (typeof retornoExterno?.resultado !== "string") {
-        throw new Error("webhook-mercadopago: registrar_estorno_externo_na_contestacao devolveu retorno ilegível — o MP reenvia");
-      }
-      reivindicados.add(refundId);
-      const valorCanonico = Number(retornoExterno.valor_estornado);
-      if (Number.isFinite(valorCanonico)) pedido.valor_estornado = valorCanonico;
-      if (retornoExterno?.aviso === "saldo") {
-        console.error(
-          "webhook-mercadopago: devolução do MP numa order contestada não cabe no saldo — não registrada, admin avisado",
-          { orderId, refundId, valorRefund },
-        );
-        await args.avisar(`estorno_externo_nao_cabe:${orderId}:${refundId}`, {
-          title: "Devolução do Mercado Pago para conferir",
-          body: `${numeroDoPedido(orderId)} · o Mercado Pago registrou uma devolução que, somada à contestação deste pedido, passa do valor pago — o app não registrou essa devolução e não aceita outra até você conferir no painel do Mercado Pago`,
-          url: "/admin-orders",
-        });
-      }
-      continue;
-    }
-
-    const disponivel = Number(
-      (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
-    );
-
-    if (disponivel <= 0) {
-      console.error(
-        "webhook-mercadopago: estorno externo além do que o pedido pode registrar",
-        orderId,
-        refundId,
-        { disponivel, valorRefund },
-      );
-      continue;
-    }
-
-    const amountClampado = Math.min(valorRefund, disponivel);
-    const desfecho = await inserirEstornoConcluido({
-      supabase,
-      orderId,
-      amount: amountClampado,
-      valorOriginal: valorRefund,
-      motivoBase: "estorno feito fora do app (Mercado Pago)",
-      mpRefundId: refundId,
-      mpStatus: status,
-      mpStatusDetail: statusDetail || null,
+    const { data, error } = await supabase.rpc("registrar_estorno_externo_do_mp", {
+      p_order_id: orderId,
+      p_mp_refund_id: refundId,
+      p_valor: valorRefund,
+      p_mp_status: status,
+      p_mp_status_detail: statusDetail || null,
     });
-    if (desfecho === "inserido") {
+    if (error) throw error;
+    const retornoExterno = (data ?? null) as Record<string, unknown> | null;
+    if (typeof retornoExterno?.resultado !== "string") {
+      throw new Error("webhook-mercadopago: registrar_estorno_externo_do_mp devolveu retorno ilegível — o MP reenvia");
+    }
+    // Estado CANÔNICO (lido sob a trava) para quem vier depois neste lote.
+    const valorCanonico = Number(retornoExterno.valor_estornado);
+    if (Number.isFinite(valorCanonico)) pedido.valor_estornado = valorCanonico;
+    if (retornoExterno.resultado === "inserido" || retornoExterno.resultado === "ja_registrado") {
       reivindicados.add(refundId);
-      pedido.valor_estornado = Number((pedido.valor_estornado + amountClampado).toFixed(2));
-    } else if (desfecho === "ja_registrado") {
-      // Lote A (bloqueio da revisão): o refund já era de OUTRA entrega — o
-      // valor dele NÃO é somado aqui. O acumulado em memória pode estar
-      // velho (a outra entrega concluiu depois da nossa leitura): relê do
-      // banco antes do clamp do próximo refund.
-      reivindicados.add(refundId);
-      pedido.valor_estornado = await releValorEstornado(supabase, orderId);
+    }
+    if (retornoExterno.aviso === "saldo") {
+      console.error(
+        "webhook-mercadopago: devolução do MP não cabe no que o pedido ainda pode devolver — não registrada, admin avisado",
+        { orderId, refundId, valorRefund },
+      );
+      await args.avisar(`estorno_externo_nao_cabe:${orderId}:${refundId}`, {
+        title: "Devolução do Mercado Pago para conferir",
+        body: `${numeroDoPedido(orderId)} · o Mercado Pago registrou uma devolução que passa do que este pedido ainda podia devolver — o app não registrou essa devolução; confira no painel do Mercado Pago`,
+        url: "/admin-orders",
+      });
     }
   }
 

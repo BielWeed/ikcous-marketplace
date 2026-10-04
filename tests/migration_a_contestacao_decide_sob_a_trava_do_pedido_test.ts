@@ -73,7 +73,7 @@ Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas 
   const drops = [...topo.matchAll(/\bDROP\b[^(;]*/gi)].map((m) => m[0].replace(/\s+/g, " ").trim());
   assertEquals(drops, [
     "DROP FUNCTION IF EXISTS public.registrar_contestacao_no_ledger",
-    "DROP FUNCTION IF EXISTS public.registrar_estorno_externo_na_contestacao",
+    "DROP FUNCTION IF EXISTS public.registrar_estorno_externo_do_mp",
   ]);
   assert(!/DROP\s+COLUMN/i.test(semComentarios(rollback)), "o rollback não apaga coluna");
   assert(!/\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(semComentarios(rollback)));
@@ -89,7 +89,7 @@ Deno.test("20261196: as duas funções travam o PEDIDO (FOR UPDATE) antes de dec
   }
   for (const fn of [
     "public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)",
-    "public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text)",
+    "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)",
   ]) {
     assertStringIncludes(migration, `REVOKE ALL ON FUNCTION ${fn}\n  FROM PUBLIC, anon, authenticated;`);
     assertStringIncludes(migration, `GRANT EXECUTE ON FUNCTION ${fn}\n  TO service_role;`);

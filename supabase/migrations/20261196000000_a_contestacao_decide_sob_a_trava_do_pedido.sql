@@ -42,11 +42,19 @@
 --     travado (`SELECT ... FOR UPDATE` em marketplace_orders — a MESMA trava
 --     da solicitar_estorno e das RPCs de devolução), e devolve o estado
 --     CANÔNICO (valor_estornado, em voo, disponível, a linha do caso).
---   * `registrar_estorno_externo_na_contestacao(...)`: o refund REGULAR
---     (REF) numa order contestada, sob a mesma trava: entra INTEIRO se cabe
---     no saldo (total - estornado - em voo), senão NÃO entra e o webhook
---     avisa o admin — nunca recorta para caber (seria inventar quanto do
---     dinheiro é de quem).
+--   * `registrar_estorno_externo_do_mp(...)`: TODO refund que o MP já
+--     processou e nenhuma linha reivindicou (REF..., feito no painel ou
+--     regular numa order contestada), sob a mesma trava: entra INTEIRO e
+--     concluído se cabe no dinheiro real (total - estornado - reserva de
+--     contestação em voo), senão NÃO entra, NÃO consome a identidade (a
+--     reentrega tenta de novo) e o webhook avisa o admin — nunca recorta
+--     para caber. A linha do APP ainda sem confirmação do MP (solicitado /
+--     em_processamento de cliente/lojista) é INTENÇÃO e não reduz o que o MP
+--     já devolveu de fato: antes, pedido 100 com REF 20 concluído, APP 20
+--     solicitado e um REF novo de 70 gravava 60 (o clamp descontava o APP) e
+--     a reentrega pulava o REF já "reivindicado" — os 10 nunca voltavam. O
+--     APP não é liberado aqui: o executor dele o recusa antes de qualquer
+--     POST (guardaAntesDeChamar: valor > total - valor_estornado).
 --
 -- REGRAS DE DINHEIRO (todas dentro da trava, contra o estado relido):
 --   disponível = total - valor_estornado - soma(solicitado/em_processamento
@@ -584,9 +592,9 @@ REVOKE ALL ON FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, 
 GRANT EXECUTE ON FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)
   TO service_role;
 
-DROP FUNCTION IF EXISTS public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text);
+DROP FUNCTION IF EXISTS public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text);
 
-CREATE OR REPLACE FUNCTION public.registrar_estorno_externo_na_contestacao(
+CREATE OR REPLACE FUNCTION public.registrar_estorno_externo_do_mp(
   p_order_id uuid,
   p_mp_refund_id text,
   p_valor numeric,
@@ -642,13 +650,20 @@ BEGIN
       EXIT decidir;
     END IF;
 
+    -- Dinheiro REAL: o que já saiu (valor_estornado) e a reserva de
+    -- contestação em voo (linhas 'sistema' — o valor que o MP segura na
+    -- disputa). A linha do APP ainda sem confirmação do MP é intenção: não
+    -- reduz um refund que o MP já processou (o executor dela recusa sozinho
+    -- quando o saldo acabar, antes de qualquer POST).
     SELECT COALESCE(sum(amount), 0) INTO v_em_voo
       FROM public.order_refunds
-     WHERE order_id = p_order_id AND status IN ('solicitado', 'em_processamento');
+     WHERE order_id = p_order_id AND status IN ('solicitado', 'em_processamento')
+       AND solicitado_por = 'sistema';
     v_disponivel := v_total - v_estornado - v_em_voo;
     IF p_valor > v_disponivel THEN
-      -- Sobreposição com a contestação (ou outra devolução) que o saldo não
-      -- explica: não registra nem recorta — o admin reconcilia.
+      -- O MP diz que devolveu mais do que o ledger explica (sobreposição com
+      -- a contestação, ou ledger divergente): não registra, não recorta, não
+      -- consome a identidade — o admin reconcilia.
       v_resultado := 'nao_cabe';
       v_aviso := 'saldo';
       EXIT decidir;
@@ -682,12 +697,14 @@ BEGIN
 END;
 $fn$;
 
-COMMENT ON FUNCTION public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text) IS
-  'Refund REGULAR (REF...) do Mercado Pago numa order CONTESTADA, com o pedido TRAVADO: '
-  'entra inteiro e concluído se couber no saldo (total - estornado - em voo); senão não entra '
-  '(nao_cabe, aviso) — nunca recorta. Um refund credita uma linha. Só a service_role. 20261196000000.';
+COMMENT ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text) IS
+  'Refund do Mercado Pago que nenhuma linha reivindicou (feito no painel, ou regular numa '
+  'order contestada), com o pedido TRAVADO: entra inteiro e concluído se couber no dinheiro '
+  'real (total - estornado - reserva de contestação em voo; a linha do app sem confirmação não '
+  'reduz); senão não entra nem consome a identidade (nao_cabe, aviso) — nunca recorta. Um refund '
+  'credita uma linha. Só a service_role. 20261196000000.';
 
-REVOKE ALL ON FUNCTION public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text)
+REVOKE ALL ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text)
+GRANT EXECUTE ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)
   TO service_role;

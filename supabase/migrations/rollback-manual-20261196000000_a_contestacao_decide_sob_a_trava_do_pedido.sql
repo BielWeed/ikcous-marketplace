@@ -3,7 +3,7 @@
 -- ============================================================================
 -- Desfaz a 20261196000000: apaga as duas funções novas
 -- (`public.registrar_contestacao_no_ledger` e
--- `public.registrar_estorno_externo_na_contestacao`). Elas NÃO existiam antes
+-- `public.registrar_estorno_externo_do_mp`). Elas NÃO existiam antes
 -- desta migration — não há corpo anterior a restaurar. NENHUMA linha de
 -- `order_refunds` é tocada. As colunas `mp_chargeback_case_id` e
 -- `mp_chargeback_valor_do_caso` e a tabela `public.contestacoes_decisao_final`
@@ -31,10 +31,10 @@ BEGIN
   IF to_regprocedure('public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)') IS NULL THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.registrar_contestacao_no_ledger(...) ausente — nada a desfazer; revise antes de reverter.';
   END IF;
-  IF to_regprocedure('public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text)') IS NULL THEN
-    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.registrar_estorno_externo_na_contestacao(...) ausente — nada a desfazer; revise antes de reverter.';
+  IF to_regprocedure('public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)') IS NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.registrar_estorno_externo_do_mp(...) ausente — nada a desfazer; revise antes de reverter.';
   END IF;
 END $preflight_rollback_20261196$;
 
 DROP FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer);
-DROP FUNCTION public.registrar_estorno_externo_na_contestacao(uuid, text, numeric, text, text);
+DROP FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text);
