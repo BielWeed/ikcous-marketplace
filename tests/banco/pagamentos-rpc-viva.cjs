@@ -55,6 +55,11 @@
  *        no ar, (e) o rollback RECUSA sem tocar em função, ACL nem config; os
  *        casos (a)-(d) rodam na 95 ISOLADA (97 desfeita só na transação) e a
  *        97 volta intacta no fim.
+ *   (14) CONCORRÊNCIA da confirmação imediata (04/10/2026): dois
+ *        'pago' ao mesmo tempo (a consulta do cliente na `criar-pagamento` e o
+ *        webhook) — um recebe 'pago', o outro ESPERA o lock e recebe
+ *        'ja_pago'; paid_at gravado uma vez, um aviso só ao cliente. É o
+ *        fundamento de "efeito só para quem recebeu a transição".
  *
  * Linhas marcadas `ACHADO:` abaixo documentam comportamento ATUAL que merece
  * olhar do dono do produto — o teste afirma o que o banco FAZ hoje, para o
@@ -1869,6 +1874,60 @@ PROVAS.push({
       [idsDeFixture],
     );
     assert.equal(sobras.rows[0].n, 0);
+  },
+});
+
+PROVAS.push({
+  nome: "(14) CONCORRÊNCIA da confirmação imediata: dois 'pago' simultâneos (consulta do cliente ∥ webhook) — um 'pago', o outro ESPERA o lock e vê 'ja_pago'; paid_at uma vez, UM aviso",
+  corpo: async (c) => {
+    const p = await novoPedido(c, {
+      itens: [{ qtd: 3 }, { qtd: 2, variante: true }],
+      metodoOnline: "credito",
+    });
+    const sql =
+      "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r";
+    const params = [p.id, p.gateway];
+
+    const r = await corrida(c, URL_BANCO, {
+      sqlA: sql,
+      paramsA: params,
+      sqlB: sql,
+      paramsB: params,
+      papelB: "service_role",
+    });
+
+    assert.equal(r.resultadoA, "pago");
+    assert.equal(
+      r.esperou,
+      true,
+      "B tinha de ESPERAR o FOR UPDATE de A — sem espera, os dois leriam 'aguardando'",
+    );
+    assert.equal(
+      r.terminouAntes,
+      false,
+      "B não pode terminar antes do COMMIT de A",
+    );
+    assert.deepEqual(r.resultadoB, { ok: true, valor: "ja_pago" });
+
+    const depois = await foto(c, p);
+    assert.equal(depois.linha.payment_status, "pago");
+    assert.notEqual(depois.linha.paid_at, null);
+    esperaDevolvido(depois, p, false, "pago não mexe no estoque");
+    assert.deepEqual(
+      await avisosDoPedido(c, p.id),
+      [AVISO_PAGO],
+      "um aviso só ao cliente, não um por porta",
+    );
+
+    // A terceira porta (a reconciliação, ou a reentrega do webhook) não
+    // reescreve nada: paid_at e updated_at ficam os da transição ÚNICA.
+    assert.equal(await confirmar(c, p.id, p.gateway, "pago"), "ja_pago");
+    assert.deepEqual(
+      await foto(c, p),
+      depois,
+      "nenhuma coluna muda depois da transição",
+    );
+    assert.deepEqual(await avisosDoPedido(c, p.id), [AVISO_PAGO]);
   },
 });
 
