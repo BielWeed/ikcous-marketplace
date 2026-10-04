@@ -7,8 +7,8 @@
  * argumentos — a regra de dinheiro mora uma vez só (`contestacao.ts` + RPC).
  *
  * Também prende o GATILHO: só `status = 'charged_back'` leva ao ledger, nos
- * dois caminhos; o tópico `topic_chargebacks_wh` não é porta de entrada em
- * nenhum deles.
+ * dois caminhos; o tópico `topic_chargebacks_wh` só age sobre caso JÁ vinculado no ledger
+ * (ver reconsulta-caso-conhecido_test.ts), nunca por si só como porta de entrada.
  */
 import { assertEquals } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler as handlerDoWebhook } from "../webhook-mercadopago/index.ts";
@@ -73,9 +73,15 @@ const orderDoMp = (status: string, detalhePagamento = "reimbursed") => ({
 
 function mpDuble(status: string, detalhePagamento = "reimbursed") {
   const chamadas: string[] = [];
-  const fetchImpl = (url: string | URL | Request) => {
+  const fetchImpl = (url: string | URL | Request, init?: RequestInit) => {
     const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
     chamadas.push(u);
+    // Caminho PADRÃO dos dois handlers: o seller ID vem de GET /users/me e vai em
+    // X-Caller-Id no GET do caso (o MP recusa sem ele).
+    if (u.endsWith("/users/me")) return Promise.resolve(new Response(JSON.stringify({ id: 1234567 }), { status: 200 }));
+    if (u.includes("/v1/chargebacks/") && new Headers(init?.headers).get("X-Caller-Id") !== "1234567") {
+      return Promise.resolve(new Response("{}", { status: 403 }));
+    }
     if (/\/v1\/orders\/[^/?]+$/.test(u)) return Promise.resolve(new Response(JSON.stringify(orderDoMp(status, detalhePagamento)), { status: 200 }));
     if (/\/v1\/chargebacks\/CASE1$/.test(u)) {
       return Promise.resolve(
@@ -135,7 +141,7 @@ function banco(opts: { linhaPresa: boolean }) {
         return {
           select: (colunas: string) => {
             // lista do cron e releitura do cron (`id`); o webhook lê as linhas do pedido inteiras.
-            if (colunas.trim() === "id, order_id, updated_at" || colunas.trim() === "id") {
+            if (colunas.trim() === "id, order_id, updated_at" || colunas.trim() === "id, mp_chargeback_id, mp_chargeback_case_id") {
               return cadeia(opts.linhaPresa ? [linhaPresa] : []);
             }
             return cadeia([]);
@@ -203,7 +209,7 @@ for (const status of ["charged_back", "processed", "refunded", "canceled", "fail
   });
 }
 
-Deno.test("o tópico 'topic_chargebacks_wh' não é porta do ledger no webhook (ignorado sem consultar o MP) — e o cron não depende de tópico nenhum", async () => {
+Deno.test("o tópico 'topic_chargebacks_wh' SEM caso vinculado no ledger não consulta o MP nem toca o ledger (o pedido nunca sai do corpo da notificação) — e o cron não depende de tópico nenhum", async () => {
   const b = banco({ linhaPresa: false });
   const mp = mpDuble("charged_back");
   const resposta = await mudo(async () =>

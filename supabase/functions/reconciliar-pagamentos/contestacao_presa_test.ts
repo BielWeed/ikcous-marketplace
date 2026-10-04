@@ -35,9 +35,14 @@ function mpFalso(order: unknown, caso: unknown = { id: "CASE1", amount: 149.9, c
   const chamadas: string[] = [];
   return {
     chamadas,
-    fetchImpl: (url: string | URL | Request) => {
+    fetchImpl: (url: string | URL | Request, init?: RequestInit) => {
       const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
       chamadas.push(u);
+      // Caminho PADRAO: o seller ID vem de GET /users/me e vai em X-Caller-Id.
+      if (u.endsWith("/users/me")) return Promise.resolve(new Response(JSON.stringify({ id: 1234567 }), { status: 200 }));
+      if (/\/v1\/chargebacks\//.test(u) && new Headers(init?.headers).get("X-Caller-Id") !== "1234567") {
+        return Promise.resolve(new Response("{}", { status: 403 }));
+      }
       if (/\/v1\/orders\//.test(u)) return Promise.resolve(new Response(JSON.stringify(order), { status: 200 }));
       if (/\/v1\/chargebacks\//.test(u)) return Promise.resolve(new Response(JSON.stringify(caso), { status: 200 }));
       return Promise.resolve(new Response("{}", { status: 404 }));
@@ -101,7 +106,7 @@ function supabaseFalso(opts: {
         return {
           select: (colunas: string) => {
             if (colunas.trim() === "id, order_id, updated_at") return cadeia(opts.linhaPresa ? [linha] : [], opts.erroNaLista ?? null);
-            if (colunas.trim() === "id") return cadeia(opts.linhaPresa ? [{ id: "L1" }] : []);
+            if (colunas.trim() === "id, mp_chargeback_id, mp_chargeback_case_id") return cadeia(opts.linhaPresa ? [{ id: "L1", mp_chargeback_id: null, mp_chargeback_case_id: null }] : []);
             // a fila de estornos do cron: vazia
             return { in: () => ({ neq: () => ({ lt: () => ({ order: () => ({ order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }) }) }) }) }) };
           },
@@ -139,7 +144,7 @@ Deno.test("FASE 2 R3 — o ciclo do cron reconsulta a contestação presa e resp
   const mp = mpFalso(orderMp("charged_back", "in_process"));
   const r = await rodar(supabase, mp);
   assertEquals(r.status, 200);
-  assertEquals(r.corpo.contestacoes, { vistas: 1, reconsultadas: 1, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
+  assertEquals(r.corpo.contestacoes, { vistas: 1, reconsultadas: 1, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
   assertEquals(supabase.rpcs.filter((x) => x.nome === "registrar_contestacao_no_ledger").length, 1);
 });
 
@@ -162,7 +167,7 @@ Deno.test("FASE 2 R3 — a lista de reservas FALHA: o resultado dos PAGAMENTOS j
   const r = await rodar(supabase, mp);
   assertEquals(r.status, 200);
   assertEquals([r.corpo.verificados, r.corpo.confirmados, r.corpo.falhas], [1, 1, 0]);
-  assertEquals(r.corpo.contestacoes, { vistas: 0, reconsultadas: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
+  assertEquals(r.corpo.contestacoes, { vistas: 0, reconsultadas: 0, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
   assert(r.erros.some((e) => e.includes("reconsulta de contestações presas falhou")), r.erros.join("\n"));
 });
 

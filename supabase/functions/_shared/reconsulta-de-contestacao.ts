@@ -1,6 +1,7 @@
 /**
  * RECONSULTA PERIÓDICA DA CONTESTAÇÃO (chargeback) PRESA — FASE 2, R3 do Lote A
- * (04/10/2026). Chamada pelo cron `reconciliar-pagamentos`.
+ * (04/10/2026). Chamada pelo cron `reconciliar-pagamentos` e, para o tópico
+ * `topic_chargebacks_wh`, pelo webhook (`recuperarContestacaoPeloCaso`).
  *
  * O DEFEITO: uma reserva de contestação (linha `sistema` em `em_processamento`,
  * `mp_status = 'charged_back'`, criada por `registrar_contestacao_no_ledger`)
@@ -12,12 +13,39 @@
  * do webhook").
  *
  * O QUE ESTA PEÇA FAZ: para a reserva parada há mais de N (6 h, abaixo),
- * reconsulta a ORDER no MP e entrega o resultado ao banco pelo MESMO caminho do
- * webhook — `registrarContestacao` (`contestacao.ts`), que consulta o CASO
- * (`GET /v1/chargebacks/{case_id}`), confere caso x pagamento x item e chama a
- * RPC `registrar_contestacao_no_ledger`, que decide o dinheiro sob a trava do
- * pedido. NENHUMA regra de dinheiro foi copiada para cá: este arquivo só
- * escolhe QUEM reconsultar e QUANDO. Só GET ao MP; nenhum POST.
+ * reconsulta no MP e entrega o resultado ao banco pelo MESMO caminho do webhook
+ * (`contestacao.ts`): consulta o CASO (`GET /v1/chargebacks/{case_id}`), confere
+ * e chama a RPC `registrar_contestacao_no_ledger`, que decide o dinheiro sob a
+ * trava do pedido. NENHUMA regra de dinheiro foi copiada para cá: este arquivo
+ * só escolhe QUEM reconsultar e QUANDO. Só GET ao MP; nenhum POST.
+ *
+ * DOIS CAMINHOS, e o segundo só existe com VÍNCULO AUTENTICADO:
+ *
+ *  1. PELA ORDER (o do webhook): a order reconsultada diz `charged_back` e lista
+ *     `transactions.chargebacks[]` -> `registrarContestacao`, que consulta cada
+ *     caso e confere caso x pagamento x item.
+ *  2. PELO CASO CONHECIDO: a linha já carrega `mp_chargeback_case_id` (gravado
+ *     pela RPC a partir de notificação autenticada). Se a order NÃO está mais em
+ *     `charged_back`, deixou de listar o CBK, sumiu (404) ou nem existe no
+ *     pedido, consulta-se ESSE caso pelo id exato -> `registrarContestacaoConhecida`.
+ *     A documentação oficial do MP NÃO diz que estado a order assume depois da
+ *     disputa resolvida: a tabela de status só descreve `charged_back` com
+ *     `in_process`/`settled`/`reimbursed`; a página de gestão manda reconsultar
+ *     o caso por `GET /v1/chargebacks/{id}` e descreve `coverage_applied`
+ *     true/false como decisão favorável/contrária ao vendedor. Estado da order
+ *     depois da resolução e persistência de `chargebacks[]`: "NÃO DOCUMENTADO",
+ *     então a reconsulta NÃO depende de a order continuar em `charged_back`.
+ *     Nunca se adivinha o vínculo por valor, tempo ou pagamento: ou o `case_id`
+ *     já gravado, ou nada.
+ *
+ * A IDENTIDADE DO VENDEDOR (`X-Caller-Id`): o `GET /v1/chargebacks/{id}` exige,
+ * além do `Authorization`, o seller ID da loja dona do caso
+ * (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/chargebacks/management).
+ * `consultarContestacao` só sai com ele. A fonte é `GET /users/me` com o token da
+ * PRÓPRIA loja (`resolverVendedorIdDoMp`, `contestacao.ts`): o MP diz quem é o
+ * dono do token; uma chamada por execução, só na memória. Sem identidade
+ * (rede, 4xx/5xx, id inválido), TODA consulta de caso conserva (sem liberar,
+ * sem perder) e avisa o admin uma vez — o que vale também para o webhook.
  *
  * QUEM É RECONSULTADO: linha `sistema` + `em_processamento` + `charged_back`
  * com `updated_at` mais antigo que N. A linha de estorno do APP
@@ -44,28 +72,36 @@
  * Por pedido, ANTES de qualquer chamada ao MP, as linhas presas são relidas
  * com o MESMO critério, inclusive a idade — linha que o webhook acabou de
  * mexer (`updated_at` novo) está viva, não presa. E o pedido é lido de novo:
- * `registrarContestacao` devolve o estado canônico depois de cada decisão, e
- * nada aqui decide com o que foi lido antes.
+ * a entrega devolve o estado canônico depois de cada decisão, e nada aqui
+ * decide com o que foi lido antes.
  *
- * O QUE NÃO É DECIDIDO AQUI (conserva e avisa o admin UMA vez, chave estável,
- * a linha gira): cobrança gravada sem order do MP (clássica, vaga em sentinela
- * ou vazia), order que o MP não conhece (404), order de outra cobrança ou de
- * outro pedido, order que NÃO está mais em `charged_back` (o gatilho é o MESMO
- * do webhook — `STATUS_DA_CONTESTACAO`). Reserva presa SEM aviso é exatamente
- * o defeito que esta peça existe para fechar.
+ * O QUE SÓ CONSERVA — NÃO É RESOLUÇÃO. O app não decide nada e avisa o admin
+ * UMA vez (chave estável); a linha gira e a reserva continua travando o saldo
+ * até o admin conferir no painel do MP:
+ *  - linha SEM vínculo (sem `case_id`) cuja order não está em `charged_back`;
+ *  - `charged_back` sem `transactions.chargebacks[]` legível e linha sem vínculo
+ *    (a RPC nunca recebe uma identidade que o app teria de inventar);
+ *  - cobrança gravada sem order do MP / order 404 / order de outro pedido, sem
+ *    vínculo;
+ *  - caso ilegível, de outro id, sem decisão, ou que contradiz o pagamento;
+ *  - decisão CONTRA a loja sem corroboração do pagamento contestado (dinheiro
+ *    que sai é irreversível).
+ * Reserva presa SEM aviso é exatamente o defeito que esta peça existe para fechar.
  *
- * TÓPICO DA NOTIFICAÇÃO: o webhook trata `topic_chargebacks_wh` como irrelevante
- * (não traz o pedido) e vai ao ledger quando chega a notificação `order`/
- * `payment` cuja consulta autenticada diz `status = 'charged_back'`. Aqui não
- * há notificação nenhuma: a reconsulta vai direto à ORDER gravada no pedido e
- * aplica o MESMO gatilho — por isso nenhuma das duas portas depende do tópico.
+ * TÓPICO DA NOTIFICAÇÃO: `topic_chargebacks_wh` traz o id do CASO em `data.id`
+ * (não o pedido, e o corpo é forjável sem a assinatura). O webhook usa o id só
+ * para achar a linha do ledger que JÁ carrega esse `case_id` — o pedido sai
+ * dali, nunca do corpo — e roda o MESMO miolo do cron, sem esperar as 6 h.
  */
 import type { AvisarAdminUmaVez } from "./aviso-ao-lojista.ts";
 import {
   avisoContestacaoParaConferir,
   type ClienteDoLedger,
   consultarContestacao,
+  criarResolvedorDeVendedor,
+  lerContestacoesDaOrder,
   registrarContestacao,
+  registrarContestacaoConhecida,
   STATUS_DA_CONTESTACAO,
 } from "./contestacao.ts";
 import type { PedidoParaEstorno } from "./estorno.ts";
@@ -90,55 +126,41 @@ export interface ClienteDaReconsulta extends ClienteDoLedger {
 export interface ResumoDaReconsulta {
   /** Pedidos considerados neste ciclo. */
   vistas: number;
-  /** Decisão entregue ao banco (a RPC respondeu). */
+  /** Decisão ENTREGUE ao banco (a RPC respondeu). */
   reconsultadas: number;
+  /** Caso conhecido ainda EM ANÁLISE no MP: nada a entregar, a reserva segue. */
+  emAberto: number;
   /** A linha deixou de estar presa entre a lista e a vez dela. */
   resolvidasAntes: number;
-  /** Nada decidido, admin avisado uma vez (cobrança sem order, 404, order de
-   * outro pedido, order fora de `charged_back`). */
+  /** NADA decidido (só conserva e avisa o admin uma vez): ver o cabeçalho. */
   conservadas: number;
   /** Falha transitória ou de banco: volta no próximo ciclo. */
   falhas: number;
 }
 
-type Desfecho = "reconsultada" | "resolvida_antes" | "conservada";
+export type DesfechoDaReconsulta = "entregue" | "em_aberto" | "resolvida_antes" | "conservada";
 
-export async function reconsultarContestacoesPresas(args: {
+type LinhaPresa = { id: string; idContestacao: string | null; caseId: string | null };
+
+function textoOuNulo(valor: unknown): string | null {
+  return typeof valor === "string" && valor.length > 0 ? valor : null;
+}
+
+function criarReconsultor(args: {
   supabase: ClienteDaReconsulta;
   token: string;
+  vendedorId?: string | null;
   fetchImpl?: typeof fetch;
   avisar: AvisarAdminUmaVez;
-  /** Relógio injetável (o teste fixa o instante). */
-  agora?: () => number;
-  prazoMs?: number;
-  limitePedidos?: number;
-  /** Prefixo dos logs. */
-  rotulo?: string;
-}): Promise<ResumoDaReconsulta> {
-  const { supabase, token, fetchImpl, avisar } = args;
-  const rotulo = args.rotulo ?? "reconciliar-pagamentos";
-  const agora = args.agora ?? Date.now;
-  const limiteDeIdade = new Date(agora() - (args.prazoMs ?? PRAZO_DA_RECONSULTA_MS)).toISOString();
-
-  const resumo: ResumoDaReconsulta = { vistas: 0, reconsultadas: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 };
-
-  // A lista do lote — as MAIS ANTIGAS primeiro, para ninguém morrer de fome.
-  const { data: lista, error: erroLista } = await supabase
-    .from("order_refunds")
-    .select("id, order_id, updated_at")
-    .eq("solicitado_por", "sistema")
-    .eq("status", "em_processamento")
-    .eq("mp_status", STATUS_DA_CONTESTACAO)
-    .lt("updated_at", limiteDeIdade)
-    .order("updated_at", { ascending: true })
-    .limit(LIMITE_DE_LINHAS_NA_LISTA);
-  if (erroLista) throw erroLista;
-
-  const pedidos: string[] = [];
-  for (const linha of (lista ?? []) as Array<{ order_id?: unknown }>) {
-    const id = typeof linha.order_id === "string" ? linha.order_id : "";
-    if (id && !pedidos.includes(id)) pedidos.push(id);
-  }
+  agora: () => number;
+  rotulo: string;
+}) {
+  const { supabase, token, fetchImpl, avisar, agora, rotulo } = args;
+  // O seller ID vem do `GET /users/me` do PRÓPRIO token (uma vez por execução);
+  // `vendedorId` explícito só existe para o teste fixar a identidade.
+  const obterVendedor = args.vendedorId !== undefined
+    ? () => Promise.resolve(args.vendedorId ?? null)
+    : criarResolvedorDeVendedor({ token, fetchImpl });
 
   /** Renova o `updated_at` das linhas presas deste pedido — o rodízio. Só as
    * que o banco AINDA tem em `em_processamento`; nunca lança. */
@@ -160,20 +182,35 @@ export async function reconsultarContestacoesPresas(args: {
     }
   };
 
-  const reconsultarUm = async (orderId: string): Promise<Desfecho> => {
-    // FRESH GATE: as linhas presas DESTE pedido, agora, com o mesmo critério da
-    // lista (inclusive a idade).
-    const { data: presasAgora, error: erroPresas } = await supabase
+  /**
+   * Reconsulta UM pedido. `limiteDeIdade`: só linhas mais velhas que isso (o
+   * cron); `caseId`: só a linha desse caso (o tópico `chargebacks` do webhook).
+   * FRESH GATE: as linhas são relidas AGORA, com o mesmo critério.
+   */
+  const reconsultarUm = async (
+    orderId: string,
+    filtro: { limiteDeIdade?: string; caseId?: string },
+  ): Promise<DesfechoDaReconsulta> => {
+    let consultaDasLinhas = supabase
       .from("order_refunds")
-      .select("id")
+      .select("id, mp_chargeback_id, mp_chargeback_case_id")
       .eq("order_id", orderId)
       .eq("solicitado_por", "sistema")
       .eq("status", "em_processamento")
-      .eq("mp_status", STATUS_DA_CONTESTACAO)
-      .lt("updated_at", limiteDeIdade);
+      .eq("mp_status", STATUS_DA_CONTESTACAO);
+    if (filtro.limiteDeIdade) consultaDasLinhas = consultaDasLinhas.lt("updated_at", filtro.limiteDeIdade);
+    if (filtro.caseId) consultaDasLinhas = consultaDasLinhas.eq("mp_chargeback_case_id", filtro.caseId);
+    const { data: presasAgora, error: erroPresas } = await consultaDasLinhas;
     if (erroPresas) throw erroPresas;
-    const ids = ((presasAgora ?? []) as Array<{ id?: unknown }>).map((l) => String(l.id));
-    if (ids.length === 0) return "resolvida_antes";
+    const presas = ((presasAgora ?? []) as Array<Record<string, unknown>>).map((l): LinhaPresa => ({
+      id: String(l.id),
+      idContestacao: textoOuNulo(l.mp_chargeback_id),
+      caseId: textoOuNulo(l.mp_chargeback_case_id),
+    }));
+    if (presas.length === 0) return "resolvida_antes";
+    const ids = presas.map((l) => l.id);
+    const vinculadas = presas.filter((l) => l.idContestacao !== null && l.caseId !== null);
+    const semVinculo = presas.length - vinculadas.length;
 
     const { data: pedidoRow, error: erroPedido } = await supabase
       .from("marketplace_orders")
@@ -186,7 +223,7 @@ export async function reconsultarContestacoesPresas(args: {
 
     /** Nada decidido: avisa o admin UMA vez (chave estável por pedido+motivo) e
      * gira a linha — fica para daqui a N, sem sumir em silêncio. */
-    const conservar = async (motivo: string): Promise<Desfecho> => {
+    const conservar = async (motivo: string): Promise<DesfechoDaReconsulta> => {
       console.error(
         `${rotulo}: contestação presa que o app não consegue reconsultar sozinho — reserva CONSERVADA, nada decidido`,
         { orderId, motivo },
@@ -201,29 +238,6 @@ export async function reconsultarContestacoesPresas(args: {
     };
 
     const idMp = typeof linhaDoPedido.gateway_payment_id === "string" ? linhaDoPedido.gateway_payment_id : "";
-    if (!idMp || idEhClassico(idMp) || vagaEmVerificacao(idMp)) {
-      return await conservar("sem_order_do_mp");
-    }
-
-    const consulta = await consultarOrder({ token, orderId: idMp, fetchImpl, corpoNoLog: false });
-    if (!consulta.ok) {
-      if (consulta.status === 404) return await conservar("order_nao_encontrada");
-      throw new Error(`${rotulo}: consulta da order da contestação presa falhou (status ${consulta.status})`);
-    }
-    const order = consulta.order as Record<string, unknown>;
-
-    // A order devolvida tem de SER a cobrança gravada DESTE pedido — nada se
-    // decide sobre o dinheiro de outro (a invariante nº 1 do webhook).
-    if (String(order.id ?? "") !== idMp || String(order.external_reference ?? "") !== orderId) {
-      return await conservar("order_divergente");
-    }
-
-    // O MESMO gatilho do webhook (`STATUS_DA_CONTESTACAO`, status CRU da order).
-    const statusCru = String(order.status ?? "");
-    if (statusCru !== STATUS_DA_CONTESTACAO) {
-      return await conservar(`order_${statusCru.toLowerCase().replace(/[^a-z_]/g, "_").slice(0, 30)}`);
-    }
-
     const pedido: PedidoParaEstorno = {
       id: String(linhaDoPedido.id),
       gateway_payment_id: idMp,
@@ -233,30 +247,165 @@ export async function reconsultarContestacoesPresas(args: {
       paid_at: (linhaDoPedido.paid_at as string | null) ?? null,
       status: String(linhaDoPedido.status),
     };
+    const consultarCaso = async (caseId: string) =>
+      consultarContestacao({ token, caseId, vendedorId: await obterVendedor(), fetchImpl });
 
-    // O caminho do webhook, inteiro: consulta cada caso, confere, e a RPC
-    // decide o dinheiro. Falha transitória LANÇA (o mesmo contrato do webhook:
-    // lá o MP reenvia; aqui o próximo ciclo repete).
-    await registrarContestacao({
-      supabase,
-      orderId,
-      corpo: order,
-      ehPayments: false,
-      pedido,
-      consultarCaso: (caseId) => consultarContestacao({ token, caseId, fetchImpl }),
-      avisar,
-      rotulo,
-    });
+    // A ORDER do MP — quando a cobrança gravada tem uma. Sem ela (clássica,
+    // sentinela, vazia), se o MP não a conhece (404) ou se é de outro pedido,
+    // `order` fica null e `motivoSemOrder` diz por quê: o caminho pelo caso
+    // conhecido ainda funciona; o da order não.
+    let order: Record<string, unknown> | null = null;
+    let motivoSemOrder: string | null = null;
+    if (!idMp || idEhClassico(idMp) || vagaEmVerificacao(idMp)) {
+      motivoSemOrder = "sem_order_do_mp";
+    } else {
+      const consulta = await consultarOrder({ token, orderId: idMp, fetchImpl, corpoNoLog: false });
+      if (!consulta.ok) {
+        if (consulta.status !== 404) {
+          throw new Error(`${rotulo}: consulta da order da contestação presa falhou (status ${consulta.status})`);
+        }
+        motivoSemOrder = "order_nao_encontrada";
+      } else {
+        const candidata = consulta.order as Record<string, unknown>;
+        // A order devolvida tem de SER a cobrança gravada DESTE pedido — nada
+        // se decide sobre o dinheiro de outro (a invariante nº 1 do webhook).
+        if (String(candidata.id ?? "") !== idMp || String(candidata.external_reference ?? "") !== orderId) {
+          motivoSemOrder = "order_divergente";
+        } else {
+          order = candidata;
+        }
+      }
+    }
+    const statusCru = String(order?.status ?? "");
+    const motivoDaOrder = motivoSemOrder ??
+      `order_${statusCru.toLowerCase().replace(/[^a-z_]/g, "_").slice(0, 30)}`;
+
+    let entregues = 0;
+    let emAberto = 0;
+    let conservadas = 0;
+    let cbkCobertos: string[] = [];
+
+    // Caminho 1: pela ORDER, quando ela ainda diz `charged_back` (o MESMO
+    // gatilho do webhook, status CRU). Se a lista de casos não é legível e a
+    // linha TEM vínculo, quem resolve é o caso conhecido (caminho 2); sem
+    // vínculo, `registrarContestacao` conserva e avisa — como no webhook.
+    if (order && statusCru === STATUS_DA_CONTESTACAO) {
+      const leitura = lerContestacoesDaOrder(order);
+      if (leitura.ok || vinculadas.length === 0) {
+        const r = await registrarContestacao({
+          supabase,
+          orderId,
+          corpo: order,
+          ehPayments: false,
+          pedido,
+          consultarCaso,
+          avisar,
+          rotulo,
+        });
+        entregues += r.entregues;
+        conservadas += r.conservadas;
+        if (leitura.ok) cbkCobertos = leitura.itens.map((i) => i.idContestacao);
+      }
+    }
+
+    // Caminho 2: o CASO CONHECIDO — toda linha vinculada que a order não cobriu
+    // (order fora de `charged_back`, sem o CBK na lista, sem order). O id do
+    // caso é o GRAVADO na linha: nunca um palpite.
+    for (const linha of vinculadas) {
+      if (cbkCobertos.includes(String(linha.idContestacao))) continue;
+      const r = await registrarContestacaoConhecida({
+        supabase,
+        orderId,
+        idContestacao: String(linha.idContestacao),
+        caseId: String(linha.caseId),
+        corpoDaOrder: order,
+        casosNaOrder: vinculadas.length,
+        pedido,
+        consultarCaso,
+        avisar,
+        rotulo,
+      });
+      if (r === "entregue") entregues++;
+      else if (r === "em_aberto") emAberto++;
+      else conservadas++;
+    }
+
+    // Linha SEM vínculo que nada acima cobriu: não há com o que consultar com
+    // segurança. Só conserva (a linha não some em silêncio).
+    if (semVinculo > 0 && cbkCobertos.length === 0 && !(order && statusCru === STATUS_DA_CONTESTACAO)) {
+      return await conservar(motivoDaOrder);
+    }
 
     await girar(ids);
-    return "reconsultada";
+    if (entregues > 0) return "entregue";
+    if (conservadas > 0) return "conservada";
+    return emAberto > 0 ? "em_aberto" : "conservada";
   };
+
+  return { reconsultarUm };
+}
+
+export async function reconsultarContestacoesPresas(args: {
+  supabase: ClienteDaReconsulta;
+  token: string;
+  /** Fixa o seller ID (teste). Ausente (`undefined`): resolve por `GET /users/me`. */
+  vendedorId?: string | null;
+  fetchImpl?: typeof fetch;
+  avisar: AvisarAdminUmaVez;
+  /** Relógio injetável (o teste fixa o instante). */
+  agora?: () => number;
+  prazoMs?: number;
+  limitePedidos?: number;
+  /** Prefixo dos logs. */
+  rotulo?: string;
+}): Promise<ResumoDaReconsulta> {
+  const { supabase } = args;
+  const rotulo = args.rotulo ?? "reconciliar-pagamentos";
+  const agora = args.agora ?? Date.now;
+  const limiteDeIdade = new Date(agora() - (args.prazoMs ?? PRAZO_DA_RECONSULTA_MS)).toISOString();
+  const { reconsultarUm } = criarReconsultor({
+    supabase,
+    token: args.token,
+    vendedorId: args.vendedorId,
+    fetchImpl: args.fetchImpl,
+    avisar: args.avisar,
+    agora,
+    rotulo,
+  });
+
+  const resumo: ResumoDaReconsulta = {
+    vistas: 0,
+    reconsultadas: 0,
+    emAberto: 0,
+    resolvidasAntes: 0,
+    conservadas: 0,
+    falhas: 0,
+  };
+
+  // A lista do lote — as MAIS ANTIGAS primeiro, para ninguém morrer de fome.
+  const { data: lista, error: erroLista } = await supabase
+    .from("order_refunds")
+    .select("id, order_id, updated_at")
+    .eq("solicitado_por", "sistema")
+    .eq("status", "em_processamento")
+    .eq("mp_status", STATUS_DA_CONTESTACAO)
+    .lt("updated_at", limiteDeIdade)
+    .order("updated_at", { ascending: true })
+    .limit(LIMITE_DE_LINHAS_NA_LISTA);
+  if (erroLista) throw erroLista;
+
+  const pedidos: string[] = [];
+  for (const linha of (lista ?? []) as Array<{ order_id?: unknown }>) {
+    const id = typeof linha.order_id === "string" ? linha.order_id : "";
+    if (id && !pedidos.includes(id)) pedidos.push(id);
+  }
 
   for (const orderId of pedidos.slice(0, args.limitePedidos ?? LIMITE_DE_PEDIDOS_POR_CICLO)) {
     resumo.vistas++;
     try {
-      const desfecho = await reconsultarUm(orderId);
-      if (desfecho === "reconsultada") resumo.reconsultadas++;
+      const desfecho = await reconsultarUm(orderId, { limiteDeIdade });
+      if (desfecho === "entregue") resumo.reconsultadas++;
+      else if (desfecho === "em_aberto") resumo.emAberto++;
       else if (desfecho === "resolvida_antes") resumo.resolvidasAntes++;
       else resumo.conservadas++;
     } catch (erro) {
@@ -267,4 +416,55 @@ export async function reconsultarContestacoesPresas(args: {
     }
   }
   return resumo;
+}
+
+/**
+ * O TÓPICO `topic_chargebacks_wh` do webhook (doc do MP: `data.id` = o id do
+ * CASO): recupera a contestação pelo MESMO miolo do cron, sem esperar as 6
+ * horas. O pedido NÃO sai do corpo da notificação (forjável): sai da linha do
+ * ledger que já carrega ESSE `case_id` — o vínculo autenticado.
+ *  - 'sem_vinculo': nenhuma linha com esse caso (a reserva nasce da notificação
+ *    `order`/`order.charged_back`; nada a recuperar, nada a adivinhar);
+ *  - 'ambiguo': o mesmo caso ligado a mais de um pedido — nada se adivinha;
+ *  - repetição/duplicata: a linha já resolvida não está mais presa e a entrega
+ *    é idempotente ('resolvida_antes', sem RPC);
+ *  - falha transitória LANÇA (o webhook devolve 500 e o MP reenvia).
+ */
+export async function recuperarContestacaoPeloCaso(args: {
+  supabase: ClienteDaReconsulta;
+  token: string;
+  vendedorId?: string | null;
+  fetchImpl?: typeof fetch;
+  avisar: AvisarAdminUmaVez;
+  caseId: string;
+  agora?: () => number;
+  rotulo?: string;
+}): Promise<DesfechoDaReconsulta | "sem_vinculo" | "ambiguo"> {
+  const rotulo = args.rotulo ?? "webhook-mercadopago";
+  const { data, error } = await args.supabase
+    .from("order_refunds")
+    .select("order_id")
+    .eq("solicitado_por", "sistema")
+    .eq("mp_chargeback_case_id", args.caseId);
+  if (error) throw error;
+  const pedidos = [
+    ...new Set(((data ?? []) as Array<{ order_id?: unknown }>).map((l) => String(l.order_id ?? "")).filter(Boolean)),
+  ];
+  if (pedidos.length === 0) return "sem_vinculo";
+  if (pedidos.length > 1) {
+    console.error(`${rotulo}: o mesmo case_id está ligado a mais de um pedido — nada recuperado`, {
+      caseId: args.caseId,
+    });
+    return "ambiguo";
+  }
+  const { reconsultarUm } = criarReconsultor({
+    supabase: args.supabase,
+    token: args.token,
+    vendedorId: args.vendedorId,
+    fetchImpl: args.fetchImpl,
+    avisar: args.avisar,
+    agora: args.agora ?? Date.now,
+    rotulo,
+  });
+  return await reconsultarUm(pedidos[0], { caseId: args.caseId });
 }

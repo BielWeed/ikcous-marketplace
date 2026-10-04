@@ -76,14 +76,90 @@ export interface ClienteDoLedger {
 /** `case_id` só entra na URL com forma de identificador (sem barra, espaço). */
 const FORMA_DO_CASE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
+/** O ID do vendedor no MP é numérico (`GET /users/me` -> `id`). */
+const FORMA_DO_ID_DO_VENDEDOR = /^[0-9]{1,20}$/;
+
+/**
+ * De onde vem o seller ID (header `X-Caller-Id`, OBRIGATÓRIO em
+ * `GET /v1/chargebacks/{id}` segundo
+ * https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/chargebacks/management):
+ * da resposta AUTENTICADA de `GET https://api.mercadopago.com/users/me` com o
+ * token da PRÓPRIA loja dona do caso — a mesma chamada que a edge
+ * `credenciais-mercado-pago` já faz no backend (teste de conexão), que lá só lê
+ * o `nickname`. Quem diz "este token pertence ao vendedor X" é o MP; o `id` é
+ * a identidade da conta dona do token, sem parse do token, sem env nova, sem
+ * `app_settings` novo e sem nenhum dado do comprador, do corpo ou da query.
+ *
+ * SOMENTE LEITURA: um GET, rota fixa, sem corpo. Falha (sem resposta, rede,
+ * 4xx/5xx, corpo ilegível, `id` fora da forma numérica positiva) -> `null`, e
+ * quem consulta o caso CONSERVA e avisa o admin. Nem o token nem o id vão ao log.
+ */
+export async function resolverVendedorIdDoMp(args: {
+  token: string;
+  fetchImpl?: typeof fetch;
+  tempoLimiteMs?: number;
+}): Promise<string | null> {
+  const f = args.fetchImpl ?? fetch;
+  try {
+    const resposta = await fetchComTempo(
+      f,
+      `${BASE_URL_PADRAO}/users/me`,
+      // `redirect: "manual"`: o Authorization NUNCA acompanha um redirecionamento
+      // para fora da origem confiável; qualquer 3xx é fonte inválida.
+      { method: "GET", headers: { Authorization: `Bearer ${args.token}` }, redirect: "manual" },
+      args.tempoLimiteMs,
+    );
+    if (!resposta.ok || resposta.status >= 300) {
+      console.error("mercadopago: users/me (seller ID) recusou ou redirecionou", resposta.status);
+      return null;
+    }
+    const corpo = await resposta.json();
+    const bruto = corpo && typeof corpo === "object" && !Array.isArray(corpo) ? (corpo as Record<string, unknown>).id : null;
+    const id = comoId(bruto);
+    // Forma numérica positiva (o ID de conta do MP é inteiro); número só se SEGURO.
+    if (id === null || !FORMA_DO_ID_DO_VENDEDOR.test(id) || /^0+$/.test(id)) {
+      console.error("mercadopago: users/me (seller ID) sem id numérico positivo legível");
+      return null;
+    }
+    return id;
+  } catch (_erro) {
+    console.error("mercadopago: users/me (seller ID) falhou (rede/timeout/corpo ilegível)");
+    return null;
+  }
+}
+
+/**
+ * Um resolvedor POR EXECUÇÃO (uma requisição do webhook, um ciclo do cron):
+ * a identidade do dono do token não muda dentro dela, então o `/users/me` sai
+ * UMA vez (mesmo com vários casos) e o resultado — inclusive `null` — é
+ * lembrado só na memória daquela execução. Nunca persistido, nunca entre
+ * execuções: token trocado pelo lojista vale na execução seguinte.
+ */
+export function criarResolvedorDeVendedor(args: {
+  token: string;
+  fetchImpl?: typeof fetch;
+}): () => Promise<string | null> {
+  let memo: Promise<string | null> | null = null;
+  return () => (memo ??= resolverVendedorIdDoMp(args));
+}
+
 export async function consultarContestacao(args: {
   token: string;
   caseId: string;
+  /** Seller ID da loja dona do caso (ver `resolverVendedorIdDoMp`). Ausente ou fora
+   * da forma numérica: NENHUMA chamada ao MP, resultado não transitório. */
+  vendedorId?: string | null;
   fetchImpl?: typeof fetch;
   baseUrl?: string;
   tempoLimiteMs?: number;
 }): Promise<ResultadoDaConsultaDoCaso> {
   if (typeof args.caseId !== "string" || !FORMA_DO_CASE_ID.test(args.caseId)) {
+    return { ok: false, status: 0, transitorio: false };
+  }
+  if (typeof args.vendedorId !== "string" || !FORMA_DO_ID_DO_VENDEDOR.test(args.vendedorId)) {
+    // Sem identidade confiável da loja não há consulta: quem chama conserva e
+    // avisa. O valor NUNCA vai ao log (nem o token).
+    console.error("mercadopago: chargebacks (consulta) sem seller ID confiável da loja — caso conservado, nada consultado");
     return { ok: false, status: 0, transitorio: false };
   }
   const f = args.fetchImpl ?? fetch;
@@ -93,7 +169,8 @@ export async function consultarContestacao(args: {
     resposta = await fetchComTempo(
       f,
       `${base}/v1/chargebacks/${args.caseId}`,
-      { method: "GET", headers: { Authorization: `Bearer ${args.token}` } },
+      // Sem seguir redirecionamento: Authorization e X-Caller-Id não saem da origem do MP.
+      { method: "GET", headers: { Authorization: `Bearer ${args.token}`, "X-Caller-Id": args.vendedorId }, redirect: "manual" },
       args.tempoLimiteMs,
     );
   } catch (_err) {
@@ -237,6 +314,82 @@ export function lerContestacoesDaOrder(
 }
 
 /**
+ * A ENTREGA da decisão ao banco — o ÚNICO ponto que chama
+ * `registrar_contestacao_no_ledger` e traduz o `aviso` que ela devolve em UM
+ * push ao admin. Usada pelo caminho da order (`registrarContestacao`) e pelo
+ * caminho do CASO CONHECIDO (`registrarContestacaoConhecida`): a regra de
+ * dinheiro mora na RPC, e esta função não decide nada.
+ */
+async function entregarDecisaoAoLedger(args: {
+  supabase: ClienteDoLedger;
+  orderId: string;
+  idContestacao: string;
+  caseId: string;
+  decisao: DecisaoDaContestacao;
+  valorDoCaso: number | null;
+  valorEstimado: number | null;
+  casosNaOrder: number;
+  pedido: PedidoParaEstorno;
+  avisar: AvisarAdminUmaVez;
+  rotulo: string;
+}): Promise<void> {
+  const { supabase, orderId, idContestacao, caseId, decisao, pedido, avisar, rotulo } = args;
+  const avisoSaldo = {
+    title: "Contestação maior que o saldo do pedido",
+    body: `${numeroDoPedido(orderId)} · a contestação do Mercado Pago não cabe no que ainda pode ser devolvido deste pedido — o app reservou o que dava e não concluiu nada; confira no painel do Mercado Pago`,
+    url: "/admin-orders",
+  };
+  const avisoRevertida = {
+    title: "Contestação mudou de resultado",
+    body: `${numeroDoPedido(orderId)} · o Mercado Pago mudou a decisão de uma contestação já registrada — confira no painel do Mercado Pago; o app não desfaz isso sozinho`,
+    url: "/admin-orders",
+  };
+  const { data, error } = await supabase.rpc("registrar_contestacao_no_ledger", {
+    p_order_id: orderId,
+    p_mp_chargeback_id: idContestacao,
+    p_case_id: caseId,
+    p_decisao: decisao,
+    p_valor_caso: args.valorDoCaso,
+    p_valor_estimado: args.valorEstimado,
+    p_casos_na_order: args.casosNaOrder,
+  });
+  if (error) throw error;
+  const retorno = (data ?? null) as Record<string, unknown> | null;
+  const resultado = typeof retorno?.resultado === "string" ? retorno.resultado : null;
+  if (resultado === null) {
+    throw new Error(`${rotulo}: registrar_contestacao_no_ledger devolveu retorno ilegível — o MP reenvia`);
+  }
+  console.log(`${rotulo}: contestação registrada sob a trava do pedido`, { orderId, idContestacao, decisao, resultado });
+  // Estado CANÔNICO depois desta decisão (bloqueio 3): nada aqui decide com o
+  // acumulado lido no começo da entrega.
+  const valorEstornado = Number(retorno?.valor_estornado);
+  if (Number.isFinite(valorEstornado)) pedido.valor_estornado = valorEstornado;
+
+  if (retorno?.aviso === "revertida") {
+    console.error(`${rotulo}: contestação mudou de resultado depois de registrada — nada reaberto`, {
+      orderId,
+      idContestacao,
+      decisao,
+    });
+    await avisar(`contestacao_revertida:${orderId}:${idContestacao}:${decisao}`, avisoRevertida);
+  } else if (retorno?.aviso === "saldo") {
+    console.error(`${rotulo}: contestação não cabe no saldo do pedido — nada concluído além do que cabe`, {
+      orderId,
+      idContestacao,
+      resultado,
+    });
+    await avisar(`contestacao_saldo:${orderId}:${idContestacao}:${resultado}`, avisoSaldo);
+  } else if (retorno?.aviso !== null && retorno?.aviso !== undefined) {
+    console.error(`${rotulo}: contestação sem decisão confiável — reserva CONSERVADA, nada liberado nem concluído`, {
+      orderId,
+      motivo: `a RPC não registrou a decisão (${resultado})`,
+      idContestacao,
+    });
+    await avisar(`contestacao_indefinida:${orderId}:${idContestacao}:${resultado}`, avisoContestacaoParaConferir(orderId));
+  }
+}
+
+/**
  * CONTESTAÇÃO (chargeback) NO LEDGER — MORA EM `_shared` desde a FASE 2
  * (04/10/2026): o webhook (notificação) e a reconciliação (reconsulta
  * periódica da reserva presa) chamam ESTE miolo, sem duplicar a regra. Lote A
@@ -285,26 +438,19 @@ export async function registrarContestacao(args: {
   avisar: AvisarAdminUmaVez;
   /** Prefixo dos logs: "webhook-mercadopago" ou "reconciliar-pagamentos". */
   rotulo?: string;
-}): Promise<void> {
+}): Promise<{ entregues: number; conservadas: number }> {
   const { supabase, orderId, corpo, ehPayments, pedido, consultarCaso, avisar } = args;
+  let entregues = 0;
+  let conservadas = 0;
   const rotulo = args.rotulo ?? "webhook-mercadopago";
   const idCobranca = String(corpo.id ?? "");
   const avisoConferir = avisoContestacaoParaConferir(orderId);
-  const avisoSaldo = {
-    title: "Contestação maior que o saldo do pedido",
-    body: `${numeroDoPedido(orderId)} · a contestação do Mercado Pago não cabe no que ainda pode ser devolvido deste pedido — o app reservou o que dava e não concluiu nada; confira no painel do Mercado Pago`,
-    url: "/admin-orders",
-  };
-  const avisoRevertida = {
-    title: "Contestação mudou de resultado",
-    body: `${numeroDoPedido(orderId)} · o Mercado Pago mudou a decisão de uma contestação já registrada — confira no painel do Mercado Pago; o app não desfaz isso sozinho`,
-    url: "/admin-orders",
-  };
   const conservaEAvisa = async (chave: string, motivo: string, extra: Record<string, unknown> = {}) => {
     console.error(
       `${rotulo}: contestação sem decisão confiável — reserva CONSERVADA, nada liberado nem concluído`,
       { orderId, motivo, ...extra },
     );
+    conservadas++;
     await avisar(chave, avisoConferir);
   };
 
@@ -313,12 +459,12 @@ export async function registrarContestacao(args: {
       `contestacao_indefinida:${orderId}:${idCobranca}`,
       "pagamento clássico não traz a identidade do caso (transactions.chargebacks[])",
     );
-    return;
+    return { entregues, conservadas };
   }
   const leitura = lerContestacoesDaOrder(corpo);
   if (!leitura.ok) {
     await conservaEAvisa(`contestacao_indefinida:${orderId}:${idCobranca}`, leitura.motivo);
-    return;
+    return { entregues, conservadas };
   }
 
   const valorPagoBruto = extrairValorDaOrder(corpo);
@@ -356,52 +502,138 @@ export async function registrarContestacao(args: {
       continue;
     }
 
-    const { data, error } = await supabase.rpc("registrar_contestacao_no_ledger", {
-      p_order_id: orderId,
-      p_mp_chargeback_id: item.idContestacao,
-      p_case_id: item.caseId,
-      p_decisao: peloCaso,
-      p_valor_caso: valorDoCaso(consulta.caso),
-      p_valor_estimado: valorEstimado,
-      p_casos_na_order: leitura.itens.length,
-    });
-    if (error) throw error;
-    const retorno = (data ?? null) as Record<string, unknown> | null;
-    const resultado = typeof retorno?.resultado === "string" ? retorno.resultado : null;
-    if (resultado === null) {
-      throw new Error(`${rotulo}: registrar_contestacao_no_ledger devolveu retorno ilegível — o MP reenvia`);
-    }
-    console.log(`${rotulo}: contestação registrada sob a trava do pedido`, {
+    await entregarDecisaoAoLedger({
+      supabase,
       orderId,
       idContestacao: item.idContestacao,
+      caseId: item.caseId,
       decisao: peloCaso,
-      resultado,
+      valorDoCaso: valorDoCaso(consulta.caso),
+      valorEstimado,
+      casosNaOrder: leitura.itens.length,
+      pedido,
+      avisar,
+      rotulo,
     });
-    // Estado CANÔNICO depois desta decisão (bloqueio 3): nada aqui decide
-    // com o acumulado lido no começo da entrega.
-    const valorEstornado = Number(retorno?.valor_estornado);
-    if (Number.isFinite(valorEstornado)) pedido.valor_estornado = valorEstornado;
+    entregues++;
+  }
+  return { entregues, conservadas };
+}
 
-    if (retorno?.aviso === "revertida") {
-      console.error(`${rotulo}: contestação mudou de resultado depois de registrada — nada reaberto`, {
-        orderId,
-        idContestacao: item.idContestacao,
-        decisao: peloCaso,
-      });
-      await avisar(`contestacao_revertida:${orderId}:${item.idContestacao}:${peloCaso}`, avisoRevertida);
-    } else if (retorno?.aviso === "saldo") {
-      console.error(`${rotulo}: contestação não cabe no saldo do pedido — nada concluído além do que cabe`, {
-        orderId,
-        idContestacao: item.idContestacao,
-        resultado,
-      });
-      await avisar(`contestacao_saldo:${orderId}:${item.idContestacao}:${resultado}`, avisoSaldo);
-    } else if (retorno?.aviso !== null && retorno?.aviso !== undefined) {
-      await conservaEAvisa(
-        `contestacao_indefinida:${orderId}:${item.idContestacao}:${resultado}`,
-        `a RPC não registrou a decisão (${resultado})`,
-        { idContestacao: item.idContestacao },
-      );
+/**
+ * CASO CONHECIDO — a recuperação de uma contestação cujo VÍNCULO já está
+ * gravado e autenticado no ledger (linha `sistema` com `mp_chargeback_id` e
+ * `mp_chargeback_case_id`, escritos por `registrar_contestacao_no_ledger` a
+ * partir de uma notificação autenticada). Existe para o caso em que a ORDER
+ * NÃO diz mais `charged_back` (a documentação do MP NÃO descreve o estado da
+ * order depois de a disputa ser resolvida — ver `reconsulta-de-contestacao.ts`)
+ * ou deixou de listar `transactions.chargebacks[]`: a decisão sai do CASO
+ * pelo id EXATO (`GET /v1/chargebacks/{case_id}`, id devolvido conferido por
+ * `consultarContestacao`), nunca de um palpite por valor, tempo ou pagamento.
+ *
+ * O que NÃO se relaxa (a régua do Lote A): a corroboração pelo pagamento.
+ *  - O pagamento contestado vem do PRÓPRIO caso (`payments[]`, a identidade
+ *    exata devolvida pelo MP) — só quando é UM e a order o lista. Se o
+ *    `status_detail` dele diz outra coisa que o caso: CONSERVA e avisa.
+ *  - Sem corroboração (order ausente, pagamento não listado, status sem
+ *    leitura): 'a_favor_da_loja' LIBERA a reserva (o sentido que devolve saldo
+ *    e que a RPC grava como decisão final, sem reabrir); 'contra_a_loja' NÃO
+ *    conclui — dinheiro que sai, irreversível — CONSERVA e avisa.
+ *  - Caso ainda em análise: nada a entregar (a reserva já existe); só gira.
+ * Falha transitória do MP LANÇA (o chamador repete); o resto conserva e avisa
+ * UMA vez. Quem decide o dinheiro continua sendo a RPC, sob a trava do pedido.
+ */
+export type DesfechoDoCasoConhecido = "entregue" | "em_aberto" | "conservada";
+
+export async function registrarContestacaoConhecida(args: {
+  supabase: ClienteDoLedger;
+  orderId: string;
+  /** `mp_chargeback_id` da linha (CBK). */
+  idContestacao: string;
+  /** `mp_chargeback_case_id` da linha — o vínculo autenticado. */
+  caseId: string;
+  /** A order reconsultada, SÓ para corroborar e estimar; pode ser `null`. */
+  corpoDaOrder: Record<string, unknown> | null;
+  casosNaOrder: number;
+  pedido: PedidoParaEstorno;
+  consultarCaso: (caseId: string) => Promise<ResultadoDaConsultaDoCaso>;
+  avisar: AvisarAdminUmaVez;
+  rotulo?: string;
+}): Promise<DesfechoDoCasoConhecido> {
+  const { supabase, orderId, idContestacao, caseId, corpoDaOrder, pedido, consultarCaso, avisar } = args;
+  const rotulo = args.rotulo ?? "webhook-mercadopago";
+  const conservar = async (motivo: string, extra: Record<string, unknown> = {}): Promise<DesfechoDoCasoConhecido> => {
+    console.error(
+      `${rotulo}: contestação sem decisão confiável — reserva CONSERVADA, nada liberado nem concluído`,
+      { orderId, idContestacao, motivo, ...extra },
+    );
+    await avisar(`contestacao_indefinida:${orderId}:${idContestacao}`, avisoContestacaoParaConferir(orderId));
+    return "conservada";
+  };
+
+  const consulta = await consultarCaso(caseId);
+  if (!consulta.ok) {
+    if (consulta.transitorio) {
+      throw new Error(`${rotulo}: consulta do caso da contestação falhou (status ${consulta.status}) — repete`);
+    }
+    return await conservar(`caso da contestação ilegível ou de outro caso (status ${consulta.status})`);
+  }
+  const peloCaso = decisaoDoCaso(consulta.caso);
+  if (peloCaso === null) return await conservar("o caso não traz decisão legível (coverage_applied)");
+
+  // O pagamento contestado, pela identidade que o PRÓPRIO caso devolve.
+  let peloPagamento: DecisaoDaContestacao | null = null;
+  const idsDosPagamentos = (Array.isArray(consulta.caso.payments) ? consulta.caso.payments : [])
+    .map((p) => comoId(p))
+    .filter((p): p is string => p !== null);
+  const transacoes = corpoDaOrder?.transactions;
+  if (idsDosPagamentos.length === 1 && transacoes && typeof transacoes === "object" && !Array.isArray(transacoes)) {
+    const lista = (transacoes as Record<string, unknown>).payments;
+    const pagamento = (Array.isArray(lista) ? lista : []).find(
+      (p) => p && typeof p === "object" && comoId((p as Record<string, unknown>).id) === idsDosPagamentos[0],
+    ) as Record<string, unknown> | undefined;
+    if (pagamento && typeof pagamento.status_detail === "string") {
+      peloPagamento = decisaoDoStatusDoPagamento(pagamento.status_detail);
     }
   }
+  // VÍNCULO EXATO caso <-> pagamento <-> pedido: com a order à mão, TODO
+  // pagamento que o caso aponta tem de ser um pagamento DESTE pedido. Caso de
+  // outro pagamento: não libera nada, só registra e avisa.
+  if (transacoes && typeof transacoes === "object" && !Array.isArray(transacoes) && idsDosPagamentos.length > 0) {
+    const lista = (transacoes as Record<string, unknown>).payments;
+    const doPedido = (Array.isArray(lista) ? lista : [])
+      .map((p) => (p && typeof p === "object" ? comoId((p as Record<string, unknown>).id) : null))
+      .filter((p): p is string => p !== null);
+    if (!idsDosPagamentos.every((id) => doPedido.includes(id))) {
+      return await conservar("o caso aponta para um pagamento que não é deste pedido — nada liberado", {
+        pagamentosDoCaso: idsDosPagamentos,
+      });
+    }
+  }
+  if (peloPagamento !== null && peloPagamento !== peloCaso) {
+    return await conservar("o caso e o pagamento contestado não dizem a mesma coisa", { peloCaso, peloPagamento });
+  }
+  if (peloCaso === "em_analise") return "em_aberto";
+  if (peloCaso === "contra_a_loja" && peloPagamento === null) {
+    return await conservar("decisão contra a loja sem corroboração do pagamento contestado — nada concluído", { peloCaso });
+  }
+
+  const valorPagoBruto = corpoDaOrder ? extrairValorDaOrder(corpoDaOrder) : undefined;
+  const valorEstimado = typeof valorPagoBruto === "number" && Number.isFinite(valorPagoBruto) && valorPagoBruto > 0
+    ? Number(valorPagoBruto.toFixed(2))
+    : null;
+  await entregarDecisaoAoLedger({
+    supabase,
+    orderId,
+    idContestacao,
+    caseId,
+    decisao: peloCaso,
+    valorDoCaso: valorDoCaso(consulta.caso),
+    valorEstimado,
+    casosNaOrder: Math.max(1, args.casosNaOrder),
+    pedido,
+    avisar,
+    rotulo,
+  });
+  return "entregue";
 }

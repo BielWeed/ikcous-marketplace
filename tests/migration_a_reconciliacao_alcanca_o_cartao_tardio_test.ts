@@ -259,10 +259,13 @@ Deno.test("contrato com a edge: o cron chama o carimbo com OS MESMOS nomes de ar
     norm(marcar.texto),
     "p_visitados uuid[], p_terminais uuid[] DEFAULT '{}', p_cobrancas_terminais text[] DEFAULT '{}'",
   );
-  assertStringIncludes(c, 'if (resultado === "pago_apos_expirar") { try {');
-  assertEquals(
-    cron.split("deps.enviarPush ?? dispararPushAoAdminReal").length - 1,
-    1,
-    "uma porta de push só",
-  );
+  // FASE 2 (04/10/2026): os efeitos (push ao lojista, comprovante, aviso de
+  // atraso) saem do módulo ÚNICO `_shared/efeitos-do-pagamento.ts`, o MESMO do
+  // webhook, e só quando `confirmar_pagamento` diz que ESTA chamada confirmou
+  // ('pago' ou 'pago_apos_expirar'). O cron não tem mais porta de push própria.
+  assertStringIncludes(c, "if (desfechoComEfeito(resultado)) {");
+  assertStringIncludes(c, "await aplicarEfeitosDoPagamentoConfirmado({");
+  assertEquals(cron.split("dispararPushAoAdminReal").length - 1, 0, "nenhuma porta de push própria no cron");
+  const efeitos = norm(lerArquivo("supabase/functions/_shared/efeitos-do-pagamento.ts"));
+  assertStringIncludes(efeitos, 'if (resultado === "pago_apos_expirar") {');
 });

@@ -395,6 +395,8 @@ async function handler(
     enviarPush?: DepsDosEfeitos["enviarPush"];
     // O push contado do aviso ao admin uma vez (contestação presa).
     enviarPushContado?: typeof dispararPushContadoReal;
+    // Fixa o seller ID (X-Caller-Id) no teste; ausente: `GET /users/me` do próprio token.
+    vendedorId?: string | null;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -1190,12 +1192,13 @@ async function handler(
   // falha aqui não apaga o resultado dos pagamentos nem dos estornos acima.
   // Sem token (credencial do lojista ilegível) não consulta o MP com a chave
   // errada — a mesma falha FECHADA dos dois passos anteriores.
-  let contestacoes: ResumoDaReconsulta = { vistas: 0, reconsultadas: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 };
+  let contestacoes: ResumoDaReconsulta = { vistas: 0, reconsultadas: 0, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 };
   if (credenciaisMp.token) {
     try {
       contestacoes = await reconsultarContestacoesPresas({
         supabase,
         token: credenciaisMp.token,
+        vendedorId: deps.vendedorId,
         fetchImpl: deps.fetchImpl,
         avisar: (chave, aviso) =>
           avisarAdminUmaVez({

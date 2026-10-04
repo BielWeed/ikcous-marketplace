@@ -20,6 +20,7 @@ import {
   reconsultarContestacoesPresas,
 } from "./reconsulta-de-contestacao.ts";
 
+const VENDEDOR = "1234567";
 const AGORA = Date.parse("2026-10-04T12:00:00.000Z");
 const HORA = 60 * 60 * 1000;
 const PEDIDO_A = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
@@ -205,6 +206,10 @@ function mp(opts: {
     const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
     chamadas.push(u);
     authorization.push(String((init?.headers as Record<string, string>)?.Authorization));
+    // Contrato do MP: o GET do caso exige Authorization da loja E X-Caller-Id.
+    if (u.includes("/v1/chargebacks/") && (init?.headers as Record<string, string>)?.["X-Caller-Id"] !== VENDEDOR) {
+      return Promise.resolve(new Response("{}", { status: 403 }));
+    }
     const o = u.match(/\/v1\/orders\/([^/?]+)$/);
     const c = u.match(/\/v1\/chargebacks\/([^/?]+)$/);
     const alvo = o ? Reflect.get(opts.orders ?? {}, o[1]) : c ? Reflect.get(opts.casos ?? {}, c[1]) : undefined;
@@ -229,6 +234,7 @@ async function rodar(
     const resumo = await reconsultarContestacoesPresas({
       supabase: b,
       token: "token-do-lojista",
+      vendedorId: VENDEDOR,
       fetchImpl: m.fetchImpl,
       avisar: (chave, aviso) => {
         avisos.push({ chave, aviso });
@@ -274,7 +280,7 @@ Deno.test("reserva presa há 7 h, o caso foi ganho pela loja: o cron reconsulta 
     p_valor_estimado: 149.9,
     p_casos_na_order: 1,
   });
-  assertEquals(r.resumo, { vistas: 1, reconsultadas: 1, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
+  assertEquals(r.resumo, { vistas: 1, reconsultadas: 1, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
   assertEquals(r.avisos, []);
   assertEquals(m.authorization.every((a) => a === "Bearer token-do-lojista"), true);
   assertEquals(m.chamadas.map((u) => u.split("/").slice(-2).join("/")), ["orders/" + ORDER_A, "chargebacks/CASE1"]);
@@ -415,7 +421,7 @@ Deno.test("falha TRANSITÓRIA no GET do caso (503): nenhuma RPC, a linha NÃO é
     casos: { CASE1: { status: 503 }, CASE2: { status: 200, corpo: casoDoMp("CASE2", null) } },
   });
   const r = await rodar(b, m);
-  assertEquals(r.resumo, { vistas: 2, reconsultadas: 1, resolvidasAntes: 0, conservadas: 0, falhas: 1 });
+  assertEquals(r.resumo, { vistas: 2, reconsultadas: 1, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 1 });
   assertEquals(rpcsDoLedger(b).map((x) => x.args.p_order_id), [PEDIDO_B]);
   assertEquals(b.registro.toques.map((t) => t.id), ["L2"], "só a linha resolvida gira; a que falhou volta no próximo ciclo");
 });
@@ -548,7 +554,7 @@ Deno.test("nenhuma linha presa: nenhuma chamada a lugar nenhum além da lista", 
   const b = banco({ linhas: [] });
   const m = mp({});
   const r = await rodar(b, m);
-  assertEquals(r.resumo, { vistas: 0, reconsultadas: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
+  assertEquals(r.resumo, { vistas: 0, reconsultadas: 0, emAberto: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 });
   assertEquals([m.chamadas, b.registro.rpcs, b.registro.leiturasDePedido], [[], [], []]);
 });
 

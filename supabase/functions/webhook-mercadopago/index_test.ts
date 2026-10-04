@@ -3473,7 +3473,7 @@ function orderComRefundExterno(): Record<string, unknown> {
 async function duasEntregasParalelas(supabase: unknown, corpo: Record<string, unknown>) {
   const reqA = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
   const reqB = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
-  const deps = { supabase, fetchImpl: fetchConsulta(200, corpo), enviarPushContado: async () => 1 } as any;
+  const deps = { supabase, fetchImpl: fetchConsulta(200, corpo), vendedorId: VENDEDOR_DE_TESTE, enviarPushContado: async () => 1 } as any;
   return await Promise.all([handler(reqA, deps), handler(reqB, deps)]);
 }
 
@@ -3780,6 +3780,10 @@ Deno.test("Lote A R2 - erro de banco na RPC do refund externo (inclusive 23505 d
 // `_shared/contestacao.ts`.
 
 /** Fetch que responde a ORDER em /v1/orders/ e o CASO em /v1/chargebacks/. */
+// Seller ID da loja dona do caso (header X-Caller-Id, OBRIGATÓRIO em
+// GET /v1/chargebacks/{id}). Fonte de teste injetada pelo dublê do handler.
+const VENDEDOR_DE_TESTE = "1234567";
+
 function fetchDaContestacao(opts: {
   order: Record<string, unknown>;
   caso?: Record<string, unknown>;
@@ -3791,6 +3795,11 @@ function fetchDaContestacao(opts: {
   const fn = async (url: string, _init?: RequestInit) => {
     chamadas.push(url);
     if (url.includes("/v1/chargebacks/")) {
+      // O contrato do MP: Authorization da loja dona E X-Caller-Id do vendedor.
+      const h = new Headers(_init?.headers);
+      if (h.get("Authorization") !== "Bearer token-de-teste" || h.get("X-Caller-Id") !== VENDEDOR_DE_TESTE) {
+        return new Response("{}", { status: 403 });
+      }
       const caseId = url.slice(url.lastIndexOf("/") + 1);
       const caso = opts.casos ? new Map(Object.entries(opts.casos)).get(caseId) : opts.caso;
       return new Response(JSON.stringify(caso ?? {}), { status: opts.statusCaso ?? 200 });
@@ -3832,6 +3841,7 @@ async function entregarContestacao(
   return await handler(req, {
     supabase,
     fetchImpl,
+    vendedorId: VENDEDOR_DE_TESTE,
     enviarPushContado: async (args: any) => {
       pushes.push(args.aviso);
       return 1;

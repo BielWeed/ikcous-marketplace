@@ -100,10 +100,12 @@ import {
 import { comTempoLimite, corsHeaders, readKey } from "../_shared/webpush.ts";
 import {
   consultarContestacao,
+  criarResolvedorDeVendedor,
   registrarContestacao,
   type ResultadoDaConsultaDoCaso,
   STATUS_DA_CONTESTACAO,
 } from "../_shared/contestacao.ts";
+import { recuperarContestacaoPeloCaso } from "../_shared/reconsulta-de-contestacao.ts";
 // FASE 2 (04/10/2026): o push ao lojista, o comprovante ao cliente e o aviso de
 // pagamento atrasado saem do módulo ÚNICO dos três caminhos que confirmam
 // pagamento (imediata, este webhook e o cron) — `_shared/efeitos-do-pagamento.ts`.
@@ -154,6 +156,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // "pagamento não encontrado" (:305-307). Custa uma linha de log. Colocar
 // aqui um tópico que ÀS VEZES é pagamento custaria o dinheiro da loja — por
 // isso a lista só entra com o que a doc afirma, com certeza, ser outra coisa.
+/** Tópico legado da Orders API cujo `data.id` é o id do CASO de contestação. */
+const TOPICO_DE_CONTESTACAO = "topic_chargebacks_wh";
+
 const TOPICOS_IRRELEVANTES = new Set([
   "merchant_order",
   "topic_merchant_order_wh",
@@ -165,7 +170,6 @@ const TOPICOS_IRRELEVANTES = new Set([
   "stop_delivery_op_wh",
   "topic_claims_integration_wh",
   "topic_card_id_wh",
-  "topic_chargebacks_wh",
   "point_integration_wh",
 ]);
 
@@ -802,6 +806,9 @@ async function handler(
     enviarPush?: DepsDosEfeitos["enviarPush"];
     // C-P: o push do aviso de cobrança duplicada, que diz quantas inscrições o receberam.
     enviarPushContado?: typeof disparoPushContadoReal;
+    // Seller ID da loja dona do caso de contestação (header X-Caller-Id do MP);
+    // ausente: `GET /users/me` do próprio token (uma vez por requisição).
+    vendedorId?: string | null;
     // C-P rodada 3: a espera da reconsulta do aviso 'em_envio' (injetável no teste).
     dormir?: (ms: number) => Promise<void>;
     enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
@@ -1037,7 +1044,17 @@ async function handler(
   //     contrato do MP mudou, não rotina.
   const tipoDoEvento = body?.type;
   let rota: "payment" | "order";
-  if (tipoDoEvento === "payment") {
+  // `topic_chargebacks_wh` (R3, FASE 2): `data.id` é o id do CASO, não do
+  // pedido. Não é irrelevante: é a notificação que o MP manda na criação E NA
+  // MUDANÇA de uma contestação
+  // (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/optional-notifications)
+  // e a resolução manda reconsultar `GET /v1/chargebacks/{case_id}`
+  // (https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-management/chargebacks/management).
+  // Tratada depois da checagem do token, pelo MESMO miolo do cron.
+  const ehTopicoDeCaso = tipoDoEvento === TOPICO_DE_CONTESTACAO;
+  if (ehTopicoDeCaso) {
+    rota = "order"; // placeholder: o desvio logo após o token nunca usa a rota
+  } else if (tipoDoEvento === "payment") {
     rota = "payment";
   } else if (tipoDoEvento === "order") {
     rota = "order";
@@ -1076,6 +1093,33 @@ async function handler(
       dataIdStr.slice(0, LIMITE_LOG_DATA_ID),
     );
     return json({ error: "Credencial do Mercado Pago indisponível." }, 500);
+  }
+
+  if (ehTopicoDeCaso) {
+    // O pedido NUNCA sai do corpo (forjável): sai da linha do ledger que já
+    // carrega ESSE case_id. Mesmo miolo do cron; efeitos idempotentes por caso.
+    try {
+      const desfecho = await recuperarContestacaoPeloCaso({
+        supabase,
+        token: credenciaisMp.token,
+        vendedorId: deps.vendedorId,
+        fetchImpl: deps.fetchImpl,
+        caseId: dataIdStr,
+        rotulo: "webhook-mercadopago",
+        avisar: (chave, aviso) =>
+          avisarAdminUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ?? disparoPushContadoReal,
+            chave,
+            aviso,
+          }),
+      });
+      return json({ ok: true, resultado: "contestacao_recuperada_pelo_caso", desfecho }, 200);
+    } catch (erro) {
+      // Falha transitória: 500 mantém o evento na fila do MP, que reenvia.
+      console.error("webhook-mercadopago: recuperar contestação pelo caso falhou — evento mantido na fila do MP", erro);
+      return json({ error: "Erro ao recuperar a contestação." }, 500);
+    }
   }
 
   // As duas rotas convergem nestas cinco variáveis antes do restante do
@@ -1576,13 +1620,24 @@ async function handler(
       );
     } else {
       try {
+        const resolvedorDoVendedor = criarResolvedorDeVendedor({
+          token: credenciaisMp.token,
+          fetchImpl: deps.fetchImpl,
+        });
         await registrarDesfechoDoEstorno({
           supabase,
           orderId,
           rota: formatoConfiavelParaEstorno,
           corpo: corpoConfiavelParaEstorno,
-          consultarCaso: (caseId) =>
-            consultarContestacao({ token: credenciaisMp.token, caseId, fetchImpl: deps.fetchImpl }),
+          consultarCaso: async (caseId) =>
+            consultarContestacao({
+              token: credenciaisMp.token,
+              caseId,
+              vendedorId: deps.vendedorId !== undefined
+                ? deps.vendedorId
+                : await resolvedorDoVendedor(),
+              fetchImpl: deps.fetchImpl,
+            }),
           avisar: (chave, aviso) =>
             avisarAdminUmaVez({
               supabase,

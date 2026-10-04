@@ -259,6 +259,10 @@ Deno.test("contrato com a edge: mesmas RPCs, argumento e ESTADOS do SQL, chave c
     webhook.split('title: "Cobrança de cartão duplicada?"').length - 1,
     2,
   );
-  // o push contado devolve o número de inscrições que receberam
-  assertStringIncludes(c, "return resumo.enviados;");
+  // o push contado devolve o número de inscrições que receberam — FASE 2: ele
+  // mora em `_shared/aviso-ao-lojista.ts` (o webhook e o cron usam o MESMO).
+  assertStringIncludes(
+    norm(lerArquivo("supabase/functions/_shared/aviso-ao-lojista.ts")),
+    "return resumo.enviados;",
+  );
 });
