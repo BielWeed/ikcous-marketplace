@@ -203,32 +203,41 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   assert(/- name: Aplica as migrations do zero\n\s+id: aplica\n\s+run: node tests\/banco\/aplicar-migrations\.cjs/.test(bloqueante));
   const passos = bloqueante.split(/\n {6}- /).slice(1);
   const provas = passos.filter((p) => /tests\/banco\/(rodar-isolado\.cjs|invariantes-dinheiro\.cjs)/.test(p));
-  assertEquals(provas.length, 11, "as 11 provas de dinheiro");
-  // Inclusive a da 20261199000000 (portas do painel), que entrou depois.
-  assertEquals(
-    provas.filter((p) => p.includes("tests/banco/admin-atual-portas-viva.cjs")).length,
-    1,
-    "a prova das portas do painel (99) está no job do dinheiro",
-  );
-  // E a da 20261200000000 (decisão da devolução), com o mesmo `if` do laço abaixo.
-  assertEquals(
-    provas.filter((p) => p.includes("tests/banco/admin-atual-devolucao-viva.cjs")).length,
-    1,
-    "a prova da decisão da devolução (200) está no job do dinheiro",
-  );
-  // E a da 20261198000000 (cancelar anula a cobrança): dinheiro, bloqueante.
-  assertEquals(
-    provas.filter((p) => p.includes("tests/banco/cancelar-pedido-viva.cjs")).length,
-    1,
-    "a prova do cancelamento (98) está no job do dinheiro",
-  );
-  // E a prova COMPOSTA da ordem das travas (96 × 98 × 97/94/89 × reemitir,
-  // ciclo de 3 conexões): dinheiro, bloqueante.
-  assertEquals(
-    provas.filter((p) => p.includes("tests/banco/ordem-das-travas-composta-viva.cjs")).length,
-    1,
-    "a prova composta da ordem das travas está no job do dinheiro",
-  );
+  // A lista é por NOME, não só por número: cada prova de dinheiro aparece
+  // exatamente uma vez, e nenhuma prova fica no job sem estar aqui. Na
+  // integração das branches, as listas se SOMAM (união dos nomes) e a
+  // contagem segue a lista; nenhuma prova pode sumir na soma.
+  const PROVAS_DO_DINHEIRO = [
+    "tests/banco/devolucoes-viva.cjs",
+    "tests/banco/cartao-online-viva.cjs",
+    "tests/banco/financeiro-viva.cjs",
+    "tests/banco/pagamentos-rpc-viva.cjs",
+    "tests/banco/admin-atual-viva.cjs",
+    // 20261199000000: portas do painel.
+    "tests/banco/admin-atual-portas-viva.cjs",
+    // 20261200000000: a decisão da devolução exige o admin de agora.
+    "tests/banco/admin-atual-devolucao-viva.cjs",
+    "tests/banco/contestacao-viva.cjs",
+    // 20261198000000: cancelar anula a cobrança.
+    "tests/banco/cancelar-pedido-viva.cjs",
+    // Ordem das travas COMPOSTA (96 x 98 x 97/94/89 x reemitir, ciclo de 3).
+    "tests/banco/ordem-das-travas-composta-viva.cjs",
+    "tests/banco/invariantes-dinheiro.cjs",
+  ];
+  for (const prova of PROVAS_DO_DINHEIRO) {
+    assertEquals(
+      provas.filter((p) => p.includes(prova)).length,
+      1,
+      `${prova} tem de rodar exatamente uma vez no job do dinheiro`,
+    );
+  }
+  for (const passo of provas) {
+    assert(
+      PROVAS_DO_DINHEIRO.some((prova) => passo.includes(prova)),
+      `prova no job do dinheiro sem nome na lista: ${passo.split("\n")[0]}`,
+    );
+  }
+  assertEquals(provas.length, PROVAS_DO_DINHEIRO.length, "uma prova por nome da lista");
   for (const passo of provas) {
     assertStringIncludes(
       passo,
