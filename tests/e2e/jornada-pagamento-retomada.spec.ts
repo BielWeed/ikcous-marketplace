@@ -18,6 +18,13 @@ import {
  * da leitura dar certo. NÃO prova: a RLS real de `marketplace_orders`, o
  * tempo limite de 15 s da leitura (aqui a falha é um 500 imediato) nem a
  * reconsulta do MESMO QR pela edge real.
+ *
+ * O `user_id` no select (048d2572): a leitura é a MESMA para o toque e para a
+ * recarga da aba, e só a RECARGA confere o dono na linha (pedido de outra
+ * conta sai calado — a RLS deixa o admin ler pedido alheio). Esta jornada é
+ * o TOQUE: ela fixa o select exato, mas não exercita a conferência do dono;
+ * quem prova o descarte de pedido de outra conta é
+ * `tests/front/checkout-retomada-recarga.test.tsx`.
  */
 
 test.afterEach(exigirRedeSemImprevistos);
@@ -32,6 +39,10 @@ const PEDIDO_PENDENTE: PedidoSimulado = {
   expires_at: new Date(Date.now() + 20 * 60_000).toISOString(),
   created_at: new Date().toISOString(),
 };
+
+/** O select EXATO da leitura da retomada, na ordem que a tela pede. */
+const SELECT_DA_RETOMADA =
+  "total,metodo_online,gateway_payment_id,payment_status,status,user_id";
 
 test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "Tentar de novo" relê e abre o PIX', async ({
   page,
@@ -78,10 +89,7 @@ test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "T
   // assentada, UMA leitura (a que falhou) e nenhuma cobrança.
   await esperarTelaAssentar(page);
   expect(leiturasDaRetomada()).toEqual([
-    {
-      select: "total,metodo_online,gateway_payment_id,payment_status,status",
-      falhou: true,
-    },
+    { select: SELECT_DA_RETOMADA, falhou: true },
   ]);
   expect(sim.chamadasDoPagamento).toEqual([]);
 
@@ -92,6 +100,11 @@ test('retomar pagamento com a leitura do pedido falhando: avisa sem cobrar, e "T
   await expect(page.getByRole("alert")).toHaveCount(0);
 
   expect(leiturasDaRetomada().map((l) => l.falhou)).toEqual([true, false]);
+  // A releitura do "Tentar de novo" pede o MESMO select (com o dono).
+  expect(leiturasDaRetomada()).toEqual([
+    { select: SELECT_DA_RETOMADA, falhou: true },
+    { select: SELECT_DA_RETOMADA, falhou: false },
+  ]);
   // UMA cobrança, do pedido retomado — nunca pedido novo.
   expect(sim.chamadasDoPagamento).toEqual([
     { orderId: PEDIDO_PENDENTE.id, metodo: "pix" },
