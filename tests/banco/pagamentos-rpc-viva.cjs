@@ -51,6 +51,10 @@
  *        gravam UMA linha de histórico.
  *   (12) preflight B1_BASELINE_DIVERGENT e rollback-manual da migration
  *        20261195000000 aplicados de verdade, dentro de BEGIN/ROLLBACK.
+ *   (13) preflight do rollback-manual da 20261195000000: com a 20261197000000
+ *        no ar, (e) o rollback RECUSA sem tocar em função, ACL nem config; os
+ *        casos (a)-(d) rodam na 95 ISOLADA (97 desfeita só na transação) e a
+ *        97 volta intacta no fim.
  *
  * Linhas marcadas `ACHADO:` abaixo documentam comportamento ATUAL que merece
  * olhar do dono do produto — o teste afirma o que o banco FAZ hoje, para o
@@ -1958,6 +1962,25 @@ function dividirEmComandos(sql) {
   return comandos;
 }
 
+/**
+ * Roda `sql` comando a comando, cada um no seu SAVEPOINT, parando no 1º erro
+ * (o modo `psql -v ON_ERROR_STOP=1 -f` sem `-1`). Devolve o erro, ou null.
+ * Precisa de transação aberta.
+ */
+async function rodarComandoAComando(c, sql) {
+  for (const comando of dividirEmComandos(sql)) {
+    await c.query("SAVEPOINT comando");
+    try {
+      await c.query(comando);
+      await c.query("RELEASE SAVEPOINT comando");
+    } catch (erro) {
+      await c.query("ROLLBACK TO SAVEPOINT comando");
+      return erro;
+    }
+  }
+  return null;
+}
+
 const resumoDoPerfil = (rows) =>
   rows
     .map(
@@ -1990,14 +2013,31 @@ PROVAS.push({
     const passo = (rotulo, rows) =>
       console.log(`    [13 ${rotulo}] ${resumoDoPerfil(rows)}`);
 
-    const posMigration = await perfilDasFuncoes(c);
-    passo("estado pós-20261195", posMigration);
-    assert.deepEqual(hashesDe(posMigration), novos);
-    const segurancaInicial = seguranca(posMigration);
+    // O estado VIVO de antes da seção: pós-20261195, ou pós-20261197 quando a
+    // 97 (guarda do admin ATUAL) está no ar — ela redefine SÓ
+    // registrar_pagamento_recebido. É este perfil (hash, ACL, secdef, config)
+    // que tem de estar de volta depois do ROLLBACK do fim.
+    const com97 = await a97EstaNoAr(c);
+    const vivoInicial = await perfilDasFuncoes(c);
+    passo(com97 ? "estado vivo pós-20261197" : "estado pós-20261195", vivoInicial);
+    assert.equal(
+      vivoInicial[0].md5,
+      novos.confirmar,
+      "confirmar_pagamento é o da 95 (a 97 não a toca)",
+    );
+    if (com97) {
+      assert.notEqual(
+        vivoInicial[1].md5,
+        novos.registrar,
+        "com a 97 no ar o corpo vivo de registrar_pagamento_recebido é o dela",
+      );
+    } else {
+      assert.deepEqual(hashesDe(vivoInicial), novos);
+    }
 
-    // Fixture de uma redefinição POSTERIOR (o lote 97 do integrador AINDA NÃO
-    // EXISTE em nenhuma branch): o corpo pós-20261195 com UM comentário a mais
-    // — inócuo no comportamento, mas hash diferente. É FIXTURE, não o 97 real.
+    // Fixture de uma redefinição POSTERIOR genérica: o corpo pós-20261195 com
+    // UM comentário a mais — inócuo no comportamento, mas hash diferente. A
+    // redefinição posterior REAL (a 97) é o caso (e), quando está no ar.
     const divergirComComentario = async (assinatura) => {
       const def = (
         await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
@@ -2014,6 +2054,52 @@ PROVAS.push({
 
     await c.query("BEGIN");
     try {
+      if (com97) {
+        // (e) Redefinição posterior REAL: com a 97 no ar, o rollback da 95
+        // RECUSA nomeando só registrar_pagamento_recebido, e NADA muda em
+        // nenhuma das duas funções (hash, ACL, SECURITY DEFINER, config) —
+        // nem de uma vez, nem comando a comando. "De uma vez" prova a recusa
+        // e a mensagem (o que nada grava ali é a transação, como no psql -1);
+        // quem prova que a guarda vem ANTES de qualquer CREATE é só o modo
+        // comando a comando — não o remova achando que é redundante.
+        await c.query("SAVEPOINT sobre_a_97");
+        await assert.rejects(
+          () => c.query(sqlRollback),
+          (erro) => {
+            assert.match(erro.message, /B1_BASELINE_DIVERGENT/);
+            assert.match(
+              erro.message,
+              /registrar_pagamento_recebido \(hash [0-9a-f]{32}\)/,
+            );
+            assert.doesNotMatch(erro.message, /confirmar_pagamento \(hash/);
+            return true;
+          },
+          "(e) o rollback da 95 não pode apagar a 97",
+        );
+        await c.query("ROLLBACK TO SAVEPOINT sobre_a_97");
+        const depoisE = await perfilDasFuncoes(c);
+        passo("e: 97 no ar, depois da recusa", depoisE);
+        assert.deepEqual(depoisE, vivoInicial, "(e) NENHUMA função foi tocada");
+        const recusouE = await rodarComandoAComando(c, sqlRollback);
+        assert.ok(
+          recusouE && /B1_BASELINE_DIVERGENT/.test(recusouE.message),
+          "(e) comando a comando, o preflight recusa antes de qualquer CREATE",
+        );
+        assert.deepEqual(
+          await perfilDasFuncoes(c),
+          vivoInicial,
+          "(e) comando a comando, nada gravado",
+        );
+        // Daqui em diante, a 95 ISOLADA: a 97 desfeita SÓ nesta transação (o
+        // ROLLBACK do fim a devolve — conferido depois do finally).
+        await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
+      }
+
+      const posMigration = await perfilDasFuncoes(c);
+      passo("estado pós-20261195", posMigration);
+      assert.deepEqual(hashesDe(posMigration), novos);
+      const segurancaInicial = seguranca(posMigration);
+
       // (a) Estado pós-20261195: o rollback passa e restaura os ORIGINAIS.
       await c.query("SAVEPOINT pos_migration");
       await c.query(sqlRollback);
@@ -2121,18 +2207,7 @@ PROVAS.push({
           /^DO \$preflight_rollback_20261195\$/,
           "o preflight é o primeiro comando do arquivo",
         );
-        let recusou = null;
-        for (const comando of comandos) {
-          await c.query("SAVEPOINT comando");
-          try {
-            await c.query(comando);
-            await c.query("RELEASE SAVEPOINT comando");
-          } catch (erro) {
-            await c.query("ROLLBACK TO SAVEPOINT comando");
-            recusou = erro;
-            break;
-          }
-        }
+        const recusou = await rodarComandoAComando(c, sqlRollback);
         assert.ok(
           recusou && /B1_BASELINE_DIVERGENT/.test(recusou.message),
           `${rotulo}: o preflight tinha de recusar no modo comando a comando`,
@@ -2203,8 +2278,10 @@ PROVAS.push({
       await c.query("ROLLBACK");
     }
 
-    // Tudo desfeito: o banco voltou ao estado pós-20261195, ACL incluída.
-    assert.deepEqual(await perfilDasFuncoes(c), posMigration);
+    // Tudo desfeito: o banco voltou ao estado VIVO de antes da seção (o da 97,
+    // se ela estava no ar), ACL, SECURITY DEFINER e config incluídos.
+    assert.deepEqual(await perfilDasFuncoes(c), vivoInicial);
+    assert.equal(await a97EstaNoAr(c), com97, "a 97 voltou intacta");
   },
 });
 
