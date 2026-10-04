@@ -1,7 +1,11 @@
 -- ROLLBACK MANUAL da 20261195000000_recusado_e_recebido_recusam_nulo.sql
 -- Restaura, byte a byte, os dois corpos vigentes antes dela: confirmar_pagamento
 -- (20260901000000, md5 b34f8033380177a45d500a2360ba2bdd) e registrar_pagamento_recebido
--- (20261020000000, md5 ac0b2d9856a1c3d2d38add0b5d737575). Aplicar com `psql -1 -f`: sem
+-- (20261020000000, md5 ac0b2d9856a1c3d2d38add0b5d737575). Aplicar SEMPRE com
+-- `psql -1 -v ON_ERROR_STOP=1 -f` (mesmo padrão do runbook
+-- docs/runbooks/publicar-painel-cartao-devolucoes.md): sem `-1` e sem
+-- ON_ERROR_STOP o psql CONTINUA depois da recusa do preflight e os CREATE
+-- abaixo rodam assim mesmo — medido na revisão de 8565ee8c. Sem
 -- BEGIN/COMMIT (regra da casa) e sem GRANT/REVOKE (CREATE OR REPLACE preserva
 -- a ACL). Não há dado a desfazer — a migration só trocou corpo de função.
 -- Depois de aplicar, NULL em 'recusado' volta a devolver estoque e NULL em
@@ -23,7 +27,7 @@
 -- funções) apagaria o corpo dela em silêncio. Os quatro hashes são o md5 REAL
 -- dos corpos e estão amarrados ao texto dos arquivos por
 -- tests/migration_recusado_e_recebido_recusam_nulo_test.ts. O DO block roda na
--- MESMA transação do `psql -1 -f`: recusa = nada gravado.
+-- MESMA transação do `psql -1 -v ON_ERROR_STOP=1 -f`: recusa = nada gravado.
 
 DO $preflight_rollback_20261195$
 DECLARE

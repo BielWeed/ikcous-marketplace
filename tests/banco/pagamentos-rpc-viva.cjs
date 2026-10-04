@@ -1887,9 +1887,12 @@ async function perfilDasFuncoes(c) {
 /**
  * Divide um arquivo .sql em comandos (fim em `;` fora de comentário `--`,
  * de string '...' e de dollar-quote `$tag$...$tag$`). Serve para executar o
- * rollback COMANDO A COMANDO, como `psql -f` sem `-1`: aí cada comando é a sua
- * própria transação, e um preflight que não seja o PRIMEIRO comando deixa o
- * que veio antes dele gravado quando recusa.
+ * rollback COMANDO A COMANDO, como `psql -v ON_ERROR_STOP=1 -f` sem `-1`: aí
+ * cada comando é a sua própria transação e o psql PARA no primeiro erro, e um
+ * preflight que não seja o PRIMEIRO comando deixa o que veio antes dele gravado
+ * quando recusa. Sem ON_ERROR_STOP o psql continua depois do erro e os CREATE
+ * rodam mesmo assim — por isso o cabeçalho do rollback manda `-1` e
+ * ON_ERROR_STOP=1 (revisão de 8565ee8c).
  */
 function dividirEmComandos(sql) {
   const comandos = [];
@@ -2090,9 +2093,11 @@ PROVAS.push({
         passo(`c: ${rotulo} (depois da recusa)`, depois);
         assert.deepEqual(depois, antes, `${rotulo}: NENHUMA função foi tocada`);
 
-        // Comando a comando (psql -f SEM -1, cada comando a sua transação):
-        // o preflight é o PRIMEIRO comando, então a recusa para tudo antes de
-        // qualquer CREATE — nenhuma função muda, nem a que estava íntegra.
+        // Comando a comando (psql -v ON_ERROR_STOP=1 -f SEM -1: cada comando a
+        // sua transação, parando no 1º erro): o preflight é o PRIMEIRO
+        // comando, então a recusa para tudo antes de qualquer CREATE — nenhuma
+        // função muda, nem a que estava íntegra. Sem ON_ERROR_STOP isso NÃO
+        // vale (o psql seguiria para os CREATE); o modo seguro é o do cabeçalho.
         const comandos = dividirEmComandos(sqlRollback);
         assert.equal(comandos.length, 3, "preflight + 2 CREATE");
         assert.match(
