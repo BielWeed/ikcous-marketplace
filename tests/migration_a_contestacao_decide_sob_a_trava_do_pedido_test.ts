@@ -169,6 +169,8 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
   assert(!/^\s*continue-on-error:/m.test(bloqueante), "o job do dinheiro não pode ser informacional");
   for (const prova of [
     "tests/banco/pagamentos-rpc-viva.cjs",
+    "tests/banco/admin-atual-viva.cjs",
+    "tests/banco/admin-atual-portas-viva.cjs",
     "tests/banco/devolucoes-viva.cjs",
     "tests/banco/cartao-online-viva.cjs",
     "tests/banco/financeiro-viva.cjs",
@@ -196,7 +198,13 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
   assert(/- name: Aplica as migrations do zero\n\s+id: aplica\n\s+run: node tests\/banco\/aplicar-migrations\.cjs/.test(bloqueante));
   const passos = bloqueante.split(/\n {6}- /).slice(1);
   const provas = passos.filter((p) => /tests\/banco\/(rodar-isolado\.cjs|invariantes-dinheiro\.cjs)/.test(p));
-  assertEquals(provas.length, 7, "as 7 provas de dinheiro");
+  assertEquals(provas.length, 8, "as 8 provas de dinheiro");
+  // Inclusive a da 20261199000000 (portas do painel), que entrou depois.
+  assertEquals(
+    provas.filter((p) => p.includes("tests/banco/admin-atual-portas-viva.cjs")).length,
+    1,
+    "a prova das portas do painel (99) está no job do dinheiro",
+  );
   for (const passo of provas) {
     assertStringIncludes(
       passo,
