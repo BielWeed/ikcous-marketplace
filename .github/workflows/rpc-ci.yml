@@ -169,6 +169,16 @@ jobs:
       - name: Prova viva do cancelamento que anula a cobrança (migration 20261198000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cancelar-pedido-viva.cjs
+      # A ORDEM GLOBAL DAS TRAVAS composta (linhas de order_refunds do pedido
+      # por id -> marketplace_orders): cada par de RPCs que mexem no ledger
+      # (contestação/REF externo/autorização da 96, concluir_estorno, estorno
+      # manual, cancelamento da 98, reemissão da devolução) com DUAS conexões
+      # reais — a 2ª parada em Lock, nenhum 40P01 — e um ciclo de TRÊS
+      # conexões; cada caso tem o CONTROLE com o pedido travado primeiro, que
+      # dá 40P01. CLONE próprio.
+      - name: Prova viva da ordem das travas composta (96, 97, 98 e reemissão)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/ordem-das-travas-composta-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
