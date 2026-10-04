@@ -34,6 +34,7 @@ import {
   deviceIdValido,
   lerDeviceIdDoMercadoPago,
 } from "./device-id-mercado-pago";
+import { emailDeTesteDoMercadoPago } from "./email-de-teste-do-mercado-pago";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -306,6 +307,7 @@ export function montarCorpoDoCartao({
   adicionais,
   config,
   deviceId,
+  emailDeTeste = emailDeTesteDoMercadoPago(),
 }: {
   orderId: string;
   dados: DadosDoCartaoDoBrick | null | undefined;
@@ -314,6 +316,9 @@ export function montarCorpoDoCartao({
   // Device ID do comprador (antifraude do MP; ver `device-id-mercado-pago.ts`).
   // Opcional: ausente ou fora do formato SAI DO CORPO — nunca bloqueia nada.
   deviceId?: string | null;
+  // Só a prévia de desenvolvimento (ver `email-de-teste-do-mercado-pago.ts`);
+  // fora dela é sempre `null`. Parâmetro só para o teste injetar o ambiente.
+  emailDeTeste?: string | null;
 }): { ok: true; corpo: CorpoDoCartao } | { ok: false; mensagem: string } {
   const token = textoNaoVazio(dados?.token);
   const paymentMethodId = textoNaoVazio(dados?.payment_method_id);
@@ -376,7 +381,10 @@ export function montarCorpoDoCartao({
     };
   }
 
-  const email = textoNaoVazio(dados?.payer?.email);
+  // Opção de teste ligada: o e-mail da tentativa É o literal de teste, diga o
+  // Brick o que disser (omitido ou outro) — a garantia mora aqui, no corpo que
+  // vai para a edge, e não no `initialization` do Brick.
+  const email = emailDeTeste ?? textoNaoVazio(dados?.payer?.email);
   return {
     ok: true,
     corpo: {
@@ -702,7 +710,10 @@ export function montarBrickDeCartao({
 
       // @ts-expect-error o SDK entra pelo global
       const mp = new globalThis.MercadoPago(publicKey, { locale: "pt-BR" });
-      const email = textoNaoVazio(emailDoPagador);
+      // Prévia de desenvolvimento com a opção de teste: o Brick já nasce com o
+      // e-mail de teste (o corpo também o força — ver `montarCorpoDoCartao`).
+      const email =
+        emailDeTesteDoMercadoPago() ?? textoNaoVazio(emailDoPagador);
 
       const criado = await mp.bricks().create("cardPayment", containerId, {
         initialization: {
