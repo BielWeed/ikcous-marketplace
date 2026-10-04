@@ -21,6 +21,7 @@ import {
   rotuloDoStatus,
   sentidoDoLancamento,
 } from "@/lib/financeiro";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type {
   ContaFinanceira,
   DataIso,
@@ -102,7 +103,7 @@ export function DetalheDoLancamentoFolha({
                 className={`${CLASSE_BOTAO_SECUNDARIO} flex-1`}
               >
                 <ExternalLink aria-hidden="true" className="size-4" />
-                Abrir pedido #{linha.pedidoId.slice(-6)}
+                Abrir pedido #{numeroDoPedido(linha.pedidoId)}
               </button>
             ) : null}
             {podeMexer && linha.status === "previsto" ? (

@@ -1060,7 +1060,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // Dispara aviso Toast
       if (payload.eventType === "INSERT") {
         const newId = payload.new?.id;
-        toast.info(`Novo pedido recebido! #${newId ? newId.slice(-6) : ""}`, {
+        toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
           action: {
             label: "Ver",
             onClick: () => {
@@ -1082,7 +1082,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           setRevalidacaoDaFicha((n) => n + 1);
         }
         toast.info(
-          `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
+          `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
         );
       }
 

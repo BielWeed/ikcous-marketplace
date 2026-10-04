@@ -11,15 +11,20 @@
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order } from "@/types";
 
 const ID_DO_PEDIDO = "pedido-c35ce4dd-7a1b-4c2d-9e8f-0a1b2c3884be";
 
-const { invoke, getSession } = vi.hoisted(() => ({
+const { invoke, getSession, eventoRealtime } = vi.hoisted(() => ({
   invoke: vi.fn(),
   getSession: vi.fn(),
+  // O callback que a tela registra no `useOrders` para os eventos realtime.
+  eventoRealtime: {
+    atual: undefined as ((payload: unknown) => void) | undefined,
+  },
 }));
 
 vi.mock("@/lib/supabase", () => ({
@@ -101,14 +106,21 @@ vi.mock("@/hooks/useOrders", async () => {
     );
   return {
     ErroPedidoMudou,
-    useOrders: () => ({
-      orders: mockOrders,
-      loadOrders: vi.fn(),
-      updateOrderStatus: vi.fn(async () => {}),
-      totalOrders: mockOrders.length,
-      isLoaded: true,
-      loading: false,
-    }),
+    useOrders: (
+      _ativo: boolean,
+      _admin: boolean,
+      opcoes?: { onRealtimeEvent?: (payload: unknown) => void },
+    ) => {
+      eventoRealtime.atual = opcoes?.onRealtimeEvent;
+      return {
+        orders: mockOrders,
+        loadOrders: vi.fn(),
+        updateOrderStatus: vi.fn(async () => {}),
+        totalOrders: mockOrders.length,
+        isLoaded: true,
+        loading: false,
+      };
+    },
   };
 });
 
@@ -288,5 +300,45 @@ describe("Painel — o aviso ao cliente usa o número que ele vê (#3884BE)", ()
 
     const titulo = hospedeiro.querySelector("h1");
     expect(titulo?.textContent).toBe("Pedido #3884BE");
+  });
+
+  // Os dois toasts do realtime chegam pelo callback que a PRÓPRIA tela
+  // registra no `useOrders` — o teste dispara o evento por ele, não chama o
+  // toast direto.
+  it("toast de pedido novo (realtime INSERT): '#3884BE'", async () => {
+    await montar();
+
+    expect(eventoRealtime.atual).toBeTypeOf("function");
+    await act(async () => {
+      eventoRealtime.atual?.({
+        eventType: "INSERT",
+        new: { ...pedido, id: ID_DO_PEDIDO },
+      });
+      await esperar(0);
+    });
+
+    const aviso = vi
+      .mocked(toast.info)
+      .mock.calls.map(([texto]) => String(texto))
+      .find((texto) => texto.includes("Novo pedido recebido"));
+    expect(aviso).toBe("Novo pedido recebido! #3884BE");
+  });
+
+  it("toast de pedido atualizado (realtime UPDATE): '#3884BE'", async () => {
+    await montar();
+
+    await act(async () => {
+      eventoRealtime.atual?.({
+        eventType: "UPDATE",
+        new: { id: ID_DO_PEDIDO, status: "shipped" },
+      });
+      await esperar(0);
+    });
+
+    const aviso = vi
+      .mocked(toast.info)
+      .mock.calls.map(([texto]) => String(texto))
+      .find((texto) => texto.includes("atualizado para"));
+    expect(aviso).toContain("Pedido #3884BE atualizado para");
   });
 });
