@@ -3486,11 +3486,18 @@ export function useOrders(
           // Corpo ilegível: fica a mensagem genérica, que é melhor que vazar
           // o texto cru de um erro de infraestrutura para o cliente.
         }
+        // Confirmação do cartão sem fim (03/10/2026, achado M1 da revisão de
+        // risco): o status HTTP viaja junto — `terminal: true` sozinho não
+        // diz se é o PEDIDO que não espera mais pagamento (409/404) ou o
+        // SERVIDOR que não conseguiu agora (o 503 "Pagamento indisponível."
+        // também é terminal). Aditivo: quem não lê o campo segue igual.
+        const httpStatus = (error as any).context?.status;
         throw Object.assign(new Error(mensagem), {
           terminal,
           cartaoEmAnalise,
           ...(codigo ? { codigo } : {}),
           ...(verificacao ? { verificacao } : {}),
+          ...(typeof httpStatus === "number" ? { httpStatus } : {}),
         });
       }
       if (data?.error) {

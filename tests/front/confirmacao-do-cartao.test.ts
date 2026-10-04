@@ -1,6 +1,7 @@
 // Tradução da consulta SEM COBRANÇA (`verificar`) na tela do cartão — ver
 // `src/components/checkout/confirmacao-do-cartao.ts`. Toda dúvida cai num
-// desfecho que não promete nada; recusa só com o token de cerca.
+// desfecho que não promete nada; recusa só com o token de cerca; terminal só
+// quando fala do PEDIDO (409/404).
 import { describe, expect, it } from "vitest";
 
 import {
@@ -8,12 +9,18 @@ import {
   desfechoDoErroDaConsulta,
 } from "@/components/checkout/confirmacao-do-cartao";
 
-const AGORA = Date.parse("2026-10-03T23:00:00.000Z");
-const FUTURO = "2026-10-03T23:30:00.000Z";
-const PASSADO = "2026-10-03T22:30:00.000Z";
+const FUTURO = "2999-01-01T00:00:00.000Z";
+const PASSADO = "2000-01-01T00:00:00.000Z";
 const CERCA = "ORD-A";
-const comCerca = { cerca: CERCA, agoraMs: AGORA };
-const semCerca = { cerca: null, agoraMs: AGORA };
+const comCerca = { cerca: CERCA };
+const semCerca = { cerca: null };
+
+function erroDaEdge(
+  mensagem: string,
+  campos: Record<string, unknown>,
+): Error & Record<string, unknown> {
+  return Object.assign(new Error(mensagem), campos);
+}
 
 describe("desfechoDaConsultaDoCartao", () => {
   it("corpo ilegível ou status desconhecido: sem resposta (a cadência segue)", () => {
@@ -32,14 +39,10 @@ describe("desfechoDaConsultaDoCartao", () => {
   it("pago: aprovado, com ou sem cerca", () => {
     expect(
       desfechoDaConsultaDoCartao({ verificacao: "pago" }, comCerca),
-    ).toEqual({
-      tipo: "aprovado",
-    });
+    ).toEqual({ tipo: "aprovado" });
     expect(
       desfechoDaConsultaDoCartao({ verificacao: "pago" }, semCerca),
-    ).toEqual({
-      tipo: "aprovado",
-    });
+    ).toEqual({ tipo: "aprovado" });
   });
 
   it("em análise e desafio: só com order; order de OUTRA tentativa vira indefinida", () => {
@@ -82,20 +85,16 @@ describe("desfechoDaConsultaDoCartao", () => {
     ).toBe("aguardando-banco");
   });
 
-  it("vaga solta: encerrada dentro do prazo, prazo-acabou fora dele — e NUNCA sem cerca", () => {
+  it("vaga solta: encerrada com cerca (o prazo NÃO é decidido pelo relógio do aparelho) — e NUNCA sem cerca", () => {
     for (const verificacao of ["recusado", "livre"]) {
-      expect(
-        desfechoDaConsultaDoCartao({ verificacao, expiraEm: FUTURO }, comCerca)
-          .tipo,
-      ).toBe("encerrada");
-      expect(
-        desfechoDaConsultaDoCartao({ verificacao, expiraEm: PASSADO }, comCerca)
-          .tipo,
-      ).toBe("prazo-acabou");
-      expect(
-        desfechoDaConsultaDoCartao({ verificacao, expiraEm: FUTURO }, semCerca)
-          .tipo,
-      ).toBe("indefinida");
+      for (const expiraEm of [FUTURO, PASSADO, undefined]) {
+        expect(
+          desfechoDaConsultaDoCartao({ verificacao, expiraEm }, comCerca).tipo,
+        ).toBe("encerrada");
+        expect(
+          desfechoDaConsultaDoCartao({ verificacao, expiraEm }, semCerca).tipo,
+        ).toBe("indefinida");
+      }
     }
   });
 
@@ -111,20 +110,29 @@ describe("desfechoDaConsultaDoCartao", () => {
 });
 
 describe("desfechoDoErroDaConsulta", () => {
-  it("só `terminal: true` literal é terminal, com a frase da edge", () => {
+  it("terminal só com `terminal: true` E 409/404 — a frase da edge vai para a tela", () => {
     expect(
       desfechoDoErroDaConsulta(
-        Object.assign(new Error("O prazo para pagar este pedido acabou."), {
+        erroDaEdge("Este pedido não está aguardando pagamento.", {
           terminal: true,
+          httpStatus: 409,
         }),
       ),
     ).toEqual({
       tipo: "terminal",
-      mensagem: "O prazo para pagar este pedido acabou.",
+      mensagem: "Este pedido não está aguardando pagamento.",
     });
     expect(
       desfechoDoErroDaConsulta(
-        Object.assign(new Error(""), { terminal: true }),
+        erroDaEdge("Pedido não encontrado.", {
+          terminal: true,
+          httpStatus: 404,
+        }),
+      ),
+    ).toEqual({ tipo: "terminal", mensagem: "Pedido não encontrado." });
+    expect(
+      desfechoDoErroDaConsulta(
+        erroDaEdge("", { terminal: true, httpStatus: 409 }),
       ),
     ).toEqual({
       tipo: "terminal",
@@ -132,13 +140,30 @@ describe("desfechoDoErroDaConsulta", () => {
     });
   });
 
-  it("rede, 503, tempo limite e `terminal` que não é booleano true: sem resposta", () => {
+  it("achado M1: o 503 'Pagamento indisponível.' marcado terminal NÃO encerra a tela", () => {
+    expect(
+      desfechoDoErroDaConsulta(
+        erroDaEdge("Pagamento indisponível.", {
+          terminal: true,
+          httpStatus: 503,
+        }),
+      ).tipo,
+    ).toBe("sem-resposta");
+    // Status ausente: falha fechada para o lado que não afirma nada.
+    expect(
+      desfechoDoErroDaConsulta(
+        erroDaEdge("Este pedido foi cancelado.", { terminal: true }),
+      ).tipo,
+    ).toBe("sem-resposta");
+  });
+
+  it("rede, tempo limite e `terminal` que não é booleano true: sem resposta", () => {
     expect(desfechoDoErroDaConsulta(new Error("Failed to fetch")).tipo).toBe(
       "sem-resposta",
     );
     expect(
       desfechoDoErroDaConsulta(
-        Object.assign(new Error("x"), { terminal: "true" }),
+        erroDaEdge("x", { terminal: "true", httpStatus: 409 }),
       ).tipo,
     ).toBe("sem-resposta");
     expect(desfechoDoErroDaConsulta(null).tipo).toBe("sem-resposta");

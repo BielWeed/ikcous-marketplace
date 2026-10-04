@@ -138,15 +138,6 @@ type EtapaDoCartao =
       { tipo: "erro" } | { tipo: "forma-desligada" } | { tipo: "em-duvida" }
     >;
 
-/**
- * Confirmação do cartão sem fim: a consulta provou a vaga desta tentativa
- * solta DEPOIS do prazo do pedido. "Não foi concluído", nunca "não foi
- * aprovado" (o 3DS só vencido também solta a vaga) — a mesma frase da regra
- * L1 do CheckoutView.
- */
-const MENSAGEM_CARTAO_NAO_CONCLUIDO_PRAZO_ACABOU =
-  "O pagamento com cartão não foi concluído, e o prazo para pagar este pedido acabou.";
-
 /** As etapas em que a tela consulta o servidor sozinha (com limite). */
 const ETAPAS_QUE_CONSULTAM: ReadonlySet<EtapaDoCartao["tipo"]> = new Set([
   "confirmando-desafio",
@@ -1109,7 +1100,6 @@ export function PagamentoComCartao({
       }
       const desfecho = desfechoDaConsultaDoCartao(resultado.resposta, {
         cerca,
-        agoraMs: Date.now(),
       });
       switch (desfecho.tipo) {
         case "aprovado":
@@ -1118,6 +1108,12 @@ export function PagamentoComCartao({
           );
           return;
         case "em-analise":
+          // Ressalva B4 da revisão de risco: vindo do 3DS SEM token, o
+          // `paymentId` desta resposta vira o token de cerca e arma o C6 do
+          // pai. Seguro pela invariante da vaga: o arme acontece DEPOIS da
+          // leitura que viu essa order na vaga, então uma vaga vazia depois
+          // prova que ela foi solta. A chave da consulta muda uma vez só
+          // (null → order); outra order depois disso vira `indefinida`.
           setEtapa((atual) =>
             atual.tipo === "confirmando-desafio"
               ? { tipo: "em-analise", paymentId: desfecho.paymentId }
@@ -1140,16 +1136,6 @@ export function PagamentoComCartao({
           setEtapa((atual) =>
             aindaConsulta(atual)
               ? { tipo: "recusado", motivo: MOTIVO_DA_TENTATIVA_ENCERRADA }
-              : atual,
-          );
-          return;
-        case "prazo-acabou":
-          setEtapa((atual) =>
-            aindaConsulta(atual)
-              ? {
-                  tipo: "encerrado",
-                  mensagem: MENSAGEM_CARTAO_NAO_CONCLUIDO_PRAZO_ACABOU,
-                }
               : atual,
           );
           return;
@@ -1562,8 +1548,8 @@ export function PagamentoComCartao({
                   Não pague de novo com cartão. Se o banco aprovar, a
                   confirmação aparece aqui e em Meus pedidos. Se tocar em
                   &quot;Pagar com PIX&quot;, este pagamento é conferido com o
-                  banco antes: se ele ainda puder ser aprovado, o PIX não é
-                  gerado.
+                  banco antes: o PIX só é gerado se o banco confirmar que o
+                  pagamento com cartão foi cancelado.
                 </p>
               </>
             ) : (

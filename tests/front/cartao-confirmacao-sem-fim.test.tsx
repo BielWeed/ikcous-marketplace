@@ -429,7 +429,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     expect(chamadasVerificar()).toBe(1);
   });
 
-  it("vaga solta com o prazo JÁ vencido: mensagem final, sem outro cartão e sem PIX", async () => {
+  it("vaga solta com o prazo JÁ vencido no relógio do aparelho: a tela NÃO decide prazo sozinha — recusa de sempre; quem diz 'prazo acabou' é o servidor", async () => {
     await chegarAoConfirmando();
     criarPagamento.mockResolvedValueOnce({
       verificacao: "livre",
@@ -439,10 +439,66 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
 
     await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
 
-    expect(hospedeiro.textContent).toContain(PRAZO_ACABOU);
-    expect(botao("Pagar com PIX")).toBeUndefined();
-    expect(botao("Tentar outro cartão")).toBeUndefined();
-    expect(botao("Ver meus pedidos")).toBeDefined();
+    expect(hospedeiro.textContent).toContain(MOTIVO_DA_TENTATIVA_ENCERRADA);
+    expect(hospedeiro.textContent).not.toContain(PRAZO_ACABOU);
+    expect(props.onCartaoEncerradoPelaConsulta).toHaveBeenCalledTimes(1);
+  });
+
+  it("3DS SEM token de cerca e vaga solta: a tela NÃO afirma recusa (sem prova de que era esta tentativa) — para no estado incerto", async () => {
+    await chegarAoConfirmando(null);
+    criarPagamento.mockResolvedValueOnce({
+      verificacao: "recusado",
+      paymentId: null,
+      expiraEm: PRAZO_FUTURO,
+    });
+
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
+
+    expect(hospedeiro.textContent).toContain(SEM_RESPOSTA);
+    expect(hospedeiro.textContent).not.toContain(MOTIVO_DA_TENTATIVA_ENCERRADA);
+    expect(props.onCartaoEncerradoPelaConsulta).not.toHaveBeenCalled();
+    await act(async () => {
+      botao("Pagar com PIX")?.click();
+    });
+    expect(props.onPagarComPix).toHaveBeenCalledWith(true);
+    await avancar(10 * 60_000);
+    expect(chamadasVerificar()).toBe(1);
+  });
+
+  it("3DS SEM token: 'em análise' com a order adota o token UMA vez e arma o C6 do pai; uma recusa depois é desta order", async () => {
+    await chegarAoConfirmando(null);
+    expect(props.onCartaoEmCurso).not.toHaveBeenCalledWith(
+      expect.objectContaining({ paymentId: expect.any(String) }),
+    );
+    criarPagamento
+      .mockResolvedValueOnce({
+        verificacao: "em_analise",
+        paymentId: ORDER,
+        expiraEm: PRAZO_FUTURO,
+      })
+      .mockResolvedValueOnce({
+        verificacao: "recusado",
+        paymentId: null,
+        expiraEm: PRAZO_FUTURO,
+      });
+
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
+    expect(hospedeiro.textContent).toContain(
+      "Pagamento em análise pelo banco.",
+    );
+    expect(props.onCartaoEmCurso).toHaveBeenLastCalledWith({
+      orderId: PEDIDO,
+      paymentId: ORDER,
+    });
+
+    // A chave mudou (null -> order): a cadência recomeça da 1ª espera.
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
+    expect(hospedeiro.textContent).toContain(MOTIVO_DA_TENTATIVA_ENCERRADA);
+    expect(props.onCartaoEncerradoPelaConsulta).toHaveBeenCalledWith({
+      orderId: PEDIDO,
+      paymentId: ORDER,
+    });
+    expect(chamadasVerificar()).toBe(2);
   });
 
   it("409 terminal da edge (o pedido não espera mais pagamento — o caso real medido): mensagem da edge, sem nova cobrança oferecida", async () => {
@@ -451,6 +507,7 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
       Object.assign(new Error("Este pedido não está aguardando pagamento."), {
         terminal: true,
         cartaoEmAnalise: false,
+        httpStatus: 409,
       }),
     );
 
@@ -464,6 +521,29 @@ describe("Confirmação do cartão depois do 3DS: nunca mais um spinner sem fim"
     expect(botao("Tentar outro cartão")).toBeUndefined();
     await avancar(10 * 60_000);
     expect(chamadasVerificar()).toBe(1);
+  });
+
+  it("achado M1: o 503 'Pagamento indisponível.' (marcado terminal pela edge) NÃO encerra a tela — a cadência segue e um 'pago' depois vira aprovado", async () => {
+    await chegarAoConfirmando();
+    criarPagamento
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Pagamento indisponível."), {
+          terminal: true,
+          cartaoEmAnalise: false,
+          httpStatus: 503,
+        }),
+      )
+      .mockResolvedValueOnce({ verificacao: "pago", paymentId: ORDER });
+
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS[0] + 1);
+    expect(hospedeiro.textContent).toContain(CONFIRMANDO);
+    expect(hospedeiro.textContent).not.toContain("Pagamento indisponível.");
+    // A tentativa continua armada para o pai (o C6 segue valendo).
+    expect(props.onCartaoEmCurso).not.toHaveBeenLastCalledWith(null);
+
+    await avancar(ESPERAS_DA_CONFIRMACAO_MS[1] + 1);
+    expect(hospedeiro.textContent).toContain(APROVADO);
+    expect(chamadasVerificar()).toBe(2);
   });
 
   it("rede caindo em toda consulta: a cadência inteira roda, para no estado incerto com PIX 'vivo', e os toques em 'Verificar de novo' têm teto", async () => {

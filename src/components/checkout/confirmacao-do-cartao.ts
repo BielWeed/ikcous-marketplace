@@ -75,8 +75,11 @@ export const ESPERA_ANTES_DO_AVISO_DO_APROVADO_MS = 60_000;
  * - `aguardando-banco`: o desafio 3DS ainda está aberto no Mercado Pago —
  *   o banco não decidiu. Continua consultando.
  * - `encerrada`: a vaga foi solta POR PROVA (o banco recusou ou o 3DS
- *   expirou) e ainda há prazo — "não foi concluído", com outro cartão/PIX.
- * - `prazo-acabou`: a vaga foi solta e o prazo do pedido já passou.
+ *   expirou) — "não foi concluído", com outro cartão/PIX. A tela NÃO decide
+ *   prazo pelo relógio do aparelho (ressalva B2 da revisão de risco: relógio
+ *   adiantado transformava recusa em "prazo acabou"); se o prazo já passou,
+ *   quem diz é o servidor — o 409 terminal da próxima chamada, ou a regra
+ *   L1 do CheckoutView, que lê o pedido no banco.
  * - `indefinida`: a resposta não fala da tentativa desta tela (outra
  *   order na vaga, PIX na vaga, sentinela) — para de consultar sem afirmar
  *   nada.
@@ -88,7 +91,6 @@ export type DesfechoDaConsultaDoCartao =
   | { readonly tipo: "em-analise"; readonly paymentId: string }
   | { readonly tipo: "aguardando-banco" }
   | { readonly tipo: "encerrada" }
-  | { readonly tipo: "prazo-acabou" }
   | { readonly tipo: "indefinida" }
   | { readonly tipo: "sem-resposta" };
 
@@ -101,13 +103,6 @@ function textoNaoVazio(valor: unknown): string | null {
   return typeof valor === "string" && valor.trim() !== "" ? valor.trim() : null;
 }
 
-function prazoVencido(expiraEm: unknown, agoraMs: number): boolean {
-  const texto = textoNaoVazio(expiraEm);
-  if (texto === null) return false;
-  const prazoMs = Date.parse(texto);
-  return Number.isFinite(prazoMs) && prazoMs <= agoraMs;
-}
-
 /**
  * Traduz o 200 do `verificar`. O corpo é DESCONHECIDO — campo a campo, e
  * toda dúvida cai num desfecho que não promete nada.
@@ -116,7 +111,7 @@ function prazoVencido(expiraEm: unknown, agoraMs: number): boolean {
  * gravou na vaga antes de responder ao cartão), ou `null` quando a resposta
  * do cartão não trouxe um. Ele decide quando a resposta fala DESTA
  * tentativa:
- * - `encerrada`/`prazo-acabou` só com token: sem ele não há prova de que a
+ * - `encerrada` só com token: sem ele não há prova de que a
  *   vaga solta era a desta tela (mesma regra do C6 no CheckoutView);
  * - `em-analise`/`aguardando-banco` com OUTRA order na vaga (outra aba
  *   começou outra tentativa) vira `indefinida` — esta tela não fala dela.
@@ -124,7 +119,7 @@ function prazoVencido(expiraEm: unknown, agoraMs: number): boolean {
  */
 export function desfechoDaConsultaDoCartao(
   resposta: unknown,
-  { cerca, agoraMs }: { cerca: string | null; agoraMs: number },
+  { cerca }: { cerca: string | null },
 ): DesfechoDaConsultaDoCartao {
   if (typeof resposta !== "object" || resposta === null) {
     return { tipo: "sem-resposta" };
@@ -149,9 +144,7 @@ export function desfechoDaConsultaDoCartao(
     case "recusado":
     case "livre":
       if (cerca === null) return { tipo: "indefinida" };
-      return prazoVencido(r.expiraEm, agoraMs)
-        ? { tipo: "prazo-acabou" }
-        : { tipo: "encerrada" };
+      return { tipo: "encerrada" };
     case "pix":
     case "sem_registro":
       return { tipo: "indefinida" };
@@ -163,17 +156,27 @@ export function desfechoDaConsultaDoCartao(
 const MENSAGEM_TERMINAL_PADRAO = "Este pedido não pode ser pago agora.";
 
 /**
- * Erro da consulta: só `terminal: true` literal é terminal (pedido que não
- * espera mais pagamento, prazo acabado, pedido não encontrado — a edge
- * responde 404 também para quem não é o dono, inclusive sessão que caiu).
- * Todo o resto — rede, 503, tempo limite — é "sem resposta": a consulta
- * não cobra, então a cadência pergunta de novo.
+ * Erro da consulta: terminal só quando fala do PEDIDO — `terminal: true`
+ * literal E status 409 (não espera mais pagamento, cancelado, prazo
+ * acabado) ou 404 (não encontrado; a edge responde 404 também para quem não
+ * é o dono, inclusive sessão que caiu). Achado M1 da revisão de risco: a
+ * edge também marca `terminal: true` no 503 "Pagamento indisponível." (sem
+ * credencial do Mercado Pago agora — inclusive falha passageira de leitura
+ * do cadastro), que NÃO diz nada sobre o pedido. Todo o resto — rede, 503,
+ * tempo limite, status ausente — é "sem resposta": a consulta não cobra,
+ * então a cadência pergunta de novo e termina, no pior caso, no estado
+ * incerto explícito (nunca numa afirmação falsa).
  */
 export function desfechoDoErroDaConsulta(
   erro: unknown,
 ): DesfechoDoErroDaConsulta {
-  const e = erro as { terminal?: unknown; message?: unknown } | null;
-  if (e?.terminal === true) {
+  const e = erro as {
+    terminal?: unknown;
+    message?: unknown;
+    httpStatus?: unknown;
+  } | null;
+  const falaDoPedido = e?.httpStatus === 409 || e?.httpStatus === 404;
+  if (e?.terminal === true && falaDoPedido) {
     return {
       tipo: "terminal",
       mensagem: textoNaoVazio(e.message) ?? MENSAGEM_TERMINAL_PADRAO,
