@@ -207,6 +207,15 @@ describe("useOrders — cancelamento de cliente offline não vira fila (achado 1
   });
 
   it("controle: ONLINE, o mesmo cancelamento do cliente segue para a RPC normalmente", async () => {
+    // S1 (04/10/2026, migration 20261198000000): pedido que a tela NÃO tem
+    // em memória passou a cancelar pela edge `criar-pagamento` (que anula a
+    // cobrança online antes) — "não sei" nunca vai pela RPC que só mexe no
+    // banco. Este controle é sobre o pedido NÃO online (pix pago, a
+    // fixture), então ele precisa estar semeado, como no caso offline acima.
+    localStorage.setItem(
+      "ikcous_orders_cache_cliente-1",
+      JSON.stringify([pedidoFake("pending")]),
+    );
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
     await act(async () => {
       raiz.render(<Alvo isAdmin={false} />);

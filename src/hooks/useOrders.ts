@@ -145,6 +145,162 @@ export class ErroCancelamentoOfflineRecusado extends Error {
 }
 
 /**
+ * S1 (dinheiro, 04/10/2026): cancelar pedido ONLINE passa pela edge
+ * `criar-pagamento` (ação `cancelar`), que ANULA a cobrança no Mercado Pago
+ * antes de cancelar no banco — `update_order_status_atomic` recusa cancelar
+ * pedido aguardando com cobrança na vaga (migration 20261198000000). Os
+ * desfechos são o contrato de `supabase/functions/criar-pagamento/
+ * cancelar-pedido.ts`.
+ */
+export type DesfechoDoCancelamento =
+  | "cancelado"
+  | "ja_pago"
+  | "em_analise"
+  | "mudou"
+  | "recuperavel"
+  | "recusado";
+
+export type RespostaDoCancelamento = {
+  desfecho: DesfechoDoCancelamento;
+  mensagem: string;
+  jaEstava?: boolean;
+  aviso?: string;
+  pedido?: { status?: string | null; paymentStatus?: string | null };
+};
+
+const DESFECHOS_DO_CANCELAMENTO: ReadonlySet<string> = new Set([
+  "cancelado",
+  "ja_pago",
+  "em_analise",
+  "mudou",
+  "recuperavel",
+  "recusado",
+]);
+
+export const MENSAGEM_CANCELAMENTO_RECUPERAVEL =
+  "Não foi possível cancelar agora. Tente de novo em instantes.";
+
+/**
+ * O cancelamento NÃO aconteceu — a edge respondeu (ou não respondeu) com
+ * outro desfecho. `desfecho` é o que a tela usa para decidir: `ja_pago`
+ * (o pedido foi pago: vai para a confirmação), `em_analise` (cartão em
+ * análise: não dá agora), `mudou`/`recuperavel` (tentar de novo),
+ * `recusado` (regra do pedido). Nenhuma mudança local foi pintada antes.
+ */
+export class ErroCancelamentoNaoConcluido extends Error {
+  readonly desfecho: Exclude<DesfechoDoCancelamento, "cancelado">;
+  readonly pedido?: RespostaDoCancelamento["pedido"];
+  constructor(resposta: RespostaDoCancelamento) {
+    super(resposta.mensagem);
+    this.name = "ErroCancelamentoNaoConcluido";
+    this.desfecho =
+      resposta.desfecho === "cancelado" ? "recuperavel" : resposta.desfecho;
+    this.pedido = resposta.pedido;
+  }
+}
+
+/**
+ * Quem cancela pela edge: pedido de pagamento ONLINE, pedido ainda
+ * `aguardando` (só a cobrança online gera esse estado) e pedido que a tela
+ * NÃO tem em memória (deep link, retomada do checkout) — "não sei" vai pelo
+ * caminho que anula a cobrança, nunca pelo que só mexe no banco. Pedido não
+ * online conhecido (dinheiro, PIX/cartão na entrega) continua na RPC de
+ * sempre, com a fila offline do painel.
+ */
+export function cancelamentoVaiPelaEdge(order: Order | undefined): boolean {
+  if (!order) return true;
+  return (
+    order.paymentMethod === "online" || order.paymentStatus === "aguardando"
+  );
+}
+
+/**
+ * Lê a resposta de `functions.invoke("criar-pagamento", {metodo: "cancelar"})`.
+ * O supabase-js v2 descarta o corpo de resposta não-2xx em `data` e o põe em
+ * `error.context` (um Response) — mesmo resgate de `criarPagamento`, abaixo.
+ * Tudo que não for um desfecho conhecido vira `recuperavel`: "não sei" nunca
+ * vira "cancelado".
+ */
+export async function lerRespostaDoCancelamento(
+  data: unknown,
+  error: unknown,
+): Promise<RespostaDoCancelamento> {
+  let corpo: Record<string, unknown> | null = null;
+  let httpStatus: number | undefined;
+  if (error) {
+    const contexto = (
+      error as {
+        context?: { json?: () => Promise<unknown>; status?: unknown };
+      } | null
+    )?.context;
+    if (typeof contexto?.status === "number") httpStatus = contexto.status;
+    if (typeof contexto?.json === "function") {
+      try {
+        const lido = await contexto.json();
+        if (lido && typeof lido === "object") {
+          corpo = lido as Record<string, unknown>;
+        }
+      } catch {
+        // corpo ilegível: fica o desfecho genérico
+      }
+    }
+  } else if (data && typeof data === "object") {
+    corpo = data as Record<string, unknown>;
+  }
+
+  const bruto = corpo?.cancelamento;
+  const textoDoServidor =
+    typeof corpo?.mensagem === "string" && corpo.mensagem
+      ? corpo.mensagem
+      : typeof corpo?.error === "string" && corpo.error
+        ? corpo.error
+        : null;
+  if (typeof bruto === "string" && DESFECHOS_DO_CANCELAMENTO.has(bruto)) {
+    const desfecho = bruto as DesfechoDoCancelamento;
+    // `cancelado` só vale numa resposta 2xx — nunca de um corpo de erro.
+    if (desfecho === "cancelado" && error) {
+      return {
+        desfecho: "recuperavel",
+        mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+      };
+    }
+    const pedidoBruto = corpo?.pedido as Record<string, unknown> | undefined;
+    return {
+      desfecho,
+      mensagem:
+        textoDoServidor ??
+        (desfecho === "cancelado"
+          ? "Pedido cancelado."
+          : MENSAGEM_CANCELAMENTO_RECUPERAVEL),
+      ...(corpo?.jaEstava === true ? { jaEstava: true } : {}),
+      ...(typeof corpo?.aviso === "string" ? { aviso: corpo.aviso } : {}),
+      ...(pedidoBruto && typeof pedidoBruto === "object"
+        ? {
+            pedido: {
+              status:
+                typeof pedidoBruto.status === "string"
+                  ? pedidoBruto.status
+                  : null,
+              paymentStatus:
+                typeof pedidoBruto.paymentStatus === "string"
+                  ? pedidoBruto.paymentStatus
+                  : null,
+            },
+          }
+        : {}),
+    };
+  }
+  // 404 da edge = "não é seu / não existe" (terminal); o resto é passageiro.
+  if (httpStatus === 404 && textoDoServidor) {
+    return { desfecho: "recusado", mensagem: textoDoServidor };
+  }
+  return {
+    desfecho: "recuperavel",
+    mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+  };
+}
+
+/**
  * `Map` sobre `statusConfig` (OrderStatusBadge.tsx) — mesma técnica de
  * `paymentStatusConfigByKey`, no mesmo arquivo: a chave vem de uma união
  * fechada (`OrderStatus`) e o `Record` de origem já é exaustivo por
@@ -834,6 +990,9 @@ export const mensagemAmigavelErroOtp = (error: unknown): string => {
 export const mensagemAmigavelErroAtualizacaoStatus = (
   error: unknown,
 ): string => {
+  // S1 (04/10/2026): o desfecho da edge de cancelamento já chega com a frase
+  // escrita para quem lê (contrato de criar-pagamento/cancelar-pedido.ts).
+  if (error instanceof ErroCancelamentoNaoConcluido) return error.message;
   const detalhes = (error ?? {}) as { code?: unknown; message?: unknown };
   const codigo = typeof detalhes.code === "string" ? detalhes.code : "";
   const textoOriginal =
@@ -2748,6 +2907,81 @@ export function useOrders(
           throw new ErroCancelamentoOfflineRecusado();
         }
 
+        // S1 (dinheiro, 04/10/2026): cancelar pedido online vai pela edge, que
+        // ANULA a cobrança no Mercado Pago antes de cancelar no banco. Nada de
+        // update otimista nem de fila offline aqui — nem para o admin: "o
+        // cancelamento financeiro foi confirmado" só existe com a resposta da
+        // edge. Sem rede, recusa com a MESMA frase do cliente offline.
+        if (status === "cancelled" && cancelamentoVaiPelaEdge(order)) {
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            if (!silent) {
+              toast.warning(
+                "Sem conexão com a internet. O pedido não foi cancelado — conecte-se e tente de novo.",
+              );
+            }
+            throw new ErroCancelamentoOfflineRecusado();
+          }
+
+          let resposta: RespostaDoCancelamento;
+          try {
+            const { data, error } = await (supabase as any).functions.invoke(
+              "criar-pagamento",
+              { body: { orderId, metodo: "cancelar" } },
+            );
+            resposta = await lerRespostaDoCancelamento(data, error);
+          } catch (erroDeRede) {
+            console.error("Erro ao pedir o cancelamento à edge:", erroDeRede);
+            resposta = {
+              desfecho: "recuperavel",
+              mensagem: MENSAGEM_CANCELAMENTO_RECUPERAVEL,
+            };
+          }
+
+          if (resposta.desfecho !== "cancelado") {
+            if (!silent) {
+              if (resposta.desfecho === "recuperavel") {
+                toast.error(resposta.mensagem);
+              } else {
+                toast.warning(resposta.mensagem);
+              }
+            }
+            throw new ErroCancelamentoNaoConcluido(resposta);
+          }
+
+          // Só agora, com o cancelamento PROVADO, a tela muda.
+          const aplicarCancelamento = (o: Order): Order =>
+            o.id === orderId
+              ? {
+                  ...o,
+                  status: "cancelled",
+                  cancelledAfterShipping: derivarCancelledAfterShipping(
+                    o.status,
+                    "cancelled",
+                    o.cancelledAfterShipping,
+                  ),
+                }
+              : o;
+          cachedAdminOrders = cachedAdminOrders
+            ? cachedAdminOrders.map(aplicarCancelamento)
+            : cachedAdminOrders;
+          setOrders((prev) => prev.map(aplicarCancelamento));
+          clearAnalyticsCache();
+          if (!silent) {
+            toast.success(
+              resposta.jaEstava
+                ? "Este pedido já estava cancelado."
+                : "Pedido cancelado.",
+            );
+            if (resposta.aviso) toast.warning(resposta.aviso);
+          }
+          if (isAdmin) {
+            gatilhoCanceladosSeqRef.current += 1;
+            pedidosCanceladosLocalmenteRef.current.set(orderId, Date.now());
+            fetchPedidosCancelados().catch(() => {});
+          }
+          return;
+        }
+
         // L-9 front (08/09/2026): a lojista está com a ficha aberta
         // mostrando um status que o servidor já não tem mais — o cliente
         // cancelou entre a leitura que preencheu a tela e o clique em
@@ -2974,11 +3208,14 @@ export function useOrders(
         // mesmo grupo pelo MESMO motivo — lançado antes do update otimista,
         // `originalCache` ainda é `null` neste ponto, e já disparou seu
         // próprio `toast.warning` na hora de nascer (acima).
+        // S1 (04/10/2026): `ErroCancelamentoNaoConcluido` também — nasce
+        // ANTES de qualquer mudança local e já mostrou o próprio aviso.
         const erroJaTratado =
           err instanceof ErroPedidoMudou ||
           err instanceof ErroReleituraDeStatusFalhou ||
           err instanceof ErroStatusEsperadoDesconhecido ||
-          err instanceof ErroCancelamentoOfflineRecusado;
+          err instanceof ErroCancelamentoOfflineRecusado ||
+          err instanceof ErroCancelamentoNaoConcluido;
         if (!erroJaTratado) {
           cachedAdminOrders = originalCache;
           setOrders(originalOrders);

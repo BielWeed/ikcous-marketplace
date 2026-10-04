@@ -41,6 +41,7 @@ import {
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroCancelamentoNaoConcluido,
   ErroPedidoMudou,
   mensagemAmigavelErroAtualizacaoStatus,
   useOrders,
@@ -1290,6 +1291,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             : prev,
         );
         throw err;
+      }
+      // S1 (04/10/2026): o cancelamento pela edge NÃO aconteceu (o hook já
+      // mostrou o desfecho). Quando a edge relê o pedido (pago no meio, a
+      // cobrança mudou), a ficha passa a mostrar o estado de verdade — sem
+      // toast extra. Nunca marca cancelado: isso só vem da resposta da edge.
+      if (err instanceof ErroCancelamentoNaoConcluido && err.pedido) {
+        const relido = err.pedido;
+        setSelectedOrder((prev) =>
+          prev?.id === orderId
+            ? {
+                ...prev,
+                ...(typeof relido.status === "string"
+                  ? { status: relido.status as OrderStatus }
+                  : {}),
+                ...(typeof relido.paymentStatus === "string"
+                  ? {
+                      paymentStatus:
+                        relido.paymentStatus as Order["paymentStatus"],
+                    }
+                  : {}),
+              }
+            : prev,
+        );
       }
       // `useOrders.updateOrderStatus` (catch de useOrders.ts, por volta da
       // linha 1115) já mostra o PRÓPRIO toast traduzido via

@@ -36,6 +36,7 @@ import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroCancelamentoNaoConcluido,
   mensagemAmigavelErroAtualizacaoStatus,
   mensagemAmigavelErroPedido,
   useOrders,
@@ -3522,7 +3523,19 @@ export function CheckoutView({
         // `cancelamentoBloqueadoPelaGuardaDoCartao`, acima: NUNCA
         // `pedidoTemCobrancaIncerta` aqui, que também esconderia "Pagar com
         // PIX".
-        if (guardaBarrouComMensagemPropria) {
+        // S1 (04/10/2026): o cancelamento agora passa pela edge, que anula
+        // a cobrança no MP antes. Cartão em análise e "acabou de ser pago"
+        // são a mesma situação da guarda acima para este botão: cancelar de
+        // novo bateria na mesma resposta — esconde só ele (o pago aparece na
+        // tela de pedidos quando a confirmação chegar). "Tente de novo" e
+        // "mudou" mantêm o botão.
+        const naoConcluidoPelaEdge =
+          erroRpc instanceof ErroCancelamentoNaoConcluido ? erroRpc : null;
+        if (
+          guardaBarrouComMensagemPropria ||
+          naoConcluidoPelaEdge?.desfecho === "em_analise" ||
+          naoConcluidoPelaEdge?.desfecho === "ja_pago"
+        ) {
           setCancelamentoBloqueadoPelaGuardaDoCartao(true);
         }
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
@@ -3531,9 +3544,11 @@ export function CheckoutView({
         setErroCancelamento(
           statusFinal && statusFinal !== "pending"
             ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
-            : guardaBarrouComMensagemPropria
-              ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
-              : "Não foi possível confirmar o cancelamento. Tente novamente.",
+            : naoConcluidoPelaEdge
+              ? naoConcluidoPelaEdge.message
+              : guardaBarrouComMensagemPropria
+                ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
+                : "Não foi possível confirmar o cancelamento. Tente novamente.",
         );
         return;
       }
