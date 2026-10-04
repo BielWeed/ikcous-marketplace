@@ -129,6 +129,13 @@ import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
 
+// F4 (fase 3 dos pagamentos, 04/10/2026): quanto a retomada espera a leitura
+// do pedido antes de avisar que não deu. Local (e não `comTempoLimite` de
+// PagamentoOnline): a leitura é um query builder do supabase-js, não uma
+// Promise, e este arquivo não importa nada de PagamentoOnline além do
+// componente e dos tipos.
+const TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS = 15_000;
+
 // Intervalo da verificação periódica da tela do PIX (ver o useEffect de
 // polling, no corpo do componente) — extraído para constante porque o teto
 // de segurança abaixo é derivado DELE (contagem de ticks, não de relógio).
@@ -1391,6 +1398,13 @@ export function CheckoutView({
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
   // cartão por uma cobrança PIX criada sozinha.
   const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
+  // F4: `"falhou"` mostra a mensagem; `"relendo"` é o intervalo entre o toque
+  // em "Tentar de novo" e a resposta (a mensagem fica, sem o botão, em vez de
+  // piscar o checkout vazio). `tentativaDaRetomada` refaz a leitura.
+  const [retomadaFalhouNaLeitura, setRetomadaFalhouNaLeitura] = useState<
+    "falhou" | "relendo" | null
+  >(null);
+  const [tentativaDaRetomada, setTentativaDaRetomada] = useState(0);
   // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
   // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
   // (OrderDetailsView → "Retomar pagamento") e caía num checkout de CARRINHO
@@ -1402,9 +1416,30 @@ export function CheckoutView({
   // vive, cria outra com chave de tentativa nova se a anterior morreu, e
   // 409 terminal se o pedido não é mais cobrável (a tela já trata o
   // terminal). Nunca cobrança duplicada, nunca pedido perdido.
+  //
+  // F4 (04/10/2026): a leitura que NÃO volta — erro, estouro de tempo ou
+  // pedido que não aparece (não existe, ou a RLS não deixa ler) — antes caía
+  // calada num checkout de carrinho vazio. Agora vira `retomadaFalhouNaLeitura`
+  // (mensagem com "Tentar de novo" e "Ver meus pedidos", mais abaixo). Nada
+  // monta nem cobra sem a leitura: tudo o que liga o pagamento continua
+  // DEPOIS de `data` chegar. Uma leitura por toque, sem repetição automática.
   useEffect(() => {
     if (!retomarPedidoId) return;
     let vivo = true;
+    // Só a PRIMEIRA saída vale: o estouro e a resposta correm lado a lado, e
+    // a resposta que chega depois do aviso não liga cobrança por baixo da
+    // mensagem (o cliente decide no "Tentar de novo").
+    let respondeu = false;
+    const relogio = setTimeout(
+      () => falhar(),
+      TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS,
+    );
+    const falhar = () => {
+      if (!vivo || respondeu) return;
+      respondeu = true;
+      clearTimeout(relogio);
+      setRetomadaFalhouNaLeitura("falhou");
+    };
     // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
     // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
     // orderId/aguardandoPagamento ligassem aqui, um pedido de CARTÃO em
@@ -1421,8 +1456,15 @@ export function CheckoutView({
       )
       .eq("id", retomarPedidoId)
       .maybeSingle()
-      .then(({ data }) => {
-        if (!vivo || !data) return;
+      .then(({ data, error }) => {
+        if (!vivo || respondeu) return;
+        if (error || !data) {
+          falhar();
+          return;
+        }
+        respondeu = true;
+        clearTimeout(relogio);
+        setRetomadaFalhouNaLeitura(null);
         // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
         // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
         // no servidor (metodo_online costuma vir null nesse estado, mas o
@@ -1509,11 +1551,12 @@ export function CheckoutView({
         }
         setOrderId(retomarPedidoId);
         setAguardandoPagamento(true);
-      });
+      }, falhar);
     return () => {
       vivo = false;
+      clearTimeout(relogio);
     };
-  }, [retomarPedidoId]);
+  }, [retomarPedidoId, tentativaDaRetomada]);
   // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
   // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
   // método retoma o da última tentativa quando legível. O gateway_payment_id
@@ -3390,6 +3433,49 @@ export function CheckoutView({
         onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
         onPagarComPix={pagarComPixDepoisDaVerificacao}
       />
+    );
+  }
+
+  if (retomadaFalhouNaLeitura !== null && retomarPedidoId) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Retomar o pagamento do pedido
+        </h1>
+        {retomadaFalhouNaLeitura === "relendo" ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Abrindo o pedido…
+          </p>
+        ) : (
+          <>
+            <p role="alert" className="text-sm font-medium text-red-700">
+              Não foi possível abrir o pagamento deste pedido agora. Nada foi
+              cobrado nesta tentativa.
+            </p>
+            <Button
+              onClick={() => {
+                setRetomadaFalhouNaLeitura("relendo");
+                setTentativaDaRetomada((n) => n + 1);
+              }}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
+          </>
+        )}
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
     );
   }
 
