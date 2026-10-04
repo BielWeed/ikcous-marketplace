@@ -184,6 +184,32 @@ Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-
   }
 });
 
+Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma vermelha (!cancelled()), só com as migrations aplicadas, e o job continua reprovando", () => {
+  // R2 da revisão Opus de 14d77a5b: a prova que falha primeiro escondia as
+  // seguintes. Cada passo de prova tem de levar o `if` abaixo; o passo das
+  // migrations tem o id que ele cita; e nenhum continue-on-error (o job
+  // reprova se QUALQUER passo reprovar).
+  const inicio = workflow.indexOf("\n  contrato-dinheiro:\n");
+  const fim = workflow.indexOf("\n  provas-informacionais:\n");
+  const bloqueante = workflow.slice(inicio, fim);
+  assert(!/continue-on-error/.test(bloqueante.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n")));
+  assert(/- name: Aplica as migrations do zero\n\s+id: aplica\n\s+run: node tests\/banco\/aplicar-migrations\.cjs/.test(bloqueante));
+  const passos = bloqueante.split(/\n {6}- /).slice(1);
+  const provas = passos.filter((p) => /tests\/banco\/(rodar-isolado\.cjs|invariantes-dinheiro\.cjs)/.test(p));
+  assertEquals(provas.length, 7, "as 7 provas de dinheiro");
+  for (const passo of provas) {
+    assertStringIncludes(
+      passo,
+      "\n        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}\n",
+      `sem o if: ${passo.split("\n")[0]}`,
+    );
+  }
+  // Os passos de preparo NÃO levam o if (o padrão: parar no 1o erro).
+  for (const passo of passos.filter((p) => !provas.includes(p))) {
+    assert(!/^\s+if:/m.test(passo), `passo de preparo com if: ${passo.split("\n")[0]}`);
+  }
+});
+
 Deno.test("20261196: a prova viva roda no CI (rpc-ci.yml, banco isolado)", () => {
   assertStringIncludes(workflow, "node tests/banco/rodar-isolado.cjs tests/banco/contestacao-viva.cjs");
 });

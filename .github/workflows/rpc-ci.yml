@@ -98,22 +98,35 @@ jobs:
       - name: Provisiona o efêmero (fábrica do Supabase, emulada)
         run: node tests/banco/provisionar.cjs
       - name: Aplica as migrations do zero
+        id: aplica
         run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      # TODAS as provas abaixo rodam mesmo depois de uma vermelha (R2 da
+      # revisão Opus de 14d77a5b): sem isto, a 1a prova que falha esconde as
+      # seguintes (o "pulado" do Actions), e um vermelho conhecido numa prova
+      # deixava as de admin-atual, contestação e invariantes sem rodar. O job
+      # continua FALHANDO se qualquer uma falhar — nada de continue-on-error;
+      # `!cancelled()` só troca o "pare no primeiro erro" por "rode todas e
+      # reprove no fim". Sem as migrations aplicadas, nenhuma prova roda (o
+      # passo `aplica` já reprovou o job).
       # Provas vivas de 26/09 (devoluções, cartão, Financeiro, CRM/Início):
       # cada uma num CLONE do banco recém-migrado (rodar-isolado.cjs) — as do
       # Financeiro e do CRM medem totais da loja e não podem enxergar as
       # fixtures de outra prova. Ficam ANTES das que escrevem no banco base.
       - name: Prova viva das devoluções
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/devolucoes-viva.cjs
       - name: Prova viva do cartão online
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
       - name: Prova viva do Financeiro
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
       # confirmar_pagamento e registrar_pagamento_recebido (as duas RPCs que
       # escrevem o payment_status): transições, devolução de estoque uma vez,
       # expiração, permissão por papel e CONCORRÊNCIA com duas conexões reais
       # — CLONE próprio (rodar-isolado.cjs), as fixtures não vazam.
       - name: Prova viva dos pagamentos (confirmar_pagamento e registrar_pagamento_recebido)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/pagamentos-rpc-viva.cjs
       # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
       # rebaixado com JWT velho — nas duas direções da contradição auth.users
@@ -121,6 +134,7 @@ jobs:
       # pedido nem ledger alheio; controle sem a guarda escreve; rollback
       # byte a byte e preflights recusando sem escrita. CLONE próprio.
       - name: Prova viva do admin atual no dinheiro (migration 20261197000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-viva.cjs
       # Migration 20261199000000 (as portas do painel exigem o admin de
       # agora): a autopromoção do rebaixado só no app_metadata falha; o
@@ -135,8 +149,10 @@ jobs:
       # parada na trava), estimativa que só reserva, multicaso, refund regular
       # numa order contestada. CLONE próprio.
       - name: Prova viva da contestação (migration 20261196000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/contestacao-viva.cjs
       - name: Prova os invariantes de dinheiro
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
 
   provas-informacionais:
