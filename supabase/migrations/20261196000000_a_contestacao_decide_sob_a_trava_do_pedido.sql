@@ -101,25 +101,32 @@
 --   admin_devolucao_reemitir_reembolso (que trava pedido -> linha 'lojista'
 --   recusada) não ganha um ciclo novo com estas funções.
 --   Mapa das funções vivas que travam pedido e order_refunds juntos (medido
---   no texto das migrations em 04/10/2026):
+--   no texto das migrations em 04/10/2026, com a 20261197000000 na árvore —
+--   ela redefine solicitar_estorno, registrar_estorno_manual,
+--   admin_devolucao_* e registrar_pagamento_recebido só para trocar is_admin()
+--   por is_admin_atual(), SEM mudar a ordem das travas; esta migration não
+--   redefine nenhuma delas, e roda ANTES da 97: 92 -> 94 -> 95 -> 96 -> 97):
 --     concluir_estorno ............ linha -> pedido                (referência)
---     registrar_estorno_manual (94) linhas vivas -> pedido -> relê/trava
+--     registrar_estorno_manual (94/97) linhas vivas -> pedido -> relê/trava
 --                                   linhas vivas nascidas na espera (este
 --                                   3o passo é linha DEPOIS do pedido)
 --     registrar_contestacao_no_ledger,
 --     registrar_estorno_externo_do_mp (esta) linhas sistema -> pedido
 --     autorizar_post_do_estorno (esta) a linha do POST -> pedido
---     solicitar_estorno (75) ...... pedido -> INSERT linha        (não trava
+--                                   (a linha do POST está em_processamento;
+--                                   a reemitir, abaixo, só trava linha
+--                                   recusada — nunca a mesma linha)
+--     solicitar_estorno (75/97) ... pedido -> INSERT linha        (não trava
 --                                   linha existente: sem ciclo)
---     update_order_status_atomic (80), admin_devolucao_concluir (75)
+--     update_order_status_atomic (80), admin_devolucao_concluir (75/97)
 --                                   pedido -> INSERT linha        (idem)
---     admin_devolucao_reemitir_reembolso (75) pedido -> linha FOR UPDATE
+--     admin_devolucao_reemitir_reembolso (75/97) pedido -> linha FOR UPDATE
 --                                   (DIVERGE: pedido antes da linha; a linha
 --                                   é a 'lojista' recusada da devolução —
 --                                   ciclo só com quem trave essa mesma linha
 --                                   antes do pedido, o que nenhuma função
 --                                   daqui faz)
---     confirmar_pagamento / registrar_pagamento_recebido (95): só o pedido.
+--     confirmar_pagamento / registrar_pagamento_recebido (95/97): só o pedido.
 --   Janela residual (aceita, documentada): uma linha do sistema que nasce
 --   entre a trava das linhas e a trava do pedido (outra entrega já
 --   commitada) não foi travada antes; se uma concluir_estorno dela estiver

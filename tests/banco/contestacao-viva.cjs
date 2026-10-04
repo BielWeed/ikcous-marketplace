@@ -28,7 +28,8 @@
  *       sem ter travado o pedido; A conclui e B segue — nenhum 40P01. O
  *       CONTROLE (a mesma função com a trava das linhas removida, criada a
  *       partir do corpo VIVO) dá 40P01 no mesmo roteiro.
- *   (r) a mesma prova × registrar_estorno_manual (corpo da 94): A segura a
+ *   (r) a mesma prova × registrar_estorno_manual (corpo vivo da 97, mesma
+ *       ordem da 94; o admin é o ATUAL, auth.users + profiles): A segura a
  *       linha viva (o 1o passo da 94) e chama a 94; sem 40P01 (a 94 recusa
  *       com 22023, disputa em curso); o CONTROLE dá 40P01.
  *   (s) a mesma prova para registrar_estorno_externo_do_mp × concluir_estorno
@@ -814,11 +815,20 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(r) ordem linha -> pedido × registrar_estorno_manual (94): sem 40P01 (a 94 recusa com 22023); o CONTROLE dá 40P01",
+  nome: "(r) ordem linha -> pedido × registrar_estorno_manual (corpo vivo: 97, ordem da 94): sem 40P01 (a 94 recusa com 22023); o CONTROLE dá 40P01",
   corpo: async (cliente, url) => {
     await cliente.query(
       `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, 'admin@contestacao.teste', '{"role":"admin"}'::jsonb)
        ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
+    // 20261197000000: a 94 passou a exigir o admin de AGORA (is_admin_atual)
+    // — o papel nas DUAS fontes, auth.users e profiles. Sem a linha em
+    // profiles a 94 recusaria com 42501 antes de travar qualquer coisa, e a
+    // prova não mediria a ordem das travas.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Contestação', 'admin')
+       ON CONFLICT (id) DO UPDATE SET role = 'admin'`,
       [U_ADMIN],
     );
     await criarControleOrdemAntiga(cliente);
