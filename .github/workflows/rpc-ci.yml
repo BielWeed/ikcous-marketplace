@@ -12,10 +12,19 @@
 # real é contactado. A suíte RECUSA rodar fora do efêmero (tests/banco/efemero.cjs).
 # Dinheiro em teste é dado de FIXTURE.
 #
-# INFORMATIONAL POR NASCIMENTO (mesma régua do db-ci.yml da ci-banco e do
-# cabeçalho do ci.yml: CI que nasce vermelho é CI que se aprende a ignorar):
-# o `continue-on-error` abaixo segura o job enquanto a rodada não estabiliza.
-# Para virar BLOQUEANTE depois de estável, basta APAGAR a linha — nada mais muda.
+# DOIS JOBS (Lote A, 04/10/2026 — ordem do dono: as provas de DINHEIRO
+# bloqueiam):
+#   * `contrato-dinheiro` — BLOQUEANTE. Pagamentos (confirmar_pagamento /
+#     registrar_pagamento_recebido), devoluções, cartão online, Financeiro,
+#     contestação (20261196000000) e os invariantes. Vermelho aqui é dinheiro
+#     errado: o PR não passa.
+#   * `provas-informacionais` — `continue-on-error: true`. O que NÃO é
+#     dinheiro: CRM/Início, CRM "Todos os clientes" (defeito real conhecido e
+#     separado — não escondido: o job continua vermelho na página do run) e o
+#     CPF da janela. Para torná-las bloqueantes depois de estáveis, mova o
+#     passo para o job de cima.
+# Antes disso o job inteiro nascia `continue-on-error` ("informational por
+# nascimento") — e o contrato do dinheiro nunca bloqueava nada.
 #
 # CUSTO (dono, 14/09 — declarado no corpo do PR): repo público + runner
 # padrão = R$ 0; estimativa ~2-4 min por run, timeout-minutes limita o pior
@@ -50,11 +59,10 @@ env:
 
 jobs:
   contrato-dinheiro:
-    name: Invariantes de dinheiro (Postgres efêmero)
+    name: Invariantes de dinheiro (Postgres efêmero) — bloqueante
     runs-on: ubuntu-latest
-    # >>> NASCE INFORMATIONAL. Após estável, APAGUE esta linha para bloquear.
-    continue-on-error: true
-    timeout-minutes: 10
+    # BLOQUEANTE (sem continue-on-error): prova de dinheiro vermelha barra o PR.
+    timeout-minutes: 15
 
     services:
       postgres:
@@ -101,19 +109,6 @@ jobs:
         run: node tests/banco/rodar-isolado.cjs tests/banco/cartao-online-viva.cjs
       - name: Prova viva do Financeiro
         run: node tests/banco/rodar-isolado.cjs tests/banco/financeiro-viva.cjs
-      - name: Prova viva do CRM e do Início
-        run: node tests/banco/rodar-isolado.cjs tests/banco/crm-inicio-viva.cjs
-      # Migration 20261183000000 (o CRM vê todo mundo): "Todos os clientes"
-      # passa a listar quem pediu e não pagou e quem nunca comprou — CLONE
-      # próprio (rodar-isolado.cjs), mesmo motivo do CRM/Início acima.
-      - name: Prova viva do CRM vê todo mundo (migration 20261183000000)
-        run: node tests/banco/rodar-isolado.cjs tests/banco/crm-todos-viva.cjs
-      # Migration 20261182000000 (revisão de risco, rodada 2, achado 2): o
-      # cpf_ok/gravação da migration de dados compara contra o BLOCO DE CPF
-      # extraído do prosrc VIVO de create_marketplace_order_v24, em milhares
-      # de entradas fictícias -- 0 divergências.
-      - name: Prova viva do CPF da janela (migration 20261182000000)
-        run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs
       # confirmar_pagamento e registrar_pagamento_recebido (as duas RPCs que
       # escrevem o payment_status): transições, devolução de estoque uma vez,
       # expiração, permissão por papel e CONCORRÊNCIA com duas conexões reais
@@ -143,3 +138,59 @@ jobs:
         run: node tests/banco/rodar-isolado.cjs tests/banco/contestacao-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs
+
+  provas-informacionais:
+    name: Provas vivas que não são dinheiro (informacionais)
+    runs-on: ubuntu-latest
+    # INFORMACIONAL: não barra o PR, mas o vermelho continua visível no run.
+    continue-on-error: true
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        # PG 17: a versão do projeto (ADR 0003; o Supabase do projeto roda 17)
+        # — mesma imagem do db-ci.yml da ci-banco.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # ÚNICA conexão deste job: o service efêmero acima. A trava de
+      # tests/banco/efemero.cjs recusa qualquer outro alvo.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      CI_BANCO_EFEMERO: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Só pelo pacote `pg` (dependência do repositório, usada pelo job
+      # "objetos" do ci.yml).
+      - run: npm ci
+      - name: Provisiona o efêmero (fábrica do Supabase, emulada)
+        run: node tests/banco/provisionar.cjs
+      - name: Aplica as migrations do zero
+        run: node tests/banco/aplicar-migrations.cjs supabase/migrations
+      - name: Prova viva do CRM e do Início
+        run: node tests/banco/rodar-isolado.cjs tests/banco/crm-inicio-viva.cjs
+      # Migration 20261183000000 (o CRM vê todo mundo): "Todos os clientes"
+      # passa a listar quem pediu e não pagou e quem nunca comprou — CLONE
+      # próprio (rodar-isolado.cjs), mesmo motivo do CRM/Início acima.
+      - name: Prova viva do CRM vê todo mundo (migration 20261183000000)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/crm-todos-viva.cjs
+      # Migration 20261182000000 (revisão de risco, rodada 2, achado 2): o
+      # cpf_ok/gravação da migration de dados compara contra o BLOCO DE CPF
+      # extraído do prosrc VIVO de create_marketplace_order_v24, em milhares
+      # de entradas fictícias -- 0 divergências.
+      - name: Prova viva do CPF da janela (migration 20261182000000)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cpf-da-janela-viva.cjs

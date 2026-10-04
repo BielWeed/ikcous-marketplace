@@ -97,6 +97,30 @@ Deno.test("20261196: as duas funções travam o PEDIDO (FOR UPDATE) antes de dec
   assertEquals((semComentarios(migration).match(/SECURITY DEFINER\s+SET search_path = public/g) || []).length, 2);
 });
 
+Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-on-error); só o que não é dinheiro é informacional", () => {
+  const inicio = workflow.indexOf("\n  contrato-dinheiro:\n");
+  const fimDoBloqueante = workflow.indexOf("\n  provas-informacionais:\n");
+  assert(inicio > 0 && fimDoBloqueante > inicio, "os dois jobs existem, nesta ordem");
+  const bloqueante = workflow.slice(inicio, fimDoBloqueante);
+  const informacional = workflow.slice(fimDoBloqueante);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante), "o job do dinheiro não pode ser informacional");
+  for (const prova of [
+    "tests/banco/pagamentos-rpc-viva.cjs",
+    "tests/banco/devolucoes-viva.cjs",
+    "tests/banco/cartao-online-viva.cjs",
+    "tests/banco/financeiro-viva.cjs",
+    "tests/banco/contestacao-viva.cjs",
+    "tests/banco/invariantes-dinheiro.cjs",
+  ]) {
+    assertStringIncludes(bloqueante, prova);
+    assert(!informacional.includes(prova), `${prova} não pode ficar no job informacional`);
+  }
+  assert(/^\s*continue-on-error: true$/m.test(informacional));
+  for (const prova of ["crm-inicio-viva.cjs", "crm-todos-viva.cjs", "cpf-da-janela-viva.cjs"]) {
+    assertStringIncludes(informacional, prova);
+  }
+});
+
 Deno.test("20261196: a prova viva roda no CI (rpc-ci.yml, banco isolado)", () => {
   assertStringIncludes(workflow, "node tests/banco/rodar-isolado.cjs tests/banco/contestacao-viva.cjs");
 });
