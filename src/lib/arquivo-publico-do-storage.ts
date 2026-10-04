@@ -40,8 +40,32 @@ export function ehArquivoPublicoDoStorage(url: URL): boolean {
   return PREFIXOS_PUBLICOS.some((prefixo) => url.pathname.startsWith(prefixo));
 }
 
+type Destinatario = { postMessage(mensagem: unknown): void };
+
+function avisarFalha(erro: unknown): void {
+  console.warn("[SW] Pedido de purga no logout não chegou:", erro);
+}
+
+/** Um destinatário que falha não impede o próximo. */
+function enviar(alvo: Destinatario | null | undefined, mensagem: unknown) {
+  try {
+    alvo?.postMessage(mensagem);
+  } catch (erro) {
+    avisarFalha(erro);
+  }
+}
+
 /**
- * Pede ao SW ativo que apague da gaveta de imagens tudo que não é público.
+ * Pede ao SW que apague da gaveta de imagens tudo que não é público.
+ *
+ * Dois caminhos, independentes — a falha de um não impede o outro:
+ *  1. o `controller` desta aba, NA HORA (síncrono): é o caminho que não
+ *     depende de promessa nenhuma, e o mais provável de chegar antes de a
+ *     aba fechar ou navegar logo depois do "Sair";
+ *  2. a `registration` (`active` e `waiting`), que alcança o SW mesmo quando
+ *     esta aba não é controlada por ele (recarga forçada com Shift) e o SW
+ *     novo que espera ativação. Quem já recebeu pelo caminho 1 não recebe de
+ *     novo (a purga é idempotente, mas não há por que repetir).
  *
  * Disparar-e-esquecer, e NUNCA lança: é chamado no meio do logout, e o logout
  * não pode travar nem falhar porque o aparelho não tem SW (navegador sem
@@ -49,23 +73,40 @@ export function ehArquivoPublicoDoStorage(url: URL): boolean {
  * não chegar, o `activate` da próxima versão do SW faz a mesma limpeza.
  */
 export function pedirAoSwPurgarArquivosPrivados(): void {
+  const mensagem = { type: TIPO_PURGAR_ARQUIVOS_PRIVADOS };
+  let container: ServiceWorkerContainer | undefined;
   try {
     if (typeof navigator === "undefined") return;
-    const container = navigator.serviceWorker;
-    if (!container) return;
-    const mensagem = { type: TIPO_PURGAR_ARQUIVOS_PRIVADOS };
-    // `getRegistration()` alcança o SW ativo mesmo quando ESTA aba não é
-    // controlada por ele (recarga forçada com Shift) — o `controller` sozinho
-    // seria `null` nesse caso, e a gaveta continuaria cheia.
-    Promise.resolve(container.getRegistration?.())
-      .then((registro) => {
-        const alvo = registro?.active ?? container.controller;
-        alvo?.postMessage(mensagem);
-      })
-      .catch((erro: unknown) => {
-        console.warn("[SW] Pedido de purga no logout não chegou:", erro);
-      });
+    container = navigator.serviceWorker;
   } catch (erro) {
-    console.warn("[SW] Pedido de purga no logout não chegou:", erro);
+    avisarFalha(erro);
+    return;
   }
+  if (!container) return;
+
+  let controller: Destinatario | null = null;
+  try {
+    controller = container.controller;
+  } catch (erro) {
+    avisarFalha(erro);
+  }
+  enviar(controller, mensagem);
+
+  let registro: Promise<ServiceWorkerRegistration | undefined>;
+  try {
+    registro = Promise.resolve(container.getRegistration?.());
+  } catch (erro) {
+    avisarFalha(erro);
+    return;
+  }
+  registro
+    .then((reg) => {
+      const jaRecebeu = new Set<Destinatario | null>([controller]);
+      for (const alvo of [reg?.active, reg?.waiting]) {
+        if (!alvo || jaRecebeu.has(alvo)) continue;
+        jaRecebeu.add(alvo);
+        enviar(alvo, mensagem);
+      }
+    })
+    .catch(avisarFalha);
 }

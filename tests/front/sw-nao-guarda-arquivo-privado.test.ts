@@ -95,16 +95,31 @@ function chaveDe(entrada: string | Request): string {
     : new URL(entrada.url).href;
 }
 
-/** `caches` falso que guarda de verdade: um Map de URL → Response por nome. */
-function criarCachesFalso(conteudoInicial: Record<string, string[]> = {}) {
-  const gavetas = new Map<string, Map<string, Response>>();
-  for (const [nome, urls] of Object.entries(conteudoInicial)) {
+type Entrada = { readonly req: Request; readonly res: Response };
+type ConteudoInicial = Record<string, ReadonlyArray<string | Request>>;
+
+/**
+ * `caches` falso que guarda de verdade: um Map de URL → {Request, Response}
+ * por nome. Guarda o REQUEST inteiro (com headers), não só a URL: o Cache
+ * real devolve em `keys()` o Request que foi gravado, e o SW antigo gravava
+ * Request com `Authorization: Bearer` — a purga tem de enxergar esse header.
+ * `gravacoes` registra todo `put`, em ordem, para os testes de corrida.
+ */
+function criarCachesFalso(conteudoInicial: ConteudoInicial = {}) {
+  const gavetas = new Map<string, Map<string, Entrada>>();
+  for (const [nome, entradas] of Object.entries(conteudoInicial)) {
     gavetas.set(
       nome,
-      new Map(urls.map((u) => [new URL(u).href, new Response("velho")])),
+      new Map(
+        entradas.map((e) => {
+          const req = typeof e === "string" ? new Request(e) : e;
+          return [chaveDe(req), { req, res: new Response("velho") }];
+        }),
+      ),
     );
   }
   const abertos: string[] = [];
+  const gravacoes: Array<{ readonly cache: string; readonly url: string }> = [];
 
   function gaveta(nome: string) {
     let g = gavetas.get(nome);
@@ -118,12 +133,14 @@ function criarCachesFalso(conteudoInicial: Record<string, string[]> = {}) {
   function criarCache(nome: string) {
     const g = gaveta(nome);
     return {
-      match: vi.fn(async (req: string | Request) => g.get(chaveDe(req))),
+      match: vi.fn(async (req: string | Request) => g.get(chaveDe(req))?.res),
       put: vi.fn(async (req: string | Request, res: Response) => {
-        g.set(chaveDe(req), res);
+        const pedido = typeof req === "string" ? new Request(req) : req;
+        gravacoes.push({ cache: nome, url: chaveDe(pedido) });
+        g.set(chaveDe(pedido), { req: pedido, res });
       }),
       addAll: vi.fn().mockResolvedValue(undefined),
-      keys: vi.fn(async () => Array.from(g.keys()).map((u) => new Request(u))),
+      keys: vi.fn(async () => Array.from(g.values()).map((e) => e.req)),
       delete: vi.fn(async (req: string | Request) => g.delete(chaveDe(req))),
     };
   }
@@ -139,7 +156,17 @@ function criarCachesFalso(conteudoInicial: Record<string, string[]> = {}) {
   };
 
   const urlsEm = (nome: string) => Array.from(gavetas.get(nome)?.keys() ?? []);
-  return { cachesFalso, urlsEm, abertos };
+  return { cachesFalso, urlsEm, abertos, gravacoes };
+}
+
+/** Mesma régua da produção, escrita à parte para o teste não se auto-provar. */
+function ehPublico(href: string): boolean {
+  const u = new URL(href);
+  return (
+    !u.searchParams.has("token") &&
+    (u.pathname.startsWith("/storage/v1/object/public/") ||
+      u.pathname.startsWith("/storage/v1/render/image/public/"))
+  );
 }
 
 async function esvaziarFila(vezes = 20) {
@@ -157,9 +184,10 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
     vi.unstubAllGlobals();
   });
 
-  async function importarSw(conteudoInicial: Record<string, string[]> = {}) {
+  async function importarSw(conteudoInicial: ConteudoInicial = {}) {
     const { selfFalso, listeners } = criarSelfFalso();
-    const { cachesFalso, urlsEm, abertos } = criarCachesFalso(conteudoInicial);
+    const { cachesFalso, urlsEm, abertos, gravacoes } =
+      criarCachesFalso(conteudoInicial);
     const fetchMock = vi.fn(
       async (_alvo: RequestInfo | URL) =>
         new Response("bytes-da-imagem", { status: 200 }),
@@ -183,7 +211,7 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
       expect(lista.length).toBe(1);
       return lista[0];
     };
-    return { um, fetchMock, urlsEm, abertos, cachesFalso };
+    return { um, fetchMock, urlsEm, abertos, cachesFalso, gravacoes };
   }
 
   function eventoDeFetch(request: Request) {
@@ -275,6 +303,21 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
       expect(urlsEm("app-cache-velho")).toEqual([]);
     });
 
+    it("entrada legada em caminho público gravada COM Authorization é apagada; a mesma URL sem Authorization fica", async () => {
+      const comBearer = new Request(PUBLICO_OBJETO, {
+        headers: { Authorization: "Bearer token-de-quem-saiu" },
+      });
+      const { um, urlsEm } = await importarSw({
+        [IMAGE_CACHE_NAME]: [comBearer, PUBLICO_RENDER],
+      });
+      const waitUntil = vi.fn();
+
+      um("activate")({ waitUntil });
+      await Promise.all(waitUntil.mock.calls.map((c) => c[0]));
+
+      expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(PUBLICO_RENDER).href]);
+    });
+
     it("falha ao ler a gaveta não derruba o activate", async () => {
       const { um, cachesFalso } = await importarSw({
         [IMAGE_CACHE_NAME]: [PRIVADOS[0][1]],
@@ -332,6 +375,21 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
       expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([]);
     });
 
+    it("logout apaga entrada pública gravada COM Authorization e mantém a pública sem", async () => {
+      const comBearer = new Request(PUBLICO_RENDER, {
+        headers: { Authorization: "Bearer token-de-quem-saiu" },
+      });
+      const { um, urlsEm } = await importarSw({
+        [IMAGE_CACHE_NAME]: [PUBLICO_OBJETO, comBearer],
+      });
+      const waitUntil = vi.fn();
+
+      um("message")({ data: { type: "PURGAR_ARQUIVOS_PRIVADOS" }, waitUntil });
+      await Promise.all(waitUntil.mock.calls.map((c) => c[0]));
+
+      expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(PUBLICO_OBJETO).href]);
+    });
+
     it("tipo desconhecido não apaga nada", async () => {
       const { um, urlsEm } = await importarSw({
         [IMAGE_CACHE_NAME]: [PRIVADOS[0][1]],
@@ -341,6 +399,50 @@ describe("src/sw/sw.ts — a gaveta de imagens só guarda arquivo público (R12)
       await esvaziarFila();
 
       expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(PRIVADOS[0][1]).href]);
+    });
+  });
+
+  describe("corrida: download em voo no instante do logout", () => {
+    it("fetch privado e público pendentes durante a purga: depois do logout nenhum put privado acontece", async () => {
+      const { um, fetchMock, urlsEm, gravacoes } = await importarSw();
+      // A rede só responde quando o teste mandar — reproduz o download que
+      // ainda está em voo quando a pessoa toca em "Sair".
+      const pendentes: Array<() => void> = [];
+      fetchMock.mockImplementation(
+        (_alvo: RequestInfo | URL) =>
+          new Promise<Response>((resolve) => {
+            pendentes.push(() =>
+              resolve(new Response("bytes-da-imagem", { status: 200 })),
+            );
+          }),
+      );
+      const assinado = PRIVADOS[0][1];
+      const eventoPrivado = eventoDeFetch(new Request(assinado));
+      const eventoPublico = eventoDeFetch(new Request(PUBLICO_OBJETO));
+      um("fetch")(eventoPrivado);
+      um("fetch")(eventoPublico);
+      await esvaziarFila();
+
+      // Logout com os dois downloads ainda pendentes.
+      const waitUntil = vi.fn();
+      um("message")({ data: { type: "PURGAR_ARQUIVOS_PRIVADOS" }, waitUntil });
+      await Promise.all(waitUntil.mock.calls.map((c) => c[0]));
+      const gravacoesAteOLogout = gravacoes.length;
+
+      // A rede responde DEPOIS do logout.
+      for (const responder of pendentes) responder();
+      await esvaziarFila();
+
+      const depoisDoLogout = gravacoes.slice(gravacoesAteOLogout);
+      expect(
+        depoisDoLogout.filter(
+          (g) => !ehPublico(g.url) && g.cache === IMAGE_CACHE_NAME,
+        ),
+      ).toEqual([]);
+      expect(gravacoes.map((g) => g.url)).not.toContain(new URL(assinado).href);
+      expect(urlsEm(IMAGE_CACHE_NAME)).toEqual([new URL(PUBLICO_OBJETO).href]);
+      // O privado nem passou pelo SW: o navegador o busca sozinho.
+      expect(eventoPrivado.respondWith).not.toHaveBeenCalled();
     });
   });
 

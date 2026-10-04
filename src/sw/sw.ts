@@ -71,13 +71,18 @@ async function purgarArquivosPrivadosDaGaveta(): Promise<void> {
     const cache = await caches.open(IMAGE_CACHE_NAME);
     const chaves = await cache.keys();
     for (const chave of chaves) {
-      let publico = false;
+      // Decide pelo Request INTEIRO, não só pela URL: o SW antigo também
+      // gravava pedido de caminho público feito com `Authorization: Bearer`
+      // (download do supabase-js), e o Cache devolve esse header em `keys()`.
+      let manter = false;
       try {
-        publico = ehArquivoPublicoDoStorage(new URL(chave.url));
+        manter =
+          ehArquivoPublicoDoStorage(new URL(chave.url)) &&
+          !chave.headers.has("authorization");
       } catch {
-        publico = false;
+        manter = false;
       }
-      if (!publico) await cache.delete(chave);
+      if (!manter) await cache.delete(chave);
     }
   } catch (e) {
     console.warn("[SW] Falha ao purgar arquivos privados da gaveta:", e);

@@ -514,6 +514,56 @@ describe("AuthContext — pedido de purga ao service worker no logout (R12)", ()
     });
   });
 
+  it("10. com controller vivo e getRegistration rejeitando, a mensagem chega pelo controller e o logout conclui", async () => {
+    const doController = vi.fn();
+    instalarServiceWorker({
+      controller: { postMessage: doController },
+      getRegistration: vi.fn().mockRejectedValue(new Error("InvalidState")),
+    });
+    const { supabase, aoAtualizar } = await montarLogadoComo("user-a");
+    doController.mockClear();
+    (
+      supabase.auth.signOut as unknown as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ error: { message: "Failed to fetch" } });
+
+    await act(async () => {
+      await ultimoEstado(aoAtualizar)!.logout();
+      await esperarMicrotarefas();
+    });
+
+    expect(doController).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+    expect(ultimoEstado(aoAtualizar)!.hasSession).toBe(false);
+  });
+
+  it("11. controller que lança não impede o caminho da registration (SW em espera também recebe)", async () => {
+    const doEmEspera = vi.fn();
+    instalarServiceWorker({
+      controller: {
+        postMessage: () => {
+          throw new Error("controller morto");
+        },
+      },
+      getRegistration: vi.fn().mockResolvedValue({
+        active: null,
+        waiting: { postMessage: doEmEspera },
+      }),
+    });
+    const { callback } = await montarLogadoComo("user-a");
+    doEmEspera.mockClear();
+
+    const cb = callback();
+    await act(async () => {
+      cb("SIGNED_OUT", null);
+      await esperarMicrotarefas();
+    });
+
+    expect(doEmEspera).toHaveBeenCalledWith({
+      type: "PURGAR_ARQUIVOS_PRIVADOS",
+    });
+  });
+
   it.each([
     [
       "getRegistration rejeita",
