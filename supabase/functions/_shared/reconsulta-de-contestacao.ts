@@ -508,6 +508,23 @@ export async function recuperarContestacaoPeloCaso(args: {
   if (error) throw error;
   const primeiro = ((data ?? []) as Array<{ order_id?: unknown }>)[0]?.order_id;
   if (typeof primeiro !== "string" || primeiro.length === 0) return "sem_vinculo";
+  // A GUARDA ANTES do fresh gate de `reconsultarUm`: o `limit 1` acima pode ter
+  // caído num pedido JÁ RESOLVIDO (o fresh gate dele devolveria `resolvida_antes`
+  // em silêncio) enquanto OUTRO pedido, com o mesmo case_id, segue preso.
+  if (await existeOutroPedidoComOCaso(args.supabase, args.caseId, primeiro)) {
+    console.error(`${rotulo}: o mesmo case_id está ligado a mais de um pedido — nada consultado nem decidido`, {
+      orderId: primeiro,
+    });
+    try {
+      await args.avisar(
+        `contestacao_indefinida:${primeiro}:caso_em_mais_de_um_pedido`,
+        avisoContestacaoParaConferir(primeiro),
+      );
+    } catch (erro) {
+      console.error(`${rotulo}: aviso do caso em mais de um pedido falhou`, { orderId: primeiro, erro });
+    }
+    return "ambiguo";
+  }
   const { reconsultarUm } = criarReconsultor({
     supabase: args.supabase,
     token: args.token,

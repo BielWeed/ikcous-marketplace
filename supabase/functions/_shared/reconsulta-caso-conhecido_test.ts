@@ -971,3 +971,33 @@ Deno.test("D1 controle: 'a favor' + order AUSENTE (404) continua LIBERANDO (sem 
   await cron(b, m);
   assertEquals([doLedger(b).length, b.linhas[0].status], [1, "liberado"]);
 });
+
+// ── D2: o TÓPICO aplica a guarda de ambiguidade ANTES do fresh gate ───────────────
+// O `limit 1` que acha o pedido do tópico pode cair no pedido JÁ RESOLVIDO; o
+// fresh gate daquele pedido devolveria `resolvida_antes` em silêncio enquanto o
+// outro pedido, com o MESMO case_id, segue preso. A guarda (neq + limit 1) vem
+// primeiro: ambíguo = 0 GET de caso, 0 RPC, aviso.
+
+Deno.test("D2: o primeiro pedido (o limit 1) já está RESOLVIDO e o segundo ainda PRESO, o REST corta em 2 linhas -> o tópico responde 'ambiguo' + aviso, NUNCA 'resolvida_antes' silencioso; 0 GET ao MP, 0 RPC", async () => {
+  const b = bancoVivo(
+    [
+      linhaVinculada("L1", { status: "liberado" }),
+      linhaVinculada("L2", { order_id: OUTRO_PEDIDO, mp_chargeback_id: "CBK2" }),
+    ],
+    { maxRows: 2 },
+  );
+  const m = mp({ orderStatus: 404, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+  const w = await webhook(b, m);
+  assertEquals([w.status, w.corpo.desfecho, m.chamadas, doLedger(b)], [200, "ambiguo", [], []]);
+  const chaves = b.rpcs.filter((x) => x.nome === "reservar_aviso_ao_lojista").map((x) => x.args.p_chave);
+  assertEquals(chaves, [`contestacao_indefinida:${PEDIDO}:caso_em_mais_de_um_pedido`]);
+  assertEquals(b.linhas[1].status, "em_processamento", "o pedido preso NÃO é liberado");
+});
+
+Deno.test("D2 controle: um pedido só (já resolvido) no case_id -> o tópico continua 'resolvida_antes' (sem aviso): a guarda não cria ambiguidade onde não há", async () => {
+  const b = bancoVivo([linhaVinculada("L1", { status: "liberado" })], { maxRows: 2 });
+  const m = mpGanho();
+  const w = await webhook(b, m);
+  assertEquals([w.status, w.corpo.desfecho, m.chamadas, doLedger(b)], [200, "resolvida_antes", [], []]);
+  assertEquals(b.rpcs.filter((x) => x.nome === "reservar_aviso_ao_lojista"), []);
+});

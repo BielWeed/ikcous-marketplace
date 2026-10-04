@@ -647,6 +647,10 @@ export async function registrarContestacaoConhecida(args: {
   // order, nunca ids de espaços diferentes. Liberar aqui gravaria a lápide
   // 'a favor' e travaria um 'contra' posterior (viraria só `revertido`).
   // Sem order em mãos, ou sem evidência contrária: o 'a favor' libera.
+  // LIMITAÇÃO CONSERVADORA (multicaso): com vários pagamentos na order e sinais
+  // MISTOS, basta UM com status contrário (ou diferente do caso) para conservar —
+  // sem casar ids, o app não sabe qual pagamento é o contestado, e conservar é o
+  // lado seguro (o admin confere no painel do MP). Nenhuma consulta nova ao MP v1.
   if (peloCaso === "a_favor_da_loja") {
     const contrarias = pagamentosDaOrder(corpoDaOrder).filter((p) => {
       const d = decisaoDoStatusDoPagamento(typeof p.status_detail === "string" ? p.status_detail : "");
