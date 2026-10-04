@@ -44,8 +44,9 @@
  * terminar (depois da resposta, entre a transação da RPC e os efeitos: push ao
  * lojista, comprovante), os efeitos se perdem, e esse risco é MAIOR que o do
  * webhook, que AGUARDA os efeitos dentro da própria requisição; é comparável
- * ao do `verificar`. No caso comum (cartão aprovado sem 3DS) a criação ganha a
- * corrida e o webhook recebe `ja_pago` sem refazer os efeitos. Não há varredura
+ * ao do `verificar`. Quando a criação ganha a corrida (o caminho observado
+ * localmente; a frequência no runtime real não foi medida), o webhook recebe
+ * `ja_pago` sem refazer os efeitos. Não há varredura
  * de efeitos pendentes; uma fila deles é tarefa futura (migration na RPC de
  * dinheiro, lote próprio). Provado só localmente: no runtime real do Edge a
  * retenção do isolado pelo `waitUntil` NÃO foi medida, e o ensaio TEST no
