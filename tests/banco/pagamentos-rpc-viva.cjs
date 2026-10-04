@@ -1857,6 +1857,341 @@ PROVAS.push({
 });
 
 // ---------------------------------------------------------------------------
+// (13) o PREFLIGHT do rollback-manual: não sobrescreve redefinição posterior
+// ---------------------------------------------------------------------------
+
+/**
+ * Perfil das DUAS funções, na ordem (confirmar_pagamento, registrar_pagamento_
+ * recebido): md5 normalizado (CRLF fora), md5 cru, ACL, SECURITY DEFINER e
+ * search_path (proconfig).
+ */
+async function perfilDasFuncoes(c) {
+  const r = await c.query(
+    `SELECT p.proname,
+            md5(replace(p.prosrc, E'\\r', '')) AS md5,
+            md5(p.prosrc) AS md5_cru,
+            p.proacl::text AS acl,
+            p.prosecdef,
+            p.proconfig::text AS config
+       FROM pg_proc p
+      WHERE p.oid = ANY (ARRAY[
+              to_regprocedure('public.confirmar_pagamento(uuid,text,text)'),
+              to_regprocedure('public.registrar_pagamento_recebido(uuid,boolean)')
+            ])
+      ORDER BY p.proname`,
+  );
+  assert.equal(r.rows.length, 2, "as duas funções existem");
+  return r.rows;
+}
+
+/**
+ * Divide um arquivo .sql em comandos (fim em `;` fora de comentário `--`,
+ * de string '...' e de dollar-quote `$tag$...$tag$`). Serve para executar o
+ * rollback COMANDO A COMANDO, como `psql -f` sem `-1`: aí cada comando é a sua
+ * própria transação, e um preflight que não seja o PRIMEIRO comando deixa o
+ * que veio antes dele gravado quando recusa.
+ */
+function dividirEmComandos(sql) {
+  const comandos = [];
+  let inicio = 0;
+  let i = 0;
+  let temCodigo = false;
+  while (i < sql.length) {
+    const ch = sql.charAt(i);
+    if (sql.startsWith("--", i)) {
+      const fim = sql.indexOf("\n", i);
+      i = fim < 0 ? sql.length : fim + 1;
+      continue;
+    }
+    if (ch === "'") {
+      i += 1;
+      while (i < sql.length) {
+        if (sql.charAt(i) === "'") {
+          if (sql.charAt(i + 1) === "'") {
+            i += 2;
+            continue;
+          }
+          break;
+        }
+        i += 1;
+      }
+      i += 1;
+      temCodigo = true;
+      continue;
+    }
+    if (ch === "$") {
+      const m = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(i, i + 64));
+      if (m) {
+        const fim = sql.indexOf(m[0], i + m[0].length);
+        assert.ok(fim >= 0, "dollar-quote sem fechamento");
+        i = fim + m[0].length;
+        temCodigo = true;
+        continue;
+      }
+    }
+    if (ch === ";") {
+      comandos.push(sql.slice(inicio, i + 1));
+      inicio = i + 1;
+      temCodigo = false;
+      i += 1;
+      continue;
+    }
+    if (!/\s/.test(ch)) temCodigo = true;
+    i += 1;
+  }
+  if (temCodigo) comandos.push(sql.slice(inicio));
+  return comandos;
+}
+
+const resumoDoPerfil = (rows) =>
+  rows
+    .map(
+      (x) =>
+        `${x.proname}=${x.md5.slice(0, 8)} acl=${x.acl} secdef=${x.prosecdef} cfg=${x.config}`,
+    )
+    .join(" | ");
+
+PROVAS.push({
+  nome: "(13) o rollback-manual da 20261195000000 tem preflight: restaura os originais, é idempotente, e RECUSA (sem gravar nada em NENHUMA função) sobre redefinição posterior, aceitando CRLF",
+  corpo: async (c) => {
+    const sqlRollback = lerMigracao(`rollback-manual-${NOME_1194}`);
+    const sqlMigracao = lerMigracao(NOME_1194);
+    const novos = {
+      confirmar: md5(corpoConfirmarDe(sqlMigracao)),
+      registrar: md5(corpoRegistrarDe(sqlMigracao)),
+    };
+    const antigos = {
+      confirmar: md5(corpoConfirmarDe(lerMigracao(NOME_901))),
+      registrar: md5(corpoRegistrarDe(lerMigracao(NOME_1020))),
+    };
+    const hashesDe = (rows) => ({
+      confirmar: rows[0].md5,
+      registrar: rows[1].md5,
+    });
+    // Tudo que muda a assinatura de segurança das funções (ACL, SECURITY
+    // DEFINER, search_path) tem de ficar igual em todos os passos.
+    const seguranca = (rows) =>
+      rows.map((x) => [x.proname, x.acl, x.prosecdef, x.config]);
+    const passo = (rotulo, rows) =>
+      console.log(`    [13 ${rotulo}] ${resumoDoPerfil(rows)}`);
+
+    const posMigration = await perfilDasFuncoes(c);
+    passo("estado pós-20261195", posMigration);
+    assert.deepEqual(hashesDe(posMigration), novos);
+    const segurancaInicial = seguranca(posMigration);
+
+    // Fixture de uma redefinição POSTERIOR (o lote 97 do integrador AINDA NÃO
+    // EXISTE em nenhuma branch): o corpo pós-20261195 com UM comentário a mais
+    // — inócuo no comportamento, mas hash diferente. É FIXTURE, não o 97 real.
+    const divergirComComentario = async (assinatura) => {
+      const def = (
+        await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+          assinatura,
+        ])
+      ).rows[0].d;
+      const comComentario = def.replace(
+        /\$function\$\s*$/,
+        "-- fixture: redefinição posterior simulada\n$function$",
+      );
+      assert.notEqual(comComentario, def, "o comentário entrou no corpo");
+      await c.query(comComentario);
+    };
+
+    await c.query("BEGIN");
+    try {
+      // (a) Estado pós-20261195: o rollback passa e restaura os ORIGINAIS.
+      await c.query("SAVEPOINT pos_migration");
+      await c.query(sqlRollback);
+      const depoisA = await perfilDasFuncoes(c);
+      passo("a: depois do rollback", depoisA);
+      assert.deepEqual(hashesDe(depoisA), antigos, "(a) corpos originais");
+      assert.deepEqual(
+        seguranca(depoisA),
+        segurancaInicial,
+        "(a) ACL/secdef/config iguais",
+      );
+
+      // (b) Aplicar de novo sobre os originais: passa (idempotente consciente)
+      // e nada muda.
+      await c.query(sqlRollback);
+      const depoisB = await perfilDasFuncoes(c);
+      passo("b: rollback de novo", depoisB);
+      assert.deepEqual(depoisB, depoisA, "(b) idempotente");
+      await c.query("ROLLBACK TO SAVEPOINT pos_migration");
+      assert.deepEqual(await perfilDasFuncoes(c), posMigration);
+
+      // (c) Redefinição posterior (FIXTURE) em UMA das funções: o rollback
+      // RECUSA e AMBAS ficam exatamente como estavam — inclusive a que NÃO
+      // divergiu, o que prova que a guarda vem antes de QUALQUER CREATE.
+      const casos = [
+        [
+          "registrar divergente",
+          ["public.registrar_pagamento_recebido(uuid,boolean)"],
+          /registrar_pagamento_recebido \(hash [0-9a-f]{32}\)/,
+          /confirmar_pagamento \(hash/,
+        ],
+        [
+          "confirmar divergente",
+          ["public.confirmar_pagamento(uuid,text,text)"],
+          /confirmar_pagamento \(hash [0-9a-f]{32}\)/,
+          /registrar_pagamento_recebido \(hash/,
+        ],
+        [
+          "as duas divergentes",
+          [
+            "public.confirmar_pagamento(uuid,text,text)",
+            "public.registrar_pagamento_recebido(uuid,boolean)",
+          ],
+          /confirmar_pagamento \(hash [0-9a-f]{32}\)/,
+          null,
+        ],
+      ];
+      for (const [rotulo, assinaturas, deveNomear, naoDeveNomear] of casos) {
+        await c.query("SAVEPOINT caso_c");
+        for (const assinatura of assinaturas) {
+          await divergirComComentario(assinatura);
+        }
+        const antes = await perfilDasFuncoes(c);
+        passo(`c: ${rotulo} (antes)`, antes);
+        for (const assinatura of assinaturas) {
+          const ehConfirmar = assinatura.includes("confirmar");
+          assert.notEqual(
+            antes[ehConfirmar ? 0 : 1].md5,
+            ehConfirmar ? novos.confirmar : novos.registrar,
+            `${rotulo}: a fixture divergiu o corpo de ${assinatura}`,
+          );
+        }
+        await c.query("SAVEPOINT antes_do_rollback");
+        await assert.rejects(
+          () => c.query(sqlRollback),
+          (erro) => {
+            assert.match(erro.message, /B1_BASELINE_DIVERGENT/);
+            assert.match(
+              erro.message,
+              deveNomear,
+              `${rotulo}: nomeia a função`,
+            );
+            if (naoDeveNomear) {
+              assert.doesNotMatch(
+                erro.message,
+                naoDeveNomear,
+                `${rotulo}: não acusa a função que está íntegra`,
+              );
+            }
+            if (assinaturas.length === 2) {
+              assert.match(erro.message, /registrar_pagamento_recebido \(hash/);
+            }
+            return true;
+          },
+          rotulo,
+        );
+        await c.query("ROLLBACK TO SAVEPOINT antes_do_rollback");
+        const depois = await perfilDasFuncoes(c);
+        passo(`c: ${rotulo} (depois da recusa)`, depois);
+        assert.deepEqual(depois, antes, `${rotulo}: NENHUMA função foi tocada`);
+
+        // Comando a comando (psql -f SEM -1, cada comando a sua transação):
+        // o preflight é o PRIMEIRO comando, então a recusa para tudo antes de
+        // qualquer CREATE — nenhuma função muda, nem a que estava íntegra.
+        const comandos = dividirEmComandos(sqlRollback);
+        assert.equal(comandos.length, 3, "preflight + 2 CREATE");
+        assert.match(
+          comandos[0]
+            .split("\n")
+            .filter((linha) => !linha.trimStart().startsWith("--"))
+            .join("\n")
+            .trim(),
+          /^DO \$preflight_rollback_20261195\$/,
+          "o preflight é o primeiro comando do arquivo",
+        );
+        let recusou = null;
+        for (const comando of comandos) {
+          await c.query("SAVEPOINT comando");
+          try {
+            await c.query(comando);
+            await c.query("RELEASE SAVEPOINT comando");
+          } catch (erro) {
+            await c.query("ROLLBACK TO SAVEPOINT comando");
+            recusou = erro;
+            break;
+          }
+        }
+        assert.ok(
+          recusou && /B1_BASELINE_DIVERGENT/.test(recusou.message),
+          `${rotulo}: o preflight tinha de recusar no modo comando a comando`,
+        );
+        assert.deepEqual(
+          await perfilDasFuncoes(c),
+          antes,
+          `${rotulo}: comando a comando, nada gravado antes da recusa`,
+        );
+        await c.query("ROLLBACK TO SAVEPOINT caso_c");
+      }
+      assert.deepEqual(await perfilDasFuncoes(c), posMigration);
+
+      // Função AUSENTE também recusa (e não grava nada na outra).
+      await c.query("SAVEPOINT caso_ausente");
+      await c.query(
+        "DROP FUNCTION public.registrar_pagamento_recebido(uuid, boolean)",
+      );
+      await c.query("SAVEPOINT antes_do_rollback_ausente");
+      await assert.rejects(
+        () => c.query(sqlRollback),
+        /B1_BASELINE_DIVERGENT[\s\S]*registrar_pagamento_recebido \(hash ausente\)/,
+      );
+      await c.query("ROLLBACK TO SAVEPOINT antes_do_rollback_ausente");
+      const confirmarIntacta = await c.query(
+        `SELECT md5(replace(prosrc, E'\\r', '')) AS h FROM pg_proc
+          WHERE oid = to_regprocedure('public.confirmar_pagamento(uuid,text,text)')`,
+      );
+      assert.equal(
+        confirmarIntacta.rows[0].h,
+        novos.confirmar,
+        "confirmar_pagamento intacta quando a outra sumiu",
+      );
+      await c.query("ROLLBACK TO SAVEPOINT caso_ausente");
+      assert.deepEqual(await perfilDasFuncoes(c), posMigration);
+
+      // (d) Corpos pós-20261195 gravados com CRLF: o preflight normaliza e o
+      // rollback ACEITA. Prova de que o CRLF está lá: o md5 CRU difere.
+      await c.query("SAVEPOINT caso_d");
+      for (const assinatura of [
+        "public.confirmar_pagamento(uuid,text,text)",
+        "public.registrar_pagamento_recebido(uuid,boolean)",
+      ]) {
+        const def = (
+          await c.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+            assinatura,
+          ])
+        ).rows[0].d;
+        await c.query(def.replace(/\r?\n/g, "\r\n"));
+      }
+      const comCrlf = await perfilDasFuncoes(c);
+      passo("d: pós-migration com CRLF", comCrlf);
+      assert.deepEqual(hashesDe(comCrlf), novos, "normalizado = pós-migration");
+      for (const x of comCrlf) {
+        assert.notEqual(
+          x.md5_cru,
+          x.md5,
+          `${x.proname}: o corpo vivo tem CRLF de verdade`,
+        );
+      }
+      await c.query(sqlRollback);
+      const depoisD = await perfilDasFuncoes(c);
+      passo("d: depois do rollback", depoisD);
+      assert.deepEqual(hashesDe(depoisD), antigos, "(d) restaura os originais");
+      assert.deepEqual(seguranca(depoisD), segurancaInicial);
+      await c.query("ROLLBACK TO SAVEPOINT caso_d");
+    } finally {
+      await c.query("ROLLBACK");
+    }
+
+    // Tudo desfeito: o banco voltou ao estado pós-20261195, ACL incluída.
+    assert.deepEqual(await perfilDasFuncoes(c), posMigration);
+  },
+});
+
+// ---------------------------------------------------------------------------
 
 async function main() {
   const url = lerDatabaseUrlEfemera();

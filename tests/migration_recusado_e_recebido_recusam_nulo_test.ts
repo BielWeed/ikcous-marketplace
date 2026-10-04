@@ -344,3 +344,113 @@ Deno.test("o cabeçalho declara dados existentes, idempotência, ordem, como apl
     assertStringIncludes(cabecalho, termo);
   }
 });
+
+// --- preflight do ROLLBACK -----------------------------------------------
+// O rollback não pode sobrescrever em silêncio uma redefinição POSTERIOR das
+// duas funções (uma migration futura que mexa em qualquer uma): o DO block
+// confere o corpo vivo de AMBAS antes de recriar qualquer coisa.
+
+const ABRE_ROLLBACK = "DO $preflight_rollback_20261195$\nDECLARE";
+const FECHA_ROLLBACK = "END $preflight_rollback_20261195$;";
+const iAbre = rollback.indexOf(ABRE_ROLLBACK);
+const iFecha = rollback.indexOf(FECHA_ROLLBACK);
+const blocoRollback =
+  iAbre >= 0 && iFecha > iAbre
+    ? rollback.slice(iAbre, iFecha + FECHA_ROLLBACK.length)
+    : "";
+
+Deno.test("rollback: o DO de preflight existe e vem ANTES do primeiro CREATE", () => {
+  assert(iAbre >= 0, "bloco $preflight_rollback_20261195$ não encontrado");
+  assert(iFecha > iAbre, "fechamento do preflight do rollback não encontrado");
+  const primeiroCreate = rollback.indexOf("CREATE OR REPLACE FUNCTION");
+  assert(primeiroCreate >= 0, "o rollback não tem CREATE");
+  assert(
+    iFecha < primeiroCreate,
+    "o preflight precisa vir ANTES de qualquer CREATE OR REPLACE FUNCTION",
+  );
+  // Nenhuma recriação (nem outro comando que grave) dentro do DO.
+  assert(!/CREATE\s+OR\s+REPLACE/i.test(blocoRollback));
+});
+
+Deno.test("rollback: os quatro hashes do preflight são o md5 REAL dos corpos (pós-migration e originais)", () => {
+  const hashes = {
+    confirmarNovo: md5(corpoConfirmar(migration)),
+    confirmarOriginal: md5(corpoConfirmar(migration901)),
+    registrarNovo: md5(corpoRegistrar(migration)),
+    registrarOriginal: md5(corpoRegistrar(migration1020)),
+  };
+  for (const [nome, h] of Object.entries(hashes)) {
+    assertStringIncludes(
+      blocoRollback,
+      `'${h}'`,
+      `hash de ${nome} fora do preflight do rollback`,
+    );
+  }
+  assertEquals((blocoRollback.match(/'[0-9a-f]{32}'/g) || []).length, 4);
+  // E o corpo que o rollback RESTAURA é o original (o hash que o DO aceita
+  // como "já desfeito" é o do que ele deixa).
+  assertEquals(md5(corpoConfirmar(rollback)), hashes.confirmarOriginal);
+  assertEquals(md5(corpoRegistrar(rollback)), hashes.registrarOriginal);
+});
+
+Deno.test("rollback: o preflight normaliza CRLF (replace de E'\\r') nas duas funções e consulta as DUAS", () => {
+  const normalizado = norm(blocoRollback);
+  assertEquals(
+    (normalizado.match(/md5\(replace\(prosrc, E'\\r', ''\)\)/g) || []).length,
+    2,
+  );
+  assertStringIncludes(
+    normalizado,
+    "to_regprocedure('public.confirmar_pagamento(uuid,text,text)')",
+  );
+  assertStringIncludes(
+    normalizado,
+    "to_regprocedure('public.registrar_pagamento_recebido(uuid,boolean)')",
+  );
+});
+
+Deno.test("rollback: recusa com B1_BASELINE_DIVERGENT só DEPOIS de checar as duas funções (um RAISE, nada gravado)", () => {
+  assertEquals(
+    (blocoRollback.match(/RAISE EXCEPTION 'B1_BASELINE_DIVERGENT/g) || [])
+      .length,
+    1,
+  );
+  const iRaise = blocoRollback.indexOf("RAISE EXCEPTION");
+  const iConfirmar = blocoRollback.indexOf("v_confirmar NOT IN");
+  const iRegistrar = blocoRollback.indexOf("v_registrar NOT IN");
+  assert(iConfirmar >= 0 && iRegistrar >= 0, "as duas conferências existem");
+  assert(
+    iRaise > iConfirmar && iRaise > iRegistrar,
+    "o RAISE vem depois das duas conferências",
+  );
+  // O preflight aceita função ausente como divergência (NULL), nunca como ok.
+  assertStringIncludes(norm(blocoRollback), "v_confirmar IS NULL OR");
+  assertStringIncludes(norm(blocoRollback), "v_registrar IS NULL OR");
+  // Só lê o catálogo: nenhum comando que grave dentro do DO.
+  const codigo = semComentarios(blocoRollback);
+  assert(!/\b(INSERT|UPDATE|DELETE|DROP|ALTER|COMMENT)\b/i.test(codigo));
+});
+
+Deno.test("rollback: o preflight não abre nem fecha transação, e o rollback segue sem GRANT/REVOKE", () => {
+  assertEquals(
+    detectarTransacaoExplicita(removerRuido(blocoRollback)).achados,
+    [],
+  );
+  assertEquals(detectarTransacaoExplicita(removerRuido(rollback)).achados, []);
+  const limpo = semComentarios(rollback);
+  assert(!/\bGRANT\b/i.test(limpo), "GRANT no rollback");
+  assert(!/\bREVOKE\b/i.test(limpo), "REVOKE no rollback");
+});
+
+Deno.test("rollback: avaliarFase0 segue aceitando o par migration+rollback com o preflight", () => {
+  const res = avaliarFase0({
+    sqlMigration: migration,
+    sqlRollback: rollback,
+    temRollback: true,
+  });
+  assertEquals(
+    res.recusado,
+    false,
+    `motivos: ${(res.motivos || []).join("; ")}`,
+  );
+});

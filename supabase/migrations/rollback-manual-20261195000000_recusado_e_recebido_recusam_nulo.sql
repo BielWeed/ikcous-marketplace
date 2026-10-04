@@ -1,11 +1,62 @@
 -- ROLLBACK MANUAL da 20261195000000_recusado_e_recebido_recusam_nulo.sql
--- Restaura, byte a byte, os dois corpos vigentes: confirmar_pagamento
+-- Restaura, byte a byte, os dois corpos vigentes antes dela: confirmar_pagamento
 -- (20260901000000, md5 b34f8033380177a45d500a2360ba2bdd) e registrar_pagamento_recebido
 -- (20261020000000, md5 ac0b2d9856a1c3d2d38add0b5d737575). Aplicar com `psql -1 -f`: sem
 -- BEGIN/COMMIT (regra da casa) e sem GRANT/REVOKE (CREATE OR REPLACE preserva
 -- a ACL). Não há dado a desfazer — a migration só trocou corpo de função.
 -- Depois de aplicar, NULL em 'recusado' volta a devolver estoque e NULL em
 -- registrar_pagamento_recebido volta a significar "desfazer".
+--
+-- PRÉ-VOO / B1_BASELINE_DIVERGENT: o `DO $preflight_rollback_20261195$` logo
+-- abaixo, ANTES de qualquer CREATE, confere o corpo VIVO das DUAS funções por
+-- `md5(replace(prosrc, E'\r', ''))` (CRLF normalizado). Cada uma tem de ser o
+-- que a 20261195 deixou OU o vigente original (reexecutar o rollback é
+-- idempotente, de forma consciente):
+--   confirmar_pagamento          pós-20261195  dc5632ca36019058225cdb520687c74a
+--                                original      b34f8033380177a45d500a2360ba2bdd
+--   registrar_pagamento_recebido pós-20261195  0a594768d4836bcc6d5064ce537b47dc
+--                                original      ac0b2d9856a1c3d2d38add0b5d737575
+-- Qualquer outro hash (ou função ausente) recusa com B1_BASELINE_DIVERGENT,
+-- dizendo qual função e qual hash, sem gravar NADA: as duas são checadas antes
+-- de recusar e nenhuma é recriada antes disso. Por quê: desfazer por cima de uma
+-- redefinição POSTERIOR (uma migration futura que mexa em qualquer das duas
+-- funções) apagaria o corpo dela em silêncio. Os quatro hashes são o md5 REAL
+-- dos corpos e estão amarrados ao texto dos arquivos por
+-- tests/migration_recusado_e_recebido_recusam_nulo_test.ts. O DO block roda na
+-- MESMA transação do `psql -1 -f`: recusa = nada gravado.
+
+DO $preflight_rollback_20261195$
+DECLARE
+  v_confirmar text;
+  v_registrar text;
+  v_problemas text := '';
+BEGIN
+  SELECT md5(replace(prosrc, E'\r', '')) INTO v_confirmar
+    FROM pg_proc
+   WHERE oid = to_regprocedure('public.confirmar_pagamento(uuid,text,text)');
+
+  SELECT md5(replace(prosrc, E'\r', '')) INTO v_registrar
+    FROM pg_proc
+   WHERE oid = to_regprocedure('public.registrar_pagamento_recebido(uuid,boolean)');
+
+  IF v_confirmar IS NULL OR v_confirmar NOT IN (
+    'dc5632ca36019058225cdb520687c74a', -- corpo que a 20261195 deixou (o que este rollback desfaz)
+    'b34f8033380177a45d500a2360ba2bdd'  -- corpo original que a 20260901 deixou — reexecução idempotente
+  ) THEN
+    v_problemas := v_problemas || format(' confirmar_pagamento (hash %s);', COALESCE(v_confirmar, 'ausente'));
+  END IF;
+
+  IF v_registrar IS NULL OR v_registrar NOT IN (
+    '0a594768d4836bcc6d5064ce537b47dc', -- corpo que a 20261195 deixou (o que este rollback desfaz)
+    'ac0b2d9856a1c3d2d38add0b5d737575'  -- corpo original que a 20261020 deixou — reexecução idempotente
+  ) THEN
+    v_problemas := v_problemas || format(' registrar_pagamento_recebido (hash %s);', COALESCE(v_registrar, 'ausente'));
+  END IF;
+
+  IF v_problemas <> '' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: corpo vivo diferente do que a 20261195000000 deixou e do original em:%  — uma redefinição posterior está no ar (desfazer por cima a apagaria) ou a função sumiu; revise antes de reverter.', v_problemas;
+  END IF;
+END $preflight_rollback_20261195$;
 
 CREATE OR REPLACE FUNCTION public.confirmar_pagamento(
     p_order_id   uuid,
