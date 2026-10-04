@@ -83,6 +83,15 @@ import {
   vagaEmVerificacao,
 } from "../_shared/mercadopago.ts";
 import { readKey } from "../_shared/webpush.ts";
+import {
+  avisarAdminUmaVez,
+  dispararPushContadoReal,
+} from "../_shared/aviso-ao-lojista.ts";
+import {
+  reconsultarContestacoesPresas,
+  type ResumoDaReconsulta,
+} from "../_shared/reconsulta-de-contestacao.ts";
+import { STATUS_DA_CONTESTACAO } from "../_shared/contestacao.ts";
 // Tarefa mp-2 (15/09/2026): a chave do Mercado Pago pode ser a do LOJISTA
 // (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
@@ -384,6 +393,8 @@ async function handler(
     enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
     enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
     enviarPush?: DepsDosEfeitos["enviarPush"];
+    // O push contado do aviso ao admin uma vez (contestação presa).
+    enviarPushContado?: typeof dispararPushContadoReal;
   } = {},
 ): Promise<Response> {
   // Sem CORS aqui: quem chama é o `pg_net` (agendado pela migration
@@ -653,7 +664,7 @@ async function handler(
       // vira 'estornado' por `concluir_estorno`, com o total coberto. Aqui o
       // candidato é ignorado com log — fica na fila até expirar ou o webhook
       // resolver, nunca é cancelado por isto.
-      if (statusBrutoConfiavel === "charged_back") {
+      if (statusBrutoConfiavel === STATUS_DA_CONTESTACAO) {
         console.warn(
           "reconciliar-pagamentos: contestação (chargeback) no MP — NÃO chama confirmar_pagamento (o ledger da contestação é do webhook)",
           candidato.order_id,
@@ -1172,6 +1183,36 @@ async function handler(
     console.error("reconciliar-pagamentos: varredura de devoluções pendentes falhou", erro);
   }
 
+  // ─── PASSO NOVO (FASE 2, R3 do Lote A): reconsulta das contestações
+  // (chargeback) PRESAS — a reserva `sistema` em `em_processamento` que o MP
+  // nunca resolveu por notificação. Só GET ao MP; o resultado vai ao banco
+  // pelo MESMO caminho do webhook (`registrarContestacao`). TRY PRÓPRIO: uma
+  // falha aqui não apaga o resultado dos pagamentos nem dos estornos acima.
+  // Sem token (credencial do lojista ilegível) não consulta o MP com a chave
+  // errada — a mesma falha FECHADA dos dois passos anteriores.
+  let contestacoes: ResumoDaReconsulta = { vistas: 0, reconsultadas: 0, resolvidasAntes: 0, conservadas: 0, falhas: 0 };
+  if (credenciaisMp.token) {
+    try {
+      contestacoes = await reconsultarContestacoesPresas({
+        supabase,
+        token: credenciaisMp.token,
+        fetchImpl: deps.fetchImpl,
+        avisar: (chave, aviso) =>
+          avisarAdminUmaVez({
+            supabase,
+            enviarPushContado: deps.enviarPushContado ??
+              ((a) => dispararPushContadoReal({ ...a, rotulo: "reconciliar-pagamentos" })),
+            chave,
+            aviso,
+            rotulo: "reconciliar-pagamentos",
+          }),
+        rotulo: "reconciliar-pagamentos",
+      });
+    } catch (erro) {
+      console.error("reconciliar-pagamentos: reconsulta de contestações presas falhou", erro);
+    }
+  }
+
   // Contagem verdadeira: responder sucesso sem verificar nada é como este
   // projeto passou meses achando que o push funcionava (#80). `ok` continua
   // `true` mesmo com falhas — decisão da sessão principal, pendência
@@ -1200,6 +1241,7 @@ async function handler(
         adiados: refundsAdiados,
         falhos: refundsFalhos,
       },
+      contestacoes,
     },
     200,
   );

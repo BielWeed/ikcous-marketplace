@@ -102,6 +102,25 @@ const orderPixPaga = () => ({
 const fetchDoMp = async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(orderPixPaga()), { status: 200 });
 
 /**
+ * A lista de contestações presas (FASE 2, `reconsulta-de-contestacao.ts`) lê
+ * `order_refunds` com `.eq().lt().order().limit()`: estes testes não têm
+ * contestação nenhuma, então a cadeia devolve vazio (e a reconsulta não faz
+ * nada, sem ruído de TypeError engolido).
+ */
+function cadeiaVazia() {
+  const q = {
+    eq: () => q,
+    lt: () => q,
+    order: () => q,
+    limit: () => q,
+    then: (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+      Promise.resolve({ data: [], error: null }).then(res, rej),
+  };
+  return q;
+}
+const ehLeituraDeContestacao = (colunas: string) => colunas.trim() === "id" || colunas.trim() === "id, order_id, updated_at";
+
+/**
  * Supabase dublê dos dois handlers: `confirmar_pagamento` devolve o que o
  * `decidir` mandar (por padrão, o resultado fixo); `pagamentos_a_reconciliar`
  * entrega UM candidato; toda leitura de `marketplace_orders` devolve o mesmo
@@ -136,9 +155,10 @@ function supabaseDuble(decidir: () => string, chamadas: string[] = []) {
       if (tabela === "order_refunds") {
         const fim = { limit: () => Promise.resolve({ data: [], error: null }) };
         return {
-          select: () => ({
-            in: () => ({ neq: () => ({ lt: () => ({ order: () => ({ order: () => fim }) }) }) }),
-          }),
+          select: (colunas: string) =>
+            ehLeituraDeContestacao(colunas)
+              ? cadeiaVazia()
+              : { in: () => ({ neq: () => ({ lt: () => ({ order: () => ({ order: () => fim }) }) }) }) },
         };
       }
       throw new Error(`from inesperado no dublê: ${tabela}`);

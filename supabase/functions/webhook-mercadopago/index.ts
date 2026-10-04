@@ -102,6 +102,7 @@ import {
   consultarContestacao,
   registrarContestacao,
   type ResultadoDaConsultaDoCaso,
+  STATUS_DA_CONTESTACAO,
 } from "../_shared/contestacao.ts";
 // FASE 2 (04/10/2026): o push ao lojista, o comprovante ao cliente e o aviso de
 // pagamento atrasado saem do módulo ÚNICO dos três caminhos que confirmam
@@ -684,7 +685,7 @@ async function registrarDesfechoDoEstorno(args: {
   // causa dela entra inteiro neste mesmo evento — com o REF primeiro, a RPC
   // dele via a reserva (nao_cabe) e ninguém o revisitava depois. A RPC do REF
   // lê o saldo sob a mesma trava, então a ordem não conta dinheiro duas vezes.
-  if (status === "charged_back") {
+  if (status === STATUS_DA_CONTESTACAO) {
     await registrarContestacao({
       supabase,
       orderId,
@@ -1460,7 +1461,7 @@ async function handler(
     : "";
   const gatilhoDeEstorno = statusDoEstorno === "refunded" ||
     statusDetailDoEstorno === "partially_refunded" ||
-    statusDoEstorno === "charged_back";
+    statusDoEstorno === STATUS_DA_CONTESTACAO;
 
   if (gatilhoDeEstorno && corpoConsultado) {
     // Achado B1 (2ª revisão de risco, 26/09/2026): este passo lia status/
@@ -1551,7 +1552,7 @@ async function handler(
         : "";
       const gatilhoNaGravada = statusGravado === "refunded" ||
         statusDetailGravado === "partially_refunded" ||
-        statusGravado === "charged_back";
+        statusGravado === STATUS_DA_CONTESTACAO;
       corpoConfiavelParaEstorno = gatilhoNaGravada ? ordemGravadaParaEstorno : null;
       // O corpo confiável deste ramo é a ORDER reconsultada — os leitores
       // têm de usar o formato Order, mesmo que a NOTIFICAÇÃO tenha vindo
@@ -1627,7 +1628,7 @@ async function handler(
   // em diante nada muda no pedido: 200 com rótulo próprio. Vale para as duas
   // rotas; o bloco A3 (rota `payment`, mais abaixo) tem a guarda gêmea para
   // a ORDER GRAVADA contestada notificada como outro status.
-  if (statusBrutoConfiavel === "charged_back") {
+  if (statusBrutoConfiavel === STATUS_DA_CONTESTACAO) {
     console.log(
       "webhook-mercadopago: contestação (chargeback) tratada pelo ledger — confirmar_pagamento NÃO é chamada",
       dataIdStr,
@@ -2077,7 +2078,7 @@ async function handler(
         // é o desfecho da disputa (ver o desvio da contestação, acima). O
         // ledger já rodou com ESTA order (guarda B1, que a reconsulta quando a
         // notificação clássica é de estorno).
-        if (String(orderGravada.status ?? "") === "charged_back") {
+        if (String(orderGravada.status ?? "") === STATUS_DA_CONTESTACAO) {
           console.log(
             "webhook-mercadopago: rota `payment` — a ORDER GRAVADA está em contestação (chargeback); confirmar_pagamento NÃO é chamada",
             { orderId, idDevolvidoPeloMp: idParaRpc, idGravadoNoBanco, statusMapeado },

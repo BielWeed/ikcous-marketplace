@@ -38,6 +38,25 @@ function orderMp(id: string, status: string, detalhe: string, tipo = "credit_car
   };
 }
 
+/**
+ * A lista de contestações presas (FASE 2, `reconsulta-de-contestacao.ts`) lê
+ * `order_refunds` com `.eq().lt().order().limit()`: estes testes não têm
+ * contestação nenhuma, então a cadeia devolve vazio (e a reconsulta não faz
+ * nada, sem ruído de TypeError engolido).
+ */
+function cadeiaVazia() {
+  const q = {
+    eq: () => q,
+    lt: () => q,
+    order: () => q,
+    limit: () => q,
+    then: (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+      Promise.resolve({ data: [], error: null }).then(res, rej),
+  };
+  return q;
+}
+const ehLeituraDeContestacao = (colunas: string) => colunas.trim() === "id" || colunas.trim() === "id, order_id, updated_at";
+
 /** MP falso: GET /v1/orders/{id} devolve a order configurada para o id. */
 function mpFalso(orders: Record<string, unknown>) {
   return (url: string | URL | Request) => {
@@ -85,7 +104,12 @@ function supabaseFalso(opts: {
       if (tabela === "app_settings") return { select: () => ({ eq: () => vazio }) };
       if (tabela === "order_refunds") {
         const fim = { limit: () => Promise.resolve({ data: [], error: null }) };
-        return { select: () => ({ in: () => ({ neq: () => ({ lt: () => ({ order: () => ({ order: () => fim }) }) }) }) }) };
+        return {
+          select: (colunas: string) =>
+            ehLeituraDeContestacao(colunas)
+              ? cadeiaVazia()
+              : { in: () => ({ neq: () => ({ lt: () => ({ order: () => ({ order: () => fim }) }) }) }) },
+        };
       }
       throw new Error(`from inesperado no dublê: ${tabela}`);
     },

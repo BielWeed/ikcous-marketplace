@@ -60,6 +60,25 @@ function fetchConsulta(status: number, corpo: Record<string, unknown>) {
 }
 
 /**
+ * A lista de contestações presas (FASE 2, `reconsulta-de-contestacao.ts`) lê
+ * `order_refunds` com `.eq().lt().order().limit()`: estes testes não têm
+ * contestação nenhuma, então a cadeia devolve vazio (e a reconsulta não faz
+ * nada, sem ruído de TypeError engolido).
+ */
+function cadeiaVazia() {
+  const q = {
+    eq: () => q,
+    lt: () => q,
+    order: () => q,
+    limit: () => q,
+    then: (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+      Promise.resolve({ data: [], error: null }).then(res, rej),
+  };
+  return q;
+}
+const ehLeituraDeContestacao = (colunas: string) => colunas.trim() === "id" || colunas.trim() === "id, order_id, updated_at";
+
+/**
  * Cliente Supabase falso: distingue as duas RPCs de pagamento pelo nome.
  * `rpc("pagamentos_a_reconciliar")` devolve os `candidatos` configurados;
  * `rpc("confirmar_pagamento", args)` registra os argumentos em
@@ -194,6 +213,7 @@ function clienteFalso(opts: {
       if (tabela === "order_refunds") {
         return {
           select(colunasPedidas: string) {
+            if (ehLeituraDeContestacao(colunasPedidas)) return cadeiaVazia();
             // R1 (20261196000000): a fila devolve SÓ as colunas que o SELECT
             // da produção pediu (mais as que o dublê usa para filtrar e
             // ordenar já foram usadas antes da projeção) — tirar
@@ -2314,6 +2334,7 @@ function supabaseRealMinimo(opts: {
       if (tabela === "order_refunds") {
         return {
           select(_cols: string) {
+            if (ehLeituraDeContestacao(_cols)) return cadeiaVazia();
             return {
               in(_col: string, _vals: string[]) {
                 return {
