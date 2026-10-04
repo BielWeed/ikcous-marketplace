@@ -47,7 +47,9 @@ async function main() {
     colunas: m[2],
   }));
 
-  console.log(`[whatsapp-edge] fonte: ${path.relative(process.cwd(), arquivo)}`);
+  console.log(
+    `[whatsapp-edge] fonte: ${path.relative(process.cwd(), arquivo)}`,
+  );
   console.log(`[whatsapp-edge] consultas encontradas: ${consultas.length}`);
   // A trava contra o vácuo: extrator que não acha nada "passa" sem provar nada.
   if (!consultas.some((c) => c.tabela === "marketplace_orders")) {
@@ -69,7 +71,9 @@ async function main() {
           `[whatsapp-edge] ok   ${sql}  -> colunas: ${r.fields.map((f) => f.name).join(", ")}`,
         );
       } catch (erro) {
-        console.log(`[whatsapp-edge] FALHOU ${sql}  -> ${erro.code} ${erro.message}`);
+        console.log(
+          `[whatsapp-edge] FALHOU ${sql}  -> ${erro.code} ${erro.message}`,
+        );
         falhas.push(`${tabela}: ${erro.code} ${erro.message}`);
       }
     }

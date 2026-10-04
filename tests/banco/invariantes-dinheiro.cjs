@@ -1053,7 +1053,8 @@ PROVAS.push({
 // primeira e recebe 23505), o preflight que RECUSA com contagem quando já há
 // duplicata (nunca apaga/funde) e a reaplicação idempotente.
 const P_LEDGER = "aaaaaaaa-0000-0000-0000-000000000006";
-const MIGRATION_LEDGER = "20261192000000_o_ledger_registra_cada_estorno_do_mp_uma_vez.sql";
+const MIGRATION_LEDGER =
+  "20261192000000_o_ledger_registra_cada_estorno_do_mp_uma_vez.sql";
 const DEF_INDICE_REFUND =
   "CREATE UNIQUE INDEX uq_order_refunds_pedido_refund_mp ON public.order_refunds USING btree (order_id, mp_refund_id) WHERE (mp_refund_id IS NOT NULL)";
 const DEF_INDICE_CONTESTACAO =
@@ -1071,7 +1072,14 @@ async function reservaDeContestacao(cliente, pedidoId, idContestacao) {
 function lerMigrationDoLedger(nome) {
   // Caminho montado de segmentos FIXOS deste repositório (mesma convenção do
   // aplicar-migrations.cjs), nunca de entrada externa.
-  const caminho = require("node:path").join(__dirname, "..", "..", "supabase", "migrations", nome);
+  const caminho = require("node:path").join(
+    __dirname,
+    "..",
+    "..",
+    "supabase",
+    "migrations",
+    nome,
+  );
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- ver acima
   return require("node:fs").readFileSync(caminho, "utf8");
 }
@@ -1128,8 +1136,14 @@ PROVAS.push({
 
     // 2. Mesmo (pedido, refund) duas vezes: a segunda é recusada com 23505.
     await linhaSistema(cliente, pedidoId, "r-prova-f");
-    const repetido = await codigoDoErro(linhaSistema(cliente, pedidoId, "r-prova-f"));
-    assert.equal(repetido?.code, "23505", "o 2º INSERT do mesmo refund recusa com 23505");
+    const repetido = await codigoDoErro(
+      linhaSistema(cliente, pedidoId, "r-prova-f"),
+    );
+    assert.equal(
+      repetido?.code,
+      "23505",
+      "o 2º INSERT do mesmo refund recusa com 23505",
+    );
 
     // 3. Parcial: várias linhas SEM id no mesmo pedido continuam valendo
     // (linhas do app nascem sem id e o recebem só quando o MP responde).
@@ -1157,8 +1171,14 @@ PROVAS.push({
       "mp_chargeback_id é text e aceita NULL",
     );
     await reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1");
-    const contestacaoRepetida = await codigoDoErro(reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1"));
-    assert.equal(contestacaoRepetida?.code, "23505", "o 2º registro do mesmo caso recusa com 23505");
+    const contestacaoRepetida = await codigoDoErro(
+      reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1"),
+    );
+    assert.equal(
+      contestacaoRepetida?.code,
+      "23505",
+      "o 2º registro do mesmo caso recusa com 23505",
+    );
     await reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-2");
     await reservaDeContestacao(cliente, pedidoId, null);
     await reservaDeContestacao(cliente, pedidoId, null);
@@ -1174,7 +1194,11 @@ PROVAS.push({
       await new Promise((r) => setTimeout(r, 300));
       await cliente.query("COMMIT");
       const resultado = await segunda;
-      assert.equal(resultado?.code, "23505", "a entrega paralela esbarra no índice, não grava 2ª linha");
+      assert.equal(
+        resultado?.code,
+        "23505",
+        "a entrega paralela esbarra no índice, não grava 2ª linha",
+      );
     } finally {
       await cliente.query("ROLLBACK").catch(() => {});
       await outro.end().catch(() => {});
@@ -1196,7 +1220,9 @@ PROVAS.push({
     const migration = lerMigrationDoLedger(MIGRATION_LEDGER);
     await cliente.query("BEGIN");
     try {
-      await cliente.query("DROP INDEX public.uq_order_refunds_pedido_refund_mp");
+      await cliente.query(
+        "DROP INDEX public.uq_order_refunds_pedido_refund_mp",
+      );
       await linhaSistema(cliente, pedidoId, "r-prova-f");
       const recusa = await codigoDoErro(cliente.query(migration));
       assert.ok(
@@ -1223,9 +1249,14 @@ PROVAS.push({
     await cliente.query("BEGIN");
     try {
       await cliente.query(migration);
-      await cliente.query(lerMigrationDoLedger(`rollback-manual-${MIGRATION_LEDGER}`));
+      await cliente.query(
+        lerMigrationDoLedger(`rollback-manual-${MIGRATION_LEDGER}`),
+      );
       assert.equal(
-        await valorUnico(cliente, "SELECT to_regclass('public.uq_order_refunds_pedido_refund_mp')::text"),
+        await valorUnico(
+          cliente,
+          "SELECT to_regclass('public.uq_order_refunds_pedido_refund_mp')::text",
+        ),
         null,
         "o rollback-manual apaga só o índice",
       );

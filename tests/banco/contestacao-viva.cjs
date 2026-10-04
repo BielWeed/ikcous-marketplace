@@ -69,7 +69,8 @@ const {
 
 const U_CLIENTE = "61111111-1111-1111-1111-111111111111";
 const O = (n) => `6ccccccc-0000-0000-0000-${String(n).padStart(12, "0")}`;
-const MIGRATION = "20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql";
+const MIGRATION =
+  "20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql";
 // O DEFAULT true de criada_sob_autorizacao (roteiro de publicação, cenário
 // D1): separado da 96, sobe só depois das edges novas.
 const MIGRATION_201 = "20261201000000_linha_nova_nasce_sob_autorizacao.sql";
@@ -88,7 +89,11 @@ function lerMigration(nome) {
   );
 }
 
-async function pedido(cliente, id, { total, paymentStatus = "pago", valorEstornado = 0 }) {
+async function pedido(
+  cliente,
+  id,
+  { total, paymentStatus = "pago", valorEstornado = 0 },
+) {
   await cliente.query(
     `INSERT INTO public.marketplace_orders
        (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
@@ -138,7 +143,11 @@ async function estado(cliente, pedidoId) {
       [pedidoId],
     )
   ).rows;
-  return { valorEstornado: num(p.valor_estornado), paymentStatus: p.payment_status, linhas };
+  return {
+    valorEstornado: num(p.valor_estornado),
+    paymentStatus: p.payment_status,
+    linhas,
+  };
 }
 
 /** Espera até a conexão `pid` estar PARADA numa trava (prova que a 2ª
@@ -213,7 +222,11 @@ PROVAS.push({
           "SELECT has_table_privilege($1, 'public.contestacoes_decisao_final', $2) AS pode",
           [papel, priv],
         );
-        assert.equal(r.rows[0].pode, false, `${papel} sem ${priv} na decisão final`);
+        assert.equal(
+          r.rows[0].pode,
+          false,
+          `${papel} sem ${priv} na decisão final`,
+        );
       }
     }
   },
@@ -224,7 +237,12 @@ PROVAS.push({
   corpo: async (cliente) => {
     // Sem linha, contra a loja, caso sem valor em reais -> reserva ESTIMADA, nada somado.
     await pedido(cliente, O(1), { total: 100 });
-    const r1 = await contestacao(cliente, { pedido: O(1), cbk: "CBK-B1", decisao: "contra_a_loja", estimado: 100 });
+    const r1 = await contestacao(cliente, {
+      pedido: O(1),
+      cbk: "CBK-B1",
+      decisao: "contra_a_loja",
+      estimado: 100,
+    });
     assert.equal(r1.resultado, "reservado_sem_valor_do_caso");
     assert.equal(r1.aviso, "conferir");
     let e = await estado(cliente, O(1));
@@ -233,21 +251,40 @@ PROVAS.push({
     assert.equal(e.linhas.length, 1);
     assert.equal(e.linhas[0].status, "em_processamento");
     assert.equal(num(e.linhas[0].amount), 100);
-    assert.equal(e.linhas[0].mp_chargeback_valor_do_caso, null, "a linha diz que é estimativa");
+    assert.equal(
+      e.linhas[0].mp_chargeback_valor_do_caso,
+      null,
+      "a linha diz que é estimativa",
+    );
 
     // De novo sem valor: conserva (a reserva fica), nada concluído.
-    const r2 = await contestacao(cliente, { pedido: O(1), cbk: "CBK-B1", decisao: "contra_a_loja", estimado: 100 });
+    const r2 = await contestacao(cliente, {
+      pedido: O(1),
+      cbk: "CBK-B1",
+      decisao: "contra_a_loja",
+      estimado: 100,
+    });
     assert.equal(r2.resultado, "conservado_sem_valor_do_caso");
     e = await estado(cliente, O(1));
     assert.equal(e.valorEstornado, 0);
     assert.equal(e.linhas[0].status, "em_processamento");
 
     // Valor do caso confirmado PARCIAL (30): a reserva cai para 30 e conclui 30.
-    const r3 = await contestacao(cliente, { pedido: O(1), cbk: "CBK-B1", decisao: "contra_a_loja", valorCaso: 30, estimado: 100 });
+    const r3 = await contestacao(cliente, {
+      pedido: O(1),
+      cbk: "CBK-B1",
+      decisao: "contra_a_loja",
+      valorCaso: 30,
+      estimado: 100,
+    });
     assert.equal(r3.resultado, "concluido");
     e = await estado(cliente, O(1));
     assert.equal(e.valorEstornado, 30);
-    assert.equal(e.paymentStatus, "pago", "parcial não marca o pedido como estornado");
+    assert.equal(
+      e.paymentStatus,
+      "pago",
+      "parcial não marca o pedido como estornado",
+    );
     assert.equal(e.linhas.length, 1);
     assert.equal(num(e.linhas[0].amount), 30);
     assert.equal(e.linhas[0].status, "concluido");
@@ -257,7 +294,12 @@ PROVAS.push({
 
     // Em análise sem valor do caso: reserva ESTIMADA (conservador), nunca conclui.
     await pedido(cliente, O(2), { total: 100 });
-    const r4 = await contestacao(cliente, { pedido: O(2), cbk: "CBK-B1b", decisao: "em_analise", estimado: 100 });
+    const r4 = await contestacao(cliente, {
+      pedido: O(2),
+      cbk: "CBK-B1b",
+      decisao: "em_analise",
+      estimado: 100,
+    });
     assert.equal(r4.resultado, "reservado");
     e = await estado(cliente, O(2));
     assert.equal(e.valorEstornado, 0);
@@ -265,7 +307,11 @@ PROVAS.push({
 
     // Sem valor nenhum (nem caso nem estimativa): nada, aviso.
     await pedido(cliente, O(3), { total: 100 });
-    const r5 = await contestacao(cliente, { pedido: O(3), cbk: "CBK-B1c", decisao: "contra_a_loja" });
+    const r5 = await contestacao(cliente, {
+      pedido: O(3),
+      cbk: "CBK-B1c",
+      decisao: "contra_a_loja",
+    });
     assert.equal(r5.resultado, "sem_valor");
     assert.equal((await estado(cliente, O(3))).linhas.length, 0);
   },
@@ -277,8 +323,22 @@ PROVAS.push({
     await pedido(cliente, O(10), { total: 100 });
     const { ra, rb, parou } = await corrida(
       url,
-      (c) => contestacao(c, { pedido: O(10), cbk: "CBK-C1", decisao: "em_analise", valorCaso: 60, casos: 2 }),
-      (c) => contestacao(c, { pedido: O(10), cbk: "CBK-C2", decisao: "em_analise", valorCaso: 60, casos: 2 }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(10),
+          cbk: "CBK-C1",
+          decisao: "em_analise",
+          valorCaso: 60,
+          casos: 2,
+        }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(10),
+          cbk: "CBK-C2",
+          decisao: "em_analise",
+          valorCaso: 60,
+          casos: 2,
+        }),
     );
     assert.equal(parou, true, "a 2ª conexão PAROU na trava do pedido");
     assert.equal(ra.resultado, "reservado");
@@ -299,8 +359,21 @@ PROVAS.push({
     await pedido(cliente, O(20), { total: 100 });
     const { ra, rb, parou } = await corrida(
       url,
-      (c) => contestacao(c, { pedido: O(20), cbk: "CBK-D", decisao: "em_analise", estimado: 100 }),
-      (c) => contestacao(c, { pedido: O(20), cbk: "CBK-D", decisao: "contra_a_loja", valorCaso: 30, estimado: 100 }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(20),
+          cbk: "CBK-D",
+          decisao: "em_analise",
+          estimado: 100,
+        }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(20),
+          cbk: "CBK-D",
+          decisao: "contra_a_loja",
+          valorCaso: 30,
+          estimado: 100,
+        }),
     );
     assert.equal(parou, true, "B parou na trava do pedido");
     assert.equal(ra.resultado, "reservado");
@@ -312,9 +385,20 @@ PROVAS.push({
     assert.equal(e.linhas[0].status, "concluido");
     assert.equal(e.valorEstornado, 30, "a estimada nunca é concluída às cegas");
 
-    const replayB = await contestacao(cliente, { pedido: O(20), cbk: "CBK-D", decisao: "contra_a_loja", valorCaso: 30, estimado: 100 });
+    const replayB = await contestacao(cliente, {
+      pedido: O(20),
+      cbk: "CBK-D",
+      decisao: "contra_a_loja",
+      valorCaso: 30,
+      estimado: 100,
+    });
     assert.equal(replayB.resultado, "ja_concluido");
-    const replayA = await contestacao(cliente, { pedido: O(20), cbk: "CBK-D", decisao: "em_analise", estimado: 100 });
+    const replayA = await contestacao(cliente, {
+      pedido: O(20),
+      cbk: "CBK-D",
+      decisao: "em_analise",
+      estimado: 100,
+    });
     assert.equal(replayA.resultado, "ja_decidido");
     e = await estado(cliente, O(20));
     assert.equal(e.valorEstornado, 30);
@@ -324,8 +408,21 @@ PROVAS.push({
     await pedido(cliente, O(21), { total: 100 });
     const inv = await corrida(
       url,
-      (c) => contestacao(c, { pedido: O(21), cbk: "CBK-D2", decisao: "contra_a_loja", valorCaso: 30, estimado: 100 }),
-      (c) => contestacao(c, { pedido: O(21), cbk: "CBK-D2", decisao: "em_analise", estimado: 100 }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(21),
+          cbk: "CBK-D2",
+          decisao: "contra_a_loja",
+          valorCaso: 30,
+          estimado: 100,
+        }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(21),
+          cbk: "CBK-D2",
+          decisao: "em_analise",
+          estimado: 100,
+        }),
     );
     assert.equal(inv.parou, true);
     assert.equal(inv.ra.resultado, "concluido");
@@ -340,13 +437,37 @@ PROVAS.push({
   nome: "(e) bloqueio 3: multicaso — liberar o CBK1 devolve o saldo ao CBK2 na mesma sequência",
   corpo: async (cliente) => {
     await pedido(cliente, O(30), { total: 100 });
-    const r1 = await contestacao(cliente, { pedido: O(30), cbk: "CBK-E1", decisao: "em_analise", valorCaso: 100, casos: 2 });
+    const r1 = await contestacao(cliente, {
+      pedido: O(30),
+      cbk: "CBK-E1",
+      decisao: "em_analise",
+      valorCaso: 100,
+      casos: 2,
+    });
     assert.equal(r1.resultado, "reservado");
     assert.equal(num(r1.disponivel), 0);
-    const r2 = await contestacao(cliente, { pedido: O(30), cbk: "CBK-E1", caseId: "1234567890", decisao: "a_favor_da_loja", valorCaso: 100, casos: 2 });
+    const r2 = await contestacao(cliente, {
+      pedido: O(30),
+      cbk: "CBK-E1",
+      caseId: "1234567890",
+      decisao: "a_favor_da_loja",
+      valorCaso: 100,
+      casos: 2,
+    });
     assert.equal(r2.resultado, "liberado");
-    assert.equal(num(r2.disponivel), 100, "o estado canônico já enxerga a liberação");
-    const r3 = await contestacao(cliente, { pedido: O(30), cbk: "CBK-E2", caseId: "222", decisao: "em_analise", valorCaso: 100, casos: 2 });
+    assert.equal(
+      num(r2.disponivel),
+      100,
+      "o estado canônico já enxerga a liberação",
+    );
+    const r3 = await contestacao(cliente, {
+      pedido: O(30),
+      cbk: "CBK-E2",
+      caseId: "222",
+      decisao: "em_analise",
+      valorCaso: 100,
+      casos: 2,
+    });
     assert.equal(r3.resultado, "reservado");
     assert.equal(num(r3.linha_amount), 100);
     const e = await estado(cliente, O(30));
@@ -366,18 +487,40 @@ PROVAS.push({
   corpo: async (cliente) => {
     // Pedido de 100 com reserva de contestação de 100: REF de 100 não cabe.
     await pedido(cliente, O(40), { total: 100 });
-    await contestacao(cliente, { pedido: O(40), cbk: "CBK-F", decisao: "em_analise", valorCaso: 100 });
-    const r1 = await externo(cliente, { pedido: O(40), ref: "REF-F1", valor: 100 });
+    await contestacao(cliente, {
+      pedido: O(40),
+      cbk: "CBK-F",
+      decisao: "em_analise",
+      valorCaso: 100,
+    });
+    const r1 = await externo(cliente, {
+      pedido: O(40),
+      ref: "REF-F1",
+      valor: 100,
+    });
     assert.equal(r1.resultado, "nao_cabe");
     assert.equal(r1.aviso, "saldo");
     let e = await estado(cliente, O(40));
     assert.equal(e.valorEstornado, 0);
-    assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-F1").length, 0, "nada recortado para caber");
+    assert.equal(
+      e.linhas.filter((l) => l.mp_refund_id === "REF-F1").length,
+      0,
+      "nada recortado para caber",
+    );
 
     // Pedido de 200, reserva de 100: REF de 100 cabe, entra INTEIRO e concluído.
     await pedido(cliente, O(41), { total: 200 });
-    await contestacao(cliente, { pedido: O(41), cbk: "CBK-F2", decisao: "em_analise", valorCaso: 100 });
-    const r2 = await externo(cliente, { pedido: O(41), ref: "REF-F2", valor: 100 });
+    await contestacao(cliente, {
+      pedido: O(41),
+      cbk: "CBK-F2",
+      decisao: "em_analise",
+      valorCaso: 100,
+    });
+    const r2 = await externo(cliente, {
+      pedido: O(41),
+      ref: "REF-F2",
+      valor: 100,
+    });
     assert.equal(r2.resultado, "inserido");
     e = await estado(cliente, O(41));
     assert.equal(e.valorEstornado, 100);
@@ -385,24 +528,50 @@ PROVAS.push({
     assert.equal(ref.length, 1);
     assert.equal(ref[0].status, "concluido");
     assert.equal(num(ref[0].amount), 100);
-    assert.equal(num(r2.disponivel), 0, "a reserva continua bloqueando o resto");
+    assert.equal(
+      num(r2.disponivel),
+      0,
+      "a reserva continua bloqueando o resto",
+    );
 
-    const r3 = await externo(cliente, { pedido: O(41), ref: "REF-F2", valor: 100 });
+    const r3 = await externo(cliente, {
+      pedido: O(41),
+      ref: "REF-F2",
+      valor: 100,
+    });
     assert.equal(r3.resultado, "ja_registrado");
     assert.equal((await estado(cliente, O(41))).valorEstornado, 100);
 
     // Contestação contra a loja que NÃO cabe depois do REF: conserva, aviso.
-    const r4 = await contestacao(cliente, { pedido: O(41), cbk: "CBK-F2", decisao: "contra_a_loja", valorCaso: 150 });
-    assert.equal(r4.resultado, "valor_divergente", "o valor confirmado gravado (100) não muda em silêncio");
+    const r4 = await contestacao(cliente, {
+      pedido: O(41),
+      cbk: "CBK-F2",
+      decisao: "contra_a_loja",
+      valorCaso: 150,
+    });
+    assert.equal(
+      r4.resultado,
+      "valor_divergente",
+      "o valor confirmado gravado (100) não muda em silêncio",
+    );
     await pedido(cliente, O(42), { total: 100 });
     await externo(cliente, { pedido: O(42), ref: "REF-F3", valor: 70 });
-    const r5 = await contestacao(cliente, { pedido: O(42), cbk: "CBK-F3", decisao: "contra_a_loja", valorCaso: 100 });
+    const r5 = await contestacao(cliente, {
+      pedido: O(42),
+      cbk: "CBK-F3",
+      decisao: "contra_a_loja",
+      valorCaso: 100,
+    });
     assert.equal(r5.resultado, "saldo_incoerente");
     assert.equal(r5.aviso, "saldo");
     e = await estado(cliente, O(42));
     assert.equal(e.valorEstornado, 70, "nada concluído além do REF");
     const bloqueio = e.linhas.find((l) => l.mp_chargeback_id === "CBK-F3");
-    assert.equal(bloqueio.status, "em_processamento", "o que sobra fica reservado (bloqueia novas devoluções)");
+    assert.equal(
+      bloqueio.status,
+      "em_processamento",
+      "o que sobra fica reservado (bloqueia novas devoluções)",
+    );
     assert.equal(num(bloqueio.amount), 30);
     assert.equal(num(r5.disponivel), 0);
   },
@@ -412,11 +581,29 @@ PROVAS.push({
   nome: "(g) vínculo e estados: case_id/valor divergentes, legado ambíguo, pedido não pago, revertida -> nada muda; legado único é adotado",
   corpo: async (cliente) => {
     await pedido(cliente, O(50), { total: 100 });
-    await contestacao(cliente, { pedido: O(50), cbk: "CBK-G", caseId: "111", decisao: "em_analise", valorCaso: 50 });
-    const r1 = await contestacao(cliente, { pedido: O(50), cbk: "CBK-G", caseId: "999", decisao: "contra_a_loja", valorCaso: 50 });
+    await contestacao(cliente, {
+      pedido: O(50),
+      cbk: "CBK-G",
+      caseId: "111",
+      decisao: "em_analise",
+      valorCaso: 50,
+    });
+    const r1 = await contestacao(cliente, {
+      pedido: O(50),
+      cbk: "CBK-G",
+      caseId: "999",
+      decisao: "contra_a_loja",
+      valorCaso: 50,
+    });
     assert.equal(r1.resultado, "vinculo_divergente");
     assert.equal(r1.aviso, "conferir");
-    const r2 = await contestacao(cliente, { pedido: O(50), cbk: "CBK-G", caseId: "111", decisao: "contra_a_loja", valorCaso: 40 });
+    const r2 = await contestacao(cliente, {
+      pedido: O(50),
+      cbk: "CBK-G",
+      caseId: "111",
+      decisao: "contra_a_loja",
+      valorCaso: 40,
+    });
     assert.equal(r2.resultado, "valor_divergente");
     let e = await estado(cliente, O(50));
     assert.equal(e.valorEstornado, 0);
@@ -424,8 +611,20 @@ PROVAS.push({
     assert.equal(num(e.linhas[0].amount), 50);
 
     // Decisão revertida: concluída e agora a favor da loja -> nada reaberto.
-    await contestacao(cliente, { pedido: O(50), cbk: "CBK-G", caseId: "111", decisao: "contra_a_loja", valorCaso: 50 });
-    const r3 = await contestacao(cliente, { pedido: O(50), cbk: "CBK-G", caseId: "111", decisao: "a_favor_da_loja", valorCaso: 50 });
+    await contestacao(cliente, {
+      pedido: O(50),
+      cbk: "CBK-G",
+      caseId: "111",
+      decisao: "contra_a_loja",
+      valorCaso: 50,
+    });
+    const r3 = await contestacao(cliente, {
+      pedido: O(50),
+      cbk: "CBK-G",
+      caseId: "111",
+      decisao: "a_favor_da_loja",
+      valorCaso: 50,
+    });
     assert.equal(r3.resultado, "revertido");
     assert.equal(r3.aviso, "revertida");
     e = await estado(cliente, O(50));
@@ -434,7 +633,12 @@ PROVAS.push({
 
     // Pedido não pago: nada.
     await pedido(cliente, O(51), { total: 100, paymentStatus: "aguardando" });
-    const r4 = await contestacao(cliente, { pedido: O(51), cbk: "CBK-G2", decisao: "em_analise", valorCaso: 50 });
+    const r4 = await contestacao(cliente, {
+      pedido: O(51),
+      cbk: "CBK-G2",
+      decisao: "em_analise",
+      valorCaso: 50,
+    });
     assert.equal(r4.resultado, "pedido_nao_pago");
     assert.equal((await estado(cliente, O(51))).linhas.length, 0);
 
@@ -445,14 +649,23 @@ PROVAS.push({
        VALUES ($1, 100, 'sistema', 'em_processamento', 'reserva antiga', 'charged_back', 'in_process')`,
       [O(52)],
     );
-    const r5 = await contestacao(cliente, { pedido: O(52), cbk: "CBK-G3", decisao: "contra_a_loja", valorCaso: 100 });
+    const r5 = await contestacao(cliente, {
+      pedido: O(52),
+      cbk: "CBK-G3",
+      decisao: "contra_a_loja",
+      valorCaso: 100,
+    });
     assert.equal(r5.resultado, "concluido");
     e = await estado(cliente, O(52));
     assert.equal(e.linhas.length, 1);
     assert.equal(e.linhas[0].mp_chargeback_id, "CBK-G3");
     assert.equal(e.linhas[0].mp_chargeback_case_id, "1234567890");
     assert.equal(e.valorEstornado, 100);
-    assert.equal(e.paymentStatus, "estornado", "total coberto -> estornado (pela concluir_estorno)");
+    assert.equal(
+      e.paymentStatus,
+      "estornado",
+      "total coberto -> estornado (pela concluir_estorno)",
+    );
 
     // Linha antiga + DOIS casos na order: ambígua, nada.
     await pedido(cliente, O(53), { total: 100 });
@@ -461,7 +674,13 @@ PROVAS.push({
        VALUES ($1, 100, 'sistema', 'em_processamento', 'reserva antiga', 'charged_back', 'in_process')`,
       [O(53)],
     );
-    const r6 = await contestacao(cliente, { pedido: O(53), cbk: "CBK-G4", decisao: "contra_a_loja", valorCaso: 100, casos: 2 });
+    const r6 = await contestacao(cliente, {
+      pedido: O(53),
+      cbk: "CBK-G4",
+      decisao: "contra_a_loja",
+      valorCaso: 100,
+      casos: 2,
+    });
     assert.equal(r6.resultado, "legado_ambiguo");
     e = await estado(cliente, O(53));
     assert.equal(e.linhas[0].mp_chargeback_id, null);
@@ -473,7 +692,13 @@ PROVAS.push({
   nome: "(i) decisão FINAL persistida sem reserva: a favor da loja primeiro -> o pendente atrasado não reserva; virada depois é 'revertida'",
   corpo: async (cliente) => {
     await pedido(cliente, O(60), { total: 100 });
-    const r1 = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "a_favor_da_loja", valorCaso: 100 });
+    const r1 = await contestacao(cliente, {
+      pedido: O(60),
+      cbk: "CBK-I",
+      caseId: "601",
+      decisao: "a_favor_da_loja",
+      valorCaso: 100,
+    });
     assert.equal(r1.resultado, "nada_a_liberar");
     const final = (
       await cliente.query(
@@ -482,17 +707,43 @@ PROVAS.push({
         [O(60)],
       )
     ).rows;
-    assert.equal(final.length, 1, "a decisão final fica gravada mesmo sem reserva");
+    assert.equal(
+      final.length,
+      1,
+      "a decisão final fica gravada mesmo sem reserva",
+    );
     assert.deepEqual(
-      [final[0].mp_chargeback_case_id, final[0].decisao, final[0].proc, num(final[0].valor_do_caso)],
+      [
+        final[0].mp_chargeback_case_id,
+        final[0].decisao,
+        final[0].proc,
+        num(final[0].valor_do_caso),
+      ],
       ["601", "a_favor_da_loja", 2, 100],
     );
 
-    const atrasado = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "em_analise", valorCaso: 100, estimado: 100 });
+    const atrasado = await contestacao(cliente, {
+      pedido: O(60),
+      cbk: "CBK-I",
+      caseId: "601",
+      decisao: "em_analise",
+      valorCaso: 100,
+      estimado: 100,
+    });
     assert.equal(atrasado.resultado, "ja_decidido");
-    assert.equal((await estado(cliente, O(60))).linhas.length, 0, "nenhuma reserva depois da decisão final");
+    assert.equal(
+      (await estado(cliente, O(60))).linhas.length,
+      0,
+      "nenhuma reserva depois da decisão final",
+    );
 
-    const virada = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "contra_a_loja", valorCaso: 100 });
+    const virada = await contestacao(cliente, {
+      pedido: O(60),
+      cbk: "CBK-I",
+      caseId: "601",
+      decisao: "contra_a_loja",
+      valorCaso: 100,
+    });
     assert.equal(virada.resultado, "revertido");
     assert.equal(virada.aviso, "revertida");
     const e = await estado(cliente, O(60));
@@ -500,7 +751,13 @@ PROVAS.push({
     assert.equal(e.valorEstornado, 0);
 
     // A decisão final repetida é idempotente (uma linha só de procedência).
-    const repetida = await contestacao(cliente, { pedido: O(60), cbk: "CBK-I", caseId: "601", decisao: "a_favor_da_loja", valorCaso: 100 });
+    const repetida = await contestacao(cliente, {
+      pedido: O(60),
+      cbk: "CBK-I",
+      caseId: "601",
+      decisao: "a_favor_da_loja",
+      valorCaso: 100,
+    });
     assert.equal(repetida.resultado, "nada_a_liberar");
     const n = await cliente.query(
       "SELECT count(*)::int AS n FROM public.contestacoes_decisao_final WHERE order_id = $1",
@@ -516,8 +773,22 @@ PROVAS.push({
     await pedido(cliente, O(70), { total: 100 });
     const { ra, rb, parou } = await corrida(
       url,
-      (c) => contestacao(c, { pedido: O(70), cbk: "CBK-J", caseId: "701", decisao: "a_favor_da_loja", valorCaso: 100 }),
-      (c) => contestacao(c, { pedido: O(70), cbk: "CBK-J", caseId: "701", decisao: "em_analise", estimado: 100 }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(70),
+          cbk: "CBK-J",
+          caseId: "701",
+          decisao: "a_favor_da_loja",
+          valorCaso: 100,
+        }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(70),
+          cbk: "CBK-J",
+          caseId: "701",
+          decisao: "em_analise",
+          estimado: 100,
+        }),
     );
     assert.equal(parou, true, "o pendente parou na trava do pedido");
     assert.equal(ra.resultado, "nada_a_liberar");
@@ -532,14 +803,38 @@ PROVAS.push({
   nome: "(k) REF que não cabia por causa da reserva cabe depois da liberação (mesmo saldo, sem contar duas vezes)",
   corpo: async (cliente) => {
     await pedido(cliente, O(80), { total: 100 });
-    await contestacao(cliente, { pedido: O(80), cbk: "CBK-K", caseId: "801", decisao: "em_analise", valorCaso: 100 });
-    const antes = await externo(cliente, { pedido: O(80), ref: "REF-K", valor: 100 });
+    await contestacao(cliente, {
+      pedido: O(80),
+      cbk: "CBK-K",
+      caseId: "801",
+      decisao: "em_analise",
+      valorCaso: 100,
+    });
+    const antes = await externo(cliente, {
+      pedido: O(80),
+      ref: "REF-K",
+      valor: 100,
+    });
     assert.equal(antes.resultado, "nao_cabe");
-    const lib = await contestacao(cliente, { pedido: O(80), cbk: "CBK-K", caseId: "801", decisao: "a_favor_da_loja", valorCaso: 100 });
+    const lib = await contestacao(cliente, {
+      pedido: O(80),
+      cbk: "CBK-K",
+      caseId: "801",
+      decisao: "a_favor_da_loja",
+      valorCaso: 100,
+    });
     assert.equal(lib.resultado, "liberado");
-    const depois = await externo(cliente, { pedido: O(80), ref: "REF-K", valor: 100 });
+    const depois = await externo(cliente, {
+      pedido: O(80),
+      ref: "REF-K",
+      valor: 100,
+    });
     assert.equal(depois.resultado, "inserido");
-    const replay = await externo(cliente, { pedido: O(80), ref: "REF-K", valor: 100 });
+    const replay = await externo(cliente, {
+      pedido: O(80),
+      ref: "REF-K",
+      valor: 100,
+    });
     assert.equal(replay.resultado, "ja_registrado");
     const e = await estado(cliente, O(80));
     assert.equal(e.valorEstornado, 100, "a devolução real conta uma vez");
@@ -551,7 +846,11 @@ PROVAS.push({
   nome: "(n) REF do MP nunca é truncado: pedido 100, REF antigo 20, APP 20 solicitado SEM POST, REF novo 70 -> entra 70 inteiro (90); replay e liberação do APP: 90, resta 10",
   corpo: async (cliente) => {
     await pedido(cliente, O(100), { total: 100 });
-    const antigo = await externo(cliente, { pedido: O(100), ref: "REF-N20", valor: 20 });
+    const antigo = await externo(cliente, {
+      pedido: O(100),
+      ref: "REF-N20",
+      valor: 20,
+    });
     assert.equal(antigo.resultado, "inserido");
     // A linha do APP pedida pela loja e ainda sem POST ao MP (solicitado):
     // é intenção, não dinheiro que saiu.
@@ -560,8 +859,16 @@ PROVAS.push({
        VALUES ($1, 20, 'lojista', 'solicitado', 'devolução pedida pela loja (prova n)') RETURNING id`,
       [O(100)],
     );
-    const novo = await externo(cliente, { pedido: O(100), ref: "REF-N70", valor: 70 });
-    assert.equal(novo.resultado, "inserido", "o que o MP já devolveu entra inteiro: 20 + 70 cabe nos 100 pagos");
+    const novo = await externo(cliente, {
+      pedido: O(100),
+      ref: "REF-N70",
+      valor: 70,
+    });
+    assert.equal(
+      novo.resultado,
+      "inserido",
+      "o que o MP já devolveu entra inteiro: 20 + 70 cabe nos 100 pagos",
+    );
     let e = await estado(cliente, O(100));
     const r70 = e.linhas.filter((l) => l.mp_refund_id === "REF-N70");
     assert.equal(r70.length, 1);
@@ -569,28 +876,57 @@ PROVAS.push({
     assert.equal(r70[0].status, "concluido");
     assert.equal(e.valorEstornado, 90);
     const linhaApp = e.linhas.find((l) => l.id === app.rows[0].id);
-    assert.equal(linhaApp.status, "solicitado", "o APP incerto não é liberado sem prova");
+    assert.equal(
+      linhaApp.status,
+      "solicitado",
+      "o APP incerto não é liberado sem prova",
+    );
 
     // Replay do MP: nada novo.
-    const replay = await externo(cliente, { pedido: O(100), ref: "REF-N70", valor: 70 });
+    const replay = await externo(cliente, {
+      pedido: O(100),
+      ref: "REF-N70",
+      valor: 70,
+    });
     assert.equal(replay.resultado, "ja_registrado");
     // O APP sai de cena (o executor o recusa: 20 > 100 - 90) e o MP reenvia.
-    await cliente.query("UPDATE public.order_refunds SET status = 'falhou' WHERE id = $1", [app.rows[0].id]);
-    const depois = await externo(cliente, { pedido: O(100), ref: "REF-N70", valor: 70 });
+    await cliente.query(
+      "UPDATE public.order_refunds SET status = 'falhou' WHERE id = $1",
+      [app.rows[0].id],
+    );
+    const depois = await externo(cliente, {
+      pedido: O(100),
+      ref: "REF-N70",
+      valor: 70,
+    });
     assert.equal(depois.resultado, "ja_registrado");
-    assert.equal(num(depois.valor_estornado), 90, "saldo confirmado 90, sem contagem dupla");
+    assert.equal(
+      num(depois.valor_estornado),
+      90,
+      "saldo confirmado 90, sem contagem dupla",
+    );
     assert.equal(num(depois.disponivel), 10, "remanescente 10");
     e = await estado(cliente, O(100));
-    assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-N70").length, 1);
+    assert.equal(
+      e.linhas.filter((l) => l.mp_refund_id === "REF-N70").length,
+      1,
+    );
     assert.equal(e.valorEstornado, 90);
 
     // O que NÃO cabe no dinheiro real (90 + 20 > 100): não entra, não é
     // recortado, e a identidade fica livre para a reconciliação.
-    const excesso = await externo(cliente, { pedido: O(100), ref: "REF-N-EXCESSO", valor: 20 });
+    const excesso = await externo(cliente, {
+      pedido: O(100),
+      ref: "REF-N-EXCESSO",
+      valor: 20,
+    });
     assert.equal(excesso.resultado, "nao_cabe");
     assert.equal(excesso.aviso, "saldo");
     e = await estado(cliente, O(100));
-    assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-N-EXCESSO").length, 0);
+    assert.equal(
+      e.linhas.filter((l) => l.mp_refund_id === "REF-N-EXCESSO").length,
+      0,
+    );
     assert.equal(e.valorEstornado, 90);
   },
 });
@@ -609,7 +945,10 @@ PROVAS.push({
     assert.equal(rb.resultado, "nao_cabe");
     const e = await estado(cliente, O(110));
     assert.equal(e.valorEstornado, 70);
-    assert.deepEqual(e.linhas.map((l) => [l.mp_refund_id, num(l.amount)]), [["REF-O1", 70]]);
+    assert.deepEqual(
+      e.linhas.map((l) => [l.mp_refund_id, num(l.amount)]),
+      [["REF-O1", 70]],
+    );
   },
 });
 
@@ -622,10 +961,18 @@ PROVAS.push({
        VALUES ($1, 30, 'sistema', 'concluido', 'estorno feito fora do app (Mercado Pago)', 'REF-P')`,
       [O(120)],
     );
-    const r1 = await externo(cliente, { pedido: O(120), ref: "REF-P", valor: 30 });
+    const r1 = await externo(cliente, {
+      pedido: O(120),
+      ref: "REF-P",
+      valor: 30,
+    });
     assert.equal(r1.resultado, "ja_registrado");
     assert.equal(num(r1.valor_estornado), 30, "a órfã somou agora");
-    const r2 = await externo(cliente, { pedido: O(120), ref: "REF-P", valor: 30 });
+    const r2 = await externo(cliente, {
+      pedido: O(120),
+      ref: "REF-P",
+      valor: 30,
+    });
     assert.equal(r2.resultado, "ja_registrado");
     assert.equal(num(r2.valor_estornado), 30, "e não soma de novo");
     const e = await estado(cliente, O(120));
@@ -638,18 +985,52 @@ PROVAS.push({
   nome: "(l) teto do AJUSTE: CBK1 reserva 60, CBK2 reserva 40 por estimativa, CBK2 confirma 60 -> fica 40 (saldo), total reservado 100",
   corpo: async (cliente) => {
     await pedido(cliente, O(90), { total: 100 });
-    const r1 = await contestacao(cliente, { pedido: O(90), cbk: "CBK-L1", caseId: "901", decisao: "em_analise", valorCaso: 60, casos: 2 });
+    const r1 = await contestacao(cliente, {
+      pedido: O(90),
+      cbk: "CBK-L1",
+      caseId: "901",
+      decisao: "em_analise",
+      valorCaso: 60,
+      casos: 2,
+    });
     assert.equal(r1.resultado, "reservado");
     assert.equal(num(r1.linha_amount), 60);
-    const r2 = await contestacao(cliente, { pedido: O(90), cbk: "CBK-L2", caseId: "902", decisao: "em_analise", estimado: 100, casos: 2 });
+    const r2 = await contestacao(cliente, {
+      pedido: O(90),
+      cbk: "CBK-L2",
+      caseId: "902",
+      decisao: "em_analise",
+      estimado: 100,
+      casos: 2,
+    });
     assert.equal(r2.resultado, "reservado");
-    assert.equal(num(r2.linha_amount), 40, "a estimativa só reserva o que sobra");
-    const r3 = await contestacao(cliente, { pedido: O(90), cbk: "CBK-L2", caseId: "902", decisao: "em_analise", valorCaso: 60, estimado: 100, casos: 2 });
+    assert.equal(
+      num(r2.linha_amount),
+      40,
+      "a estimativa só reserva o que sobra",
+    );
+    const r3 = await contestacao(cliente, {
+      pedido: O(90),
+      cbk: "CBK-L2",
+      caseId: "902",
+      decisao: "em_analise",
+      valorCaso: 60,
+      estimado: 100,
+      casos: 2,
+    });
     assert.equal(r3.resultado, "reserva_ajustada");
-    assert.equal(num(r3.linha_amount), 40, "o ajuste para cima para no disponível");
+    assert.equal(
+      num(r3.linha_amount),
+      40,
+      "o ajuste para cima para no disponível",
+    );
     assert.equal(r3.aviso, "saldo");
     const e = await estado(cliente, O(90));
-    assert.equal(e.linhas.reduce((s, l) => s + num(l.amount), 0), 100, "reservado nunca passa do pago");
+    assert.equal(
+      e.linhas.reduce((s, l) => s + num(l.amount), 0),
+      100,
+      "reservado nunca passa do pago",
+    );
     assert.equal(num(r3.disponivel), 0);
     assert.equal(e.valorEstornado, 0);
   },
@@ -661,18 +1042,39 @@ PROVAS.push({
     await pedido(cliente, O(95), { total: 100 });
     const { ra, rb, parou } = await corrida(
       url,
-      (c) => contestacao(c, { pedido: O(95), cbk: "CBK-M", caseId: "951", decisao: "em_analise", valorCaso: 100 }),
+      (c) =>
+        contestacao(c, {
+          pedido: O(95),
+          cbk: "CBK-M",
+          caseId: "951",
+          decisao: "em_analise",
+          valorCaso: 100,
+        }),
       (c) => externo(c, { pedido: O(95), ref: "REF-M", valor: 100 }),
     );
-    assert.equal(parou, true, "o REF parou na trava do pedido (wait_event_type = Lock)");
+    assert.equal(
+      parou,
+      true,
+      "o REF parou na trava do pedido (wait_event_type = Lock)",
+    );
     assert.equal(ra.resultado, "reservado");
-    assert.equal(rb.resultado, "nao_cabe", "o REF enxergou a reserva commitada");
+    assert.equal(
+      rb.resultado,
+      "nao_cabe",
+      "o REF enxergou a reserva commitada",
+    );
     assert.equal(rb.aviso, "saldo");
     const e = await estado(cliente, O(95));
     const emVoo = e.linhas
-      .filter((l) => l.status === "solicitado" || l.status === "em_processamento")
+      .filter(
+        (l) => l.status === "solicitado" || l.status === "em_processamento",
+      )
       .reduce((s, l) => s + num(l.amount), 0);
-    assert.equal(e.valorEstornado + emVoo, 100, "comprometido (estornado + em voo) = 100, nunca 200");
+    assert.equal(
+      e.valorEstornado + emVoo,
+      100,
+      "comprometido (estornado + em voo) = 100, nunca 200",
+    );
     assert.equal(e.linhas.filter((l) => l.mp_refund_id === "REF-M").length, 0);
   },
 });
@@ -722,11 +1124,18 @@ const FN_CONTROLE = "public.contestacao_ordem_antiga_controle";
  * do corpo vivo, não redigitada: o controle difere da função sob prova
  * exatamente na linha que decide a ordem.
  */
-async function criarControle(cliente, { fn, apelido, nomeOriginal, nomeControle }) {
+async function criarControle(
+  cliente,
+  { fn, apelido, nomeOriginal, nomeControle },
+) {
   const def = (
-    await cliente.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [fn])
+    await cliente.query("SELECT pg_get_functiondef($1::regprocedure) AS d", [
+      fn,
+    ])
   ).rows[0].d;
-  const inicio = def.indexOf(`PERFORM 1\n     FROM public.order_refunds ${apelido}`);
+  const inicio = def.indexOf(
+    `PERFORM 1\n     FROM public.order_refunds ${apelido}`,
+  );
   const marcaFim = `FOR UPDATE OF ${apelido};`;
   let corpo = def;
   if (inicio >= 0) {
@@ -734,8 +1143,14 @@ async function criarControle(cliente, { fn, apelido, nomeOriginal, nomeControle 
     assert.ok(fim > inicio, "o controle acha o fim da trava das linhas");
     corpo = def.slice(0, inicio) + def.slice(fim + marcaFim.length);
   }
-  assert.ok(!corpo.includes(apelido), "o controle não trava as linhas antes do pedido");
-  corpo = corpo.replace(`FUNCTION ${nomeOriginal}(`, `FUNCTION ${nomeControle}(`);
+  assert.ok(
+    !corpo.includes(apelido),
+    "o controle não trava as linhas antes do pedido",
+  );
+  corpo = corpo.replace(
+    `FUNCTION ${nomeOriginal}(`,
+    `FUNCTION ${nomeControle}(`,
+  );
   assert.ok(corpo.includes(`${nomeControle}(`));
   await cliente.query(corpo);
 }
@@ -787,32 +1202,63 @@ PROVAS.push({
         const cbk = `CBK-Q${n}`;
         await pedido(cliente, O(n), { total: 100 });
         const r0 = await contestacao(cliente, {
-          pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40,
+          pedido: O(n),
+          cbk,
+          caseId: String(n),
+          decisao: "em_analise",
+          valorCaso: 40,
         });
         assert.equal(r0.resultado, "reservado");
         const linha = await linhaDoCaso(cliente, O(n), cbk);
         const { ra, rb, parouB } = await cruzamento(url, {
           // O 1o passo da concluir_estorno: a LINHA (UPDATE), antes do pedido.
-          seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [linha]),
+          seguraA: (a) =>
+            a.query(
+              "SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE",
+              [linha],
+            ),
           chamaB: (b) =>
-            chamarContestacao(b, fn, { pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40 }),
+            chamarContestacao(b, fn, {
+              pedido: O(n),
+              cbk,
+              caseId: String(n),
+              decisao: "em_analise",
+              valorCaso: 40,
+            }),
           terminaA: (a) =>
-            a.query("SELECT public.concluir_estorno($1, NULL, 'charged_back', 'settled') AS r", [linha]),
+            a.query(
+              "SELECT public.concluir_estorno($1, NULL, 'charged_back', 'settled') AS r",
+              [linha],
+            ),
         });
-        assert.equal(parouB, true, `${fn}: B parou numa trava (wait_event Lock)`);
+        assert.equal(
+          parouB,
+          true,
+          `${fn}: B parou numa trava (wait_event Lock)`,
+        );
         const codigos = [ra, rb].filter((x) => !x.ok).map((x) => x.codigo);
         if (esperado === "sem_deadlock") {
-          assert.deepEqual(codigos, [], `${fn}: nenhum erro (${JSON.stringify([ra, rb])})`);
+          assert.deepEqual(
+            codigos,
+            [],
+            `${fn}: nenhum erro (${JSON.stringify([ra, rb])})`,
+          );
           const e = await estado(cliente, O(n));
           assert.equal(e.valorEstornado, 40, "concluído uma vez: 40");
           assert.equal(e.linhas.length, 1);
           assert.equal(e.linhas[0].status, "concluido");
         } else {
-          assert.deepEqual(codigos, ["40P01"], `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`);
+          assert.deepEqual(
+            codigos,
+            ["40P01"],
+            `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`,
+          );
         }
       }
     } finally {
-      await cliente.query(`DROP FUNCTION IF EXISTS ${FN_CONTROLE}(uuid, text, text, text, numeric, numeric, integer)`);
+      await cliente.query(
+        `DROP FUNCTION IF EXISTS ${FN_CONTROLE}(uuid, text, text, text, numeric, numeric, integer)`,
+      );
     }
   },
 });
@@ -846,34 +1292,69 @@ PROVAS.push({
         const cbk = `CBK-R${n}`;
         await pedido(cliente, O(n), { total: 100 });
         const r0 = await contestacao(cliente, {
-          pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40,
+          pedido: O(n),
+          cbk,
+          caseId: String(n),
+          decisao: "em_analise",
+          valorCaso: 40,
         });
         assert.equal(r0.resultado, "reservado");
         const linha = await linhaDoCaso(cliente, O(n), cbk);
         const { ra, rb, parouB } = await cruzamento(url, {
-          preparaA: (a) => a.query("SELECT set_config('app.rpc.user_id', $1, false)", [U_ADMIN]),
+          preparaA: (a) =>
+            a.query("SELECT set_config('app.rpc.user_id', $1, false)", [
+              U_ADMIN,
+            ]),
           // O 1o passo da 94: as linhas VIVAS do pedido, antes do pedido.
-          seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [linha]),
+          seguraA: (a) =>
+            a.query(
+              "SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE",
+              [linha],
+            ),
           chamaB: (b) =>
-            chamarContestacao(b, fn, { pedido: O(n), cbk, caseId: String(n), decisao: "em_analise", valorCaso: 40 }),
-          terminaA: (a) => a.query("SELECT public.registrar_estorno_manual($1) AS r", [O(n)]),
+            chamarContestacao(b, fn, {
+              pedido: O(n),
+              cbk,
+              caseId: String(n),
+              decisao: "em_analise",
+              valorCaso: 40,
+            }),
+          terminaA: (a) =>
+            a.query("SELECT public.registrar_estorno_manual($1) AS r", [O(n)]),
         });
-        assert.equal(parouB, true, `${fn}: B parou numa trava (wait_event Lock)`);
+        assert.equal(
+          parouB,
+          true,
+          `${fn}: B parou numa trava (wait_event Lock)`,
+        );
         if (esperado === "sem_deadlock") {
           assert.equal(ra.ok, false);
-          assert.equal(ra.codigo, "22023", `a 94 recusa (disputa em curso), não 40P01: ${ra.mensagem}`);
+          assert.equal(
+            ra.codigo,
+            "22023",
+            `a 94 recusa (disputa em curso), não 40P01: ${ra.mensagem}`,
+          );
           assert.equal(rb.ok, true, `a contestação termina: ${rb.mensagem}`);
           const e = await estado(cliente, O(n));
           assert.equal(e.valorEstornado, 0);
           assert.equal(e.linhas.length, 1);
-          assert.equal(e.linhas[0].status, "em_processamento", "a reserva continua");
+          assert.equal(
+            e.linhas[0].status,
+            "em_processamento",
+            "a reserva continua",
+          );
         } else {
           const codigos = [ra, rb].filter((x) => !x.ok).map((x) => x.codigo);
-          assert.ok(codigos.includes("40P01"), `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`);
+          assert.ok(
+            codigos.includes("40P01"),
+            `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`,
+          );
         }
       }
     } finally {
-      await cliente.query(`DROP FUNCTION IF EXISTS ${FN_CONTROLE}(uuid, text, text, text, numeric, numeric, integer)`);
+      await cliente.query(
+        `DROP FUNCTION IF EXISTS ${FN_CONTROLE}(uuid, text, text, text, numeric, numeric, integer)`,
+      );
     }
   },
 });
@@ -903,34 +1384,71 @@ PROVAS.push({
           )
         ).rows[0].id;
         const { ra, rb, parouB } = await cruzamento(url, {
-          seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [linha]),
+          seguraA: (a) =>
+            a.query(
+              "SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE",
+              [linha],
+            ),
           chamaB: (b) =>
-            b.query(`SELECT ${fn}($1, $2, 30, 'processed', 'partially_refunded') AS r`, [O(n), ref]),
-          terminaA: (a) => a.query("SELECT public.concluir_estorno($1, NULL, NULL, NULL) AS r", [linha]),
+            b.query(
+              `SELECT ${fn}($1, $2, 30, 'processed', 'partially_refunded') AS r`,
+              [O(n), ref],
+            ),
+          terminaA: (a) =>
+            a.query(
+              "SELECT public.concluir_estorno($1, NULL, NULL, NULL) AS r",
+              [linha],
+            ),
         });
-        assert.equal(parouB, true, `${fn}: B parou numa trava (wait_event Lock)`);
+        assert.equal(
+          parouB,
+          true,
+          `${fn}: B parou numa trava (wait_event Lock)`,
+        );
         const codigos = [ra, rb].filter((x) => !x.ok).map((x) => x.codigo);
         if (esperado === "sem_deadlock") {
-          assert.deepEqual(codigos, [], `${fn}: nenhum erro (${JSON.stringify([ra, rb])})`);
+          assert.deepEqual(
+            codigos,
+            [],
+            `${fn}: nenhum erro (${JSON.stringify([ra, rb])})`,
+          );
           const e = await estado(cliente, O(n));
           assert.equal(e.valorEstornado, 30, "a órfã soma UMA vez");
-          assert.equal(e.linhas.length, 1, "nenhuma linha nova para o mesmo refund");
+          assert.equal(
+            e.linhas.length,
+            1,
+            "nenhuma linha nova para o mesmo refund",
+          );
         } else {
-          assert.deepEqual(codigos, ["40P01"], `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`);
+          assert.deepEqual(
+            codigos,
+            ["40P01"],
+            `${fn}: o controle dá deadlock (${JSON.stringify([ra, rb])})`,
+          );
         }
       }
     } finally {
-      await cliente.query(`DROP FUNCTION IF EXISTS ${FN_CONTROLE_EXTERNO}(uuid, text, numeric, text, text)`);
+      await cliente.query(
+        `DROP FUNCTION IF EXISTS ${FN_CONTROLE_EXTERNO}(uuid, text, numeric, text, text)`,
+      );
     }
   },
 });
 
 async function autorizar(c, refundId, valor) {
-  const r = await c.query("SELECT public.autorizar_post_do_estorno($1, $2) AS r", [refundId, valor]);
+  const r = await c.query(
+    "SELECT public.autorizar_post_do_estorno($1, $2) AS r",
+    [refundId, valor],
+  );
   return r.rows[0].r;
 }
 
-async function linhaDoApp(cliente, pedidoId, valor, status = "em_processamento") {
+async function linhaDoApp(
+  cliente,
+  pedidoId,
+  valor,
+  status = "em_processamento",
+) {
   return (
     await cliente.query(
       `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, motivo)
@@ -944,7 +1462,11 @@ PROVAS.push({
   nome: "(t) autorizar_post_do_estorno: autoriza com o pedido relido; depois do REF 70, nao_cabe e NADA muda; sistema/concluída/valor errado/inexistente -> linha_mudou",
   corpo: async (cliente) => {
     await pedido(cliente, O(140), { total: 100 });
-    const r20 = await externo(cliente, { pedido: O(140), ref: "REF-T20", valor: 20 });
+    const r20 = await externo(cliente, {
+      pedido: O(140),
+      ref: "REF-T20",
+      valor: 20,
+    });
     assert.equal(r20.resultado, "inserido");
     const app = await linhaDoApp(cliente, O(140), 20);
 
@@ -956,31 +1478,71 @@ PROVAS.push({
     assert.equal(a1.pedido.id, O(140));
     assert.equal(num(a1.disponivel), 80);
 
-    const r70 = await externo(cliente, { pedido: O(140), ref: "REF-T70", valor: 70 });
-    assert.equal(r70.resultado, "inserido", "o REF do MP entra inteiro (a linha do app é intenção)");
-    const antes = (await cliente.query("SELECT status, amount, updated_at FROM public.order_refunds WHERE id = $1", [app])).rows[0];
+    const r70 = await externo(cliente, {
+      pedido: O(140),
+      ref: "REF-T70",
+      valor: 70,
+    });
+    assert.equal(
+      r70.resultado,
+      "inserido",
+      "o REF do MP entra inteiro (a linha do app é intenção)",
+    );
+    const antes = (
+      await cliente.query(
+        "SELECT status, amount, updated_at FROM public.order_refunds WHERE id = $1",
+        [app],
+      )
+    ).rows[0];
     const a2 = await autorizar(cliente, app, 20);
     assert.equal(a2.decisao, "nao_cabe");
     assert.equal(num(a2.disponivel), 10);
-    const depois = (await cliente.query("SELECT status, amount, updated_at FROM public.order_refunds WHERE id = $1", [app])).rows[0];
-    assert.deepEqual(depois, antes, "nao_cabe não muda NADA na linha (nem status, nem updated_at)");
-    assert.equal(depois.status, "em_processamento", "a linha segue reservada: reconciliável, nunca liberada");
+    const depois = (
+      await cliente.query(
+        "SELECT status, amount, updated_at FROM public.order_refunds WHERE id = $1",
+        [app],
+      )
+    ).rows[0];
+    assert.deepEqual(
+      depois,
+      antes,
+      "nao_cabe não muda NADA na linha (nem status, nem updated_at)",
+    );
+    assert.equal(
+      depois.status,
+      "em_processamento",
+      "a linha segue reservada: reconciliável, nunca liberada",
+    );
 
     // Linha do sistema (rastreio): nunca POST.
     const sistema = (
-      await cliente.query("SELECT id FROM public.order_refunds WHERE order_id = $1 AND mp_refund_id = 'REF-T20'", [O(140)])
+      await cliente.query(
+        "SELECT id FROM public.order_refunds WHERE order_id = $1 AND mp_refund_id = 'REF-T20'",
+        [O(140)],
+      )
     ).rows[0].id;
-    assert.equal((await autorizar(cliente, sistema, 20)).decisao, "linha_mudou");
+    assert.equal(
+      (await autorizar(cliente, sistema, 20)).decisao,
+      "linha_mudou",
+    );
     // ... nem a reserva VIVA de uma contestação (em_processamento, cabe no
     // saldo): é dinheiro que o MP segura na disputa, nunca um POST nosso.
     await pedido(cliente, O(145), { total: 100 });
     const reserva = await contestacao(cliente, {
-      pedido: O(145), cbk: "CBK-T145", caseId: "145", decisao: "em_analise", valorCaso: 30,
+      pedido: O(145),
+      cbk: "CBK-T145",
+      caseId: "145",
+      decisao: "em_analise",
+      valorCaso: 30,
     });
     assert.equal(reserva.resultado, "reservado");
     const linhaDaReserva = await linhaDoCaso(cliente, O(145), "CBK-T145");
     const t5 = await autorizar(cliente, linhaDaReserva, 30);
-    assert.equal(t5.decisao, "linha_mudou", "linha do sistema nunca autoriza POST");
+    assert.equal(
+      t5.decisao,
+      "linha_mudou",
+      "linha do sistema nunca autoriza POST",
+    );
     assert.equal(t5.status, "em_processamento");
     // Valor diferente do da linha.
     assert.equal((await autorizar(cliente, app, 19.99)).decisao, "linha_mudou");
@@ -992,7 +1554,8 @@ PROVAS.push({
     assert.equal(t3.status, "solicitado");
     // Inexistente.
     assert.equal(
-      (await autorizar(cliente, "00000000-0000-0000-0000-00000000dead", 10)).decisao,
+      (await autorizar(cliente, "00000000-0000-0000-0000-00000000dead", 10))
+        .decisao,
       "linha_mudou",
     );
 
@@ -1028,9 +1591,17 @@ PROVAS.push({
       (c) => externo(c, { pedido: O(143), ref: "REF-U70", valor: 70 }),
       (c) => autorizar(c, app, 20),
     );
-    assert.equal(parou, true, "a autorização parou na trava (wait_event_type = Lock)");
+    assert.equal(
+      parou,
+      true,
+      "a autorização parou na trava (wait_event_type = Lock)",
+    );
     assert.equal(ra.resultado, "inserido");
-    assert.equal(rb.decisao, "nao_cabe", "a autorização enxergou o REF commitado");
+    assert.equal(
+      rb.decisao,
+      "nao_cabe",
+      "a autorização enxergou o REF commitado",
+    );
     assert.equal(num(rb.disponivel), 10);
     const e = await estado(cliente, O(143));
     assert.equal(e.valorEstornado, 90);
@@ -1044,13 +1615,24 @@ PROVAS.push({
     await pedido(cliente, O(144), { total: 100 });
     const app = await linhaDoApp(cliente, O(144), 30);
     const { ra, rb, parouB } = await cruzamento(url, {
-      seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [app]),
+      seguraA: (a) =>
+        a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [
+          app,
+        ]),
       chamaB: (b) => autorizar(b, app, 30),
-      terminaA: (a) => a.query("SELECT public.concluir_estorno($1, 'REF-V', 'processed', 'refunded') AS r", [app]),
+      terminaA: (a) =>
+        a.query(
+          "SELECT public.concluir_estorno($1, 'REF-V', 'processed', 'refunded') AS r",
+          [app],
+        ),
     });
     assert.equal(parouB, true, "a autorização parou na trava da linha");
     assert.equal(ra.ok, true, `concluir_estorno terminou: ${ra.mensagem}`);
-    assert.equal(rb.ok, true, `a autorização terminou sem 40P01: ${rb.mensagem}`);
+    assert.equal(
+      rb.ok,
+      true,
+      `a autorização terminou sem 40P01: ${rb.mensagem}`,
+    );
     const depois = await autorizar(cliente, app, 30);
     assert.equal(depois.decisao, "linha_mudou");
     assert.equal(depois.status, "concluido");
@@ -1067,22 +1649,40 @@ PROVAS.push({
     await pedido(cliente, O(146), { total: 100 });
     const b = await linhaDoApp(cliente, O(146), 50);
     const a = await linhaDoApp(cliente, O(146), 50);
-    await cliente.query("SELECT public.concluir_estorno($1, 'REF-A', 'processed', 'partially_refunded')", [b]);
+    await cliente.query(
+      "SELECT public.concluir_estorno($1, 'REF-A', 'processed', 'partially_refunded')",
+      [b],
+    );
     assert.equal((await estado(cliente, O(146))).valorEstornado, 50);
 
     // O caminho que o executor usa agora (tentar_depois -> consulta -> o id
     // do refund): concluir A com REF-A é recusado pela guarda (b) e NADA soma.
     let erro = null;
     try {
-      await cliente.query("SELECT public.concluir_estorno($1, 'REF-A', 'processed', 'refunded')", [a]);
+      await cliente.query(
+        "SELECT public.concluir_estorno($1, 'REF-A', 'processed', 'refunded')",
+        [a],
+      );
     } catch (e) {
       erro = e;
     }
     assert.ok(erro, "concluir A com o REF-A de B precisa falhar");
-    assert.equal(erro.code, "23505", `índice único (order_id, mp_refund_id): ${erro && erro.message}`);
+    assert.equal(
+      erro.code,
+      "23505",
+      `índice único (order_id, mp_refund_id): ${erro?.message}`,
+    );
     const depois = await estado(cliente, O(146));
-    assert.equal(depois.valorEstornado, 50, "o cliente recebeu 50: o ledger fica em 50");
-    assert.equal(depois.linhas.find((l) => l.id === a).status, "em_processamento", "A segue reservada, sem soma");
+    assert.equal(
+      depois.valorEstornado,
+      50,
+      "o cliente recebeu 50: o ledger fica em 50",
+    );
+    assert.equal(
+      depois.linhas.find((l) => l.id === a).status,
+      "em_processamento",
+      "A segue reservada, sem soma",
+    );
 
     // Controle (o defeito B1 de 14d77a5b): concluir A SEM id não passa pela
     // guarda (b) e soma em dobro. Desfeito no ROLLBACK — é a prova de que a
@@ -1090,8 +1690,15 @@ PROVAS.push({
     // mandá-lo quando a resposta do MP traz o refund daquele valor.
     await cliente.query("BEGIN");
     try {
-      await cliente.query("SELECT public.concluir_estorno($1, NULL, 'processed', 'refunded')", [a]);
-      assert.equal((await estado(cliente, O(146))).valorEstornado, 100, "sem id, o banco soma de novo (dobro)");
+      await cliente.query(
+        "SELECT public.concluir_estorno($1, NULL, 'processed', 'refunded')",
+        [a],
+      );
+      assert.equal(
+        (await estado(cliente, O(146))).valorEstornado,
+        100,
+        "sem id, o banco soma de novo (dobro)",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -1135,41 +1742,85 @@ PROVAS.push({
       )
     ).rows;
     assert.deepEqual(forma, [
-      { attname: "criada_sob_autorizacao", tipo: "boolean", attnotnull: false, def: "true" },
-      { attname: "post_autorizado_em", tipo: "timestamp with time zone", attnotnull: false, def: null },
+      {
+        attname: "criada_sob_autorizacao",
+        tipo: "boolean",
+        attnotnull: false,
+        def: "true",
+      },
+      {
+        attname: "post_autorizado_em",
+        tipo: "timestamp with time zone",
+        attnotnull: false,
+        def: null,
+      },
     ]);
 
     // O cenário do revisor (preso.sql): pedido 100, linha do app de 50 que
     // NUNCA teve POST e já passou por 2 marcas; o REF de 70 do painel entra.
     await pedido(cliente, O(147), { total: 100 });
     const presa = await linhaDoApp(cliente, O(147), 50);
-    await cliente.query("UPDATE public.order_refunds SET tentativas = 2 WHERE id = $1", [presa]);
+    await cliente.query(
+      "UPDATE public.order_refunds SET tentativas = 2 WHERE id = $1",
+      [presa],
+    );
     const nasceu = await carimbo(cliente, presa);
-    assert.equal(nasceu.criada_sob_autorizacao, true, "linha nascida depois da migration");
+    assert.equal(
+      nasceu.criada_sob_autorizacao,
+      true,
+      "linha nascida depois da migration",
+    );
     assert.equal(nasceu.post_autorizado_em, null);
-    assert.equal((await externo(cliente, { pedido: O(147), ref: "REF-X70", valor: 70 })).resultado, "inserido");
+    assert.equal(
+      (await externo(cliente, { pedido: O(147), ref: "REF-X70", valor: 70 }))
+        .resultado,
+      "inserido",
+    );
 
     const a1 = await autorizar(cliente, presa, 50);
     assert.equal(a1.decisao, "nao_cabe");
-    assert.equal((await carimbo(cliente, presa)).post_autorizado_em, null, "nao_cabe não carimba");
+    assert.equal(
+      (await carimbo(cliente, presa)).post_autorizado_em,
+      null,
+      "nao_cabe não carimba",
+    );
     assert.equal((await autorizar(cliente, presa, 49)).decisao, "linha_mudou");
-    assert.equal((await carimbo(cliente, presa)).post_autorizado_em, null, "linha_mudou não carimba");
+    assert.equal(
+      (await carimbo(cliente, presa)).post_autorizado_em,
+      null,
+      "linha_mudou não carimba",
+    );
 
     // O executor recusa (linha não incerta): a escrita condicionada pega a
     // linha e a reserva de 50 volta — o que sobra (30) cabe de novo.
-    assert.equal(await recusarComoOExecutor(cliente, presa, "saldo não cobre"), 1);
+    assert.equal(
+      await recusarComoOExecutor(cliente, presa, "saldo não cobre"),
+      1,
+    );
     assert.equal((await carimbo(cliente, presa)).status, "recusado");
     const nova30 = await linhaDoApp(cliente, O(147), 30);
     const a2 = await autorizar(cliente, nova30, 30);
-    assert.equal(a2.decisao, "autorizado", "a reserva de 50 foi liberada: os 30 restantes cabem");
+    assert.equal(
+      a2.decisao,
+      "autorizado",
+      "a reserva de 50 foi liberada: os 30 restantes cabem",
+    );
     assert.equal(num(a2.disponivel), 30);
     const depois = await carimbo(cliente, nova30);
     assert.notEqual(depois.post_autorizado_em, null, "autorizado carimba");
 
     // Controle: a linha CARIMBADA (POST autorizado) nunca é recusada pela
     // mesma escrita — mesmo que outro executor a leia sem o carimbo (corrida).
-    assert.equal(await recusarComoOExecutor(cliente, nova30, "retrato velho"), 0, "0 linhas: o carimbo segura");
-    assert.equal((await carimbo(cliente, nova30)).status, "em_processamento", "a reserva fica");
+    assert.equal(
+      await recusarComoOExecutor(cliente, nova30, "retrato velho"),
+      0,
+      "0 linhas: o carimbo segura",
+    );
+    assert.equal(
+      (await carimbo(cliente, nova30)).status,
+      "em_processamento",
+      "a reserva fica",
+    );
     const e = await estado(cliente, O(147));
     assert.equal(e.valorEstornado, 70);
 
@@ -1183,19 +1834,41 @@ PROVAS.push({
     const sql201 = lerMigration(MIGRATION_201);
     await cliente.query("BEGIN");
     try {
-      await cliente.query("ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao");
+      await cliente.query(
+        "ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao",
+      );
       await pedido(cliente, O(149), { total: 100 });
       const anterior = await linhaDoApp(cliente, O(149), 10);
       await cliente.query(sql);
-      assert.equal((await carimbo(cliente, anterior)).criada_sob_autorizacao, null, "linha anterior à migration: legado (NULL)");
+      assert.equal(
+        (await carimbo(cliente, anterior)).criada_sob_autorizacao,
+        null,
+        "linha anterior à migration: legado (NULL)",
+      );
       await pedido(cliente, O(148), { total: 100 });
       const soCom96 = await linhaDoApp(cliente, O(148), 10);
-      assert.equal((await carimbo(cliente, soCom96)).criada_sob_autorizacao, null, "só com a 96: nasce NULL");
+      assert.equal(
+        (await carimbo(cliente, soCom96)).criada_sob_autorizacao,
+        null,
+        "só com a 96: nasce NULL",
+      );
       await cliente.query(sql201);
-      assert.equal((await carimbo(cliente, anterior)).criada_sob_autorizacao, null, "a 201 não reescreve a linha antiga");
-      assert.equal((await carimbo(cliente, soCom96)).criada_sob_autorizacao, null, "nem a nascida só com a 96");
+      assert.equal(
+        (await carimbo(cliente, anterior)).criada_sob_autorizacao,
+        null,
+        "a 201 não reescreve a linha antiga",
+      );
+      assert.equal(
+        (await carimbo(cliente, soCom96)).criada_sob_autorizacao,
+        null,
+        "nem a nascida só com a 96",
+      );
       const posterior = await linhaDoApp(cliente, O(148), 10);
-      assert.equal((await carimbo(cliente, posterior)).criada_sob_autorizacao, true, "com a 201: nasce true");
+      assert.equal(
+        (await carimbo(cliente, posterior)).criada_sob_autorizacao,
+        true,
+        "com a 201: nasce true",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -1244,45 +1917,101 @@ PROVAS.push({
       assert.equal(await padrao(), null, "o rollback da 201 tira o DEFAULT");
       await pedido(cliente, O(150), { total: 100 });
       const c4 = await linhaDoApp(cliente, O(150), 50);
-      await cliente.query("UPDATE public.order_refunds SET tentativas = 2 WHERE id = $1", [c4]);
+      await cliente.query(
+        "UPDATE public.order_refunds SET tentativas = 2 WHERE id = $1",
+        [c4],
+      );
       const nasceu = await carimbo(cliente, c4);
-      assert.equal(nasceu.criada_sob_autorizacao, null, "só com a 96: linha nova nasce NULL (legado)");
-      assert.equal(nasceu.post_autorizado_em, null, "a edge antiga não carimba");
-      assert.equal((await externo(cliente, { pedido: O(150), ref: "REF-Y70", valor: 70 })).resultado, "inserido");
+      assert.equal(
+        nasceu.criada_sob_autorizacao,
+        null,
+        "só com a 96: linha nova nasce NULL (legado)",
+      );
+      assert.equal(
+        nasceu.post_autorizado_em,
+        null,
+        "a edge antiga não carimba",
+      );
+      assert.equal(
+        (await externo(cliente, { pedido: O(150), ref: "REF-Y70", valor: 70 }))
+          .resultado,
+        "inserido",
+      );
       assert.equal((await autorizar(cliente, c4, 50)).decisao, "nao_cabe");
       const e = await estado(cliente, O(150));
-      assert.equal(e.linhas.find((l) => l.id === c4).status, "em_processamento", "nada no banco a libera sozinho");
+      assert.equal(
+        e.linhas.find((l) => l.id === c4).status,
+        "em_processamento",
+        "nada no banco a libera sozinho",
+      );
 
       // O 2º rollback recusa (nada a desfazer), sem escrever.
-      await recusa(rollback201, /sem DEFAULT true/, "o 2º rollback da 201 recusa");
+      await recusa(
+        rollback201,
+        /sem DEFAULT true/,
+        "o 2º rollback da 201 recusa",
+      );
 
       // Preflight da 201 sem escrever: corpo da autorizar diferente do da 96.
       const corpoVivo = (
-        await cliente.query("SELECT pg_get_functiondef('public.autorizar_post_do_estorno(uuid, numeric)'::regprocedure) AS d")
+        await cliente.query(
+          "SELECT pg_get_functiondef('public.autorizar_post_do_estorno(uuid, numeric)'::regprocedure) AS d",
+        )
       ).rows[0].d;
       await cliente.query("SAVEPOINT y_corpo");
-      await cliente.query(corpoVivo.replace("post_autorizado_em = now()", "post_autorizado_em = post_autorizado_em"));
-      await recusa(sql201, /não é o corpo da 20261196000000/, "a 201 recusa a autorizar sem o carimbo da 96");
+      await cliente.query(
+        corpoVivo.replace(
+          "post_autorizado_em = now()",
+          "post_autorizado_em = post_autorizado_em",
+        ),
+      );
+      await recusa(
+        sql201,
+        /não é o corpo da 20261196000000/,
+        "a 201 recusa a autorizar sem o carimbo da 96",
+      );
       await cliente.query("ROLLBACK TO SAVEPOINT y_corpo");
       assert.equal(await padrao(), null, "a recusa não escreveu");
       // ... autorizar ausente.
       await cliente.query("SAVEPOINT y_sem_fn");
       await cliente.query(`DROP FUNCTION ${FN_AUTORIZAR}`);
-      await recusa(sql201, /autorizar_post_do_estorno\(uuid, numeric\) ausente/, "a 201 recusa sem a autorizar");
+      await recusa(
+        sql201,
+        /autorizar_post_do_estorno\(uuid, numeric\) ausente/,
+        "a 201 recusa sem a autorizar",
+      );
       await cliente.query("ROLLBACK TO SAVEPOINT y_sem_fn");
       // ... default diferente de nenhum/true.
       await cliente.query("SAVEPOINT y_default");
-      await cliente.query("ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao SET DEFAULT false");
-      await recusa(sql201, /criada_sob_autorizacao com default/, "a 201 recusa outro default");
+      await cliente.query(
+        "ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao SET DEFAULT false",
+      );
+      await recusa(
+        sql201,
+        /criada_sob_autorizacao com default/,
+        "a 201 recusa outro default",
+      );
       await cliente.query("ROLLBACK TO SAVEPOINT y_default");
       // ... coluna ausente / de outro tipo.
       await cliente.query("SAVEPOINT y_tipo");
-      await cliente.query("ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao TYPE text");
-      await recusa(sql201, /criada_sob_autorizacao ausente ou com tipo text/, "a 201 recusa coluna de outro tipo");
+      await cliente.query(
+        "ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao TYPE text",
+      );
+      await recusa(
+        sql201,
+        /criada_sob_autorizacao ausente ou com tipo text/,
+        "a 201 recusa coluna de outro tipo",
+      );
       await cliente.query("ROLLBACK TO SAVEPOINT y_tipo");
       await cliente.query("SAVEPOINT y_sem_coluna");
-      await cliente.query("ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao");
-      await recusa(sql201, /criada_sob_autorizacao ausente ou com tipo/, "a 201 recusa sem a coluna");
+      await cliente.query(
+        "ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao",
+      );
+      await recusa(
+        sql201,
+        /criada_sob_autorizacao ausente ou com tipo/,
+        "a 201 recusa sem a coluna",
+      );
       await cliente.query("ROLLBACK TO SAVEPOINT y_sem_coluna");
       assert.equal(await padrao(), null);
 
@@ -1291,8 +2020,16 @@ PROVAS.push({
       await cliente.query(sql201);
       assert.equal(await padrao(), "true");
       const depois = await linhaDoApp(cliente, O(150), 10);
-      assert.equal((await carimbo(cliente, depois)).criada_sob_autorizacao, true, "com a 201: nasce true");
-      assert.equal((await carimbo(cliente, c4)).criada_sob_autorizacao, null, "a 201 não reescreve a linha C4");
+      assert.equal(
+        (await carimbo(cliente, depois)).criada_sob_autorizacao,
+        true,
+        "com a 201: nasce true",
+      );
+      assert.equal(
+        (await carimbo(cliente, c4)).criada_sob_autorizacao,
+        null,
+        "a 201 não reescreve a linha C4",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -1329,7 +2066,9 @@ PROVAS.push({
       await cliente.query(sql);
       await cliente.query(rollback);
       for (const fn of [FN_CONTESTACAO, FN_EXTERNO, FN_AUTORIZAR]) {
-        const sumiu = await cliente.query("SELECT to_regprocedure($1) AS f", [fn]);
+        const sumiu = await cliente.query("SELECT to_regprocedure($1) AS f", [
+          fn,
+        ]);
         assert.equal(sumiu.rows[0].f, null, `o rollback apaga ${fn}`);
       }
       const colunas = await cliente.query(
@@ -1353,24 +2092,38 @@ PROVAS.push({
         ],
         "as colunas do R1 FICAM (o carimbo é evidência de dinheiro), sem DEFAULT",
       );
-      const tabela = await cliente.query("SELECT to_regclass('public.contestacoes_decisao_final') AS t");
-      assert.notEqual(tabela.rows[0].t, null, "a decisão final (histórico) FICA no rollback");
+      const tabela = await cliente.query(
+        "SELECT to_regclass('public.contestacoes_decisao_final') AS t",
+      );
+      assert.notEqual(
+        tabela.rows[0].t,
+        null,
+        "a decisão final (histórico) FICA no rollback",
+      );
       await cliente.query(sql);
-      const voltou = await cliente.query("SELECT to_regprocedure($1) AS f", [FN_CONTESTACAO]);
+      const voltou = await cliente.query("SELECT to_regprocedure($1) AS f", [
+        FN_CONTESTACAO,
+      ]);
       assert.notEqual(voltou.rows[0].f, null);
       const def = await cliente.query(
         `SELECT pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attribute a
            JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
           WHERE a.attrelid = 'public.order_refunds'::regclass AND a.attname = 'criada_sob_autorizacao'`,
       );
-      assert.equal(def.rows[0], undefined, "reaplicar a 96 NÃO põe DEFAULT (é da 201)");
+      assert.equal(
+        def.rows[0],
+        undefined,
+        "reaplicar a 96 NÃO põe DEFAULT (é da 201)",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
 
     await cliente.query("BEGIN");
     try {
-      await cliente.query("DROP INDEX public.uq_order_refunds_pedido_contestacao");
+      await cliente.query(
+        "DROP INDEX public.uq_order_refunds_pedido_contestacao",
+      );
       let erro = null;
       try {
         await cliente.query(sql);
@@ -1378,7 +2131,10 @@ PROVAS.push({
         erro = e;
       }
       assert.ok(erro, "o preflight recusa sem a 20261192000000");
-      assert.match(erro.message, /B1_BASELINE_DIVERGENT: public\.uq_order_refunds_pedido_contestacao/);
+      assert.match(
+        erro.message,
+        /B1_BASELINE_DIVERGENT: public\.uq_order_refunds_pedido_contestacao/,
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -1414,7 +2170,9 @@ PROVAS.push({
     // Tabela da decisão final com OUTRA forma: recusa, nada gravado.
     await cliente.query("BEGIN");
     try {
-      await cliente.query("ALTER TABLE public.contestacoes_decisao_final ADD COLUMN intrusa integer");
+      await cliente.query(
+        "ALTER TABLE public.contestacoes_decisao_final ADD COLUMN intrusa integer",
+      );
       let erro = null;
       try {
         await cliente.query(sql);
@@ -1422,7 +2180,10 @@ PROVAS.push({
         erro = e;
       }
       assert.ok(erro, "o preflight recusa a tabela com outra forma");
-      assert.match(erro.message, /B1_BASELINE_DIVERGENT: public\.contestacoes_decisao_final/);
+      assert.match(
+        erro.message,
+        /B1_BASELINE_DIVERGENT: public\.contestacoes_decisao_final/,
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -1448,14 +2209,22 @@ async function main() {
         console.error(`  FALHOU ${nome}`);
         console.error(`    ${erro.message}`);
         linhas.push(`- ❌ ${nome}\n  - \`${erro.message}\``);
-        anexarAoSummary("Prova viva da contestação (rpc-ci)", linhas.join("\n"));
-        falhar("FALHOU", "Uma regra de dinheiro da contestação foi quebrada — ver acima qual.");
+        anexarAoSummary(
+          "Prova viva da contestação (rpc-ci)",
+          linhas.join("\n"),
+        );
+        falhar(
+          "FALHOU",
+          "Uma regra de dinheiro da contestação foi quebrada — ver acima qual.",
+        );
       }
     }
   } finally {
     await cliente.end().catch(() => {});
   }
-  console.log(`\n[contestacao] ${PROVAS.length}/${PROVAS.length} provas passaram.`);
+  console.log(
+    `\n[contestacao] ${PROVAS.length}/${PROVAS.length} provas passaram.`,
+  );
   anexarAoSummary(
     "Prova viva da contestação (rpc-ci)",
     `${linhas.join("\n")}\n\n**${PROVAS.length}/${PROVAS.length} provas** contra as migrations aplicadas do zero.`,

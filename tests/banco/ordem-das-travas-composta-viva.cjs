@@ -1167,13 +1167,15 @@ PROVAS.push({
         assert.equal(ra.r.resultado, "inserido");
         assert.equal(rb.r.cancelado, true);
         assert.equal(estado.status, "cancelled");
-        assert.equal(estado.estornado, 30, "i1: o refund do painel entrou uma vez");
+        assert.equal(
+          estado.estornado,
+          30,
+          "i1: o refund do painel entrou uma vez",
+        );
         // O cancelamento esperou o REF: viu 30 já estornado e 40 reservado,
         // e abriu só o remanescente (30). Compromisso total = 100.
         assert.deepEqual(
-          estado.linhas
-            .map(([v, s, por]) => `${v} ${s} ${por}`)
-            .sort(),
+          estado.linhas.map(([v, s, por]) => `${v} ${s} ${por}`).sort(),
           [
             "30 concluido sistema",
             "30 solicitado lojista",
@@ -1198,7 +1200,11 @@ PROVAS.push({
         // esse POST é a autorizar_post_do_estorno. A trava só garante que
         // ninguém decidiu sobre retrato velho; a regra do saldo é da 96.
         assert.equal(rb.r.resultado, "inserido");
-        assert.equal(estado.estornado, 30, "i2: o refund do painel entrou uma vez");
+        assert.equal(
+          estado.estornado,
+          30,
+          "i2: o refund do painel entrou uma vez",
+        );
         console.log(`    [i2] linhas: ${JSON.stringify(estado.linhas)}`);
       },
     });
@@ -1216,7 +1222,11 @@ PROVAS.push({
       conferir: ({ ra, rb, estado }) => {
         OK(ra, "j1 concluir");
         OK(rb, "j1 REF externo");
-        assert.equal(rb.r.resultado, "ja_registrado", "j1: um refund credita UMA linha");
+        assert.equal(
+          rb.r.resultado,
+          "ja_registrado",
+          "j1: um refund credita UMA linha",
+        );
         assert.equal(estado.estornado, 30, "j1: concluído uma vez (30)");
         assert.deepEqual(estado.linhas, [[30, "concluido", "lojista"]]);
       },
@@ -1229,7 +1239,11 @@ PROVAS.push({
       conferir: ({ ra, rb, estado }) => {
         OK(ra, "j2 REF externo");
         OK(rb, "j2 concluir");
-        assert.equal(ra.r.resultado, "ja_registrado", "j2: um refund credita UMA linha");
+        assert.equal(
+          ra.r.resultado,
+          "ja_registrado",
+          "j2: um refund credita UMA linha",
+        );
         assert.equal(estado.estornado, 30, "j2: concluído uma vez (30)");
         assert.deepEqual(estado.linhas, [[30, "concluido", "lojista"]]);
       },
