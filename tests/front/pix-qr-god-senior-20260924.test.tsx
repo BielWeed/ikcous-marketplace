@@ -1,7 +1,3 @@
-import {
-  type CategoriaErroPagamento,
-  PagamentoOnline,
-} from "@/components/checkout/PagamentoOnline";
 // @vitest-environment jsdom
 //
 // Tela do Pix com prazo informado e aviso prudente (24/09/2026).
@@ -19,6 +15,10 @@ import {
 // Relógio: só `Date`, `setInterval` e `clearInterval` são falsos. A montagem
 // do Brick depende de `setTimeout` de verdade (`esperarMicrotarefas`), mesmo
 // motivo registrado em pix-copiar-codigo-avisa-se-copiou.test.tsx.
+import {
+  type CategoriaErroPagamento,
+  PagamentoOnline,
+} from "@/components/checkout/PagamentoOnline";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { formatCurrency } from "@/lib/utils";
 import { act } from "react";
