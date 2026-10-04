@@ -74,6 +74,7 @@ Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas 
   assertEquals(drops, [
     "DROP FUNCTION IF EXISTS public.registrar_contestacao_no_ledger",
     "DROP FUNCTION IF EXISTS public.registrar_estorno_externo_do_mp",
+    "DROP FUNCTION IF EXISTS public.autorizar_post_do_estorno",
   ]);
   assert(!/DROP\s+COLUMN/i.test(semComentarios(rollback)), "o rollback não apaga coluna");
   assert(!/\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(semComentarios(rollback)));
@@ -113,11 +114,23 @@ Deno.test("20261196: as duas funções travam o PEDIDO (FOR UPDATE) antes de dec
   for (const fn of [
     "public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)",
     "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)",
+    "public.autorizar_post_do_estorno(uuid, numeric)",
   ]) {
     assertStringIncludes(migration, `REVOKE ALL ON FUNCTION ${fn}\n  FROM PUBLIC, anon, authenticated;`);
     assertStringIncludes(migration, `GRANT EXECUTE ON FUNCTION ${fn}\n  TO service_role;`);
   }
-  assertEquals((semComentarios(migration).match(/SECURITY DEFINER\s+SET search_path = public/g) || []).length, 2);
+  assertEquals((semComentarios(migration).match(/SECURITY DEFINER\s+SET search_path = public/g) || []).length, 3);
+});
+
+Deno.test("20261196: autorizar_post_do_estorno trava a LINHA e depois o PEDIDO, e só escreve updated_at quando autoriza", () => {
+  const autorizar = corpos(migration)[2];
+  const linha = autorizar.search(/FROM public\.order_refunds\s+WHERE id = p_refund_id\s+FOR UPDATE;/);
+  const pedido = autorizar.search(/FROM public\.marketplace_orders\s+WHERE id = v_linha\.order_id\s+FOR UPDATE;/);
+  assert(linha > 0 && pedido > linha, "linha -> pedido");
+  const escritas = [...autorizar.matchAll(/UPDATE public\.order_refunds\s+SET ([^;]*);/g)].map((m) => m[1].replace(/\s+/g, " ").trim());
+  assertEquals(escritas, ["updated_at = now() WHERE id = v_linha.id"]);
+  assert(autorizar.indexOf("'nao_cabe'") < autorizar.search(/UPDATE public\.order_refunds/), "nao_cabe volta antes de qualquer escrita");
+  assertStringIncludes(semComentarios(rollback), "DROP FUNCTION public.autorizar_post_do_estorno(uuid, numeric);");
 });
 
 Deno.test("rpc-ci: as provas de DINHEIRO ficam num job BLOQUEANTE (sem continue-on-error); só o que não é dinheiro é informacional", () => {

@@ -34,6 +34,18 @@
  *   (s) a mesma prova para registrar_estorno_externo_do_mp × concluir_estorno
  *       (a linha órfã do mesmo refund): sem 40P01, somado uma vez; o
  *       CONTROLE dá 40P01.
+ *   (t) autorizar_post_do_estorno (o executor pergunta antes do POST): pedido
+ *       100 com REF 20 concluído, APP 20 em_processamento — autoriza e
+ *       devolve o pedido relido; REF 70 registrado -> nao_cabe e NADA muda
+ *       (a linha segue em_processamento, mesma reserva); linha do sistema,
+ *       linha concluída, valor diferente e linha inexistente -> linha_mudou;
+ *       a fórmula conta o em voo das OUTRAS linhas.
+ *   (u) corrida REAL: o REF de 70 segura a trava (registrar_estorno_externo_do_mp
+ *       aberto) e a autorização do APP 20 PARA (wait_event Lock); quando o REF
+ *       commita, a autorização enxerga 90 e volta nao_cabe.
+ *   (v) autorização × concluir_estorno na MESMA linha (A segura a linha, B
+ *       autoriza e para, A conclui): sem 40P01; B vê a linha concluída
+ *       (linha_mudou) e não autoriza POST.
  *   (h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000;
  *       rollback + reaplicar dentro de BEGIN/ROLLBACK.
  *
@@ -59,6 +71,7 @@ const O = (n) => `6ccccccc-0000-0000-0000-${String(n).padStart(12, "0")}`;
 const MIGRATION = "20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql";
 const FN_CONTESTACAO =
   "public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)";
+const FN_AUTORIZAR = "public.autorizar_post_do_estorno(uuid, numeric)";
 const FN_EXTERNO =
   "public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)";
 
@@ -176,7 +189,7 @@ PROVAS.push({
        ON CONFLICT (id) DO NOTHING`,
       [U_CLIENTE],
     );
-    for (const fn of [FN_CONTESTACAO, FN_EXTERNO]) {
+    for (const fn of [FN_CONTESTACAO, FN_EXTERNO, FN_AUTORIZAR]) {
       for (const papel of ["anon", "authenticated", "public"]) {
         const r = await cliente.query(
           `SELECT has_function_privilege($1, $2, 'EXECUTE') AS pode`,
@@ -896,6 +909,140 @@ PROVAS.push({
   },
 });
 
+async function autorizar(c, refundId, valor) {
+  const r = await c.query("SELECT public.autorizar_post_do_estorno($1, $2) AS r", [refundId, valor]);
+  return r.rows[0].r;
+}
+
+async function linhaDoApp(cliente, pedidoId, valor, status = "em_processamento") {
+  return (
+    await cliente.query(
+      `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, motivo)
+       VALUES ($1, $2, 'lojista', $3, 'devolução pelo app') RETURNING id`,
+      [pedidoId, valor, status],
+    )
+  ).rows[0].id;
+}
+
+PROVAS.push({
+  nome: "(t) autorizar_post_do_estorno: autoriza com o pedido relido; depois do REF 70, nao_cabe e NADA muda; sistema/concluída/valor errado/inexistente -> linha_mudou",
+  corpo: async (cliente) => {
+    await pedido(cliente, O(140), { total: 100 });
+    const r20 = await externo(cliente, { pedido: O(140), ref: "REF-T20", valor: 20 });
+    assert.equal(r20.resultado, "inserido");
+    const app = await linhaDoApp(cliente, O(140), 20);
+
+    const a1 = await autorizar(cliente, app, 20);
+    assert.equal(a1.decisao, "autorizado");
+    assert.equal(num(a1.pedido.valor_estornado), 20);
+    assert.equal(num(a1.pedido.total), 100);
+    assert.equal(a1.pedido.payment_status, "pago");
+    assert.equal(a1.pedido.id, O(140));
+    assert.equal(num(a1.disponivel), 80);
+
+    const r70 = await externo(cliente, { pedido: O(140), ref: "REF-T70", valor: 70 });
+    assert.equal(r70.resultado, "inserido", "o REF do MP entra inteiro (a linha do app é intenção)");
+    const antes = (await cliente.query("SELECT status, amount, updated_at FROM public.order_refunds WHERE id = $1", [app])).rows[0];
+    const a2 = await autorizar(cliente, app, 20);
+    assert.equal(a2.decisao, "nao_cabe");
+    assert.equal(num(a2.disponivel), 10);
+    const depois = (await cliente.query("SELECT status, amount, updated_at FROM public.order_refunds WHERE id = $1", [app])).rows[0];
+    assert.deepEqual(depois, antes, "nao_cabe não muda NADA na linha (nem status, nem updated_at)");
+    assert.equal(depois.status, "em_processamento", "a linha segue reservada: reconciliável, nunca liberada");
+
+    // Linha do sistema (rastreio): nunca POST.
+    const sistema = (
+      await cliente.query("SELECT id FROM public.order_refunds WHERE order_id = $1 AND mp_refund_id = 'REF-T20'", [O(140)])
+    ).rows[0].id;
+    assert.equal((await autorizar(cliente, sistema, 20)).decisao, "linha_mudou");
+    // ... nem a reserva VIVA de uma contestação (em_processamento, cabe no
+    // saldo): é dinheiro que o MP segura na disputa, nunca um POST nosso.
+    await pedido(cliente, O(145), { total: 100 });
+    const reserva = await contestacao(cliente, {
+      pedido: O(145), cbk: "CBK-T145", caseId: "145", decisao: "em_analise", valorCaso: 30,
+    });
+    assert.equal(reserva.resultado, "reservado");
+    const linhaDaReserva = await linhaDoCaso(cliente, O(145), "CBK-T145");
+    const t5 = await autorizar(cliente, linhaDaReserva, 30);
+    assert.equal(t5.decisao, "linha_mudou", "linha do sistema nunca autoriza POST");
+    assert.equal(t5.status, "em_processamento");
+    // Valor diferente do da linha.
+    assert.equal((await autorizar(cliente, app, 19.99)).decisao, "linha_mudou");
+    // Linha que não está em_processamento (o chamador não marcou, ou outro concluiu).
+    await pedido(cliente, O(141), { total: 100 });
+    const solicitada = await linhaDoApp(cliente, O(141), 10, "solicitado");
+    const t3 = await autorizar(cliente, solicitada, 10);
+    assert.equal(t3.decisao, "linha_mudou");
+    assert.equal(t3.status, "solicitado");
+    // Inexistente.
+    assert.equal(
+      (await autorizar(cliente, "00000000-0000-0000-0000-00000000dead", 10)).decisao,
+      "linha_mudou",
+    );
+
+    // Em voo das OUTRAS linhas conta (a fórmula da solicitar_estorno): pedido
+    // 100, A 60 e B 40 em_processamento -> A cabe (100 - 40); C 10 a mais não.
+    await pedido(cliente, O(142), { total: 100 });
+    const a = await linhaDoApp(cliente, O(142), 60);
+    await linhaDoApp(cliente, O(142), 40);
+    assert.equal((await autorizar(cliente, a, 60)).decisao, "autorizado");
+    const c = await linhaDoApp(cliente, O(142), 10);
+    assert.equal((await autorizar(cliente, c, 10)).decisao, "nao_cabe");
+
+    // Entrada inválida é erro de programação: falha alto.
+    let erro = null;
+    try {
+      await autorizar(cliente, app, 0);
+    } catch (e) {
+      erro = e;
+    }
+    assert.ok(erro);
+    assert.match(erro.message, /autorizar_post_entrada_invalida/);
+  },
+});
+
+PROVAS.push({
+  nome: "(u) corrida REAL: o REF 70 segura a trava, a autorização do APP 20 PARA (Lock) e volta nao_cabe depois do commit",
+  corpo: async (cliente, url) => {
+    await pedido(cliente, O(143), { total: 100 });
+    await externo(cliente, { pedido: O(143), ref: "REF-U20", valor: 20 });
+    const app = await linhaDoApp(cliente, O(143), 20);
+    const { ra, rb, parou } = await corrida(
+      url,
+      (c) => externo(c, { pedido: O(143), ref: "REF-U70", valor: 70 }),
+      (c) => autorizar(c, app, 20),
+    );
+    assert.equal(parou, true, "a autorização parou na trava (wait_event_type = Lock)");
+    assert.equal(ra.resultado, "inserido");
+    assert.equal(rb.decisao, "nao_cabe", "a autorização enxergou o REF commitado");
+    assert.equal(num(rb.disponivel), 10);
+    const e = await estado(cliente, O(143));
+    assert.equal(e.valorEstornado, 90);
+    assert.equal(e.linhas.find((l) => l.id === app).status, "em_processamento");
+  },
+});
+
+PROVAS.push({
+  nome: "(v) autorização × concluir_estorno na MESMA linha: sem 40P01; a autorização vê a linha concluída e não autoriza",
+  corpo: async (cliente, url) => {
+    await pedido(cliente, O(144), { total: 100 });
+    const app = await linhaDoApp(cliente, O(144), 30);
+    const { ra, rb, parouB } = await cruzamento(url, {
+      seguraA: (a) => a.query("SELECT 1 FROM public.order_refunds WHERE id = $1 FOR UPDATE", [app]),
+      chamaB: (b) => autorizar(b, app, 30),
+      terminaA: (a) => a.query("SELECT public.concluir_estorno($1, 'REF-V', 'processed', 'refunded') AS r", [app]),
+    });
+    assert.equal(parouB, true, "a autorização parou na trava da linha");
+    assert.equal(ra.ok, true, `concluir_estorno terminou: ${ra.mensagem}`);
+    assert.equal(rb.ok, true, `a autorização terminou sem 40P01: ${rb.mensagem}`);
+    const depois = await autorizar(cliente, app, 30);
+    assert.equal(depois.decisao, "linha_mudou");
+    assert.equal(depois.status, "concluido");
+    const e = await estado(cliente, O(144));
+    assert.equal(e.valorEstornado, 30, "concluído uma vez");
+  },
+});
+
 PROVAS.push({
   nome: "(h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000; rollback + reaplicar",
   corpo: async (cliente) => {
@@ -905,8 +1052,10 @@ PROVAS.push({
     try {
       await cliente.query(sql);
       await cliente.query(rollback);
-      const sumiu = await cliente.query("SELECT to_regprocedure($1) AS f", [FN_CONTESTACAO]);
-      assert.equal(sumiu.rows[0].f, null, "o rollback apaga a função");
+      for (const fn of [FN_CONTESTACAO, FN_EXTERNO, FN_AUTORIZAR]) {
+        const sumiu = await cliente.query("SELECT to_regprocedure($1) AS f", [fn]);
+        assert.equal(sumiu.rows[0].f, null, `o rollback apaga ${fn}`);
+      }
       const colunas = await cliente.query(
         `SELECT count(*)::int AS n FROM pg_attribute
           WHERE attrelid = 'public.order_refunds'::regclass

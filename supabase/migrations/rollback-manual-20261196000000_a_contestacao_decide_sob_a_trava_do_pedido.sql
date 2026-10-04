@@ -1,9 +1,10 @@
 -- ============================================================================
 -- Rollback manual — a contestação decide sob a trava do pedido (20261196000000)
 -- ============================================================================
--- Desfaz a 20261196000000: apaga as duas funções novas
--- (`public.registrar_contestacao_no_ledger` e
--- `public.registrar_estorno_externo_do_mp`). Elas NÃO existiam antes
+-- Desfaz a 20261196000000: apaga as três funções novas
+-- (`public.registrar_contestacao_no_ledger`,
+-- `public.registrar_estorno_externo_do_mp` e
+-- `public.autorizar_post_do_estorno`). Elas NÃO existiam antes
 -- desta migration — não há corpo anterior a restaurar. NENHUMA linha de
 -- `order_refunds` é tocada. As colunas `mp_chargeback_case_id` e
 -- `mp_chargeback_valor_do_caso` e a tabela `public.contestacoes_decisao_final`
@@ -13,7 +14,10 @@
 --
 -- Depois do rollback a edge NOVA do webhook falha ao registrar contestação
 -- (função ausente -> 500, o MP reenvia; nada é gravado pela metade).
--- Reverter a edge para a versão anterior ANTES deste rollback.
+-- Reverter a edge para a versão anterior ANTES deste rollback. O mesmo
+-- vale para as edges estornar-pagamento e reconciliar-pagamentos: as novas
+-- pedem autorizar_post_do_estorno antes de todo POST e, sem ela, nenhuma
+-- devolução sai (falha fechada) até a edge anterior voltar.
 --
 -- NO WINDOWS: rode `$env:PGCLIENTENCODING='UTF8'` no PowerShell ANTES do psql.
 --
@@ -34,7 +38,11 @@ BEGIN
   IF to_regprocedure('public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)') IS NULL THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.registrar_estorno_externo_do_mp(...) ausente — nada a desfazer; revise antes de reverter.';
   END IF;
+  IF to_regprocedure('public.autorizar_post_do_estorno(uuid, numeric)') IS NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.autorizar_post_do_estorno(...) ausente — nada a desfazer; revise antes de reverter.';
+  END IF;
 END $preflight_rollback_20261196$;
 
 DROP FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer);
 DROP FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text);
+DROP FUNCTION public.autorizar_post_do_estorno(uuid, numeric);

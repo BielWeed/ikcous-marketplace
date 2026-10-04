@@ -57,6 +57,14 @@
 --     APP não é liberado aqui: o executor dele o recusa antes de qualquer
 --     POST (guardaAntesDeChamar: valor > total - valor_estornado).
 --
+--   * `autorizar_post_do_estorno(refund, valor)`: a pergunta que o
+--     executor de estorno (edge estornar-pagamento e cron
+--     reconciliar-pagamentos) faz IMEDIATAMENTE antes do POST de refund —
+--     "o POST de X desta linha ainda cabe?" — com a linha e o pedido
+--     travados e o saldo relido. Não cabe: nada muda e nenhum POST sai; a
+--     linha continua em_processamento (reconciliável). Ver o comentário da
+--     função, no fim do arquivo.
+--
 -- REGRAS DE DINHEIRO (todas dentro da trava, contra o estado relido):
 --   disponível = total - valor_estornado - soma(solicitado/em_processamento
 --   das OUTRAS linhas) — a fórmula da solicitar_estorno (2026110000000).
@@ -100,6 +108,7 @@
 --                                   3o passo é linha DEPOIS do pedido)
 --     registrar_contestacao_no_ledger,
 --     registrar_estorno_externo_do_mp (esta) linhas sistema -> pedido
+--     autorizar_post_do_estorno (esta) a linha do POST -> pedido
 --     solicitar_estorno (75) ...... pedido -> INSERT linha        (não trava
 --                                   linha existente: sem ciclo)
 --     update_order_status_atomic (80), admin_devolucao_concluir (75)
@@ -126,12 +135,12 @@
 -- notificação do caso, só quando ela é a única e a order tem um caso só —
 -- senão aviso. Linhas concluídas antes NÃO são reabertas.
 --
--- PRIVILÉGIOS: as duas funções são SECURITY DEFINER e só a service_role
+-- PRIVILÉGIOS: as três funções são SECURITY DEFINER e só a service_role
 -- executa (REVOKE de PUBLIC/anon/authenticated + GRANT explícito à
 -- service_role) — régua da concluir_estorno (2026110000100).
 --
 -- IDEMPOTÊNCIA: ADD COLUMN IF NOT EXISTS depois de o preflight provar o
--- tipo; DROP FUNCTION IF EXISTS + CREATE das duas funções novas (não
+-- tipo; DROP FUNCTION IF EXISTS + CREATE das três funções novas (não
 -- existiam antes desta migration); REVOKE/GRANT reaplicáveis. Reaplicar não
 -- muda nada.
 --
@@ -146,6 +155,11 @@
 -- nova (que chama as duas funções). Edge antiga com a migration no ar: as
 -- funções ficam sem chamador, nada muda. Edge nova sem a migration: a
 -- chamada falha (500) e o MP reenvia — nada é gravado pela metade.
+-- E ANTES das edges `estornar-pagamento` e `reconciliar-pagamentos` novas:
+-- elas pedem autorizar_post_do_estorno antes de todo POST de refund e, sem a
+-- função, FALHAM FECHADO — nenhum POST sai, a linha fica em_processamento e
+-- a devolução espera (nunca sai às cegas). Edge antiga com a migration no
+-- ar: a função fica sem chamador, nada muda.
 --
 -- COMO APLICAR: pelo workflow `aplicar-migrations.yml`, `migracoes =
 -- 20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql`. Sem
@@ -771,4 +785,116 @@ COMMENT ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, 
 REVOKE ALL ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text)
+  TO service_role;
+
+-- O POST DO EXECUTOR DE ESTORNO PERGUNTA AQUI, IMEDIATAMENTE ANTES DE SAIR
+-- (achado causal do 01765261): o executor (_shared/estorno.ts) validava o
+-- saldo no retrato que o chamador leu, esperava o GET da transação da order
+-- e mandava o POST — um refund do painel registrado pelo webhook nesse meio
+-- (registrar_estorno_externo_do_mp, acima) não era visto. Esta função relê
+-- tudo com a LINHA e o PEDIDO travados (ordem global, cabeçalho) e responde
+-- se o POST de p_valor desta linha ainda cabe:
+--   disponível = total - valor_estornado - soma(solicitado/em_processamento
+--   das OUTRAS linhas do pedido) — a fórmula da solicitar_estorno.
+--   * 'autorizado': devolve o pedido relido (o executor ainda roda a guarda
+--     de entrada sobre ele) e renova updated_at da linha (a janela de 2 min
+--     do cron conta a partir daqui, não da marca do chamador).
+--   * 'nao_cabe': NADA muda — nem status, nem a reserva. A linha continua
+--     em_processamento: uma tentativa anterior dela pode ter chegado ao MP
+--     sem confirmação, e só a consulta do cron (que olha o MP) decide.
+--   * 'linha_mudou': a linha não está mais em_processamento, é do sistema
+--     (rastreio de dinheiro que já se moveu — nunca POST), sumiu, ou o valor
+--     pedido não é o dela. Nada muda.
+-- Não existe atomicidade com o MP: entre esta resposta e o POST há uma
+-- janela curta, e o MP é quem decide o saldo em última instância (recusa
+-- refund acima do que resta). Esta função tira a decisão do retrato velho;
+-- não promete que nenhum POST sai depois dela.
+DROP FUNCTION IF EXISTS public.autorizar_post_do_estorno(uuid, numeric);
+
+CREATE OR REPLACE FUNCTION public.autorizar_post_do_estorno(
+  p_refund_id uuid,
+  p_valor numeric
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_linha public.order_refunds%ROWTYPE;
+  v_total numeric(12,2);
+  v_estornado numeric(12,2);
+  v_payment_status text;
+  v_paid_at timestamptz;
+  v_status text;
+  v_gateway text;
+  v_em_voo_outras numeric(12,2);
+  v_disponivel numeric(12,2);
+BEGIN
+  IF p_refund_id IS NULL OR p_valor IS NULL OR p_valor <= 0 THEN
+    RAISE EXCEPTION 'autorizar_post_entrada_invalida: linha e valor positivo são obrigatórios.';
+  END IF;
+
+  -- ORDEM GLOBAL (cabeçalho): a LINHA, depois o PEDIDO.
+  SELECT * INTO v_linha
+    FROM public.order_refunds
+   WHERE id = p_refund_id
+     FOR UPDATE;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('decisao', 'linha_mudou', 'status', NULL);
+  END IF;
+
+  SELECT total, COALESCE(valor_estornado, 0), payment_status, paid_at, status, gateway_payment_id
+    INTO v_total, v_estornado, v_payment_status, v_paid_at, v_status, v_gateway
+    FROM public.marketplace_orders
+   WHERE id = v_linha.order_id
+     FOR UPDATE;
+
+  IF v_linha.solicitado_por = 'sistema'
+     OR v_linha.status <> 'em_processamento'
+     OR v_linha.amount <> p_valor THEN
+    RETURN jsonb_build_object('decisao', 'linha_mudou', 'status', v_linha.status);
+  END IF;
+
+  SELECT COALESCE(sum(amount), 0) INTO v_em_voo_outras
+    FROM public.order_refunds
+   WHERE order_id = v_linha.order_id
+     AND id <> v_linha.id
+     AND status IN ('solicitado', 'em_processamento');
+  v_disponivel := v_total - v_estornado - v_em_voo_outras;
+
+  IF p_valor > v_disponivel THEN
+    RETURN jsonb_build_object('decisao', 'nao_cabe', 'disponivel', v_disponivel);
+  END IF;
+
+  UPDATE public.order_refunds
+     SET updated_at = now()
+   WHERE id = v_linha.id;
+
+  RETURN jsonb_build_object(
+    'decisao', 'autorizado',
+    'disponivel', v_disponivel,
+    'pedido', jsonb_build_object(
+      'id', v_linha.order_id,
+      'gateway_payment_id', v_gateway,
+      'total', v_total,
+      'valor_estornado', v_estornado,
+      'payment_status', v_payment_status,
+      'paid_at', v_paid_at,
+      'status', v_status
+    )
+  );
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.autorizar_post_do_estorno(uuid, numeric) IS
+  'Imediatamente antes do POST de refund do executor de estorno: com a linha e o pedido '
+  'TRAVADOS (linha -> pedido), responde se o POST de p_valor ainda cabe no saldo relido '
+  '(total - estornado - em voo das outras linhas). autorizado (renova updated_at e devolve '
+  'o pedido relido) | nao_cabe (nada muda; a linha segue em_processamento) | linha_mudou. '
+  'Só a service_role. 20261196000000.';
+
+REVOKE ALL ON FUNCTION public.autorizar_post_do_estorno(uuid, numeric)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.autorizar_post_do_estorno(uuid, numeric)
   TO service_role;
