@@ -112,7 +112,7 @@ function mp(opts: {
       const h = new Headers(init?.headers);
       consultasUsersMe.push({ autorizacao: h.get("Authorization"), metodo: init?.method, url: u });
       if (opts.usersMe === "rede") return Promise.reject(new TypeError("rede caiu"));
-      if (opts.usersMe === "timeout") return Promise.reject(new DOMException("aborted", "AbortError"));
+      if (opts.usersMe === "timeout") return Promise.reject(new DOMException(`aborted ${TOKEN_DA_LOJA} ${VENDEDOR}`, "AbortError"));
       if (opts.usersMe === "redireciona") {
         // 302 para OUTRO host; um fetch que seguisse levaria o Authorization junto.
         if (init?.redirect === "manual") return Promise.resolve(new Response(null, { status: 302, headers: { Location: "https://fora.example/captura" } }));
@@ -719,4 +719,37 @@ Deno.test("seller ID: /users/me com falha TEMPORÁRIA (503) no tópico do webhoo
   // O reenvio do MP, com o /users/me de volta, resolve.
   const w2 = await webhook(b, mpGanho());
   assertEquals([w2.status, w2.corpo.desfecho, b.linhas[0].status], [200, "entregue", "liberado"]);
+});
+
+Deno.test("PRIVACIDADE na falha TEMPORÁRIA do /users/me (503, 429, timeout): nem o token nem o seller ID aparecem em NENHUM log (error/warn/log) nem na resposta do webhook — mesmo quando o corpo/erro do MP os carrega", async () => {
+  const casos: Array<[string, { status: number; corpo?: unknown } | "timeout"]> = [
+    ["503", { status: 503, corpo: { id: Number(VENDEDOR), detalhe: TOKEN_DA_LOJA } }],
+    ["429", { status: 429, corpo: { id: Number(VENDEDOR), detalhe: TOKEN_DA_LOJA } }],
+    ["timeout", "timeout"],
+  ];
+  for (const [nome, usersMe] of casos) {
+    const linhas: string[] = [];
+    const [e, w, l] = [console.error, console.warn, console.log];
+    const capta = (...a: unknown[]) => linhas.push(a.map((x) => (x instanceof Error ? `${x.name}: ${x.message}` : typeof x === "object" ? JSON.stringify(x) : String(x))).join(" "));
+    console.error = capta;
+    console.warn = capta;
+    console.log = capta;
+    let resposta = "";
+    try {
+      const b = bancoVivo([linhaVinculada()]);
+      const m = mp({ order: orderProcessada(), usersMe, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+      await cron(b, m);
+      const bw = bancoVivo([linhaVinculada()]);
+      const mw = mp({ order: orderProcessada(), usersMe, casos: { CASE1: { status: 200, corpo: caso("CASE1", true) } } });
+      const r = await handlerDoWebhook(await topicoDeCaso("CASE1"), { supabase: bw, fetchImpl: mw.fetchImpl });
+      resposta = `${r.status} ${await r.text()}`;
+      assertEquals(r.status, 500, nome);
+    } finally {
+      [console.error, console.warn, console.log] = [e, w, l];
+    }
+    const tudo = linhas.join(" ") + " " + resposta;
+    assert(linhas.length > 0, `${nome}: o teste precisa ter capturado logs de verdade`);
+    assertEquals(tudo.includes(TOKEN_DA_LOJA), false, `${nome}: token no log/resposta`);
+    assertEquals(tudo.includes(VENDEDOR), false, `${nome}: seller ID no log/resposta`);
+  }
 });
