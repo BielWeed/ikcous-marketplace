@@ -781,9 +781,38 @@ async function releValorEstornado(
   if (error) throw error;
   const valor = Number((data as Record<string, unknown> | null)?.valor_estornado);
   if (!data || !Number.isFinite(valor)) {
-    throw new Error("webhook-mercadopago: valor_estornado ilegível ao reler o pedido depois de um 23505");
+    throw new Error("webhook-mercadopago: valor_estornado ilegível ao reler o pedido");
   }
   return valor;
+}
+
+/**
+ * A REGRA ÚNICA do acumulado em memória (`pedido.valor_estornado`) depois de
+ * QUALQUER `concluir_estorno` deste passo — recuperação da janela de falha,
+ * linha pendente do app, estorno externo (Lote A, bloqueios da revisão de
+ * 04/10/2026). Só soma o valor da linha quando a RPC diz que concluiu AGORA
+ * (`ja_concluida === false`): é o único caso em que ESTA entrega pôs o
+ * dinheiro no banco. `ja_concluida === true` (outra entrega concluiu a MESMA
+ * linha entre a nossa leitura e a RPC) ou retorno ilegível: o acumulado em
+ * memória não sabe o que mudou — relê o `valor_estornado` do banco, a fonte
+ * canônica. Somar no escuro contava o mesmo dinheiro duas vezes e o clamp do
+ * refund seguinte gravava MENOS do que saiu (pedido de 100, refunds 20 e 70:
+ * o banco terminava em 80, e nenhuma reentrega corrigia).
+ */
+async function acumularConclusao(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+  pedido: PedidoParaEstorno;
+  dataRpc: unknown;
+  amount: number;
+}): Promise<void> {
+  const { supabase, orderId, pedido, dataRpc, amount } = args;
+  const jaConcluida = (dataRpc as { ja_concluida?: unknown } | null)?.ja_concluida;
+  if (jaConcluida === false) {
+    pedido.valor_estornado = Number((pedido.valor_estornado + amount).toFixed(2));
+    return;
+  }
+  pedido.valor_estornado = await releValorEstornado(supabase, orderId);
 }
 
 /**
@@ -855,7 +884,7 @@ async function inserirEstornoConcluido(args: {
     return "recusado";
   }
 
-  const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
+  const { data: dataConcluir, error: erroConcluir } = await supabase.rpc("concluir_estorno", {
     p_refund_id: (linhaInserida as Record<string, unknown>).id,
     p_mp_refund_id: mpRefundId,
     p_mp_status: mpStatus,
@@ -873,7 +902,11 @@ async function inserirEstornoConcluido(args: {
     }
     throw erroConcluir;
   }
-  return "inserido";
+  // Mesma regra de `acumularConclusao`: "inserido" (soma em memória) só se a
+  // RPC diz que concluiu AGORA; qualquer outra resposta, o chamador relê.
+  return (dataConcluir as { ja_concluida?: unknown } | null)?.ja_concluida === false
+    ? "inserido"
+    : "ja_registrado";
 }
 
 /**
@@ -965,10 +998,21 @@ async function registrarDesfechoDoEstorno(args: {
       linha.status === "concluido" &&
       (linha.concluido_em === null || linha.concluido_em === undefined)
     ) {
-      const { error: erroRecuperacao } = await supabase.rpc("concluir_estorno", {
+      const { data: dataRecuperacao, error: erroRecuperacao } = await supabase.rpc("concluir_estorno", {
         p_refund_id: linha.id,
       });
-      if (erroRecuperacao) {
+      if (!erroRecuperacao) {
+        // Lote A: a linha órfã somou AGORA no banco — o acumulado em memória
+        // (lido antes) tem de enxergar, senão o clamp do estorno externo
+        // seguinte tenta mais do que sobra e a RPC recusa.
+        await acumularConclusao({
+          supabase,
+          orderId,
+          pedido,
+          dataRpc: dataRecuperacao,
+          amount: Number(linha.amount ?? 0),
+        });
+      } else {
         if (
           String((erroRecuperacao as { message?: string }).message ?? "").includes(
             "estorno_acima_do_total",
@@ -1067,7 +1111,7 @@ async function registrarDesfechoDoEstorno(args: {
       temPreVeredito: false,
     });
     if (resultado.tipo === "concluido") {
-      const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
+      const { data: dataConcluir, error: erroConcluir } = await supabase.rpc("concluir_estorno", {
         p_refund_id: linha.id,
         // '' (refund sem id legível na resposta) vira NULL — o COALESCE da
         // RPC preserva o que já existia (revisão de 29/09).
@@ -1093,7 +1137,9 @@ async function registrarDesfechoDoEstorno(args: {
       }
       if (resultado.mp_refund_id) reivindicados.add(resultado.mp_refund_id);
       // I-B: acumulado EM MEMÓRIA — a próxima linha do lote decide com ele.
-      pedido.valor_estornado = Number((pedido.valor_estornado + linha.amount).toFixed(2));
+      // Lote A: só soma se a RPC concluiu AGORA; `ja_concluida` (outra
+      // entrega concluiu a mesma linha) relê do banco — `acumularConclusao`.
+      await acumularConclusao({ supabase, orderId, pedido, dataRpc: dataConcluir, amount: linha.amount });
       // BLOQUEIA-1 (laudo Opus rodada 2, PR #449): `somaEmCurso` (abaixo)
       // percorre `linhasBanco` como foi lida no INÍCIO do passo — sem
       // marcar esta linha como concluída AQUI, no objeto local, ela

@@ -509,15 +509,17 @@ function clienteFalso(opts: {
                 return { data: null, error: opts.erroOrderRefundsInsert };
               }
               if (opts.indicesUnicosDoLedger) {
-                const colide = (coluna: "mp_refund_id" | "mp_chargeback_id") =>
-                  valores[coluna] !== null && valores[coluna] !== undefined &&
+                // Comparação por NOME FIXO (nunca `valores[coluna]`), para não
+                // acordar o security/detect-object-injection da catraca.
+                const refundRepetido = valores.mp_refund_id != null &&
                   filaOrderRefunds.some((r) =>
-                    r.order_id === valores.order_id &&
-                    (coluna === "mp_refund_id"
-                      ? r.mp_refund_id === valores.mp_refund_id
-                      : r.mp_chargeback_id === valores.mp_chargeback_id)
+                    r.order_id === valores.order_id && r.mp_refund_id === valores.mp_refund_id
                   );
-                if (colide("mp_refund_id") || colide("mp_chargeback_id")) {
+                const contestacaoRepetida = valores.mp_chargeback_id != null &&
+                  filaOrderRefunds.some((r) =>
+                    r.order_id === valores.order_id && r.mp_chargeback_id === valores.mp_chargeback_id
+                  );
+                if (refundRepetido || contestacaoRepetida) {
                   return {
                     data: null,
                     error: {
@@ -3479,6 +3481,144 @@ Deno.test("Lote A R2 - bloqueio da revisão: refund 20 já concluído por OUTRA 
   assertEquals(reentrega.status, 200);
   assertEquals(pedido.valor_estornado, 90);
   assertEquals(fila.filter((r) => r.status === "concluido").reduce((a, r) => a + Number(r.amount), 0), 90);
+});
+
+Deno.test("Lote A R2 - bloqueio da revisão (05:24): linha do APP pendente de 20 concluída por OUTRA entrega entre as leituras + refund 70 externo -> concluir_estorno devolve ja_concluida e NÃO soma em memória; grava 70, total 90; reentrega 90", async () => {
+  // B lê a linha do app PENDENTE (20, r-20); A conclui a MESMA linha; B lê o
+  // pedido com valor_estornado 20; B decide concluir r-20 -> a RPC devolve
+  // ja_concluida (não somou de novo) -> somar 20 em memória (40) limitava o
+  // r-70 a 60 e o banco terminava em 80.
+  const registro = registroDoLedger();
+  const pedido = pedidoPago();
+  let entregaAJaConcluiu = false;
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [
+      {
+        id: "linha-do-app-20",
+        order_id: UUID_PEDIDO,
+        amount: 20,
+        status: "em_processamento",
+        solicitado_por: "lojista",
+        mp_refund_id: "r-20",
+        tentativas: 1,
+        concluido_em: null,
+        created_at: "2026-10-04T00:00:00.000Z",
+      },
+    ],
+    indicesUnicosDoLedger: true,
+    concluirSomaNoPedido: true,
+    aposLerOrderRefunds: (fila) => {
+      if (entregaAJaConcluiu) return;
+      entregaAJaConcluiu = true;
+      const linha = fila.find((r) => r.id === "linha-do-app-20")!;
+      linha.status = "concluido";
+      linha.concluido_em = "2026-10-04T00:00:01.000Z";
+      pedido.valor_estornado = 20;
+    },
+  });
+  const corpo = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "processed" }],
+      refunds: [
+        { id: "r-20", amount: "20.00", status: "processed" },
+        { id: "r-70", amount: "70.00", status: "processed" },
+      ],
+    },
+  };
+  const entregar = async () =>
+    await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpo),
+      enviarPushContado: async () => 1,
+    });
+
+  assertEquals((await entregar()).status, 200);
+  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
+  const r70 = fila.filter((r) => r.mp_refund_id === "r-70");
+  assertEquals(r70.length, 1);
+  assertEquals(r70[0].amount, 70, "ja_concluida não é dinheiro novo desta entrega");
+  assertEquals(pedido.valor_estornado, 90);
+
+  assertEquals((await entregar()).status, 200);
+  assertEquals(pedido.valor_estornado, 90);
+});
+
+Deno.test("Lote A R2 - linha 'sistema' órfã da janela de falha (concluido sem concluido_em) concluída no começo do passo entra no acumulado: refund externo seguinte limitado pelo total certo", async () => {
+  // Pedido de 100. Linha órfã de 30 (crash entre INSERT e RPC de um ciclo
+  // anterior) é concluída AGORA pela recuperação W6 — soma 30 no banco. O
+  // refund externo de 80 que chega junto só tem 70 disponíveis: sem contar a
+  // órfã em memória, o clamp tentava 80 e a RPC recusava (acima do total) —
+  // o estorno real ficava fora do ledger.
+  const registro = registroDoLedger();
+  const pedido = pedidoPago();
+  const supabase = clienteFalso({
+    pedido,
+    registro,
+    orderRefundsRows: [
+      {
+        id: "linha-orfa-30",
+        order_id: UUID_PEDIDO,
+        amount: 30,
+        status: "concluido",
+        solicitado_por: "sistema",
+        mp_refund_id: "r-orfa-30",
+        concluido_em: null,
+        created_at: "2026-10-03T00:00:00.000Z",
+      },
+    ],
+    indicesUnicosDoLedger: true,
+    concluirSomaNoPedido: true,
+    erroConcluirEstorno: (args) => {
+      const linha = ((registro as any).filaOrderRefunds as Array<Record<string, unknown>>)
+        .find((r) => r.id === args.p_refund_id);
+      // Espelha a guarda da RPC real (2026110000100:125): só a PRIMEIRA
+      // conclusão soma, e recusa se o acumulado passaria do total.
+      const jaCarimbada = linha?.status === "concluido" && Boolean(linha?.concluido_em);
+      if (!linha || jaCarimbada) return null;
+      return Number(pedido.valor_estornado) + Number(linha.amount) > 100
+        ? { message: "estorno_acima_do_total: dublê" }
+        : null;
+    },
+  });
+  const corpo = {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "refunded",
+    status_detail: "refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "processed" }],
+      refunds: [
+        { id: "r-orfa-30", amount: "30.00", status: "processed" },
+        { id: "r-80", amount: "80.00", status: "processed" },
+      ],
+    },
+  };
+  const erroReal = console.error;
+  console.error = () => {};
+  try {
+    const resposta = await handler(await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } }), {
+      supabase,
+      fetchImpl: fetchConsulta(200, corpo),
+      enviarPushContado: async () => 1,
+      enviarPush: async () => {},
+    });
+    assertEquals(resposta.status, 200);
+  } finally {
+    console.error = erroReal;
+  }
+  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
+  const r80 = fila.filter((r) => r.mp_refund_id === "r-80");
+  assertEquals(r80.length, 1);
+  assertEquals(r80[0].amount, 70, "limitado ao que sobra depois da órfã (100 - 30)");
+  assertEquals(pedido.valor_estornado, 100);
 });
 
 Deno.test("Lote A R2 - 23505 sem linha casando a chave (outra restrição) -> NÃO engole: 500, o MP reenvia", async () => {
