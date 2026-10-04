@@ -41,6 +41,8 @@ const semComentarios = (s) =>
 
 const DEF_INDICE_REFUND =
   "CREATE UNIQUE INDEX uq_order_refunds_pedido_refund_mp ON public.order_refunds USING btree (order_id, mp_refund_id) WHERE (mp_refund_id IS NOT NULL)";
+const DEF_INDICE_CONTESTACAO =
+  "CREATE UNIQUE INDEX uq_order_refunds_pedido_contestacao ON public.order_refunds USING btree (order_id, mp_chargeback_id) WHERE (mp_chargeback_id IS NOT NULL)";
 
 Deno.test("avaliarFase0 não recusa o par; nenhum dos dois abre ou fecha transação de nível superior", () => {
   const res = avaliarFase0({ sqlMigration: migration, sqlRollback: rollback, temRollback: true });
@@ -61,12 +63,24 @@ Deno.test("o preflight é o PRIMEIRO comando e recusa com RAISE EXCEPTION (diver
   assertStringIncludes(bloco, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_refund_mp");
   assertStringIncludes(bloco, "RAISE EXCEPTION 'LEDGER_DUPLICADO: % par(es)");
   assertStringIncludes(bloco, "HAVING count(*) > 1");
+  assertStringIncludes(bloco, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_contestacao");
+  assertStringIncludes(bloco, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_id já existe como %");
+  assertStringIncludes(bloco, "par(es) (pedido, mp_chargeback_id)");
 });
 
 Deno.test("a definição do índice é a MESMA no preflight da migration, no do rollback e na prova viva do CI", () => {
   assertStringIncludes(migration, `'${DEF_INDICE_REFUND}'`);
   assertStringIncludes(rollback, `'${DEF_INDICE_REFUND}'`);
   assertStringIncludes(provaViva, `"${DEF_INDICE_REFUND}"`);
+  assertStringIncludes(migration, `'${DEF_INDICE_CONTESTACAO}'`);
+  assertStringIncludes(rollback, `'${DEF_INDICE_CONTESTACAO}'`);
+  assertStringIncludes(provaViva, `"${DEF_INDICE_CONTESTACAO}"`);
+  assertStringIncludes(
+    semComentarios(migration),
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_order_refunds_pedido_contestacao\n  ON public.order_refunds (order_id, mp_chargeback_id)\n  WHERE mp_chargeback_id IS NOT NULL;",
+  );
+  // A coluna é aditiva e nasce NULL (sem default, sem backfill, sem NOT NULL).
+  assertStringIncludes(semComentarios(migration), "ADD COLUMN IF NOT EXISTS mp_chargeback_id text;");
   assertStringIncludes(
     semComentarios(migration),
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_order_refunds_pedido_refund_mp\n  ON public.order_refunds (order_id, mp_refund_id)\n  WHERE mp_refund_id IS NOT NULL;",
@@ -79,4 +93,6 @@ Deno.test("a migration não reescreve nem apaga linha do ledger (resolver duplic
   assert(!/\bDROP\b/i.test(codigo), "nada é apagado");
   const codigoRollback = semComentarios(rollback);
   assert(!/\b(DELETE|UPDATE|INSERT|TRUNCATE)\b/i.test(codigoRollback));
+  // O rollback NÃO apaga a coluna (identidade de contestação já registrada).
+  assert(!/DROP\s+COLUMN/i.test(codigoRollback));
 });

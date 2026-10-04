@@ -1047,6 +1047,17 @@ const P_LEDGER = "aaaaaaaa-0000-0000-0000-000000000006";
 const MIGRATION_LEDGER = "20261192000000_o_ledger_registra_cada_estorno_do_mp_uma_vez.sql";
 const DEF_INDICE_REFUND =
   "CREATE UNIQUE INDEX uq_order_refunds_pedido_refund_mp ON public.order_refunds USING btree (order_id, mp_refund_id) WHERE (mp_refund_id IS NOT NULL)";
+const DEF_INDICE_CONTESTACAO =
+  "CREATE UNIQUE INDEX uq_order_refunds_pedido_contestacao ON public.order_refunds USING btree (order_id, mp_chargeback_id) WHERE (mp_chargeback_id IS NOT NULL)";
+
+async function reservaDeContestacao(cliente, pedidoId, idContestacao) {
+  return cliente.query(
+    `INSERT INTO public.order_refunds
+       (order_id, amount, solicitado_por, status, motivo, mp_chargeback_id, mp_status, mp_status_detail)
+     VALUES ($1, 20.00, 'sistema', 'em_processamento', 'contestação em análise (prova f)', $2, 'charged_back', 'in_process')`,
+    [pedidoId, idContestacao],
+  );
+}
 
 function lerMigrationDoLedger(nome) {
   // Caminho montado de segmentos FIXOS deste repositório (mesma convenção do
@@ -1115,6 +1126,33 @@ PROVAS.push({
     // (linhas do app nascem sem id e o recebem só quando o MP responde).
     await linhaSistema(cliente, pedidoId, null);
     await linhaSistema(cliente, pedidoId, null);
+
+    // 3b. Contestação (R1-NULL): a coluna nasceu NULL e aceita NULL; o MESMO
+    // CBK duas vezes no pedido é recusado com 23505; dois casos diferentes e
+    // linhas sem CBK continuam valendo.
+    assert.equal(
+      await valorUnico(
+        cliente,
+        "SELECT pg_get_indexdef(to_regclass('public.uq_order_refunds_pedido_contestacao'))",
+      ),
+      DEF_INDICE_CONTESTACAO,
+      "o índice único parcial da contestação existe com a definição da 20261192000000",
+    );
+    assert.equal(
+      await valorUnico(
+        cliente,
+        `SELECT format_type(atttypid, atttypmod) || CASE WHEN attnotnull THEN ' NOT NULL' ELSE '' END
+           FROM pg_attribute WHERE attrelid = 'public.order_refunds'::regclass AND attname = 'mp_chargeback_id'`,
+      ),
+      "text",
+      "mp_chargeback_id é text e aceita NULL",
+    );
+    await reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1");
+    const contestacaoRepetida = await codigoDoErro(reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-1"));
+    assert.equal(contestacaoRepetida?.code, "23505", "o 2º registro do mesmo caso recusa com 23505");
+    await reservaDeContestacao(cliente, pedidoId, "CBK-PROVA-2");
+    await reservaDeContestacao(cliente, pedidoId, null);
+    await reservaDeContestacao(cliente, pedidoId, null);
 
     // 4. A CORRIDA de verdade: a 2ª conexão insere o MESMO refund enquanto a
     // 1ª ainda não fez COMMIT — espera a trava e, no COMMIT, recebe 23505.

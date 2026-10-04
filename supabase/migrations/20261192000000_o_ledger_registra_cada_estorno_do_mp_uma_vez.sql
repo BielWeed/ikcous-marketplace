@@ -19,6 +19,14 @@
 --      PR #440), agora garantida pelo banco. Parcial de propósito: as linhas
 --      do app nascem SEM id (`solicitado`) e o recebem só quando o MP
 --      responde — várias linhas sem id por pedido continuam valendo.
+--   2. `order_refunds.mp_chargeback_id` (text, NULL) + `uq_order_refunds_
+--      pedido_contestacao`: UNIQUE (order_id, mp_chargeback_id) WHERE
+--      mp_chargeback_id IS NOT NULL. A IDENTIDADE da contestação
+--      (chargeback): o `transactions.chargebacks[].id` (CBK...) da order do
+--      MP. Antes a reserva da contestação nascia com `mp_refund_id` NULL —
+--      que nenhum índice alcança —, e duas entregas paralelas do mesmo
+--      `in_process` criavam DUAS reservas (R1-NULL); um segundo caso no mesmo
+--      pedido era barrado pela linha do primeiro. Um caso = uma linha.
 --   O código que acompanha (mesmo PR): o webhook trata o 23505 do INSERT como
 --   "já registrado" e conclui a linha existente se a outra entrega caiu entre
 --   o INSERT e a RPC (`recuperarLinhaJaRegistrada`); e a leitura da resposta
@@ -28,7 +36,11 @@
 --   segunda estouraria 23505 (o COALESCE grava o id) em vez de concluir.
 --
 -- DADOS EXISTENTES: nada é lido para reescrever, nada é apagado, nada é
--- fundido. Se o ledger JÁ tiver um par (pedido, mp_refund_id) em mais de uma
+-- fundido. A coluna nova nasce NULL em todas as linhas (sem default, sem
+-- backfill): as reservas de contestação ANTIGAS (sistema, charged_back,
+-- em_processamento) ficam sem CBK, e o webhook as ADOTA na próxima
+-- notificação daquele caso (UPDATE ... WHERE mp_chargeback_id IS NULL) — não
+-- é esta migration quem decide de qual caso cada uma é. Se o ledger JÁ tiver um par (pedido, mp_refund_id) em mais de uma
 -- linha — o próprio defeito acima, se ele aconteceu em produção —, o índice
 -- não pode nascer, e o preflight RECUSA a migration inteira com a contagem
 -- (LEDGER_DUPLICADO). Resolver essas linhas é decisão do dono (apagar ou
@@ -61,8 +73,8 @@
 -- no-op).
 --
 -- FICHA DE VERIFICAÇÃO:
---   1. `pg_get_indexdef('public.uq_order_refunds_pedido_refund_mp'::regclass)`
---      igual à definição esperada no preflight.
+--   1. `pg_get_indexdef(...)` dos dois índices igual às definições esperadas
+--      no preflight; `mp_chargeback_id` existe, `text`, aceita NULL.
 --   2. Numa transação descartável: dois INSERT `sistema` com o mesmo
 --      (order_id, mp_refund_id) -> o segundo falha com 23505; dois com
 --      mp_refund_id NULL -> os dois entram; `ROLLBACK`.
@@ -70,18 +82,46 @@
 --
 -- ROLLBACK MANUAL:
 -- rollback-manual-20261192000000_o_ledger_registra_cada_estorno_do_mp_uma_vez.sql
--- (apaga só o índice; nenhuma linha do ledger é tocada).
+-- (apaga só os dois índices; a coluna FICA — apagá-la perderia a identidade
+-- das contestações já registradas, e isso é decisão do dono).
 
 DO $preflight_20261192$
 DECLARE
   v_def text;
   v_duplicatas integer;
+  v_tipo text;
 BEGIN
   IF to_regclass('public.uq_order_refunds_pedido_refund_mp') IS NOT NULL THEN
     SELECT pg_get_indexdef(to_regclass('public.uq_order_refunds_pedido_refund_mp'))
       INTO v_def;
     IF v_def IS DISTINCT FROM 'CREATE UNIQUE INDEX uq_order_refunds_pedido_refund_mp ON public.order_refunds USING btree (order_id, mp_refund_id) WHERE (mp_refund_id IS NOT NULL)' THEN
       RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_refund_mp já existe com outra definição (%) — revise antes de aplicar.', v_def;
+    END IF;
+  END IF;
+
+  IF to_regclass('public.uq_order_refunds_pedido_contestacao') IS NOT NULL THEN
+    SELECT pg_get_indexdef(to_regclass('public.uq_order_refunds_pedido_contestacao'))
+      INTO v_def;
+    IF v_def IS DISTINCT FROM 'CREATE UNIQUE INDEX uq_order_refunds_pedido_contestacao ON public.order_refunds USING btree (order_id, mp_chargeback_id) WHERE (mp_chargeback_id IS NOT NULL)' THEN
+      RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_contestacao já existe com outra definição (%) — revise antes de aplicar.', v_def;
+    END IF;
+  END IF;
+
+  SELECT format_type(a.atttypid, a.atttypmod)
+         || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END
+    INTO v_tipo
+    FROM pg_attribute a
+   WHERE a.attrelid = 'public.order_refunds'::regclass
+     AND a.attname = 'mp_chargeback_id'
+     AND NOT a.attisdropped;
+  IF v_tipo IS NOT NULL AND v_tipo IS DISTINCT FROM 'text' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_id já existe como % (esperado text, aceitando NULL) — revise antes de aplicar.', v_tipo;
+  END IF;
+  IF v_tipo IS NOT NULL THEN
+    EXECUTE 'SELECT count(*)::integer FROM (SELECT 1 FROM public.order_refunds WHERE mp_chargeback_id IS NOT NULL GROUP BY order_id, mp_chargeback_id HAVING count(*) > 1) repetidos'
+      INTO v_duplicatas;
+    IF v_duplicatas > 0 THEN
+      RAISE EXCEPTION 'LEDGER_DUPLICADO: % par(es) (pedido, mp_chargeback_id) aparecem em mais de uma linha de public.order_refunds — o índice único não pode nascer e NADA foi alterado; resolver essas linhas é decisão do dono.', v_duplicatas;
     END IF;
   END IF;
 
@@ -107,3 +147,20 @@ COMMENT ON INDEX public.uq_order_refunds_pedido_refund_mp IS
   'Um refund do Mercado Pago credita UMA linha do pedido (20261192000000): '
   'duas entregas simultâneas do mesmo estorno feito fora do app não viram duas '
   'linhas. Parcial: linhas do app sem id ainda (solicitado) não entram.';
+
+ALTER TABLE public.order_refunds
+  ADD COLUMN IF NOT EXISTS mp_chargeback_id text;
+
+COMMENT ON COLUMN public.order_refunds.mp_chargeback_id IS
+  'Identidade da CONTESTAÇÃO (chargeback) no Mercado Pago: transactions.chargebacks[].id '
+  '(CBK...) da order (20261192000000). Só nas linhas sistema de contestação; NULL nas '
+  'demais. Um caso = uma linha (índice único parcial com order_id). NUNCA aparece em '
+  'texto de tela.';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_order_refunds_pedido_contestacao
+  ON public.order_refunds (order_id, mp_chargeback_id)
+  WHERE mp_chargeback_id IS NOT NULL;
+
+COMMENT ON INDEX public.uq_order_refunds_pedido_contestacao IS
+  'Uma contestação do Mercado Pago (CBK) = uma linha do pedido (20261192000000): duas '
+  'entregas simultâneas do mesmo caso não viram duas reservas nem duas conclusões.';
