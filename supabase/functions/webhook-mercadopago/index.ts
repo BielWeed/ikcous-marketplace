@@ -1394,22 +1394,6 @@ async function registrarDesfechoDoEstorno(args: {
       : "";
     if (!refundId || reivindicados.has(refundId)) continue;
 
-    // Lote A: na order CONTESTADA, um refund 'processed' que nenhuma linha do
-    // app reivindicou pode ser o próprio DÉBITO da contestação — e a
-    // contestação já conta pela reserva/conclusão do ramo B (abaixo). Contar
-    // os dois estornava duas vezes o mesmo dinheiro (pedido de 200,
-    // contestação de 100 -> 200). Na dúvida, não registra por aqui: a
-    // contestação decide pelo caso; um estorno de verdade feito no painel
-    // durante a disputa entra pela notificação seguinte, depois do caso.
-    if (status === "charged_back") {
-      console.warn(
-        "webhook-mercadopago: refund externo numa order CONTESTADA não entra como estorno — pode ser o débito da contestação (ramo B decide)",
-        orderId,
-        refundId,
-      );
-      continue;
-    }
-
     const valorRefundBruto = Number(refund.amount);
     // ANTES-DE-CRESCER-1 (laudo Opus rodada 2, PR #449): valor ilegível OU
     // não-positivo é "não sei", NUNCA "zero" — `amount: 0` violaria
@@ -1428,6 +1412,47 @@ async function registrarDesfechoDoEstorno(args: {
       continue;
     }
     const valorRefund = valorRefundBruto;
+
+    // Lote A (bloqueio 2 da revisão): na order CONTESTADA, o refund REGULAR
+    // (REF..., POST /v1/orders/{id}/refund — doc refund-order/post) tem
+    // identidade própria; nenhum contrato do MP liga um REF a um CBK, e
+    // descartá-lo por suspeita de ser o débito da contestação era dedup
+    // inventado. Ele entra pela RPC `registrar_estorno_externo_na_contestacao`
+    // (20261196000000), com o pedido TRAVADO — a mesma trava da contestação:
+    // inteiro se couber no saldo (total - estornado - em voo, onde a reserva
+    // da contestação conta); senão NÃO entra nem é recortado (sobreposição
+    // inconclusiva) e o admin é avisado uma vez — a reserva continua
+    // bloqueando novas devoluções até a conferência.
+    if (status === "charged_back") {
+      const { data, error } = await supabase.rpc("registrar_estorno_externo_na_contestacao", {
+        p_order_id: orderId,
+        p_mp_refund_id: refundId,
+        p_valor: Number(valorRefund.toFixed(2)),
+        p_mp_status: status,
+        p_mp_status_detail: statusDetail || null,
+      });
+      if (error) throw error;
+      const retornoExterno = (data ?? null) as Record<string, unknown> | null;
+      if (typeof retornoExterno?.resultado !== "string") {
+        throw new Error("webhook-mercadopago: registrar_estorno_externo_na_contestacao devolveu retorno ilegível — o MP reenvia");
+      }
+      reivindicados.add(refundId);
+      const valorCanonico = Number(retornoExterno.valor_estornado);
+      if (Number.isFinite(valorCanonico)) pedido.valor_estornado = valorCanonico;
+      if (retornoExterno?.aviso === "saldo") {
+        console.error(
+          "webhook-mercadopago: devolução do MP numa order contestada não cabe no saldo — não registrada, admin avisado",
+          { orderId, refundId, valorRefund },
+        );
+        await args.avisar(`estorno_externo_nao_cabe:${orderId}:${refundId}`, {
+          title: "Devolução do Mercado Pago para conferir",
+          body: `${numeroDoPedido(orderId)} · o Mercado Pago registrou uma devolução que, somada à contestação deste pedido, passa do valor pago — o app não registrou essa devolução e não aceita outra até você conferir no painel do Mercado Pago`,
+          url: "/admin-orders",
+        });
+      }
+      continue;
+    }
+
     const disponivel = Number(
       (pedido.total - pedido.valor_estornado - somaEmCurso(linhasBanco)).toFixed(2),
     );

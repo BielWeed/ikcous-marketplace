@@ -4067,21 +4067,86 @@ Deno.test("Lote A R1 - consulta do CASO falha (500) -> 500 (o MP reenvia = recon
   semEscritaDireta(registro);
 });
 
-Deno.test("Lote A R1 - refund 'processed' TAMBÉM listado numa order contestada -> a contestação vai à RPC uma vez; nenhum estorno externo direto", async () => {
+// ── Bloqueio 2: REF (refund REGULAR, POST /v1/orders/{id}/refund) ≠ CBK ───
+// Doc (refund-order/post): o refund devolve REF.../transaction_id PAY.../
+// amount/status processed; nenhum contrato do MP liga um REF a um CBK. Antes,
+// numa order contestada, todo refund processed era IGNORADO por suspeita de
+// ser o débito da contestação — dedup inventado. Agora o REF entra como
+// refund regular, pela RPC sob a trava do pedido: inteiro se cabe no saldo;
+// senão não entra nem é recortado, e o admin é avisado.
+
+function orderContestadaComRef(valor = "100.00", total = "200.00") {
+  return orderContestada({
+    detalheOrder: "settled",
+    total,
+    refunds: [{ id: "REF01PROVA", transaction_id: ID_PAGAMENTO_DA_ORDER, amount: valor, status: "processed" }],
+  });
+}
+
+Deno.test("Lote A (bloqueio 2) - REF processed numa order contestada entra como refund REGULAR, inteiro, pela RPC sob a trava; a contestação segue para a dela", async () => {
   const registro = registroDoLedger();
   const supabase = clienteFalso({ pedido: pedidoPago(200), registro, orderRefundsRows: [linhaDaReserva()] });
-  const { fn } = fetchDaContestacao({
-    order: orderContestada({
-      detalheOrder: "settled",
-      total: "200.00",
-      refunds: [{ id: "r-debito-da-contestacao", amount: "100.00", status: "processed" }],
+  const { fn } = fetchDaContestacao({ order: orderContestadaComRef(), caso: CASO_CONTRA_A_LOJA });
+  const resposta = await semLogs(() => entregarContestacao(supabase, fn));
+  assertEquals(resposta.status, 200);
+  assertEquals(registro.chamadasExternoNaContestacao.length, 1, "o REF não é descartado por suspeita");
+  assertEquals(registro.chamadasExternoNaContestacao[0].args, {
+    p_order_id: UUID_PEDIDO,
+    p_mp_refund_id: "REF01PROVA",
+    p_valor: 100,
+    p_mp_status: "charged_back",
+    p_mp_status_detail: "settled",
+  });
+  assertEquals(registro.chamadasContestacao.length, 1);
+  semEscritaDireta(registro);
+});
+
+Deno.test("Lote A (bloqueio 2) - REF que NÃO cabe no saldo (sobreposição inconclusiva) -> nada recortado, aviso ao admin UMA vez em duas entregas", async () => {
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({
+    pedido: pedidoPago(100),
+    registro,
+    orderRefundsRows: [linhaDaReserva()],
+    estornoExternoNaContestacao: () => ({
+      data: { resultado: "nao_cabe", aviso: "saldo", valor_estornado: 0, em_voo: 100, disponivel: 0 },
+      error: null,
     }),
-    caso: CASO_CONTRA_A_LOJA,
+  });
+  const { fn } = fetchDaContestacao({ order: orderContestadaComRef("100.00", "100.00"), caso: CASO_EM_ANALISE });
+  const pushes: any[] = [];
+  await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  await semLogs(() => entregarContestacao(supabase, fn, pushes));
+  assertEquals(registro.chamadasExternoNaContestacao.length, 2);
+  assertEquals(registro.chamadasExternoNaContestacao[0].args.p_valor, 100, "nunca recortado para caber");
+  const doRef = pushes.filter((p) => String(p.title).includes("Devolução do Mercado Pago"));
+  assertEquals(doRef.length, 1, "um aviso só");
+  semEscritaDireta(registro);
+});
+
+Deno.test("Lote A (bloqueio 2) - erro da RPC do REF -> 500 (o MP reenvia); REF já reivindicado por uma linha -> nenhuma chamada", async () => {
+  const registroErro = registroDoLedger();
+  const supabaseErro = clienteFalso({
+    pedido: pedidoPago(200),
+    registro: registroErro,
+    orderRefundsRows: [linhaDaReserva()],
+    estornoExternoNaContestacao: () => ({ data: null, error: { message: "lock timeout (dublê)" } }),
+  });
+  const { fn } = fetchDaContestacao({ order: orderContestadaComRef(), caso: CASO_CONTRA_A_LOJA });
+  const resposta = await semLogs(() => entregarContestacao(supabaseErro, fn));
+  assertEquals(resposta.status, 500);
+  semEscritaDireta(registroErro);
+
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({
+    pedido: pedidoPago(200),
+    registro,
+    orderRefundsRows: [
+      linhaDaReserva(),
+      { id: "linha-do-app", order_id: UUID_PEDIDO, amount: 100, status: "concluido", solicitado_por: "lojista", mp_refund_id: "REF01PROVA", concluido_em: "2026-10-01T00:00:00.000Z" },
+    ],
   });
   await semLogs(() => entregarContestacao(supabase, fn));
-  assertEquals(registro.chamadasContestacao.length, 1);
-  assertEquals(registro.insertsOrderRefunds.length, 0);
-  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(registro.chamadasExternoNaContestacao.length, 0, "um refund credita UMA linha");
 });
 
 Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {
