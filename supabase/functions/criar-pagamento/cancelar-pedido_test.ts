@@ -48,7 +48,7 @@ function bancoFalso(linha: Record<string, unknown> | null, opts: {
   const consulta = {
     select: () => consulta,
     eq: () => consulta,
-    maybeSingle: async () => ({ data: opts.erroLeitura ? null : linha, error: opts.erroLeitura ?? null }),
+    maybeSingle: () => Promise.resolve({ data: opts.erroLeitura ? null : linha, error: opts.erroLeitura ?? null }),
     update: () => {
       registro.escritas += 1;
       return consulta;
@@ -63,12 +63,12 @@ function bancoFalso(linha: Record<string, unknown> | null, opts: {
       assertEquals(tabela, "marketplace_orders");
       return consulta;
     },
-    rpc: async (nome: string, args: Record<string, unknown>) => {
+    rpc: (nome: string, args: Record<string, unknown>) => {
       registro.rpcs.push({ nome, args });
-      return opts.respostaRpc ?? {
+      return Promise.resolve(opts.respostaRpc ?? {
         data: { cancelado: true, ja_estava: false, pedido: { status: "cancelled", payment_status: linha?.payment_status } },
         error: null,
-      };
+      });
     },
   };
   return { supabase, registro };
@@ -132,13 +132,13 @@ async function cancelar(opts: {
     sub,
     authorization: montarToken(sub),
     json,
-    obterCredenciais: async () => {
+    obterCredenciais: () => {
       credenciaisPedidas += 1;
-      return CREDENCIAIS;
+      return Promise.resolve(CREDENCIAIS);
     },
-    verificarAdminAtual: async () => {
+    verificarAdminAtual: () => {
       adminPerguntado += 1;
-      return opts.adminAtual ?? null;
+      return Promise.resolve(opts.adminAtual ?? null);
     },
     fetchImpl: mp.fetchImpl,
   });
@@ -306,8 +306,8 @@ Deno.test("sem credencial do MP com cobrança na vaga → recuperavel, nada no M
     sub: CLIENTE,
     authorization: montarToken(CLIENTE),
     json,
-    obterCredenciais: async () => ({ origem: "lojista", token: null, segredoWebhook: null, publicKey: null, motivo: "cofre" }),
-    verificarAdminAtual: async () => null,
+    obterCredenciais: () => Promise.resolve({ origem: "lojista", token: null, segredoWebhook: null, publicKey: null, motivo: "cofre" }),
+    verificarAdminAtual: () => Promise.resolve(null),
     fetchImpl: mp.fetchImpl,
   });
   assertEquals((await resposta.json()).cancelamento, "recuperavel");
@@ -487,7 +487,7 @@ Deno.test("handler: metodo 'cancelar' chega à ação nova (ADMIN pela conferên
       supabase: banco.supabase,
       fetchImpl: mpFalso({}).fetchImpl,
       credenciaisMp: CREDENCIAIS,
-      verificarAdminAtual: async () => ADMIN,
+      verificarAdminAtual: () => Promise.resolve(ADMIN),
     },
   );
   assertEquals(resposta.status, 200);
@@ -503,7 +503,7 @@ Deno.test("handler: 'cancelar' com orderId inválido → 400 antes de tudo", asy
       headers: { Authorization: montarToken(CLIENTE), "Content-Type": "application/json" },
       body: JSON.stringify({ orderId: "nao-e-uuid", metodo: "cancelar" }),
     }),
-    { supabase: bancoFalso(null).supabase, verificarAdminAtual: async () => null },
+    { supabase: bancoFalso(null).supabase, verificarAdminAtual: () => Promise.resolve(null) },
   );
   assertEquals(resposta.status, 400);
   assert((await resposta.json()).error);
@@ -521,7 +521,7 @@ const URL_FALSA = "http://supabase.falso";
 
 function supabaseAuthFalso(opts: { papelNoAuth: string | null; papelNoPerfil: string | null; id?: string }) {
   const chamadas: string[] = [];
-  const fetchImpl = async (entrada: Request | string | URL, init: RequestInit = {}) => {
+  const responder = (entrada: Request | string | URL, init: RequestInit = {}) => {
     const req = entrada instanceof Request ? entrada : new Request(String(entrada), init);
     const u = new URL(req.url);
     chamadas.push(`${req.method} ${u.pathname}`);
@@ -543,6 +543,9 @@ function supabaseAuthFalso(opts: { papelNoAuth: string | null; papelNoPerfil: st
     }
     throw new Error(`rota não esperada no Supabase falso: ${req.method} ${u.pathname}`);
   };
+  // Sem async: o throw acima vira promessa rejeitada pelo construtor.
+  const fetchImpl = (entrada: Request | string | URL, init: RequestInit = {}) =>
+    new Promise<Response>((resolve) => resolve(responder(entrada, init)));
   return { fetchImpl, chamadas };
 }
 
