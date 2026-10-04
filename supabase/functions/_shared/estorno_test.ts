@@ -656,6 +656,74 @@ Deno.test("E14d - Orders 201 com refunds de OUTROS valores -> NENHUM é reivindi
   assertEquals((r as { mp_refund_id: string }).mp_refund_id, "");
 });
 
+// ── Lote A (04/10/2026, R2/A6): um refund do MP, UMA linha — também no POST ──
+// Com o índice único (order_id, mp_refund_id) da migration 20261192000000, o
+// id que outra linha do pedido JÁ tem não pode ser atribuído a esta: dois
+// parciais de MESMO valor faziam `refundDaLinhaNaResposta` escolher o MAIS
+// RECENTE para as duas linhas, e o `concluir_estorno` da segunda estouraria
+// 23505 (COALESCE grava o id) — linha presa em 500 para sempre.
+
+const RESPOSTA_DOIS_PARCIAIS_IGUAIS = {
+  id: "ORD0000ABCD222233334444555566",
+  status: "processed",
+  status_detail: "partially_refunded",
+  transactions: {
+    refunds: [
+      { id: "REF_DA_OUTRA", amount: "30.00", status: "processed", date_created: "2026-10-04T02:00:00.000Z" },
+      { id: "REF_DESTA", amount: "30.00", status: "processed", date_created: "2026-10-04T01:00:00.000Z" },
+    ],
+  },
+};
+
+Deno.test("Lote A A6 - Orders 201 com dois parciais do MESMO valor: o id já reivindicado por OUTRA linha não é escolhido", () => {
+  // Controle: sem a lista, o mais recente (REF_DA_OUTRA) — o contrato antigo.
+  const semLista = interpretarResposta(201, RESPOSTA_DOIS_PARCIAIS_IGUAIS, linhaCom({ amount: 30 }), pedidoOrder());
+  assertEquals((semLista as { mp_refund_id: string }).mp_refund_id, "REF_DA_OUTRA");
+
+  const comLista = interpretarResposta(
+    201,
+    RESPOSTA_DOIS_PARCIAIS_IGUAIS,
+    linhaCom({ amount: 30 }),
+    pedidoOrder(),
+    ["REF_DA_OUTRA"],
+  );
+  assertEquals(comLista.tipo, "concluido");
+  assertEquals((comLista as { mp_refund_id: string }).mp_refund_id, "REF_DESTA");
+
+  // Todos os do valor certo já são de outras linhas: vazio (a CONSULTA
+  // esclarece), nunca um id repetido.
+  const todosReivindicados = interpretarResposta(
+    201,
+    RESPOSTA_DOIS_PARCIAIS_IGUAIS,
+    linhaCom({ amount: 30 }),
+    pedidoOrder(),
+    ["REF_DA_OUTRA", "REF_DESTA"],
+  );
+  assertEquals(todosReivindicados.tipo, "concluido");
+  assertEquals((todosReivindicados as { mp_refund_id: string }).mp_refund_id, "");
+});
+
+Deno.test("Lote A A6 - executarEstorno repassa idsJaReivindicados à leitura da resposta do POST", async () => {
+  const duble = fetchDuble([
+    {
+      metodo: "POST",
+      trecho: "/v1/orders/ORD01ABCDEFOLUIMWQKDXYZ01/refund",
+      status: 201,
+      corpo: RESPOSTA_DOIS_PARCIAIS_IGUAIS,
+    },
+  ]);
+  const r = await executarEstorno({
+    linha: linhaCom({ amount: 30 }),
+    pedido: pedidoOrder(),
+    token: TOKEN,
+    buscar: duble.f,
+    consultarTransacaoDaOrder: async () => "PAY01XYZEXEMPLODETRANSA1",
+    idsJaReivindicados: ["REF_DA_OUTRA"],
+  });
+  assertEquals(r.tipo, "concluido");
+  assertEquals((r as { mp_refund_id: string }).mp_refund_id, "REF_DESTA");
+});
+
 // ── 423 resource_locked (achado MÉDIO da revisão de 29/09): transitório ────
 // O POST de refund é idempotente pela chave da PRÓPRIA linha — repetir é
 // seguro por contrato. Antes caía no default e virava 'falhou' definitivo.

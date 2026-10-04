@@ -300,8 +300,27 @@ function clienteFalso(opts: {
   avisos?: Map<string, { enviado: boolean }>;
   reservaFalha?: "erro" | "lanca" | "nulo" | "desconhecido";
   reservaRespostas?: Array<string | Error>;
+  // Lote A (04/10/2026): espelha os índices únicos PARCIAIS da migration
+  // 20261192000000 — INSERT com (order_id, mp_refund_id) ou (order_id,
+  // mp_chargeback_id) já presentes na fila devolve 23505, como o Postgres.
+  // Opt-in: os testes anteriores ao Lote A continuam sem índice nenhum.
+  indicesUnicosDoLedger?: boolean;
+  // Lote A: as N PRIMEIRAS leituras de order_refunds por pedido só devolvem
+  // depois que as N chegaram — duas entregas PARALELAS do MP leem o ledger
+  // ANTES de qualquer uma gravar (a corrida do R2/R1-NULL), de forma
+  // determinística.
+  barreiraLeituraOrderRefunds?: number;
+  // Lote A: chamado logo DEPOIS de cada leitura de order_refunds por pedido
+  // (com a fila viva) — simula outra entrega gravando entre a leitura e o
+  // INSERT desta.
+  aposLerOrderRefunds?: (fila: Array<Record<string, unknown>>) => void;
 }) {
   const avisos = opts.avisos ?? new Map<string, { enviado: boolean }>();
+  let leiturasNaBarreira = 0;
+  let soltarBarreira: () => void = () => {};
+  const barreira = new Promise<void>((resolve) => {
+    soltarBarreira = resolve;
+  });
   // Fila VIVA de order_refunds — mutável: um INSERT desta MESMA chamada de
   // handler (ou de uma chamada seguinte, com o MESMO cliente falso — W3/W5
   // reenviam a notificação) passa a aparecer nas leituras seguintes, como o
@@ -317,6 +336,9 @@ function clienteFalso(opts: {
   // Achado S4/W7: contador mutável, decrementado a cada leitura de
   // `gateway_payment_id` que esta chamada de handler faz.
   let falhasLeituraGatewayRestantes = opts.falharLeituraGatewayPaymentId ?? 0;
+  // Lote A: a fila VIVA exposta ao teste — é ela que diz quantas linhas
+  // EXISTEM no fim (os inserts registrados incluem as tentativas recusadas).
+  if (opts.registro) (opts.registro as any).filaOrderRefunds = filaOrderRefunds;
 
   return {
     rpc: async (nome: string, args: Record<string, unknown>) => {
@@ -449,10 +471,21 @@ function clienteFalso(opts: {
                     : Object.fromEntries(
                         Object.entries(r).filter(([chave]) => colunasPedidas.has(chave)),
                       );
-                return Promise.resolve({
-                  data: filaOrderRefunds.filter((r) => r.order_id === orderId).map(projetar),
-                  error: null,
-                });
+                const ler = () => {
+                  const lido = {
+                    data: filaOrderRefunds.filter((r) => r.order_id === orderId).map(projetar),
+                    error: null,
+                  };
+                  opts.aposLerOrderRefunds?.(filaOrderRefunds);
+                  return lido;
+                };
+                const n = opts.barreiraLeituraOrderRefunds ?? 0;
+                if (leiturasNaBarreira < n) {
+                  leiturasNaBarreira++;
+                  if (leiturasNaBarreira === n) soltarBarreira();
+                  return barreira.then(ler);
+                }
+                return Promise.resolve(ler());
               },
             };
           },
@@ -466,6 +499,25 @@ function clienteFalso(opts: {
               opts.registro?.insertsOrderRefunds?.push(valores);
               if (opts.erroOrderRefundsInsert) {
                 return { data: null, error: opts.erroOrderRefundsInsert };
+              }
+              if (opts.indicesUnicosDoLedger) {
+                const colide = (coluna: "mp_refund_id" | "mp_chargeback_id") =>
+                  valores[coluna] !== null && valores[coluna] !== undefined &&
+                  filaOrderRefunds.some((r) =>
+                    r.order_id === valores.order_id &&
+                    (coluna === "mp_refund_id"
+                      ? r.mp_refund_id === valores.mp_refund_id
+                      : r.mp_chargeback_id === valores.mp_chargeback_id)
+                  );
+                if (colide("mp_refund_id") || colide("mp_chargeback_id")) {
+                  return {
+                    data: null,
+                    error: {
+                      code: "23505",
+                      message: "duplicate key value violates unique constraint (dublê do Lote A)",
+                    },
+                  };
+                }
               }
               proximoIdInserido++;
               const id = `sistema-${proximoIdInserido}`;
@@ -3256,6 +3308,126 @@ Deno.test("Lote A R1 - rota payment 'refunded' cuja ORDER GRAVADA está 'charged
 
   assertEquals(resposta.status, 200);
   assertEquals(registro.chamadasRpc.length, 0, "a order gravada está em disputa — 'estornado' só por concluir_estorno");
+});
+
+// ── R2: o MESMO refund externo (painel do MP) em duas entregas PARALELAS ─────
+// As duas liam o ledger vazio e faziam INSERT com UUIDs distintos: refund de
+// 20 num pedido de 100 somava 40. O índice único parcial (order_id,
+// mp_refund_id) da 20261192000000 recusa a segunda com 23505, e o handler
+// trata como "já registrado" (recupera a linha existente) — nunca 500.
+
+function orderComRefundExterno(): Record<string, unknown> {
+  return {
+    id: ID_ORDER_TESTE,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "partially_refunded",
+    total_amount: "100.00",
+    transactions: {
+      payments: [{ id: ID_PAGAMENTO_DA_ORDER, status: "processed" }],
+      refunds: [{ id: "r-ext-20", amount: "20.00", status: "processed" }],
+    },
+  };
+}
+
+async function duasEntregasParalelas(supabase: unknown, corpo: Record<string, unknown>) {
+  const reqA = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const reqB = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const deps = { supabase, fetchImpl: fetchConsulta(200, corpo), enviarPushContado: async () => 1 } as any;
+  return await Promise.all([handler(reqA, deps), handler(reqB, deps)]);
+}
+
+Deno.test("Lote A R2 - controle: SEM o índice único, duas entregas paralelas do mesmo refund externo gravam DUAS linhas (a corrida é real no dublê)", async () => {
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({ pedido: pedidoPago(), registro, orderRefundsRows: [], barreiraLeituraOrderRefunds: 2 });
+  const [a, b] = await duasEntregasParalelas(supabase, orderComRefundExterno());
+  assertEquals([a.status, b.status], [200, 200]);
+  const linhas = (registro as any).filaOrderRefunds.filter((r: any) => r.mp_refund_id === "r-ext-20");
+  assertEquals(linhas.length, 2, "o defeito do R2 — o índice da migration é quem fecha");
+});
+
+Deno.test("Lote A R2 - com o índice único: duas entregas paralelas do mesmo refund externo -> UMA linha, soma 20 (não 40), as duas 200", async () => {
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({
+    pedido: pedidoPago(),
+    registro,
+    orderRefundsRows: [],
+    barreiraLeituraOrderRefunds: 2,
+    indicesUnicosDoLedger: true,
+  });
+  const [a, b] = await duasEntregasParalelas(supabase, orderComRefundExterno());
+
+  assertEquals([a.status, b.status], [200, 200], "23505 é 'já registrado', nunca 500 (reenvio infinito do MP)");
+  const linhas = (registro as any).filaOrderRefunds.filter((r: any) => r.mp_refund_id === "r-ext-20");
+  assertEquals(linhas.length, 1);
+  assertEquals(linhas[0].status, "concluido");
+  assertEquals((registro as any).valorEstornadoAcumulado, 20);
+});
+
+Deno.test("Lote A R2 - 23505 com a linha existente AINDA sem concluido_em (a outra entrega caiu entre o INSERT e a RPC) -> esta conclui a linha existente", async () => {
+  const registro = registroDoLedger();
+  let jaInjetou = false;
+  const supabase = clienteFalso({
+    pedido: pedidoPago(),
+    registro,
+    orderRefundsRows: [],
+    indicesUnicosDoLedger: true,
+    // A linha da outra entrega nasce DEPOIS da leitura inicial desta (o
+    // passo de recuperação do começo não a vê) e ANTES do INSERT desta.
+    aposLerOrderRefunds: (fila) => {
+      if (jaInjetou) return;
+      jaInjetou = true;
+      fila.push({
+        id: "linha-da-outra-entrega",
+        order_id: UUID_PEDIDO,
+        amount: 20,
+        status: "concluido",
+        solicitado_por: "sistema",
+        mp_refund_id: "r-ext-20",
+        concluido_em: null,
+      });
+    },
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const resposta = await handler(req, {
+    supabase,
+    fetchImpl: fetchConsulta(200, orderComRefundExterno()),
+    enviarPushContado: async () => 1,
+  });
+
+  assertEquals(resposta.status, 200);
+  const fila = (registro as any).filaOrderRefunds as Array<Record<string, unknown>>;
+  assertEquals(fila.filter((r) => r.mp_refund_id === "r-ext-20").length, 1);
+  assertEquals(
+    registro.chamadasConcluirEstorno.some((c: any) => c.args.p_refund_id === "linha-da-outra-entrega"),
+    true,
+    "a linha da janela de falha é concluída por quem esbarrou nela",
+  );
+  assertEquals((registro as any).valorEstornadoAcumulado, 20);
+});
+
+Deno.test("Lote A R2 - 23505 sem linha casando a chave (outra restrição) -> NÃO engole: 500, o MP reenvia", async () => {
+  const registro = registroDoLedger();
+  const supabase = clienteFalso({
+    pedido: pedidoPago(),
+    registro,
+    orderRefundsRows: [],
+    erroOrderRefundsInsert: { code: "23505", message: "duplicate key value violates unique constraint \"order_refunds_pkey\"" },
+  });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const erroReal = console.error;
+  console.error = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderComRefundExterno()),
+      enviarPushContado: async () => 1,
+    });
+  } finally {
+    console.error = erroReal;
+  }
+  assertEquals(resposta.status, 500);
 });
 
 Deno.test("W5 - W1 repetida (linha já concluída com mp_refund_id 'r1') -> nada inserido, RPC não chamada de novo, valor_estornado do dublê NÃO muda", async () => {

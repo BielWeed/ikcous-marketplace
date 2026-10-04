@@ -673,6 +673,76 @@ const STATUS_REFUND_APROVADO_PAYMENTS = "approved";
  * (`STATUS_REFUND_CONCLUIDO`), via `refundsDaOrder` + este filtro. */
 const STATUS_REFUND_CONCLUIDO_ORDERS = "processed";
 
+/** 23505 = violação de índice único (Postgres, repassado pelo PostgREST). */
+function ehViolacaoDeUnicidade(erro: unknown): boolean {
+  return String((erro as { code?: unknown } | null)?.code ?? "") === "23505";
+}
+
+/**
+ * Lote A (04/10/2026, R2): o INSERT de uma linha `sistema` esbarrou no índice
+ * único parcial (order_id, mp_refund_id) da migration 20261192000000 — OUTRA
+ * entrega do MP (paralela, ou um ciclo que caiu entre o INSERT e a RPC) já
+ * registrou o MESMO refund. É "já registrado", nunca 500 (o MP reenviaria
+ * para sempre e a resposta não mudaria): relê o ledger do pedido e, se a
+ * linha existente é `sistema` já `concluido` mas sem `concluido_em` (a outra
+ * entrega caiu antes da RPC), conclui ELA — `concluir_estorno` é idempotente
+ * (P13), então duas entregas concluindo a mesma linha somam UMA vez.
+ *
+ * Linha de OUTRA origem com o mesmo id (o clique do lojista que gravou o id
+ * do refund depois da nossa leitura) não é tocada aqui: o executor dela
+ * (edge/cron) conclui. Nenhuma linha casa a chave → o 23505 veio de OUTRA
+ * restrição: relança o erro original (500, o MP reenvia) — nunca engolir uma
+ * violação que não se entende.
+ */
+async function recuperarLinhaJaRegistrada(args: {
+  supabase: ReturnType<typeof createClient>;
+  orderId: string;
+  mpRefundId: string;
+  mpStatus: string;
+  mpStatusDetail: string | null;
+  erroOriginal: unknown;
+}): Promise<boolean> {
+  const { supabase, orderId, mpRefundId, mpStatus, mpStatusDetail, erroOriginal } = args;
+  const { data: linhas, error: erroLeitura } = await supabase
+    .from("order_refunds")
+    .select("id, status, solicitado_por, mp_refund_id, concluido_em")
+    .eq("order_id", orderId);
+  if (erroLeitura) throw erroLeitura;
+  const existente = ((linhas ?? []) as Array<Record<string, unknown>>).find(
+    (l) => l.mp_refund_id === mpRefundId,
+  );
+  if (!existente) throw erroOriginal;
+
+  console.log(
+    "webhook-mercadopago: refund já registrado por outra entrega (índice único) — nada inserido",
+    orderId,
+    mpRefundId,
+  );
+  const concluidaSemCarimbo = existente.status === "concluido" &&
+    (existente.concluido_em === null || existente.concluido_em === undefined);
+  if (existente.solicitado_por !== "sistema" || !concluidaSemCarimbo) return true;
+
+  const { error: erroConcluir } = await supabase.rpc("concluir_estorno", {
+    p_refund_id: existente.id,
+    p_mp_refund_id: mpRefundId,
+    p_mp_status: mpStatus,
+    p_mp_status_detail: mpStatusDetail,
+  });
+  if (erroConcluir) {
+    if (String((erroConcluir as { message?: string }).message ?? "").includes("estorno_acima_do_total")) {
+      console.error(
+        "webhook-mercadopago: concluir_estorno (linha já registrada por outra entrega) recusou — acima do total",
+        orderId,
+        mpRefundId,
+        erroConcluir,
+      );
+      return false;
+    }
+    throw erroConcluir;
+  }
+  return true;
+}
+
 /**
  * Insere uma linha `sistema` já `concluido` e chama `concluir_estorno` na
  * sequência — o padrão que A4 (estorno feito fora do app) e B/settled-sem-
@@ -716,7 +786,22 @@ async function inserirEstornoConcluido(args: {
     })
     .select("id")
     .maybeSingle();
-  if (erroInsert) throw erroInsert;
+  if (erroInsert) {
+    // Lote A (R2): o MESMO refund já registrado por outra entrega — ver
+    // `recuperarLinhaJaRegistrada`. Só para refund COM id: sem id não há
+    // índice que recuse, e o 23505 seria de outra restrição.
+    if (ehViolacaoDeUnicidade(erroInsert) && mpRefundId !== null) {
+      return await recuperarLinhaJaRegistrada({
+        supabase,
+        orderId,
+        mpRefundId,
+        mpStatus,
+        mpStatusDetail,
+        erroOriginal: erroInsert,
+      });
+    }
+    throw erroInsert;
+  }
   if (!linhaInserida) {
     console.error(
       "webhook-mercadopago: insert do estorno fora do app não devolveu a linha",

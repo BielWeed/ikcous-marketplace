@@ -268,14 +268,25 @@ function idComoString(valor: unknown): string {
  * recém-criado); sem data, perde o desempate (mesma regra de
  * `refundQueCobreALinha`). Nenhum candidato do valor certo: string vazia —
  * quem esclarece é a CONSULTA (GET), como sempre; o id da order nunca.
+ *
+ * `idsJaReivindicados` (Lote A, 04/10/2026, A6): ids que OUTRAS linhas do
+ * pedido já têm saem dos candidatos ANTES do desempate. Dois parciais de
+ * MESMO valor davam o MESMO "mais recente" às duas linhas; com o índice
+ * único (order_id, mp_refund_id) da migration 20261192000000, o
+ * `concluir_estorno` da segunda estouraria 23505 (o COALESCE grava o id) e a
+ * linha ficaria presa em 500 — e sem o índice, um refund creditava DUAS
+ * linhas (o P0 quebrado pelo POST, não pela consulta).
  */
 function refundDaLinhaNaResposta(
   c: Record<string, unknown>,
   linha: LinhaEstorno,
+  idsJaReivindicados: string[] = [],
 ): Record<string, unknown> | null {
     const centavosDaLinha = emCentavos(linha.amount);
+    const reivindicados = new Set(idsJaReivindicados);
     const comId = refundsDaOrder(c).filter((r) =>
-        (typeof r.id === "string" && r.id !== "") || typeof r.id === "number"
+        ((typeof r.id === "string" && r.id !== "") || typeof r.id === "number") &&
+        !reivindicados.has(String(r.id))
     );
     const doValorDaLinha = comId.filter((r) => {
         const valor = Number(r.amount);
@@ -432,6 +443,7 @@ function interpretarOrders(
   status: number,
   corpo: unknown,
   linha: LinhaEstorno,
+  idsJaReivindicados: string[] = [],
 ): ResultadoEstorno {
   const c = comoObjeto(corpo);
   const codigo = acharCodigo(corpo);
@@ -510,7 +522,7 @@ function interpretarOrders(
       // cron/webhook esclarece pela consulta, que já é terminais-estrita).
       // Sem candidato legível do valor da linha: contrato do E14 original —
       // concluido com id vazio, quem preenche é a consulta (GET).
-      const refundDaLinha = refundDaLinhaNaResposta(c, linha);
+      const refundDaLinha = refundDaLinhaNaResposta(c, linha, idsJaReivindicados);
       if (
         refundDaLinha !== null &&
         String(refundDaLinha.status ?? "") !== STATUS_REFUND_CONCLUIDO
@@ -592,11 +604,14 @@ export function interpretarResposta(
   corpo: unknown,
   linha: LinhaEstorno,
   pedido: PedidoParaEstorno,
+  // Lote A (A6): ids que OUTRAS linhas do pedido já têm — ver
+  // `refundDaLinhaNaResposta`. Opcional: sem a lista, o contrato de antes.
+  idsJaReivindicados: string[] = [],
 ): ResultadoEstorno {
   if (idEhClassico(pedido.gateway_payment_id)) {
     return interpretarPayments(status, corpo, linha);
   }
-  return interpretarOrders(status, corpo, linha);
+  return interpretarOrders(status, corpo, linha, idsJaReivindicados);
 }
 
 /** Os códigos cujo veredito final depende de uma CONSULTA (GET). */
@@ -1293,7 +1308,13 @@ export async function executarEstorno(args: {
     console.error("estorno: mercado pago recusou o POST", resposta.status, corpo);
   }
 
-  let resultado = interpretarResposta(resposta.status, corpo, linha, pedido);
+  let resultado = interpretarResposta(
+    resposta.status,
+    corpo,
+    linha,
+    pedido,
+    args.idsJaReivindicados ?? [],
+  );
 
   // O Retry-After mora no header da resposta, que o interpretar (puro) não
   // vê: o executor enriquece o `tentar_depois` do 429 com o prazo (E13).
