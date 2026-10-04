@@ -637,8 +637,9 @@ async function cenarioR11(
        VALUES ($1, $2, 'estorno feito fora do app (Mercado Pago)', 'sistema', 'concluido', $3)`,
       [p.pedidoId, orfao, `MPREF98ORFAO${porta}${orfao}`],
     );
-    // CONTROLE dentro da prova: a fórmula SEM o termo da órfã (a de antes da
-    // correção) dá outro número neste pedido — o caso distingue as duas.
+    // MEDIDA DIRETA DO SALDO: a fórmula SEM o termo da órfã (a de antes da
+    // correção) dá outro número neste pedido — o caso distingue as duas. (O
+    // controle de verdade é o mutante que tira o termo da função viva.)
     const semOrfao = (
       await cliente.query(
         `SELECT o.total - COALESCE(o.valor_estornado, 0)
@@ -657,7 +658,7 @@ async function cenarioR11(
     assert.equal(
       Number(semOrfao) - Number(vivo),
       orfao,
-      "CONTROLE: sem descontar a órfã o saldo seria maior exatamente pela órfã",
+      "medida direta do saldo: sem descontar a órfã o saldo seria maior exatamente pela órfã",
     );
   }
   if (reservado > 0) {
