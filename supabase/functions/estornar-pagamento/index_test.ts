@@ -49,8 +49,16 @@ const REFUND_ID = "11111111-1111-4111-8111-111111111111"
 const TEXTO_202 = "O Mercado Pago ainda está processando; eu confiro de novo em até 10 minutos."
 
 function respostaAdminFalsa(): Response {
+    // Admin de verdade: o papel ATUAL nas duas fontes (app_metadata aqui e
+    // profiles abaixo) — a porta exige as duas desde a 20261197000000.
     return new Response(
-        JSON.stringify({ id: ID_ADMIN, email: "admin@teste.local", aud: "authenticated", role: "authenticated" }),
+        JSON.stringify({
+            id: ID_ADMIN,
+            email: "admin@teste.local",
+            aud: "authenticated",
+            role: "authenticated",
+            app_metadata: { provider: "email", role: "admin" },
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
     )
 }
@@ -84,6 +92,44 @@ const fetchClienteFalso = ((input: any) => {
     }
     return new Response(JSON.stringify({ message: "fora do roteiro" }), { status: 404 })
 }) as any
+
+/**
+ * Papel ATUAL nas duas fontes (20261197000000): `app_metadata.role` do usuário
+ * que o GET /user do Auth carrega do BANCO, e `profiles.role`. O JWT do
+ * pedido (AUTH_JWT_VELHO_ADMIN) diz admin nos dois casos — ele não decide.
+ */
+function fetchPapeisFalso(papelNoAuth: string, papelNoPerfil: string) {
+    return ((input: any) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if (url.includes("/auth/v1/user")) {
+            return new Response(
+                JSON.stringify({
+                    id: ID_ADMIN,
+                    email: "admin@teste.local",
+                    aud: "authenticated",
+                    role: "authenticated",
+                    app_metadata: { provider: "email", role: papelNoAuth },
+                }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            )
+        }
+        if (url.includes("/rest/v1/profiles")) {
+            return new Response(
+                JSON.stringify({ id: ID_ADMIN, role: papelNoPerfil }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+            )
+        }
+        return new Response(JSON.stringify({ message: "fora do roteiro" }), { status: 404 })
+    }) as any
+}
+
+// JWT (não assinado — o Auth falso não confere) cujo payload ainda diz
+// app_metadata.role = 'admin': o "JWT velho" de um admin rebaixado.
+const AUTH_JWT_VELHO_ADMIN = "Bearer " + [
+    btoa(JSON.stringify({ alg: "HS256", typ: "JWT" })),
+    btoa(JSON.stringify({ sub: ID_ADMIN, role: "authenticated", app_metadata: { role: "admin" } })),
+    "assinatura-de-teste",
+].join(".")
 
 globalThis.fetch = fetchAdminFalso
 const { handler } = await import("./index.ts")
@@ -395,6 +441,63 @@ Deno.test("F2 - JWT de cliente comum responde 401", async () => {
     )
     assertEquals(resposta.status, 401)
     assertEquals(registro.leiturasLinha, 0)
+})
+
+// ── F2b/F2c/F2d: admin REBAIXADO com JWT velho dizendo admin -> 401 ────────
+// A MESMA regra de public.is_admin_atual() (20261197000000): o papel 'admin'
+// AGORA nas DUAS fontes. Papéis contraditórios não autorizam dinheiro — nas
+// duas direções: nenhuma leitura/escrita no ledger, nenhuma RPC, nenhum POST
+// ao MP (MP falso conta as chamadas).
+
+for (const [rotulo, papelNoAuth, papelNoPerfil] of [
+    ["F2b - só auth.users rebaixado (profiles ainda admin)", "customer", "admin"],
+    ["F2c - só profiles rebaixado (auth.users ainda admin)", "admin", "customer"],
+    ["F2d - rebaixado nas duas fontes", "customer", "customer"],
+] as const) {
+    Deno.test(`${rotulo}: JWT velho dizendo admin responde 401, sem ledger e sem MP`, async () => {
+        const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
+        const executor = executorFalso(
+            { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+            { chamarMp: true },
+        )
+        const mp = fetchMpFalso()
+        const resposta = await comEnv({}, () =>
+            comFetch(fetchPapeisFalso(papelNoAuth, papelNoPerfil), () =>
+                handler(requisicao({ refund_id: REFUND_ID }, AUTH_JWT_VELHO_ADMIN), {
+                    supabase: cliente,
+                    executarEstorno: executor.fn,
+                    buscar: mp.buscar,
+                }),
+            ),
+        )
+        assertEquals(resposta.status, 401)
+        assertEquals(registro.leiturasLinha, 0)
+        assertEquals(registro.marcas.length, 0)
+        assertEquals(registro.rpcs.length, 0)
+        assertEquals(executor.registro.chamadas.length, 0)
+        assertEquals(mp.registro.chamadas, 0)
+    })
+}
+
+Deno.test("F2e - CONTROLE: papel 'admin' nas duas fontes, com o MESMO JWT, passa a porta e conclui", async () => {
+    const { cliente, registro } = clienteSupaFalso({ linha: LINHA_SOLICITADA, pedido: PEDIDO_PAGO })
+    const executor = executorFalso(
+        { tipo: "concluido", mp_refund_id: "111222333", mp_status: "approved", mp_status_detail: null, valor: 100 },
+        { chamarMp: true },
+    )
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchPapeisFalso("admin", "admin"), () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_JWT_VELHO_ADMIN), {
+                supabase: cliente,
+                executarEstorno: executor.fn,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals(registro.marcas.length, 1)
+    assertEquals(mp.registro.chamadas, 1)
 })
 
 // ── F3: refund_id inexistente -> 404 ───────────────────────────────────────

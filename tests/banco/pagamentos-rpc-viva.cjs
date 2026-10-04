@@ -165,6 +165,13 @@ async function criarUsuarios(cliente) {
       [id, email, meta],
     );
   }
+  // Admin de verdade tem o papel nas DUAS fontes: desde a 20261197000000,
+  // registrar_pagamento_recebido exige profiles.role = 'admin' também.
+  await cliente.query(
+    `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Pagamentos', 'admin')
+     ON CONFLICT (id) DO NOTHING`,
+    [U_ADMIN],
+  );
 }
 
 /**
@@ -1632,6 +1639,16 @@ PROVAS.push({
 const NOME_1194 = "20261195000000_recusado_e_recebido_recusam_nulo.sql";
 const NOME_901 = "20260901000000_devolver_uso_de_cupom_ao_desfazer_pedido.sql";
 const NOME_1020 = "20261020000000_lojista_registra_pagamento_recebido.sql";
+// A 20261197000000 redefine registrar_pagamento_recebido DEPOIS da 95 (guarda
+// do admin ATUAL) — ver a composição no começo da seção (12).
+const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
+
+async function a97EstaNoAr(c) {
+  const r = await c.query(
+    "SELECT to_regprocedure('public.is_admin_atual()') IS NOT NULL AS sim",
+  );
+  return r.rows[0].sim;
+}
 
 function lerMigracao(nome) {
   const caminho = path.join(
@@ -1688,12 +1705,41 @@ PROVAS.push({
     assert.notEqual(novos.confirmar, antigos.confirmar);
     assert.notEqual(novos.registrar, antigos.registrar);
 
-    // O que está vivo é o que o arquivo deixa (cadeia do zero OU upgrade).
-    assert.deepEqual(await hashesVivos(c), novos);
+    // COMPOSIÇÃO com a 20261197000000 (guarda do admin ATUAL), que redefine
+    // registrar_pagamento_recebido DEPOIS desta: com ela no ar, o corpo vivo
+    // é o dela, e reaplicar a 95 por cima é recusado pelo preflight da 95 —
+    // o comportamento CORRETO (a 95 nunca rebaixa a 97). Esta seção prova a
+    // 95 ISOLADA: dentro da transação, o rollback-manual da 97 devolve o
+    // estado "95 sem 97"; o ROLLBACK do fim devolve a 97 intacta (conferido
+    // depois do finally).
+    const com97 = await a97EstaNoAr(c);
+    const vivoAntes = await hashesVivos(c);
+    if (!com97) {
+      // O que está vivo é o que o arquivo deixa (cadeia do zero OU upgrade).
+      assert.deepEqual(vivoAntes, novos);
+    } else {
+      assert.equal(vivoAntes.confirmar, novos.confirmar, "a 97 não toca confirmar_pagamento");
+      assert.notEqual(vivoAntes.registrar, novos.registrar, "com a 97 no ar o corpo vivo é o dela");
+    }
 
     const idsDeFixture = [];
     await c.query("BEGIN");
     try {
+      if (com97) {
+        // Com a 97 no ar, reaplicar a 95 por cima RECUSA, sem gravar nada.
+        await c.query("SAVEPOINT sobre_a_97");
+        await assert.rejects(
+          () => c.query(sqlMigracao),
+          /B1_BASELINE_DIVERGENT: corpo vivo de registrar_pagamento_recebido/,
+          "a 95 não pode rebaixar a 97",
+        );
+        await c.query("ROLLBACK TO SAVEPOINT sobre_a_97");
+        assert.deepEqual(await hashesVivos(c), vivoAntes);
+        // Daqui em diante: a 95 isolada (a 97 desfeita SÓ nesta transação).
+        await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
+        assert.deepEqual(await hashesVivos(c), novos, "sem a 97, o corpo vivo é o da 95");
+      }
+
       // 1. Reaplicar o ARQUIVO sobre o corpo novo: passa e não muda nada.
       await c.query(sqlMigracao);
       assert.deepEqual(await hashesVivos(c), novos, "reaplicar é idempotente");
@@ -1798,8 +1844,10 @@ PROVAS.push({
       await logar(c, "");
     }
 
-    // Tudo desfeito: corpos novos de volta e as fixtures do teste não ficaram.
-    assert.deepEqual(await hashesVivos(c), novos);
+    // Tudo desfeito: o corpo vivo de ANTES da seção de volta (o da 97, se
+    // ela estava no ar) e as fixtures do teste não ficaram.
+    assert.deepEqual(await hashesVivos(c), vivoAntes);
+    assert.equal(await a97EstaNoAr(c), com97, "a 97 voltou intacta");
     const sobras = await c.query(
       "SELECT count(*)::int AS n FROM public.marketplace_orders WHERE id = ANY($1::uuid[])",
       [idsDeFixture],

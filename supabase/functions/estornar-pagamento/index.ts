@@ -8,9 +8,11 @@
 // executor único da Task 2 e grava o resultado.
 //
 // DINHEIRO — as proteções desta function:
-//   * Admin-only: JWT do lojista validado com anon key e papel sobe por
-//     profiles com service role (MESMA cópia do verifyIsAdmin do
-//     melhor-envio-etiqueta/calculate-shipping). Não-admin não lê NADA.
+//   * Admin-only: JWT do lojista validado com anon key e o papel ATUAL
+//     exigido nas DUAS fontes — app_metadata do usuário que o Auth carrega
+//     do banco E profiles com service role (a regra de is_admin_atual(),
+//     20261197000000). Não-admin, ou admin rebaixado em qualquer das duas,
+//     não lê NADA.
 //   * A MARCA ANTES DO MP: `UPDATE order_refunds SET
 //     status='em_processamento', tentativas=tentativas+1 WHERE id=$1 AND
 //     status IN ('solicitado','em_processamento')`. Se 0 linhas voltaram,
@@ -128,9 +130,16 @@ function readKey(newVar: string, legacyVar: string): string {
 }
 
 /**
- * Verifica se quem chamou é admin. MESMA cópia do padrão
- * melhor-envio-etiqueta/calculate-shipping: valida o JWT com o anon key e
- * sobe o papel de `profiles` com service role.
+ * Verifica se quem chamou é admin AGORA. Valida o JWT com o anon key e exige o
+ * papel 'admin' nas DUAS fontes atuais — a MESMA regra de
+ * `public.is_admin_atual()` (migration 20261197000000), para a função de banco
+ * e a edge terem uma autoridade só:
+ *   - `user.app_metadata.role` de `auth.getUser()`: o GET /user do Auth
+ *     carrega o usuário do BANCO (auth.users.raw_app_meta_data de agora),
+ *     nunca as claims do JWT — um JWT velho dizendo admin não decide nada;
+ *   - `profiles.role`, lido com service role.
+ * Papéis contraditórios (rebaixado só em uma das fontes) NÃO autorizam
+ * dinheiro.
  */
 async function verifyIsAdmin(
     authHeader: string | null,
@@ -152,7 +161,7 @@ async function verifyIsAdmin(
             .eq('id', user.id)
             .single()
         if (profileError || !profile) return false
-        return profile.role === 'admin'
+        return profile.role === 'admin' && user.app_metadata?.role === 'admin'
     } catch (err) {
         console.error('[estornar-pagamento] Falha no check de admin:', err)
         return false

@@ -84,6 +84,14 @@ async function semear(cliente) {
       [id, email, meta],
     );
   }
+  // Admin de verdade tem o papel nas DUAS fontes: desde a 20261197000000,
+  // as RPCs de devolução que movem dinheiro/estoque exigem profiles.role =
+  // 'admin' também.
+  await cliente.query(
+    `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Devolução', 'admin')
+     ON CONFLICT (id) DO NOTHING`,
+    [U_ADMIN],
+  );
   await cliente.query(
     `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, categoria)
      VALUES ($1, 'Camisa de Prova', 40.00, 10, true, 'Camisas'),

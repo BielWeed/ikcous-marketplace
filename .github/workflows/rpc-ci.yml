@@ -120,5 +120,12 @@ jobs:
       # — CLONE próprio (rodar-isolado.cjs), as fixtures não vazam.
       - name: Prova viva dos pagamentos (confirmar_pagamento e registrar_pagamento_recebido)
         run: node tests/banco/rodar-isolado.cjs tests/banco/pagamentos-rpc-viva.cjs
+      # Migration 20261197000000 (o dinheiro exige o admin de agora): admin
+      # rebaixado com JWT velho — nas duas direções da contradição auth.users
+      # × profiles — é recusado nas seis RPCs sem escrever nada e não lê
+      # pedido nem ledger alheio; controle sem a guarda escreve; rollback
+      # byte a byte e preflights recusando sem escrita. CLONE próprio.
+      - name: Prova viva do admin atual no dinheiro (migration 20261197000000)
+        run: node tests/banco/rodar-isolado.cjs tests/banco/admin-atual-viva.cjs
       - name: Prova os invariantes de dinheiro
         run: node tests/banco/invariantes-dinheiro.cjs

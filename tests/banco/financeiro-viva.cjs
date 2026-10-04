@@ -99,6 +99,13 @@ PROVAS.push({
         [id, meta],
       );
     }
+    // Admin de verdade tem o papel nas DUAS fontes: desde a 20261197000000,
+    // registrar_estorno_manual exige profiles.role = 'admin' também.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Fin', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
     await cliente.query(
       `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo)
        VALUES ($1, 'Produto A', 50, 100, true, 20), ($2, 'Produto B', 30, 100, true, 10)`,

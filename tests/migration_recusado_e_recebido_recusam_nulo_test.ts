@@ -162,7 +162,20 @@ Deno.test("nenhuma migration POSTERIOR redefine as duas funções (esta não res
     NOME_901,
     NOME,
   ]);
-  assertEquals(definem("registrar_pagamento_recebido"), [NOME_1020, NOME]);
+  // A 20261197000000 (o dinheiro exige o admin de agora) redefine
+  // registrar_pagamento_recebido DEPOIS desta, de propósito: é o corpo desta
+  // byte a byte + uma guarda de papel atual (provado no
+  // tests/migration_dinheiro_exige_admin_atual_test.ts). Aqui basta que ela
+  // não ressuscite o corpo velho: a recusa do NULL desta continua lá.
+  const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
+  assertEquals(definem("registrar_pagamento_recebido"), [NOME_1020, NOME, NOME_1197]);
+  const recusaDoNulo =
+    "    IF p_recebido IS NULL THEN\n" +
+    "        RAISE EXCEPTION USING ERRCODE = '22004',\n" +
+    "            MESSAGE = 'Informe se o pagamento foi recebido (true) ou desfeito (false).';\n" +
+    "    END IF;\n";
+  assertStringIncludes(migration, recusaDoNulo);
+  assertStringIncludes(ler(NOME_1197), recusaDoNulo);
 });
 
 // --- A1: confirmar_pagamento ------------------------------------------------
