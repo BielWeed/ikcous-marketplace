@@ -1464,20 +1464,29 @@ async function handler(
   // C2 (02/10/2026): `metodo === "pix"`, não `!dadosCartao` — a consulta
   // `verificar` (sem cartão e sem PIX) não passa por esta trava (desenho A1,
   // 4.3): loja sem chave de webhook ainda precisa resolver um cartão em dúvida.
-  if (metodo === "pix") {
-    if (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook) {
-      // Só origem e motivo em log — nenhum segredo, jamais.
-      console.error(
-        `criar-pagamento: PIX recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
-      );
-      return json({
-        error:
-          "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
-        terminal: true,
-        pixSemChaveDeAssinatura: true,
-      }, 409);
-    }
-  }
+  //
+  // ONDE ela vale (revisão externa, 04/10/2026 — a mesma lógica do S2 do
+  // cartão, abaixo): rodava AQUI, antes de ler o pedido, e a tela que
+  // reconsulta com `metodo: "pix"` para recuperar o QR que JÁ existe perdia o
+  // QR se a chave saísse do cadastro depois. Agora ela só barra o que faria
+  // nascer um PIX novo: vaga livre (logo depois de `podeCobrar`), a liberação
+  // de uma vaga morta (antes de liberar) e a troca de um cartão vivo em
+  // desafio 3DS por PIX (o cartão NÃO é cancelado — segue "em análise").
+  // Reconsultar o PIX que já está na vaga continua livre.
+  const pixSemChaveDeAssinatura = metodo === "pix" &&
+    (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook);
+  const respostaPixSemChaveDeAssinatura = () => {
+    // Só origem e motivo em log — nenhum segredo, jamais.
+    console.error(
+      `criar-pagamento: PIX recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
+    );
+    return json({
+      error:
+        "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+      terminal: true,
+      pixSemChaveDeAssinatura: true,
+    }, 409);
+  };
   // S2 (travas onde a cobrança nasce, 04/10/2026): o CARTÃO do LOJISTA sem a
   // chave de assinatura do webhook para no MESMO 409 terminal do PIX —
   // decisão do dono de 30/09/2026 (pagamento pelo app só com as 3 chaves
@@ -1580,6 +1589,10 @@ async function handler(
   if (decisao.acao === "recusar") {
     return json({ error: decisao.motivo, terminal: true }, 409);
   }
+
+  // Trava do PIX sem chave de assinatura (ver o comentário dela, lá em cima):
+  // vaga LIVRE — a única saída daqui é um PIX novo.
+  if (pixSemChaveDeAssinatura && decisao.acao === "criar") return respostaPixSemChaveDeAssinatura();
 
   // Portão do CARTÃO (Fase 3.5), ANTES de qualquer coisa na vaga: se o
   // pedido tem um PIX aberto e o cliente pede cartão, o PIX é CANCELADO no MP
@@ -1970,8 +1983,11 @@ async function handler(
         // "Tentar de novo" relê e decide de novo pelo estado real.
         if (metodo === "pix" && (statusNaVaga === "aguardando" || statusNaVaga === null)) {
           const statusBrutoNaVaga = String(orderNaVaga.status ?? "");
-          const cartaoCancelavelParaPix =
-            statusBrutoNaVaga === "action_required" || statusBrutoNaVaga === "created";
+          // Trava do PIX sem chave de assinatura: o PIX novo é impossível, então
+          // o cartão vivo NÃO é cancelado — segue no 409 "em análise" abaixo,
+          // como um cartão que o MP não cancela.
+          const cartaoCancelavelParaPix = !pixSemChaveDeAssinatura &&
+            (statusBrutoNaVaga === "action_required" || statusBrutoNaVaga === "created");
           let cartaoCanceladoParaPix = false;
           if (cartaoCancelavelParaPix) {
             const cancelamento3ds = await cancelarOrder({
@@ -2152,8 +2168,10 @@ async function handler(
     // está gravada nela).
     //
     // S2: daqui o cartão só sai com um POST novo — sem a chave de assinatura,
-    // recusa ANTES de liberar (a vaga fica como está; nada foi tocado).
+    // recusa ANTES de liberar (a vaga fica como está; nada foi tocado). Mesma
+    // regra para o PIX sem a chave.
     if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
+    if (pixSemChaveDeAssinatura) return respostaPixSemChaveDeAssinatura();
     const liberacao = await liberarCobranca(supabase, pedido.id, idGatewayReconsulta);
     if (!liberacao.ok) {
       // Falha de banco: nada foi cobrado ainda, e o próximo retry reencontra

@@ -11396,3 +11396,93 @@ Deno.test("R9: PIX recusado (402) cujo corpo traz o pagador -> e-mail e CPF NUNC
   assertEquals(tudo.includes("pagador-pix@exemplo.com"), false);
   assertEquals(tudo.includes(CPF_TITULAR), false);
 });
+
+// =============================================================================
+// Trava do PIX sem chave de assinatura (revisão externa, 04/10/2026, mesma
+// lógica do S2 corrigido): a guarda de 29/09 rodava ANTES de ler o pedido — a
+// tela que reconsulta com `metodo: "pix"` para recuperar o QR que JÁ existe
+// perdia o QR se a chave saísse do cadastro depois. Agora: consulta/retomada
+// da cobrança própria livre; a trava vale só antes de criar, de liberar e de
+// cancelar um cartão vivo para trocar por PIX.
+// =============================================================================
+for (
+  const loja of [
+    { nome: "chaves da PLATAFORMA (sem registro)", registro: async () => null },
+    { nome: "lojista SEM chave", registro: () => registroMpDeTeste({ webhookSecret: null }) },
+  ]
+) {
+  Deno.test(`PIX sem chave (${loja.nome}): QR JÁ criado na vaga -> o MESMO QR, ZERO POST, nada gravado`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA, metodo_online: "pix" }),
+      registroMp: await loja.registro(),
+    });
+    const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200, JSON.stringify(corpo));
+    assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+    assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+
+  Deno.test(`PIX sem chave (${loja.nome}): cartão em DESAFIO 3DS na vaga + pedido de PIX -> o cartão NÃO é cancelado, ZERO POST, segue 'em análise'`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await loja.registro(),
+    });
+    const mp = fetchMP({
+      consultar: {
+        status: 200,
+        corpo: orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }),
+      },
+      cancelar: { status: 200, corpo: orderDeCartao("canceled", "canceled", { id: ORDER_CARTAO_NA_VAGA }) },
+      criar: { status: 201, corpo: orderDePix("action_required", "waiting_transfer") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(mp.cancelamentos().length, 0, "o cartão vivo foi cancelado para um PIX que não pode nascer");
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.cartaoEmAnalise, true);
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+
+  Deno.test(`PIX sem chave (${loja.nome}): cartão MORTO na vaga + pedido de PIX -> 409 terminal pixSemChaveDeAssinatura, sem liberar, ZERO POST`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await loja.registro(),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+      criar: { status: 201, corpo: orderDePix("action_required", "waiting_transfer") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.terminal, true);
+    assertEquals(corpo.pixSemChaveDeAssinatura, true);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
