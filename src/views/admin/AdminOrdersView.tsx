@@ -49,6 +49,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { horarioRelativo } from "@/lib/horario-relativo";
 import { mapOrderFromDB } from "@/lib/mappers";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -1336,7 +1337,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
     try {
       const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${orderId.slice(-6)} agora está: ${statusConfig[newStatus].label}`;
+      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${statusConfig[newStatus].label}`;
 
       const {
         data: { session },
@@ -1396,7 +1397,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // botaria o valor cru do banco, em inglês, dentro da mensagem que a
       // lojista manda para a cliente.
       const statusMsg = statusConfig[order.status] || statusConfig.pending;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.

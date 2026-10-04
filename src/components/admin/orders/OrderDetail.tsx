@@ -16,6 +16,7 @@ import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
@@ -1512,7 +1513,7 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
-    const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${order.id.slice(-6)}.`;
+    const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
     globalThis.open(
       `${whatsappUrl}?text=${encodeURIComponent(message)}`,
       "_blank",
