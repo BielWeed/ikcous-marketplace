@@ -199,4 +199,11 @@ no código, sem religar a integração:
 - **Forma de pagamento:** pelo rótulo comum `rotuloDoPagamento` (`_shared/pedido.ts`),
   que lê `payment_method` e `metodo_online`; forma desconhecida sai "Não informado".
 
-Os testes (`index_test.ts`) prendem isso com dublês da Evolution e do banco.
+**Em uma frase: WhatsApp do painel = link ativo (wa.me); a edge automática
+legada está desativada, sem configuração.** O retorno `null` de
+`lerConfigDaEvolution` é a PROTEÇÃO de uma edge sem chamador, não um envio
+automático funcionando. Os testes (`index_test.ts`) com a configuração injetada
+provam o CONTRATO (autorização, pedido canônico, log sem telefone, 4xx/5xx =
+falha) com dublês da Evolution e do banco; não provam integração real, e o
+caminho padrão de produção — sem configuração — é o 503 "não configurado", que
+também tem teste.
