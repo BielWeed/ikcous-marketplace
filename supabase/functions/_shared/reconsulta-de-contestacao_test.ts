@@ -384,6 +384,20 @@ Deno.test("FRESH GATE: a linha foi concluída pelo webhook ENTRE a lista e a vez
   assertEquals(r.resumo.resolvidasAntes, 1);
 });
 
+Deno.test("FRESH GATE (idade): o webhook TOCOU a linha (updated_at = agora) entre a lista e a vez dela -> a linha está viva, não presa: nenhuma chamada ao MP, nenhuma RPC", async () => {
+  const linhas = [linhaPresa("L1", PEDIDO_A, 7)];
+  const b = banco({
+    linhas,
+    pedidos: { [PEDIDO_A]: pedidoDe(ORDER_A) },
+    aposALista: () => {
+      linhas[0].updated_at = ha(0.01);
+    },
+  });
+  const m = mp({ orders: { [ORDER_A]: { status: 200, corpo: orderContestada() } } });
+  const r = await rodar(b, m);
+  assertEquals([m.chamadas, b.registro.rpcs, r.resumo.resolvidasAntes], [[], [], 1]);
+});
+
 Deno.test("o estado é RELIDO depois de cada mutação: o pedido e as linhas são lidos de novo para cada pedido (nunca um retrato único do lote)", async () => {
   const b = banco({
     linhas: [linhaPresa("L1", PEDIDO_A, 9), linhaPresa("L2", PEDIDO_B, 8)],
