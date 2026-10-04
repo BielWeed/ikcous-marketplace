@@ -296,7 +296,8 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
     <header className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tighter text-white">
-          Pedido <span className="text-admin-gold">#{order.id.slice(-6)}</span>
+          Pedido{" "}
+          <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
         </h1>
         <OrderStatusBadge status={order.status} />
         <PaymentStatusBadge

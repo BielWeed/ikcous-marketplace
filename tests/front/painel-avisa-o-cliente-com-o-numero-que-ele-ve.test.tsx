@@ -282,4 +282,11 @@ describe("Painel — o aviso ao cliente usa o número que ele vê (#3884BE)", ()
     expect(texto).toContain("#3884BE");
     expect(texto).not.toContain("#3884be");
   });
+
+  it("cabeçalho da ficha do pedido: 'Pedido #3884BE', o mesmo que o cliente vê", async () => {
+    await montar(ID_DO_PEDIDO);
+
+    const titulo = hospedeiro.querySelector("h1");
+    expect(titulo?.textContent).toBe("Pedido #3884BE");
+  });
 });
