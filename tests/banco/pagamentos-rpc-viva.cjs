@@ -1718,8 +1718,16 @@ PROVAS.push({
       // O que está vivo é o que o arquivo deixa (cadeia do zero OU upgrade).
       assert.deepEqual(vivoAntes, novos);
     } else {
-      assert.equal(vivoAntes.confirmar, novos.confirmar, "a 97 não toca confirmar_pagamento");
-      assert.notEqual(vivoAntes.registrar, novos.registrar, "com a 97 no ar o corpo vivo é o dela");
+      assert.equal(
+        vivoAntes.confirmar,
+        novos.confirmar,
+        "a 97 não toca confirmar_pagamento",
+      );
+      assert.notEqual(
+        vivoAntes.registrar,
+        novos.registrar,
+        "com a 97 no ar o corpo vivo é o dela",
+      );
     }
 
     const idsDeFixture = [];
@@ -1737,7 +1745,11 @@ PROVAS.push({
         assert.deepEqual(await hashesVivos(c), vivoAntes);
         // Daqui em diante: a 95 isolada (a 97 desfeita SÓ nesta transação).
         await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
-        assert.deepEqual(await hashesVivos(c), novos, "sem a 97, o corpo vivo é o da 95");
+        assert.deepEqual(
+          await hashesVivos(c),
+          novos,
+          "sem a 97, o corpo vivo é o da 95",
+        );
       }
 
       // 1. Reaplicar o ARQUIVO sobre o corpo novo: passa e não muda nada.

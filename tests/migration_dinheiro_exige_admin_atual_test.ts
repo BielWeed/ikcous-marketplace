@@ -65,7 +65,10 @@ const funcao = (sql, nome) => {
 };
 /** O que o Postgres grava em prosrc: entre `AS $$` e `$$;`. */
 const corpo = (texto) =>
-  texto.slice(texto.indexOf("AS $$") + "AS $$".length, texto.length - "$$;".length);
+  texto.slice(
+    texto.indexOf("AS $$") + "AS $$".length,
+    texto.length - "$$;".length,
+  );
 
 const COMENTARIO =
   "-- Papel ATUAL (auth.users E profiles), não o do JWT: admin rebaixado para aqui (20261197000000).";
@@ -89,7 +92,8 @@ const RPCS = [
   },
   {
     nome: "admin_devolucao_concluir",
-    assinatura: "public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text)",
+    assinatura:
+      "public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text)",
     fonte: "20261175000000_a_devolucao_nasce_no_pedido.sql",
     abertura: "  IF NOT public.is_admin() THEN\n",
     ind: 2,
@@ -151,7 +155,11 @@ Deno.test("avaliarFase0 não recusa o par migration+rollback", () => {
     sqlRollback: rollback,
     temRollback: true,
   });
-  assertEquals(res.recusado, false, `motivos: ${(res.motivos || []).join("; ")}`);
+  assertEquals(
+    res.recusado,
+    false,
+    `motivos: ${(res.motivos || []).join("; ")}`,
+  );
 });
 
 Deno.test("nenhum arquivo do par abre ou fecha transação de nível superior", () => {
@@ -167,7 +175,7 @@ Deno.test("o ponto de partida de cada RPC é a ÚLTIMA definição dela antes de
     .sort();
   for (const rpc of RPCS) {
     const ultimas = nomes.filter((n) =>
-      ler(n).includes(`FUNCTION public.${rpc.nome}(`)
+      ler(n).includes(`FUNCTION public.${rpc.nome}(`),
     );
     assertEquals(ultimas.at(-1), rpc.fonte, rpc.nome);
   }
@@ -189,14 +197,26 @@ Deno.test("cada RPC é o corpo vigente byte a byte + UMA guarda logo depois do i
 
 Deno.test("a guarda recusa com a MESMA mensagem e o MESMO SQLSTATE do 'não é admin' de cada função", () => {
   for (const rpc of RPCS) {
-    const iGuarda = rpc.depois.indexOf("IF NOT public.is_admin_atual() THEN\n") +
+    const iGuarda =
+      rpc.depois.indexOf("IF NOT public.is_admin_atual() THEN\n") +
       "IF NOT public.is_admin_atual() THEN\n".length;
-    const raiseGuarda = norm(rpc.depois.slice(iGuarda, rpc.depois.indexOf("END IF;", iGuarda)));
-    assertEquals(raiseGuarda, recusaDoIsAdmin(rpc.antes, rpc.abertura), rpc.nome);
+    const raiseGuarda = norm(
+      rpc.depois.slice(iGuarda, rpc.depois.indexOf("END IF;", iGuarda)),
+    );
+    assertEquals(
+      raiseGuarda,
+      recusaDoIsAdmin(rpc.antes, rpc.abertura),
+      rpc.nome,
+    );
   }
   // Cinco usam 42501; registrar_pagamento_recebido nunca teve ERRCODE (P0001).
-  for (const rpc of RPCS.filter((r) => r.nome !== "registrar_pagamento_recebido")) {
-    assertStringIncludes(recusaDoIsAdmin(rpc.antes, rpc.abertura), "USING ERRCODE = '42501'");
+  for (const rpc of RPCS.filter(
+    (r) => r.nome !== "registrar_pagamento_recebido",
+  )) {
+    assertStringIncludes(
+      recusaDoIsAdmin(rpc.antes, rpc.abertura),
+      "USING ERRCODE = '42501'",
+    );
   }
   assertEquals(
     recusaDoIsAdmin(RPCS.at(-1).antes, RPCS.at(-1).abertura),
@@ -209,9 +229,17 @@ Deno.test("a guarda vem ANTES de qualquer leitura de tabela, trava ou escrita", 
     const c = semComentarios(rpc.depois);
     const corpoExec = c.slice(c.indexOf("BEGIN"));
     const iGuarda = corpoExec.indexOf("IF NOT public.is_admin_atual() THEN");
-    for (const efeito of [/\bFOR UPDATE\b/, /\bUPDATE public\./, /\bINSERT INTO\b/, /\bFROM public\./]) {
+    for (const efeito of [
+      /\bFOR UPDATE\b/,
+      /\bUPDATE public\./,
+      /\bINSERT INTO\b/,
+      /\bFROM public\./,
+    ]) {
       const m = efeito.exec(corpoExec);
-      assert(m === null || m.index > iGuarda, `${rpc.nome}: ${efeito} antes da guarda`);
+      assert(
+        m === null || m.index > iGuarda,
+        `${rpc.nome}: ${efeito} antes da guarda`,
+      );
     }
   }
 });
@@ -224,7 +252,11 @@ Deno.test("assinatura, RETURNS, SECURITY DEFINER e search_path de cada RPC iguai
     for (const sql of [migration, rollback]) {
       const repetido = semComentarios(sql)
         .split(";")
-        .some((st) => /^\s*(GRANT|REVOKE)\b/.test(st) && st.includes(`FUNCTION public.${rpc.nome}(`));
+        .some(
+          (st) =>
+            /^\s*(GRANT|REVOKE)\b/.test(st) &&
+            st.includes(`FUNCTION public.${rpc.nome}(`),
+        );
       assert(!repetido, `${rpc.nome}: GRANT/REVOKE repetido`);
     }
   }
@@ -234,7 +266,10 @@ Deno.test("o rollback restaura o TEXTO de cada RPC byte a byte", () => {
   for (const rpc of RPCS) {
     assertEquals(rpc.rollback, rpc.antes, rpc.nome);
     assertEquals(md5(corpo(rpc.rollback)), md5(corpo(rpc.antes)));
-    assert(!rpc.rollback.includes("is_admin_atual"), `${rpc.nome}: guarda no rollback`);
+    assert(
+      !rpc.rollback.includes("is_admin_atual"),
+      `${rpc.nome}: guarda no rollback`,
+    );
   }
 });
 
@@ -242,32 +277,64 @@ const HELPER = funcao(migration, "is_admin_atual");
 const RLS = funcao(migration, "rls_admin_atual");
 
 Deno.test("os preflights citam o md5 REAL de cada corpo (vigente e desta) e o da is_admin() da baseline", () => {
-  const preflight = migration.slice(0, migration.indexOf("\nCREATE OR REPLACE FUNCTION"));
-  const preflightRb = rollback.slice(0, rollback.indexOf("\nCREATE OR REPLACE FUNCTION"));
+  const preflight = migration.slice(
+    0,
+    migration.indexOf("\nCREATE OR REPLACE FUNCTION"),
+  );
+  const preflightRb = rollback.slice(
+    0,
+    rollback.indexOf("\nCREATE OR REPLACE FUNCTION"),
+  );
   for (const rpc of RPCS) {
     const antigo = md5(corpo(rpc.antes));
     const novo = md5(corpo(rpc.depois));
     assert(antigo !== novo, rpc.nome);
-    assertStringIncludes(preflight, `('${rpc.assinatura}', '${antigo}', '${novo}')`);
+    assertStringIncludes(
+      preflight,
+      `('${rpc.assinatura}', '${antigo}', '${novo}')`,
+    );
     assertStringIncludes(preflightRb, `('${rpc.assinatura}', '${novo}')`);
-    assert(!preflightRb.includes(`'${antigo}'`), `${rpc.nome}: o rollback só desfaz o corpo NOVO`);
+    assert(
+      !preflightRb.includes(`'${antigo}'`),
+      `${rpc.nome}: o rollback só desfaz o corpo NOVO`,
+    );
   }
   // O corpo que a 95 deixa em registrar_pagamento_recebido (combinado com a 29dd).
-  assertEquals(md5(corpo(RPCS.at(-1).antes)), "0a594768d4836bcc6d5064ce537b47dc");
+  assertEquals(
+    md5(corpo(RPCS.at(-1).antes)),
+    "0a594768d4836bcc6d5064ce537b47dc",
+  );
   // O da 94 em registrar_estorno_manual (o que a própria 94 declara).
   assertEquals(md5(corpo(RPCS[1].antes)), "18ea2e76d075634b57189592fb91ac0d");
-  for (const [assinatura, texto] of [["public.is_admin_atual()", HELPER], ["public.rls_admin_atual()", RLS]]) {
-    assertStringIncludes(preflight, `('${assinatura}', '${md5(corpo(texto))}')`);
-    assertStringIncludes(preflightRb, `('${assinatura}', '${md5(corpo(texto))}')`);
+  for (const [assinatura, texto] of [
+    ["public.is_admin_atual()", HELPER],
+    ["public.rls_admin_atual()", RLS],
+  ]) {
+    assertStringIncludes(
+      preflight,
+      `('${assinatura}', '${md5(corpo(texto))}')`,
+    );
+    assertStringIncludes(
+      preflightRb,
+      `('${assinatura}', '${md5(corpo(texto))}')`,
+    );
   }
   const baseline = ler("20260806000000_baseline_do_schema_vivo.sql");
-  const i = baseline.indexOf("CREATE FUNCTION public.is_admin() RETURNS boolean");
-  const isAdmin = baseline.slice(i, baseline.indexOf("\n$$;", i) + "\n$$;".length);
+  const i = baseline.indexOf(
+    "CREATE FUNCTION public.is_admin() RETURNS boolean",
+  );
+  const isAdmin = baseline.slice(
+    i,
+    baseline.indexOf("\n$$;", i) + "\n$$;".length,
+  );
   assertStringIncludes(preflight, `IS DISTINCT FROM '${md5(corpo(isAdmin))}'`);
   for (const sql of [preflight, preflightRb]) {
     assertStringIncludes(sql, "md5(replace(prosrc, E'\\r', ''))");
     assertStringIncludes(sql, "RAISE EXCEPTION 'B1_BASELINE_DIVERGENT:");
-    assert(!/RAISE\s+(NOTICE|WARNING|INFO|LOG|DEBUG)/i.test(sql), "preflight que só avisa não recusa");
+    assert(
+      !/RAISE\s+(NOTICE|WARNING|INFO|LOG|DEBUG)/i.test(sql),
+      "preflight que só avisa não recusa",
+    );
   }
 });
 
@@ -279,7 +346,13 @@ Deno.test("os preflights vêm ANTES de qualquer escrita (CREATE, REVOKE, GRANT, 
     const fim = sql.indexOf("END $preflight");
     assert(sql.indexOf(bloco) >= 0 && fim > sql.indexOf(bloco));
     const antes = semComentarios(sql.slice(0, sql.indexOf(bloco)));
-    for (const escrita of [/CREATE\s/i, /REVOKE\s/i, /GRANT\s/i, /ALTER\s+POLICY/i, /DROP\s/i]) {
+    for (const escrita of [
+      /CREATE\s/i,
+      /REVOKE\s/i,
+      /GRANT\s/i,
+      /ALTER\s+POLICY/i,
+      /DROP\s/i,
+    ]) {
       assert(!escrita.test(antes), `${escrita} antes do preflight`);
     }
   }
@@ -307,21 +380,36 @@ Deno.test("rls_admin_atual(): embrulho do dono para as políticas, só devolve o
     norm(RLS.slice(0, RLS.indexOf("AS $$"))),
     "CREATE OR REPLACE FUNCTION public.rls_admin_atual() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public",
   );
-  assertEquals(norm(semComentarios(corpo(RLS))), "SELECT public.is_admin_atual();");
+  assertEquals(
+    norm(semComentarios(corpo(RLS))),
+    "SELECT public.is_admin_atual();",
+  );
 });
 
 Deno.test("grants: is_admin_atual sem EXECUTE para PUBLIC/anon/authenticated; rls_admin_atual só para authenticated", () => {
   const c = semComentarios(migration);
-  assertStringIncludes(c, "REVOKE ALL ON FUNCTION public.is_admin_atual() FROM PUBLIC, anon, authenticated;");
-  assertStringIncludes(c, "REVOKE ALL ON FUNCTION public.rls_admin_atual() FROM PUBLIC, anon;");
-  assertStringIncludes(c, "GRANT EXECUTE ON FUNCTION public.rls_admin_atual() TO authenticated;");
+  assertStringIncludes(
+    c,
+    "REVOKE ALL ON FUNCTION public.is_admin_atual() FROM PUBLIC, anon, authenticated;",
+  );
+  assertStringIncludes(
+    c,
+    "REVOKE ALL ON FUNCTION public.rls_admin_atual() FROM PUBLIC, anon;",
+  );
+  assertStringIncludes(
+    c,
+    "GRANT EXECUTE ON FUNCTION public.rls_admin_atual() TO authenticated;",
+  );
   const grants = c.match(/^GRANT [^;]*;/gm) || [];
-  assertEquals(grants, ["GRANT EXECUTE ON FUNCTION public.rls_admin_atual() TO authenticated;"]);
+  assertEquals(grants, [
+    "GRANT EXECUTE ON FUNCTION public.rls_admin_atual() TO authenticated;",
+  ]);
   // O REVOKE vem depois do CREATE de cada uma (senão o default privileges
   // dá EXECUTE de novo no CREATE).
   for (const fn of ["is_admin_atual", "rls_admin_atual"]) {
     assert(
-      c.indexOf(`REVOKE ALL ON FUNCTION public.${fn}()`) > c.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}()`),
+      c.indexOf(`REVOKE ALL ON FUNCTION public.${fn}()`) >
+        c.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}()`),
       fn,
     );
   }
@@ -353,9 +441,17 @@ const POLITICAS = [
 
 Deno.test("políticas: a migration troca SÓ a porta de admin das cinco (dono preservado); o rollback devolve a expressão de antes", () => {
   const alters = (sql) =>
-    (norm(semComentarios(sql)).match(/ALTER POLICY [^;]*;/g) || []).map((a) => a.replace(/^ALTER POLICY /, ""));
-  assertEquals(alters(migration), POLITICAS.map(([nova]) => nova));
-  assertEquals(alters(rollback), POLITICAS.map(([, antiga]) => antiga));
+    (norm(semComentarios(sql)).match(/ALTER POLICY [^;]*;/g) || []).map((a) =>
+      a.replace(/^ALTER POLICY /, ""),
+    );
+  assertEquals(
+    alters(migration),
+    POLITICAS.map(([nova]) => nova),
+  );
+  assertEquals(
+    alters(rollback),
+    POLITICAS.map(([, antiga]) => antiga),
+  );
   // A política do dono no ledger não é tocada.
   assert(!semComentarios(migration).includes("order_refunds_cliente_le ON"));
   // A expressão de antes é a das migrations que criaram as políticas.
@@ -373,18 +469,36 @@ Deno.test("políticas: a migration troca SÓ a porta de admin das cinco (dono pr
 
 Deno.test("o rollback apaga as duas funções novas SÓ DEPOIS de restaurar corpos e políticas", () => {
   const c = semComentarios(rollback);
-  const iDropRls = c.indexOf("DROP FUNCTION IF EXISTS public.rls_admin_atual();");
-  const iDropHelper = c.indexOf("DROP FUNCTION IF EXISTS public.is_admin_atual();");
-  const ultimaEscrita = Math.max(c.lastIndexOf("ALTER POLICY"), c.lastIndexOf("CREATE OR REPLACE FUNCTION"));
-  assert(iDropRls > ultimaEscrita && iDropHelper > iDropRls, `ordem: ${[ultimaEscrita, iDropRls, iDropHelper]}`);
+  const iDropRls = c.indexOf(
+    "DROP FUNCTION IF EXISTS public.rls_admin_atual();",
+  );
+  const iDropHelper = c.indexOf(
+    "DROP FUNCTION IF EXISTS public.is_admin_atual();",
+  );
+  const ultimaEscrita = Math.max(
+    c.lastIndexOf("ALTER POLICY"),
+    c.lastIndexOf("CREATE OR REPLACE FUNCTION"),
+  );
+  assert(
+    iDropRls > ultimaEscrita && iDropHelper > iDropRls,
+    `ordem: ${[ultimaEscrita, iDropRls, iDropHelper]}`,
+  );
   // E a migration não apaga nada.
   assert(!/\bDROP\b/i.test(semComentarios(migration)), "DROP na migration");
 });
 
 Deno.test("contrato com a edge estornar-pagamento: a MESMA autoridade atual (app_metadata do Auth E profiles)", () => {
-  const edge = norm(lerArquivo("supabase/functions/estornar-pagamento/index.ts"));
-  assertStringIncludes(edge, "return profile.role === 'admin' && user.app_metadata?.role === 'admin'");
+  const edge = norm(
+    lerArquivo("supabase/functions/estornar-pagamento/index.ts"),
+  );
+  assertStringIncludes(
+    edge,
+    "return profile.role === 'admin' && user.app_metadata?.role === 'admin'",
+  );
   // O papel vem do getUser() (Auth carrega do banco), nunca de um decode do JWT.
   assertStringIncludes(edge, "await userClient.auth.getUser()");
-  assert(!/atob\(|jwtDecode|decodeJwt/.test(edge), "a edge não pode decidir pelo JWT decodificado");
+  assert(
+    !/atob\(|jwtDecode|decodeJwt/.test(edge),
+    "a edge não pode decidir pelo JWT decodificado",
+  );
 });

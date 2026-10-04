@@ -168,7 +168,11 @@ Deno.test("nenhuma migration POSTERIOR redefine as duas funções (esta não res
   // tests/migration_dinheiro_exige_admin_atual_test.ts). Aqui basta que ela
   // não ressuscite o corpo velho: a recusa do NULL desta continua lá.
   const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
-  assertEquals(definem("registrar_pagamento_recebido"), [NOME_1020, NOME, NOME_1197]);
+  assertEquals(definem("registrar_pagamento_recebido"), [
+    NOME_1020,
+    NOME,
+    NOME_1197,
+  ]);
   const recusaDoNulo =
     "    IF p_recebido IS NULL THEN\n" +
     "        RAISE EXCEPTION USING ERRCODE = '22004',\n" +

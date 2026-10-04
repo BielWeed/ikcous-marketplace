@@ -135,13 +135,23 @@ const QUEM = {
     uid: U_SO_AUTH_SEM_PERFIL,
     jwt: claims(U_SO_AUTH_SEM_PERFIL, "admin"),
   },
-  admin: { papel: "authenticated", uid: U_ADMIN, jwt: claims(U_ADMIN, "admin") },
+  admin: {
+    papel: "authenticated",
+    uid: U_ADMIN,
+    jwt: claims(U_ADMIN, "admin"),
+  },
   service: { papel: "service_role", uid: "", jwt: "" },
 };
 
 // `desfazer`: a chamada roda e é desfeita (ROLLBACK) mesmo dando certo —
 // para medir escrita direta em tabela sem deixar rastro.
-async function comoQuem(cliente, quem, sql, params = [], { desfazer = false } = {}) {
+async function comoQuem(
+  cliente,
+  quem,
+  sql,
+  params = [],
+  { desfazer = false } = {},
+) {
   const q = QUEM[quem];
   await cliente.query("BEGIN");
   try {
@@ -228,7 +238,10 @@ const POLITICAS_ANTES = {
     "((( SELECT auth.uid() AS uid) = user_id) OR ( SELECT public.is_admin() AS is_admin))",
     null,
   ],
-  "order_refunds.order_refunds_admin_all": ["public.is_admin()", "public.is_admin()"],
+  "order_refunds.order_refunds_admin_all": [
+    "public.is_admin()",
+    "public.is_admin()",
+  ],
 };
 
 let seq = 0;
@@ -262,7 +275,10 @@ async function pedido(cliente, o) {
 }
 
 async function devolucao(cliente, o) {
-  const p = await pedido(cliente, { status: "delivered", pagamento: o.pagamento });
+  const p = await pedido(cliente, {
+    status: "delivered",
+    pagamento: o.pagamento,
+  });
   const id = novoId("a7dddddd");
   await cliente.query(
     `INSERT INTO public.devolucoes
@@ -318,14 +334,22 @@ const CASOS = [
   {
     assinatura: "public.registrar_estorno_manual(uuid)",
     alvo: async (c) => (await pedido(c, { status: "cancelled" })).id,
-    chamada: (alvo) => ["SELECT public.registrar_estorno_manual($1) AS r", [alvo]],
+    chamada: (alvo) => [
+      "SELECT public.registrar_estorno_manual($1) AS r",
+      [alvo],
+    ],
     servicePassa: true,
   },
   {
     assinatura: "public.admin_devolucao_concluir(uuid,text,jsonb,numeric,text)",
     alvo: async (c) => {
       const d = await devolucao(c, { status: "recebida" });
-      return { id: d.id, itens: JSON.stringify([{ item_id: d.itemId, condicao: "nova", reestocar: true }]) };
+      return {
+        id: d.id,
+        itens: JSON.stringify([
+          { item_id: d.itemId, condicao: "nova", reestocar: true },
+        ]),
+      };
     },
     chamada: (alvo) => [
       "SELECT public.admin_devolucao_concluir($1, 'troca', $2::jsonb) AS r",
@@ -353,7 +377,8 @@ const CASOS = [
   {
     assinatura: "public.admin_devolucao_liberar_vinculo_reverso(uuid,boolean)",
     alvo: async (c) =>
-      (await devolucao(c, { status: "aprovada", meReverseId: "ME-PROVA-1" })).id,
+      (await devolucao(c, { status: "aprovada", meReverseId: "ME-PROVA-1" }))
+        .id,
     chamada: (alvo) => [
       "SELECT public.admin_devolucao_liberar_vinculo_reverso($1, true) AS r",
       [alvo],
@@ -367,7 +392,13 @@ const CASOS = [
     // Pedido de ENTREGA ainda sem pagamento: "recebi" grava
     // recebido_na_entrega + histórico.
     alvo: async (c) =>
-      (await pedido(c, { status: "delivered", pagamento: "cash", paymentStatus: null })).id,
+      (
+        await pedido(c, {
+          status: "delivered",
+          pagamento: "cash",
+          paymentStatus: null,
+        })
+      ).id,
     chamada: (alvo) => [
       "SELECT public.registrar_pagamento_recebido($1, true) AS r",
       [alvo],
@@ -386,7 +417,11 @@ const RE_GUARDA =
 
 function semGuarda(def) {
   const achados = def.match(RE_GUARDA) || [];
-  assert.equal(achados.length, 1, "a guarda tem de aparecer UMA vez no corpo vivo");
+  assert.equal(
+    achados.length,
+    1,
+    "a guarda tem de aparecer UMA vez no corpo vivo",
+  );
   return def.replace(RE_GUARDA, "\n");
 }
 
@@ -396,14 +431,22 @@ async function recusaComoNaoAdmin(cliente, quem, caso, alvo) {
   const antes = await foto(cliente);
   const [sql, params] = caso.chamada(alvo);
   const r = await comoQuem(cliente, quem, sql, params);
-  assert.equal(r.ok, false, `${caso.assinatura} como ${quem} PASSOU — devia recusar`);
+  assert.equal(
+    r.ok,
+    false,
+    `${caso.assinatura} como ${quem} PASSOU — devia recusar`,
+  );
   assert.equal(
     r.code,
     caso.codigo || "42501",
     `${caso.assinatura} como ${quem}: ${r.code} ${r.message}`,
   );
   if (caso.mensagem) assert.match(r.message, caso.mensagem);
-  assert.equal(await foto(cliente), antes, `${caso.assinatura} como ${quem} escreveu algo`);
+  assert.equal(
+    await foto(cliente),
+    antes,
+    `${caso.assinatura} como ${quem} escreveu algo`,
+  );
   return r;
 }
 
@@ -418,8 +461,12 @@ PROVAS.push({
     // passa por gatilho com `f_unaccent` -> extensions.unaccent; sem isso a
     // prova só passaria em banco VAZIO). Só neste CLONE (rodar-isolado.cjs)
     // — as outras provas não enxergam.
-    await cliente.query("GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role");
-    await cliente.query("GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role");
+    await cliente.query(
+      "GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role",
+    );
+    await cliente.query(
+      "GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role",
+    );
     for (const id of [
       U_ADMIN,
       U_REBAIXADO_PERFIL,
@@ -440,7 +487,13 @@ PROVAS.push({
          ($1, 'Admin Atual', 'admin'), ($2, 'Rebaixado Perfil', 'admin'),
          ($3, 'Rebaixado Auth', 'admin'), ($4, 'Cliente', 'customer'),
          ($5, 'Rebaixado Ambos', 'admin')`,
-      [U_ADMIN, U_REBAIXADO_PERFIL, U_REBAIXADO_AUTH, U_CLIENTE, U_REBAIXADO_AMBOS],
+      [
+        U_ADMIN,
+        U_REBAIXADO_PERFIL,
+        U_REBAIXADO_AUTH,
+        U_CLIENTE,
+        U_REBAIXADO_AMBOS,
+      ],
     );
     // Admin só pelo app_metadata (painel do Supabase), sem linha em profiles.
     await cliente.query(
@@ -456,10 +509,9 @@ PROVAS.push({
     // tr_prevent_role_change exige is_admin() de quem muda papel); o gatilho
     // de sincronia leva a auth.users — as DUAS fontes dizem customer.
     await cliente.query("BEGIN");
-    await cliente.query(
-      "SELECT set_config('request.jwt.claims', $1, true)",
-      [claims(U_ADMIN, "admin")],
-    );
+    await cliente.query("SELECT set_config('request.jwt.claims', $1, true)", [
+      claims(U_ADMIN, "admin"),
+    ]);
     await cliente.query(
       "UPDATE public.profiles SET role = 'customer' WHERE id = ANY($1::uuid[])",
       [[U_REBAIXADO_AMBOS, U_REBAIXADO_PERFIL]],
@@ -507,9 +559,16 @@ PROVAS.push({
     // Nenhuma entrada sem dono (PUBLIC), nem anon, nem authenticated.
     assert.ok(!/(^|[{,])=/.test(c.acl), `PUBLIC com EXECUTE: ${c.acl}`);
     assert.ok(!/\banon=/.test(c.acl), `anon com EXECUTE: ${c.acl}`);
-    assert.ok(!/\bauthenticated=/.test(c.acl), `authenticated com EXECUTE: ${c.acl}`);
+    assert.ok(
+      !/\bauthenticated=/.test(c.acl),
+      `authenticated com EXECUTE: ${c.acl}`,
+    );
     for (const quem of ["anon", "cliente", "admin"]) {
-      const r = await comoQuem(cliente, quem, "SELECT public.is_admin_atual() AS r");
+      const r = await comoQuem(
+        cliente,
+        quem,
+        "SELECT public.is_admin_atual() AS r",
+      );
       assert.equal(r.ok, false, `${quem} executou is_admin_atual direto`);
       assert.equal(r.code, "42501");
       assert.match(r.message, /permission denied for function is_admin_atual/);
@@ -524,9 +583,16 @@ PROVAS.push({
     assert.ok(!/(^|[{,])=/.test(w.acl), `PUBLIC com EXECUTE: ${w.acl}`);
     assert.ok(!/\banon=/.test(w.acl), `anon com EXECUTE: ${w.acl}`);
     assert.match(w.acl, /\bauthenticated=X\//);
-    const anon = await comoQuem(cliente, "anon", "SELECT public.rls_admin_atual() AS r");
+    const anon = await comoQuem(
+      cliente,
+      "anon",
+      "SELECT public.rls_admin_atual() AS r",
+    );
     assert.equal(anon.ok, false);
-    assert.match(anon.message, /permission denied for function rls_admin_atual/);
+    assert.match(
+      anon.message,
+      /permission denied for function rls_admin_atual/,
+    );
     // Pelo embrulho, cada um recebe só o próprio boolean: a mesma regra.
     for (const [quem, esperado] of [
       ["admin", true],
@@ -536,7 +602,11 @@ PROVAS.push({
       ["rebaixadoAmbos", false],
       ["soAuthSemPerfil", false],
     ]) {
-      const r = await comoQuem(cliente, quem, "SELECT public.rls_admin_atual() AS r");
+      const r = await comoQuem(
+        cliente,
+        quem,
+        "SELECT public.rls_admin_atual() AS r",
+      );
       assert.equal(r.ok, true, `${quem}: ${r.message}`);
       assert.equal(r.linhas[0].r, esperado, `rls_admin_atual() como ${quem}`);
     }
@@ -566,14 +636,20 @@ PROVAS.push({
           "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
           [uid, jwt],
         );
-        return (await cliente.query("SELECT public.prova__avaliar_admin_atual() AS r")).rows[0].r;
+        return (
+          await cliente.query("SELECT public.prova__avaliar_admin_atual() AS r")
+        ).rows[0].r;
       } finally {
         await cliente.query("ROLLBACK");
       }
     };
     const A = "authenticated";
     assert.equal(await avaliar(A, U_ADMIN, ""), true, "admin atual sem JWT");
-    assert.equal(await avaliar(A, U_ADMIN, claims(U_ADMIN, "admin")), true, "admin atual com JWT");
+    assert.equal(
+      await avaliar(A, U_ADMIN, claims(U_ADMIN, "admin")),
+      true,
+      "admin atual com JWT",
+    );
     assert.equal(
       await avaliar(A, U_REBAIXADO_PERFIL, claims(U_REBAIXADO_PERFIL, "admin")),
       false,
@@ -590,12 +666,24 @@ PROVAS.push({
       "rebaixado pelo app (as duas fontes) com JWT velho",
     );
     assert.equal(
-      await avaliar(A, U_SO_AUTH_SEM_PERFIL, claims(U_SO_AUTH_SEM_PERFIL, "admin")),
+      await avaliar(
+        A,
+        U_SO_AUTH_SEM_PERFIL,
+        claims(U_SO_AUTH_SEM_PERFIL, "admin"),
+      ),
       false,
       "admin só no app_metadata, sem profiles",
     );
-    assert.equal(await avaliar(A, U_CLIENTE, claims(U_CLIENTE, "admin")), false, "cliente com JWT forjado");
-    assert.equal(await avaliar(A, "", claims(U_ADMIN, "admin")), false, "JWT admin sem login");
+    assert.equal(
+      await avaliar(A, U_CLIENTE, claims(U_CLIENTE, "admin")),
+      false,
+      "cliente com JWT forjado",
+    );
+    assert.equal(
+      await avaliar(A, "", claims(U_ADMIN, "admin")),
+      false,
+      "JWT admin sem login",
+    );
     assert.equal(
       await avaliar(A, "a7000000-0000-4000-8000-0000000000ff", ""),
       false,
@@ -603,7 +691,11 @@ PROVAS.push({
     );
     assert.equal(await avaliar(A, "", ""), false, "authenticated sem login");
     assert.equal(await avaliar("anon", "", ""), false, "anon");
-    assert.equal(await avaliar("service_role", "", ""), true, "service_role explícito");
+    assert.equal(
+      await avaliar("service_role", "", ""),
+      true,
+      "service_role explícito",
+    );
   },
 });
 
@@ -653,20 +745,36 @@ for (const caso of CASOS) {
           assert.equal(
             erro,
             null,
-            `CONTROLE FALHOU (${uid}): sem a guarda, o rebaixado ainda é recusado (${erro && erro.code} ${erro && erro.message}) — a prova (1) não mede a guarda`,
+            `CONTROLE FALHOU (${uid}): sem a guarda, o rebaixado ainda é recusado (${erro?.code} ${erro?.message}) — a prova (1) não mede a guarda`,
           );
-          assert.notEqual(await foto(cliente), antes, `CONTROLE (${uid}): sem a guarda a chamada não escreveu nada`);
+          assert.notEqual(
+            await foto(cliente),
+            antes,
+            `CONTROLE (${uid}): sem a guarda a chamada não escreveu nada`,
+          );
         } finally {
           await cliente.query("ROLLBACK");
         }
       }
-      assert.equal((await catalogo(cliente, caso.assinatura)).hash, vivo.hash, "o controle vazou para o corpo vivo");
+      assert.equal(
+        (await catalogo(cliente, caso.assinatura)).hash,
+        vivo.hash,
+        "o controle vazou para o corpo vivo",
+      );
 
       // (4) admin atual passa e escreve.
       const antesAdmin = await foto(cliente);
       const adm = await comoQuem(cliente, "admin", sql, params);
-      assert.equal(adm.ok, true, `admin atual recusado: ${adm.code} ${adm.message}`);
-      assert.notEqual(await foto(cliente), antesAdmin, "admin atual não escreveu");
+      assert.equal(
+        adm.ok,
+        true,
+        `admin atual recusado: ${adm.code} ${adm.message}`,
+      );
+      assert.notEqual(
+        await foto(cliente),
+        antesAdmin,
+        "admin atual não escreveu",
+      );
 
       // (4) service_role sem login, num alvo novo.
       const alvo2 = await caso.alvo(cliente);
@@ -674,8 +782,16 @@ for (const caso of CASOS) {
       const antesSr = await foto(cliente);
       const sr = await comoQuem(cliente, "service", sql2, params2);
       if (caso.servicePassa) {
-        assert.equal(sr.ok, true, `service_role recusado: ${sr.code} ${sr.message}`);
-        assert.notEqual(await foto(cliente), antesSr, "service_role não escreveu");
+        assert.equal(
+          sr.ok,
+          true,
+          `service_role recusado: ${sr.code} ${sr.message}`,
+        );
+        assert.notEqual(
+          await foto(cliente),
+          antesSr,
+          "service_role não escreveu",
+        );
       } else {
         assert.equal(sr.ok, false, "service_role sem login passou");
         assert.equal(sr.code, "42501");
@@ -691,9 +807,17 @@ PROVAS.push({
     // Cada rebaixado é DONO de um pedido, com uma linha no ledger: o dono
     // legítimo continua vendo o seu (auth.uid() = user_id e
     // order_refunds_cliente_le não mudaram).
-    const rebaixados = ["rebaixadoPerfil", "rebaixadoAuth", "rebaixadoAmbos", "soAuthSemPerfil"];
+    const rebaixados = [
+      "rebaixadoPerfil",
+      "rebaixadoAuth",
+      "rebaixadoAmbos",
+      "soAuthSemPerfil",
+    ];
     for (const quem of rebaixados) {
-      const p = await pedido(cliente, { status: "cancelled", userId: QUEM[quem].uid });
+      const p = await pedido(cliente, {
+        status: "cancelled",
+        userId: QUEM[quem].uid,
+      });
       await cliente.query(
         `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status)
          VALUES ($1, 1, 'lojista', 'recusado')`,
@@ -706,7 +830,9 @@ PROVAS.push({
                 (SELECT count(*) FROM public.order_refunds)::int AS refunds`,
       )
     ).rows[0];
-    assert.ok(totais.pedidos > rebaixados.length && totais.refunds > rebaixados.length);
+    assert.ok(
+      totais.pedidos > rebaixados.length && totais.refunds > rebaixados.length,
+    );
     const proprios = async (uid) =>
       (
         await cliente.query(
@@ -724,7 +850,11 @@ PROVAS.push({
                              (SELECT count(*) FROM public.order_refunds)::int AS refunds`;
     const ver = async (quem) => {
       const r = await comoQuem(cliente, quem, CONTAGEM);
-      assert.equal(r.ok, true, `SELECT como ${quem} quebrou: ${r.code} ${r.message}`);
+      assert.equal(
+        r.ok,
+        true,
+        `SELECT como ${quem} quebrou: ${r.code} ${r.message}`,
+      );
       return r.linhas[0];
     };
 
@@ -732,7 +862,11 @@ PROVAS.push({
       const v = await ver(quem);
       const meu = await proprios(QUEM[quem].uid);
       assert.equal(v.pedidos_alheios, 0, `${quem} vê pedido alheio`);
-      assert.equal(v.pedidos, meu.pedidos, `${quem} não vê exatamente os próprios pedidos`);
+      assert.equal(
+        v.pedidos,
+        meu.pedidos,
+        `${quem} não vê exatamente os próprios pedidos`,
+      );
       assert.ok(v.pedidos >= 1, `${quem} perdeu o próprio pedido`);
       assert.equal(v.refunds, meu.refunds, `${quem} vê linha do ledger alheia`);
     }
@@ -800,8 +934,16 @@ PROVAS.push({
           [QUEM[quem].uid, QUEM[quem].jwt],
         );
         const v = (await cliente.query(CONTAGEM)).rows[0];
-        assert.equal(v.pedidos, totais.pedidos, `CONTROLE (${quem}): a política antiga não vazou — a prova não mede a troca`);
-        assert.equal(v.refunds, totais.refunds, `CONTROLE (${quem}): o ledger antigo não vazou`);
+        assert.equal(
+          v.pedidos,
+          totais.pedidos,
+          `CONTROLE (${quem}): a política antiga não vazou — a prova não mede a troca`,
+        );
+        assert.equal(
+          v.refunds,
+          totais.refunds,
+          `CONTROLE (${quem}): o ledger antigo não vazou`,
+        );
       } finally {
         await cliente.query("ROLLBACK");
       }
@@ -812,19 +954,23 @@ PROVAS.push({
       await cliente.query(rollback);
       await cliente.query("SET LOCAL ROLE service_role");
       const srAntigo = (await cliente.query(CONTAGEM)).rows[0];
-      assert.deepEqual(srNovo, srAntigo, "service_role mudou com a troca das políticas");
+      assert.deepEqual(
+        srNovo,
+        srAntigo,
+        "service_role mudou com a troca das políticas",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
   },
 });
 
-
 // Estado inteiro que a migration e o rollback mexem: os corpos (seis RPCs e
 // as duas funções novas) e as expressões das políticas.
 async function estado(cliente) {
   const f = {};
-  for (const a of [...GUARDADAS, ...FUNCOES_NOVAS]) f[a] = await catalogo(cliente, a);
+  for (const a of [...GUARDADAS, ...FUNCOES_NOVAS])
+    f[a] = await catalogo(cliente, a);
   f.politicas = await politicas(cliente);
   return f;
 }
@@ -838,7 +984,11 @@ PROVAS.push({
     await cliente.query("BEGIN");
     try {
       await cliente.query(sql);
-      assert.deepEqual(await estado(cliente), antes, "reaplicar mudou alguma coisa");
+      assert.deepEqual(
+        await estado(cliente),
+        antes,
+        "reaplicar mudou alguma coisa",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -853,8 +1003,16 @@ PROVAS.push({
       [
         "corpo de registrar_pagamento_recebido",
         async () => {
-          const def = (await catalogo(cliente, "public.registrar_pagamento_recebido(uuid,boolean)")).def;
-          const divergente = def.replace("'Pedido não encontrado.'", "'Pedido nao encontrado (divergente).'");
+          const def = (
+            await catalogo(
+              cliente,
+              "public.registrar_pagamento_recebido(uuid,boolean)",
+            )
+          ).def;
+          const divergente = def.replace(
+            "'Pedido não encontrado.'",
+            "'Pedido nao encontrado (divergente).'",
+          );
           assert.notEqual(divergente, def);
           await cliente.query(divergente);
         },
@@ -878,9 +1036,17 @@ PROVAS.push({
         await cliente.query("SAVEPOINT aplicar");
         await assert.rejects(cliente.query(sql), regex, rotulo);
         await cliente.query("ROLLBACK TO SAVEPOINT aplicar");
-        assert.deepEqual(await estado(cliente), antesDeAplicar, `a recusa (${rotulo}) escreveu algo`);
+        assert.deepEqual(
+          await estado(cliente),
+          antesDeAplicar,
+          `a recusa (${rotulo}) escreveu algo`,
+        );
         for (const a of FUNCOES_NOVAS) {
-          assert.equal(await catalogo(cliente, a), null, `a recusa (${rotulo}) deixou ${a} criada`);
+          assert.equal(
+            await catalogo(cliente, a),
+            null,
+            `a recusa (${rotulo}) deixou ${a} criada`,
+          );
         }
       } finally {
         await cliente.query("ROLLBACK");
@@ -902,19 +1068,34 @@ PROVAS.push({
       await cliente.query(rollback);
       for (const a of GUARDADAS) {
         const c = await catalogo(cliente, a);
-        assert.equal(c.hash, HASH_ANTERIOR[a], `${a}: o rollback não voltou ao corpo anterior`);
-        assert.ok(!c.def.includes("is_admin_atual"), `${a}: a guarda sobreviveu ao rollback`);
+        assert.equal(
+          c.hash,
+          HASH_ANTERIOR[a],
+          `${a}: o rollback não voltou ao corpo anterior`,
+        );
+        assert.ok(
+          !c.def.includes("is_admin_atual"),
+          `${a}: a guarda sobreviveu ao rollback`,
+        );
         assert.equal(c.acl, depoisDaMigration[a].acl, `${a}: ACL mudou`);
         assert.equal(c.prosecdef, depoisDaMigration[a].prosecdef);
         assert.equal(c.config, depoisDaMigration[a].config);
       }
       for (const a of FUNCOES_NOVAS) {
-        assert.equal(await catalogo(cliente, a), null, `${a} sobreviveu ao rollback`);
+        assert.equal(
+          await catalogo(cliente, a),
+          null,
+          `${a} sobreviveu ao rollback`,
+        );
       }
       const pol = await politicas(cliente);
       for (const [nome, [qual, checagem]] of Object.entries(POLITICAS_ANTES)) {
         assert.equal(pol[nome].qual, qual, `${nome}: USING não voltou`);
-        assert.equal(pol[nome].checagem, checagem, `${nome}: WITH CHECK não voltou`);
+        assert.equal(
+          pol[nome].checagem,
+          checagem,
+          `${nome}: WITH CHECK não voltou`,
+        );
         const depois = depoisDaMigration.politicas[nome];
         assert.equal(pol[nome].cmd, depois.cmd);
         assert.equal(pol[nome].papeis, depois.papeis);
@@ -931,7 +1112,11 @@ PROVAS.push({
       await cliente.query("ROLLBACK TO SAVEPOINT segundo");
       // E a migration reaplica por cima do rollback, de volta ao mesmo estado.
       await cliente.query(migration);
-      assert.deepEqual(await estado(cliente), depoisDaMigration, "reaplicar depois do rollback divergiu");
+      assert.deepEqual(
+        await estado(cliente),
+        depoisDaMigration,
+        "reaplicar depois do rollback divergiu",
+      );
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -942,8 +1127,16 @@ PROVAS.push({
       [
         "solicitar_estorno",
         async () => {
-          const def = (await catalogo(cliente, "public.solicitar_estorno(uuid,numeric,text)")).def;
-          const d = def.replace("'Pedido não encontrado.'", "'Pedido nao encontrado (divergente).'");
+          const def = (
+            await catalogo(
+              cliente,
+              "public.solicitar_estorno(uuid,numeric,text)",
+            )
+          ).def;
+          const d = def.replace(
+            "'Pedido não encontrado.'",
+            "'Pedido nao encontrado (divergente).'",
+          );
           assert.notEqual(d, def);
           await cliente.query(d);
         },
@@ -952,7 +1145,10 @@ PROVAS.push({
         "rls_admin_atual",
         async () => {
           const def = (await catalogo(cliente, "public.rls_admin_atual()")).def;
-          const d = def.replace("só devolve o boolean", "só devolve o boolean (divergente)");
+          const d = def.replace(
+            "só devolve o boolean",
+            "só devolve o boolean (divergente)",
+          );
           assert.notEqual(d, def);
           await cliente.query(d);
         },
@@ -971,16 +1167,23 @@ PROVAS.push({
         await divergir();
         const antesDoRollback = await estado(cliente);
         await cliente.query("SAVEPOINT reverter");
-        await assert.rejects(cliente.query(rollback), /B1_BASELINE_DIVERGENT/, rotulo);
+        await assert.rejects(
+          cliente.query(rollback),
+          /B1_BASELINE_DIVERGENT/,
+          rotulo,
+        );
         await cliente.query("ROLLBACK TO SAVEPOINT reverter");
-        assert.deepEqual(await estado(cliente), antesDoRollback, `rollback recusado (${rotulo}) escreveu algo`);
+        assert.deepEqual(
+          await estado(cliente),
+          antesDoRollback,
+          `rollback recusado (${rotulo}) escreveu algo`,
+        );
       } finally {
         await cliente.query("ROLLBACK");
       }
     }
   },
 });
-
 
 async function main() {
   const url = lerDatabaseUrlEfemera();
@@ -1001,14 +1204,22 @@ async function main() {
         console.error(`  FALHOU ${nome}`);
         console.error(`    ${erro.message}`);
         linhas.push(`- ❌ ${nome}\n  - \`${erro.message}\``);
-        anexarAoSummary("Prova viva do admin atual nas RPCs de dinheiro (rpc-ci)", linhas.join("\n"));
-        falhar("FALHOU", "Uma regra do admin atual foi quebrada — ver acima qual.");
+        anexarAoSummary(
+          "Prova viva do admin atual nas RPCs de dinheiro (rpc-ci)",
+          linhas.join("\n"),
+        );
+        falhar(
+          "FALHOU",
+          "Uma regra do admin atual foi quebrada — ver acima qual.",
+        );
       }
     }
   } finally {
     await cliente.end().catch(() => {});
   }
-  console.log(`\n[admin-atual] ${PROVAS.length}/${PROVAS.length} provas passaram.`);
+  console.log(
+    `\n[admin-atual] ${PROVAS.length}/${PROVAS.length} provas passaram.`,
+  );
   anexarAoSummary(
     "Prova viva do admin atual nas RPCs de dinheiro (rpc-ci)",
     `${linhas.join("\n")}\n\n**${PROVAS.length}/${PROVAS.length} provas** contra as migrations aplicadas do zero.`,
