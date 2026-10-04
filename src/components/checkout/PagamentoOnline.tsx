@@ -403,6 +403,7 @@ export function PagamentoOnline({
   configDoCartao = null,
   emailDoPagador,
   cobrancaIncerta = false,
+  pedidoMortoNoServidor = false,
   onTrocarParaPix,
   onVerMeusPedidos,
   onCobrancaEmDuvida,
@@ -424,6 +425,10 @@ export function PagamentoOnline({
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
   cobrancaIncerta?: boolean;
+  // F1 (04/10/2026): o SERVIDOR já gravou o pedido como morto (`expirado`, ou
+  // `aguardando` + `cancelled`). Só o PIX o lê: o código deixa de aparecer
+  // como válido. Nunca é inferido do relógio do aparelho.
+  pedidoMortoNoServidor?: boolean;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
@@ -557,16 +562,25 @@ export function PagamentoOnline({
     );
   }
 
-  return <PagamentoComPix orderId={orderId} valor={valor} onErro={onErro} />;
+  return (
+    <PagamentoComPix
+      orderId={orderId}
+      valor={valor}
+      onErro={onErro}
+      pedidoMortoNoServidor={pedidoMortoNoServidor}
+    />
+  );
 }
 
 function PagamentoComPix({
   orderId,
   valor,
   onErro,
+  pedidoMortoNoServidor = false,
 }: {
   orderId: string;
   valor: number;
+  pedidoMortoNoServidor?: boolean;
   // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
@@ -739,6 +753,48 @@ function PagamentoComPix({
           Pagamento confirmado! Finalizando seu pedido…
         </p>
       </div>
+    );
+  }
+
+  // F1 (04/10/2026): o servidor já gravou o pedido como morto — o código que
+  // o cliente tem na mão o banco recusaria. QR, "Copiar código", o texto do
+  // copia e cola e o link saem da tela; fica o aviso. Quem pagou antes
+  // continua vendo a confirmação (o CheckoutView segue verificando e troca a
+  // tela quando o pagamento atrasado chega). O texto NÃO diz "prazo de
+  // reserva venceu": essa frase é da tela de "pago fora do prazo".
+  if (pix && pedidoMortoNoServidor) {
+    return (
+      <section
+        aria-labelledby={idTitulo}
+        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+      >
+        <header className="space-y-1 text-center">
+          <h2
+            id={idTitulo}
+            className="text-xs font-bold uppercase tracking-wider text-zinc-500"
+          >
+            Pagamento via Pix
+          </h2>
+          {orderId && (
+            <p className="text-xs text-zinc-500">
+              Pedido #{orderId.slice(0, 8)}
+            </p>
+          )}
+        </header>
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+        >
+          <AlertCircle
+            aria-hidden="true"
+            className="mt-0.5 size-5 shrink-0 text-amber-600"
+          />
+          <p className="text-sm text-amber-800">
+            Este código não vale mais. Se você já pagou, fique nesta tela: a
+            confirmação aparece aqui. Se ainda não pagou, faça um pedido novo.
+          </p>
+        </div>
+      </section>
     );
   }
 

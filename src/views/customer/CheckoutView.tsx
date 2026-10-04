@@ -1200,6 +1200,16 @@ export function CheckoutView({
   const [statusPagamentoPix, setStatusPagamentoPix] = useState<
     "confirmado" | "fora-do-prazo" | null
   >(null);
+  // F1 (04/10/2026): o SERVIDOR já gravou este pedido como morto
+  // (`expirado`, ou `aguardando` + `cancelled`) — a tela do PIX deixa de
+  // mostrar QR e "Copiar código" como válidos (o banco recusaria o código).
+  // Guarda o PEDIDO a que pertence (mesmo desenho de
+  // `pedidoComCobrancaIncerta`). Só o servidor decide, nunca o relógio do
+  // aparelho; e a verificação periódica NÃO para por causa disto: o pagamento
+  // que chega depois ainda vira "pago fora do prazo".
+  const [pedidoMortoNoServidorId, setPedidoMortoNoServidorId] = useState<
+    string | null
+  >(null);
   // CHECKOUT-050: falha da criação da cobrança precisa ficar NA TELA — um
   // toast (2500ms, sonner.tsx) some antes do cliente sair de olhar o botão
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
@@ -2347,6 +2357,15 @@ export function CheckoutView({
       if (data.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
         return;
+      }
+
+      // F1: o pedido morto no servidor — mesma definição de "fechado" que a
+      // regra L1, abaixo, usa para o cartão (que não é tocada por isto).
+      if (
+        data.payment_status === "expirado" ||
+        (data.payment_status === "aguardando" && data.status === "cancelled")
+      ) {
+        setPedidoMortoNoServidorId(orderId);
       }
 
       // C6 (P1, achado B1): a tentativa de cartão terminou sem pagamento.
@@ -3946,6 +3965,9 @@ export function CheckoutView({
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
             cobrancaIncerta={pedidoTemCobrancaIncerta}
+            pedidoMortoNoServidor={
+              orderId !== "" && pedidoMortoNoServidorId === orderId
+            }
             onVerMeusPedidos={() => onNavigate("orders")}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
