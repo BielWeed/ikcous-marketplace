@@ -35,41 +35,90 @@ const emTeste =
     Deno.mainModule.endsWith('_test.js') ||
     Deno.mainModule.includes('index_test')
 
-if (!emTeste) serve(async (req: Request) => {
-    // Handle CORS
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Comparação em tempo constante (mesma razão do `segredoConfere` da
+// reconciliar-pagamentos): `===` vaza, pelo tempo de resposta, quantos
+// caracteres do prefixo já batem.
+function iguais(esperado: string, recebido: string): boolean {
+    if (esperado.length !== recebido.length) return false
+    let diferenca = 0
+    for (let i = 0; i < esperado.length; i++) {
+        diferenca |= esperado.charCodeAt(i) ^ recebido.charCodeAt(i)
+    }
+    return diferenca === 0
+}
+
+// Quem pode mandar WhatsApp ao cliente: SÓ o chamador de servidor — o gatilho do
+// banco que a chamava, com a chave de serviço no Authorization. Não há chave
+// nova: é a mesma que o projeto já tem. O `verify_jwt` padrão da plataforma
+// deixa passar até a chave pública (anon) e o JWT de qualquer comprador, então
+// a porta é esta; sem chave de serviço no ambiente ninguém passa (falha fechada).
+export function chamadorEhServidor(authorization: string | null, chavesDeServico: string[]): boolean {
+    const m = /^Bearer (.+)$/.exec(authorization ?? '')
+    if (!m) return false
+    const recebido = m[1]
+    let ok = false
+    for (const chave of chavesDeServico) {
+        if (chave && iguais(chave, recebido)) ok = true
+    }
+    return ok
+}
+
+const json = (corpo: unknown, status = 200) =>
+    new Response(JSON.stringify(corpo), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status,
+    })
+
+interface Dependencias {
+    supabase: any            // cliente com a chave de serviço (lê o pedido)
+    chavesDeServico: string[] // o que vale como "chamador de servidor"
+    fetchImpl?: typeof fetch  // costura de teste: em produção, o fetch global
+}
+
+export async function processar(req: Request, deps: Dependencias): Promise<Response> {
+    // 1. Autorização ANTES de qualquer outra coisa: nem o corpo é lido, nem o
+    //    banco é consultado, nem a Evolution é chamada.
+    if (!chamadorEhServidor(req.headers.get('authorization'), deps.chavesDeServico)) {
+        console.warn('[send-order-whatsapp] chamada recusada: sem credencial de servidor.')
+        return json({ error: 'Não autorizado.' }, 401)
     }
 
+    const supabaseClient = deps.supabase
+    const fetchImpl = deps.fetchImpl ?? fetch
+    let orderId = ''
+
     try {
-        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-        const supabaseClient = createClient(supabaseUrl, supabaseServiceKey)
+        // 2. Do corpo só vale o `order_id`. Telefone, nome, valor e forma de
+        //    pagamento vêm do BANCO — o corpo nunca decide quem recebe o quê.
+        const corpo = await req.json().catch(() => null)
+        const idDoCorpo = corpo?.order_id
+        if (typeof idDoCorpo !== 'string' || !UUID.test(idDoCorpo)) {
+            return json({ error: 'order_id obrigatório (uuid).' }, 400)
+        }
+        orderId = idDoCorpo
 
-        // O payload do Webhook do Supabase vem no formato:
-        // { type: 'INSERT', table: 'marketplace_orders', record: { ... }, old_record: null, ... }
-        const payload = await req.json()
-        const { record, type, table } = payload
+        const { data: pedido, error: pedidoError } = await supabaseClient
+            .from('marketplace_orders')
+            .select('id, customer_name, customer_data, total, payment_method')
+            .eq('id', orderId)
+            .maybeSingle()
 
-        if (type !== 'INSERT' || table !== 'marketplace_orders') {
-            return new Response(JSON.stringify({ skipped: true, reason: 'Not an insert on marketplace_orders' }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 200
-            })
+        if (pedidoError) throw pedidoError
+        if (!pedido) {
+            console.warn(`[send-order-whatsapp] pedido ${numeroDoPedido(orderId)} não encontrado.`)
+            return json({ error: 'Pedido não encontrado.' }, 404)
         }
 
-        const orderId = record.id
-        const customerName = record.customer_name
-        const customerWhatsapp = record.customer_data?.whatsapp
-        const totalPrice = record.total_price || record.total || 0
-        const paymentMethod = record.payment_method
+        const customerWhatsapp = pedido.customer_data?.whatsapp
 
         if (!customerWhatsapp) {
-            console.warn(`Pedido ${orderId} sem número de WhatsApp vinculado.`)
+            console.warn(`[send-order-whatsapp] pedido ${numeroDoPedido(orderId)} sem número de WhatsApp vinculado.`)
             return new Response(JSON.stringify({ error: 'No WhatsApp number' }), { status: 200 })
         }
 
-        // 1. Buscar itens do pedido
+        // 3. Buscar itens do pedido
         const { data: items, error: itemsError } = await supabaseClient
             .from('marketplace_order_items')
             .select('product_name, quantity')
@@ -77,7 +126,7 @@ if (!emTeste) serve(async (req: Request) => {
 
         if (itemsError) throw itemsError
 
-        // 2. Buscar configurações da loja
+        // 4. Buscar configurações da loja
         const { data: config, error: configError } = await supabaseClient
             .from('store_config')
             .select('whatsapp_api_url, whatsapp_api_key, whatsapp_api_instance')
@@ -87,16 +136,22 @@ if (!emTeste) serve(async (req: Request) => {
         if (configError) throw configError
 
         if (!config.whatsapp_api_url || !config.whatsapp_api_key || !config.whatsapp_api_instance) {
-            console.log('WhatsApp API não configurada na store_config.')
-            return new Response(JSON.stringify({ skipped: true, reason: 'API not configured' }), { status: 200 })
+            console.log('[send-order-whatsapp] WhatsApp API não configurada na store_config.')
+            return json({ skipped: true, reason: 'API not configured' })
         }
 
-        // 3. Montar a mensagem
+        // 5. Montar a mensagem
         const itemsList = items?.map((item: any) => `- ${item.product_name} (${item.quantity}x)`).join('\n')
-        const message = montarMensagem({ orderId, customerName, itemsList, totalPrice, paymentMethod })
+        const message = montarMensagem({
+            orderId,
+            customerName: pedido.customer_name,
+            itemsList,
+            totalPrice: pedido.total,
+            paymentMethod: pedido.payment_method,
+        })
 
-        // 4. Enviar para a Evolution API
-        let formattedNumber = customerWhatsapp.replace(/\D/g, '')
+        // 6. Enviar para a Evolution API
+        let formattedNumber = String(customerWhatsapp).replace(/\D/g, '')
 
         // Formatação para Brasil (55)
         if (formattedNumber.length === 11 || formattedNumber.length === 10) {
@@ -105,9 +160,7 @@ if (!emTeste) serve(async (req: Request) => {
             }
         }
 
-        console.log(`Iniciando envio para ${formattedNumber} (original: ${customerWhatsapp})`)
-
-        const response = await fetch(`${config.whatsapp_api_url}/message/sendText/${config.whatsapp_api_instance}`, {
+        const response = await fetchImpl(`${config.whatsapp_api_url}/message/sendText/${config.whatsapp_api_instance}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -119,20 +172,49 @@ if (!emTeste) serve(async (req: Request) => {
                 linkPreview: false
             })
         })
+        // O retorno da Evolution pode ecoar o telefone: é consumido e descartado,
+        // não vai para o log nem para a resposta.
+        await response.text()
 
-        const result = await response.json()
-        console.log(`Mensagem enviada para ${customerWhatsapp}:`, result)
+        // Log só com o número do pedido: sem telefone, nome ou endereço.
+        console.log(`[send-order-whatsapp] pedido ${numeroDoPedido(orderId)}: envio respondeu HTTP ${response.status}.`)
 
-        return new Response(JSON.stringify({ success: true, result }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200
-        })
+        return json({ success: true })
 
     } catch (error: any) {
-        console.error('Erro na Edge Function send-order-whatsapp:', error)
-        return new Response(JSON.stringify({ error: error.message }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 500
-        })
+        // Só o tipo do erro: a mensagem de uma falha de banco ou de rede pode
+        // trazer o valor que falhou (telefone, nome).
+        const motivo = String(error?.code ?? error?.name ?? 'erro')
+        console.error(`[send-order-whatsapp] falha ao processar o pedido ${orderId ? numeroDoPedido(orderId) : '(sem id)'}: ${motivo}`)
+        return json({ error: 'Falha ao processar o pedido.' }, 500)
     }
+}
+
+// Chaves que valem como "servidor": a nova (SUPABASE_SECRET_KEYS.default) e a
+// legada (SUPABASE_SERVICE_ROLE_KEY) coexistem durante a migração (#126).
+function chavesDeServicoDoAmbiente(): string[] {
+    const chaves: string[] = []
+    try {
+        const nova = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') ?? '{}')?.default
+        if (nova) chaves.push(nova)
+    } catch {
+        // variável ausente ou JSON inválido — segue para a legada
+    }
+    const legada = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (legada) chaves.push(legada)
+    return chaves
+}
+
+if (!emTeste) serve(async (req: Request) => {
+    // Handle CORS
+    if (req.method === 'OPTIONS') {
+        return new Response('ok', { headers: corsHeaders })
+    }
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
+    const chavesDeServico = chavesDeServicoDoAmbiente()
+    return processar(req, {
+        supabase: createClient(supabaseUrl, chavesDeServico[0] ?? ''),
+        chavesDeServico,
+    })
 })

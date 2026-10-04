@@ -72,7 +72,7 @@ disso — senão vê dezenas de remoções fantasma e acha que o código mudou n
 ## Ela avisa o CLIENTE, não o lojista
 
 ```js
-const customerWhatsapp = record.customer_data?.whatsapp
+const customerWhatsapp = pedido.customer_data?.whatsapp
 ...
 `Olá *${customerName}*, recebemos seu pedido *${numeroDoPedido(orderId)}* com sucesso!`
 ```
@@ -172,3 +172,21 @@ riscos**. Os riscos que precisam estar na conversa com ele:
 Enquanto isso o app avisa o cliente por e-mail e push, e o contato por
 WhatsApp é por link (`wa.me`), grátis e sem risco de bloqueio. A cópia no ar
 da Almeida deve ser removida pelo painel do Supabase.
+
+## Fechada por dentro (04/10/2026)
+
+Mesmo arquivada, a pasta continua no repositório e um deploy em massa a publica
+(foi o que a pôs na Almeida em 28/09). Como o `verify_jwt` padrão deixa passar a
+chave pública (anon) e o JWT de qualquer comprador, e o handler antigo confiava
+no `record` do corpo para decidir o destinatário e a mensagem, ela foi fechada
+no código, sem religar a integração:
+
+- **Quem chama:** só o chamador de servidor — a chave de serviço no
+  `Authorization: Bearer` (a mesma que o gatilho antigo mandava; nenhum segredo
+  novo). Anon, comprador e terceiro recebem 401 antes de qualquer consulta ou
+  chamada à Evolution; sem chave de serviço no ambiente, ninguém passa.
+- **O que vale do corpo:** só `order_id` (UUID). Telefone, nome, total e forma de
+  pagamento são lidos do banco pelo id; pedido inexistente devolve 404.
+- **Log:** só o número do pedido. Nenhum telefone, nome ou retorno da Evolution.
+
+Os testes (`index_test.ts`) prendem isso com dublês da Evolution e do banco.
