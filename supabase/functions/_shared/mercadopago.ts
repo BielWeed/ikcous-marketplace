@@ -1188,44 +1188,18 @@ export function caminhosDeCampoPorErro(corpo: unknown): string[][] {
   ]);
 }
 
-/** Código de erro do MP que pode ir ao log: número, ou palavra-código curta
- * (`refund_amount_exceeds`, `bad_request`). Texto livre fica de fora — é nele
- * que o MP ecoa o valor recusado. */
-const CODIGO_DE_ERRO_DO_MP = /^[A-Za-z0-9_.-]{1,64}$/;
-
-function codigoSeguro(c: unknown): string | number | undefined {
-  if (typeof c === "number" && Number.isFinite(c)) return c;
-  if (typeof c === "string" && CODIGO_DE_ERRO_DO_MP.test(c)) return c;
-  return undefined;
-}
-
-function listaDeErros(v: unknown): unknown[] {
-  return Array.isArray(v) ? v : [];
-}
-
 /**
  * Resumo do corpo de erro do MP SEM dado pessoal — códigos, status e os
  * caminhos dos campos recusados. É o que vai para o log quando quem chama pede
  * `corpoNoLog: false` (cartão): o corpo inteiro da recusa traz a order com o
  * pagador (e-mail, CPF), que não pode parar no log da função.
- *
- * R9 (Lote A, 04/10/2026): exportado para o executor do estorno e a leitura
- * clássica (`consultarPagamento`), que logavam o corpo cru. Lê os três
- * formatos de erro do MP — Orders (`errors[].code`), Orders refund
- * (`error_messages[].code`) e Payments clássica (`cause[].code`, numérico) —
- * mais o `error` de topo (`bad_request`), só quando é palavra-código. Aceita
- * qualquer coisa: corpo não-objeto vira "(corpo não-JSON)".
  */
-export function resumoSemDadoPessoal(entrada: unknown): string {
-  if (!entrada || typeof entrada !== "object" || Array.isArray(entrada)) {
-    return "(corpo não-JSON)";
-  }
-  const corpo = entrada as Record<string, unknown>;
-  const erros = listaDeErros(corpo.errors);
-  const codigos = [...erros, ...listaDeErros(corpo.error_messages), ...listaDeErros(corpo.cause)]
-    .map((e) => (e && typeof e === "object" ? codigoSeguro((e as Record<string, unknown>).code) : undefined))
-    .filter((c) => c !== undefined);
-  const erroDeTopo = codigoSeguro(corpo.error);
+function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): string {
+  if (!corpo) return "(corpo não-JSON)";
+  const erros = Array.isArray(corpo.errors) ? corpo.errors : [];
+  const codigos = erros
+    .map((e) => (e && typeof e === "object" ? (e as Record<string, unknown>).code : undefined))
+    .filter((c) => typeof c === "string");
   const data = corpo.data && typeof corpo.data === "object"
     ? corpo.data as Record<string, unknown>
     : undefined;
@@ -1245,7 +1219,6 @@ export function resumoSemDadoPessoal(entrada: unknown): string {
   ].slice(0, 6);
   return JSON.stringify({
     codigos,
-    ...(typeof erroDeTopo === "string" ? { erro: erroDeTopo } : {}),
     ...(campos.length > 0 ? { campos } : {}),
     status: typeof data?.status === "string" ? data.status : undefined,
     status_detail: typeof data?.status_detail === "string" ? data.status_detail : undefined,
@@ -2064,17 +2037,8 @@ async function interpretarRespostaDePagamento(
   if (!resposta.ok) {
     // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
     // ele carrega detalhe de credencial e de conta.
-    // R9 (Lote A, 04/10/2026): só o resumo sem dado pessoal — o GET
-    // /v1/payments/{id} é do pagador (e-mail, CPF, nome) e a recusa ecoa o
-    // valor em `message`/`cause[].description`.
     const detalhe = await resposta.text().catch(() => "");
-    let corpoDoErro: unknown;
-    try {
-      corpoDoErro = JSON.parse(detalhe);
-    } catch {
-      corpoDoErro = undefined;
-    }
-    console.error("mercadopago: recusou", resposta.status, resumoSemDadoPessoal(corpoDoErro));
+    console.error("mercadopago: recusou", resposta.status, detalhe);
     return { ok: false, erro: mensagemDeFalha, status: resposta.status };
   }
 
@@ -2093,8 +2057,7 @@ async function interpretarRespostaDePagamento(
   if (json?.id === undefined || json?.id === null) {
     // "undefined" nunca pode virar gateway_payment_id: a coluna tem índice
     // UNIQUE parcial, e a segunda ocorrência estoura 23505.
-    // R9: o corpo de um pagamento é do pagador — só o resumo vai ao log.
-    console.error("mercadopago: resposta 2xx sem id", resposta.status, resumoSemDadoPessoal(json));
+    console.error("mercadopago: resposta 2xx sem id", resposta.status, JSON.stringify(json));
     return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
   }
 

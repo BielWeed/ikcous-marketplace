@@ -23,51 +23,13 @@
  *    ou prazo vencido — checado ANTES da checagem de cobrança existente, de
  *    propósito: pedido expirado com cobrança recusa, não reconsulta).
  *
- * QUANDO ELA CONFIRMA PAGAMENTO (04/10/2026 — confirmação imediata)
+ * O QUE ELA NÃO FAZ
  *
- * A CRIAÇÃO de cartão aprovado na hora no POST responde "pago" para a tela
- * seguir — o corpo e o tempo da resposta NÃO mudam — e dispara, em segundo
- * plano (UM `dispararSemEsperarCliente`, registrado antes da resposta), a
- * confirmação pela MESMA prova da consulta: GET por id da vaga relida
- * (`confirmarDepoisDaCriacao`), NUNCA o objeto do POST (ele não é o GET
- * autenticado da vaga relida; `processed` pode mudar depois). Só com cartão,
- * 'pago' (no POST, ou no GET do ramo `adotadaPeloGet`) e pedido de dono
- * autenticado, nas quatro saídas de sucesso em que ESTA chamada registra a
- * order na vaga: a gravação normal, a adoção da blindagem de 02/10, a adoção
- * `vagaAdotada` e o ramo `adotadaPeloGet` — em todas o GET da confirmação é
- * NOVO (nunca reaproveita o GET do ramo); a convergência com a adoção do
- * webhook NÃO entra. Qualquer falha (GET, prova, releitura, RPC)
- * vira log e a resposta é a de antes: o webhook/reconciliação seguem como
- * fonte da verdade.
- *
- * RISCO RESIDUAL (declarado): se o isolado morrer antes de o `waitUntil`
- * terminar (depois da resposta, entre a transação da RPC e os efeitos: push ao
- * lojista, comprovante), os efeitos se perdem, e esse risco é MAIOR que o do
- * webhook, que AGUARDA os efeitos dentro da própria requisição; é comparável
- * ao do `verificar`. Quando a criação ganha a corrida (o caminho observado
- * localmente; a frequência no runtime real não foi medida), o webhook recebe
- * `ja_pago` sem refazer os efeitos. Não há varredura
- * de efeitos pendentes; uma fila deles é tarefa futura (migration na RPC de
- * dinheiro, lote próprio). Provado só localmente: no runtime real do Edge a
- * retenção do isolado pelo `waitUntil` NÃO foi medida, e o ensaio TEST no
- * runtime real (Q4-2) é portão antes de dizer "pronto em produção".
- *
- * A CONSULTA também confirma — e só com PROVA: no `verificar` (cartão e PIX) e
- * nos ramos pagos da reconsulta ((a) cartão, (e) PIX), quando o GET
- * /v1/orders/{id} da vaga RELIDA passa por `provarPagamentoPelaConsulta`
- * (`_shared/prova-de-pagamento.ts`: id = vaga, `external_reference` = pedido,
- * raiz `processed:accredited`, total ±R$ 0,05 do total relido, valor PAGO
- * capturado, nenhuma contradição) com o pedido ainda 'aguardando' e de um
- * dono autenticado, ela chama a MESMA RPC do webhook
- * (`confirmarPagamentoProvado`, `_shared/efeitos-do-pagamento.ts`). A RPC
- * decide sob `FOR UPDATE` e devolve a transição para UMA chamada só: quem
- * recebeu 'pago'/'pago_apos_expirar' dispara os efeitos do webhook (push ao
- * lojista, comprovante ou aviso atrasado ao cliente) fora do caminho da
- * resposta; quem recebeu 'ja_pago' (o webhook chegou antes) não dispara nada.
- * O defeito que isto fecha: no ensaio TEST c35ce4dd a tela dizia "Pagamento
- * aprovado! Confirmando seu pedido..." e o banco só virava 'pago' ~2 min
- * depois, pela reconciliação. Sem prova, falha da RPC ou desfecho
- * inesperado: o contrato de antes, sem efeito e sem cobrança nova.
+ * Não confirma pagamento. Nunca. Quem escreve 'pago' é o webhook (Fase 3), e é
+ * por isso que esta função grava só `gateway_payment_id` (e, desde a Fase
+ * 3.5, `metodo_online`/`parcelas`) e devolve o que a tela precisa desenhar.
+ * Nem o cartão aprovado na hora muda isso: a resposta diz "pago" para a tela
+ * seguir, e quem grava é o webhook/reconciliação (`confirmar_pagamento`).
  *
  * CARTÃO (Fase 3.5, 26/09/2026 — spec `2026-09-26-cartao-online-design.md`)
  *
@@ -151,7 +113,6 @@ import {
 import { lerDadosDoComprador } from "../_shared/dados-antifraude.ts";
 import { lerNomeNaFatura } from "../_shared/nome-na-fatura.ts";
 import { criarOrderDeCartao } from "../_shared/order-cartao-repeticao.ts";
-import { numeroDoPedido } from "../_shared/pedido.ts";
 // PEDIDO-07 (INFRA-260, #126): mesma migração que webhook-mercadopago,
 // reconciliar-pagamentos, notify-new-order e send-push já fizeram — lê a
 // chave NOVA (SUPABASE_SECRET_KEYS) e cai para a LEGADA
@@ -176,18 +137,6 @@ import * as webpush from "jsr:@negrel/webpush@0.3.0";
 // (cofre em app_settings) ou a da plataforma (env) — quem decide, e quem
 // fecha a porta quando não dá para decidir com segurança, é este módulo.
 import { type CredenciaisMp, resolverCredenciaisMp } from "../_shared/credenciais-mp.ts";
-// Confirmação imediata (04/10/2026): a régua da prova e a RPC + efeitos do
-// webhook — ver o cabeçalho deste arquivo e `confirmarNaHoraSeProvado`.
-import { ORIGEM_GET_POR_ID, provarPagamentoPelaConsulta } from "../_shared/prova-de-pagamento.ts";
-import {
-  aplicarEfeitosDoPagamentoConfirmado,
-  confirmarPagamentoProvado,
-  type DepsDosEfeitos,
-  desfechoComEfeito,
-} from "../_shared/efeitos-do-pagamento.ts";
-// S1 (04/10/2026): a ação `cancelar` — anula a cobrança no MP antes de
-// cancelar no banco. Ver o cabeçalho de cancelar-pedido.ts.
-import { cancelarPedidoPelaEdge, verificarAdminAtualReal } from "./cancelar-pedido.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -273,13 +222,6 @@ export function expiracaoParaDesafio3ds(
 export const MENSAGEM_CREDENCIAL_RECUSADA =
   "O pagamento pelo app está indisponível nesta loja agora. Fale com a loja para concluir o pedido.";
 
-/** Frase do 409 NÃO terminal da troca PIX→cartão quando o cartão é
- * impossível (loja sem a chave de assinatura) e o PIX da vaga ainda vale:
- * manda o cliente de volta ao QR, nunca para o "Cancelar pedido". Exportada
- * para o teste. */
-export const MENSAGEM_PIX_CONTINUA_VALENDO =
-  "Seu PIX continua valendo. Volte e pague pelo código, ou aguarde ele vencer para escolher outra forma.";
-
 export function pareceUuid(v: unknown): boolean {
   return (
     typeof v === "string" &&
@@ -288,11 +230,8 @@ export function pareceUuid(v: unknown): boolean {
 }
 
 export function descricaoDoPedido(orderId: string): string {
-  // F6 (revisão do lote B, 04/10/2026): o número que a lojista reconhece — os
-  // 6 ÚLTIMOS caracteres, em maiúsculas, o mesmo do painel, do PDV, do
-  // WhatsApp e do push do webhook (`numeroDoPedido`, _shared/pedido.ts). Só
-  // texto dos avisos à loja (push do admin); nunca vai ao Mercado Pago.
-  return `Pedido ${numeroDoPedido(orderId)}`;
+  // Mesmo formato que o painel usa para falar de pedido com o lojista.
+  return `Pedido ${orderId.slice(0, 8)}`;
 }
 
 export function donoConfere(
@@ -574,7 +513,7 @@ async function recuperarOrderPixDoIdempotencia(args: {
 }
 
 const COLUNAS_DO_PEDIDO =
-  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, customer_name, tentativas_de_pagamento, created_at, updated_at, metodo_online, status, payment_method";
+  "id, user_id, total, payment_status, expires_at, gateway_payment_id, customer_data, customer_name, tentativas_de_pagamento, created_at, updated_at, metodo_online, status";
 
 /**
  * O LIMITE INFERIOR (epoch ms) que vai gravado no sentinela — achado B1, 5ª
@@ -1064,160 +1003,6 @@ async function adotarOrderNoSentinela(
 }
 
 /**
- * Confirmação imediata (04/10/2026 — ver o cabeçalho do arquivo): com a order
- * do GET por id da vaga e a LINHA RELIDA do banco nas mãos, confirma o pedido
- * se — e só se — a linha ainda está 'aguardando' e a order PROVA o pagamento
- * (`provarPagamentoPelaConsulta`). A RPC é AGUARDADA (quem chama responde
- * pelo desfecho dela). Os efeitos (só quando ESTA chamada recebeu a transição
- * 'pago'/'pago_apos_expirar') dependem do parâmetro `aguardarEfeitos`: sem ele
- * (default, `verificar` e reconsulta) NÃO são aguardados — saem por
- * `dispararSemEsperarCliente` (`EdgeRuntime.waitUntil` no Edge; no runner de
- * teste, teto de 5 s); com ele (só a criação) a promessa devolvida AGUARDA os
- * efeitos antes de resolver, porque a criação já roda dentro de um único
- * `dispararSemEsperarCliente`.
- *
- * Devolve o desfecho da RPC, ou `null` quando ela nem foi chamada (sem prova,
- * linha fora de 'aguardando') ou falhou — nesses casos quem chama segue o
- * contrato de antes. Nunca lança, nunca faz POST no MP. Log sem dado do
- * pagador: ids, motivo da recusa, desfecho.
- */
-async function confirmarNaHoraSeProvado(args: {
-  supabase: ReturnType<typeof createClient>;
-  pedidoId: string;
-  idConsultado: string;
-  order: Record<string, unknown>;
-  linha: Record<string, unknown>;
-  efeitos: DepsDosEfeitos;
-  // Só a CRIAÇÃO liga isto (`confirmarDepoisDaCriacao`): ela já roda DENTRO de
-  // um único `dispararSemEsperarCliente`, então os efeitos são AGUARDADOS aqui
-  // em vez de despachados por um segundo `waitUntil` aninhado (um registro
-  // tardio, dentro de outra tarefa de fundo, não está documentado no Supabase:
-  // se o runtime não o contar, os efeitos se perdem). Default `false`: o
-  // `verificar` e a reconsulta seguem como sempre.
-  aguardarEfeitos?: boolean;
-}): Promise<string | null> {
-  const { supabase, pedidoId, idConsultado, order, linha, efeitos } = args;
-  if (linha.payment_status !== "aguardando") return null;
-  const prova = provarPagamentoPelaConsulta({
-    origem: ORIGEM_GET_POR_ID,
-    idConsultado,
-    vagaRelida: linha.gateway_payment_id,
-    pedidoId,
-    totalRelido: linha.total,
-    order,
-  });
-  if (!prova.provado) {
-    console.warn("criar-pagamento: order paga sem PROVA para a confirmação imediata — fica para webhook/reconciliação", {
-      orderId: pedidoId,
-      paymentId: idConsultado,
-      motivo: prova.motivo,
-    });
-    return null;
-  }
-  const confirmacao = await confirmarPagamentoProvado({ supabase, pedidoId, vaga: idConsultado });
-  if (!confirmacao.ok) return null;
-  const resultado = confirmacao.resultado;
-  if (desfechoComEfeito(resultado)) {
-    try {
-      const aplicacao = aplicarEfeitosDoPagamentoConfirmado({ supabase, orderId: pedidoId, resultado, ...efeitos });
-      if (args.aguardarEfeitos === true) await aplicacao;
-      else await dispararSemEsperarCliente(aplicacao, 5000);
-    } catch (_erro) {
-      // `aplicarEfeitosDoPagamentoConfirmado` não lança; isto é só a cerca.
-      console.error("criar-pagamento: efeitos da confirmação imediata falharam", { orderId: pedidoId });
-    }
-  } else if (resultado !== "ja_pago") {
-    // 'divergente'/'inexistente'/'ignorado'/desconhecido: a prova passou e a
-    // RPC não confirmou — dinheiro aprovado sem registro, mesmo nível de log
-    // do webhook para esses dois rótulos.
-    console.error("criar-pagamento: confirmação imediata — confirmar_pagamento devolveu desfecho inesperado", {
-      orderId: pedidoId,
-      paymentId: idConsultado,
-      resultado,
-    });
-  }
-  return resultado;
-}
-
-/**
- * Cartão aprovado já no POST de criação (04/10/2026): confirma o pedido pela
- * MESMA prova do `verificar` — GET por id da vaga relida, nunca o objeto do
- * POST (`processed` pode mudar depois; regra (a) de `_shared/prova-de-
- * pagamento.ts`). Passos: (1) GET /v1/orders/{id} com a MESMA credencial do
- * POST, conferindo que a order devolvida é a pedida; (2) relê a linha do
- * pedido; (3) `confirmarNaHoraSeProvado` com a order DO GET e os efeitos
- * AGUARDADOS (esta função inteira roda dentro de UM `dispararSemEsperarCliente`,
- * ver `agendarConfirmacaoDaCriacao`).
- *
- * Devolve o desfecho da RPC ou `null`. Nunca lança: qualquer falha (GET,
- * prova recusada, releitura, RPC) vira `null` e só gera log — ids e motivos,
- * nunca dado do pagador nem token.
- */
-async function confirmarDepoisDaCriacao(args: {
-  supabase: ReturnType<typeof createClient>;
-  mpToken: string;
-  fetchImpl?: typeof fetch;
-  pedidoId: string;
-  idGateway: string;
-  efeitos: DepsDosEfeitos;
-}): Promise<string | null> {
-  const { supabase, mpToken, fetchImpl, pedidoId, idGateway, efeitos } = args;
-  try {
-    const consulta = await consultarOrder({ token: mpToken, orderId: idGateway, fetchImpl, corpoNoLog: false });
-    if (!consulta.ok || String(consulta.order?.id ?? "") !== idGateway) return null;
-    const { data: linha, error: erroLinha } = await supabase
-      .from("marketplace_orders")
-      .select("payment_status, status, expires_at, gateway_payment_id, total")
-      .eq("id", pedidoId)
-      .maybeSingle();
-    if (erroLinha || !linha) return null;
-    return await confirmarNaHoraSeProvado({
-      supabase,
-      pedidoId,
-      idConsultado: idGateway,
-      order: consulta.order as Record<string, unknown>,
-      linha: linha as Record<string, unknown>,
-      efeitos,
-      aguardarEfeitos: true,
-    });
-  } catch (_erro) {
-    console.error("criar-pagamento: confirmação imediata na criação falhou", { orderId: pedidoId, paymentId: idGateway });
-    return null;
-  }
-}
-
-/**
- * O gancho da criação: só com cartão, aprovado na hora (`statusCru` 'pago') e
- * pedido de DONO autenticado (`user_id` não nulo — o de convidado fica com o
- * webhook). Registra UM `dispararSemEsperarCliente` ANTES de a resposta sair
- * (`EdgeRuntime.waitUntil` no Edge; no runner de teste, teto de 5 s): a
- * resposta ao cliente não muda em conteúdo nem em tempo.
- */
-async function agendarConfirmacaoDaCriacao(args: {
-  supabase: ReturnType<typeof createClient>;
-  mpToken: string;
-  fetchImpl?: typeof fetch;
-  pedido: Record<string, unknown>;
-  metodo: unknown;
-  statusCru: string;
-  idGateway: string;
-  efeitos: DepsDosEfeitos;
-}): Promise<void> {
-  const { supabase, mpToken, fetchImpl, pedido, metodo, statusCru, idGateway, efeitos } = args;
-  if (metodo !== "cartao" || statusCru !== "pago") return;
-  if (pedido.user_id === null || pedido.user_id === undefined) return;
-  try {
-    await dispararSemEsperarCliente(
-      confirmarDepoisDaCriacao({ supabase, mpToken, fetchImpl, pedidoId: String(pedido.id), idGateway, efeitos }),
-      5000,
-    );
-  } catch (_erro) {
-    // `confirmarDepoisDaCriacao` não lança; isto é só a cerca.
-    console.error("criar-pagamento: gancho da confirmação na criação falhou", { orderId: pedido.id });
-  }
-}
-
-/**
  * C2 (desenho A1 §3/§4, corrigido pelo veredito A2, 02/10/2026): o modo
  * `metodo: "verificar"` — a ÚNICA recuperação de um pedido de cartão em
  * dúvida, sem cobrança nenhuma. Chamado depois de `donoConfere` e da trava
@@ -1248,11 +1033,8 @@ async function verificarVagaDoPedido(args: {
   pedido: Record<string, unknown>;
   json: (corpo: unknown, status: number) => Response;
   respostaIndisponivel: () => Response;
-  // Confirmação imediata (04/10/2026): os efeitos do pagamento confirmado
-  // (`confirmarNaHoraSeProvado`); em produção, os reais.
-  efeitos: DepsDosEfeitos;
 }): Promise<Response> {
-  const { supabase, mpToken, fetchImpl, pedido, json, respostaIndisponivel, efeitos } = args;
+  const { supabase, mpToken, fetchImpl, pedido, json, respostaIndisponivel } = args;
   const pedidoId = String(pedido.id);
   const pagoNaEntrada = corpoDePagoConfirmado(pedido);
   if (pagoNaEntrada !== null) return json(pagoNaEntrada, 200);
@@ -1329,7 +1111,7 @@ async function verificarVagaDoPedido(args: {
   // Responde sobre a vaga ATUAL.
   const { data: relida, error: erroRelida } = await supabase
     .from("marketplace_orders")
-    .select("payment_status, status, expires_at, gateway_payment_id, total")
+    .select("payment_status, status, expires_at, gateway_payment_id")
     .eq("id", pedidoId)
     .maybeSingle();
   if (erroRelida || !relida) return respostaIndisponivel();
@@ -1351,35 +1133,6 @@ async function verificarVagaDoPedido(args: {
   if (idEhClassico(vagaAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
   const ordemAtual = ordensJaConsultadas.get(vagaAtual) ?? await consultarPorId(vagaAtual);
   if (ordemAtual === null) return respostaIndisponivel();
-  // Confirmação imediata (04/10/2026), cartão E PIX: a order da vaga RELIDA
-  // veio do GET por id e diz paga — com PROVA, confirma pela RPC do webhook
-  // e responde pelo BANCO. Sem prova, ou RPC sem transição/ja_pago
-  // ('divergente', 'ignorado', erro): segue o contrato de antes, logo abaixo.
-  if (mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? "")) === "pago") {
-    const resultado = await confirmarNaHoraSeProvado({
-      supabase,
-      pedidoId,
-      idConsultado: vagaAtual,
-      order: ordemAtual,
-      linha: atual,
-      efeitos,
-    });
-    if (resultado === "pago" || resultado === "pago_apos_expirar" || resultado === "ja_pago") {
-      let confirmada: Record<string, unknown> | null = null;
-      try {
-        const { data, error } = await supabase
-          .from("marketplace_orders")
-          .select("payment_status, status, expires_at, gateway_payment_id")
-          .eq("id", pedidoId)
-          .maybeSingle();
-        if (!error && data) confirmada = data as Record<string, unknown>;
-      } catch (_erro) {
-        // A RPC já confirmou: a releitura é só para responder pelo banco.
-      }
-      const corpoConfirmado = confirmada ? corpoDePagoConfirmado(confirmada) : null;
-      return json(corpoConfirmado ?? { verificacao: "pago", paymentId: vagaAtual, expiraEm }, 200);
-    }
-  }
   if (!orderEhDeCartao(ordemAtual)) return json({ verificacao: "pix", paymentId: vagaAtual, expiraEm }, 200);
   if (orderMortaPeloPar(ordemAtual)) return json({ verificacao: "recusado", paymentId: null, expiraEm }, 200);
   const statusAtual = mapearStatusOrder(String(ordemAtual.status ?? ""), String(ordemAtual.status_detail ?? ""));
@@ -1558,26 +1311,9 @@ async function handler(
     // determinística. Em produção nunca é passado — cai no
     // `resolverCredenciaisMp` de verdade.
     credenciaisMp?: CredenciaisMp;
-    // Confirmação imediata (04/10/2026): os efeitos do pagamento confirmado
-    // por esta função — mesma costura (e mesmos nomes) de `deps.enviarPush`/
-    // `enviarComprovante`/`enviarAvisoAtrasado` do `webhook-mercadopago`. Em
-    // produção nunca são passados — caem nos reais de
-    // `_shared/efeitos-do-pagamento.ts`.
-    enviarPush?: DepsDosEfeitos["enviarPush"];
-    enviarComprovante?: DepsDosEfeitos["enviarComprovante"];
-    enviarAvisoAtrasado?: DepsDosEfeitos["enviarAvisoAtrasado"];
-    // S1 (04/10/2026): conferência do admin de AGORA na ação `cancelar`. Em
-    // produção nunca é passado — cai em `verificarAdminAtualReal`.
-    verificarAdminAtual?: (authorization: string | null) => Promise<string | null>;
   } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  const efeitos: DepsDosEfeitos = {
-    enviarPush: deps.enviarPush,
-    enviarComprovante: deps.enviarComprovante,
-    enviarAvisoAtrasado: deps.enviarAvisoAtrasado,
-  };
 
   const json = (corpo: unknown, status: number) =>
     new Response(JSON.stringify(corpo), {
@@ -1623,9 +1359,7 @@ async function handler(
   const metodo = body.metodo;
   // C2 (02/10/2026): `"verificar"` é a consulta SEM cobrança (só GET no MP e
   // CAS no banco) — ver `verificarVagaDoPedido`.
-  // S1 (04/10/2026): `"cancelar"` cancela o pedido anulando ANTES a cobrança
-  // no MP — ver cancelar-pedido.ts; ramo próprio logo depois do client.
-  if (metodo !== "pix" && metodo !== "cartao" && metodo !== "verificar" && metodo !== "cancelar") {
+  if (metodo !== "pix" && metodo !== "cartao" && metodo !== "verificar") {
     return json({ error: "Forma de pagamento inválida." }, 400);
   }
   // Corpo do cartão validado ANTES de qualquer leitura de banco ou chamada
@@ -1645,11 +1379,11 @@ async function handler(
   // inteiro — 500 cru, sem JSON nenhum que o front reconheça.
   //
   // O QUE ESTA CORREÇÃO NÃO MUDA, DE PROPÓSITO: o laço de "Tentar de novo"
-  // do cliente continua existindo depois dela, igual a antes. Este 503 NÃO
-  // traz `terminal: true` — DIFERENTE do "sem credencial do Mercado Pago"
-  // (D1, logo abaixo), que traz, porque os dois têm escalas de conserto
-  // diferentes (o que o front faz com o `terminal` de um 503 depende de
-  // QUEM chamou — ver o contrato no comentário do D1):
+  // do cliente continua existindo depois dela, igual a antes. useOrders.ts
+  // só para de tentar quando o CORPO da resposta traz `terminal: true`, e
+  // este 503 NÃO traz — DIFERENTE do "sem credencial do Mercado Pago"
+  // (D1, logo abaixo), que virou terminal, porque os dois têm escalas de
+  // conserto diferentes:
   // chave de service role é ajuste de operador em MINUTOS (dentro da
   // janela de 30 min do PIX, retentar é o comportamento certo); chaves do
   // Mercado Pago numa loja nova são cadastro na aplicação MP do lojista —
@@ -1671,22 +1405,6 @@ async function handler(
       console.error("criar-pagamento: falha ao criar o client do Supabase", err);
       return json({ error: "Pagamento indisponível." }, 503);
     }
-  }
-
-  // S1 (04/10/2026): a ação `cancelar` decide ANTES das credenciais e de
-  // `podeCobrar` — cancelar pedido sem cobrança não depende do MP, e o pedido
-  // com cobrança resolve as credenciais lá dentro, só quando precisa.
-  if (metodo === "cancelar") {
-    return await cancelarPedidoPelaEdge({
-      supabase,
-      pedidoId: String(body.orderId),
-      sub: subDoToken(req.headers.get("Authorization")),
-      authorization: req.headers.get("Authorization"),
-      json,
-      obterCredenciais: async () => deps.credenciaisMp ?? await resolverCredenciaisMp(supabase),
-      verificarAdminAtual: deps.verificarAdminAtual ?? verificarAdminAtualReal,
-      fetchImpl: deps.fetchImpl,
-    });
   }
 
   // Tarefa mp-2 (15/09/2026): QUEM cobra este cliente — a chave do LOJISTA
@@ -1712,22 +1430,10 @@ async function handler(
       `criar-pagamento: sem credencial do Mercado Pago (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_token"})`,
     );
     // Laudo 0109 (D1): sem chave, TENTAR DE NOVO bate na mesma recusa —
-    // é falha de configuração do operador, não do cliente. O que o front faz
-    // com o `terminal: true` deste 503 depende de QUEM chamou (contrato
-    // medido no código do front em 04/10/2026):
-    // - ENVIO DO CARTÃO (`enviarPagamentoComCartao`, src/components/checkout/
-    //   PagamentoComCartao.tsx): `terminal: true` é terminal com QUALQUER
-    //   status, 503 incluído — a tela do cartão encerra (caixa vermelha
-    //   terminal, sem "Tentar de novo").
-    // - CRIAÇÃO DO PIX (`dispararPagamentoPix`, PagamentoOnline.tsx, F3): o
-    //   503 é recuperável mesmo marcado (`terminal && httpStatus !== 503`) —
-    //   "Tentar de novo".
-    // - CONSULTAS que não cobram — confirmação do cartão
-    //   (`desfechoDoErroDaConsulta`, confirmacao-do-cartao.ts) e a
-    //   verificação (`situacaoDoErro`, VerificacaoDoPagamento.tsx): só
-    //   409/404 com `terminal: true` encerram; o 503 é passageiro.
-    // Status e corpo ficam como estão de propósito — mudar o status é outra
-    // decisão.
+    // é falha de configuração do operador, não do cliente. `terminal: true`
+    // tira o cliente do loop de "Tentar de novo" pelo contrato do
+    // CHECKOUT-050 (a categoria viaja no corpo, NUNCA por comparação de
+    // mensagem no front).
     return json({ error: "Pagamento indisponível.", terminal: true }, 503);
   }
 
@@ -1735,10 +1441,8 @@ async function handler(
   // banco): o PIX só existe para loja com a CHAVE DE ASSINATURA DO WEBHOOK
   // DO MERCADO PAGO CADASTRADA PELA PRÓPRIA LOJA (registro cifrado em
   // app_settings). A chave global do ambiente (MP_WEBHOOK_SECRET da
-  // plataforma) NÃO substitui o cadastro da loja. (Dizia "CARTÃO e demais
-  // meios NÃO são afetados por esta regra — deliberação do dono". A decisão
-  // do dono de 30/09/2026 — pagamento pelo app só com as 3 chaves — superou
-  // essa: ver a trava do CARTÃO logo abaixo, S2 de 04/10/2026.)
+  // plataforma) NÃO substitui o cadastro da loja. CARTÃO e demais meios
+  // NÃO são afetados por esta regra — é deliberação do dono, não generalização.
   //
   // O PORQUÊ: sem a chave própria, as notificações de pagamento da loja não
   // têm como ser validadas com o segredo DELA — a confirmação cairia no
@@ -1758,62 +1462,20 @@ async function handler(
   // C2 (02/10/2026): `metodo === "pix"`, não `!dadosCartao` — a consulta
   // `verificar` (sem cartão e sem PIX) não passa por esta trava (desenho A1,
   // 4.3): loja sem chave de webhook ainda precisa resolver um cartão em dúvida.
-  //
-  // ONDE ela vale (revisão externa, 04/10/2026 — a mesma lógica do S2 do
-  // cartão, abaixo): rodava AQUI, antes de ler o pedido, e a tela que
-  // reconsulta com `metodo: "pix"` para recuperar o QR que JÁ existe perdia o
-  // QR se a chave saísse do cadastro depois. Agora ela só barra o que faria
-  // nascer um PIX novo: vaga livre (logo depois de `podeCobrar`), a liberação
-  // de uma vaga morta (antes de liberar) e a troca de um cartão vivo em
-  // desafio 3DS por PIX (o cartão NÃO é cancelado — segue "em análise").
-  // Reconsultar o PIX que já está na vaga continua livre.
-  const pixSemChaveDeAssinatura = metodo === "pix" &&
-    (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook);
-  const respostaPixSemChaveDeAssinatura = () => {
-    // Só origem e motivo em log — nenhum segredo, jamais.
-    console.error(
-      `criar-pagamento: PIX recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
-    );
-    return json({
-      error:
-        "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
-      terminal: true,
-      pixSemChaveDeAssinatura: true,
-    }, 409);
-  };
-  // S2 (travas onde a cobrança nasce, 04/10/2026): o CARTÃO do LOJISTA sem a
-  // chave de assinatura do webhook para no MESMO 409 terminal do PIX —
-  // decisão do dono de 30/09/2026 (pagamento pelo app só com as 3 chaves
-  // cadastradas). O caso é mais restrito que o
-  // do PIX, de propósito: loja nas chaves da PLATAFORMA (`origem` diferente
-  // de "lojista") continua cobrando cartão como sempre — a regra é sobre o
-  // cadastro que a loja fez pela metade, não sobre quem ainda não cadastrou.
-  // Flag própria, mesmo contrato da `pixSemChaveDeAssinatura` (marcador para
-  // o front, nunca texto).
-  //
-  // ONDE ela vale (revisão externa do S2, 04/10/2026): SÓ onde a decisão já é
-  // CRIAR cobrança nova ou TROCAR a forma (POST ou cancelamento no MP) — nunca
-  // aqui em cima, antes de ler o pedido. A outra aba que já tem um cartão
-  // vivo, em análise ou em desafio 3DS tem de continuar recebendo o MESMO
-  // estado pela consulta (GET), sem POST e sem ouvir que a cobrança acabou; o
-  // sentinela sem desfecho continua no acompanhamento de sempre. Os três
-  // pontos de uso: o portão do cartão (vaga livre), a troca PIX→cartão ANTES
-  // de cancelar o PIX, e a liberação da vaga morta ANTES de liberar.
-  // `verificar` nunca passa por nenhum deles.
-  const cartaoSemChaveDeAssinatura = metodo === "cartao" && credenciaisMp.origem === "lojista" &&
-    !credenciaisMp.segredoWebhook;
-  const respostaCartaoSemChaveDeAssinatura = () => {
-    // Só origem e motivo em log — nenhum segredo, jamais.
-    console.error(
-      `criar-pagamento: cartão recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
-    );
-    return json({
-      error:
-        "Para pagar com cartão, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
-      terminal: true,
-      cartaoSemChaveDeAssinatura: true,
-    }, 409);
-  };
+  if (metodo === "pix") {
+    if (credenciaisMp.origem !== "lojista" || !credenciaisMp.segredoWebhook) {
+      // Só origem e motivo em log — nenhum segredo, jamais.
+      console.error(
+        `criar-pagamento: PIX recusado — loja sem chave de assinatura do webhook cadastrada (origem: ${credenciaisMp.origem}, motivo: ${credenciaisMp.motivo ?? "sem_chave_de_assinatura"})`,
+      );
+      return json({
+        error:
+          "Para pagar com Pix, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+        terminal: true,
+        pixSemChaveDeAssinatura: true,
+      }, 409);
+    }
+  }
 
   // `let`, não `const` (Fase 3.5): quando a vaga ocupada é liberada, o
   // pedido é RELIDO (tentativas novas) e o resto do handler cobra a partir
@@ -1867,7 +1529,6 @@ async function handler(
       pedido: pedido as Record<string, unknown>,
       json,
       respostaIndisponivel,
-      efeitos,
     });
   }
 
@@ -1885,10 +1546,6 @@ async function handler(
     return json({ error: decisao.motivo, terminal: true }, 409);
   }
 
-  // Trava do PIX sem chave de assinatura (ver o comentário dela, lá em cima):
-  // vaga LIVRE — a única saída daqui é um PIX novo.
-  if (pixSemChaveDeAssinatura && decisao.acao === "criar") return respostaPixSemChaveDeAssinatura();
-
   // Portão do CARTÃO (Fase 3.5), ANTES de qualquer coisa na vaga: se o
   // pedido tem um PIX aberto e o cliente pede cartão, o PIX é CANCELADO no MP
   // mais abaixo — cancelar e só DEPOIS descobrir que o cartão não podia ser
@@ -1903,8 +1560,6 @@ async function handler(
   //    já limita, isto é a defesa do servidor.
   if (dadosCartao) {
     if (pedido.user_id === null) return respostaExigeConta();
-    // S2: vaga LIVRE — a única saída daqui é um POST novo.
-    if (cartaoSemChaveDeAssinatura && decisao.acao === "criar") return respostaCartaoSemChaveDeAssinatura();
     const configCartao = await lerConfigDoCartao(supabase);
     const formaLigada = configCartao !== null &&
       (dadosCartao.paymentTypeId === "credit_card" ? configCartao.credito : configCartao.debito);
@@ -2241,32 +1896,6 @@ async function handler(
     // de cartão isso fecha (409), nunca cancela às cegas.
     const pixNaVaga = tipoNaVaga === "bank_transfer";
     const cobrancaMorta = statusNaVaga === "recusado" || statusNaVaga === "expirado";
-    // Confirmação imediata (04/10/2026) nos ramos pagos (a)/(e): relê a linha
-    // (a vaga e o total VIGENTES, não os da leitura do início) e confirma com
-    // PROVA (`confirmarNaHoraSeProvado`). Só pedido com DONO autenticado
-    // (`donoConfere` já casou o `sub` com `user_id`): o de convidado fica com
-    // o webhook. Falha de leitura/RPC: nada — a resposta é a de sempre.
-    const confirmarNaReconsulta = async (ordem: Record<string, unknown>): Promise<void> => {
-      if (pedido.user_id === null || pedido.user_id === undefined) return;
-      try {
-        const { data: linhaAtual, error: erroLinha } = await supabase
-          .from("marketplace_orders")
-          .select("payment_status, status, expires_at, gateway_payment_id, total")
-          .eq("id", pedido.id)
-          .maybeSingle();
-        if (erroLinha || !linhaAtual) return;
-        await confirmarNaHoraSeProvado({
-          supabase,
-          pedidoId: String(pedido.id),
-          idConsultado: idGatewayReconsulta,
-          order: ordem,
-          linha: linhaAtual as Record<string, unknown>,
-          efeitos,
-        });
-      } catch (_erro) {
-        console.error("criar-pagamento: confirmação imediata na reconsulta falhou", { orderId: pedido.id });
-      }
-    };
 
     if (orderEhDeCartao(orderNaVaga)) {
       // (b) Cartão recusado, cancelado ou expirado (desafio 3DS abandonado):
@@ -2275,12 +1904,9 @@ async function handler(
       // o pedido até expirar.
       if (!cobrancaMorta) {
         const paymentIdNaVaga = String(orderNaVaga.id ?? idGatewayReconsulta);
-        // (a) Já pago: nada a cobrar de novo — a tela segue. Com PROVA, esta
-        // consulta confirma na hora (`confirmarNaReconsulta`, acima); sem ela,
-        // quem grava 'pago' é o webhook/reconciliação. A resposta é a MESMA
-        // nos dois casos.
+        // (a) Já pago: nada a cobrar de novo — a tela segue; quem grava
+        // 'pago' no banco é o webhook/reconciliação.
         if (statusNaVaga === "pago") {
-          await confirmarNaReconsulta(orderNaVaga);
           return json(
             { paymentId: paymentIdNaVaga, statusPagamento: "pago", expiraEm: pedido.expires_at },
             200,
@@ -2307,11 +1933,8 @@ async function handler(
         // "Tentar de novo" relê e decide de novo pelo estado real.
         if (metodo === "pix" && (statusNaVaga === "aguardando" || statusNaVaga === null)) {
           const statusBrutoNaVaga = String(orderNaVaga.status ?? "");
-          // Trava do PIX sem chave de assinatura: o PIX novo é impossível, então
-          // o cartão vivo NÃO é cancelado — segue no 409 "em análise" abaixo,
-          // como um cartão que o MP não cancela.
-          const cartaoCancelavelParaPix = !pixSemChaveDeAssinatura &&
-            (statusBrutoNaVaga === "action_required" || statusBrutoNaVaga === "created");
+          const cartaoCancelavelParaPix =
+            statusBrutoNaVaga === "action_required" || statusBrutoNaVaga === "created";
           let cartaoCanceladoParaPix = false;
           if (cartaoCancelavelParaPix) {
             const cancelamento3ds = await cancelarOrder({
@@ -2405,32 +2028,6 @@ async function handler(
       // cegas. PIX já morto (recusado/expirado/cancelado) só precisa ser
       // liberado; PIX aberto é CANCELADO no MP antes — duas cobranças vivas
       // para o mesmo pedido é o cliente pagando duas vezes.
-      //
-      // S2: ANTES de qualquer cancelamento — sem a chave de assinatura o
-      // cartão novo é impossível, e cancelar o PIX primeiro deixaria o
-      // cliente sem cobrança nenhuma na mão.
-      //
-      // PIX AINDA VIVO (ressalva da revisão do lote B, 04/10/2026): o QR
-      // continua pagável no Mercado Pago, então a resposta NÃO é terminal —
-      // terminal vira, na tela do cartão, a caixa vermelha com "Cancelar
-      // pedido e voltar ao carrinho" como ação principal, e um pagamento
-      // posterior do QR cairia num pedido cancelado. Sem `terminal`, o front
-      // trata o 409 como cobrança em dúvida (CheckoutView: erro sem sinal em
-      // modo cartão), abre a verificação (`verificar`, só GET), que responde
-      // "pix" para esta vaga e leva à escolha da forma — com "Pagar com PIX",
-      // que devolve o MESMO QR (ramo e), e sem "Cancelar pedido". "Vivo" é o
-      // mesmo critério do cancelamento logo abaixo (`!cobrancaMorta`): par
-      // desconhecido nunca é morto. A flag `cartaoSemChaveDeAssinatura` fica
-      // de fora: ela anda com o terminal. Nada cancelado, nada criado, nada
-      // gravado.
-      if (cartaoSemChaveDeAssinatura && pixNaVaga && !cobrancaMorta) {
-        console.warn(
-          `criar-pagamento: troca para cartão recusada — loja sem chave de assinatura do webhook e o PIX da vaga ainda vale (origem: ${credenciaisMp.origem})`,
-          idGatewayReconsulta,
-        );
-        return json({ error: MENSAGEM_PIX_CONTINUA_VALENDO }, 409);
-      }
-      if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
       if (!pixNaVaga) {
         console.warn(
           "criar-pagamento: vaga com cobrança de tipo desconhecido — troca para cartão recusada",
@@ -2461,9 +2058,7 @@ async function handler(
       }
     } else {
       // (e) Pedido de PIX com PIX na vaga — ou (a) PIX já pago, para
-      // qualquer forma pedida: o comportamento de sempre, o MESMO QR. Pago
-      // com PROVA confirma na hora (`confirmarNaReconsulta`); a resposta não muda.
-      if (statusNaVaga === "pago") await confirmarNaReconsulta(orderNaVaga);
+      // qualquer forma pedida: o comportamento de sempre, o MESMO QR.
       const extraido = extrairQrCode(orderNaVaga);
       return json(
         {
@@ -2513,12 +2108,6 @@ async function handler(
     // trava de criação logo abaixo — mas a liberação em si é inofensiva (a
     // RPC só solta a vaga desta cobrança/sentinela, pela MESMA string que
     // está gravada nela).
-    //
-    // S2: daqui o cartão só sai com um POST novo — sem a chave de assinatura,
-    // recusa ANTES de liberar (a vaga fica como está; nada foi tocado). Mesma
-    // regra para o PIX sem a chave.
-    if (cartaoSemChaveDeAssinatura) return respostaCartaoSemChaveDeAssinatura();
-    if (pixSemChaveDeAssinatura) return respostaPixSemChaveDeAssinatura();
     const liberacao = await liberarCobranca(supabase, pedido.id, idGatewayReconsulta);
     if (!liberacao.ok) {
       // Falha de banco: nada foi cobrado ainda, e o próximo retry reencontra
@@ -2583,38 +2172,6 @@ async function handler(
   // dinheiro entraria e nem o cliente nem a loja teriam como saber pela tela.
   if (pedido.user_id === null) return respostaExigeConta();
 
-  // S5 (travas onde a cobrança nasce, 04/10/2026): a FORMA do pedido. Desde a
-  // 20261174000000 a v24 grava 'aguardando' para QUALQUER forma que a loja
-  // aceita (online e pix/card/cash na entrega) — quem garantia que só o
-  // 'online' chegava aqui era o front, e uma requisição montada à mão com o
-  // id de um pedido "pagar na entrega" virava cobrança online. Mesmo lugar da
-  // trava de conta, e pelo mesmo motivo: SÓ a criação passa por aqui (a
-  // reconsulta de uma cobrança que já existe devolveu lá em cima, e o
-  // `verificar` nem chega em `podeCobrar`). Terminal: a forma do pedido não
-  // muda com "Tentar de novo".
-  if (pedido.payment_method !== "online") {
-    console.warn("criar-pagamento: cobrança recusada — o pedido não é de pagamento online", {
-      pedidoId: pedido.id,
-      formaDoPedido: pedido.payment_method ?? null,
-    });
-    return json({ error: "Este pedido não é de pagamento online.", terminal: true }, 409);
-  }
-
-  // R8 (travas onde a cobrança nasce, 04/10/2026): pedido online de R$ 0,00.
-  // A v24 calcula o total com GREATEST(0, ...) — cupom maior que a compra
-  // zera o pedido —, e o montador do corpo do PIX em _shared não guarda
-  // valor > 0: o MP recusava, saía 502 recuperável e o cliente ficava num
-  // laço de "Tentar de novo" até a reserva vencer. Recusa ANTES de qualquer
-  // chamada ao MP, para PIX e cartão, e terminal: o total do pedido não muda
-  // com outra tentativa. `!(> 0)`, não `<= 0`: total ilegível (NaN) também
-  // não vira cobrança.
-  if (!(Number(pedido.total) > 0)) {
-    console.warn("criar-pagamento: cobrança recusada — pedido online sem valor a cobrar", {
-      pedidoId: pedido.id,
-    });
-    return json({ error: "Este pedido não tem valor a pagar online.", terminal: true }, 409);
-  }
-
   // decisao.acao === "criar" a partir daqui.
   // LAUDO 31/08 (menor E5): o e-mail da sessão entra na corrente antes do
   // fallback genérico — o MP passa a ver quem de verdade paga.
@@ -2655,14 +2212,10 @@ async function handler(
   // token"): o MP recusou a CREDENCIAL da loja, não este pedido. Mesma escala
   // de conserto do D1 lá em cima — token revogado ou sem permissão se
   // resolve no cadastro do lojista, em horas ou dias, e "Tentar de novo"
-  // dentro dos 30 min da reserva só bate na mesma recusa. O `terminal: true`
-  // tem o MESMO efeito que no D1, lá em cima (contrato do front por quem
-  // chama): no envio do cartão ele ENCERRA a tela; na criação do PIX o 503
-  // segue recuperável ("Tentar de novo"); as consultas que não cobram nunca
-  // chegam aqui (o POST de criação é só destes dois). Status e
-  // corpo ficam como estão neste lote. A frase é fixa: o corpo do MP
-  // (conta, detalhe da credencial) continua só no log de criarOrder. Vale
-  // igual para PIX e cartão (uma resposta só, as duas chamam daqui).
+  // dentro dos 30 min da reserva só bate na mesma recusa. `terminal: true`
+  // tira o cliente do loop. A frase é fixa: o corpo do MP (conta, detalhe da
+  // credencial) continua só no log de criarOrder. Vale igual para PIX e
+  // cartão (uma resposta só, as duas chamam daqui).
   const respostaCredencialRecusada = (status: number) => {
     console.error(
       `criar-pagamento: Mercado Pago recusou a credencial da loja (status: ${status}, origem: ${credenciaisMp.origem})`,
@@ -2770,11 +2323,6 @@ async function handler(
       // de devolver a morta.
       chaveIdempotencia: await chaveDeIdempotencia(pedido, "pix"),
       fetchImpl: deps.fetchImpl,
-      // R9 (04/10/2026): o corpo da recusa do MP traz `data.payer` (e-mail
-      // e CPF do pagador) — no log, só o resumo sem dado pessoal, igual ao
-      // cartão. O `corpoDoErro` continua voltando no resultado (o 409 de
-      // idempotência, logo abaixo, decide por ele).
-      corpoNoLog: false,
     });
     if (!r.ok) {
       // 401/403: credencial da loja (`respostaCredencialRecusada`, acima).
@@ -3385,14 +2933,10 @@ async function handler(
     }
 
     // Aprovado na hora, em análise ou esperando o desafio 3DS: a vaga é
-    // OCUPADA por esta order (gravação logo abaixo, a mesma do PIX). O POST
-    // NUNCA confirma o pedido: o 'pago' desta resposta é só o que a tela
-    // recebe. Quem escreve 'pago' no banco é a RPC `confirmar_pagamento`,
-    // chamada pelo webhook/reconciliação OU — só para cartão aprovado — pela
-    // confirmação imediata em segundo plano, depois de um GET por id que
-    // PROVE o pagamento (`agendarConfirmacaoDaCriacao`). Par desconhecido
-    // vira 'aguardando', pelo mesmo motivo do PIX: a cobrança EXISTE, e a
-    // verdade chega pelo webhook.
+    // OCUPADA por esta order (gravação logo abaixo, a mesma do PIX). Quem
+    // escreve 'pago' continua sendo o webhook/reconciliação. Par
+    // desconhecido vira 'aguardando', pelo mesmo motivo do PIX: a cobrança
+    // EXISTE, e a verdade chega pelo webhook.
     idGateway = String(orderCartao.id);
     statusCru = statusCartao ?? "aguardando";
     // Achado A1 (3): o status CRU (não o mapeado) da order que ACABOU de ser
@@ -3826,17 +3370,6 @@ async function handler(
             "criar-pagamento: cartão adotado na vaga desta mesma chave depois de perder a gravação (blindagem 02/10)",
             { orderId: pedido.id, idOrder: idGateway, ocupanteAnterior: idOcupanteAgora },
           );
-          // Confirmação imediata (04/10/2026): a vaga adotada é desta order.
-          await agendarConfirmacaoDaCriacao({
-            supabase,
-            mpToken,
-            fetchImpl: deps.fetchImpl,
-            pedido,
-            metodo,
-            statusCru,
-            idGateway,
-            efeitos,
-          });
           return json(
             { paymentId: idGateway, statusPagamento: statusCru, expiraEm: adotadaAgora.expires_at, desafio3ds },
             200,
@@ -3967,19 +3500,6 @@ async function handler(
             "criar-pagamento: cartão vivo adotado na vaga livre depois de a tentativa avançar durante a criação (veredito A2)",
             { orderId: pedido.id, idOrder: idGateway, statusConsultado, consultaOk: consultaDaOrder.ok },
           );
-          // Confirmação imediata (04/10/2026): só se o status DESTA resposta é
-          // 'pago'. O GET acima NÃO é prova aqui: `agendarConfirmacaoDaCriacao`
-          // faz um GET novo e passa a mesma prova — um caminho só.
-          await agendarConfirmacaoDaCriacao({
-            supabase,
-            mpToken,
-            fetchImpl: deps.fetchImpl,
-            pedido,
-            metodo,
-            statusCru: statusConsultado ?? statusCru,
-            idGateway,
-            efeitos,
-          });
           return json(
             {
               paymentId: idGateway,
@@ -4169,18 +3689,6 @@ async function handler(
               : "criar-pagamento: cartao_orfao evitado — PIX concorrente ainda aberto foi cancelado e a vaga foi trocada pelo cartão já aprovado (Achado R2)",
             { orderId: pedido.id, idOrderAprovado: idGateway, ocupanteAnterior: idOcupante },
           );
-          // Confirmação imediata (04/10/2026): a vaga ADOTADA é desta order
-          // aprovada — mesma prova do GET que a saída principal.
-          await agendarConfirmacaoDaCriacao({
-            supabase,
-            mpToken,
-            fetchImpl: deps.fetchImpl,
-            pedido,
-            metodo,
-            statusCru,
-            idGateway,
-            efeitos,
-          });
           return json(
             {
               paymentId: idGateway,
@@ -4283,20 +3791,6 @@ async function handler(
     return json({ error: "Não foi possível confirmar a cobrança." }, 409);
   }
 
-  // Confirmação imediata (04/10/2026): cartão aprovado na hora, vaga gravada
-  // por ESTA chamada. UM `waitUntil`, registrado ANTES da resposta; a resposta
-  // abaixo não muda. Só cartão + 'pago' + dono autenticado (ver o gancho).
-  await agendarConfirmacaoDaCriacao({
-    supabase,
-    mpToken,
-    fetchImpl: deps.fetchImpl,
-    pedido,
-    metodo,
-    statusCru,
-    idGateway,
-    efeitos,
-  });
-
   return json(
     {
       paymentId: idGateway,
@@ -4311,9 +3805,7 @@ async function handler(
       qrCodeBase64,
       ticketUrl,
       // Só cartão, só quando o banco pediu o desafio 3-D Secure: a tela abre
-      // a URL num iframe e a confirmação vem do `verificar` da tela, do
-      // webhook ou da reconciliação (a criação só confirma o cartão aprovado
-      // na hora, por `agendarConfirmacaoDaCriacao`, acima). Ausente no PIX
+      // a URL num iframe e espera a confirmação pelo webhook. Ausente no PIX
       // (`undefined` some do JSON).
       desafio3ds,
     },
