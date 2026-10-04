@@ -67,6 +67,39 @@
 --     travados e o saldo relido. Não cabe: nada muda e nenhum POST sai; a
 --     linha continua em_processamento (reconciliável). Ver o comentário da
 --     função, no fim do arquivo.
+--   * `order_refunds.post_autorizado_em` (timestamptz, NULL) e
+--     `order_refunds.criada_sob_autorizacao` (boolean, NULL; DEFAULT true só
+--     para as linhas que nascerem DEPOIS desta migration) — o que separa a
+--     linha INCERTA (um POST pode ter chegado ao MP) da linha que
+--     comprovadamente nunca teve POST (revisão Opus de 14d77a5b, R1: antes,
+--     `tentativas > 1` bastava para "incerta", e uma linha que só passou por
+--     `nao_cabe` ficava reservada PARA SEMPRE sem nenhum POST ter saído).
+--     `autorizar_post_do_estorno` grava `post_autorizado_em = now()` no ramo
+--     `autorizado` (o MESMO UPDATE que renova updated_at) — todo POST de
+--     refund do executor passa por ele antes. CRITÉRIO EXATO de incerta (o
+--     executor, `linhaPodeJaTerChegadoAoMp` em _shared/estorno.ts):
+--       post_autorizado_em IS NOT NULL
+--       OR mp_refund_id IS NOT NULL (e não vazio)
+--       OR (criada_sob_autorizacao IS NOT TRUE AND tentativas > 1)
+--     O terceiro termo é o LEGADO: linha que já existia antes desta
+--     migration (a coluna fica NULL nela) pode ter tido POST pelo executor
+--     antigo, que não gravava carimbo nenhum — para ela vale a regra
+--     antiga. Linha nascida depois (true) só é incerta pelo carimbo ou pelo
+--     id do MP. Linha NÃO incerta que a guarda ou o `nao_cabe` recusam vira
+--     `recusado` (nenhum POST saiu; a reserva é liberada), e a escrita
+--     terminal exige `post_autorizado_em IS NULL` — se outro executor
+--     autorizou um POST no meio, 0 linhas e nada é sobrescrito.
+--     RESÍDUOS DECLARADOS: (1) linha cujo POST saiu de verdade e o MP nunca
+--     processou continua em_processamento aguardando prova externa (consulta
+--     ao MP ou ação no painel) — sem aviso novo aqui; (2) linha criada na
+--     janela entre esta migration e a publicação das edges novas, com POST
+--     ambíguo do executor ANTIGO, nasce `true` sem carimbo e pode ser
+--     recusada — o executor antigo, nessa mesma janela, já a recusaria
+--     (nunca foi mais seguro que isto); fecha-se publicando as três edges
+--     logo depois da migration; (3) `autorizado` seguido de recusa da guarda
+--     sobre o pedido relido (pagamento mudou de estado ou o prazo de 180
+--     dias venceu nos segundos entre as duas) deixa o carimbo sem POST: a
+--     linha fica incerta e aguarda, como em (1).
 --
 -- REGRAS DE DINHEIRO (todas dentro da trava, contra o estado relido):
 --   disponível = total - valor_estornado - soma(solicitado/em_processamento
@@ -137,8 +170,12 @@
 --   das duas com 40P01 — erro alto, nada gravado pela metade; o webhook
 --   devolve 500 e o MP reentrega. O mesmo vale para o 3o passo da 94.
 --
--- DADOS EXISTENTES: nada é reescrito. As duas colunas novas nascem NULL em
--- todas as linhas (sem default, sem backfill); a tabela da decisão final nasce
+-- DADOS EXISTENTES: nada é reescrito. As quatro colunas novas nascem NULL em
+-- todas as linhas que já existem (ADD COLUMN sem default, sem backfill; o
+-- DEFAULT true de `criada_sob_autorizacao` é posto DEPOIS, num ALTER COLUMN
+-- separado, e só vale para INSERT futuro — é ele que marca "nasceu depois
+-- desta migration"; posto no próprio ADD COLUMN, o Postgres preencheria as
+-- linhas antigas com true e o legado sumiria); a tabela da decisão final nasce
 -- VAZIA (casos já decididos antes desta migration não têm registro — para
 -- eles vale só o estado das linhas, como antes). Reserva antiga de contestação
 -- (sem CBK, de antes da 20261192000000) é ADOTADA pela função na próxima
@@ -150,7 +187,8 @@
 -- service_role) — régua da concluir_estorno (2026110000100).
 --
 -- IDEMPOTÊNCIA: ADD COLUMN IF NOT EXISTS depois de o preflight provar o
--- tipo; DROP FUNCTION IF EXISTS + CREATE das três funções novas (não
+-- tipo (e, para `criada_sob_autorizacao`, que o default é nenhum ou true);
+-- SET DEFAULT true reaplicado não muda nada; DROP FUNCTION IF EXISTS + CREATE das três funções novas (não
 -- existiam antes desta migration); REVOKE/GRANT reaplicáveis. Reaplicar não
 -- muda nada.
 --
@@ -180,8 +218,9 @@
 --
 -- ROLLBACK MANUAL:
 -- rollback-manual-20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql
--- (apaga as duas funções; as colunas e a tabela da decisão final FICAM —
--- apagá-las perderia o vínculo e o histórico de casos já decididos, e isso é
+-- (apaga as três funções e tira o DEFAULT de `criada_sob_autorizacao`; as
+-- colunas e a tabela da decisão final FICAM — apagá-las perderia o vínculo,
+-- o histórico de casos já decididos e o carimbo de POST autorizado, e isso é
 -- decisão do dono).
 
 DO $preflight_20261196$
@@ -224,6 +263,31 @@ BEGIN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_valor_do_caso já existe como % (esperado numeric(12,2), aceitando NULL) — revise antes de aplicar.', v_tipo;
   END IF;
 
+  SELECT format_type(a.atttypid, a.atttypmod) || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END
+    INTO v_tipo
+    FROM pg_attribute a
+   WHERE a.attrelid = 'public.order_refunds'::regclass
+     AND a.attname = 'post_autorizado_em'
+     AND NOT a.attisdropped;
+  IF v_tipo IS NOT NULL AND v_tipo IS DISTINCT FROM 'timestamp with time zone' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.post_autorizado_em já existe como % (esperado timestamptz, aceitando NULL) — revise antes de aplicar.', v_tipo;
+  END IF;
+
+  SELECT format_type(a.atttypid, a.atttypmod) || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END,
+         pg_get_expr(d.adbin, d.adrelid)
+    INTO v_tipo, v_def
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+   WHERE a.attrelid = 'public.order_refunds'::regclass
+     AND a.attname = 'criada_sob_autorizacao'
+     AND NOT a.attisdropped;
+  IF v_tipo IS NOT NULL AND v_tipo IS DISTINCT FROM 'boolean' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao já existe como % (esperado boolean, aceitando NULL) — revise antes de aplicar.', v_tipo;
+  END IF;
+  IF v_tipo IS NOT NULL AND v_def IS NOT NULL AND v_def IS DISTINCT FROM 'true' THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao já existe com default % (esperado nenhum ou true) — revise antes de aplicar.', v_def;
+  END IF;
+
   IF to_regclass('public.contestacoes_decisao_final') IS NOT NULL THEN
     SELECT string_agg(a.attname || ' ' || format_type(a.atttypid, a.atttypmod)
                       || CASE WHEN a.attnotnull THEN ' NOT NULL' ELSE '' END, ', ' ORDER BY a.attnum)
@@ -253,6 +317,26 @@ COMMENT ON COLUMN public.order_refunds.mp_chargeback_valor_do_caso IS
   'Valor do CASO da contestação em reais, confirmado pelo Mercado Pago (GET '
   '/v1/chargebacks/{case_id}, currency BRL; 20261196000000). NULL = a linha nasceu de '
   'ESTIMATIVA (total pago) e só pode RESERVAR, nunca concluir.';
+
+ALTER TABLE public.order_refunds
+  ADD COLUMN IF NOT EXISTS post_autorizado_em timestamptz;
+
+COMMENT ON COLUMN public.order_refunds.post_autorizado_em IS
+  'Último instante em que autorizar_post_do_estorno AUTORIZOU um POST de refund desta linha '
+  '(20261196000000). NOT NULL = um POST pode ter chegado ao Mercado Pago: a linha é INCERTA e '
+  'nunca é recusada sem veredito do MP. NULL = nenhum POST autorizado pelo executor novo.';
+
+ALTER TABLE public.order_refunds
+  ADD COLUMN IF NOT EXISTS criada_sob_autorizacao boolean;
+
+ALTER TABLE public.order_refunds
+  ALTER COLUMN criada_sob_autorizacao SET DEFAULT true;
+
+COMMENT ON COLUMN public.order_refunds.criada_sob_autorizacao IS
+  'true = a linha nasceu DEPOIS da 20261196000000 (todo POST dela passa por '
+  'autorizar_post_do_estorno, que carimba post_autorizado_em). NULL = linha anterior '
+  '(legado): o executor antigo não carimbava, e tentativas > 1 continua contando como '
+  '"um POST pode ter saído". Sem backfill; o DEFAULT vale só para INSERT futuro.';
 
 CREATE TABLE IF NOT EXISTS public.contestacoes_decisao_final (
   order_id uuid NOT NULL REFERENCES public.marketplace_orders(id),
@@ -877,8 +961,11 @@ BEGIN
     RETURN jsonb_build_object('decisao', 'nao_cabe', 'disponivel', v_disponivel);
   END IF;
 
+  -- O carimbo do POST autorizado (R1 da revisão Opus de 14d77a5b): daqui
+  -- em diante a linha é INCERTA — ver o cabeçalho.
   UPDATE public.order_refunds
-     SET updated_at = now()
+     SET updated_at = now(),
+         post_autorizado_em = now()
    WHERE id = v_linha.id;
 
   RETURN jsonb_build_object(
@@ -900,9 +987,9 @@ $fn$;
 COMMENT ON FUNCTION public.autorizar_post_do_estorno(uuid, numeric) IS
   'Imediatamente antes do POST de refund do executor de estorno: com a linha e o pedido '
   'TRAVADOS (linha -> pedido), responde se o POST de p_valor ainda cabe no saldo relido '
-  '(total - estornado - em voo das outras linhas). autorizado (renova updated_at e devolve '
-  'o pedido relido) | nao_cabe (nada muda; a linha segue em_processamento) | linha_mudou. '
-  'Só a service_role. 20261196000000.';
+  '(total - estornado - em voo das outras linhas). autorizado (renova updated_at, carimba '
+  'post_autorizado_em e devolve o pedido relido) | nao_cabe (nada muda na linha) | '
+  'linha_mudou. Só a service_role. 20261196000000.';
 
 REVOKE ALL ON FUNCTION public.autorizar_post_do_estorno(uuid, numeric)
   FROM PUBLIC, anon, authenticated;

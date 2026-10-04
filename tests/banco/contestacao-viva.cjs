@@ -1093,6 +1093,107 @@ PROVAS.push({
   },
 });
 
+// R1 (revisão Opus de 14d77a5b): a escrita terminal que a edge e o cron
+// fazem para `recusado` — a mesma condição, em SQL (PostgREST: .eq/.in/.is).
+async function recusarComoOExecutor(c, refundId, motivo) {
+  return (
+    await c.query(
+      `UPDATE public.order_refunds
+          SET status = 'recusado', ultimo_erro = $2, updated_at = now()
+        WHERE id = $1 AND status IN ('em_processamento') AND post_autorizado_em IS NULL`,
+      [refundId, motivo],
+    )
+  ).rowCount;
+}
+
+async function carimbo(c, refundId) {
+  return (
+    await c.query(
+      "SELECT post_autorizado_em, criada_sob_autorizacao, status FROM public.order_refunds WHERE id = $1",
+      [refundId],
+    )
+  ).rows[0];
+}
+
+PROVAS.push({
+  nome: "(x) R1: autorizar carimba post_autorizado_em SÓ no autorizado; linha nova nasce criada_sob_autorizacao; a linha que nunca teve POST é recusada e a reserva volta; a carimbada não",
+  corpo: async (cliente) => {
+    // Forma das colunas novas.
+    const forma = (
+      await cliente.query(
+        `SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS tipo, a.attnotnull, pg_get_expr(d.adbin, d.adrelid) AS def
+           FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+          WHERE a.attrelid = 'public.order_refunds'::regclass
+            AND a.attname IN ('post_autorizado_em', 'criada_sob_autorizacao') AND NOT a.attisdropped
+          ORDER BY a.attname`,
+      )
+    ).rows;
+    assert.deepEqual(forma, [
+      { attname: "criada_sob_autorizacao", tipo: "boolean", attnotnull: false, def: "true" },
+      { attname: "post_autorizado_em", tipo: "timestamp with time zone", attnotnull: false, def: null },
+    ]);
+
+    // O cenário do revisor (preso.sql): pedido 100, linha do app de 50 que
+    // NUNCA teve POST e já passou por 2 marcas; o REF de 70 do painel entra.
+    await pedido(cliente, O(147), { total: 100 });
+    const presa = await linhaDoApp(cliente, O(147), 50);
+    await cliente.query("UPDATE public.order_refunds SET tentativas = 2 WHERE id = $1", [presa]);
+    const nasceu = await carimbo(cliente, presa);
+    assert.equal(nasceu.criada_sob_autorizacao, true, "linha nascida depois da migration");
+    assert.equal(nasceu.post_autorizado_em, null);
+    assert.equal((await externo(cliente, { pedido: O(147), ref: "REF-X70", valor: 70 })).resultado, "inserido");
+
+    const a1 = await autorizar(cliente, presa, 50);
+    assert.equal(a1.decisao, "nao_cabe");
+    assert.equal((await carimbo(cliente, presa)).post_autorizado_em, null, "nao_cabe não carimba");
+    assert.equal((await autorizar(cliente, presa, 49)).decisao, "linha_mudou");
+    assert.equal((await carimbo(cliente, presa)).post_autorizado_em, null, "linha_mudou não carimba");
+
+    // O executor recusa (linha não incerta): a escrita condicionada pega a
+    // linha e a reserva de 50 volta — o que sobra (30) cabe de novo.
+    assert.equal(await recusarComoOExecutor(cliente, presa, "saldo não cobre"), 1);
+    assert.equal((await carimbo(cliente, presa)).status, "recusado");
+    const nova30 = await linhaDoApp(cliente, O(147), 30);
+    const a2 = await autorizar(cliente, nova30, 30);
+    assert.equal(a2.decisao, "autorizado", "a reserva de 50 foi liberada: os 30 restantes cabem");
+    assert.equal(num(a2.disponivel), 30);
+    const depois = await carimbo(cliente, nova30);
+    assert.notEqual(depois.post_autorizado_em, null, "autorizado carimba");
+
+    // Controle: a linha CARIMBADA (POST autorizado) nunca é recusada pela
+    // mesma escrita — mesmo que outro executor a leia sem o carimbo (corrida).
+    assert.equal(await recusarComoOExecutor(cliente, nova30, "retrato velho"), 0, "0 linhas: o carimbo segura");
+    assert.equal((await carimbo(cliente, nova30)).status, "em_processamento", "a reserva fica");
+    const e = await estado(cliente, O(147));
+    assert.equal(e.valorEstornado, 70);
+
+    // Legado: linha que JÁ existia antes da migration fica NULL (sem
+    // backfill) — simulado num banco SEM a coluna (DROP COLUMN), com a linha
+    // inserida antes e a migration aplicada por cima; depois, a linha nascida
+    // com o DEFAULT tirado (o estado depois do rollback) também fica NULL ao
+    // reaplicar. Tudo desfeito no ROLLBACK.
+    const sql = lerMigration(MIGRATION);
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query("ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao");
+      await pedido(cliente, O(149), { total: 100 });
+      const anterior = await linhaDoApp(cliente, O(149), 10);
+      await cliente.query(sql);
+      assert.equal((await carimbo(cliente, anterior)).criada_sob_autorizacao, null, "linha anterior à migration: legado (NULL)");
+      await cliente.query("ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao DROP DEFAULT");
+      await pedido(cliente, O(148), { total: 100 });
+      const antiga = await linhaDoApp(cliente, O(148), 10);
+      assert.equal((await carimbo(cliente, antiga)).criada_sob_autorizacao, null);
+      await cliente.query(sql);
+      assert.equal((await carimbo(cliente, antiga)).criada_sob_autorizacao, null, "reaplicar não reescreve a linha antiga");
+      const posterior = await linhaDoApp(cliente, O(148), 10);
+      assert.equal((await carimbo(cliente, posterior)).criada_sob_autorizacao, true);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+  },
+});
+
 PROVAS.push({
   nome: "(h) migration: reaplicar é no-op; preflight recusa sem a 20261192000000; rollback + reaplicar",
   corpo: async (cliente) => {
@@ -1100,6 +1201,8 @@ PROVAS.push({
     const rollback = lerMigration(`rollback-manual-${MIGRATION}`);
     await cliente.query("BEGIN");
     try {
+      // Aplicar DUAS vezes seguidas é no-op (as colunas, o DEFAULT, as funções).
+      await cliente.query(sql);
       await cliente.query(sql);
       await cliente.query(rollback);
       for (const fn of [FN_CONTESTACAO, FN_EXTERNO, FN_AUTORIZAR]) {
@@ -1112,11 +1215,32 @@ PROVAS.push({
             AND attname IN ('mp_chargeback_case_id', 'mp_chargeback_valor_do_caso') AND NOT attisdropped`,
       );
       assert.equal(colunas.rows[0].n, 2, "as colunas FICAM no rollback");
+      const r1 = await cliente.query(
+        `SELECT a.attname, pg_get_expr(d.adbin, d.adrelid) AS def
+           FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+          WHERE a.attrelid = 'public.order_refunds'::regclass
+            AND a.attname IN ('post_autorizado_em', 'criada_sob_autorizacao') AND NOT a.attisdropped
+          ORDER BY a.attname`,
+      );
+      assert.deepEqual(
+        r1.rows,
+        [
+          { attname: "criada_sob_autorizacao", def: null },
+          { attname: "post_autorizado_em", def: null },
+        ],
+        "as colunas do R1 FICAM (o carimbo é evidência de dinheiro) e o DEFAULT sai",
+      );
       const tabela = await cliente.query("SELECT to_regclass('public.contestacoes_decisao_final') AS t");
       assert.notEqual(tabela.rows[0].t, null, "a decisão final (histórico) FICA no rollback");
       await cliente.query(sql);
       const voltou = await cliente.query("SELECT to_regprocedure($1) AS f", [FN_CONTESTACAO]);
       assert.notEqual(voltou.rows[0].f, null);
+      const def = await cliente.query(
+        `SELECT pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attribute a
+           JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+          WHERE a.attrelid = 'public.order_refunds'::regclass AND a.attname = 'criada_sob_autorizacao'`,
+      );
+      assert.equal(def.rows[0]?.def, "true", "reaplicar devolve o DEFAULT");
     } finally {
       await cliente.query("ROLLBACK");
     }
@@ -1134,6 +1258,34 @@ PROVAS.push({
       assert.match(erro.message, /B1_BASELINE_DIVERGENT: public\.uq_order_refunds_pedido_contestacao/);
     } finally {
       await cliente.query("ROLLBACK");
+    }
+
+    // R1: post_autorizado_em com outro tipo, ou criada_sob_autorizacao com
+    // outro default: recusa, nada gravado.
+    for (const [preparo, padrao] of [
+      [
+        "ALTER TABLE public.order_refunds ALTER COLUMN post_autorizado_em TYPE timestamp without time zone",
+        /B1_BASELINE_DIVERGENT: public\.order_refunds\.post_autorizado_em/,
+      ],
+      [
+        "ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao SET DEFAULT false",
+        /B1_BASELINE_DIVERGENT: public\.order_refunds\.criada_sob_autorizacao já existe com default/,
+      ],
+    ]) {
+      await cliente.query("BEGIN");
+      try {
+        await cliente.query(preparo);
+        let erro = null;
+        try {
+          await cliente.query(sql);
+        } catch (e) {
+          erro = e;
+        }
+        assert.ok(erro, `o preflight recusa: ${preparo}`);
+        assert.match(erro.message, padrao);
+      } finally {
+        await cliente.query("ROLLBACK");
+      }
     }
 
     // Tabela da decisão final com OUTRA forma: recusa, nada gravado.

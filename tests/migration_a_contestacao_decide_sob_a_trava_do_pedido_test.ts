@@ -52,6 +52,11 @@ Deno.test("20261196: o preflight é o PRIMEIRO comando, recusa com RAISE EXCEPTI
   assertStringIncludes(bloco, "B1_BASELINE_DIVERGENT: public.order_refunds.mp_chargeback_id ausente");
   assertStringIncludes(bloco, "B1_BASELINE_DIVERGENT: public.uq_order_refunds_pedido_contestacao ausente");
   assertStringIncludes(bloco, "'CREATE UNIQUE INDEX uq_order_refunds_pedido_contestacao ON public.order_refunds USING btree (order_id, mp_chargeback_id) WHERE (mp_chargeback_id IS NOT NULL)'");
+  // R1 (revisão Opus de 14d77a5b): as colunas da linha incerta, se já
+  // existirem, têm de ter a forma desta migration.
+  assertStringIncludes(bloco, "B1_BASELINE_DIVERGENT: public.order_refunds.post_autorizado_em já existe como");
+  assertStringIncludes(bloco, "B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao já existe como");
+  assertStringIncludes(bloco, "B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao já existe com default");
 });
 
 Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas nascem NULL; nada apagado além das funções recriadas", () => {
@@ -63,6 +68,27 @@ Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas 
   for (const linha of topo.split("\n").filter((l) => /ADD COLUMN/i.test(l))) {
     assert(!/\bDEFAULT\b/i.test(linha), linha);
   }
+  // R1: as duas colunas da linha incerta, NULL nas linhas que já existem; o
+  // DEFAULT true de criada_sob_autorizacao vem DEPOIS, num ALTER COLUMN
+  // separado (só INSERT futuro) — no ADD COLUMN ele preencheria o legado.
+  assertStringIncludes(topo, "ADD COLUMN IF NOT EXISTS post_autorizado_em timestamptz;");
+  const addCriada = topo.indexOf("ADD COLUMN IF NOT EXISTS criada_sob_autorizacao boolean;");
+  const setDefault = topo.indexOf("ALTER COLUMN criada_sob_autorizacao SET DEFAULT true;");
+  assert(addCriada > 0 && setDefault > addCriada, "ADD COLUMN sem default, e SET DEFAULT depois");
+  const alteracoesDeOrderRefunds = [...topo.matchAll(/ALTER TABLE public\.order_refunds[^;]*;/g)].map((m) =>
+    m[0].replace(/\s+/g, " ")
+  );
+  assertEquals(
+    alteracoesDeOrderRefunds.filter((a) => /\bDEFAULT\b/i.test(a)),
+    ["ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao SET DEFAULT true;"],
+    "em order_refunds, o único DEFAULT é o SET DEFAULT true",
+  );
+  // O rollback tira o DEFAULT (edge antiga de volta não carimba) e guarda
+  // as colunas (o carimbo é evidência de dinheiro).
+  assertStringIncludes(
+    semComentarios(rollback),
+    "ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao DROP DEFAULT;",
+  );
   // A decisão final: tabela nova, fora do alcance do cliente, nunca apagada.
   assertStringIncludes(topo, "CREATE TABLE IF NOT EXISTS public.contestacoes_decisao_final (");
   assertStringIncludes(topo, "PRIMARY KEY (order_id, mp_chargeback_id)");
@@ -122,13 +148,14 @@ Deno.test("20261196: as duas funções travam o PEDIDO (FOR UPDATE) antes de dec
   assertEquals((semComentarios(migration).match(/SECURITY DEFINER\s+SET search_path = public/g) || []).length, 3);
 });
 
-Deno.test("20261196: autorizar_post_do_estorno trava a LINHA e depois o PEDIDO, e só escreve updated_at quando autoriza", () => {
+Deno.test("20261196: autorizar_post_do_estorno trava a LINHA e depois o PEDIDO, e só escreve updated_at e o carimbo do POST quando autoriza", () => {
   const autorizar = corpos(migration)[2];
   const linha = autorizar.search(/FROM public\.order_refunds\s+WHERE id = p_refund_id\s+FOR UPDATE;/);
   const pedido = autorizar.search(/FROM public\.marketplace_orders\s+WHERE id = v_linha\.order_id\s+FOR UPDATE;/);
   assert(linha > 0 && pedido > linha, "linha -> pedido");
   const escritas = [...autorizar.matchAll(/UPDATE public\.order_refunds\s+SET ([^;]*);/g)].map((m) => m[1].replace(/\s+/g, " ").trim());
-  assertEquals(escritas, ["updated_at = now() WHERE id = v_linha.id"]);
+  // R1: o MESMO UPDATE que renova updated_at carimba post_autorizado_em.
+  assertEquals(escritas, ["updated_at = now(), post_autorizado_em = now() WHERE id = v_linha.id"]);
   assert(autorizar.indexOf("'nao_cabe'") < autorizar.search(/UPDATE public\.order_refunds/), "nao_cabe volta antes de qualquer escrita");
   assertStringIncludes(semComentarios(rollback), "DROP FUNCTION public.autorizar_post_do_estorno(uuid, numeric);");
 });

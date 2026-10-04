@@ -77,6 +77,9 @@ export type LinhaEstorno = {
     status: 'solicitado' | 'em_processamento' | 'concluido' | 'falhou' | 'recusado'
     mp_refund_id: string | null
     tentativas: number
+    // R1 (20261196000000) — ver _shared/estorno.ts.
+    post_autorizado_em?: string | null
+    criada_sob_autorizacao?: boolean | null
 }
 
 export type PedidoParaEstorno = {
@@ -223,7 +226,9 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //    a edge, e a porta de admin já filtreou quem chegou até aqui).
         const { data: linha, error: erroLinha } = await supabase
             .from('order_refunds')
-            .select('id, order_id, amount, status, mp_refund_id, tentativas, solicitado_por')
+            // post_autorizado_em/criada_sob_autorizacao (R1, 20261196000000):
+            // o executor decide por elas se a linha pode já ter chegado ao MP.
+            .select('id, order_id, amount, status, mp_refund_id, tentativas, solicitado_por, post_autorizado_em, criada_sob_autorizacao')
             .eq('id', refundId)
             .maybeSingle()
         if (erroLinha) {
@@ -368,6 +373,8 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 status: 'em_processamento',
                 mp_refund_id: linha.mp_refund_id ?? null,
                 tentativas: Number(linha.tentativas ?? 0) + 1,
+                post_autorizado_em: linha.post_autorizado_em ?? null,
+                criada_sob_autorizacao: linha.criada_sob_autorizacao ?? null,
             },
             pedido: {
                 id: pedido.id,
@@ -496,7 +503,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             // O update é CONDICIONAL como a MARCA (M1 do laudo do PR #439):
             // estado terminal só substitui 'em_processamento' — se a T4/T5
             // concluiu no meio, 0 linhas voltam e NADA é sobrescrito.
-            const { data: fim, error: erroFim } = await supabase
+            let terminal = supabase
                 .from('order_refunds')
                 .update({
                     status: resultado.tipo,
@@ -505,7 +512,11 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 })
                 .eq('id', refundId)
                 .in('status', ['em_processamento'])
-                .select()
+            // R1 (20261196000000): `recusado` = nenhum POST saiu. Se outro
+            // executor autorizou um POST desta linha depois da nossa leitura,
+            // o carimbo existe e 0 linhas voltam (409 abaixo, estado real).
+            if (resultado.tipo === 'recusado') terminal = terminal.is('post_autorizado_em', null)
+            const { data: fim, error: erroFim } = await terminal.select()
             if (erroFim) {
                 console.error('[estornar-pagamento] Falha ao gravar o desfecho:', erroFim)
                 return json({ erro: 'A devolução terminou, mas o registro falhou. Atualize a página para ver o estado real.' }, 500)

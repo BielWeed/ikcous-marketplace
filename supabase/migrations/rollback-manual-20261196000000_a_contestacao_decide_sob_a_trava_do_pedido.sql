@@ -6,11 +6,17 @@
 -- `public.registrar_estorno_externo_do_mp` e
 -- `public.autorizar_post_do_estorno`). Elas NÃO existiam antes
 -- desta migration — não há corpo anterior a restaurar. NENHUMA linha de
--- `order_refunds` é tocada. As colunas `mp_chargeback_case_id` e
--- `mp_chargeback_valor_do_caso` e a tabela `public.contestacoes_decisao_final`
--- FICAM, de propósito: apagá-las perderia o vínculo, o valor confirmado e o
--- histórico das decisões finais de casos já registrados (dado de dinheiro) —
--- se um dia for preciso, é decisão do dono, com o SQL mostrado.
+-- `order_refunds` é tocada. Tira o DEFAULT true de
+-- `criada_sob_autorizacao`: com a edge antiga de volta (que não carimba
+-- `post_autorizado_em`), linha nova tem de nascer NULL (legado) — senão,
+-- reaplicada a migration, uma linha com POST antigo sem carimbo pareceria
+-- "nunca enviada" e poderia ser recusada. As colunas `mp_chargeback_case_id`,
+-- `mp_chargeback_valor_do_caso`, `post_autorizado_em` e
+-- `criada_sob_autorizacao` e a tabela `public.contestacoes_decisao_final`
+-- FICAM, de propósito: apagá-las perderia o vínculo, o valor confirmado, o
+-- histórico das decisões finais de casos já registrados e o carimbo de POST
+-- autorizado (dado de dinheiro) — se um dia for preciso, é decisão do dono,
+-- com o SQL mostrado.
 --
 -- Depois do rollback a edge NOVA do webhook falha ao registrar contestação
 -- (função ausente -> 500, o MP reenvia; nada é gravado pela metade).
@@ -41,8 +47,16 @@ BEGIN
   IF to_regprocedure('public.autorizar_post_do_estorno(uuid, numeric)') IS NULL THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.autorizar_post_do_estorno(...) ausente — nada a desfazer; revise antes de reverter.';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_attribute
+     WHERE attrelid = 'public.order_refunds'::regclass
+       AND attname = 'criada_sob_autorizacao' AND NOT attisdropped
+  ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao ausente — revise antes de reverter.';
+  END IF;
 END $preflight_rollback_20261196$;
 
 DROP FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer);
 DROP FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text);
 DROP FUNCTION public.autorizar_post_do_estorno(uuid, numeric);
+ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao DROP DEFAULT;

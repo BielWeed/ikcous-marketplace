@@ -44,6 +44,12 @@ export type LinhaEstorno = {
   status: "solicitado" | "em_processamento" | "concluido" | "falhou" | "recusado";
   mp_refund_id: string | null;
   tentativas: number;
+  // R1 (revisão Opus de 14d77a5b; colunas da 20261196000000). Opcionais:
+  // ausentes = linha LEGADA (o critério antigo vale) — o lado seguro.
+  /** Último POST autorizado por `autorizar_post_do_estorno`; presente = incerta. */
+  post_autorizado_em?: string | null;
+  /** true = nasceu depois da 20261196000000; NULL/ausente = legado. */
+  criada_sob_autorizacao?: boolean | null;
 };
 
 export type PedidoParaEstorno = {
@@ -89,11 +95,12 @@ export type ResultadoEstorno =
  * ainda cabe:
  *   * `autorizado` — devolve o pedido RELIDO; o executor ainda roda a guarda
  *     de entrada sobre ele (pagamento, prazo, saldo) antes do POST.
- *   * `nao_cabe` — nada sai; a linha fica em_processamento (reconciliável:
- *     o cron consulta o MP antes de qualquer repetição) e o motivo diz o que
- *     houve. Nunca terminal aqui: uma tentativa ANTERIOR desta mesma linha
- *     pode ter chegado ao MP sem confirmação, e liberar a reserva sem prova
- *     é o caminho do dinheiro sair duas vezes.
+ *   * `nao_cabe` — nada sai. Linha INCERTA (`linhaPodeJaTerChegadoAoMp`):
+ *     fica em_processamento (o cron consulta o MP antes de qualquer
+ *     repetição) — uma tentativa ANTERIOR pode ter chegado ao MP sem
+ *     confirmação, e liberar a reserva sem prova é o caminho do dinheiro
+ *     sair duas vezes. Linha NÃO incerta: `recusado` (nenhum POST saiu; R1
+ *     da revisão Opus de 14d77a5b — antes ela ficava reservada para sempre).
  *   * `linha_mudou` — outro executor concluiu/recusou a linha no meio.
  *   * `indisponivel` — o banco não respondeu ou respondeu algo ilegível.
  * Falha FECHADA: sem a autorização (ausente, erro, ilegível) nenhum POST
@@ -114,6 +121,11 @@ export type AutorizacaoDoPost =
 export const MOTIVO_SALDO_MUDOU_ANTES_DO_POST =
   "o saldo do pedido mudou enquanto a devolução era preparada (outra devolução já foi registrada pelo Mercado Pago) — nada foi enviado; confira o pedido no painel do Mercado Pago";
 
+/** Texto leigo do `recusado` quando o banco diz que o POST não cabe mais e a
+ * linha nunca teve POST (R1). */
+export const MOTIVO_SALDO_NAO_COBRE_MAIS =
+  "o saldo do pedido não cobre mais esta devolução (outra devolução já foi registrada pelo Mercado Pago) — nada foi enviado e o valor reservado foi liberado; confira o pedido no painel do Mercado Pago";
+
 /**
  * Sufixo do motivo quando a guarda de entrada recusaria uma linha INCERTA
  * (ver `linhaPodeJaTerChegadoAoMp`): nada é enviado e a reserva fica.
@@ -123,22 +135,28 @@ export const MOTIVO_LINHA_INCERTA =
 
 /**
  * A linha pode JÁ ter chegado ao MP? (Lote A, 04/10/2026 — achado do
- * coordenador em 1a823e3f.) Critério pelo que o código já grava:
- *   * `tentativas > 1` — todo chamador soma 1 na MARCA que antecede o
- *     executor (edge: tentativas lidas + 1; cron: idem nos dois caminhos), e
- *     toda marca antecede um POST possível. Chegar aqui com mais de 1 é ter
- *     sido marcada antes desta execução: um POST com a chave desta linha
- *     (sempre `linha.id`) pode ter saído e voltado sem resposta legível.
- *   * `mp_refund_id` presente — o MP já devolveu um id para esta linha.
- * Nada no projeto devolve uma linha a 'solicitado' (só INSERT nasce assim),
- * então a linha que chega com tentativas 1 e sem id do MP nunca teve POST.
- * Resíduo conhecido: dois cliques simultâneos na MESMA linha nova leem
- * tentativas 0 e gravam 1 ambos (a métrica perde um ponto, comentário da
- * edge); os dois POSTs, se saírem, usam a mesma chave e o MP os junta.
+ * coordenador em 1a823e3f; critério refeito no R1 da revisão Opus de
+ * 14d77a5b, colunas da 20261196000000.) CRITÉRIO EXATO — incerta se:
+ *   * `post_autorizado_em` presente — `autorizar_post_do_estorno` autorizou
+ *     um POST desta linha (todo POST do executor passa por ela antes);
+ *   * `mp_refund_id` presente (não vazio) — o MP já devolveu um id para ela;
+ *   * LEGADO: `criada_sob_autorizacao` diferente de true (linha anterior à
+ *     migration, ou campo ausente) E `tentativas > 1` — o executor antigo
+ *     não carimbava, e toda MARCA (tentativas + 1) antecedia um POST
+ *     possível; a linha que chega com tentativas 1 nunca foi marcada antes.
+ * Linha nascida depois da migration (true) NÃO é incerta só por
+ * `tentativas > 1`: tentativas sobe também em passagem que parou ANTES do
+ * POST (nao_cabe, GET da transação falhou, autorização indisponível), e
+ * contar isso como "pode ter saído" deixava a reserva presa para sempre.
+ * Resíduos no cabeçalho da 20261196000000 (POST real que o MP nunca
+ * processou; janela entre migration e edges novas).
  */
 export function linhaPodeJaTerChegadoAoMp(linha: LinhaEstorno): boolean {
-  return Number(linha.tentativas ?? 0) > 1 ||
-    (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "");
+  if (typeof linha.post_autorizado_em === "string" && linha.post_autorizado_em !== "") {
+    return true;
+  }
+  if (typeof linha.mp_refund_id === "string" && linha.mp_refund_id !== "") return true;
+  return linha.criada_sob_autorizacao !== true && Number(linha.tentativas ?? 0) > 1;
 }
 
 type ChamarRpc = (
@@ -1493,13 +1511,26 @@ export async function executarEstorno(args: {
     autorizacao = { decisao: "indisponivel" };
   }
   if (autorizacao.decisao === "nao_cabe") {
+    if (!linhaPodeJaTerChegadoAoMp(linha)) {
+      // R1: nenhum POST desta linha saiu (nem carimbo, nem id do MP, nem
+      // legado com marca anterior) — recusar é seguro e libera a reserva. A
+      // escrita terminal dos chamadores exige post_autorizado_em IS NULL: se
+      // outro executor autorizou no meio, 0 linhas e nada é sobrescrito.
+      console.error(
+        "estorno: o saldo relido não cobre mais este POST e a linha nunca teve POST — recusada",
+        linha.id,
+        linha.amount,
+        autorizacao.disponivel,
+      );
+      return { tipo: "recusado", motivo: MOTIVO_SALDO_NAO_COBRE_MAIS };
+    }
     console.error(
-      "estorno: o saldo relido não cobre mais este POST — nada enviado, linha preservada em_processamento",
+      "estorno: o saldo relido não cobre mais este POST — nada enviado, linha incerta preservada em_processamento",
       linha.id,
       linha.amount,
       autorizacao.disponivel,
     );
-    return { tipo: "tentar_depois", motivo: MOTIVO_SALDO_MUDOU_ANTES_DO_POST };
+    return { tipo: "tentar_depois", motivo: `${MOTIVO_SALDO_MUDOU_ANTES_DO_POST}; ${MOTIVO_LINHA_INCERTA}` };
   }
   if (autorizacao.decisao === "linha_mudou") {
     return {

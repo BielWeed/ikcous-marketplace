@@ -223,7 +223,7 @@ async function gravarDesfechoDoEstorno(
   // 4296/order_already_refunded (o MP contradisse a si mesmo) — é terminal
   // mesmo (a alternativa B do I-A garante que o caminho DIRETO desta função
   // nunca produz `falhou` por "ainda não apareceu").
-  const { error } = await supabase
+  let terminal = supabase
     .from("order_refunds")
     .update({
       status: resultado.tipo,
@@ -232,6 +232,11 @@ async function gravarDesfechoDoEstorno(
     })
     .eq("id", refundId)
     .in("status", ["em_processamento"]);
+  // R1 (20261196000000): `recusado` = nenhum POST saiu. Se outro executor
+  // autorizou um POST desta linha depois da nossa leitura, o carimbo existe
+  // e 0 linhas voltam — a reserva fica (a linha é incerta agora).
+  if (resultado.tipo === "recusado") terminal = terminal.is("post_autorizado_em", null);
+  const { error } = await terminal;
   if (error) {
     console.error("reconciliar-pagamentos: falha ao gravar o desfecho terminal do estorno", refundId, error);
   }
@@ -1156,7 +1161,9 @@ async function handler(
     const doisMinutosAtras = new Date(Date.now() - 2 * 60 * 1000).toISOString();
     const { data: refundsPendentes, error: erroRefunds } = await supabase
       .from("order_refunds")
-      .select("id, order_id, amount, status, tentativas, mp_refund_id")
+      // post_autorizado_em/criada_sob_autorizacao (R1, 20261196000000): o
+      // executor decide por elas se a linha pode já ter chegado ao MP.
+      .select("id, order_id, amount, status, tentativas, mp_refund_id, post_autorizado_em, criada_sob_autorizacao")
       .in("status", ["solicitado", "em_processamento"])
       // T5 (webhook): linha `solicitado_por = 'sistema'` é dinheiro que JÁ
       // se moveu FORA do app (estorno no painel do MP, chargeback) — o cron
@@ -1316,6 +1323,8 @@ async function handler(
             status: "em_processamento",
             mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
             tentativas: Number(refund.tentativas ?? 0) + 1,
+            post_autorizado_em: (refund.post_autorizado_em as string | null) ?? null,
+            criada_sob_autorizacao: (refund.criada_sob_autorizacao as boolean | null) ?? null,
           };
           const resultado = await executarEstorno({
             linha,
@@ -1349,6 +1358,8 @@ async function handler(
           status: "em_processamento",
           mp_refund_id: (refund.mp_refund_id as string | null) ?? null,
           tentativas: tentativasAtuais,
+          post_autorizado_em: (refund.post_autorizado_em as string | null) ?? null,
+          criada_sob_autorizacao: (refund.criada_sob_autorizacao as boolean | null) ?? null,
         };
         const confirmacao = await confirmarPorConsulta({
           buscar: buscarEstorno,

@@ -133,7 +133,7 @@ const AUTH_JWT_VELHO_ADMIN = "Bearer " + [
 
 globalThis.fetch = fetchAdminFalso
 const { handler } = await import("./index.ts")
-const { MOTIVO_LINHA_INCERTA, MOTIVO_SALDO_MUDOU_ANTES_DO_POST } = await import("../_shared/estorno.ts")
+const { MOTIVO_LINHA_INCERTA, MOTIVO_SALDO_MUDOU_ANTES_DO_POST, MOTIVO_SALDO_NAO_COBRE_MAIS } = await import("../_shared/estorno.ts")
 globalThis.fetch = fetchNativo
 
 async function comFetch(fetchFalso: any, executar: () => Promise<any>): Promise<any> {
@@ -221,6 +221,10 @@ function clienteSupaFalso(opts: {
     // pergunta do executor ao banco antes do POST). Default: autorizado com o
     // MESMO pedido desta fixture (o banco não mudou nada no meio).
     autorizacao?: any
+    // R1 (20261196000000): devolve a linha só com as colunas que o SELECT da
+    // edge pediu — tirar uma coluna do SELECT tira o campo da linha, como no
+    // PostgREST de verdade.
+    projetarColunas?: boolean
 } = {}) {
     const registro = {
         leiturasLinha: 0,
@@ -290,6 +294,11 @@ function clienteSupaFalso(opts: {
                     no.filtros.push({ metodo: "in", coluna, valores })
                     return api
                 },
+                // R1: `.is('post_autorizado_em', null)` na escrita do recusado.
+                is(coluna: string, valor: any) {
+                    no.filtros.push({ metodo: "is", coluna, valor })
+                    return api
+                },
                 maybeSingle() {
                     return api
                 },
@@ -343,6 +352,13 @@ function clienteSupaFalso(opts: {
             // o cron/webhook gravou no meio, não a linha original.
             if (registro.leiturasLinha > 1 && "linhaFinal" in opts) {
                 return promessa({ data: opts.linhaFinal ?? null, error: null })
+            }
+            if (opts.projetarColunas && opts.linha && typeof no.colunas === "string") {
+                const colunas = no.colunas.split(",").map((c: string) => c.trim())
+                const projetada = Object.fromEntries(
+                    Object.entries(opts.linha).filter(([k]) => colunas.includes(k)),
+                )
+                return promessa({ data: projetada, error: null })
             }
             return promessa({ data: opts.linha ?? null, error: null })
         }
@@ -908,10 +924,13 @@ Deno.test("F11 - recusado grava estado terminal com motivo e o update so' pega l
     assertEquals(registro.finais[0].valores.ultimo_erro, "o cartão do estorno foi negado pelo banco emissor")
     // ...e é CONDICIONAL (M1): id E status='em_processamento' — estado
     // terminal só substitui a marca; concluído por cron/webhook no meio
-    // NÃO é sobrescrito.
+    // NÃO é sobrescrito. R1 (20261196000000): o `recusado` exige também
+    // post_autorizado_em IS NULL — se outro executor autorizou um POST desta
+    // linha no meio, 0 linhas e a reserva fica.
     assertEquals(registro.finais[0].filtros, [
         { metodo: "eq", coluna: "id", valor: REFUND_ID },
         { metodo: "in", coluna: "status", valores: ["em_processamento"] },
+        { metodo: "is", coluna: "post_autorizado_em", valor: null },
     ])
     // Estado terminal não passa pela RPC de soma — recusado é recusado.
     assertEquals(registro.rpcs.length, 0)
@@ -1209,11 +1228,53 @@ Deno.test("F12b - defesa em profundidade: a MARCA de uma linha legítima carrega
 // o banco dizendo "não cabe mais" => nenhum POST, 202, a linha fica
 // em_processamento com o motivo em ultimo_erro — nunca terminal.
 
-Deno.test("LEASE-E1 - o banco diz que o POST não cabe mais (REF do painel registrado no meio): NENHUM POST, 202, linha preservada com o motivo", async () => {
+Deno.test("LEASE-E1 - o banco diz que o POST não cabe mais numa linha que NUNCA teve POST: NENHUM POST, recusado (R1), escrita condicionada ao carimbo", async () => {
+    // R1 (revisão Opus de 14d77a5b): antes, 202 e a linha preservada — e
+    // sem POST nenhum ela ficava reservada para sempre. A linha INCERTA no
+    // mesmo nao_cabe segue preservada: LEASE-E1b, abaixo.
     const { cliente, registro } = clienteSupaFalso({
         linha: { ...LINHA_SOLICITADA, amount: 20 },
         pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
         autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+    })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), {
+                supabase: cliente,
+                buscar: mp.buscar,
+            }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "recusado")
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0, "nenhum POST saiu")
+    assertEquals(registro.autorizacoes, [{ p_refund_id: REFUND_ID, p_valor: 20 }])
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.ultimo_erro, MOTIVO_SALDO_NAO_COBRE_MAIS)
+    assertEquals(
+        registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em" && f.valor === null),
+        true,
+        "o recusado só pega linha sem POST autorizado",
+    )
+    assertEquals(registro.rpcs.length, 0, "nada concluído")
+})
+
+Deno.test("LEASE-E1b - a MESMA situação numa linha com POST autorizado antes (post_autorizado_em, pelo SELECT real): 202, linha preservada, nada terminal", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: {
+            ...LINHA_SOLICITADA,
+            amount: 20,
+            status: "em_processamento",
+            tentativas: 1,
+            criada_sob_autorizacao: true,
+            post_autorizado_em: "2026-10-04T10:00:00Z",
+        },
+        pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
+        autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+        // A linha chega ao executor SÓ com o que o SELECT da edge pediu: sem
+        // post_autorizado_em no SELECT, ela pareceria nunca enviada.
+        projetarColunas: true,
     })
     const mp = fetchOrderRefundFalso()
     const resposta = await comEnv({}, () =>
@@ -1233,7 +1294,8 @@ Deno.test("LEASE-E1 - o banco diz que o POST não cabe mais (REF do painel regis
     assertEquals(registro.finais.length, 0, "nada terminal")
     assertEquals(registro.rpcs.length, 0, "nada concluído")
     const adiamento = registro.atualizacoes.find((u: any) => u.valores && "ultimo_erro" in u.valores)
-    assertEquals(adiamento?.valores.ultimo_erro, MOTIVO_SALDO_MUDOU_ANTES_DO_POST)
+    assertEquals(String(adiamento?.valores.ultimo_erro).startsWith(MOTIVO_SALDO_MUDOU_ANTES_DO_POST), true)
+    assertEquals(String(adiamento?.valores.ultimo_erro).includes(MOTIVO_LINHA_INCERTA), true)
     assertEquals(adiamento?.filtros.some((f: any) => f.metodo === "in" && f.valores.includes("em_processamento")), true)
 })
 
@@ -1300,4 +1362,65 @@ Deno.test("INCERTA-E2 (controle) - linha NOVA (solicitado, tentativas 0) com o p
     assertEquals(mp.registro.chamadas, 0)
     assertEquals(registro.finais.length, 1)
     assertEquals(registro.finais[0].valores.status, "recusado")
+})
+
+// ── R1 (revisão Opus de 14d77a5b): linha nascida depois da 20261196000000
+// que só passou por tentativas SEM POST (tentativas 2, sem carimbo) não é
+// incerta — a guarda a recusa e a reserva é liberada. A coluna
+// criada_sob_autorizacao tem de vir no SELECT da edge: sem ela a linha cai
+// no critério LEGADO (tentativas > 1 = incerta) e fica presa.
+
+Deno.test("R1-E1 - linha nova (criada_sob_autorizacao) com tentativas 2 e sem POST autorizado, pedido em 90: recusado, zero chamada ao MP", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: {
+            ...LINHA_SOLICITADA,
+            amount: 20,
+            status: "em_processamento",
+            tentativas: 2,
+            criada_sob_autorizacao: true,
+            post_autorizado_em: null,
+        },
+        pedido: { ...PEDIDO_PAGO, valor_estornado: 90 },
+        projetarColunas: true,
+    })
+    const mp = fetchMpFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 200)
+    assertEquals((await resposta.json()).status, "recusado")
+    assertEquals(mp.registro.chamadas, 0, "zero chamada ao MP")
+    assertEquals(registro.finais.length, 1)
+    assertEquals(registro.finais[0].valores.status, "recusado")
+    assertEquals(
+        registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em" && f.valor === null),
+        true,
+    )
+    assertEquals(
+        String(registro.colunasDaLinha).includes("post_autorizado_em") &&
+            String(registro.colunasDaLinha).includes("criada_sob_autorizacao"),
+        true,
+        "o SELECT da linha traz as duas colunas do critério",
+    )
+})
+
+Deno.test("R1-E2 - o recusado perdeu a corrida para um POST autorizado no meio (0 linhas no UPDATE condicionado): 409 com o estado real, nada sobrescrito", async () => {
+    const { cliente, registro } = clienteSupaFalso({
+        linha: { ...LINHA_SOLICITADA, amount: 20 },
+        linhaFinal: { status: "em_processamento" },
+        pedido: { ...PEDIDO_ORDER, valor_estornado: 20 },
+        autorizacao: { decisao: "nao_cabe", disponivel: 10 },
+        finais: [0],
+    })
+    const mp = fetchOrderRefundFalso()
+    const resposta = await comEnv({}, () =>
+        comFetch(fetchAdminFalso, () =>
+            handler(requisicao({ refund_id: REFUND_ID }, AUTH_ADMIN), { supabase: cliente, buscar: mp.buscar }),
+        ),
+    )
+    assertEquals(resposta.status, 409)
+    assertEquals(await resposta.json(), { erro: "estorno_ja_tratado", status: "em_processamento" })
+    assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0)
 })
