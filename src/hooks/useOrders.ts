@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useLeaderElection } from "@/hooks/useLeaderElection";
 import { JANELA_PEDIDOS_CANCELADOS_DIAS } from "@/lib/janela-cancelados";
 import { mapOrderFromDB } from "@/lib/mappers";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import type { DashboardSummary, Order, OrderStatus } from "@/types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -2220,7 +2221,7 @@ export function useOrders(
           return [newOrder, ...prev];
         });
         if (!onRealtimeEventRef.current) {
-          toast.info(`Novo pedido recebido! #${newOrder.id.slice(0, 8)}`);
+          toast.info(`Novo pedido recebido! #${numeroDoPedido(newOrder.id)}`);
         }
       }
     },
