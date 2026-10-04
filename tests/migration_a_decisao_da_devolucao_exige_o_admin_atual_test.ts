@@ -356,6 +356,8 @@ Deno.test("o cabeçalho declara o que acontece com os dados existentes e a ordem
   );
   assertStringIncludes(migration, "IDEMPOTÊNCIA:");
   assertStringIncludes(migration, "B1_BASELINE_DIVERGENT");
+  // A ordem do rollback (200 ANTES da 97): o cabeçalho a declara de fato.
+  assertStringIncludes(migration, "ROLLBACK: este vem ANTES do da 97");
 });
 
 Deno.test("a prova viva roda no rpc-ci", () => {

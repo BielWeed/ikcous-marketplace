@@ -518,3 +518,53 @@ Deno.test("contrato com a edge estornar-pagamento: a MESMA autoridade atual (app
     );
   }
 });
+
+Deno.test("o rollback da 97 RECUSA (antes de escrever) enquanto função ou política FORA da 97 ainda usa is_admin_atual()/rls_admin_atual() — o conjunto 'da 97' é o que ela mesma define", () => {
+  const preflight = rollback.slice(
+    0,
+    rollback.indexOf("END $preflight_rollback_20261197$"),
+  );
+  // As funções da própria 97: tudo o que ela cria ou redefine.
+  const proprias = [
+    ...semComentarios(migration).matchAll(
+      /^CREATE OR REPLACE FUNCTION public\.(\w+)\(([^)]*)\)/gm,
+    ),
+  ].map((m) => m[1]);
+  assertEquals(proprias.length, 8, "a 97 define 8 funções");
+  const listadas = [
+    ...preflight
+      .slice(preflight.indexOf("unnest(ARRAY["))
+      .matchAll(/'public\.(\w+)\(/g),
+  ].map((m) => m[1]);
+  assertEquals(listadas.sort(), proprias.sort());
+  // As cinco políticas da 97: as ALTER POLICY dela.
+  const politicas = [
+    ...semComentarios(migration).matchAll(
+      /^ALTER POLICY (\w+) ON (public\.\w+)/gm,
+    ),
+  ].map((m) => `('${m[2]}', '${m[1]}')`);
+  assertEquals(politicas.length, 5);
+  const bloco = preflight.slice(preflight.indexOf("NOT IN ("));
+  for (const par of politicas) assertStringIncludes(bloco, par);
+  // Recusa nomeando o quê, sem escrever (o bloco vem antes de qualquer CREATE/DROP).
+  assertStringIncludes(preflight, "p.prosrc ~ '(is|rls)_admin_atual'");
+  assertStringIncludes(
+    preflight,
+    "pg_get_expr(pol.polqual, pol.polrelid) ~ '(is|rls)_admin_atual'",
+  );
+  assertStringIncludes(preflight, "funções fora da 20261197000000 ainda usam");
+  assertStringIncludes(
+    preflight,
+    "políticas fora da 20261197000000 ainda usam",
+  );
+  // Quatro recusas: corpo vivo, política viva, função dependente, política dependente.
+  assertEquals(
+    (preflight.match(/RAISE EXCEPTION 'B1_BASELINE_DIVERGENT/g) || []).length,
+    4,
+  );
+  // O cabeçalho do rollback declara a ordem.
+  assertStringIncludes(
+    rollback,
+    "DEPOIS dos que usam as funções que ele apaga",
+  );
+});

@@ -1659,27 +1659,55 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // (B1_BASELINE_DIVERGENT — correto: nunca restaurar por baixo de uma
 // redefinição posterior). Para desfazer a 97 dentro da transação, desfaz-se
 // antes a 98, na ordem inversa da aplicação (98 → 97).
-const NOME_1198 = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
 
-// A 20261202000000 põe `rls_admin_atual()` (da 97) em 14 políticas de RLS. O
-// rollback da 97 apaga essa função: com a 202 no ar o DROP falha por
-// dependência (o comportamento CERTO). Como estas seções medem a 95 ISOLADA,
-// a 202 é desfeita primeiro, DENTRO da transação (ordem inversa da aplicação);
-// o ROLLBACK do fim devolve as duas. Sem a 202 no ar, não faz nada.
-const NOME_1202 =
-  "20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql";
-
-async function desfazer202NaTransacao(c) {
-  const r = await c.query(
-    `SELECT EXISTS (
+// As migrations POSTERIORES à 97 que dependem de `is_admin_atual()` /
+// `rls_admin_atual()` (20261202, 20261200, 20261199 e, se presente, 20261198)
+// bloqueiam o rollback da 97 (o preflight dele recusa: apagar as funções
+// deixaria o painel chamando função inexistente — o comportamento CERTO).
+// Como estas seções medem a 95 ISOLADA, as posteriores são desfeitas primeiro,
+// DENTRO da transação, na ordem inversa da aplicação; o ROLLBACK do fim
+// devolve tudo. Cada uma só é desfeita se estiver no ar.
+const POSTERIORES_A_97 = [
+  {
+    nome: "20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql",
+    noAr: `SELECT EXISTS (
        SELECT 1 FROM pg_policy
         WHERE polname = 'fin_lancamentos_admin_select_policy'
           AND polrelid = to_regclass('public.fin_lancamentos')
-          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%'
-     ) AS sim`,
-  );
-  if (!r.rows[0].sim) return;
-  await c.query(lerMigracao(`rollback-manual-${NOME_1202}`));
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%') AS sim`,
+  },
+  {
+    nome: "20261200000000_a_decisao_da_devolucao_exige_o_admin_atual.sql",
+    noAr: `SELECT prosrc LIKE '%is_admin_atual%' AS sim FROM pg_proc
+            WHERE oid = to_regprocedure('public.admin_devolucao_decidir(uuid,boolean,text,timestamptz)')`,
+  },
+  {
+    nome: "20261199000000_portas_do_painel_exigem_admin_atual.sql",
+    noAr: `SELECT prosrc LIKE '%is_admin_atual%' AS sim FROM pg_proc
+            WHERE oid = to_regprocedure('public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)')`,
+  },
+  {
+    nome: "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+    noAr: `SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim`,
+  },
+];
+
+async function desfazerPosterioresNaTransacao(c) {
+  for (const { nome, noAr } of POSTERIORES_A_97) {
+    const caminho = path.join(
+      __dirname,
+      "..",
+      "..",
+      "supabase",
+      "migrations",
+      `rollback-manual-${nome}`,
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+    if (!fs.existsSync(caminho)) continue;
+    const r = await c.query(noAr);
+    if (!r.rows[0] || r.rows[0].sim !== true) continue;
+    await c.query(lerMigracao(`rollback-manual-${nome}`));
+  }
 }
 
 async function a97EstaNoAr(c) {
@@ -1702,7 +1730,9 @@ async function desfazer97NaTransacao(c) {
     "422cfaa8c53cefc1913b9e082442631d",
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
-  await c.query(lerMigracao(`rollback-manual-${NOME_1198}`));
+  // Na ordem inversa da aplicação: 202, 200, 99 e 98 (os dependentes da 97;
+  // com qualquer um no ar o rollback da 97 recusa), e só então a 97.
+  await desfazerPosterioresNaTransacao(c);
   await c.query(lerMigracao(`rollback-manual-${NOME_1197}`));
 }
 
@@ -1800,7 +1830,6 @@ PROVAS.push({
         await c.query("ROLLBACK TO SAVEPOINT sobre_a_97");
         assert.deepEqual(await hashesVivos(c), vivoAntes);
         // Daqui em diante: a 95 isolada (a 97 desfeita SÓ nesta transação).
-        await desfazer202NaTransacao(c);
         await desfazer97NaTransacao(c);
         assert.deepEqual(
           await hashesVivos(c),
@@ -2202,7 +2231,6 @@ PROVAS.push({
         );
         // Daqui em diante, a 95 ISOLADA: a 97 desfeita SÓ nesta transação (o
         // ROLLBACK do fim a devolve — conferido depois do finally).
-        await desfazer202NaTransacao(c);
         await desfazer97NaTransacao(c);
       }
 

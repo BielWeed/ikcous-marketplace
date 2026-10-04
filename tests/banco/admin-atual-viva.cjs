@@ -199,82 +199,104 @@ async function catalogo(cliente, assinatura) {
 // As duas funções que a migration cria.
 const FUNCOES_NOVAS = ["public.is_admin_atual()", "public.rls_admin_atual()"];
 
-// COMPOSIÇÃO com a 20261198000000, que redefine admin_devolucao_reemitir_
-// reembolso DEPOIS desta (o corpo da 97 com a guarda intacta + a trava das
-// linhas de order_refunds antes do pedido). As provas (1)-(4) medem a guarda
-// no corpo VIVO — com a 98 no ar, é o dela. Já os passos que DESFAZEM ou
-// REAPLICAM a 97 medem a 97 ISOLADA: com a 98 no ar, o rollback da 97 recusa
-// (B1_BASELINE_DIVERGENT, o comportamento CORRETO — nunca restaurar por baixo
-// de uma redefinição posterior) e o preflight da 97 também. Então, DENTRO da
-// transação desses passos, o rollback-manual da 98 devolve primeiro o estado
-// "97 sem 98"; o ROLLBACK do fim devolve a 98 intacta. A 98 é AFIRMADA pelo
-// hash antes (nenhum "pula se não estiver no ar"): sem ela, a prova falha.
-const NOME_98 = "20261198000000_cancelar_pedido_anula_a_cobranca.sql";
+// A 20261198000000 redefine admin_devolucao_reemitir_reembolso DEPOIS da 97
+// (o corpo da 97 com a guarda intacta + a trava das linhas de order_refunds
+// antes do pedido). A 98 é AFIRMADA pelo hash do reemitir que ela deixa antes
+// de qualquer rollback (nenhum "pula se não estiver no ar"): sem ela, a prova
+// falha; depois de desfeita, o reemitir vivo tem de ser o da 97.
+const HASH_97_REEMITIR = "7a5ce4978a989e1bebb3d048d347c0c6";
+const HASH_98_REEMITIR = "422cfaa8c53cefc1913b9e082442631d";
+const REEMITIR = "public.admin_devolucao_reemitir_reembolso(uuid,boolean)";
 const CAMINHO_ROLLBACK_98 = path.join(
   __dirname,
   "..",
   "..",
   "supabase",
   "migrations",
-  `rollback-manual-${NOME_98}`,
+  "rollback-manual-20261198000000_cancelar_pedido_anula_a_cobranca.sql",
 );
-// O corpo de admin_devolucao_reemitir_reembolso que a 97 deixa, e o que a 98
-// deixa (a 98 só acrescenta a trava das linhas antes do pedido).
-const HASH_97_REEMITIR = "7a5ce4978a989e1bebb3d048d347c0c6";
-const HASH_98_REEMITIR = "422cfaa8c53cefc1913b9e082442631d";
 
+// Só a 98, para os passos que NÃO desfazem a 97 (o preflight da 97 e do
+// rollback da 97 por cima de estado divergente medem a 97 sem a 98).
 async function desfazer98NaTransacao(cliente) {
-  const antes = await catalogo(
-    cliente,
-    "public.admin_devolucao_reemitir_reembolso(uuid,boolean)",
-  );
   assert.equal(
-    antes.hash,
+    (await catalogo(cliente, REEMITIR)).hash,
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_98 é constante do próprio teste (path.join de literais).
   await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_98, "utf8"));
-  const reemitir = await catalogo(
-    cliente,
-    "public.admin_devolucao_reemitir_reembolso(uuid,boolean)",
-  );
   assert.equal(
-    reemitir.hash,
+    (await catalogo(cliente, REEMITIR)).hash,
     HASH_97_REEMITIR,
     "sem a 98, o reemitir vivo é o da 97",
   );
 }
 
-// COMPOSIÇÃO com a 20261202000000, que põe `rls_admin_atual()` (criada AQUI) em
-// 14 políticas de outras tabelas (pedido, devolução, financeiro). As provas
-// (1)-(4) medem a 97 no banco VIVO; já os passos que DESFAZEM a 97 medem a 97
-// ISOLADA: o rollback dela apaga `rls_admin_atual()`, que a 202 usa — com a
-// 202 no ar o DROP falha por dependência (o comportamento CERTO: fecha, não
-// abre). Então, DENTRO da transação desses passos, o rollback-manual da 202
-// devolve primeiro o estado "97 sem 202", na ordem inversa da aplicação; o
-// ROLLBACK do fim devolve a 202 intacta. Sem a 202 no ar, não faz nada.
-const CAMINHO_ROLLBACK_202 = path.join(
-  __dirname,
-  "..",
-  "..",
-  "supabase",
-  "migrations",
-  "rollback-manual-20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql",
-);
-
-async function desfazer202NaTransacao(cliente) {
-  const r = await cliente.query(
-    `SELECT EXISTS (
+// COMPOSIÇÃO com as migrations POSTERIORES à 97 que dependem de
+// `is_admin_atual()` / `rls_admin_atual()` (criadas AQUI): a 20261199000000
+// (42 RPCs do painel), a 20261200000000 (3 RPCs da devolução), a
+// 20261202000000 (14 políticas de RLS) e, se presente, a 20261198000000. O
+// rollback da 97 apaga as duas funções; com qualquer dessas no ar o preflight
+// dele RECUSA (B1_BASELINE_DIVERGENT — o comportamento CERTO, provado na
+// prova (6b) abaixo: nunca deixar o painel chamando função inexistente). As
+// provas (1)-(4) medem a 97 no banco VIVO (com as posteriores); já os passos
+// que DESFAZEM a 97 medem a 97 ISOLADA: DENTRO da transação deles, os
+// rollbacks-manuais das posteriores devolvem primeiro o estado "97 sem as
+// posteriores", na ordem inversa da aplicação (202, 200, 99, 98); o ROLLBACK do
+// fim devolve tudo. Cada uma só é desfeita se estiver no ar.
+const POSTERIORES_A_97 = [
+  {
+    nome: "20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql",
+    noAr: `SELECT EXISTS (
        SELECT 1 FROM pg_policy
         WHERE polname = 'fin_lancamentos_admin_select_policy'
           AND polrelid = to_regclass('public.fin_lancamentos')
-          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%'
-     ) AS sim`,
+          AND pg_get_expr(polqual, polrelid) LIKE '%rls_admin_atual%') AS sim`,
+  },
+  {
+    nome: "20261200000000_a_decisao_da_devolucao_exige_o_admin_atual.sql",
+    noAr: `SELECT prosrc LIKE '%is_admin_atual%' AS sim FROM pg_proc
+            WHERE oid = to_regprocedure('public.admin_devolucao_decidir(uuid,boolean,text,timestamptz)')`,
+  },
+  {
+    nome: "20261199000000_portas_do_painel_exigem_admin_atual.sql",
+    noAr: `SELECT prosrc LIKE '%is_admin_atual%' AS sim FROM pg_proc
+            WHERE oid = to_regprocedure('public.get_admin_orders_paged(text,text,text,text,integer,integer,text,text)')`,
+  },
+  {
+    nome: "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
+    noAr: `SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim`,
+  },
+];
+
+async function desfazerPosterioresNaTransacao(cliente) {
+  assert.equal(
+    (await catalogo(cliente, REEMITIR)).hash,
+    HASH_98_REEMITIR,
+    "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
-  if (!r.rows[0].sim) return;
-  // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK_202 é constante do próprio teste (path.join de literais).
-  await cliente.query(fs.readFileSync(CAMINHO_ROLLBACK_202, "utf8"));
+  for (const { nome, noAr } of POSTERIORES_A_97) {
+    const caminho = path.join(
+      __dirname,
+      "..",
+      "..",
+      "supabase",
+      "migrations",
+      `rollback-manual-${nome}`,
+    );
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+    if (!fs.existsSync(caminho)) continue;
+    const r = await cliente.query(noAr);
+    if (!r.rows[0] || r.rows[0].sim !== true) continue;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+    await cliente.query(fs.readFileSync(caminho, "utf8"));
+  }
+  assert.equal(
+    (await catalogo(cliente, REEMITIR)).hash,
+    HASH_97_REEMITIR,
+    "sem a 98, o reemitir vivo é o da 97",
+  );
 }
 
 // As políticas de RLS financeira, deparseadas com search_path = pg_catalog
@@ -1007,8 +1029,7 @@ PROVAS.push({
     for (const quem of ["rebaixadoPerfil", "rebaixadoAuth", "rebaixadoAmbos"]) {
       await cliente.query("BEGIN");
       try {
-        await desfazer202NaTransacao(cliente);
-        await desfazer98NaTransacao(cliente);
+        await desfazerPosterioresNaTransacao(cliente);
         await cliente.query(rollback);
         await cliente.query(`SET LOCAL ROLE ${QUEM[quem].papel}`);
         await cliente.query(
@@ -1033,8 +1054,7 @@ PROVAS.push({
     // service_role: o mesmo resultado com a política nova e a antiga.
     await cliente.query("BEGIN");
     try {
-      await desfazer202NaTransacao(cliente);
-      await desfazer98NaTransacao(cliente);
+      await desfazerPosterioresNaTransacao(cliente);
       await cliente.query(rollback);
       await cliente.query("SET LOCAL ROLE service_role");
       const srAntigo = (await cliente.query(CONTAGEM)).rows[0];
@@ -1115,8 +1135,7 @@ PROVAS.push({
     for (const [rotulo, divergir, regex] of divergencias) {
       await cliente.query("BEGIN");
       try {
-        await desfazer202NaTransacao(cliente);
-        await desfazer98NaTransacao(cliente);
+        await desfazerPosterioresNaTransacao(cliente);
         await cliente.query(rollback);
         await divergir();
         const antesDeAplicar = await estado(cliente);
@@ -1151,8 +1170,7 @@ PROVAS.push({
     const migration = fs.readFileSync(CAMINHO_MIGRATION, "utf8");
     await cliente.query("BEGIN");
     try {
-      await desfazer202NaTransacao(cliente);
-      await desfazer98NaTransacao(cliente);
+      await desfazerPosterioresNaTransacao(cliente);
       const depoisDaMigration = await estado(cliente);
       await cliente.query(rollback);
       for (const a of GUARDADAS) {
@@ -1272,6 +1290,136 @@ PROVAS.push({
         await cliente.query("ROLLBACK");
       }
     }
+  },
+});
+
+// Impressão digital do que o rollback da 97 poderia escrever: todas as
+// funções de public/auth (corpo, ACL, dono) e todas as políticas.
+async function digitalDoRollback(cliente) {
+  const r = await cliente.query(`
+    SELECT md5(string_agg(t, '|' ORDER BY t)) AS h FROM (
+      SELECT p.oid::regprocedure::text || ' ' || md5(p.prosrc) || ' ' || coalesce(p.proacl::text, '') AS t
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname IN ('public', 'auth')
+      UNION ALL
+      SELECT pol.polrelid::regclass::text || '.' || pol.polname || ' ' ||
+             coalesce(pg_get_expr(pol.polqual, pol.polrelid), '-') || ' ' ||
+             coalesce(pg_get_expr(pol.polwithcheck, pol.polrelid), '-')
+        FROM pg_policy pol
+    ) x`);
+  return r.rows[0].h;
+}
+
+PROVAS.push({
+  nome: "(6b) ordem de rollback: com 20261199/20261200/20261202 (e 98, se presente) no ar, o rollback da 97 RECUSA sem escrever (função e política dependentes); desfeitas na ordem inversa, ele passa",
+  corpo: async (cliente) => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- CAMINHO_ROLLBACK é constante do próprio teste (path.join de literais).
+    const rollback = fs.readFileSync(CAMINHO_ROLLBACK, "utf8");
+    const noAr = async (i) => {
+      const r = await cliente.query(POSTERIORES_A_97[i].noAr);
+      return r.rows[0] && r.rows[0].sim === true;
+    };
+    const desfazer = async (i) => {
+      const nome = POSTERIORES_A_97[i].nome;
+      await cliente.query(
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
+        fs.readFileSync(
+          path.join(
+            __dirname,
+            "..",
+            "..",
+            "supabase",
+            "migrations",
+            `rollback-manual-${nome}`,
+          ),
+          "utf8",
+        ),
+      );
+    };
+    // As posteriores desta pilha têm de estar no ar (a 202, a 200 e a 99).
+    for (const i of [0, 1, 2])
+      assert.equal(await noAr(i), true, `a posterior ${i} não está no ar`);
+
+    await cliente.query("BEGIN");
+    try {
+      // (1) Tudo no ar: recusa, nomeando função E política dependentes, sem escrever.
+      const antes = await digitalDoRollback(cliente);
+      await cliente.query("SAVEPOINT todas");
+      await assert.rejects(
+        cliente.query(rollback),
+        /B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT todas");
+      assert.equal(
+        await digitalDoRollback(cliente),
+        antes,
+        "a recusa escreveu algo",
+      );
+
+      // (2) Só a 99 no ar (200 e 202 desfeitas): ainda recusa, por função.
+      await desfazer(0);
+      await desfazer(1);
+      const so99 = await digitalDoRollback(cliente);
+      await cliente.query("SAVEPOINT so99");
+      await assert.rejects(cliente.query(rollback), (e) => {
+        assert.match(
+          e.message,
+          /^B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam/,
+        );
+        // São as da 99 (nomeadas) — as da 200 já foram desfeitas.
+        assert.ok(e.message.includes("public.painel_inicio()"), e.message);
+        assert.ok(!e.message.includes("admin_devolucao_decidir"), e.message);
+        return true;
+      });
+      await cliente.query("ROLLBACK TO SAVEPOINT so99");
+      assert.equal(
+        await digitalDoRollback(cliente),
+        so99,
+        "a recusa (99) escreveu algo",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+
+    // (3) Só uma POLÍTICA dependente (a 202 no ar, as funções posteriores
+    //     desfeitas): recusa por política.
+    await cliente.query("BEGIN");
+    try {
+      await desfazer(1);
+      await desfazer(2);
+      for (let i = 3; i < POSTERIORES_A_97.length; i += 1)
+        if (await noAr(i)) await desfazer(i);
+      const soPolitica = await digitalDoRollback(cliente);
+      await cliente.query("SAVEPOINT so202");
+      await assert.rejects(
+        cliente.query(rollback),
+        /B1_BASELINE_DIVERGENT: políticas fora da 20261197000000 ainda usam .*fin_lancamentos/,
+      );
+      await cliente.query("ROLLBACK TO SAVEPOINT so202");
+      assert.equal(
+        await digitalDoRollback(cliente),
+        soPolitica,
+        "a recusa (política) escreveu algo",
+      );
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+
+    // (4) Desfeitas 202 -> 200 -> 99 (-> 98): o rollback da 97 passa e apaga as duas funções.
+    await cliente.query("BEGIN");
+    try {
+      await desfazerPosterioresNaTransacao(cliente);
+      await cliente.query(rollback);
+      const r = await cliente.query(
+        "SELECT to_regprocedure('public.is_admin_atual()') IS NULL AS some, to_regprocedure('public.rls_admin_atual()') IS NULL AS some2",
+      );
+      assert.deepEqual(r.rows[0], { some: true, some2: true });
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    // O ROLLBACK devolveu tudo: as posteriores seguem no ar.
+    for (const i of [0, 1, 2])
+      assert.equal(await noAr(i), true, `a posterior ${i} sumiu`);
   },
 });
 

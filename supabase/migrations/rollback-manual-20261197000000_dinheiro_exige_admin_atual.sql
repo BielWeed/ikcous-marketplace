@@ -19,7 +19,9 @@
 -- concluir/reemitir reembolso de devolução, registrar pagamento recebido e
 -- LER pedidos e o ledger de estornos alheios. Reverter só faz sentido se a
 -- guarda estiver recusando um admin legítimo.
--- ORDEM: este rollback vem ANTES do da 20261195000000 (o preflight dela exige
+-- ORDEM: este rollback vem DEPOIS dos que usam as funções que ele apaga
+-- (202, 200, 99 e, se presente, 98 — o preflight RECUSA se algum ainda estiver
+-- no ar) e ANTES do da 20261195000000 (o preflight dela exige
 -- o corpo que ela deixou em registrar_pagamento_recebido, que é o que este
 -- arquivo restaura). A edge estornar-pagamento (mesmo commit) não depende
 -- disto: reverter a edge é publicar a versão anterior dela.
@@ -34,8 +36,11 @@
 -- de `replace(prosrc, E'\r', '')`), ou a expressão viva de alguma das cinco
 -- políticas, não for exatamente o que a 20261197000000 deixou: desfazer por
 -- cima de uma redefinição POSTERIOR apagaria a dela em silêncio, e desfazer
--- duas vezes não tem o que desfazer. Mesma transação do restante: recusa =
--- nada gravado.
+-- duas vezes não tem o que desfazer. Também recusa se alguma função FORA das
+-- da 97 ainda cita is_admin_atual()/rls_admin_atual() (por `prosrc`), ou se
+-- alguma política FORA das cinco da 97 as usa: apagar as duas funções com as
+-- migrations posteriores no ar deixaria o painel chamando função inexistente
+-- (42883). Mesma transação do restante: recusa = nada gravado.
 --
 -- Executar via `psql -1 -f` (nunca pelo db-apply, que registraria este
 -- rollback no ledger de migrations como se fosse uma migration nova). Sem
@@ -49,6 +54,7 @@ DECLARE
   v_caminho text;
   v_qual text;
   v_check text;
+  v_dependentes text;
 BEGIN
   FOR r IN
     SELECT *
@@ -102,6 +108,59 @@ BEGIN
     END IF;
   END LOOP;
   PERFORM set_config('search_path', v_caminho, true);
+
+  -- ORDEM DE ROLLBACK: este arquivo apaga is_admin_atual() e rls_admin_atual().
+  -- Se QUALQUER objeto fora da própria 20261197000000 ainda as usa (as 42 RPCs
+  -- da 20261199000000, as 3 da 20261200000000, as da 20261198000000, as 14
+  -- políticas da 20261202000000...), apagar deixa o painel chamando uma função
+  -- que não existe (42883) — ou o DROP falha por dependência de política.
+  -- Recusa ANTES de escrever: desfaça as posteriores primeiro, na ordem
+  -- inversa da aplicação. O conjunto "da própria 97" é o que a 97 define:
+  -- as seis RPCs, is_admin_atual(), rls_admin_atual() e as cinco políticas
+  -- de marketplace_orders e order_refunds.
+  SELECT string_agg(n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')',
+                    ', ' ORDER BY n.nspname, p.proname)
+    INTO v_dependentes
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+     AND p.prosrc ~ '(is|rls)_admin_atual'
+     AND p.oid <> ALL (ARRAY(
+           SELECT to_regprocedure(s)::oid
+             FROM unnest(ARRAY[
+               'public.solicitar_estorno(uuid, numeric, text)',
+               'public.registrar_estorno_manual(uuid)',
+               'public.admin_devolucao_concluir(uuid, text, jsonb, numeric, text)',
+               'public.admin_devolucao_reemitir_reembolso(uuid, boolean)',
+               'public.admin_devolucao_liberar_vinculo_reverso(uuid, boolean)',
+               'public.registrar_pagamento_recebido(uuid, boolean)',
+               'public.is_admin_atual()',
+               'public.rls_admin_atual()'
+             ]) AS s
+            WHERE to_regprocedure(s) IS NOT NULL));
+
+  IF v_dependentes IS NOT NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: funções fora da 20261197000000 ainda usam is_admin_atual()/rls_admin_atual() (%) — desfaça as migrations posteriores (rollback na ordem inversa da aplicação) antes de reverter a 97.', v_dependentes;
+  END IF;
+
+  SELECT string_agg(ns.nspname || '.' || c.relname || '.' || pol.polname, ', ' ORDER BY ns.nspname, c.relname, pol.polname)
+    INTO v_dependentes
+    FROM pg_policy pol
+    JOIN pg_class c ON c.oid = pol.polrelid
+    JOIN pg_namespace ns ON ns.oid = c.relnamespace
+   WHERE (pg_get_expr(pol.polqual, pol.polrelid) ~ '(is|rls)_admin_atual'
+          OR pg_get_expr(pol.polwithcheck, pol.polrelid) ~ '(is|rls)_admin_atual')
+     AND (ns.nspname || '.' || c.relname, pol.polname) NOT IN (
+           ('public.marketplace_orders', 'marketplace_orders_select_policy'),
+           ('public.marketplace_orders', 'marketplace_orders_admin_update_policy'),
+           ('public.marketplace_orders', 'marketplace_orders_admin_insert_policy'),
+           ('public.marketplace_orders', 'marketplace_orders_admin_delete_policy'),
+           ('public.order_refunds', 'order_refunds_admin_all')
+         );
+
+  IF v_dependentes IS NOT NULL THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: políticas fora da 20261197000000 ainda usam is_admin_atual()/rls_admin_atual() (%) — desfaça as migrations posteriores (rollback na ordem inversa da aplicação) antes de reverter a 97.', v_dependentes;
+  END IF;
 END $preflight_rollback_20261197$;
 
 CREATE OR REPLACE FUNCTION public.solicitar_estorno(
