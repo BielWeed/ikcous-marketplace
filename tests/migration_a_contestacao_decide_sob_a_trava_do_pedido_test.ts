@@ -68,26 +68,28 @@ Deno.test("20261196: fora das funções, nenhuma escrita de dado; colunas novas 
   for (const linha of topo.split("\n").filter((l) => /ADD COLUMN/i.test(l))) {
     assert(!/\bDEFAULT\b/i.test(linha), linha);
   }
-  // R1: as duas colunas da linha incerta, NULL nas linhas que já existem; o
-  // DEFAULT true de criada_sob_autorizacao vem DEPOIS, num ALTER COLUMN
-  // separado (só INSERT futuro) — no ADD COLUMN ele preencheria o legado.
+  // R1: as duas colunas da linha incerta, NULL em TODA linha — as que já
+  // existem e as que nascerem enquanto só a 96 estiver no ar. O DEFAULT true
+  // de criada_sob_autorizacao NÃO é desta migration (roteiro de publicação,
+  // cenário D1): ele vive na 20261201000000, que só sobe depois das edges
+  // novas e do escoamento das antigas.
   assertStringIncludes(topo, "ADD COLUMN IF NOT EXISTS post_autorizado_em timestamptz;");
-  const addCriada = topo.indexOf("ADD COLUMN IF NOT EXISTS criada_sob_autorizacao boolean;");
-  const setDefault = topo.indexOf("ALTER COLUMN criada_sob_autorizacao SET DEFAULT true;");
-  assert(addCriada > 0 && setDefault > addCriada, "ADD COLUMN sem default, e SET DEFAULT depois");
+  assertStringIncludes(topo, "ADD COLUMN IF NOT EXISTS criada_sob_autorizacao boolean;");
   const alteracoesDeOrderRefunds = [...topo.matchAll(/ALTER TABLE public\.order_refunds[^;]*;/g)].map((m) =>
     m[0].replace(/\s+/g, " ")
   );
   assertEquals(
     alteracoesDeOrderRefunds.filter((a) => /\bDEFAULT\b/i.test(a)),
-    ["ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao SET DEFAULT true;"],
-    "em order_refunds, o único DEFAULT é o SET DEFAULT true",
+    [],
+    "em order_refunds, a 96 não põe DEFAULT nenhum",
   );
-  // O rollback tira o DEFAULT (edge antiga de volta não carimba) e guarda
-  // as colunas (o carimbo é evidência de dinheiro).
+  // O rollback não mexe em default (a 96 não pôs nenhum) e guarda as colunas
+  // (o carimbo é evidência de dinheiro); com a 20261201000000 ainda no ar
+  // (DEFAULT true), ele RECUSA: a ordem de desfazer é 201 -> edges -> 96.
+  assert(!/\bDEFAULT\b/i.test(semComentarios(rollback).replace(/\$preflight_rollback_20261196\$[\s\S]*?\$preflight_rollback_20261196\$/g, "")));
   assertStringIncludes(
-    semComentarios(rollback),
-    "ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao DROP DEFAULT;",
+    rollback,
+    "B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao ainda tem DEFAULT true — desfaça a 20261201000000 antes",
   );
   // A decisão final: tabela nova, fora do alcance do cliente, nunca apagada.
   assertStringIncludes(topo, "CREATE TABLE IF NOT EXISTS public.contestacoes_decisao_final (");

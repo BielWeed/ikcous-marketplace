@@ -6,11 +6,12 @@
 -- `public.registrar_estorno_externo_do_mp` e
 -- `public.autorizar_post_do_estorno`). Elas NÃO existiam antes
 -- desta migration — não há corpo anterior a restaurar. NENHUMA linha de
--- `order_refunds` é tocada. Tira o DEFAULT true de
--- `criada_sob_autorizacao`: com a edge antiga de volta (que não carimba
--- `post_autorizado_em`), linha nova tem de nascer NULL (legado) — senão,
--- reaplicada a migration, uma linha com POST antigo sem carimbo pareceria
--- "nunca enviada" e poderia ser recusada. As colunas `mp_chargeback_case_id`,
+-- `order_refunds` é tocada, e nenhum default (a 96 não põe nenhum). ORDEM
+-- DE DESFAZER: 20261201000000 -> edges -> 20261196000000 -> 20261192000000.
+-- Com o DEFAULT true da 20261201000000 ainda no ar este rollback RECUSA: com
+-- a edge antiga de volta (que não carimba `post_autorizado_em`), linha nova
+-- tem de nascer NULL (legado) — senão uma linha com POST antigo sem carimbo
+-- pareceria "nunca enviada" e poderia ser recusada. As colunas `mp_chargeback_case_id`,
 -- `mp_chargeback_valor_do_caso`, `post_autorizado_em` e
 -- `criada_sob_autorizacao` e a tabela `public.contestacoes_decisao_final`
 -- FICAM, de propósito: apagá-las perderia o vínculo, o valor confirmado, o
@@ -54,9 +55,16 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao ausente — revise antes de reverter.';
   END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute a
+      JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+     WHERE a.attrelid = 'public.order_refunds'::regclass
+       AND a.attname = 'criada_sob_autorizacao' AND NOT a.attisdropped
+  ) THEN
+    RAISE EXCEPTION 'B1_BASELINE_DIVERGENT: public.order_refunds.criada_sob_autorizacao ainda tem DEFAULT true — desfaça a 20261201000000 antes (ordem: 201 -> edges -> 96 -> 92).';
+  END IF;
 END $preflight_rollback_20261196$;
 
 DROP FUNCTION public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer);
 DROP FUNCTION public.registrar_estorno_externo_do_mp(uuid, text, numeric, text, text);
 DROP FUNCTION public.autorizar_post_do_estorno(uuid, numeric);
-ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao DROP DEFAULT;

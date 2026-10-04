@@ -68,8 +68,9 @@
 --     linha continua em_processamento (reconciliável). Ver o comentário da
 --     função, no fim do arquivo.
 --   * `order_refunds.post_autorizado_em` (timestamptz, NULL) e
---     `order_refunds.criada_sob_autorizacao` (boolean, NULL; DEFAULT true só
---     para as linhas que nascerem DEPOIS desta migration) — o que separa a
+--     `order_refunds.criada_sob_autorizacao` (boolean, NULL, SEM default
+--     aqui: o DEFAULT true vem da 20261201000000, que só sobe DEPOIS das
+--     edges novas e do escoamento das antigas) — o que separa a
 --     linha INCERTA (um POST pode ter chegado ao MP) da linha que
 --     comprovadamente nunca teve POST (revisão Opus de 14d77a5b, R1: antes,
 --     `tentativas > 1` bastava para "incerta", e uma linha que só passou por
@@ -82,21 +83,24 @@
 --       OR mp_refund_id IS NOT NULL (e não vazio)
 --       OR (criada_sob_autorizacao IS NOT TRUE AND tentativas > 1)
 --     O terceiro termo é o LEGADO: linha que já existia antes desta
---     migration (a coluna fica NULL nela) pode ter tido POST pelo executor
---     antigo, que não gravava carimbo nenhum — para ela vale a regra
---     antiga. Linha nascida depois (true) só é incerta pelo carimbo ou pelo
---     id do MP. Linha NÃO incerta que a guarda ou o `nao_cabe` recusam vira
+--     migration, ou que nasceu enquanto só ela estava no ar (a coluna fica
+--     NULL nas duas), pode ter tido POST pelo executor antigo, que não
+--     gravava carimbo nenhum — para ela vale a regra antiga. Linha nascida
+--     depois da 20261201000000 (true) só é incerta pelo carimbo ou pelo id
+--     do MP. Linha NÃO incerta que a guarda ou o `nao_cabe` recusam vira
 --     `recusado` (nenhum POST saiu; a reserva é liberada), e a escrita
 --     terminal exige `post_autorizado_em IS NULL` — se outro executor
 --     autorizou um POST no meio, 0 linhas e nada é sobrescrito.
 --     RESÍDUOS DECLARADOS: (1) linha cujo POST saiu de verdade e o MP nunca
 --     processou continua em_processamento aguardando prova externa (consulta
---     ao MP ou ação no painel) — sem aviso novo aqui; (2) linha criada na
---     janela entre esta migration e a publicação das edges novas, com POST
---     ambíguo do executor ANTIGO, nasce `true` sem carimbo e pode ser
---     recusada — o executor antigo, nessa mesma janela, já a recusaria
---     (nunca foi mais seguro que isto); fecha-se publicando as três edges
---     logo depois da migration; (3) `autorizado` seguido de recusa da guarda
+--     ao MP ou ação no painel) — sem aviso novo aqui; (2) janela de
+--     publicação: FECHADA pela separação do DEFAULT (roteiro de publicação
+--     revisado pelo Opus, cenário D1 — com o DEFAULT aqui, uma linha com
+--     POST da edge ANTIGA, sem carimbo, nascia true e o cron novo a
+--     recusava, liberando a reserva com dinheiro saído). Enquanto só esta
+--     migration está no ar, toda linha nova nasce NULL e o critério legado
+--     a segura; a 20261201000000 liga o true depois das edges novas e do
+--     escoamento; (3) `autorizado` seguido de recusa da guarda
 --     sobre o pedido relido (pagamento mudou de estado ou o prazo de 180
 --     dias venceu nos segundos entre as duas) deixa o carimbo sem POST: a
 --     linha fica incerta e aguarda, como em (1).
@@ -185,10 +189,10 @@
 --   devolve 500 e o MP reentrega. O mesmo vale para o 3o passo da 94.
 --
 -- DADOS EXISTENTES: nada é reescrito. As quatro colunas novas nascem NULL em
--- todas as linhas que já existem (ADD COLUMN sem default, sem backfill; o
--- DEFAULT true de `criada_sob_autorizacao` é posto DEPOIS, num ALTER COLUMN
--- separado, e só vale para INSERT futuro — é ele que marca "nasceu depois
--- desta migration"; posto no próprio ADD COLUMN, o Postgres preencheria as
+-- todas as linhas que já existem (ADD COLUMN sem default, sem backfill; esta
+-- migration NÃO põe default nenhum — o DEFAULT true de
+-- `criada_sob_autorizacao` é da 20261201000000, num ALTER COLUMN que só vale
+-- para INSERT futuro; posto no próprio ADD COLUMN, o Postgres preencheria as
 -- linhas antigas com true e o legado sumiria); a tabela da decisão final nasce
 -- VAZIA (casos já decididos antes desta migration não têm registro — para
 -- eles vale só o estado das linhas, como antes). Reserva antiga de contestação
@@ -201,8 +205,9 @@
 -- service_role) — régua da concluir_estorno (2026110000100).
 --
 -- IDEMPOTÊNCIA: ADD COLUMN IF NOT EXISTS depois de o preflight provar o
--- tipo (e, para `criada_sob_autorizacao`, que o default é nenhum ou true);
--- SET DEFAULT true reaplicado não muda nada; DROP FUNCTION IF EXISTS + CREATE das três funções novas (não
+-- tipo (e, para `criada_sob_autorizacao`, que o default é nenhum ou true —
+-- true = a 20261201000000 já está no ar, e reaplicar esta não o toca);
+-- DROP FUNCTION IF EXISTS + CREATE das três funções novas (não
 -- existiam antes desta migration); REVOKE/GRANT reaplicáveis. Reaplicar não
 -- muda nada.
 --
@@ -232,10 +237,11 @@
 --
 -- ROLLBACK MANUAL:
 -- rollback-manual-20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql
--- (apaga as três funções e tira o DEFAULT de `criada_sob_autorizacao`; as
--- colunas e a tabela da decisão final FICAM — apagá-las perderia o vínculo,
--- o histórico de casos já decididos e o carimbo de POST autorizado, e isso é
--- decisão do dono).
+-- (apaga as três funções; as colunas e a tabela da decisão final FICAM —
+-- apagá-las perderia o vínculo, o histórico de casos já decididos e o
+-- carimbo de POST autorizado, e isso é decisão do dono). ORDEM DE DESFAZER:
+-- 20261201000000 -> edges -> 20261196000000 -> 20261192000000; o rollback
+-- desta RECUSA se o DEFAULT true da 20261201000000 ainda estiver no ar.
 
 DO $preflight_20261196$
 DECLARE
@@ -343,14 +349,12 @@ COMMENT ON COLUMN public.order_refunds.post_autorizado_em IS
 ALTER TABLE public.order_refunds
   ADD COLUMN IF NOT EXISTS criada_sob_autorizacao boolean;
 
-ALTER TABLE public.order_refunds
-  ALTER COLUMN criada_sob_autorizacao SET DEFAULT true;
-
 COMMENT ON COLUMN public.order_refunds.criada_sob_autorizacao IS
-  'true = a linha nasceu DEPOIS da 20261196000000 (todo POST dela passa por '
-  'autorizar_post_do_estorno, que carimba post_autorizado_em). NULL = linha anterior '
-  '(legado): o executor antigo não carimbava, e tentativas > 1 continua contando como '
-  '"um POST pode ter saído". Sem backfill; o DEFAULT vale só para INSERT futuro.';
+  'true = a linha nasceu DEPOIS da 20261201000000, com as edges novas no ar (todo POST '
+  'dela passa por autorizar_post_do_estorno, que carimba post_autorizado_em). NULL = '
+  'linha anterior, ou nascida só com a 20261196000000 no ar (legado): o executor antigo '
+  'não carimbava, e tentativas > 1 continua contando como "um POST pode ter saído". '
+  'Sem backfill; o DEFAULT true vem da 20261201000000 e vale só para INSERT futuro.';
 
 CREATE TABLE IF NOT EXISTS public.contestacoes_decisao_final (
   order_id uuid NOT NULL REFERENCES public.marketplace_orders(id),

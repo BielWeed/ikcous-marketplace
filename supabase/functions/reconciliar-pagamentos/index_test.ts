@@ -3255,3 +3255,45 @@ Deno.test("R1-C3 - duas passadas do cron (o liveness do revisor): passada 1 com 
   assertEquals(terminal[0].valores.ultimo_erro, MOTIVO_SALDO_NAO_COBRE_MAIS);
   assertEquals(terminal[0].filtroIs, ["post_autorizado_em", null]);
 });
+
+// ── Roteiro de publicação (revisão Opus, cenários C4 e D1): o DEFAULT true de
+// criada_sob_autorizacao saiu da 96 para a 20261201000000. Enquanto só a 96
+// está no ar, a linha nova nasce NULL — o banco devolve o campo NULL de
+// verdade (não ausente) — e o executor a trata como LEGADO: com tentativas 2
+// (a edge ANTIGA marcou e pode ter mandado o POST, sem carimbo), ela é
+// incerta e a reserva fica. O mesmo cenário com true (R1-C1) é recusado: por
+// isso a 201 só sobe depois das edges novas e do escoamento das antigas.
+
+Deno.test("R1-C4 - só com a 96 (criada_sob_autorizacao NULL vindo do banco), POST da edge antiga sem carimbo, tentativas 2, pedido em 70: adiada, nada terminal, ZERO POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 70 });
+  const linha = linhaDoCenarioR1({ order_id: pedido.id, criada_sob_autorizacao: null });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [linha],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["REF-EXT"],
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 30 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 50 } },
+  ]);
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0, "ZERO POST");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "recusado" || a.valores.status === "falhou"),
+    false,
+    "nada terminal: a reserva fica",
+  );
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "rr1" && String(a.valores.ultimo_erro ?? "").includes(MOTIVO_LINHA_INCERTA),
+    ),
+    true,
+  );
+});

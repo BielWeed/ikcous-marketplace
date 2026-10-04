@@ -70,6 +70,9 @@ const {
 const U_CLIENTE = "61111111-1111-1111-1111-111111111111";
 const O = (n) => `6ccccccc-0000-0000-0000-${String(n).padStart(12, "0")}`;
 const MIGRATION = "20261196000000_a_contestacao_decide_sob_a_trava_do_pedido.sql";
+// O DEFAULT true de criada_sob_autorizacao (roteiro de publicação, cenário
+// D1): separado da 96, sobe só depois das edges novas.
+const MIGRATION_201 = "20261201000000_linha_nova_nasce_sob_autorizacao.sql";
 const FN_CONTESTACAO =
   "public.registrar_contestacao_no_ledger(uuid, text, text, text, numeric, numeric, integer)";
 const FN_AUTORIZAR = "public.autorizar_post_do_estorno(uuid, numeric)";
@@ -1171,11 +1174,13 @@ PROVAS.push({
     assert.equal(e.valorEstornado, 70);
 
     // Legado: linha que JÁ existia antes da migration fica NULL (sem
-    // backfill) — simulado num banco SEM a coluna (DROP COLUMN), com a linha
-    // inserida antes e a migration aplicada por cima; depois, a linha nascida
-    // com o DEFAULT tirado (o estado depois do rollback) também fica NULL ao
-    // reaplicar. Tudo desfeito no ROLLBACK.
+    // backfill) — simulado num banco SEM a coluna (DROP COLUMN, que leva o
+    // DEFAULT da 201 junto), com a linha inserida antes e a 96 aplicada por
+    // cima; a linha nascida só com a 96 também fica NULL; a 201 não reescreve
+    // nenhuma das duas, e só a linha nascida DEPOIS dela é true. Tudo
+    // desfeito no ROLLBACK.
     const sql = lerMigration(MIGRATION);
+    const sql201 = lerMigration(MIGRATION_201);
     await cliente.query("BEGIN");
     try {
       await cliente.query("ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao");
@@ -1183,17 +1188,115 @@ PROVAS.push({
       const anterior = await linhaDoApp(cliente, O(149), 10);
       await cliente.query(sql);
       assert.equal((await carimbo(cliente, anterior)).criada_sob_autorizacao, null, "linha anterior à migration: legado (NULL)");
-      await cliente.query("ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao DROP DEFAULT");
       await pedido(cliente, O(148), { total: 100 });
-      const antiga = await linhaDoApp(cliente, O(148), 10);
-      assert.equal((await carimbo(cliente, antiga)).criada_sob_autorizacao, null);
-      await cliente.query(sql);
-      assert.equal((await carimbo(cliente, antiga)).criada_sob_autorizacao, null, "reaplicar não reescreve a linha antiga");
+      const soCom96 = await linhaDoApp(cliente, O(148), 10);
+      assert.equal((await carimbo(cliente, soCom96)).criada_sob_autorizacao, null, "só com a 96: nasce NULL");
+      await cliente.query(sql201);
+      assert.equal((await carimbo(cliente, anterior)).criada_sob_autorizacao, null, "a 201 não reescreve a linha antiga");
+      assert.equal((await carimbo(cliente, soCom96)).criada_sob_autorizacao, null, "nem a nascida só com a 96");
       const posterior = await linhaDoApp(cliente, O(148), 10);
-      assert.equal((await carimbo(cliente, posterior)).criada_sob_autorizacao, true);
+      assert.equal((await carimbo(cliente, posterior)).criada_sob_autorizacao, true, "com a 201: nasce true");
     } finally {
       await cliente.query("ROLLBACK");
     }
+  },
+});
+
+PROVAS.push({
+  nome: "(y) 20261201000000: só com a 96 a linha nova nasce NULL (legado, cenário C4); com a 201 nasce true; preflight da 201 recusa sem escrever; reaplicar é no-op; o 2º rollback recusa",
+  corpo: async (cliente) => {
+    const sql201 = lerMigration(MIGRATION_201);
+    const rollback201 = lerMigration(`rollback-manual-${MIGRATION_201}`);
+    const padrao = async () =>
+      (
+        await cliente.query(
+          `SELECT pg_get_expr(d.adbin, d.adrelid) AS def FROM pg_attribute a
+             LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+            WHERE a.attrelid = 'public.order_refunds'::regclass AND a.attname = 'criada_sob_autorizacao'`,
+        )
+      ).rows[0].def;
+    // Dentro da transação da prova: cada tentativa num SAVEPOINT próprio, para
+    // a recusa não abortar o resto (e para provar que ela não escreveu).
+    const recusa = async (sqlTexto, regex, msg) => {
+      let erro = null;
+      await cliente.query("SAVEPOINT y_recusa");
+      try {
+        await cliente.query(sqlTexto);
+      } catch (e) {
+        erro = e;
+      }
+      await cliente.query("ROLLBACK TO SAVEPOINT y_recusa");
+      assert.ok(erro, msg);
+      assert.match(erro.message, regex, msg);
+    };
+
+    // A pilha inteira (aplicar-migrations) tem a 201: DEFAULT true.
+    assert.equal(await padrao(), "true");
+
+    await cliente.query("BEGIN");
+    try {
+      // Cenário C4 do revisor: SÓ a 96 no ar (a 201 desfeita). A edge ANTIGA
+      // marcou e mandou o POST duas vezes (tentativas 2), sem carimbo — a
+      // linha nasce NULL, e para o executor novo isso é LEGADO: tentativas > 1
+      // = incerta, nunca recusada (R1-C4 no teste do cron). Aqui: o banco
+      // mostra a linha NULL e a reserva viva depois do nao_cabe.
+      await cliente.query(rollback201);
+      assert.equal(await padrao(), null, "o rollback da 201 tira o DEFAULT");
+      await pedido(cliente, O(150), { total: 100 });
+      const c4 = await linhaDoApp(cliente, O(150), 50);
+      await cliente.query("UPDATE public.order_refunds SET tentativas = 2 WHERE id = $1", [c4]);
+      const nasceu = await carimbo(cliente, c4);
+      assert.equal(nasceu.criada_sob_autorizacao, null, "só com a 96: linha nova nasce NULL (legado)");
+      assert.equal(nasceu.post_autorizado_em, null, "a edge antiga não carimba");
+      assert.equal((await externo(cliente, { pedido: O(150), ref: "REF-Y70", valor: 70 })).resultado, "inserido");
+      assert.equal((await autorizar(cliente, c4, 50)).decisao, "nao_cabe");
+      const e = await estado(cliente, O(150));
+      assert.equal(e.linhas.find((l) => l.id === c4).status, "em_processamento", "nada no banco a libera sozinho");
+
+      // O 2º rollback recusa (nada a desfazer), sem escrever.
+      await recusa(rollback201, /sem DEFAULT true/, "o 2º rollback da 201 recusa");
+
+      // Preflight da 201 sem escrever: corpo da autorizar diferente do da 96.
+      const corpoVivo = (
+        await cliente.query("SELECT pg_get_functiondef('public.autorizar_post_do_estorno(uuid, numeric)'::regprocedure) AS d")
+      ).rows[0].d;
+      await cliente.query("SAVEPOINT y_corpo");
+      await cliente.query(corpoVivo.replace("post_autorizado_em = now()", "post_autorizado_em = post_autorizado_em"));
+      await recusa(sql201, /não é o corpo da 20261196000000/, "a 201 recusa a autorizar sem o carimbo da 96");
+      await cliente.query("ROLLBACK TO SAVEPOINT y_corpo");
+      assert.equal(await padrao(), null, "a recusa não escreveu");
+      // ... autorizar ausente.
+      await cliente.query("SAVEPOINT y_sem_fn");
+      await cliente.query(`DROP FUNCTION ${FN_AUTORIZAR}`);
+      await recusa(sql201, /autorizar_post_do_estorno\(uuid, numeric\) ausente/, "a 201 recusa sem a autorizar");
+      await cliente.query("ROLLBACK TO SAVEPOINT y_sem_fn");
+      // ... default diferente de nenhum/true.
+      await cliente.query("SAVEPOINT y_default");
+      await cliente.query("ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao SET DEFAULT false");
+      await recusa(sql201, /criada_sob_autorizacao com default/, "a 201 recusa outro default");
+      await cliente.query("ROLLBACK TO SAVEPOINT y_default");
+      // ... coluna ausente / de outro tipo.
+      await cliente.query("SAVEPOINT y_tipo");
+      await cliente.query("ALTER TABLE public.order_refunds ALTER COLUMN criada_sob_autorizacao TYPE text");
+      await recusa(sql201, /criada_sob_autorizacao ausente ou com tipo text/, "a 201 recusa coluna de outro tipo");
+      await cliente.query("ROLLBACK TO SAVEPOINT y_tipo");
+      await cliente.query("SAVEPOINT y_sem_coluna");
+      await cliente.query("ALTER TABLE public.order_refunds DROP COLUMN criada_sob_autorizacao");
+      await recusa(sql201, /criada_sob_autorizacao ausente ou com tipo/, "a 201 recusa sem a coluna");
+      await cliente.query("ROLLBACK TO SAVEPOINT y_sem_coluna");
+      assert.equal(await padrao(), null);
+
+      // Com a 201: nasce true; aplicar de novo é no-op; a linha C4 não muda.
+      await cliente.query(sql201);
+      await cliente.query(sql201);
+      assert.equal(await padrao(), "true");
+      const depois = await linhaDoApp(cliente, O(150), 10);
+      assert.equal((await carimbo(cliente, depois)).criada_sob_autorizacao, true, "com a 201: nasce true");
+      assert.equal((await carimbo(cliente, c4)).criada_sob_autorizacao, null, "a 201 não reescreve a linha C4");
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    assert.equal(await padrao(), "true", "tudo desfeito");
   },
 });
 
@@ -1202,9 +1305,26 @@ PROVAS.push({
   corpo: async (cliente) => {
     const sql = lerMigration(MIGRATION);
     const rollback = lerMigration(`rollback-manual-${MIGRATION}`);
+    const rollback201 = lerMigration(`rollback-manual-${MIGRATION_201}`);
+    // Com a 201 no ar (DEFAULT true), o rollback da 96 RECUSA: a ordem de
+    // desfazer é 201 -> edges -> 96 -> 92.
     await cliente.query("BEGIN");
     try {
-      // Aplicar DUAS vezes seguidas é no-op (as colunas, o DEFAULT, as funções).
+      let erro = null;
+      try {
+        await cliente.query(rollback);
+      } catch (e) {
+        erro = e;
+      }
+      assert.ok(erro, "o rollback da 96 recusa com a 201 no ar");
+      assert.match(erro.message, /desfaça a 20261201000000 antes/);
+    } finally {
+      await cliente.query("ROLLBACK");
+    }
+    await cliente.query("BEGIN");
+    try {
+      await cliente.query(rollback201);
+      // Aplicar DUAS vezes seguidas é no-op (as colunas, as funções).
       await cliente.query(sql);
       await cliente.query(sql);
       await cliente.query(rollback);
@@ -1231,7 +1351,7 @@ PROVAS.push({
           { attname: "criada_sob_autorizacao", def: null },
           { attname: "post_autorizado_em", def: null },
         ],
-        "as colunas do R1 FICAM (o carimbo é evidência de dinheiro) e o DEFAULT sai",
+        "as colunas do R1 FICAM (o carimbo é evidência de dinheiro), sem DEFAULT",
       );
       const tabela = await cliente.query("SELECT to_regclass('public.contestacoes_decisao_final') AS t");
       assert.notEqual(tabela.rows[0].t, null, "a decisão final (histórico) FICA no rollback");
@@ -1243,7 +1363,7 @@ PROVAS.push({
            JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
           WHERE a.attrelid = 'public.order_refunds'::regclass AND a.attname = 'criada_sob_autorizacao'`,
       );
-      assert.equal(def.rows[0]?.def, "true", "reaplicar devolve o DEFAULT");
+      assert.equal(def.rows[0], undefined, "reaplicar a 96 NÃO põe DEFAULT (é da 201)");
     } finally {
       await cliente.query("ROLLBACK");
     }
