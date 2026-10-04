@@ -26,15 +26,22 @@
 -- o rebaixamento feito direto no app_metadata (painel do Supabase) deixa
 -- profiles dizendo admin, e um profiles rebaixado com o gatilho fora do ar (ou
 -- um UPDATE em auth.users depois) deixa auth.users dizendo admin. Exigir as
--- duas fecha as duas direções, e a edge estornar-pagamento passa a exigir as
--- mesmas duas (mesmo commit) — a função e a edge têm UMA regra só.
+-- duas recusa o papel contraditório no instante da chamada, e a edge
+-- estornar-pagamento passa a exigir as mesmas duas (mesmo commit) — a função e
+-- a edge têm UMA regra só. LIMITE CONHECIDO (revisão Opus 04/10, corrigido na
+-- 20261199000000, não aqui): o gatilho dispara em `UPDATE OF role` mesmo sem
+-- mudança de valor, e o próprio usuário pode regravar `profiles.role` igual —
+-- quem foi rebaixado SÓ no app_metadata se promove de volta. Até a 99,
+-- rebaixar SEMPRE pelo profiles (painel do app).
 -- EFEITO COLATERAL ACEITO: quem é admin para `is_admin()` só pelo
 -- app_metadata (sem profiles.role = 'admin') para de mexer em dinheiro aqui —
 -- já não conseguia pela edge estornar-pagamento, que sempre exigiu profiles.
 -- Antes de aplicar numa loja, conferir que ninguém está nesse meio-termo:
 --   SELECT u.id FROM auth.users u LEFT JOIN public.profiles p ON p.id = u.id
---    WHERE (u.raw_app_meta_data ->> 'role' = 'admin')
---          IS DISTINCT FROM (p.role = 'admin');
+--    WHERE COALESCE(u.raw_app_meta_data ->> 'role' = 'admin', false)
+--          IS DISTINCT FROM COALESCE(p.role = 'admin', false);
+-- (COALESCE: sem ele, cliente sem `role` no app_metadata aparece como falso
+-- positivo — NULL IS DISTINCT FROM false.)
 -- (zero linhas = ninguém perde acesso; cada linha é um papel contraditório
 -- que o dono decide qual é o certo).
 --
@@ -110,6 +117,10 @@
 -- aceita): trocar a porta só ENCOLHE quem passa. Fora do escopo daqui (outra
 -- frente): as outras tabelas que ainda usam `is_admin()` (itens do pedido,
 -- histórico de pagamento, devoluções...) e a ACL de anon em marketplace_orders.
+-- ATENÇÃO: isto fecha a leitura pela RLS DIRETA. As RPCs SECURITY DEFINER de
+-- leitura do painel (get_admin_orders_paged, get_admin_user_detail, crm_*,
+-- devolucao_detalhe, painel_inicio...) e as de estoque/caixa/config ainda só
+-- checam `is_admin()` — tratadas na 20261199000000.
 --
 -- DADOS EXISTENTES: nenhuma linha é lida ou reescrita ao aplicar — troca
 -- corpo de função, cria duas funções e troca a expressão de cinco políticas.
