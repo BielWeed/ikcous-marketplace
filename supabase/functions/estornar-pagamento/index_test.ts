@@ -1423,4 +1423,10 @@ Deno.test("R1-E2 - o recusado perdeu a corrida para um POST autorizado no meio (
     assertEquals(resposta.status, 409)
     assertEquals(await resposta.json(), { erro: "estorno_ja_tratado", status: "em_processamento" })
     assertEquals(mp.registro.chamadas.filter((c: any) => c.metodo === "POST").length, 0)
+    // A escrita que perdeu era a do recusado condicionada ao carimbo.
+    assertEquals(registro.finais.length, 1)
+    assertEquals(
+        registro.finais[0].filtros.some((f: any) => f.metodo === "is" && f.coluna === "post_autorizado_em"),
+        true,
+    )
 })
