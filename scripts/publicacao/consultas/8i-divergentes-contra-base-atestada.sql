@@ -30,12 +30,19 @@
 -- como a letra N (assim NULL não se confunde com texto vazio):
 --     id, created_at, updated_at, status, payment_status, payment_method,
 --     metodo_online, canal, subtotal, total, shipping, discount, valor_estornado,
---     paid_at, (gateway_payment_id IS NOT NULL), n_itens, soma_itens
--- Numeric entra como ::numeric(12,2)::text (100.0 e 100.00 dão o mesmo texto);
+--     paid_at, (gateway_payment_id IS NOT NULL), n_itens, soma_itens,
+--     total_amount, shipping_cost
+-- Os numeric de escala FIXA (numeric(10,2)) entram como ::numeric(12,2)::text
+-- (100.0 e 100.00 dão o mesmo texto). total_amount e shipping_cost são numeric
+-- SEM escala (baseline 20260806000000, linhas 3976 e 3977): ::numeric(12,2)
+-- ARREDONDARIA uma mudança na 3ª casa e a esconderia; por isso entram como
+-- trim_scale(x)::text (tira só os zeros à direita: 100 e 100.000 dão o mesmo
+-- texto, mas 100.001 não). O NULL de qualquer campo sai como N.
 -- timestamptz entra em UTC, ISO, com microssegundos (independe do fuso da sessão);
 -- o booleano do gateway entra só como true/false (o id do gateway nunca entra).
---   ENTRA o que fala de dinheiro, de pagamento e de estado do pedido, e o que
---   mostra "o pedido foi tocado": updated_at. Qualquer toque num pedido cancelado
+--   ENTRA o que fala de dinheiro (inclusive total_amount e shipping_cost, que o
+--   mesmo pedido grava ao lado de total e shipping), de pagamento e de estado do
+--   pedido, e o que mostra "o pedido foi tocado": updated_at. Qualquer toque num pedido cancelado
 --   é motivo para decidir de novo; o custo é um possível ALARME FALSO (uma rotina
 --   que mexa em updated_at sem mudar nada que importe), que é o lado seguro: o
 --   preço é medir e atestar de novo, nunca deixar passar. SAEM os campos que
@@ -81,7 +88,7 @@ WITH soma AS (
   SELECT o.id, s.n_itens, s.soma_itens,
          o.created_at, o.updated_at, o.status, o.payment_status, o.payment_method,
          o.metodo_online, o.canal, o.subtotal, o.total, o.shipping, o.discount,
-         o.valor_estornado, o.paid_at,
+         o.valor_estornado, o.paid_at, o.total_amount, o.shipping_cost,
          (o.status IS NOT DISTINCT FROM 'cancelled') AS cancelado,
          (o.gateway_payment_id IS NOT NULL) AS tem_cobranca_no_gateway,
          COALESCE(o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado'), false) AS tem_status_de_pagamento,
@@ -116,7 +123,9 @@ WITH soma AS (
      (14, to_char(d.paid_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')),
      (15, d.tem_cobranca_no_gateway::text),
      (16, d.n_itens::text),
-     (17, d.soma_itens::numeric(12,2)::text)
+     (17, d.soma_itens::numeric(12,2)::text),
+     (18, trim_scale(d.total_amount)::text),
+     (19, trim_scale(d.shipping_cost)::text)
    ) AS f(n, v)
    GROUP BY d.id
 ), imp AS (

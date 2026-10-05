@@ -2326,10 +2326,19 @@ async function main() {
                     to_char(o.paid_at AT TIME ZONE 'UTC', ${ISO}) AS paid_at,
                     (o.gateway_payment_id IS NOT NULL)::text AS gateway,
                     (SELECT count(*) FROM public.marketplace_order_items i WHERE i.order_id = o.id)::text AS n_itens,
-                    COALESCE((SELECT sum(i.quantity * i.price) FROM public.marketplace_order_items i WHERE i.order_id = o.id), 0)::numeric(12,2)::text AS soma_itens
+                    COALESCE((SELECT sum(i.quantity * i.price) FROM public.marketplace_order_items i WHERE i.order_id = o.id), 0)::numeric(12,2)::text AS soma_itens,
+                    o.total_amount::text AS total_amount,
+                    o.shipping_cost::text AS shipping_cost
                FROM public.marketplace_orders o WHERE o.id = ANY($1::uuid[])`,
             [ids],
           );
+          // total_amount e shipping_cost são numeric SEM escala: o oráculo tira os
+          // zeros à direita EM JS (100.000 -> 100; 100.001 fica), sem passar por
+          // trim_scale nem por numeric(12,2) (que arredondaria a 3ª casa).
+          const semEscala = (t) =>
+            t === null || !t.includes(".")
+              ? t
+              : t.replace(/0+$/, "").replace(/\.$/, "");
           const campos = [
             "id",
             "created_at",
@@ -2348,12 +2357,16 @@ async function main() {
             "gateway",
             "n_itens",
             "soma_itens",
+            "total_amount",
+            "shipping_cost",
           ];
           const enc = (v) => (v === null ? "N" : `${v.length}:${v}`);
           const linhas = [...r.rows]
             .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
             .map((row) => {
               const porCampo = new Map(Object.entries(row));
+              for (const k of ["total_amount", "shipping_cost"])
+                porCampo.set(k, semEscala(porCampo.get(k)));
               return campos.map((k) => enc(porCampo.get(k))).join(";");
             });
           return require("node:crypto")
@@ -2711,6 +2724,14 @@ async function main() {
           "UPDATE public.marketplace_orders SET gateway_payment_id = 'MP-8I-NAO-PODE-SAIR' WHERE id = $1",
         ],
         [
+          "total_amount (numeric sem escala)",
+          "UPDATE public.marketplace_orders SET total_amount = 55.5 WHERE id = $1",
+        ],
+        [
+          "shipping_cost (numeric sem escala)",
+          "UPDATE public.marketplace_orders SET shipping_cost = 4.25 WHERE id = $1",
+        ],
+        [
           "n_itens e soma_itens",
           `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price) VALUES ($1, '${P_A}', 'Produto A', 1, 10)`,
         ],
@@ -2735,6 +2756,75 @@ async function main() {
         );
         assert.equal(linha(rx, IMP).ok, false);
         vistosNoLoop.push(rx);
+      }
+
+      // (xiii) total_amount e shipping_cost são numeric SEM escala: a 3ª casa
+      // MUDA a impressão (::numeric(12,2) a esconderia: 100.001 vira 100.00), e a
+      // MESMA grandeza com outra escala (100 x 100.000) NÃO muda.
+      const trap = await usar(base, (c) =>
+        c.query("SELECT 100.001::numeric(12,2)::text AS t"),
+      );
+      assert.equal(
+        trap.rows[0].t,
+        "100.00",
+        "8i (xiii): a armadilha existe: numeric(12,2) arredonda a 3ª casa",
+      );
+      for (const col of ["total_amount", "shipping_cost"]) {
+        const dbt = await clone(base, `ip_j_8i_xiii_${col}`);
+        const poe = (valor) =>
+          usar(dbt, (c) =>
+            c.query(
+              `UPDATE public.marketplace_orders SET ${col} = ${valor} WHERE id = $1`,
+              [DB],
+            ),
+          );
+        const imp = async (rotulo) => {
+          const r = await rodar8i(dbt);
+          const h = linha(r, IMP).vivo;
+          assert.equal(
+            h,
+            await impressaoDe(dbt, ATESTADOS),
+            `8i (xiii) ${col} = ${rotulo}: difere da calculada fora do banco`,
+          );
+          vistosNoLoop.push(r);
+          return h;
+        };
+        const hNulo = await imp("NULL");
+        assert.equal(hNulo, IMPRESSAO, "8i (xiii): NULL é o estado da base");
+        await poe("100");
+        const h100 = await imp("100");
+        assert.notEqual(h100, hNulo, `8i (xiii) ${col}: NULL -> 100 muda`);
+        await poe("100.000");
+        assert.equal(
+          (
+            await usar(dbt, (c) =>
+              c.query(
+                `SELECT ${col}::text AS t FROM public.marketplace_orders WHERE id = $1`,
+                [DB],
+              ),
+            )
+          ).rows[0].t,
+          "100.000",
+          `8i (xiii) ${col}: o texto cru MUDOU de escala`,
+        );
+        assert.equal(
+          await imp("100.000"),
+          h100,
+          `8i (xiii) ${col}: 100 x 100.000 NÃO muda a impressão`,
+        );
+        await poe("100.001");
+        const h3 = await imp("100.001");
+        assert.notEqual(
+          h3,
+          h100,
+          `8i (xiii) ${col}: a 3ª casa MUDA a impressão (numeric(12,2) a esconderia)`,
+        );
+        await poe("0");
+        assert.notEqual(
+          await imp("0"),
+          hNulo,
+          `8i (xiii) ${col}: 0 não se confunde com NULL`,
+        );
       }
 
       // (xii) A ORDEM faz parte da impressão: os MESMOS 3 pedidos inseridos em
@@ -2993,7 +3083,7 @@ async function main() {
       for (const proibido of ["Cliente FP", "@fp.teste", "MP-8I-NAO-PODE-SAIR"])
         assert(!vistos.includes(proibido), `8i: a saída vazou ${proibido}`);
       ok(
-        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 14/14 ok; modo medir (A_ATESTAR) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA (um volta a ter item, outro cancelled perde os itens) → contagem 3 ok MAS a impressão reprova; MESMO conjunto com subtotal / status / payment_status alterados → a impressão reprova (e o sinal, quando é o caso); outra escala do mesmo valor e outro fuso → a impressão NÃO muda; cada um dos 15 campos cobertos muda a impressão; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; RLS cega nos pedidos → 42501; RLS cega em estorno/devolução → INCONCLUSIVO não-ok; nenhum id (com ou sem hífen), nome, e-mail ou id de gateway na saída",
+        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 14/14 ok; modo medir (A_ATESTAR) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA (um volta a ter item, outro cancelled perde os itens) → contagem 3 ok MAS a impressão reprova; MESMO conjunto com subtotal / status / payment_status alterados → a impressão reprova (e o sinal, quando é o caso); outra escala do mesmo valor e outro fuso → a impressão NÃO muda; cada um dos 17 grupos de campos cobertos (inclusive total_amount e shipping_cost, numeric sem escala) muda a impressão; a 3ª casa de total_amount e de shipping_cost muda a impressão e 100 x 100.000 não; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; RLS cega nos pedidos → 42501; RLS cega em estorno/devolução → INCONCLUSIVO não-ok; nenhum id (com ou sem hífen), nome, e-mail ou id de gateway na saída",
       );
     }
 
