@@ -2279,6 +2279,718 @@ async function main() {
       );
     }
 
+    // 8i: os divergentes da 8c contra a BASE ATESTADA (3 cancelled, sem item, sem
+    // sinal de cobrança) presa por uma IMPRESSÃO DE INTEGRIDADE do conjunto e do
+    // estado (sha256, 64 hex). Formato da 8c. A impressão muda se qualquer campo
+    // coberto mudar; não diz origem; não substitui auditoria.
+    {
+      const NOME_8I = "8i-divergentes-contra-base-atestada";
+      const SQL_8I = fs.readFileSync(
+        path.join(REPO, "scripts", "publicacao", "consultas", `${NOME_8I}.sql`),
+        "utf8",
+      );
+      assert.equal(CONF.contarStatements(SQL_8I), 1, "8i: 1 statement");
+      const CONSTANTE = "'A_ATESTAR'";
+      assert.equal(
+        SQL_8I.split(CONSTANTE).length - 1,
+        1,
+        "8i: o literal 'A_ATESTAR' tem de aparecer uma vez só (é ele que o teste troca, EM MEMÓRIA)",
+      );
+      // O teste troca a constante pela impressão da fixture EM MEMÓRIA: o arquivo
+      // commitado nunca leva uma base presumida nem calculada.
+      const atestando = (impressao) =>
+        SQL_8I.replace(CONSTANTE, `'${impressao}'`);
+      // ORÁCULO em JS, independente do SQL no que decide o hash: a ordem das
+      // linhas, a ordem dos campos, o <comprimento>:<texto>, o N do NULL e o
+      // sha256. Só os TEXTOS dos campos vêm do banco (numeric já em (12,2) e o
+      // instante em UTC ISO), lidos do pedido pelo dono do banco.
+      const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'`;
+      const impressaoDe = async (db, ids) =>
+        usar(db, async (c) => {
+          const r = await c.query(
+            `SELECT o.id::text AS id,
+                    to_char(o.created_at AT TIME ZONE 'UTC', ${ISO}) AS created_at,
+                    to_char(o.updated_at AT TIME ZONE 'UTC', ${ISO}) AS updated_at,
+                    o.status, o.payment_status, o.payment_method, o.metodo_online, o.canal,
+                    o.subtotal::numeric(12,2)::text AS subtotal,
+                    o.total::numeric(12,2)::text AS total,
+                    o.shipping::numeric(12,2)::text AS shipping,
+                    o.discount::numeric(12,2)::text AS discount,
+                    o.valor_estornado::numeric(12,2)::text AS valor_estornado,
+                    to_char(o.paid_at AT TIME ZONE 'UTC', ${ISO}) AS paid_at,
+                    (o.gateway_payment_id IS NOT NULL)::text AS gateway,
+                    (SELECT count(*) FROM public.marketplace_order_items i WHERE i.order_id = o.id)::text AS n_itens,
+                    COALESCE((SELECT sum(i.quantity * i.price) FROM public.marketplace_order_items i WHERE i.order_id = o.id), 0)::numeric(12,2)::text AS soma_itens
+               FROM public.marketplace_orders o WHERE o.id = ANY($1::uuid[])`,
+            [ids],
+          );
+          const campos = [
+            "id",
+            "created_at",
+            "updated_at",
+            "status",
+            "payment_status",
+            "payment_method",
+            "metodo_online",
+            "canal",
+            "subtotal",
+            "total",
+            "shipping",
+            "discount",
+            "valor_estornado",
+            "paid_at",
+            "gateway",
+            "n_itens",
+            "soma_itens",
+          ];
+          const enc = (v) => (v === null ? "N" : `${v.length}:${v}`);
+          const linhas = [...r.rows]
+            .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+            .map((row) => {
+              const porCampo = new Map(Object.entries(row));
+              return campos.map((k) => enc(porCampo.get(k))).join(";");
+            });
+          return require("node:crypto")
+            .createHash("sha256")
+            .update(linhas.join("#"), "utf8")
+            .digest("hex");
+        });
+      const rodar8i = async (
+        db,
+        { sql = SQL_8I, papel = PAPEL_RO, fuso = null, pre = [] } = {},
+      ) =>
+        usar(db, async (c) => {
+          await c.query(`SET ROLE ${papel}`);
+          await c.query("SET default_transaction_read_only = on");
+          if (fuso) await c.query(`SET TIME ZONE '${fuso}'`);
+          for (const p of pre) await c.query(p);
+          try {
+            const r = await c.query(sql);
+            assert.deepEqual(
+              r.fields.map((f) => f.name),
+              ["item", "esperado", "vivo", "ok"],
+              "8i: colunas item/esperado/vivo/ok",
+            );
+            return r.rows;
+          } finally {
+            await c.query("RESET ROLE");
+          }
+        });
+      const nomes = (rows) => reprovadas(rows).map((r) => r.item.trim());
+      const IMP_ITEM =
+        "impressao de integridade do conjunto e do estado (sha256, 64 hex)";
+      const IMP = "impressao de integridade";
+      const LINHAS_DA_8I = 14;
+      const HEX64 = /^[0-9a-f]{64}$/;
+
+      // Os 3 atestados (cancelled, pix, sem payment_status, sem item, com
+      // histórico) e um pedido cancelled NORMAL (N1, com itens, que não diverge).
+      const DA = "00000008-0000-4000-8000-00000000000a";
+      const DB = "00000008-0000-4000-8000-00000000000b";
+      const DC = "00000008-0000-4000-8000-00000000000c";
+      const N1 = "00000008-0000-4000-8000-00000000000d";
+      const A4 = "00000008-0000-4000-8000-00000000000e";
+      const ATESTADOS = [DA, DB, DC];
+      const SUBTOTAL = new Map([
+        [DA, 50],
+        [DB, 200],
+        [DC, 500],
+      ]);
+      const novoPedido = (c, id, subtotal, status, pagamento = null) =>
+        c.query(
+          `INSERT INTO public.marketplace_orders
+             (id, user_id, customer_name, customer_data, total, subtotal, status, canal,
+              payment_method, payment_status, metodo_online)
+           VALUES ($1, $2, 'Cliente FP', '{}'::jsonb, $3, $3, $4, 'online', 'pix', $5, NULL)`,
+          [id, U_CLIENTE, subtotal, status, pagamento],
+        );
+      const historico = (c, id, para) =>
+        c.query(
+          `INSERT INTO public.marketplace_order_history (order_id, old_status, new_status, created_at)
+           VALUES ($1, 'pending', $2, now())`,
+          [id, para],
+        );
+      const comItem = (c, id, quantidade, preco) =>
+        c.query(
+          `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price)
+           VALUES ($1, $2, 'Produto A', $3, $4)`,
+          [id, P_A, quantidade, preco],
+        );
+      // Os instantes ficam FIXOS (o que o dono mediu não muda sozinho com o relógio).
+      const fixarInstantes = (c) =>
+        c.query(
+          `UPDATE public.marketplace_orders
+              SET created_at = '2026-03-10T12:00:00.123456Z', updated_at = '2026-03-10T12:30:00.654321Z'
+            WHERE id = ANY($1::uuid[])`,
+          [[DA, DB, DC, N1, A4]],
+        );
+      const plantar = async (db, ordem = ATESTADOS) => {
+        await usar(db, async (c) => {
+          for (const id of ordem)
+            await novoPedido(c, id, SUBTOTAL.get(id), "cancelled");
+          for (const id of ordem) await historico(c, id, "cancelled");
+          // N1: cancelled, com item que BATE com o subtotal (80 = 2 x 40)
+          await novoPedido(c, N1, 80, "cancelled");
+          await comItem(c, N1, 2, 40);
+          await historico(c, N1, "cancelled");
+          await fixarInstantes(c);
+        });
+      };
+      const base = await clone(semeado, "ip_j_8i_base");
+      await plantar(base);
+      const IMPRESSAO = await impressaoDe(base, ATESTADOS);
+      assert.match(IMPRESSAO, HEX64);
+
+      // (vi) MODO MEDIR: constante A_ATESTAR → só a impressão reprova, e o vivo é
+      // a impressão de agora (64 hex), igual à calculada FORA do banco.
+      const m0 = await rodar8i(base);
+      assert.equal(m0.length, LINHAS_DA_8I, "8i: 14 linhas");
+      assert.deepEqual(
+        nomes(m0),
+        [IMP_ITEM],
+        "8i modo medir: só a impressão reprova",
+      );
+      assert.equal(linha(m0, IMP).esperado, "A_ATESTAR");
+      assert.match(linha(m0, IMP).vivo, HEX64);
+      assert.equal(
+        linha(m0, IMP).vivo,
+        IMPRESSAO,
+        "8i: a impressão do SQL é o sha256 da serialização canônica calculado fora do banco",
+      );
+      assert.equal(linha(m0, "pedidos divergentes").vivo, "3");
+
+      // (i) com a constante atestada (em memória): TUDO ok (14 de 14).
+      const SQL_ATESTADO = atestando(IMPRESSAO);
+      const a0 = await rodar8i(base, { sql: SQL_ATESTADO });
+      assert.equal(a0.length, LINHAS_DA_8I);
+      assert.deepEqual(
+        reprovadas(a0),
+        [],
+        "8i: 3 cancelled sem item → tudo ok",
+      );
+      for (const c of [
+        "controle: pedidos visiveis",
+        "controle: itens de pedido visiveis",
+        "controle: registros de pagamento visiveis",
+        "controle: estornos visiveis",
+        "controle: devolucoes visiveis",
+      ])
+        assert.equal(linha(a0, c).vivo, ">0");
+
+      // (vi-b) sem NENHUM divergente (a fixture limpa): a contagem E a impressão
+      // reprovam — "0 divergentes" nunca passa por "o conjunto".
+      const limpa = await rodar8i(semeado, { sql: SQL_ATESTADO });
+      assert.deepEqual(
+        nomes(limpa).sort(),
+        [
+          IMP_ITEM,
+          "pedidos divergentes (mesma regra da 8c; base atestada)",
+        ].sort(),
+      );
+      assert.equal(linha(limpa, IMP).vivo, "(sem divergentes)");
+
+      // (ii) um 4º divergente ATIVO (pending/aguardando, sem item): reprova a
+      // contagem, o "fora de cancelled" e a impressão — e SÓ elas.
+      const ativo = await clone(base, "ip_j_8i_ativo");
+      await usar(ativo, async (c) => {
+        await novoPedido(c, A4, 70, "pending", "aguardando");
+        await fixarInstantes(c);
+      });
+      const r2 = await rodar8i(ativo, { sql: SQL_ATESTADO });
+      assert.equal(linha(r2, "pedidos divergentes").vivo, "4");
+      assert.equal(linha(r2, "fora de cancelled").vivo, "1");
+      assert.deepEqual(
+        nomes(r2).sort(),
+        [
+          IMP_ITEM,
+          "dos quais fora de cancelled",
+          "pedidos divergentes (mesma regra da 8c; base atestada)",
+        ].sort(),
+      );
+      assert.equal(
+        linha(r2, IMP).vivo,
+        await impressaoDe(ativo, [...ATESTADOS, A4]),
+      );
+
+      // (iii) TROCA: um dos 3 volta a ter item (deixa de divergir) e OUTRO pedido
+      // cancelled perde os itens (passa a divergir). A CONTAGEM continua 3, todos
+      // cancelled, sem item e sem sinal — SÓ a impressão acusa a troca.
+      const troca = await clone(base, "ip_j_8i_troca");
+      await usar(troca, async (c) => {
+        await comItem(c, DA, 2, 25); // 2 x 25 = 50 = subtotal de DA
+        await c.query(
+          "DELETE FROM public.marketplace_order_items WHERE order_id = $1",
+          [N1],
+        );
+      });
+      const r3 = await rodar8i(troca, { sql: SQL_ATESTADO });
+      assert.equal(linha(r3, "pedidos divergentes").vivo, "3");
+      assert.equal(linha(r3, "pedidos divergentes").ok, true);
+      assert.deepEqual(
+        nomes(r3),
+        [IMP_ITEM],
+        "8i: a troca mantém a contagem em 3; só a impressão reprova",
+      );
+      assert.equal(linha(r3, IMP).vivo, await impressaoDe(troca, [DB, DC, N1]));
+      assert.notEqual(linha(r3, IMP).vivo, IMPRESSAO);
+
+      // (viii) MESMO CONJUNTO, ESTADO MONETÁRIO diferente: subtotal de UM dos 3
+      // alterado (continua divergente, sem item, cancelled). Contagem e sinais
+      // seguem ok; SÓ a impressão acusa. (Um hash só dos ids NÃO pegaria isto.)
+      const subt = await clone(base, "ip_j_8i_subtotal");
+      await usar(subt, (c) =>
+        c.query(
+          "UPDATE public.marketplace_orders SET subtotal = 51 WHERE id = $1",
+          [DA],
+        ),
+      );
+      const r8 = await rodar8i(subt, { sql: SQL_ATESTADO });
+      assert.equal(linha(r8, "pedidos divergentes").vivo, "3");
+      assert.deepEqual(
+        nomes(r8),
+        [IMP_ITEM],
+        "8i (viii): só a impressão reprova",
+      );
+      assert.equal(linha(r8, IMP).vivo, await impressaoDe(subt, ATESTADOS));
+      assert.notEqual(linha(r8, IMP).vivo, IMPRESSAO);
+
+      // (ix) MESMO CONJUNTO, STATUS / PAYMENT_STATUS diferentes.
+      //   status cancelled → new: reprova o "fora de cancelled" E a impressão;
+      //   payment_status NULL → aguardando (fora da lista de sinais): SÓ a impressão;
+      //   payment_status NULL → pago: o sinal E a impressão.
+      for (const [rotulo, sqlMuda, esperados] of [
+        [
+          "status new",
+          "UPDATE public.marketplace_orders SET status = 'new' WHERE id = $1",
+          [IMP_ITEM, "dos quais fora de cancelled"],
+        ],
+        [
+          "payment_status aguardando",
+          "UPDATE public.marketplace_orders SET payment_status = 'aguardando' WHERE id = $1",
+          [IMP_ITEM],
+        ],
+        [
+          "payment_status pago",
+          "UPDATE public.marketplace_orders SET payment_status = 'pago', paid_at = now() WHERE id = $1",
+          [
+            IMP_ITEM,
+            "dos quais com payment_status pago, pago_apos_expirar, recebido_na_entrega ou estornado",
+          ],
+        ],
+      ]) {
+        const dbx = await clone(
+          base,
+          `ip_j_8i_ix_${rotulo.replace(/[^a-z]/gi, "_")}`,
+        );
+        await usar(dbx, (c) => c.query(sqlMuda, [DB]));
+        const rx = await rodar8i(dbx, { sql: SQL_ATESTADO });
+        assert.deepEqual(
+          nomes(rx).sort(),
+          [...esperados].sort(),
+          `8i (ix) ${rotulo}: reprova a impressão (e o sinal, se for o caso)`,
+        );
+        assert.equal(linha(rx, IMP).vivo, await impressaoDe(dbx, ATESTADOS));
+      }
+
+      // (x) MESMO VALOR gravado com OUTRA ESCALA → a impressão NÃO muda. Na coluna
+      // numeric(10,2) o banco já normaliza; para provar a CANONIZAÇÃO do SQL, a
+      // coluna vira numeric sem escala SÓ neste clone e o mesmo valor é regravado
+      // como 50.0000 (o ::text cru muda: 50.0000 x 50.00; o hash não).
+      const escala = await clone(base, "ip_j_8i_escala");
+      await usar(escala, async (c) => {
+        await c.query(
+          "ALTER TABLE public.marketplace_orders ALTER COLUMN subtotal TYPE numeric",
+        );
+        await c.query(
+          "UPDATE public.marketplace_orders SET subtotal = 50.0000 WHERE id = $1",
+          [DA],
+        );
+      });
+      const cru = await usar(escala, (c) =>
+        c.query(
+          "SELECT subtotal::text AS t FROM public.marketplace_orders WHERE id = $1",
+          [DA],
+        ),
+      );
+      assert.equal(
+        cru.rows[0].t,
+        "50.0000",
+        "8i (x): o texto cru MUDOU de escala",
+      );
+      assert.notEqual(cru.rows[0].t, "50.00");
+      const rEsc = await rodar8i(escala, { sql: SQL_ATESTADO });
+      assert.deepEqual(
+        reprovadas(rEsc),
+        [],
+        "8i (x): outra escala, mesma impressão, tudo ok",
+      );
+      assert.equal(linha(rEsc, IMP).vivo, IMPRESSAO);
+      // ...e o mesmo instante lido em OUTRO fuso da sessão dá a mesma impressão.
+      const rFuso = await rodar8i(base, { fuso: "America/Sao_Paulo" });
+      assert.equal(
+        linha(rFuso, IMP).vivo,
+        IMPRESSAO,
+        "8i (x): fuso da sessão não muda a impressão",
+      );
+      // ...e uma escala que muda o VALOR (50.0000 → 50.0100) muda a impressão.
+      await usar(escala, (c) =>
+        c.query(
+          "UPDATE public.marketplace_orders SET subtotal = 50.0100 WHERE id = $1",
+          [DA],
+        ),
+      );
+      assert.notEqual(
+        linha(await rodar8i(escala, { sql: SQL_ATESTADO }), IMP).vivo,
+        IMPRESSAO,
+      );
+
+      // (xi) CADA campo coberto, mudado sozinho, muda a impressão — e ela bate com
+      // a calculada fora do banco. (Os campos NÃO cobertos ficam de fora de
+      // propósito: nome, contato, endereço, user_id e o id do gateway.)
+      const CAMPOS = [
+        [
+          "created_at",
+          "UPDATE public.marketplace_orders SET created_at = created_at + interval '1 day' WHERE id = $1",
+        ],
+        [
+          "updated_at",
+          "UPDATE public.marketplace_orders SET updated_at = updated_at + interval '1 second' WHERE id = $1",
+        ],
+        [
+          "status",
+          "UPDATE public.marketplace_orders SET status = 'new' WHERE id = $1",
+        ],
+        [
+          "payment_status",
+          "UPDATE public.marketplace_orders SET payment_status = 'aguardando' WHERE id = $1",
+        ],
+        [
+          "payment_method",
+          "UPDATE public.marketplace_orders SET payment_method = 'card' WHERE id = $1",
+        ],
+        [
+          "metodo_online",
+          "UPDATE public.marketplace_orders SET metodo_online = 'pix' WHERE id = $1",
+        ],
+        [
+          "canal",
+          "UPDATE public.marketplace_orders SET canal = 'presencial' WHERE id = $1",
+        ],
+        [
+          "subtotal",
+          "UPDATE public.marketplace_orders SET subtotal = subtotal + 1 WHERE id = $1",
+        ],
+        [
+          "total",
+          "UPDATE public.marketplace_orders SET total = total + 1 WHERE id = $1",
+        ],
+        [
+          "shipping",
+          "UPDATE public.marketplace_orders SET shipping = 7 WHERE id = $1",
+        ],
+        [
+          "discount",
+          "UPDATE public.marketplace_orders SET discount = 3 WHERE id = $1",
+        ],
+        [
+          "valor_estornado",
+          "UPDATE public.marketplace_orders SET valor_estornado = 1 WHERE id = $1",
+        ],
+        [
+          "paid_at",
+          "UPDATE public.marketplace_orders SET paid_at = '2026-03-11T00:00:00Z' WHERE id = $1",
+        ],
+        [
+          "gateway (so a presenca)",
+          "UPDATE public.marketplace_orders SET gateway_payment_id = 'MP-8I-NAO-PODE-SAIR' WHERE id = $1",
+        ],
+        [
+          "n_itens e soma_itens",
+          `INSERT INTO public.marketplace_order_items (order_id, product_id, product_name, quantity, price) VALUES ($1, '${P_A}', 'Produto A', 1, 10)`,
+        ],
+      ];
+      const vistosNoLoop = [];
+      for (const [rotulo, sqlMuda] of CAMPOS) {
+        const dbx = await clone(
+          base,
+          `ip_j_8i_xi_${rotulo.replace(/[^a-z]/gi, "_").slice(0, 20)}`,
+        );
+        await usar(dbx, (c) => c.query(sqlMuda, [DB]));
+        const rx = await rodar8i(dbx, { sql: SQL_ATESTADO });
+        assert.notEqual(
+          linha(rx, IMP).vivo,
+          IMPRESSAO,
+          `8i (xi) ${rotulo}: a impressão NÃO mudou`,
+        );
+        assert.equal(
+          linha(rx, IMP).vivo,
+          await impressaoDe(dbx, ATESTADOS),
+          `8i (xi) ${rotulo}: a impressão difere da calculada fora do banco`,
+        );
+        assert.equal(linha(rx, IMP).ok, false);
+        vistosNoLoop.push(rx);
+      }
+
+      // (xii) A ORDEM faz parte da impressão: os MESMOS 3 pedidos inseridos em
+      // ordem diferente dão a MESMA impressão (a serialização ordena por id); sem
+      // o ORDER BY a ordem física decidiria. Mutante em memória: tira o ORDER BY.
+      const ordemA = await clone(semeado, "ip_j_8i_ordem_a");
+      const ordemB = await clone(semeado, "ip_j_8i_ordem_b");
+      await plantar(ordemA, [DA, DB, DC]);
+      await plantar(ordemB, [DC, DB, DA]);
+      const hA = linha(await rodar8i(ordemA), IMP).vivo;
+      const hB = linha(await rodar8i(ordemB), IMP).vivo;
+      assert.equal(
+        hA,
+        hB,
+        "8i (xii): inserir em outra ordem NÃO muda a impressão",
+      );
+      assert.equal(hA, IMPRESSAO);
+      // Mutante A (em memória): ORDEM INVERSA (ORDER BY id DESC). A impressão
+      // deixa de ser a calculada fora do banco: a ordem faz parte do hash e o
+      // oráculo a pega.
+      const ORDEM_INVERSA = SQL_8I.replace(
+        "string_agg(linha, '#' ORDER BY id)",
+        "string_agg(linha, '#' ORDER BY id DESC)",
+      );
+      assert.notEqual(ORDEM_INVERSA, SQL_8I, "8i (xii): o mutante A entrou");
+      assert.notEqual(
+        linha(await rodar8i(ordemA, { sql: ORDEM_INVERSA }), IMP).vivo,
+        IMPRESSAO,
+        "8i (xii) mutante A: a ordem invertida tem de mudar a impressão",
+      );
+      // Mutante B (em memória): SEM o ORDER BY. Este PG ordena o GROUP BY d.id
+      // pelo plano, então a ordem de inserção pode NÃO mudar o hash aqui (mutante
+      // equivalente sob o plano de hoje): o resultado é REGISTRADO, não afirmado.
+      // O ORDER BY é a GARANTIA que não depende do plano.
+      const SEM_ORDER_BY = SQL_8I.replace(
+        "string_agg(linha, '#' ORDER BY id)",
+        "string_agg(linha, '#')",
+      );
+      assert.notEqual(SEM_ORDER_BY, SQL_8I, "8i (xii): o mutante B entrou");
+      const resultadosB = [];
+      for (const pre of [[], ["SET enable_sort = off"]]) {
+        const mA = linha(
+          await rodar8i(ordemA, { sql: SEM_ORDER_BY, pre }),
+          IMP,
+        ).vivo;
+        const mB = linha(
+          await rodar8i(ordemB, { sql: SEM_ORDER_BY, pre }),
+          IMP,
+        ).vivo;
+        resultadosB.push(
+          `${pre.length ? "enable_sort=off" : "plano padrao"}: A ${mA === IMPRESSAO ? "=" : "!="} calculada, B ${mB === IMPRESSAO ? "=" : "!="} calculada, A ${mA === mB ? "=" : "!="} B`,
+        );
+      }
+      console.log(
+        `    8i (xii) mutante B (sem ORDER BY) — ${resultadosB.join(" | ")}`,
+      );
+
+      // (iv) UM sinal de cobrança em UM dos 3 (cada um num clone): reprova o sinal
+      // dele — e a impressão SÓ quando o sinal mexe num campo coberto (gateway,
+      // payment_status); registro de pagamento, estorno e devolução vivem em
+      // OUTRA tabela e só reprovam a própria linha.
+      const SINAIS = [
+        [
+          "gateway",
+          "com id de cobranca no gateway",
+          true,
+          (c) =>
+            c.query(
+              "UPDATE public.marketplace_orders SET gateway_payment_id = 'MP-8I-NAO-PODE-SAIR' WHERE id = $1",
+              [DB],
+            ),
+        ],
+        [
+          "pago",
+          "com payment_status pago",
+          true,
+          (c) =>
+            c.query(
+              "UPDATE public.marketplace_orders SET payment_status = 'pago', paid_at = now() WHERE id = $1",
+              [DC],
+            ),
+        ],
+        [
+          "pago_apos_expirar",
+          "com payment_status pago",
+          true,
+          (c) =>
+            c.query(
+              "UPDATE public.marketplace_orders SET payment_status = 'pago_apos_expirar', paid_at = now() WHERE id = $1",
+              [DA],
+            ),
+        ],
+        [
+          "recebido_na_entrega",
+          "com payment_status pago",
+          true,
+          (c) =>
+            c.query(
+              "UPDATE public.marketplace_orders SET payment_status = 'recebido_na_entrega', paid_at = now() WHERE id = $1",
+              [DA],
+            ),
+        ],
+        [
+          "estornado",
+          "com payment_status pago",
+          true,
+          (c) =>
+            c.query(
+              "UPDATE public.marketplace_orders SET payment_status = 'estornado' WHERE id = $1",
+              [DB],
+            ),
+        ],
+        [
+          "registro de pagamento",
+          "com registro em marketplace_order_payment_history",
+          false,
+          (c) =>
+            c.query(
+              "INSERT INTO public.marketplace_order_payment_history (order_id, acao) VALUES ($1, 'recebido')",
+              [DA],
+            ),
+        ],
+        [
+          "estorno",
+          "com estorno em order_refunds",
+          false,
+          (c) =>
+            c.query(
+              `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, concluido_em) VALUES ($1, 10, 'lojista', 'solicitado', NULL)`,
+              [DC],
+            ),
+        ],
+        [
+          "devolucao",
+          "com devolucao",
+          false,
+          (c) =>
+            c.query(
+              `INSERT INTO public.devolucoes (
+                 id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+                 modalidade, metodo_retorno, status, valor_itens, valor_reembolso, reembolso_manual,
+                 prazo_ate, politica, concluida_em
+               ) VALUES (
+                 gen_random_uuid(), 'DV-8I-TESTE', $1, $2, 'arrependimento', 'desisti', 'reembolso', 'reembolso',
+                 'local', 'entrega_na_loja', 'concluida', 30, 30, true,
+                 current_date + 7, '{}'::jsonb, now()
+               )`,
+              [DB, U_CLIENTE],
+            ),
+        ],
+      ];
+      for (const [rotulo, trecho, mudaImpressao, plantarSinal] of SINAIS) {
+        const nomeDb = `ip_j_8i_sinal_${rotulo.replace(/[^a-z]/gi, "_")}`;
+        const sinal = await clone(base, nomeDb);
+        await usar(sinal, plantarSinal);
+        const rs = await rodar8i(sinal, { sql: SQL_ATESTADO });
+        assert.equal(
+          linha(rs, trecho).vivo,
+          "1",
+          `8i sinal ${rotulo}: esperava 1 divergente com o sinal`,
+        );
+        assert.deepEqual(
+          nomes(rs).sort(),
+          [
+            linha(rs, trecho).item.trim(),
+            ...(mudaImpressao ? [IMP_ITEM] : []),
+          ].sort(),
+          `8i sinal ${rotulo}: reprova a linha do sinal${mudaImpressao ? " e a impressão (campo coberto)" : " e SÓ ela (tabela fora da impressão)"}`,
+        );
+        assert.equal(linha(rs, IMP).ok, !mudaImpressao);
+        vistosNoLoop.push(rs);
+      }
+
+      // (v) RLS cega nos pedidos (papel sem BYPASSRLS): FALHA ALTA (42501), nunca
+      // um zero que engana — a política TO public do histórico de pagamento chama
+      // is_admin()/rls_admin_atual() sem EXECUTE para o papel.
+      const cego = await clone(base, "ip_j_8i_cego");
+      await usar(cego, (c) =>
+        c.query(
+          "ALTER TABLE public.marketplace_orders ENABLE ROW LEVEL SECURITY",
+        ),
+      );
+      await assert.rejects(
+        rodar8i(cego, { sql: SQL_ATESTADO, papel: PAPEL_CEGO }),
+        /permission denied for function (is_admin|rls_admin_atual)/,
+        "8i cego: falha alta, nunca 0 silencioso",
+      );
+      // ...e com a falha alta desligada (RLS só nas AUXILIARES): os controles
+      // denunciam 0 e os três sinais saem INCONCLUSIVO — que NÃO é ok (é
+      // bloqueante). Os pedidos seguem visíveis: população e impressão não mudam.
+      const cegoAux = await clone(base, "ip_j_8i_cego_aux");
+      await usar(cegoAux, async (c) => {
+        for (const t of [
+          "marketplace_orders",
+          "marketplace_order_items",
+          "marketplace_order_payment_history",
+        ])
+          await c.query(`ALTER TABLE public.${t} DISABLE ROW LEVEL SECURITY`);
+        for (const t of ["order_refunds", "devolucoes"])
+          await c.query(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
+      });
+      const rc = await rodar8i(cegoAux, {
+        sql: SQL_ATESTADO,
+        papel: PAPEL_CEGO,
+      });
+      assert.equal(linha(rc, "controle: estornos visiveis").vivo, "0");
+      assert.equal(linha(rc, "controle: devolucoes visiveis").vivo, "0");
+      assert.equal(
+        linha(rc, "com estorno em order_refunds").vivo,
+        "INCONCLUSIVO (tabela sem linha visivel)",
+      );
+      assert.equal(
+        linha(rc, "com devolucao").vivo,
+        "INCONCLUSIVO (tabela sem linha visivel)",
+      );
+      assert.equal(linha(rc, "com estorno em order_refunds").ok, false);
+      assert.equal(linha(rc, "com devolucao").ok, false);
+      assert.deepEqual(nomes(rc).sort(), [
+        "controle: devolucoes visiveis",
+        "controle: estornos visiveis",
+        "dos quais com devolucao",
+        "dos quais com estorno em order_refunds",
+      ]);
+      assert.equal(
+        linha(rc, "com registro em marketplace_order_payment_history").vivo,
+        "0",
+        "8i: o histórico de pagamento segue visível: sinal 0 COM controle >0",
+      );
+      assert.equal(
+        linha(rc, IMP).ok,
+        true,
+        "8i: a impressão não depende das auxiliares",
+      );
+
+      // (vii) NENHUM id (nem sem hífen), nome, e-mail ou id de gateway na saída
+      // — nem no modo medir, nem atestado, nem na troca, nem em cada campo.
+      const vistos = JSON.stringify([
+        m0,
+        a0,
+        limpa,
+        r2,
+        r3,
+        r8,
+        rEsc,
+        rFuso,
+        rc,
+        vistosNoLoop,
+      ]);
+      for (const proibido of [...ATESTADOS, N1, A4, O1, O2, O3, U_CLIENTE]) {
+        assert(!vistos.includes(proibido), `8i: a saída vazou ${proibido}`);
+        assert(
+          !vistos.includes(proibido.replace(/-/g, "")),
+          `8i: a saída vazou ${proibido} sem hífen`,
+        );
+      }
+      for (const proibido of ["Cliente FP", "@fp.teste", "MP-8I-NAO-PODE-SAIR"])
+        assert(!vistos.includes(proibido), `8i: a saída vazou ${proibido}`);
+      ok(
+        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 14/14 ok; modo medir (A_ATESTAR) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA (um volta a ter item, outro cancelled perde os itens) → contagem 3 ok MAS a impressão reprova; MESMO conjunto com subtotal / status / payment_status alterados → a impressão reprova (e o sinal, quando é o caso); outra escala do mesmo valor e outro fuso → a impressão NÃO muda; cada um dos 15 campos cobertos muda a impressão; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; RLS cega nos pedidos → 42501; RLS cega em estorno/devolução → INCONCLUSIVO não-ok; nenhum id (com ou sem hífen), nome, e-mail ou id de gateway na saída",
+      );
+    }
+
     // 8d: órfãs
     {
       const db = await clone(semeado, "ip_j_8d");
