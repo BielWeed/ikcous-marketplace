@@ -1367,6 +1367,163 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
   );
 });
 
+// 8j (05/10/2026) — as seis tabelas que a 8h e a 8i leem estão VISÍVEIS para o
+// papel que lê? Diagnóstico: separa "tabela vazia" de "tabela com linhas que a RLS
+// esconde". Não substitui a 8c/8h/8i e não atesta a impressão da 8i. Formato da 8c
+// (item/esperado/vivo/ok); só metadado e 0/>0; nenhum id, dinheiro ou dado pessoal.
+Deno.test("8j — no menu, UM SELECT só leitura no formato da 8c, cobre as seis tabelas da 8h/8i, usa row_security_active, contagem 0/>0 por EXISTS, quatro vereditos e nenhum dado pessoal ou financeiro", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const nome = "8j-visibilidade-das-tabelas-auxiliares";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  const TABELAS = [
+    "marketplace_orders",
+    "marketplace_order_items",
+    "marketplace_order_history",
+    "marketplace_order_payment_history",
+    "order_refunds",
+    "devolucoes",
+  ];
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "não achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+      `falta a opção ${nome} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, começa por WITH/SELECT, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com reprovadas primeiro",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*(WITH|SELECT)\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinâmico (ou leitura de arquivo) fora do que a consulta aceita",
+      );
+      assert(
+        /SELECT item, esperado, vivo, ok\s+FROM r\s+ORDER BY ok, item;/.test(
+          limpo,
+        ),
+        "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+      );
+    },
+  );
+  await t.step(
+    "cobre as seis tabelas da 8h/8i, cada uma com um EXISTS exato (nunca a estimativa do catálogo, nunca count)",
+    () => {
+      for (const tabela of TABELAS) {
+        assertStringIncludes(limpo, `, '${tabela}')`);
+        assertStringIncludes(limpo, `EXISTS (SELECT 1 FROM public.${tabela})`);
+      }
+      assertEquals(
+        (limpo.match(/EXISTS \(SELECT 1 FROM public\./g) ?? []).length,
+        6,
+      );
+      assertEquals((limpo.match(/\bFROM public\./g) ?? []).length, 6);
+      assert(
+        !/reltuples|n_live_tup|pg_stat\w*|\bcount\s*\(|\bsum\s*\(/i.test(
+          semTexto,
+        ),
+        "a contagem é só 0/>0 por EXISTS: nada de estimativa do catálogo nem agregado",
+      );
+      assertStringIncludes(limpo, "WHEN v.tem_linha THEN '>0' ELSE '0' END");
+    },
+  );
+  await t.step(
+    "mostra os metadados do papel efetivo e usa row_security_active (nunca relrowsecurity sozinho)",
+    () => {
+      for (const trecho of [
+        "current_user::text AS nome",
+        "r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname = current_user",
+        "r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user",
+        "current_setting('row_security')",
+        "c.relkind::text AS relkind",
+        "c.relrowsecurity AS rls_ligada",
+        "c.relforcerowsecurity AS rls_forcada",
+        "pg_has_role(current_user, c.relowner, 'USAGE') AS dono",
+        "has_table_privilege(current_user, c.oid, 'SELECT') AS pode_ler",
+        "row_security_active(c.oid) AS rls_ativa",
+        "m.relkind = 'r'",
+      ]) {
+        assertStringIncludes(limpo, trecho);
+      }
+      // a derivação independente que cruza com row_security_active
+      assertStringIncludes(
+        limpo.replace(/\s+/g, " "),
+        "m.rls_ativa = (m.rls_ligada AND NOT (p.bypass OR p.super) AND NOT (m.dono AND NOT m.rls_forcada))",
+      );
+    },
+  );
+  await t.step(
+    "os quatro vereditos, e só os dois conclusivos são ok; VISIVEL_VAZIA exige RLS NÃO ativa",
+    () => {
+      const usados = new Set(
+        [
+          ...limpo.matchAll(/'(VISIVEL_[A-Z_]+|RLS_ATIVA_[A-Z_]+|BLOQUEIA)'/g),
+        ].map((m) => m[1]),
+      );
+      assertEquals([...usados].sort(), [
+        "BLOQUEIA",
+        "RLS_ATIVA_INCONCLUSIVO",
+        "VISIVEL_COM_LINHAS",
+        "VISIVEL_VAZIA",
+      ]);
+      const plano = limpo.replace(/\s+/g, " ");
+      assertStringIncludes(
+        plano,
+        "WHEN j.apto AND NOT j.rls_ativa AND NOT j.tem_linha THEN 'VISIVEL_VAZIA'",
+      );
+      assertStringIncludes(
+        plano,
+        "WHEN j.apto AND NOT j.rls_ativa AND j.tem_linha THEN 'VISIVEL_COM_LINHAS'",
+      );
+      assertStringIncludes(
+        plano,
+        "WHEN j.apto AND j.rls_ativa THEN 'RLS_ATIVA_INCONCLUSIVO'",
+      );
+      assertStringIncludes(plano, "ELSE 'BLOQUEIA' END AS resultado");
+      assertStringIncludes(
+        plano,
+        "v.resultado IN ('VISIVEL_VAZIA', 'VISIVEL_COM_LINHAS')",
+      );
+    },
+  );
+  await t.step(
+    "nenhum id, valor de dinheiro, coluna de cliente ou id de gateway: só metadado",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|subtotal|total|price|valor_estornado|amount|shipping|discount|gateway_payment_id|payment_status|paid_at|quantity)\b/i.test(
+          semTexto,
+        ),
+        "a 8j leria dado pessoal ou financeiro",
+      );
+      assert(
+        !/(\bid\b|\.id\b)/i.test(semTexto),
+        "a 8j expôs `id` (nenhuma coluna de linha de tabela entra: só o catálogo e EXISTS)",
+      );
+    },
+  );
+  await t.step(
+    "o cabeçalho diz o que ela NÃO faz: não atesta a 8i, não dispensa a 8c, cita a fonte de row_security_active",
+    () => {
+      assertStringIncludes(sql, "NÃO atesta o hash da 8i nem dispensa a 8c");
+      assertStringIncludes(sql, "src/backend/utils/misc/rls.c");
+      assertStringIncludes(sql, "check_enable_rls");
+    },
+  );
+});
+
 Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 desta árvore REALMENTE definem", async (t) => {
   const { createHash } = require("node:crypto");
   const nomes: string[] = [];
