@@ -3543,7 +3543,7 @@ async function main() {
           assert.equal(
             vivoDe(g, T6_ORD),
             COM,
-            `8i (g): as outras cinco seguem o veredito normal`,
+            "8i (g): as outras cinco seguem o veredito normal",
           );
         }
         const g2 = await semLeituraGeral(() => R(fColHis));
