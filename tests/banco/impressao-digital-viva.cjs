@@ -114,6 +114,13 @@ const PAPEL_MEMBRO_8J = "ip_8j_membro";
 const PAPEL_SEMSEL_8J = "ip_8j_semsel";
 const PAPEL_PARCIAL_8J = "ip_8j_parcial";
 const PAPEL_COLUNA_8J = "ip_8j_coluna";
+// Papéis da prova 8i (papel e visibilidade no mesmo snapshot): o papel REAL do
+// endpoint somente leitura (BYPASSRLS + pg_read_all_data, como o repositório
+// supabase/postgres o cria) e um papel DONO das tabelas, de que o primeiro HERDA
+// em um caso. A prova os cria e os remove (e recusa rodar se já existirem).
+const PAPEL_8I = "supabase_read_only_user";
+const PAPEL_DONO_8I = "ip_8i_dono";
+let criouPapel8i = false;
 let resultados = 0;
 function ok(msg) {
   resultados += 1;
@@ -2298,6 +2305,24 @@ async function main() {
         "utf8",
       );
       assert.equal(CONF.contarStatements(SQL_8I), 1, "8i: 1 statement");
+      // O papel REAL do endpoint (nome exato: a 8i confere o nome). Cluster novo:
+      // se já existir, a prova não mexe em papel alheio.
+      await usar("template1", async (a) => {
+        const ja = await a.query(
+          "SELECT rolname FROM pg_roles WHERE rolname = ANY($1)",
+          [[PAPEL_8I, PAPEL_DONO_8I]],
+        );
+        assert.equal(
+          ja.rows.length,
+          0,
+          `8i: o papel ${ja.rows.map((r) => r.rolname).join(", ")} já existe no cluster; esta prova cria e remove o SEU papel, não mexe no alheio`,
+        );
+        criouPapel8i = true;
+        await a.query(`CREATE ROLE ${PAPEL_8I} NOLOGIN BYPASSRLS`);
+        await a.query(`CREATE ROLE ${PAPEL_DONO_8I} NOLOGIN`);
+        await a.query(`GRANT pg_read_all_data TO ${PAPEL_8I}`);
+      });
+      const saidas8i = [];
       const CONSTANTE = "'A_ATESTAR'";
       assert.equal(
         SQL_8I.split(CONSTANTE).length - 1,
@@ -2378,10 +2403,10 @@ async function main() {
         });
       const rodar8i = async (
         db,
-        { sql = SQL_8I, papel = PAPEL_RO, fuso = null, pre = [] } = {},
+        { sql = SQL_8I, papel = PAPEL_8I, fuso = null, pre = [] } = {},
       ) =>
         usar(db, async (c) => {
-          await c.query(`SET ROLE ${papel}`);
+          if (papel) await c.query(`SET ROLE ${papel}`);
           await c.query("SET default_transaction_read_only = on");
           if (fuso) await c.query(`SET TIME ZONE '${fuso}'`);
           for (const p of pre) await c.query(p);
@@ -2392,16 +2417,17 @@ async function main() {
               ["item", "esperado", "vivo", "ok"],
               "8i: colunas item/esperado/vivo/ok",
             );
+            saidas8i.push(r.rows);
             return r.rows;
           } finally {
-            await c.query("RESET ROLE");
+            if (papel) await c.query("RESET ROLE");
           }
         });
       const nomes = (rows) => reprovadas(rows).map((r) => r.item.trim());
       const IMP_ITEM =
         "impressao de integridade do conjunto e do estado (sha256, 64 hex)";
       const IMP = "impressao de integridade";
-      const LINHAS_DA_8I = 14;
+      const LINHAS_DA_8I = 19;
       const HEX64 = /^[0-9a-f]{64}$/;
 
       // Os 3 atestados (cancelled, pix, sem payment_status, sem item, com
@@ -2465,7 +2491,7 @@ async function main() {
       // (vi) MODO MEDIR: constante A_ATESTAR → só a impressão reprova, e o vivo é
       // a impressão de agora (64 hex), igual à calculada FORA do banco.
       const m0 = await rodar8i(base);
-      assert.equal(m0.length, LINHAS_DA_8I, "8i: 14 linhas");
+      assert.equal(m0.length, LINHAS_DA_8I, "8i: 19 linhas");
       assert.deepEqual(
         nomes(m0),
         [IMP_ITEM],
@@ -2480,7 +2506,7 @@ async function main() {
       );
       assert.equal(linha(m0, "pedidos divergentes").vivo, "3");
 
-      // (i) com a constante atestada (em memória): TUDO ok (14 de 14).
+      // (i) com a constante atestada (em memória): TUDO ok (19 de 19).
       const SQL_ATESTADO = atestando(IMPRESSAO);
       const a0 = await rodar8i(base, { sql: SQL_ATESTADO });
       assert.equal(a0.length, LINHAS_DA_8I);
@@ -2492,11 +2518,19 @@ async function main() {
       for (const c of [
         "controle: pedidos visiveis",
         "controle: itens de pedido visiveis",
+      ])
+        assert.equal(linha(a0, c).vivo, ">0");
+      // os três controles '>0' de tabela auxiliar SAÍRAM: a visibilidade os substitui
+      for (const c of [
         "controle: registros de pagamento visiveis",
         "controle: estornos visiveis",
         "controle: devolucoes visiveis",
       ])
-        assert.equal(linha(a0, c).vivo, ">0");
+        assert.equal(
+          a0.filter((r) => r.item === c).length,
+          0,
+          `8i: o controle '${c}' exigia linha e saiu`,
+        );
 
       // (vi-b) sem NENHUM divergente (a fixture limpa): a contagem E a impressão
       // reprovam — "0 divergentes" nunca passa por "o conjunto".
@@ -3000,9 +3034,797 @@ async function main() {
         vistosNoLoop.push(rs);
       }
 
-      // (v) RLS cega nos pedidos (papel sem BYPASSRLS): FALHA ALTA (42501), nunca
-      // um zero que engana — a política TO public do histórico de pagamento chama
-      // is_admin()/rls_admin_atual() sem EXECUTE para o papel.
+      // ======================================================================
+      // VISIBILIDADE E PAPEL NO MESMO SNAPSHOT (a 8i prova papel e visibilidade
+      // das seis tabelas no MESMO statement que calcula o hash e os sinais).
+      // Cada fixture é um clone da `base` (3 cancelled sem item + N1), e o papel
+      // é o REAL (supabase_read_only_user: BYPASSRLS + pg_read_all_data); os casos
+      // que mudam o papel mexem nele só dentro de try/finally e o restauram.
+      // ======================================================================
+      const T6 = [
+        "marketplace_orders",
+        "marketplace_order_items",
+        "marketplace_order_history",
+        "marketplace_order_payment_history",
+        "order_refunds",
+        "devolucoes",
+      ];
+      const [T6_ORD, T6_ITE, T6_HIS, T6_PAG, T6_REF, T6_DEV] = T6;
+      const VAZIA = "VISIVEL_VAZIA";
+      const COM = "VISIVEL_COM_LINHAS";
+      const INC = "RLS_ATIVA_INCONCLUSIVO";
+      const BLQ = "BLOQUEIA";
+      const S_PAG =
+        "dos quais com registro em marketplace_order_payment_history";
+      const S_REF = "dos quais com estorno em order_refunds";
+      const S_DEV = "dos quais com devolucao";
+      const V = (t) => `${t}: visibilidade`;
+      const vivoDe = (rows, t) => linha(rows, V(t)).vivo;
+      const vereditos8i = (rows) =>
+        Object.fromEntries(T6.map((t) => [t, linha(rows, V(t)).vivo]));
+      const VISTO_TUDO = {
+        [T6_ORD]: COM,
+        [T6_ITE]: COM,
+        [T6_HIS]: COM,
+        [T6_PAG]: COM,
+        [T6_REF]: COM,
+        [T6_DEV]: COM,
+      };
+      const alterarPapel = (sqlPapel) =>
+        usar("template1", (a) => a.query(sqlPapel));
+      const semBypass = async (fn) => {
+        await alterarPapel(`ALTER ROLE ${PAPEL_8I} NOBYPASSRLS`);
+        try {
+          return await fn();
+        } finally {
+          await alterarPapel(`ALTER ROLE ${PAPEL_8I} BYPASSRLS`);
+        }
+      };
+      const semLeituraGeral = async (fn) => {
+        await alterarPapel(`REVOKE pg_read_all_data FROM ${PAPEL_8I}`);
+        try {
+          return await fn();
+        } finally {
+          await alterarPapel(`GRANT pg_read_all_data TO ${PAPEL_8I}`);
+        }
+      };
+      // derruba toda política e desliga a RLS nas seis (só neste clone): o que
+      // esconde linha é só o que o caso liga depois
+      const neutralizar = async (c) => {
+        await c.query("SET session_replication_role = replica");
+        for (const t of T6) {
+          const pol = await c.query(
+            "SELECT policyname FROM pg_policies WHERE schemaname = 'public' AND tablename = $1",
+            [t],
+          );
+          for (const { policyname } of pol.rows)
+            await c.query(`DROP POLICY "${policyname}" ON public.${t}`);
+          await c.query(`ALTER TABLE public.${t} DISABLE ROW LEVEL SECURITY`);
+          await c.query(`ALTER TABLE public.${t} NO FORCE ROW LEVEL SECURITY`);
+        }
+      };
+      const esvaziar = async (c, tabelas) => {
+        await c.query("SET session_replication_role = replica");
+        for (const t of tabelas) {
+          if (t === T6_DEV) await c.query("DELETE FROM public.devolucao_itens");
+          await c.query(`DELETE FROM public.${t}`);
+        }
+      };
+      const estornoDe = (c, id) =>
+        c.query(
+          `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status, concluido_em) VALUES ($1, 10, 'lojista', 'solicitado', NULL)`,
+          [id],
+        );
+      const devolucaoDe = (c, id) =>
+        c.query(
+          `INSERT INTO public.devolucoes (
+             id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, resolucao_final,
+             modalidade, metodo_retorno, status, valor_itens, valor_reembolso, reembolso_manual,
+             prazo_ate, politica, concluida_em
+           ) VALUES (
+             gen_random_uuid(), 'DV-8I-TESTE', $1, $2, 'arrependimento', 'desisti', 'reembolso', 'reembolso',
+             'local', 'entrega_na_loja', 'concluida', 30, 30, true,
+             current_date + 7, '{}'::jsonb, now()
+           )`,
+          [id, U_CLIENTE],
+        );
+      const pagamentoDe = (c, id) =>
+        c.query(
+          "INSERT INTO public.marketplace_order_payment_history (order_id, acao) VALUES ($1, 'recebido')",
+          [id],
+        );
+      const contarComo = (db, papel) =>
+        usar(db, async (c) => {
+          await c.query(`SET ROLE ${papel}`);
+          const pares = [];
+          for (const t of T6)
+            pares.push([
+              t,
+              (await c.query(`SELECT count(*)::int AS n FROM public.${t}`))
+                .rows[0].n,
+            ]);
+          return Object.fromEntries(pares);
+        });
+
+      // (a) a LOJA REAL (CAF): papel com BYPASSRLS, as políticas do app LIGADAS,
+      // order_refunds e devolucoes VAZIAS (e visíveis). Era o falso inconclusivo.
+      const fCaf = await clone(base, "ip_j_8i_caf");
+      await usar(fCaf, (c) => esvaziar(c, [T6_REF, T6_DEV]));
+      const rlsDoApp = await usar(
+        fCaf,
+        async (c) =>
+          new Map(
+            (
+              await c.query(
+                "SELECT relname, relrowsecurity FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = ANY($1)",
+                [T6],
+              )
+            ).rows.map((r) => [r.relname, r.relrowsecurity]),
+          ),
+      );
+      assert.equal(
+        [...rlsDoApp.values()].filter(Boolean).length > 0,
+        true,
+        "8i (a): a fixture tem RLS ligada em alguma das seis (o caso real tem política E bypass)",
+      );
+      const fCafTudo = await clone(fCaf, "ip_j_8i_caf_tudo");
+      await usar(fCafTudo, (c) => esvaziar(c, [T6_PAG]));
+      const fCafEstorno = await clone(fCaf, "ip_j_8i_caf_estorno");
+      await usar(fCafEstorno, (c) => estornoDe(c, DC));
+      const fCafDev = await clone(fCaf, "ip_j_8i_caf_dev");
+      await usar(fCafDev, (c) => devolucaoDe(c, DB));
+      const fCafPag = await clone(fCaf, "ip_j_8i_caf_pag");
+      await usar(fCafPag, (c) => pagamentoDe(c, DA));
+
+      // (c) o papel que PERDE o bypass (mesmo nome, NOBYPASSRLS) com RLS ligada e
+      // política: order_refunds tem linhas ESCONDIDAS (inclusive um estorno do DB),
+      // devolucoes está vazia sob RLS. Todo o resto visível.
+      const fRls = await clone(base, "ip_j_8i_rls");
+      await usar(fRls, async (c) => {
+        await neutralizar(c);
+        await estornoDe(c, DB);
+        await esvaziar(c, [T6_DEV]);
+        for (const t of [T6_REF, T6_DEV]) {
+          await c.query(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
+          await c.query(
+            `CREATE POLICY nunca_casa ON public.${t} FOR SELECT TO public USING (false)`,
+          );
+        }
+      });
+      // (d) RLS PARCIAL: a política deixa ver só o registro de O2; o de DA (um dos
+      // 3 atestados) fica escondido.
+      const fParcial = await clone(base, "ip_j_8i_parcial");
+      await usar(fParcial, async (c) => {
+        await neutralizar(c);
+        await pagamentoDe(c, DA);
+        await c.query(`ALTER TABLE public.${T6_PAG} ENABLE ROW LEVEL SECURITY`);
+        await c.query(
+          `CREATE POLICY casa_um ON public.${T6_PAG} FOR SELECT TO public USING (order_id = '${O2}'::uuid)`,
+        );
+      });
+      // (k) RLS PARCIAL nos PEDIDOS: a política esconde UM dos 3 atestados (DA).
+      // A população vira 2 e a visibilidade de marketplace_orders reprova.
+      const fPedidosRls = await clone(base, "ip_j_8i_pedidos_rls");
+      await usar(fPedidosRls, async (c) => {
+        await neutralizar(c);
+        await c.query(`ALTER TABLE public.${T6_ORD} ENABLE ROW LEVEL SECURITY`);
+        await c.query(
+          `CREATE POLICY sem_da ON public.${T6_ORD} FOR SELECT TO public USING (id <> '${DA}'::uuid)`,
+        );
+      });
+      // (f)(g) papel SEM pg_read_all_data: SELECT concedido tabela a tabela
+      const concederLeitura = async (c, { inteiras, colunas = {} }) => {
+        await c.query(`GRANT USAGE ON SCHEMA extensions TO ${PAPEL_8I}`);
+        for (const t of inteiras)
+          await c.query(`GRANT SELECT ON public.${t} TO ${PAPEL_8I}`);
+        for (const [t, cols] of Object.entries(colunas))
+          await c.query(
+            `GRANT SELECT (${cols.join(", ")}) ON public.${t} TO ${PAPEL_8I}`,
+          );
+      };
+      const fSemSel = await clone(base, "ip_j_8i_semsel");
+      await usar(fSemSel, (c) =>
+        c.query(`GRANT USAGE ON SCHEMA extensions TO ${PAPEL_8I}`),
+      );
+      const fCincoDeSeis = await clone(base, "ip_j_8i_cinco");
+      await usar(fCincoDeSeis, (c) =>
+        concederLeitura(c, {
+          inteiras: [T6_ORD, T6_ITE, T6_HIS, T6_PAG, T6_REF],
+        }),
+      );
+      const fColDev = new Map();
+      for (const [rotulo, vazia] of [
+        ["vazia", true],
+        ["cheia", false],
+      ]) {
+        const d = await clone(base, `ip_j_8i_coldev_${rotulo}`);
+        await usar(d, async (c) => {
+          if (vazia) await esvaziar(c, [T6_DEV]);
+          await concederLeitura(c, {
+            inteiras: [T6_ORD, T6_ITE, T6_HIS, T6_PAG, T6_REF],
+            colunas: { [T6_DEV]: ["order_id"] },
+          });
+        });
+        fColDev.set(rotulo, d);
+      }
+      const fColId = await clone(base, "ip_j_8i_colid");
+      await usar(fColId, (c) =>
+        concederLeitura(c, {
+          inteiras: [T6_ORD, T6_ITE, T6_HIS, T6_PAG, T6_REF],
+          colunas: { [T6_DEV]: ["id"] },
+        }),
+      );
+      const fColHis = await clone(base, "ip_j_8i_colhis");
+      await usar(fColHis, (c) =>
+        concederLeitura(c, {
+          inteiras: [T6_ORD, T6_ITE, T6_PAG, T6_REF, T6_DEV],
+          colunas: { [T6_HIS]: ["id"] },
+        }),
+      );
+      // (h) o papel é DONO das tabelas (direto ou por herança), sem e com FORCE
+      const montarDono = async (nome, dono, forcar) => {
+        const d = await clone(base, nome);
+        await usar(d, async (c) => {
+          await neutralizar(c);
+          for (const t of T6)
+            await c.query(`ALTER TABLE public.${t} OWNER TO ${dono}`);
+          for (const t of [T6_HIS, T6_PAG, T6_REF, T6_DEV]) {
+            await c.query(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
+            await c.query(
+              `CREATE POLICY nunca_casa ON public.${t} FOR SELECT TO public USING (false)`,
+            );
+          }
+          for (const t of forcar)
+            await c.query(`ALTER TABLE public.${t} FORCE ROW LEVEL SECURITY`);
+        });
+        return d;
+      };
+      const fDono = await montarDono("ip_j_8i_dono", PAPEL_8I, []);
+      const fDonoForce = await montarDono("ip_j_8i_dono_force", PAPEL_8I, [
+        T6_REF,
+        T6_DEV,
+      ]);
+      const fHerda = await montarDono("ip_j_8i_herda", PAPEL_DONO_8I, []);
+      const fHerdaForce = await montarDono(
+        "ip_j_8i_herda_force",
+        PAPEL_DONO_8I,
+        [T6_REF, T6_DEV],
+      );
+
+      // A verdade de fora: o que o papel SEM bypass enxerga de fato nos clones
+      // plantados (para provar que a RLS esconde, e não que a tabela está vazia).
+      await semBypass(async () => {
+        assert.deepEqual(
+          await contarComo(fRls, PAPEL_8I),
+          {
+            [T6_ORD]: 7,
+            [T6_ITE]: 4,
+            [T6_HIS]: 7,
+            [T6_PAG]: 1,
+            [T6_REF]: 0,
+            [T6_DEV]: 0,
+          },
+          "8i (c): sem bypass, refunds some (tem 3 de verdade) e devolucoes está vazia",
+        );
+        assert.deepEqual(
+          await contarComo(fParcial, PAPEL_8I),
+          {
+            [T6_ORD]: 7,
+            [T6_ITE]: 4,
+            [T6_HIS]: 7,
+            [T6_PAG]: 1,
+            [T6_REF]: 2,
+            [T6_DEV]: 1,
+          },
+          "8i (d): sem bypass, vê 1 dos 2 registros de pagamento (RLS parcial)",
+        );
+      });
+      assert.deepEqual(
+        await usar(
+          fRls,
+          async (c) =>
+            (await c.query(`SELECT count(*)::int AS n FROM public.${T6_REF}`))
+              .rows[0],
+        ),
+        { n: 3 },
+        "8i (c): a verdade de fora de order_refunds é 3 linhas (2 da fixture e 1 do DB)",
+      );
+      assert.deepEqual(
+        await usar(
+          fParcial,
+          async (c) =>
+            (await c.query(`SELECT count(*)::int AS n FROM public.${T6_PAG}`))
+              .rows[0],
+        ),
+        { n: 2 },
+        "8i (d): a verdade de fora de payment_history é 2 linhas",
+      );
+
+      const MUTANTES_NOMES = [];
+      // atesta (em memória) QUALQUER texto de SQL: o oráculo é a impressão da base
+      const atestarSql = (texto) =>
+        texto.replace(CONSTANTE, () => `'${IMPRESSAO}'`);
+      const SUPER = await usar(
+        "template1",
+        async (c) => (await c.query("SELECT current_user AS u")).rows[0].u,
+      );
+      // A BATERIA: roda os casos (a) a (h) + as duas injeções contra um SQL. Com o
+      // SQL de verdade tudo passa; com cada mutante ALGUMA asserção tem de falhar.
+      const provar8i = async (sqlBase) => {
+        const sql = atestarSql(sqlBase);
+        const R = (db, o = {}) => rodar8i(db, { sql, ...o });
+        const papelOk = (r, rotulo) => {
+          assert.equal(linha(r, "papel efetivo").vivo, PAPEL_8I, rotulo);
+          assert.equal(linha(r, "papel efetivo").ok, true, rotulo);
+        };
+        // (a) CAF: tudo ok no modo atestado; só a impressão reprova no modo medir
+        const a = await R(fCaf);
+        assert.equal(a.length, LINHAS_DA_8I, "8i (a): 19 linhas");
+        assert.deepEqual(
+          nomes(a),
+          [],
+          "8i (a) CAF: refunds/devolucoes vazias e visíveis → tudo ok",
+        );
+        assert.deepEqual(
+          vereditos8i(a),
+          { ...VISTO_TUDO, [T6_REF]: VAZIA, [T6_DEV]: VAZIA },
+          "8i (a): VISIVEL_VAZIA nas duas tabelas vazias, mesmo com RLS ligada (o papel tem bypass)",
+        );
+        assert.equal(
+          linha(a, S_REF).vivo,
+          "0",
+          "8i (a): 0 numa tabela VISIVEL_VAZIA é conclusivo",
+        );
+        assert.equal(linha(a, S_DEV).vivo, "0");
+        assert.equal(linha(a, S_REF).ok, true);
+        assert.equal(linha(a, S_DEV).ok, true);
+        papelOk(a, "8i (a): papel");
+        assert.equal(
+          linha(a, "atributos do papel").vivo,
+          "rolbypassrls=true; rolsuper=false",
+        );
+        assert.equal(linha(a, "atributos do papel").ok, true);
+        const aMedir = await rodar8i(fCaf, { sql: sqlBase });
+        assert.deepEqual(
+          nomes(aMedir),
+          [IMP_ITEM],
+          "8i (a) modo medir: só a impressão reprova",
+        );
+        assert.equal(linha(aMedir, IMP).vivo, IMPRESSAO);
+        const a2 = await R(fCafTudo);
+        assert.deepEqual(
+          nomes(a2),
+          [],
+          "8i (a2): as TRÊS auxiliares vazias → tudo ok",
+        );
+        assert.equal(vivoDe(a2, T6_PAG), VAZIA);
+        assert.equal(linha(a2, S_PAG).vivo, "0");
+        // (b) com linhas de OUTROS pedidos → ok; com sinal num dos 3 → reprova com a contagem
+        assert.deepEqual(vereditos8i(await R(base)), VISTO_TUDO);
+        assert.deepEqual(
+          nomes(await R(base)),
+          [],
+          "8i (b): auxiliares com linhas de outros pedidos → ok",
+        );
+        for (const [rotulo, db, sinal] of [
+          ["estorno no ÚNICO registro", fCafEstorno, S_REF],
+          ["devolução no ÚNICO registro", fCafDev, S_DEV],
+          [
+            "registro de pagamento (tabela com 1 linha de outro pedido)",
+            fCafPag,
+            S_PAG,
+          ],
+        ]) {
+          const b = await R(db);
+          assert.deepEqual(
+            nomes(b),
+            [sinal],
+            `8i (b) ${rotulo}: reprova só o 'dos quais'`,
+          );
+          assert.equal(
+            linha(b, sinal).vivo,
+            "1",
+            `8i (b) ${rotulo}: a contagem`,
+          );
+        }
+        // (c) papel sem bypass + RLS ligada + política: INCONCLUSIVO reprova e os sinais viram INCONCLUSIVO
+        const c3 = await semBypass(() => R(fRls));
+        assert.deepEqual(
+          vereditos8i(c3),
+          { ...VISTO_TUDO, [T6_REF]: INC, [T6_DEV]: INC },
+          "8i (c): RLS ativa → RLS_ATIVA_INCONCLUSIVO (nunca VISIVEL_VAZIA, nem para a tabela vazia)",
+        );
+        assert.deepEqual(
+          nomes(c3).sort(),
+          [V(T6_REF), V(T6_DEV), S_REF, S_DEV].sort(),
+          "8i (c): reprovam as duas visibilidades E os dois sinais",
+        );
+        assert.match(
+          linha(c3, S_REF).vivo,
+          /^INCONCLUSIVO \(/,
+          "8i (c): o sinal NÃO é 0",
+        );
+        assert.match(linha(c3, S_DEV).vivo, /^INCONCLUSIVO \(/);
+        assert.equal(linha(c3, V(T6_REF)).ok, false);
+        assert.equal(
+          linha(c3, "atributos do papel").vivo,
+          "rolbypassrls=false; rolsuper=false",
+        );
+        assert.equal(
+          linha(c3, IMP).ok,
+          true,
+          "8i (c): a impressão não depende das auxiliares",
+        );
+        // ...e o MESMO banco com o papel de bypass mostra o que a RLS escondia
+        const c3b = await R(fRls);
+        assert.deepEqual(
+          nomes(c3b),
+          [S_REF],
+          "8i (c): com bypass o estorno plantado aparece",
+        );
+        assert.equal(linha(c3b, S_REF).vivo, "1");
+        // (d) RLS PARCIAL: vê 1 de 2 → continua INCONCLUSIVO, nunca ok
+        const d = await semBypass(() => R(fParcial));
+        assert.equal(
+          vivoDe(d, T6_PAG),
+          INC,
+          "8i (d): RLS parcial → inconclusivo",
+        );
+        assert.deepEqual(
+          nomes(d).sort(),
+          [V(T6_PAG), S_PAG].sort(),
+          "8i (d): reprova a visibilidade e o sinal (o registro de DA está escondido)",
+        );
+        assert.match(linha(d, S_PAG).vivo, /^INCONCLUSIVO \(/);
+        const d2 = await R(fParcial);
+        assert.equal(
+          linha(d2, S_PAG).vivo,
+          "1",
+          "8i (d): com bypass o registro de DA aparece",
+        );
+        // (e) papel com OUTRO nome (e superuser) reprova o papel efetivo
+        const e1 = await R(base, { papel: PAPEL_RO });
+        assert.deepEqual(
+          nomes(e1),
+          ["papel efetivo"],
+          "8i (e): outro nome reprova SÓ o papel",
+        );
+        assert.equal(linha(e1, "papel efetivo").vivo, PAPEL_RO);
+        const e2 = await R(base, { papel: null });
+        assert.deepEqual(
+          nomes(e2),
+          ["papel efetivo"],
+          "8i (e): superuser também reprova o papel",
+        );
+        assert.equal(linha(e2, "papel efetivo").vivo, SUPER);
+        assert.equal(
+          linha(e2, "atributos do papel").vivo,
+          "rolbypassrls=true; rolsuper=true",
+        );
+        // (f) SEM SELECT: a consulta INTEIRA falha alto (42501), nunca zero silencioso
+        const falhou42501 = (re) => (e) => {
+          assert.equal(e.code, "42501", `8i (f): ${e.message}`);
+          assert.match(e.message, re);
+          return true;
+        };
+        await semLeituraGeral(async () => {
+          await assert.rejects(
+            R(fSemSel),
+            falhou42501(/permission denied for table/),
+            "8i (f): sem SELECT nenhum → falha alta",
+          );
+          await assert.rejects(
+            R(fCincoDeSeis),
+            falhou42501(/permission denied for table devolucoes/),
+            "8i (f): SELECT em cinco das seis → falha alta citando a que falta",
+          );
+          // SELECT só da coluna `id` de devolucoes: a 8i lê order_id → 42501 também
+          await assert.rejects(
+            R(fColId),
+            falhou42501(/permission denied for table devolucoes/),
+            "8i (f): SELECT só de OUTRA coluna → falha alta",
+          );
+        });
+        // (g) SELECT parcial (só de coluna) numa tabela: roda, e a linha é BLOQUEIA
+        for (const rotulo of ["vazia", "cheia"]) {
+          const g = await semLeituraGeral(() => R(fColDev.get(rotulo)));
+          assert.equal(
+            vivoDe(g, T6_DEV),
+            BLQ,
+            `8i (g) devolucoes ${rotulo}: SELECT de coluna → BLOQUEIA`,
+          );
+          assert.deepEqual(
+            nomes(g).sort(),
+            [V(T6_DEV), S_DEV].sort(),
+            `8i (g) devolucoes ${rotulo}: reprova a visibilidade e o sinal`,
+          );
+          assert.match(linha(g, S_DEV).vivo, /^INCONCLUSIVO \(/);
+          assert.equal(linha(g, V(T6_DEV)).ok, false);
+          assert.equal(
+            vivoDe(g, T6_ORD),
+            COM,
+            `8i (g): as outras cinco seguem o veredito normal`,
+          );
+        }
+        const g2 = await semLeituraGeral(() => R(fColHis));
+        assert.equal(
+          vivoDe(g2, T6_HIS),
+          BLQ,
+          "8i (g): history com SELECT só de coluna → BLOQUEIA",
+        );
+        assert.deepEqual(
+          nomes(g2),
+          [V(T6_HIS)],
+          "8i (g): só a visibilidade de history reprova",
+        );
+        // (h) o papel é DONO (sem FORCE ignora a RLS; com FORCE, não)
+        for (const [rotulo, db, papelNome, comForce] of [
+          ["dono direto", fDono, PAPEL_8I, false],
+          ["dono direto + FORCE", fDonoForce, PAPEL_8I, true],
+          ["herda o dono", fHerda, PAPEL_DONO_8I, false],
+          ["herda o dono + FORCE", fHerdaForce, PAPEL_DONO_8I, true],
+        ]) {
+          const h = await semBypass(async () => {
+            if (papelNome === PAPEL_8I) return R(db);
+            await alterarPapel(`GRANT ${papelNome} TO ${PAPEL_8I}`);
+            try {
+              return await R(db);
+            } finally {
+              await alterarPapel(`REVOKE ${papelNome} FROM ${PAPEL_8I}`);
+            }
+          });
+          if (!comForce) {
+            assert.deepEqual(
+              nomes(h),
+              [],
+              `8i (h) ${rotulo}: o dono sem FORCE ignora a RLS → tudo ok`,
+            );
+            assert.deepEqual(vereditos8i(h), VISTO_TUDO, `8i (h) ${rotulo}`);
+          } else {
+            assert.deepEqual(
+              vereditos8i(h),
+              { ...VISTO_TUDO, [T6_REF]: INC, [T6_DEV]: INC },
+              `8i (h) ${rotulo}: FORCE sujeita o dono à RLS`,
+            );
+            assert.deepEqual(
+              nomes(h).sort(),
+              [V(T6_REF), V(T6_DEV), S_REF, S_DEV].sort(),
+              `8i (h) ${rotulo}: reprovam as duas visibilidades e os dois sinais`,
+            );
+          }
+        }
+        // (k) RLS parcial nos pedidos: o conjunto fica errado E a visibilidade reprova
+        const k = await semBypass(() => R(fPedidosRls));
+        assert.equal(
+          vivoDe(k, T6_ORD),
+          INC,
+          "8i (k): RLS parcial nos pedidos → RLS_ATIVA_INCONCLUSIVO",
+        );
+        assert.equal(linha(k, V(T6_ORD)).ok, false);
+        assert.equal(
+          linha(k, "pedidos divergentes").vivo,
+          "2",
+          "8i (k): a RLS escondeu um dos 3 divergentes",
+        );
+        assert.deepEqual(
+          nomes(k).sort(),
+          [
+            V(T6_ORD),
+            IMP_ITEM,
+            "pedidos divergentes (mesma regra da 8c; base atestada)",
+          ].sort(),
+          "8i (k): reprovam a visibilidade, a contagem e a impressão",
+        );
+        // (inj-1) row_security_active que DISCORDA da derivação → as seis BLOQUEIAM
+        const DIVERGE = sqlBase.replace(
+          "row_security_active(c.oid) AS rls_ativa",
+          "(NOT row_security_active(c.oid)) AS rls_ativa",
+        );
+        assert.notEqual(
+          DIVERGE,
+          sqlBase,
+          "8i (inj): a simulação de divergência entrou",
+        );
+        const dv = await rodar8i(fCaf, { sql: atestarSql(DIVERGE) });
+        assert.deepEqual(
+          Object.values(vereditos8i(dv)),
+          Array(6).fill(BLQ),
+          "8i (inj): row_security_active que discorda da derivação → BLOQUEIA as seis",
+        );
+        for (const s of [S_PAG, S_REF, S_DEV])
+          assert.match(
+            linha(dv, s).vivo,
+            /^INCONCLUSIVO \(/,
+            "8i (inj): os sinais ficam INCONCLUSIVO",
+          );
+        // (inj-2) bypass desconhecido (NULL) → BLOQUEIA onde a RLS está ligada
+        const SEM_BYPASS = sqlBase.replace(
+          "r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname = current_user",
+          "r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname = 'papel_inexistente_8i'",
+        );
+        assert.notEqual(
+          SEM_BYPASS,
+          sqlBase,
+          "8i (inj): a simulação de bypass NULL entrou",
+        );
+        const sb = await rodar8i(fCaf, { sql: atestarSql(SEM_BYPASS) });
+        assert.deepEqual(
+          vereditos8i(sb),
+          Object.fromEntries(
+            T6.map((t) => [
+              t,
+              rlsDoApp.get(t)
+                ? BLQ
+                : t === T6_REF || t === T6_DEV
+                  ? VAZIA
+                  : COM,
+            ]),
+          ),
+          "8i (inj): rolbypassrls NULL → BLOQUEIA exatamente onde a RLS está ligada",
+        );
+        assert.equal(
+          linha(sb, "atributos do papel").vivo,
+          "rolbypassrls=?; rolsuper=false",
+        );
+        return { a, a2, c3, c3b, d, e1, e2, dv, sb };
+      };
+
+      // O SQL de verdade: tudo passa.
+      const saidasMatriz = await provar8i(SQL_8I);
+      for (const [rotulo, rows] of Object.entries(saidasMatriz))
+        console.log(
+          `  [8i] ${rotulo}: ${T6.map((t) => `${t.replace("marketplace_", "")}=${linha(rows, V(t)).vivo}`).join(" | ")}`,
+        );
+
+      // MUTANTES (em memória): cada um tem de MORRER por uma ASSERÇÃO (não por erro
+      // de SQL). O restaurado (SQL_8I) acabou de passar acima.
+      const MUTANTES = [
+        [
+          "M-a veredito de visibilidade por EXISTS (volta ao antigo: vazia = inconclusiva)",
+          (s) =>
+            s.replace(
+              "WHEN j.apto AND NOT j.rls_ativa AND NOT j.tem_linha THEN 'VISIVEL_VAZIA'",
+              "WHEN j.apto AND NOT j.rls_ativa AND NOT j.tem_linha THEN 'RLS_ATIVA_INCONCLUSIVO'",
+            ),
+        ],
+        [
+          "M-b sem a conferência do papel (o nome é sempre o esperado)",
+          (s) =>
+            s.replace(
+              "current_user::text AS nome",
+              "'supabase_read_only_user'::text AS nome",
+            ),
+        ],
+        [
+          "M-c aceita RLS_ATIVA_INCONCLUSIVO como conclusivo (ok)",
+          (s) =>
+            s.replace(
+              "(v.resultado IN ('VISIVEL_VAZIA', 'VISIVEL_COM_LINHAS')) AS conclusivo",
+              "(v.resultado IN ('VISIVEL_VAZIA', 'VISIVEL_COM_LINHAS', 'RLS_ATIVA_INCONCLUSIVO')) AS conclusivo",
+            ),
+        ],
+        [
+          "M-d sem o `apto` (row_security_active não é conferido contra a derivação)",
+          (s) =>
+            s.replace(
+              /\n\s+AND m\.rls_ativa = \(m\.rls_ligada\n\s+AND NOT \(p\.bypass OR p\.super\)\n\s+AND NOT \(m\.dono AND NOT m\.rls_forcada\)\),/,
+              ",",
+            ),
+        ],
+        [
+          "M-e calcula o sinal mesmo sem visibilidade",
+          (s) =>
+            s.replace(
+              /\(SELECT lt\.conclusivo FROM leitura lt WHERE lt\.tabela = '[a-z_]+'\)/g,
+              "true",
+            ),
+        ],
+        [
+          "M-f sem `pode_ler` (SELECT só de coluna passa por visível)",
+          (s) => s.replace("\n                  AND m.pode_ler", ""),
+        ],
+        [
+          "M-g sem o termo do dono na derivação",
+          (s) =>
+            s.replace(
+              "\n                                     AND NOT (m.dono AND NOT m.rls_forcada)",
+              "",
+            ),
+        ],
+        [
+          "M-h sem o termo do bypass na derivação",
+          (s) =>
+            s.replace(
+              "\n                                     AND NOT (p.bypass OR p.super)",
+              "",
+            ),
+        ],
+      ];
+      for (const [rotulo, muta] of MUTANTES) {
+        const mutado = muta(SQL_8I);
+        assert.notEqual(mutado, SQL_8I, `8i: o mutante entrou (${rotulo})`);
+        let morte = null;
+        try {
+          await provar8i(mutado);
+        } catch (e) {
+          morte = e;
+        }
+        assert.ok(morte, `8i: o mutante SOBREVIVEU: ${rotulo}`);
+        assert.ok(
+          morte instanceof assert.AssertionError,
+          `8i: o mutante morreu por erro que NÃO é asserção (${morte?.message}): ${rotulo}`,
+        );
+        MUTANTES_NOMES.push(rotulo);
+        console.log(
+          `    8i mutante ${rotulo}: MORREU — ${String(morte.message).split("\n")[0].slice(0, 170)}`,
+        );
+      }
+      // o restaurado volta a passar
+      await provar8i(SQL_8I);
+
+      // (i) PRESERVAÇÃO: o hash sai IGUAL ao da 084c52dc, no MESMO banco, em
+      // vários estados (a referência congelada é o SQL de 084c52dc byte a byte).
+      const REF_8I = fs.readFileSync(
+        path.join(REPO, "tests", "banco", "referencia", "8i-084c52dc.sql"),
+        "utf8",
+      );
+      assert.equal(
+        require("node:crypto")
+          .createHash("sha256")
+          .update(REF_8I)
+          .digest("hex"),
+        "d9585cdf8534f778761b01f51d0803057a8db3a2538c4eb3a0a0da7c9c8ea48a",
+        "8i (i): a referência congelada é a de 084c52dc",
+      );
+      assert.equal(CONF.contarStatements(REF_8I), 1);
+      const igualAoAntigo = async (db, rotulo, opcoes = {}) => {
+        const antigo = linha(
+          await rodar8i(db, { sql: REF_8I, ...opcoes }),
+          IMP,
+        );
+        const novo = linha(await rodar8i(db, opcoes), IMP);
+        assert.equal(
+          novo.vivo,
+          antigo.vivo,
+          `8i (i) ${rotulo}: a impressão da 8i nova difere da de 084c52dc`,
+        );
+        return novo.vivo;
+      };
+      const hashesComparados = [];
+      for (const [rotulo, db] of [
+        ["base", base],
+        ["fixture limpa (sem divergentes)", semeado],
+        ["4º divergente ativo", ativo],
+        ["troca de pedido", troca],
+        ["subtotal alterado", subt],
+        ["outra escala", escala],
+        ["ordem de inserção A", ordemA],
+        ["ordem de inserção B", ordemB],
+      ])
+        hashesComparados.push([rotulo, await igualAoAntigo(db, rotulo)]);
+      hashesComparados.push([
+        "outro fuso",
+        await igualAoAntigo(base, "outro fuso", { fuso: "America/Sao_Paulo" }),
+      ]);
+      assert.equal(
+        hashesComparados[0][1],
+        IMPRESSAO,
+        "8i (i): a base dá a impressão atestável",
+      );
+      assert.equal(hashesComparados[1][1], "(sem divergentes)");
+      assert.equal(
+        new Set(hashesComparados.map((h) => h[1])).size >= 5,
+        true,
+        "8i (i): os estados comparados dão impressões diferentes (a comparação não é trivial)",
+      );
+      console.log(
+        `  [8i] (i) a impressão é IDÊNTICA à de 084c52dc em ${hashesComparados.length} estados: ${hashesComparados.map(([r, h]) => `${r}=${h.slice(0, 8)}`).join(", ")}`,
+      );
+
+      // (v) RLS cega nos PEDIDOS, papel REAL sem BYPASSRLS, com as políticas do
+      // app: a política TO public do histórico de pagamento chama
+      // is_admin()/rls_admin_atual() sem EXECUTE para o papel → FALHA ALTA
+      // (42501), nunca um zero que engana.
       const cego = await clone(base, "ip_j_8i_cego");
       await usar(cego, (c) =>
         c.query(
@@ -3010,71 +3832,23 @@ async function main() {
         ),
       );
       await assert.rejects(
-        rodar8i(cego, { sql: SQL_ATESTADO, papel: PAPEL_CEGO }),
+        semBypass(() => rodar8i(cego, { sql: SQL_ATESTADO })),
         /permission denied for function (is_admin|rls_admin_atual)/,
         "8i cego: falha alta, nunca 0 silencioso",
       );
-      // ...e com a falha alta desligada (RLS só nas AUXILIARES): os controles
-      // denunciam 0 e os três sinais saem INCONCLUSIVO — que NÃO é ok (é
-      // bloqueante). Os pedidos seguem visíveis: população e impressão não mudam.
-      const cegoAux = await clone(base, "ip_j_8i_cego_aux");
-      await usar(cegoAux, async (c) => {
-        for (const t of [
-          "marketplace_orders",
-          "marketplace_order_items",
-          "marketplace_order_payment_history",
-        ])
-          await c.query(`ALTER TABLE public.${t} DISABLE ROW LEVEL SECURITY`);
-        for (const t of ["order_refunds", "devolucoes"])
-          await c.query(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
-      });
-      const rc = await rodar8i(cegoAux, {
-        sql: SQL_ATESTADO,
-        papel: PAPEL_CEGO,
-      });
-      assert.equal(linha(rc, "controle: estornos visiveis").vivo, "0");
-      assert.equal(linha(rc, "controle: devolucoes visiveis").vivo, "0");
-      assert.equal(
-        linha(rc, "com estorno em order_refunds").vivo,
-        "INCONCLUSIVO (tabela sem linha visivel)",
-      );
-      assert.equal(
-        linha(rc, "com devolucao").vivo,
-        "INCONCLUSIVO (tabela sem linha visivel)",
-      );
-      assert.equal(linha(rc, "com estorno em order_refunds").ok, false);
-      assert.equal(linha(rc, "com devolucao").ok, false);
-      assert.deepEqual(nomes(rc).sort(), [
-        "controle: devolucoes visiveis",
-        "controle: estornos visiveis",
-        "dos quais com devolucao",
-        "dos quais com estorno em order_refunds",
-      ]);
-      assert.equal(
-        linha(rc, "com registro em marketplace_order_payment_history").vivo,
-        "0",
-        "8i: o histórico de pagamento segue visível: sinal 0 COM controle >0",
-      );
-      assert.equal(
-        linha(rc, IMP).ok,
-        true,
-        "8i: a impressão não depende das auxiliares",
-      );
 
       // (vii) NENHUM id (nem sem hífen), nome, e-mail ou id de gateway na saída
-      // — nem no modo medir, nem atestado, nem na troca, nem em cada campo.
-      const vistos = JSON.stringify([
-        m0,
-        a0,
-        limpa,
-        r2,
-        r3,
-        r8,
-        rEsc,
-        rFuso,
-        rc,
-        vistosNoLoop,
-      ]);
+      // — de NENHUMA das execuções desta seção (modo medir, atestado, troca, cada
+      // campo, cada papel e cada fixture de visibilidade).
+      const vistos = JSON.stringify(saidas8i);
+      assert.ok(
+        saidas8i.length > 100,
+        `8i: poucas saídas vistas (${saidas8i.length})`,
+      );
+      assert(
+        !/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}/i.test(vistos),
+        "8i: a saída vazou algo com forma de id",
+      );
       for (const proibido of [...ATESTADOS, N1, A4, O1, O2, O3, U_CLIENTE]) {
         assert(!vistos.includes(proibido), `8i: a saída vazou ${proibido}`);
         assert(
@@ -3082,10 +3856,15 @@ async function main() {
           `8i: a saída vazou ${proibido} sem hífen`,
         );
       }
-      for (const proibido of ["Cliente FP", "@fp.teste", "MP-8I-NAO-PODE-SAIR"])
+      for (const proibido of [
+        "Cliente FP",
+        "@fp.teste",
+        "MP-8I-NAO-PODE-SAIR",
+        "DV-8I-TESTE",
+      ])
         assert(!vistos.includes(proibido), `8i: a saída vazou ${proibido}`);
       ok(
-        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 14/14 ok; modo medir (A_ATESTAR) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA (um volta a ter item, outro cancelled perde os itens) → contagem 3 ok MAS a impressão reprova; MESMO conjunto com subtotal / status / payment_status alterados → a impressão reprova (e o sinal, quando é o caso); outra escala do mesmo valor e outro fuso → a impressão NÃO muda; cada um dos 17 grupos de campos cobertos (inclusive total_amount e shipping_cost, numeric sem escala) muda a impressão; a 3ª casa de total_amount e de shipping_cost muda a impressão e 100 x 100.000 não; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; RLS cega nos pedidos → 42501; RLS cega em estorno/devolução → INCONCLUSIVO não-ok; nenhum id (com ou sem hífen), nome, e-mail ou id de gateway na saída",
+        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 19/19 ok; modo medir (A_ATESTAR) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA → contagem 3 ok MAS a impressão reprova; subtotal / status / payment_status alterados → a impressão reprova; outra escala e outro fuso → a impressão NÃO muda; cada um dos 17 grupos de campos cobertos muda a impressão; 3ª casa de total_amount/shipping_cost muda e 100 x 100.000 não; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; PAPEL E VISIBILIDADE NO MESMO SNAPSHOT: (a) loja real (bypass, refunds/devolucoes vazias, RLS do app ligada) → 19/19 ok; (b) com linhas de outros pedidos → ok, com sinal num dos 3 → reprova com a contagem; (c) papel sem bypass + RLS+política → RLS_ATIVA_INCONCLUSIVO e os sinais INCONCLUSIVO (nunca 0); (d) RLS parcial → inconclusivo; (e) outro papel/superuser → papel efetivo reprova; (f) sem SELECT / cinco de seis / outra coluna → 42501; (g) SELECT de coluna → BLOQUEIA; (h) dono e herdeiro do dono, sem/com FORCE → coerente com a derivação; row_security_active divergente ou bypass NULL → BLOQUEIA; 8 mutantes mortos por asserção; impressão IDÊNTICA à de 084c52dc em 9 estados; nenhum id, nome, e-mail, gateway ou devolução na saída",
       );
     }
 
@@ -3877,6 +4656,11 @@ main()
         `DROP ROLE IF EXISTS ${PAPEL_RO}, ${PAPEL_CEGO}, ${PAPEL_MEMBRO_8J}, ${PAPEL_DONO_8J}, ${PAPEL_SEMSEL_8J}, ${PAPEL_PARCIAL_8J}, ${PAPEL_COLUNA_8J}`,
       ),
     ).catch(() => {});
+    // os papéis da 8i (só se ESTA prova os criou: nunca derruba papel alheio)
+    if (criouPapel8i)
+      await usar("template1", (a) =>
+        a.query(`DROP ROLE IF EXISTS ${PAPEL_8I}, ${PAPEL_DONO_8I}`),
+      ).catch(() => {});
   });
 
 // `falhar` fica importado para o caso de a trava de efemero recusar antes.

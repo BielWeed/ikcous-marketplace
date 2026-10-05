@@ -940,6 +940,29 @@ const CONSULTAS_8 = [
   "8g-cron-reconciliar",
 ];
 
+/** Referência CONGELADA da 8i de 084c52dc (antes do snapshot de visibilidade): o
+ * oráculo de que a impressão continua saindo igual. Não é consulta do menu. */
+const REFERENCIA_8I_084C52DC = `${RAIZ}/tests/banco/referencia/8i-084c52dc.sql`;
+
+/** As CTEs de um WITH, por nome (o corpo com o espaço em branco colapsado):
+ * "soma", "div", "alvo"... O nome vale sem a lista de colunas `alvo(ordem, tabela)`. */
+function ctesDe(sql: string): Map<string, string> {
+  const limpo = sqlSemComentarios(sql).replace(/\r/g, "");
+  const ini = limpo.indexOf("WITH ");
+  const fim = limpo.lastIndexOf("\n)\nSELECT item, esperado");
+  assert(ini >= 0 && fim > ini, "não achei o WITH ... SELECT final");
+  const partes = limpo.slice(ini + 5, fim + 2).split(/\n\), /);
+  const mapa = new Map<string, string>();
+  partes.forEach((parte, i) => {
+    const m = parte.match(/^(\w+)(?:\([^)]*\))? AS \(([\s\S]*)$/);
+    assert(m, `CTE ilegível: ${parte.slice(0, 40)}`);
+    const corpo =
+      i === partes.length - 1 ? m[2].replace(/\n\)\s*$/, "") : m[2];
+    mapa.set(m[1], corpo.replace(/\s+/g, " ").trim());
+  });
+  return mapa;
+}
+
 /** O SQL sem comentários de linha (o cabeçalho EXPLICA o que a consulta não faz). */
 function sqlSemComentarios(sql: string): string {
   return sql
@@ -1143,7 +1166,11 @@ Deno.test("8h — no menu, UM SELECT só leitura, mesma população da 8c, contr
 // conjunto e do estado (sha256 de uma serialização canônica; muda se qualquer
 // campo coberto mudar; não diz origem; não substitui auditoria). Formato da 8c
 // (item/esperado/vivo/ok), com a regra de privacidade da 8h: nenhum id sai.
-Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma população, impressão de integridade (sha256 de serialização canônica), estorno/devolução inconclusivos não passam, e nenhum id sai", async (t) => {
+// Versão com PAPEL E VISIBILIDADE NO MESMO SNAPSHOT (05/10/2026): a visibilidade
+// das seis tabelas vem da derivação da 8j, calculada no mesmo statement; os
+// sinais das tabelas auxiliares só são conclusivos com a tabela VISIVEL_*; e a
+// impressão sai IDÊNTICA à de 084c52dc (referência congelada em tests/banco/referencia).
+Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma população, impressão idêntica à de 084c52dc, papel e visibilidade das seis tabelas no mesmo statement, sinal auxiliar só conclusivo com tabela visível, e nenhum id sai", async (t) => {
   const { contarStatements } = require(SCRIPT);
   const nome = "8i-divergentes-contra-base-atestada";
   const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
@@ -1197,39 +1224,164 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
     },
   );
   await t.step(
-    "os cinco controles de visibilidade (>0), e os três sinais de tabela auxiliar viram INCONCLUSIVO (nunca ok) quando o controle é 0",
+    "PRESERVAÇÃO: soma, div, enc e imp são IDÊNTICAS às da 084c52dc (referência congelada e pinada por sha256): o hash sai igual sobre os mesmos dados",
+    async () => {
+      const refTexto = await Deno.readTextFile(REFERENCIA_8I_084C52DC);
+      const digest = new Uint8Array(
+        await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(refTexto),
+        ),
+      );
+      const hex = Array.from(digest, (b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      assertEquals(
+        hex,
+        "d9585cdf8534f778761b01f51d0803057a8db3a2538c4eb3a0a0da7c9c8ea48a",
+        "a referência congelada da 8i (084c52dc) mudou: ela é o oráculo da impressão",
+      );
+      const novas = ctesDe(sql);
+      const antigas = ctesDe(refTexto);
+      for (const nomeCte of ["soma", "div", "enc", "imp"]) {
+        const nova = novas.get(nomeCte);
+        assert(nova, `a 8i nova perdeu a CTE ${nomeCte}`);
+        assertEquals(
+          nova,
+          antigas.get(nomeCte),
+          `a CTE ${nomeCte} mudou: a impressão deixaria de sair igual à de 084c52dc`,
+        );
+      }
+    },
+  );
+  await t.step(
+    "PAPEL E VISIBILIDADE: alvo, vis, meta e julga são IDÊNTICAS às da 8j; o papel lê as mesmas duas colunas de pg_roles; o veredito é o mesmo CASE de quatro valores",
+    async () => {
+      const sql8j = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8j-visibilidade-das-tabelas-auxiliares.sql`,
+      );
+      const novas = ctesDe(sql);
+      const da8j = ctesDe(sql8j);
+      for (const nomeCte of ["alvo", "vis", "meta", "julga"]) {
+        const nova = novas.get(nomeCte);
+        assert(nova, `a 8i perdeu a CTE ${nomeCte}`);
+        assertEquals(
+          nova,
+          da8j.get(nomeCte),
+          `a CTE ${nomeCte} diverge da 8j: a derivação tem de ser a MESMA`,
+        );
+      }
+      const papel = novas.get("papel") ?? "";
+      assertStringIncludes(papel, "current_user::text AS nome");
+      assertStringIncludes(
+        papel,
+        "(SELECT r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname = current_user) AS bypass",
+      );
+      assertStringIncludes(
+        papel,
+        "(SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user) AS super",
+      );
+      const caso = (corpo: string) =>
+        (corpo.match(/CASE WHEN[\s\S]*?END AS resultado/) ?? [""])[0];
+      assert(caso(novas.get("veredito") ?? ""), "veredito sem CASE");
+      assertEquals(
+        caso(novas.get("veredito") ?? ""),
+        caso(da8j.get("veredito") ?? ""),
+        "o veredito tem de ter os mesmos quatro valores e a mesma ordem de ramos da 8j",
+      );
+      // o `apto` confere row_security_active contra a derivação, e exige SELECT
+      const julga = novas.get("julga") ?? "";
+      assertStringIncludes(julga, "AND m.pode_ler");
+      assertStringIncludes(julga, "AND m.rls_ativa IS NOT NULL");
+      assertStringIncludes(julga, "AND m.rls_ativa = (m.rls_ligada");
+      assertStringIncludes(julga, "AND NOT (p.bypass OR p.super)");
+      assertStringIncludes(julga, "AND NOT (m.dono AND NOT m.rls_forcada)");
+      // as seis tabelas, as MESMAS da 8j, e a 8i não faz SQL dinâmico
+      assertEquals(
+        (novas.get("alvo") ?? "").match(/\(\d, '[a-z_]+'\)/g)?.length,
+        6,
+      );
+      assert(!/\b(EXECUTE|format\s*\()/i.test(limpo), "SQL dinâmico");
+    },
+  );
+  await t.step(
+    "linhas novas: `papel efetivo` contra supabase_read_only_user (vivo = current_user), uma `<tabela>: visibilidade` por tabela, e os controles de pedidos e itens seguem '>0'",
     () => {
+      assertStringIncludes(
+        limpo,
+        "SELECT 'papel efetivo', 'supabase_read_only_user', p.nome",
+      );
+      assertEquals(
+        (limpo.match(/'papel efetivo'/g) ?? []).length,
+        1,
+        "uma linha de papel efetivo só",
+      );
+      assertStringIncludes(limpo, "SELECT lt.tabela || ': visibilidade',");
+      assertEquals((limpo.match(/': visibilidade'/g) ?? []).length, 1);
+      assertStringIncludes(
+        limpo,
+        "CASE WHEN lt.conclusivo THEN lt.resultado ELSE 'VISIVEL_VAZIA ou VISIVEL_COM_LINHAS' END",
+      );
+      assertStringIncludes(
+        limpo,
+        "(v.resultado IN ('VISIVEL_VAZIA', 'VISIVEL_COM_LINHAS')) AS conclusivo",
+      );
       for (const c of [
         "controle: pedidos visiveis",
         "controle: itens de pedido visiveis",
+      ]) {
+        assertStringIncludes(limpo, `'${c}', '>0'`);
+      }
+      // os atributos do papel só INFORMAM (esperado = vivo) e saem em formato fechado
+      assertStringIncludes(
+        limpo,
+        "'atributos do papel (so informa; nunca reprova)', a.texto, a.texto",
+      );
+      assertStringIncludes(
+        limpo,
+        "'rolbypassrls=' || COALESCE(p.bypass::text, '?') || '; rolsuper=' || COALESCE(p.super::text, '?')",
+      );
+    },
+  );
+  await t.step(
+    "os três controles '>0' de tabela auxiliar SAÍRAM (zero visível de verdade não reprova) e cada sinal só é conclusivo quando a tabela é VISIVEL_*; senão sai INCONCLUSIVO (nunca ok)",
+    () => {
+      for (const c of [
         "controle: registros de pagamento visiveis",
         "controle: estornos visiveis",
         "controle: devolucoes visiveis",
       ]) {
-        assertStringIncludes(limpo, `'${c}', '>0'`);
+        assert(!limpo.includes(c), `o controle '${c}' exigia linha e saiu`);
       }
-      for (const tabela of [
-        "marketplace_order_payment_history",
-        "order_refunds",
-        "devolucoes",
+      assert(
+        !limpo.includes("tabela sem linha visivel"),
+        "o texto antigo do inconclusivo por falta de linha saiu",
+      );
+      const plano = limpo.replace(/\s+/g, " ");
+      for (const [tabela, campo] of [
+        ["marketplace_order_payment_history", "tem_registro_de_pagamento"],
+        ["order_refunds", "tem_estorno"],
+        ["devolucoes", "tem_devolucao"],
       ]) {
-        const plano = limpo.replace(/\s+/g, " ");
-        const abre = plano.indexOf(
-          `CASE WHEN EXISTS (SELECT 1 FROM public.${tabela}) THEN (SELECT count(*) FILTER (WHERE tem_`,
-        );
-        const fecha = plano.indexOf(
-          "FROM div)::text ELSE 'INCONCLUSIVO (tabela sem linha visivel)' END",
-          abre,
-        );
-        assert(
-          abre >= 0 && fecha > abre && fecha - abre < 200,
-          `o sinal de ${tabela} tem de ser INCONCLUSIVO quando a tabela não tem linha visível`,
+        assertStringIncludes(
+          plano,
+          `CASE WHEN (SELECT lt.conclusivo FROM leitura lt WHERE lt.tabela = '${tabela}') THEN (SELECT count(*) FILTER (WHERE ${campo}) FROM div)::text ELSE 'INCONCLUSIVO (a tabela nao esta visivel para o papel; ver a linha de visibilidade)' END`,
         );
       }
       assertEquals(
-        (limpo.match(/'INCONCLUSIVO \(tabela sem linha visivel\)'/g) ?? [])
-          .length,
+        (limpo.match(/'INCONCLUSIVO \(/g) ?? []).length,
         3,
+        "exatamente os três sinais auxiliares podem ser INCONCLUSIVO",
+      );
+      // um sinal nunca é decidido por EXISTS direto na tabela auxiliar na parte
+      // que sai: a decisão é só a `leitura` (a `div` e a `vis` ficam antes)
+      const fora = limpo.slice(
+        limpo.indexOf("), r(item, esperado, vivo) AS ("),
+      );
+      assert(
+        !/EXISTS \(SELECT 1 FROM public\.(marketplace_order_payment_history|order_refunds|devolucoes)/.test(
+          fora,
+        ),
+        "a parte que sai não decide sinal por EXISTS direto",
       );
     },
   );
@@ -1327,7 +1479,12 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
       campos.forEach((c, i) => {
         assertStringIncludes(limpo, `(${i + 1}, ${c})`);
       });
-      assertEquals((limpo.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 19);
+      // só dentro da `enc` (a `alvo` da visibilidade também tem linhas `(n, 'texto')`)
+      const soEnc = limpo.slice(
+        limpo.indexOf("), enc AS ("),
+        limpo.indexOf("), imp AS ("),
+      );
+      assertEquals((soEnc.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 19);
       for (const col of ["total_amount", "shipping_cost"]) {
         assert(
           // eslint-disable-next-line security/detect-non-literal-regexp -- `col` vem só do array literal ["total_amount", "shipping_cost"] da linha acima, nunca de entrada externa.
