@@ -107,11 +107,13 @@ const ler = (nome) => fs.readFileSync(path.join(MIGRATIONS, nome), "utf8");
 const PAPEL_RO = "ip_ro_prova";
 const PAPEL_CEGO = "ip_ro_cego";
 // Papéis da prova 8j (visibilidade das tabelas): dono das tabelas, membro que
-// HERDA o dono, sem nenhum SELECT, e com SELECT em cinco das seis.
+// HERDA o dono, sem nenhum SELECT, com SELECT em cinco das seis, e com SELECT de
+// tabela inteira em cinco e só de UMA COLUNA na sexta.
 const PAPEL_DONO_8J = "ip_8j_dono";
 const PAPEL_MEMBRO_8J = "ip_8j_membro";
 const PAPEL_SEMSEL_8J = "ip_8j_semsel";
 const PAPEL_PARCIAL_8J = "ip_8j_parcial";
+const PAPEL_COLUNA_8J = "ip_8j_coluna";
 let resultados = 0;
 function ok(msg) {
   resultados += 1;
@@ -3115,6 +3117,7 @@ async function main() {
           PAPEL_MEMBRO_8J,
           PAPEL_SEMSEL_8J,
           PAPEL_PARCIAL_8J,
+          PAPEL_COLUNA_8J,
         ])
           await a.query(
             `DO $r$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${p}') THEN CREATE ROLE ${p} NOLOGIN; END IF; END $r$`,
@@ -3226,10 +3229,12 @@ async function main() {
         usar(db, async (c) => {
           if (papel) await c.query(`SET ROLE ${papel}`);
           const o = {};
-          for (const t of T8J)
+          for (const t of T8J) {
+            // eslint-disable-next-line security/detect-object-injection -- `t` vem só do array literal T8J (seis nomes de tabela fixos), nunca de entrada externa.
             o[t] = (
               await c.query(`SELECT count(*)::int AS n FROM public.${t}`)
             ).rows[0].n;
+          }
           return o;
         });
       assert.deepEqual(
@@ -3449,6 +3454,128 @@ async function main() {
         "  [8j] (e) sem SELECT: 42501 permission denied for table (falha alta; o SELECT de cinco das seis também falha, citando devolucoes)",
       );
 
+      // (e2) SELECT só de COLUNA numa das seis: NÃO falha (o EXISTS só exige algum
+      // privilégio de SELECT, ainda que de uma coluna), mas has_table_privilege
+      // (tabela inteira) dá false → a linha dessa tabela é BLOQUEIA. Sem o
+      // `AND m.pode_ler` de "julga" ela sairia VISIVEL_VAZIA (vazia, o cenário mais
+      // perigoso: o 0 passaria por conclusivo) ou VISIVEL_COM_LINHAS (mutante RV-M5
+      // da revisão, que sobreviveu à suíte antes deste teste).
+      for (const [rotulo, vazia] of [
+        ["devolucoes VAZIA", true],
+        ["devolucoes com 1 linha", false],
+      ]) {
+        const colunas = await clone(
+          matriz,
+          `ip_j_8j_coluna_${vazia ? "vazia" : "cheia"}`,
+        );
+        await usar(colunas, async (c) => {
+          if (vazia) {
+            await c.query("SET session_replication_role = replica");
+            await c.query(`DELETE FROM public.${T_DEV}`);
+          }
+          await c.query(
+            `GRANT USAGE ON SCHEMA extensions TO ${PAPEL_COLUNA_8J}`,
+          );
+          for (const t of [T_ORD, T_ITE, T_HIS, T_PAG, T_REF])
+            await c.query(`GRANT SELECT ON public.${t} TO ${PAPEL_COLUNA_8J}`);
+          await c.query(
+            `GRANT SELECT (id) ON public.${T_DEV} TO ${PAPEL_COLUNA_8J}`,
+          );
+        });
+        const sonda = await usar(colunas, async (c) => {
+          await c.query(`SET ROLE ${PAPEL_COLUNA_8J}`);
+          try {
+            const o = {};
+            // (a) o SELECT/EXISTS que a 8j faz roda sem erro com SELECT só de coluna
+            o.exists = (
+              await c.query(
+                `SELECT EXISTS (SELECT 1 FROM public.${T_DEV}) AS tem`,
+              )
+            ).rows[0].tem;
+            // (b) mas a tabela INTEIRA não é legível (a coluna sim)
+            const p = (
+              await c.query(
+                `SELECT has_table_privilege(current_user, 'public.${T_DEV}', 'SELECT') AS tabela,
+                        has_column_privilege(current_user, 'public.${T_DEV}', 'id', 'SELECT') AS coluna,
+                        rolbypassrls AS bypass, rolsuper AS super
+                   FROM pg_catalog.pg_roles WHERE rolname = current_user`,
+              )
+            ).rows[0];
+            Object.assign(o, p);
+            // controle: de fato é privilégio de COLUNA (outra coluna é negada)
+            await c.query(`SELECT protocolo FROM public.${T_DEV} LIMIT 1`).then(
+              () => {
+                o.outraColuna = "LEU";
+              },
+              (e) => {
+                o.outraColuna = e.code;
+              },
+            );
+            return o;
+          } finally {
+            await c.query("RESET ROLE");
+          }
+        });
+        assert.equal(
+          sonda.exists,
+          !vazia,
+          `8j (e2) ${rotulo}: o EXISTS roda sem erro com SELECT só de coluna`,
+        );
+        assert.equal(
+          sonda.tabela,
+          false,
+          `8j (e2) ${rotulo}: has_table_privilege(SELECT) é false`,
+        );
+        assert.equal(sonda.coluna, true, "8j (e2): a coluna id é legível");
+        assert.equal(
+          sonda.outraColuna,
+          "42501",
+          "8j (e2): é privilégio de coluna (outra coluna é negada)",
+        );
+        assert.deepEqual(
+          [sonda.bypass, sonda.super],
+          [false, false],
+          "8j (e2): o papel não tem BYPASSRLS nem é superuser",
+        );
+        // (c) a 8j original roda sem erro e a linha da tabela é BLOQUEIA
+        const rcol = await rodar8j(colunas, { papel: PAPEL_COLUNA_8J });
+        saidas8j.push(rcol);
+        mostra(`(e2) SELECT só de coluna, ${rotulo}`, rcol);
+        assert.equal(
+          rcol.length,
+          13,
+          "8j (e2): 1 papel + 6 metadados + 6 vereditos",
+        );
+        const vd = doVeredito(rcol, T_DEV);
+        assert.equal(
+          vd.vivo,
+          BLQ,
+          `8j (e2) ${rotulo}: SELECT só de coluna → BLOQUEIA`,
+        );
+        assert.notEqual(vd.vivo, VAZIA, "8j (e2): nunca VISIVEL_VAZIA");
+        assert.notEqual(vd.vivo, COM, "8j (e2): nunca VISIVEL_COM_LINHAS");
+        assert.equal(vd.ok, false, "8j (e2): BLOQUEIA reprova (ok = false)");
+        const md = metadados(rcol, T_DEV);
+        assert.equal(md.select, "false", "8j (e2): select=false no metadado");
+        assert.equal(md.relkind, "r");
+        assert.equal(md.linhas, vazia ? "0" : ">0", "8j (e2): o EXISTS leu");
+        assert.deepEqual(
+          vereditos(rcol),
+          {
+            [T_ORD]: COM,
+            [T_ITE]: VAZIA,
+            [T_HIS]: INC,
+            [T_PAG]: INC,
+            [T_REF]: INC,
+            [T_DEV]: BLQ,
+          },
+          `8j (e2) ${rotulo}: só a tabela de SELECT por coluna vira BLOQUEIA; as outras cinco seguem o veredito normal`,
+        );
+      }
+      console.log(
+        "  [8j] (e2) SELECT só de coluna: a consulta roda (sem 42501), has_table_privilege=false e a linha da tabela é BLOQUEIA (select=false), nunca VISIVEL_VAZIA",
+      );
+
       // (g) erro ou formato desconhecido BLOQUEIA
       //  g1: a "tabela" é VIEW (relkind v) e a outra é PARTICIONADA (relkind p)
       const formato = await clone(matriz, "ip_j_8j_formato");
@@ -3589,7 +3716,7 @@ async function main() {
       ])
         assert(!vistos.includes(proibido), `8j: a saída vazou ${proibido}`);
       ok(
-        "(j) 8j: matriz (RLS off/vazia, RLS que esconde tudo, RLS parcial, RLS+vazia) → papel sem BYPASSRLS: VISIVEL_VAZIA só onde a RLS não se aplica, RLS_ATIVA_INCONCLUSIVO (não ok) com contagem vista 0 ou parcial; mesmo cenário com BYPASSRLS/superuser → VISIVEL_COM_LINHAS e VISIVEL_VAZIA; dono (e membro que herda) sem FORCE → row_security_active=false, com FORCE → true; sem SELECT → 42501 citando a tabela; view e particionada → BLOQUEIA; tabela ausente → 42P01; row_security=off → 42501 e row_security_active segue true; row_security_active divergente da derivação ou bypass NULL → as seis BLOQUEIAM; nenhuma forma de id, nome, e-mail ou valor na saída",
+        "(j) 8j: matriz (RLS off/vazia, RLS que esconde tudo, RLS parcial, RLS+vazia) → papel sem BYPASSRLS: VISIVEL_VAZIA só onde a RLS não se aplica, RLS_ATIVA_INCONCLUSIVO (não ok) com contagem vista 0 ou parcial; mesmo cenário com BYPASSRLS/superuser → VISIVEL_COM_LINHAS e VISIVEL_VAZIA; dono (e membro que herda) sem FORCE → row_security_active=false, com FORCE → true; sem SELECT → 42501 citando a tabela; SELECT só de COLUNA numa tabela (vazia ou com linha) → a consulta roda, has_table_privilege=false e a linha dela é BLOQUEIA (nunca VISIVEL_VAZIA); view e particionada → BLOQUEIA; tabela ausente → 42P01; row_security=off → 42501 e row_security_active segue true; row_security_active divergente da derivação ou bypass NULL → as seis BLOQUEIAM; nenhuma forma de id, nome, e-mail ou valor na saída",
       );
     }
 
@@ -3747,7 +3874,7 @@ main()
     // o papel só-leitura da prova (j) é do CLUSTER; não fica para trás
     await usar("template1", (a) =>
       a.query(
-        `DROP ROLE IF EXISTS ${PAPEL_RO}, ${PAPEL_CEGO}, ${PAPEL_MEMBRO_8J}, ${PAPEL_DONO_8J}, ${PAPEL_SEMSEL_8J}, ${PAPEL_PARCIAL_8J}`,
+        `DROP ROLE IF EXISTS ${PAPEL_RO}, ${PAPEL_CEGO}, ${PAPEL_MEMBRO_8J}, ${PAPEL_DONO_8J}, ${PAPEL_SEMSEL_8J}, ${PAPEL_PARCIAL_8J}, ${PAPEL_COLUNA_8J}`,
       ),
     ).catch(() => {});
   });

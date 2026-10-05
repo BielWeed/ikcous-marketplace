@@ -63,10 +63,18 @@
 -- SEM PRIVILÉGIO: um statement estático não consegue pular um SELECT sem
 -- permissão (o Postgres confere o privilégio de TODAS as tabelas do plano ao
 -- iniciar, mesmo dentro de CASE), e SQL dinâmico está fora de questão. Então, se o
--- papel não tem SELECT em alguma das seis, a consulta INTEIRA falha com 42501
--- ("permission denied for table <nome>"), que cita a tabela: falha alta, nunca um
--- zero que engana. A ramificação BLOQUEIA para "sem SELECT" fica como defesa, mas
--- hoje não é alcançável por este caminho. Tabela ausente em public também falha
+-- papel não tem NENHUM privilégio de SELECT numa das seis (nem de tabela inteira,
+-- nem de coluna), a consulta INTEIRA falha com 42501 ("permission denied for
+-- table <nome>"), que cita a tabela: falha alta, nunca um zero que engana.
+-- MAS a ramificação BLOQUEIA de "sem SELECT" É alcançável: o EXISTS só exige algum
+-- privilégio de SELECT, ainda que de UMA coluna, então um papel com SELECT só de
+-- coluna(s) numa das seis roda a consulta inteira, e has_table_privilege(...,
+-- 'SELECT'), que olha a tabela inteira, dá false: a linha dessa tabela sai
+-- BLOQUEIA (select=false), nunca VISIVEL_VAZIA nem VISIVEL_COM_LINHAS, com ok
+-- false. É o que o `AND m.pode_ler` de "julga" garante: sem ele, o EXISTS lido por
+-- coluna daria VISIVEL_VAZIA e o 0 passaria por conclusivo (o teste de banco
+-- tests/banco/impressao-digital-viva.cjs prova este caso).
+-- Tabela ausente em public também falha
 -- alto (42P01) pelo mesmo motivo.
 --
 -- O QUE ISTO NÃO DIZ:
