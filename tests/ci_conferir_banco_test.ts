@@ -1138,6 +1138,235 @@ Deno.test("8h — no menu, UM SELECT só leitura, mesma população da 8c, contr
   );
 });
 
+// 8i (05/10/2026) — os divergentes da 8c são os atestados, no mesmo estado? Não
+// substitui a 8c: prende uma decisão do dono a uma IMPRESSÃO DE INTEGRIDADE do
+// conjunto e do estado (sha256 de uma serialização canônica; muda se qualquer
+// campo coberto mudar; não diz origem; não substitui auditoria). Formato da 8c
+// (item/esperado/vivo/ok), com a regra de privacidade da 8h: nenhum id sai.
+Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma população, impressão de integridade (sha256 de serialização canônica), estorno/devolução inconclusivos não passam, e nenhum id sai", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const nome = "8i-divergentes-contra-base-atestada";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "não achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+      `falta a opção ${nome} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, começa por WITH/SELECT, sem palavra de escrita, saída item/esperado/vivo/ok com reprovadas primeiro",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*(WITH|SELECT)\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          limpo.replace(/'(?:[^']|'')*'/g, "''"),
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+      assert(
+        /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM r\s+ORDER BY ok, item;/.test(
+          limpo,
+        ),
+        "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+      );
+    },
+  );
+  await t.step(
+    "a CTE `soma` é IDÊNTICA à da 8c, e a população é só os divergentes",
+    async () => {
+      const soma = (texto: string) => {
+        const m = sqlSemComentarios(texto).match(
+          /WITH soma AS \(([\s\S]*?)\n\), /,
+        );
+        assert(m, "não achei a CTE soma");
+        return m[1].replace(/\s+/g, " ").trim();
+      };
+      const sql8c = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertEquals(soma(sql), soma(sql8c));
+      assertStringIncludes(
+        limpo,
+        "WHERE s.subtotal IS DISTINCT FROM s.soma_itens",
+      );
+    },
+  );
+  await t.step(
+    "os cinco controles de visibilidade (>0), e os três sinais de tabela auxiliar viram INCONCLUSIVO (nunca ok) quando o controle é 0",
+    () => {
+      for (const c of [
+        "controle: pedidos visiveis",
+        "controle: itens de pedido visiveis",
+        "controle: registros de pagamento visiveis",
+        "controle: estornos visiveis",
+        "controle: devolucoes visiveis",
+      ]) {
+        assertStringIncludes(limpo, `'${c}', '>0'`);
+      }
+      for (const tabela of [
+        "marketplace_order_payment_history",
+        "order_refunds",
+        "devolucoes",
+      ]) {
+        const plano = limpo.replace(/\s+/g, " ");
+        const abre = plano.indexOf(
+          `CASE WHEN EXISTS (SELECT 1 FROM public.${tabela}) THEN (SELECT count(*) FILTER (WHERE tem_`,
+        );
+        const fecha = plano.indexOf(
+          "FROM div)::text ELSE 'INCONCLUSIVO (tabela sem linha visivel)' END",
+          abre,
+        );
+        assert(
+          abre >= 0 && fecha > abre && fecha - abre < 200,
+          `o sinal de ${tabela} tem de ser INCONCLUSIVO quando a tabela não tem linha visível`,
+        );
+      }
+      assertEquals(
+        (limpo.match(/'INCONCLUSIVO \(tabela sem linha visivel\)'/g) ?? [])
+          .length,
+        3,
+      );
+    },
+  );
+  await t.step(
+    "as perguntas da base atestada: 3 divergentes, todos cancelled, sem item, sem cobrança, sem status de pagamento",
+    () => {
+      assertStringIncludes(
+        limpo,
+        "'pedidos divergentes (mesma regra da 8c; base atestada)', '3'",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE NOT cancelado) FROM div",
+      );
+      assertStringIncludes(
+        limpo,
+        "(o.status IS NOT DISTINCT FROM 'cancelled') AS cancelado",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE n_itens > 0) FROM div",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE tem_cobranca_no_gateway) FROM div",
+      );
+      assertStringIncludes(
+        limpo,
+        "o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE tem_status_de_pagamento) FROM div",
+      );
+    },
+  );
+  await t.step(
+    "a impressão de integridade: constante A_ATESTAR UMA vez só, no esperado da linha da impressão, contra o sha256 completo (64 hex) da serialização",
+    () => {
+      assertEquals(
+        (sql.match(/'A_ATESTAR'/g) ?? []).length,
+        1,
+        "o literal 'A_ATESTAR' tem de aparecer UMA vez (o teste de banco o troca em memória; o arquivo nunca leva uma base presumida)",
+      );
+      assertEquals((limpo.match(/'A_ATESTAR'/g) ?? []).length, 1);
+      assertEquals(
+        limpo.split(
+          "encode(sha256(convert_to(string_agg(linha, '#' ORDER BY id), 'UTF8')), 'hex')",
+        ).length - 1,
+        1,
+        "a impressão é encode(sha256(convert_to(<serialização>, 'UTF8')), 'hex'): os 64 hex inteiros",
+      );
+      assert(
+        !/\bmd5\b|\bleft\(/i.test(limpo),
+        "nada de md5 nem de prefixo truncado",
+      );
+      assert(
+        /SELECT 'impressao de integridade do conjunto e do estado \(sha256, 64 hex\)', 'A_ATESTAR',\s+COALESCE\(\(SELECT hash FROM imp\), '\(sem divergentes\)'\)/.test(
+          limpo,
+        ),
+        "a linha da impressão compara a constante com o hash vivo",
+      );
+    },
+  );
+  await t.step(
+    "a serialização é canônica: 17 campos em ordem fixa, comprimento:texto, NULL = N, numeric(12,2) em texto, timestamptz em UTC ISO, uma linha por divergente ordenada por id",
+    () => {
+      assertStringIncludes(
+        limpo,
+        "string_agg(CASE WHEN f.v IS NULL THEN 'N' ELSE length(f.v)::text || ':' || f.v END,",
+      );
+      assertStringIncludes(limpo, "';' ORDER BY f.n) AS linha");
+      const campos = [
+        "d.id::text",
+        "to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+        "to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+        "d.status",
+        "d.payment_status",
+        "d.payment_method",
+        "d.metodo_online",
+        "d.canal",
+        "d.subtotal::numeric(12,2)::text",
+        "d.total::numeric(12,2)::text",
+        "d.shipping::numeric(12,2)::text",
+        "d.discount::numeric(12,2)::text",
+        "d.valor_estornado::numeric(12,2)::text",
+        "to_char(d.paid_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+        "d.tem_cobranca_no_gateway::text",
+        "d.n_itens::text",
+        "d.soma_itens::numeric(12,2)::text",
+      ];
+      campos.forEach((c, i) => {
+        assertStringIncludes(limpo, `(${i + 1}, ${c})`);
+      });
+      assertEquals((limpo.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 17);
+      assertStringIncludes(limpo, ") AS f(n, v)");
+      assertStringIncludes(limpo, "GROUP BY d.id");
+    },
+  );
+  await t.step(
+    "o `id` nunca sai: fora da população (soma/div/enc/imp), a parte que sai (r e o SELECT final) não tem `id` nem `.id`, só `(SELECT hash FROM imp)`",
+    () => {
+      const marcador = "), r(item, esperado, vivo) AS (";
+      const i = limpo.indexOf(marcador);
+      assert(i > 0, "não achei a CTE r");
+      const saida = limpo.slice(i);
+      const semTexto = saida.replace(/'(?:[^']|'')*'/g, "''");
+      assert(
+        !/(\bid\b|\.id\b)/i.test(semTexto),
+        "a 8i expôs `id` na parte que sai",
+      );
+      assertEquals(
+        (saida.match(/\bFROM imp\b/g) ?? []).length,
+        1,
+        "a impressão sai só por (SELECT hash FROM imp)",
+      );
+    },
+  );
+  await t.step(
+    "nenhuma coluna de cliente, e o gateway só como presença",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name)\b/i.test(
+          limpo,
+        ),
+        "a 8i leria dado pessoal",
+      );
+      const usos = limpo.match(/gateway_payment_id[^,\n)]*/g) ?? [];
+      assertEquals(usos.length, 1, "gateway_payment_id aparece uma vez só");
+      assert(
+        /gateway_payment_id IS NOT NULL/.test(usos[0]),
+        "gateway_payment_id só como IS NOT NULL",
+      );
+    },
+  );
+});
+
 Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 desta árvore REALMENTE definem", async (t) => {
   const { createHash } = require("node:crypto");
   const nomes: string[] = [];
