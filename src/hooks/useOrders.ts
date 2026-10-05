@@ -375,10 +375,15 @@ async function processarFilaOfflineDePedidos(
   segundaPassada = false,
 ): Promise<boolean> {
   if (typeof window === "undefined" || !navigator.onLine) return false;
-  const queueStr = localStorage.getItem("orders_offline_updates_queue");
-  if (!queueStr) return false;
+  // Declarado fora do try: se o storage falhar na ESCRITA, depois das RPCs, o
+  // catch precisa resolver ESTE toast em vez de deixá-lo "Sincronizando…".
+  let toastId: string | number | undefined;
 
   try {
+    // A leitura vive dentro do try: storage bloqueado (SecurityError) é
+    // "a sincronização não concluiu", nunca uma promessa rejeitada.
+    const queueStr = localStorage.getItem("orders_offline_updates_queue");
+    if (!queueStr) return false;
     const queue = JSON.parse(queueStr);
     if (!Array.isArray(queue) || queue.length === 0) return false;
 
@@ -388,7 +393,7 @@ async function processarFilaOfflineDePedidos(
     let syncedAny = false;
     let falhasTransitorias = 0;
     let descartesTerminais = 0;
-    const toastId = toast.loading(
+    toastId = toast.loading(
       `Sincronizando ${queue.length} atualizações de status de pedidos offline...`,
     );
 
@@ -547,6 +552,15 @@ async function processarFilaOfflineDePedidos(
     return filaAvancou;
   } catch (e) {
     console.error("[Offline Sync] Error parsing offline orders queue:", e);
+    // Falha depois do toast de carregamento (escrita da fila no storage):
+    // resolve-o com a falha. A fila antiga continua no storage e é refeita
+    // na próxima tentativa; nunca se declara "sincronizado" nem se recarrega.
+    if (toastId !== undefined) {
+      toast.error(
+        "Não foi possível salvar a fila de pedidos offline neste dispositivo. Tentando novamente mais tarde.",
+        { id: toastId },
+      );
+    }
     return false;
   }
 }
@@ -3941,13 +3955,20 @@ export function useOrders(
     const handleOnlineSync = () => {
       const timer = setTimeout(() => {
         timersPendentes.delete(timer);
-        syncOfflineOrderUpdates().then((filaAvancou) => {
-          if (filaAvancou) {
-            recarregarAposReconexaoRef
-              .current({ silencioso: true })
-              .catch(() => {});
-          }
-        });
+        syncOfflineOrderUpdates()
+          .then((filaAvancou) => {
+            if (filaAvancou) {
+              recarregarAposReconexaoRef
+                .current({ silencioso: true })
+                .catch(() => {});
+            }
+          })
+          .catch((err) => {
+            // Rede de segurança: `processarFilaOfflineDePedidos` já trata o
+            // storage, mas esta promessa nunca pode terminar sem dono — sem
+            // isto, qualquer rejeição vira "unhandled rejection".
+            console.error("[Offline Sync] Failed to sync offline orders:", err);
+          });
       }, 1000);
       timersPendentes.add(timer);
     };
