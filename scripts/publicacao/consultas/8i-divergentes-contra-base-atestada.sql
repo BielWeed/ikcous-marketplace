@@ -291,7 +291,7 @@ WITH soma AS (
               THEN (SELECT count(*) FILTER (WHERE tem_devolucao) FROM div)::text
               ELSE 'INCONCLUSIVO (a tabela nao esta visivel para o papel; ver a linha de visibilidade)' END
   UNION ALL
-  SELECT 'impressao de integridade do conjunto e do estado (sha256, 64 hex)', 'A_ATESTAR',
+  SELECT 'impressao de integridade do conjunto e do estado (sha256, 64 hex)', '6382d110fb62af00bcf3be7868185662f46b10faa3206af0fa8e01d3776d1b7b',
          COALESCE((SELECT hash FROM imp), '(sem divergentes)')
 )
 SELECT item, esperado, vivo, COALESCE(vivo = esperado, false) AS ok

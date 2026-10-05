@@ -1420,14 +1420,26 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
     },
   );
   await t.step(
-    "a impressão de integridade: constante A_ATESTAR UMA vez só, no esperado da linha da impressão, contra o sha256 completo (64 hex) da serialização",
+    "a impressão de integridade: a impressão ATESTADA pelo dono (05/10/2026, run 37377459724) UMA vez só, no esperado da linha da impressão, contra o sha256 completo (64 hex) da serialização",
     () => {
+      const atestada =
+        "6382d110fb62af00bcf3be7868185662f46b10faa3206af0fa8e01d3776d1b7b";
+      assertEquals(
+        sql.split(`'${atestada}'`).length - 1,
+        1,
+        "a impressão atestada tem de aparecer UMA vez (o teste de banco a troca em memória)",
+      );
+      assertEquals(limpo.split(`'${atestada}'`).length - 1, 1);
+      assertEquals(
+        (sql.match(/'[0-9a-f]{64}'/g) ?? []).length,
+        1,
+        "nenhum outro literal de 64 hex no arquivo",
+      );
       assertEquals(
         (sql.match(/'A_ATESTAR'/g) ?? []).length,
-        1,
-        "o literal 'A_ATESTAR' tem de aparecer UMA vez (o teste de banco o troca em memória; o arquivo nunca leva uma base presumida)",
+        0,
+        "o marcador do modo medir saiu do arquivo commitado",
       );
-      assertEquals((limpo.match(/'A_ATESTAR'/g) ?? []).length, 1);
       assertEquals(
         limpo.split(
           "encode(sha256(convert_to(string_agg(linha, '#' ORDER BY id), 'UTF8')), 'hex')",
@@ -1440,7 +1452,7 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
         "nada de md5 nem de prefixo truncado",
       );
       assert(
-        /SELECT 'impressao de integridade do conjunto e do estado \(sha256, 64 hex\)', 'A_ATESTAR',\s+COALESCE\(\(SELECT hash FROM imp\), '\(sem divergentes\)'\)/.test(
+        /SELECT 'impressao de integridade do conjunto e do estado \(sha256, 64 hex\)', '6382d110fb62af00bcf3be7868185662f46b10faa3206af0fa8e01d3776d1b7b',\s+COALESCE\(\(SELECT hash FROM imp\), '\(sem divergentes\)'\)/.test(
           limpo,
         ),
         "a linha da impressão compara a constante com o hash vivo",

@@ -2323,16 +2323,27 @@ async function main() {
         await a.query(`GRANT pg_read_all_data TO ${PAPEL_8I}`);
       });
       const saidas8i = [];
-      const CONSTANTE = "'A_ATESTAR'";
+      // A constante commitada é a impressão que o dono ATESTOU por escrito em
+      // 05/10/2026 (medida na CAF pelo run 37377459724). A fixture tem outra
+      // impressão, então o teste troca a constante EM MEMÓRIA: pela impressão da
+      // fixture (modo atestado) ou pelo marcador antigo (modo medir).
+      const IMPRESSAO_ATESTADA_CAF =
+        "6382d110fb62af00bcf3be7868185662f46b10faa3206af0fa8e01d3776d1b7b";
+      const CONSTANTE = `'${IMPRESSAO_ATESTADA_CAF}'`;
       assert.equal(
         SQL_8I.split(CONSTANTE).length - 1,
         1,
-        "8i: o literal 'A_ATESTAR' tem de aparecer uma vez só (é ele que o teste troca, EM MEMÓRIA)",
+        "8i: a impressão atestada tem de aparecer uma vez só (é ela que o teste troca, EM MEMÓRIA)",
       );
-      // O teste troca a constante pela impressão da fixture EM MEMÓRIA: o arquivo
-      // commitado nunca leva uma base presumida nem calculada.
+      assert.equal(
+        SQL_8I.split("'A_ATESTAR'").length - 1,
+        0,
+        "8i: o marcador do modo medir saiu do arquivo commitado",
+      );
       const atestando = (impressao) =>
-        SQL_8I.replace(CONSTANTE, `'${impressao}'`);
+        SQL_8I.replace(CONSTANTE, () => `'${impressao}'`);
+      // MODO MEDIR reconstruído em memória: o mesmo SQL com o marcador antigo.
+      const SQL_MEDIR = SQL_8I.replace(CONSTANTE, () => "'A_ATESTAR'");
       // ORÁCULO em JS, independente do SQL no que decide o hash: a ordem das
       // linhas, a ordem dos campos, o <comprimento>:<texto>, o N do NULL e o
       // sha256. Só os TEXTOS dos campos vêm do banco (numeric já em (12,2) e o
@@ -2490,7 +2501,7 @@ async function main() {
 
       // (vi) MODO MEDIR: constante A_ATESTAR → só a impressão reprova, e o vivo é
       // a impressão de agora (64 hex), igual à calculada FORA do banco.
-      const m0 = await rodar8i(base);
+      const m0 = await rodar8i(base, { sql: SQL_MEDIR });
       assert.equal(m0.length, LINHAS_DA_8I, "8i: 19 linhas");
       assert.deepEqual(
         nomes(m0),
@@ -2505,6 +2516,23 @@ async function main() {
         "8i: a impressão do SQL é o sha256 da serialização canônica calculado fora do banco",
       );
       assert.equal(linha(m0, "pedidos divergentes").vivo, "3");
+
+      // (vi-b) O ARQUIVO COMMITADO, com a impressão atestada da CAF, contra uma
+      // base com OUTRA impressão (a da fixture): só a impressão reprova, com o
+      // esperado = a atestada e o vivo = a impressão de agora. A discrepância é
+      // acusada, nunca absorvida.
+      assert.notEqual(IMPRESSAO, IMPRESSAO_ATESTADA_CAF);
+      const d0 = await rodar8i(base);
+      assert.equal(d0.length, LINHAS_DA_8I, "8i: 19 linhas");
+      assert.deepEqual(
+        nomes(d0),
+        [IMP_ITEM],
+        "8i commitada contra outra base: só a impressão reprova",
+      );
+      assert.equal(linha(d0, IMP).esperado, IMPRESSAO_ATESTADA_CAF);
+      assert.equal(linha(d0, IMP).vivo, IMPRESSAO);
+      assert.equal(linha(d0, IMP).ok, false);
+      assert.equal(linha(d0, "pedidos divergentes").vivo, "3");
 
       // (i) com a constante atestada (em memória): TUDO ok (19 de 19).
       const SQL_ATESTADO = atestando(IMPRESSAO);
@@ -3384,7 +3412,9 @@ async function main() {
           "rolbypassrls=true; rolsuper=false",
         );
         assert.equal(linha(a, "atributos do papel").ok, true);
-        const aMedir = await rodar8i(fCaf, { sql: sqlBase });
+        const aMedir = await rodar8i(fCaf, {
+          sql: sqlBase.replace(CONSTANTE, () => "'A_ATESTAR'"),
+        });
         assert.deepEqual(
           nomes(aMedir),
           [IMP_ITEM],
@@ -3864,7 +3894,7 @@ async function main() {
       ])
         assert(!vistos.includes(proibido), `8i: a saída vazou ${proibido}`);
       ok(
-        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 19/19 ok; modo medir (A_ATESTAR) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA → contagem 3 ok MAS a impressão reprova; subtotal / status / payment_status alterados → a impressão reprova; outra escala e outro fuso → a impressão NÃO muda; cada um dos 17 grupos de campos cobertos muda a impressão; 3ª casa de total_amount/shipping_cost muda e 100 x 100.000 não; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; PAPEL E VISIBILIDADE NO MESMO SNAPSHOT: (a) loja real (bypass, refunds/devolucoes vazias, RLS do app ligada) → 19/19 ok; (b) com linhas de outros pedidos → ok, com sinal num dos 3 → reprova com a contagem; (c) papel sem bypass + RLS+política → RLS_ATIVA_INCONCLUSIVO e os sinais INCONCLUSIVO (nunca 0); (d) RLS parcial → inconclusivo; (e) outro papel/superuser → papel efetivo reprova; (f) sem SELECT / cinco de seis / outra coluna → 42501; (g) SELECT de coluna → BLOQUEIA; (h) dono e herdeiro do dono, sem/com FORCE → coerente com a derivação; row_security_active divergente ou bypass NULL → BLOQUEIA; 8 mutantes mortos por asserção; impressão IDÊNTICA à de 084c52dc em 9 estados; nenhum id, nome, e-mail, gateway ou devolução na saída",
+        "(j) 8i: 3 cancelled sem item + impressão atestada (em memória) → 19/19 ok; modo medir (A_ATESTAR, em memória) → só a impressão reprova e o vivo são 64 hex iguais ao sha256 calculado em JS; o arquivo commitado (impressão ATESTADA da CAF) contra outra base → só a impressão reprova; 4º divergente ativo → contagem, 'fora de cancelled' e impressão; TROCA → contagem 3 ok MAS a impressão reprova; subtotal / status / payment_status alterados → a impressão reprova; outra escala e outro fuso → a impressão NÃO muda; cada um dos 17 grupos de campos cobertos muda a impressão; 3ª casa de total_amount/shipping_cost muda e 100 x 100.000 não; outra ordem de inserção → mesma impressão; 8 sinais → reprova a linha do sinal; PAPEL E VISIBILIDADE NO MESMO SNAPSHOT: (a) loja real (bypass, refunds/devolucoes vazias, RLS do app ligada) → 19/19 ok; (b) com linhas de outros pedidos → ok, com sinal num dos 3 → reprova com a contagem; (c) papel sem bypass + RLS+política → RLS_ATIVA_INCONCLUSIVO e os sinais INCONCLUSIVO (nunca 0); (d) RLS parcial → inconclusivo; (e) outro papel/superuser → papel efetivo reprova; (f) sem SELECT / cinco de seis / outra coluna → 42501; (g) SELECT de coluna → BLOQUEIA; (h) dono e herdeiro do dono, sem/com FORCE → coerente com a derivação; row_security_active divergente ou bypass NULL → BLOQUEIA; 8 mutantes mortos por asserção; impressão IDÊNTICA à de 084c52dc em 9 estados; nenhum id, nome, e-mail, gateway ou devolução na saída",
       );
     }
 
