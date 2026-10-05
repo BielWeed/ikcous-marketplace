@@ -954,10 +954,10 @@ function ctesDe(sql: string): Map<string, string> {
   const partes = limpo.slice(ini + 5, fim + 2).split(/\n\), /);
   const mapa = new Map<string, string>();
   partes.forEach((parte, i) => {
+    // eslint-disable-next-line security/detect-unsafe-regex -- o grupo opcional roda no máximo uma vez, `\w+` e `\(` não se sobrepõem, e a entrada é SQL do próprio repositório.
     const m = parte.match(/^(\w+)(?:\([^)]*\))? AS \(([\s\S]*)$/);
     assert(m, `CTE ilegível: ${parte.slice(0, 40)}`);
-    const corpo =
-      i === partes.length - 1 ? m[2].replace(/\n\)\s*$/, "") : m[2];
+    const corpo = i === partes.length - 1 ? m[2].replace(/\n\)\s*$/, "") : m[2];
     mapa.set(m[1], corpo.replace(/\s+/g, " ").trim());
   });
   return mapa;
@@ -1233,8 +1233,9 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
           new TextEncoder().encode(refTexto),
         ),
       );
-      const hex = Array.from(digest, (b) => b.toString(16).padStart(2, "0"))
-        .join("");
+      const hex = Array.from(digest, (b) =>
+        b.toString(16).padStart(2, "0"),
+      ).join("");
       assertEquals(
         hex,
         "d9585cdf8534f778761b01f51d0803057a8db3a2538c4eb3a0a0da7c9c8ea48a",
