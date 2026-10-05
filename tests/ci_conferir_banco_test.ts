@@ -1295,7 +1295,7 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
     },
   );
   await t.step(
-    "a serialização é canônica: 17 campos em ordem fixa, comprimento:texto, NULL = N, numeric(12,2) em texto, timestamptz em UTC ISO, uma linha por divergente ordenada por id",
+    "a serialização é canônica: 19 campos em ordem fixa, comprimento:texto, NULL = N, numeric(12,2) em texto nos de escala fixa e trim_scale (nunca numeric(12,2)) em total_amount e shipping_cost, timestamptz em UTC ISO, uma linha por divergente ordenada por id",
     () => {
       assertStringIncludes(
         limpo,
@@ -1320,11 +1320,22 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
         "d.tem_cobranca_no_gateway::text",
         "d.n_itens::text",
         "d.soma_itens::numeric(12,2)::text",
+        // numeric SEM escala: ::numeric(12,2) arredondaria a 3ª casa e a esconderia
+        "trim_scale(d.total_amount)::text",
+        "trim_scale(d.shipping_cost)::text",
       ];
       campos.forEach((c, i) => {
         assertStringIncludes(limpo, `(${i + 1}, ${c})`);
       });
-      assertEquals((limpo.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 17);
+      assertEquals((limpo.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 19);
+      for (const col of ["total_amount", "shipping_cost"]) {
+        assert(
+          !new RegExp(`d\\.${col}::numeric`).test(limpo),
+          `${col} não pode entrar por ::numeric(12,2): arredonda a 3ª casa`,
+        );
+        // e as duas colunas vêm do pedido, na CTE que alimenta a serialização
+        assertStringIncludes(limpo, `o.${col}`);
+      }
       assertStringIncludes(limpo, ") AS f(n, v)");
       assertStringIncludes(limpo, "GROUP BY d.id");
     },
