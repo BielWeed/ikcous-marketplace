@@ -13,9 +13,6 @@
  * `fetch` entra por parâmetro para o teste não tocar rede.
  */
 
-import { camposDoComprador } from "./dados-antifraude.ts";
-import { nomeNaFatura } from "./nome-na-fatura.ts";
-
 // Exportada pelo M1 do laudo do PR #438 (07/09): o executor de estorno
 // (`estorno.ts`) precisava da MESMA base e a redeclarava — segunda cópia da
 // mesma URL é o defeito #53 (regra em dois lugares) esperando para divergir.
@@ -342,56 +339,6 @@ export function parcelasValidas(parcelas: unknown): parcelas is number {
 }
 
 /**
- * Device ID do comprador (03/10/2026) — o valor que o `security.js` do
- * Mercado Pago cria no navegador (`window.MP_DEVICE_SESSION_ID`) e que a
- * Orders API pede no cabeçalho `X-meli-session-id` do POST /v1/orders, para o
- * antifraude reconhecer o dispositivo (sem ele, um cartão real foi recusado
- * com `high_risk`). Medido: ~230 caracteres, só letras, dígitos e pontos.
- *
- * É ENTRADA NÃO CONFIÁVEL — vem do navegador do cliente e vira cabeçalho
- * HTTP —, então o formato é fechado: `[A-Za-z0-9._-]`, 1..512. Nada de
- * espaço, `:`, CR/LF ou unicode. Fonte única: `criar-pagamento` valida o
- * corpo com ESTA função e `criarOrder` confere de novo antes de montar o
- * cabeçalho (mesma regra dos outros formatos deste bloco, nunca duas regex).
- * O MESMO padrão vive no front (`device-id-mercado-pago.ts`).
- */
-export function deviceIdValido(valor: unknown): valor is string {
-  return typeof valor === "string" && /^[A-Za-z0-9._-]{1,512}$/.test(valor);
-}
-
-/**
- * Nome do comprador → `payer.first_name` + `payer.last_name`: o primeiro nome
- * e o RESTO (o antifraude compara o nome do pagador com o do titular; mandar
- * tudo em `first_name` esconde o sobrenome). Nome único não inventa
- * sobrenome.
- *
- * O nome NUNCA pode derrubar a cobrança: dado com cara de lixo (ausente,
- * dígito, símbolo, e-mail, caractere de controle, comprido demais) devolve
- * `{}` — sem nome nenhum —, não um erro nem um nome "consertado" por palpite.
- * Só letras (qualquer alfabeto), apóstrofo, ponto e hífen entram, porque o
- * limite de formato que a Orders API aplica a esses campos não está provado.
- */
-export function dividirNomeDoPagador(
-  nome: unknown,
-): { first_name?: string; last_name?: string } {
-  if (typeof nome !== "string") return {};
-  // Controle (inclui quebra de linha) é lixo, não separador: sem isso o
-  // "colapsar espaços" abaixo transformaria "Maria\nSilva" num nome válido.
-  for (const caractere of nome) {
-    const codigo = caractere.charCodeAt(0);
-    if (codigo <= 0x1f || codigo === 0x7f) return {};
-  }
-  const limpo = nome.trim().replace(/\s+/g, " ");
-  if (limpo === "" || limpo.length > 100) return {};
-  const partes = limpo.split(" ");
-  if (!partes.every((parte) => /^\p{L}[\p{L}'’.-]*$/u.test(parte))) return {};
-  const [primeiro, ...resto] = partes;
-  return resto.length > 0
-    ? { first_name: primeiro, last_name: resto.join(" ") }
-    : { first_name: primeiro };
-}
-
-/**
  * Documento do titular, normalizado: aceita a máscara que o Brick ou uma
  * pessoa digita (ponto, hífen, barra, espaço) e devolve só os dígitos, com 11
  * para CPF e 14 para CNPJ. Qualquer outra coisa (letra, tamanho errado, tipo
@@ -427,18 +374,6 @@ export function normalizarDocumento(
  *   recebido — débito não parcela.
  * - `issuer_id` e o `processing_mode` que o Brick devolve NÃO entram: o
  *   emissor sai do token, e o modo de processamento é decisão do servidor.
- * - `comprador` (opcional, 03/10/2026) soma os dados que o antifraude do MP
- *   pede — `items`, `payer.phone`, `payer.address`, `shipment.address` — e
- *   NUNCA derruba a cobrança: tudo passa de novo pelas regras de formato
- *   (`camposDoComprador`), o que não presta é omitido sem lançar, e `items` só
- *   vai quando a soma `unit_price × quantity` fecha AO CENTAVO com o
- *   `total_amount` (a doc não afirma que precisa fechar; não mandar é a única
- *   garantia de nunca ser recusado por soma). Fonte e campos que ficaram de
- *   fora de propósito (`additional_info`): `_shared/dados-antifraude.ts`.
- * - `nomeNaFatura` (opcional, 03/10/2026) vira
- *   `transactions.payments[0].payment_method.statement_descriptor`, normalizado
- *   e cortado (`_shared/nome-na-fatura.ts`); vazio ou imprestável não manda a
- *   chave. É um dos campos que `order-cartao-repeticao.ts` tira na repetição.
  *
  * Valida tudo e LANÇA em entrada inválida (este arquivo tem `@ts-nocheck`:
  * só o `throw` barra). As mensagens nunca carregam o valor recusado — um
@@ -454,9 +389,6 @@ export function montarCorpoCartaoOrders(args: {
   paymentMethodId: string;
   paymentTypeId: "credit_card" | "debit_card";
   parcelas: number;
-  comprador?: unknown;
-  // Nome na fatura do comprador (03/10/2026) — opcional, ver `nome-na-fatura.ts`.
-  nomeNaFatura?: unknown;
 }): Record<string, unknown> {
   if (typeof args.orderId !== "string" || args.orderId.length === 0) {
     throw new Error("montarCorpoCartaoOrders: orderId obrigatório.");
@@ -487,19 +419,11 @@ export function montarCorpoCartaoOrders(args: {
   const valorFormatado = args.valor.toFixed(2);
   const parcelas = args.paymentTypeId === "debit_card" ? 1 : args.parcelas;
 
-  // `nome` inteiro entra dividido em first_name + last_name; nome imprestável
-  // não manda nada (ver `dividirNomeDoPagador`) e nunca lança.
-  const payer: Record<string, unknown> = { email: args.email, ...dividirNomeDoPagador(args.nome) };
+  const payer: Record<string, unknown> = { email: args.email };
+  if (args.nome) payer.first_name = args.nome;
   payer.identification = documento;
 
-  // Dados do comprador e do produto (antifraude): opcionais, revalidados, e a
-  // soma dos itens conferida contra o total JÁ ARREDONDADO que vai no corpo.
-  const extras = camposDoComprador(args.comprador, valorFormatado);
-  const descricaoNaFatura = nomeNaFatura(args.nomeNaFatura);
-  if (extras.phone) payer.phone = extras.phone;
-  if (extras.address) payer.address = extras.address;
-
-  const corpo: Record<string, unknown> = {
+  return {
     type: "online",
     processing_mode: "automatic",
     capture_mode: "automatic_async",
@@ -515,9 +439,6 @@ export function montarCorpoCartaoOrders(args: {
             type: args.paymentTypeId,
             token: args.token,
             installments: parcelas,
-            // Nome na fatura (opcional): conferido DE NOVO aqui — mesmo teste
-            // de quem leu (`nomeNaFatura` e' idempotente), vazio nao manda.
-            ...(descricaoNaFatura ? { statement_descriptor: descricaoNaFatura } : {}),
           },
         },
       ],
@@ -531,9 +452,6 @@ export function montarCorpoCartaoOrders(args: {
       },
     },
   };
-  if (extras.items) corpo.items = extras.items;
-  if (extras.shipment) corpo.shipment = extras.shipment;
-  return corpo;
 }
 
 /** `transactions.payments[0]` da order, ou `undefined` — leitor comum dos
@@ -1148,105 +1066,23 @@ type ResultadoOrder =
   };
 
 /**
- * Caminho de campo do corpo da order (`payer.phone.area_code`,
- * `items[0].unit_price`...), a partir das raízes que nós mesmos mandamos. É a
- * ÚNICA coisa que atravessa da frase de erro do MP para o log: a frase pode
- * ecoar o valor recusado sem aspas (nome, rua, token) e pode citar o próprio
- * campo COM aspas — lista do que é proibido falha nos dois sentidos, lista do
- * que é permitido não (revisão Opus, 03/10/2026).
+ * Resumo do corpo de erro do MP SEM dado pessoal — só códigos e status. É o
+ * que vai para o log quando quem chama pede `corpoNoLog: false` (cartão): o
+ * corpo inteiro da recusa traz a order com o pagador (e-mail, CPF), que não
+ * pode parar no log da função.
  */
-const CAMINHO_DE_CAMPO_DA_ORDER =
-  /\b(?:payer|items|shipment|transactions|config|total_amount|external_reference|processing_mode|capture_mode|type)[a-z_.0-9[\]]*/g;
-
-/** As frases de UM erro do MP (`details` + `message`) — onde ele cita o campo. */
-function frasesDoErroDoMp(erro: unknown): string[] {
-  if (!erro || typeof erro !== "object") return [];
-  const { details, message } = erro as Record<string, unknown>;
-  const lista = Array.isArray(details) ? details : details !== undefined ? [details] : [];
-  return [...lista, message].filter((d): d is string => typeof d === "string");
-}
-
-/**
- * Os caminhos de campo citados por CADA erro de `errors[]` de um corpo de
- * erro do MP — uma lista por erro, na ordem, SEM o corte e SEM o filtro de
- * `resumoSemDadoPessoal` (que existem para o LOG). Quem DECIDE com isto
- * (`order-cartao-repeticao.ts`) precisa ver tudo o que a recusa citou: um
- * caminho descartado por parecer "valor colado" seria um campo que a decisão
- * não viu. Lista vazia para um erro = ele não nomeia campo nenhum.
- * Corpo sem `errors[]` devolve `[]`.
- */
-export function caminhosDeCampoPorErro(corpo: unknown): string[][] {
-  if (!corpo || typeof corpo !== "object") return [];
-  const erros = (corpo as Record<string, unknown>).errors;
-  if (!Array.isArray(erros)) return [];
-  return erros.map((erro) => [
-    ...new Set(
-      frasesDoErroDoMp(erro)
-        .flatMap((frase) => frase.match(CAMINHO_DE_CAMPO_DA_ORDER) ?? [])
-        .map((caminho) => caminho.replace(/[.]+$/, "")),
-    ),
-  ]);
-}
-
-/** Código de erro do MP que pode ir ao log: número, ou palavra-código curta
- * (`refund_amount_exceeds`, `bad_request`). Texto livre fica de fora — é nele
- * que o MP ecoa o valor recusado. */
-const CODIGO_DE_ERRO_DO_MP = /^[A-Za-z0-9_.-]{1,64}$/;
-
-function codigoSeguro(c: unknown): string | number | undefined {
-  if (typeof c === "number" && Number.isFinite(c)) return c;
-  if (typeof c === "string" && CODIGO_DE_ERRO_DO_MP.test(c)) return c;
-  return undefined;
-}
-
-function listaDeErros(v: unknown): unknown[] {
-  return Array.isArray(v) ? v : [];
-}
-
-/**
- * Resumo do corpo de erro do MP SEM dado pessoal — códigos, status e os
- * caminhos dos campos recusados. É o que vai para o log quando quem chama pede
- * `corpoNoLog: false` (cartão): o corpo inteiro da recusa traz a order com o
- * pagador (e-mail, CPF), que não pode parar no log da função.
- *
- * R9 (Lote A, 04/10/2026): exportado para o executor do estorno e a leitura
- * clássica (`consultarPagamento`), que logavam o corpo cru. Lê os três
- * formatos de erro do MP — Orders (`errors[].code`), Orders refund
- * (`error_messages[].code`) e Payments clássica (`cause[].code`, numérico) —
- * mais o `error` de topo (`bad_request`), só quando é palavra-código. Aceita
- * qualquer coisa: corpo não-objeto vira "(corpo não-JSON)".
- */
-export function resumoSemDadoPessoal(entrada: unknown): string {
-  if (!entrada || typeof entrada !== "object" || Array.isArray(entrada)) {
-    return "(corpo não-JSON)";
-  }
-  const corpo = entrada as Record<string, unknown>;
-  const erros = listaDeErros(corpo.errors);
-  const codigos = [...erros, ...listaDeErros(corpo.error_messages), ...listaDeErros(corpo.cause)]
-    .map((e) => (e && typeof e === "object" ? codigoSeguro((e as Record<string, unknown>).code) : undefined))
-    .filter((c) => c !== undefined);
-  const erroDeTopo = codigoSeguro(corpo.error);
+function resumoSemDadoPessoal(corpo: Record<string, unknown> | undefined): string {
+  if (!corpo) return "(corpo não-JSON)";
+  const erros = Array.isArray(corpo.errors) ? corpo.errors : [];
+  const codigos = erros
+    .map((e) => (e && typeof e === "object" ? (e as Record<string, unknown>).code : undefined))
+    .filter((c) => typeof c === "string");
   const data = corpo.data && typeof corpo.data === "object"
     ? corpo.data as Record<string, unknown>
     : undefined;
   const pagamento = primeiroPagamentoDaOrder(data);
-  // `details`/`message` dizem QUAL campo o MP recusou (03/10/2026: um 400
-  // `property_value` nos campos de antifraude só mostrava o código, sem o
-  // campo). Da frase, só o caminho do campo sobrevive; o resto é descartado.
-  const frases = erros.flatMap(frasesDoErroDoMp);
-  const campos = [
-    ...new Set(
-      frases
-        .flatMap((f) => f.match(CAMINHO_DE_CAMPO_DA_ORDER) ?? [])
-        .map((c) => c.replace(/[.]+$/, ""))
-        // Índice de array tem 1-2 dígitos; 3+ seria valor colado no caminho.
-        .filter((c) => !/\d{3,}/.test(c)),
-    ),
-  ].slice(0, 6);
   return JSON.stringify({
     codigos,
-    ...(typeof erroDeTopo === "string" ? { erro: erroDeTopo } : {}),
-    ...(campos.length > 0 ? { campos } : {}),
     status: typeof data?.status === "string" ? data.status : undefined,
     status_detail: typeof data?.status_detail === "string" ? data.status_detail : undefined,
     pagamento_status_detail: typeof pagamento?.status_detail === "string"
@@ -1346,10 +1182,6 @@ export async function criarOrder(args: {
   // aborto sem esperar os 15s.
   tempoLimiteMs?: number;
   corpoNoLog?: boolean;
-  // Device ID do comprador (cartão): vira `X-meli-session-id` SÓ se passar em
-  // `deviceIdValido` — inválido ou ausente é ignorado, nunca erro (o antifraude
-  // fica sem o sinal, a cobrança segue). Ver `deviceIdValido`.
-  deviceId?: string | null;
 }): Promise<ResultadoOrder> {
   const f = args.fetchImpl ?? fetch;
   const base = args.baseUrl ?? BASE_URL_PADRAO;
@@ -1366,12 +1198,6 @@ export async function criarOrder(args: {
           "Content-Type": "application/json",
           // Sem isso, um retry do nosso lado cobra o cliente duas vezes.
           "X-Idempotency-Key": args.chaveIdempotencia,
-          // Doc oficial (Orders API, "melhorar aprovação"): o Device ID vai
-          // neste cabeçalho do POST /v1/orders. Não altera o CORPO, que é o
-          // que o MP compara sob a mesma chave de idempotência (409 por
-          // "chave repetida, corpo diferente"); se o cabeçalho entra nessa
-          // comparação não está documentado — medir no teste real do runbook.
-          ...(deviceIdValido(args.deviceId) ? { "X-meli-session-id": args.deviceId } : {}),
         },
         body: JSON.stringify(args.corpo),
       },
@@ -2064,17 +1890,8 @@ async function interpretarRespostaDePagamento(
   if (!resposta.ok) {
     // O corpo do erro do MP vai para o log da função, NUNCA para o cliente:
     // ele carrega detalhe de credencial e de conta.
-    // R9 (Lote A, 04/10/2026): só o resumo sem dado pessoal — o GET
-    // /v1/payments/{id} é do pagador (e-mail, CPF, nome) e a recusa ecoa o
-    // valor em `message`/`cause[].description`.
     const detalhe = await resposta.text().catch(() => "");
-    let corpoDoErro: unknown;
-    try {
-      corpoDoErro = JSON.parse(detalhe);
-    } catch {
-      corpoDoErro = undefined;
-    }
-    console.error("mercadopago: recusou", resposta.status, resumoSemDadoPessoal(corpoDoErro));
+    console.error("mercadopago: recusou", resposta.status, detalhe);
     return { ok: false, erro: mensagemDeFalha, status: resposta.status };
   }
 
@@ -2093,8 +1910,7 @@ async function interpretarRespostaDePagamento(
   if (json?.id === undefined || json?.id === null) {
     // "undefined" nunca pode virar gateway_payment_id: a coluna tem índice
     // UNIQUE parcial, e a segunda ocorrência estoura 23505.
-    // R9: o corpo de um pagamento é do pagador — só o resumo vai ao log.
-    console.error("mercadopago: resposta 2xx sem id", resposta.status, resumoSemDadoPessoal(json));
+    console.error("mercadopago: resposta 2xx sem id", resposta.status, JSON.stringify(json));
     return { ok: false, erro: "Resposta inválida do gateway.", status: resposta.status };
   }
 
