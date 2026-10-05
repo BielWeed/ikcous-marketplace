@@ -8,11 +8,9 @@
 // executor único da Task 2 e grava o resultado.
 //
 // DINHEIRO — as proteções desta function:
-//   * Admin-only: JWT do lojista validado com anon key e o papel ATUAL
-//     exigido nas DUAS fontes — app_metadata do usuário que o Auth carrega
-//     do banco E profiles com service role (a regra de is_admin_atual(),
-//     20261197000000). Não-admin, ou admin rebaixado em qualquer das duas,
-//     não lê NADA.
+//   * Admin-only: JWT do lojista validado com anon key e papel sobe por
+//     profiles com service role (MESMA cópia do verifyIsAdmin do
+//     melhor-envio-etiqueta/calculate-shipping). Não-admin não lê NADA.
 //   * A MARCA ANTES DO MP: `UPDATE order_refunds SET
 //     status='em_processamento', tentativas=tentativas+1 WHERE id=$1 AND
 //     status IN ('solicitado','em_processamento')`. Se 0 linhas voltaram,
@@ -57,13 +55,6 @@ import { fetchComTempo } from "../_shared/mercadopago.ts"
 // LOJISTA (cofre em app_settings) ou pela da plataforma (env) — e quem fecha
 // a porta quando existe cadastro que não dá para decifrar.
 import { resolverCredenciaisMp } from "../_shared/credenciais-mp.ts"
-// Lote A (04/10/2026): a pergunta ao banco IMEDIATAMENTE antes do POST de
-// refund (RPC autorizar_post_do_estorno, 20261196000000) — uma leitura da
-// resposta, dois chamadores (esta edge e o cron reconciliar-pagamentos).
-import { autorizacaoPeloBanco, type AutorizacaoDoPost } from "../_shared/estorno.ts"
-// A regra do admin de AGORA mora num lugar só (a mesma de is_admin_atual(),
-// 20261197000000) — a ação `cancelar` da criar-pagamento usa a mesma.
-import { adminAtualDaSessao } from "../_shared/admin-atual.ts"
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -80,9 +71,6 @@ export type LinhaEstorno = {
     status: 'solicitado' | 'em_processamento' | 'concluido' | 'falhou' | 'recusado'
     mp_refund_id: string | null
     tentativas: number
-    // R1 (20261196000000) — ver _shared/estorno.ts.
-    post_autorizado_em?: string | null
-    criada_sob_autorizacao?: boolean | null
 }
 
 export type PedidoParaEstorno = {
@@ -111,10 +99,6 @@ export type ExecutorEstorno = (args: {
     // Item 1 do brief P0 (08/09/2026) / encargo da T5: os mp_refund_id das
     // OUTRAS linhas de order_refunds do mesmo pedido que já têm id gravado.
     idsJaReivindicados?: string[]
-    // Lote A (04/10/2026): o executor pergunta ao banco, com a linha e o
-    // pedido travados, se o POST ainda cabe — DEPOIS do GET da transação e
-    // imediatamente antes do POST. Ausente = nenhum POST (falha fechada).
-    autorizarAntesDoPost?: (linha: LinhaEstorno) => Promise<AutorizacaoDoPost>
 }) => Promise<ResultadoEstorno>
 
 /** Texto EXATO do plano (T3) para 202 — o lojista sabe quem confere e quando. */
@@ -144,30 +128,35 @@ function readKey(newVar: string, legacyVar: string): string {
 }
 
 /**
- * Verifica se quem chamou é admin AGORA. Valida o JWT com o anon key e exige o
- * papel 'admin' nas DUAS fontes atuais — a MESMA regra de
- * `public.is_admin_atual()` (migration 20261197000000), para a função de banco
- * e a edge terem uma autoridade só:
- *   - `user.app_metadata.role` de `auth.getUser()`: o GET /user do Auth
- *     carrega o usuário do BANCO (auth.users.raw_app_meta_data de agora),
- *     nunca as claims do JWT — um JWT velho dizendo admin não decide nada;
- *   - `profiles.role`, lido com service role.
- * Papéis contraditórios (rebaixado só em uma das fontes) NÃO autorizam
- * dinheiro. A regra mora em `_shared/admin-atual.ts` (04/10/2026), a mesma da
- * ação `cancelar` da criar-pagamento.
+ * Verifica se quem chamou é admin. MESMA cópia do padrão
+ * melhor-envio-etiqueta/calculate-shipping: valida o JWT com o anon key e
+ * sobe o papel de `profiles` com service role.
  */
 async function verifyIsAdmin(
     authHeader: string | null,
     supabaseUrl: string,
     serviceRoleKey: string,
 ): Promise<boolean> {
-    const adminId = await adminAtualDaSessao(authHeader, {
-        url: supabaseUrl,
-        chavePublica: readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY'),
-        chaveDeServico: serviceRoleKey,
-        rotulo: '[estornar-pagamento]',
-    })
-    return adminId !== null
+    if (!authHeader) return false
+    try {
+        const anonKey = readKey('SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_ANON_KEY')
+        const userClient = createClient(supabaseUrl, anonKey, {
+            global: { headers: { Authorization: authHeader } },
+        })
+        const { data: { user }, error: userError } = await userClient.auth.getUser()
+        if (userError || !user) return false
+        const systemClient = createClient(supabaseUrl, serviceRoleKey)
+        const { data: profile, error: profileError } = await systemClient
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+        if (profileError || !profile) return false
+        return profile.role === 'admin'
+    } catch (err) {
+        console.error('[estornar-pagamento] Falha no check de admin:', err)
+        return false
+    }
 }
 
 /**
@@ -217,9 +206,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
         //    a edge, e a porta de admin já filtreou quem chegou até aqui).
         const { data: linha, error: erroLinha } = await supabase
             .from('order_refunds')
-            // post_autorizado_em/criada_sob_autorizacao (R1, 20261196000000):
-            // o executor decide por elas se a linha pode já ter chegado ao MP.
-            .select('id, order_id, amount, status, mp_refund_id, tentativas, solicitado_por, post_autorizado_em, criada_sob_autorizacao')
+            .select('id, order_id, amount, status, mp_refund_id, tentativas, solicitado_por')
             .eq('id', refundId)
             .maybeSingle()
         if (erroLinha) {
@@ -364,8 +351,6 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 status: 'em_processamento',
                 mp_refund_id: linha.mp_refund_id ?? null,
                 tentativas: Number(linha.tentativas ?? 0) + 1,
-                post_autorizado_em: linha.post_autorizado_em ?? null,
-                criada_sob_autorizacao: linha.criada_sob_autorizacao ?? null,
             },
             pedido: {
                 id: pedido.id,
@@ -405,14 +390,6 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             // Item 3b acima: as OUTRAS linhas do pedido que já reivindicaram
             // um mp_refund_id — a mesma invariante que o cron (P0) já passa.
             idsJaReivindicados,
-            // Lote A (04/10/2026, achado causal do 01765261): o retrato do
-            // pedido lido no passo 3 pode envelhecer até o POST (o GET da
-            // transação fica no meio, e o webhook pode registrar um refund do
-            // painel nesse tempo). O executor pergunta ao banco — linha e
-            // pedido travados, saldo relido — logo antes do POST; não cabe =
-            // nada sai, a linha fica em_processamento e o motivo vai para
-            // ultimo_erro (ramo tentar_depois abaixo).
-            autorizarAntesDoPost: autorizacaoPeloBanco((nome, argumentos) => supabase.rpc(nome, argumentos)),
         })
 
         // 7. O resultado vira estado + resposta. Nenhum texto carrega
@@ -494,7 +471,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
             // O update é CONDICIONAL como a MARCA (M1 do laudo do PR #439):
             // estado terminal só substitui 'em_processamento' — se a T4/T5
             // concluiu no meio, 0 linhas voltam e NADA é sobrescrito.
-            let terminal = supabase
+            const { data: fim, error: erroFim } = await supabase
                 .from('order_refunds')
                 .update({
                     status: resultado.tipo,
@@ -503,11 +480,7 @@ export async function handler(req: Request, deps: EstornoDeps = {}): Promise<Res
                 })
                 .eq('id', refundId)
                 .in('status', ['em_processamento'])
-            // R1 (20261196000000): `recusado` = nenhum POST saiu. Se outro
-            // executor autorizou um POST desta linha depois da nossa leitura,
-            // o carimbo existe e 0 linhas voltam (409 abaixo, estado real).
-            if (resultado.tipo === 'recusado') terminal = terminal.is('post_autorizado_em', null)
-            const { data: fim, error: erroFim } = await terminal.select()
+                .select()
             if (erroFim) {
                 console.error('[estornar-pagamento] Falha ao gravar o desfecho:', erroFim)
                 return json({ erro: 'A devolução terminou, mas o registro falhou. Atualize a página para ver o estado real.' }, 500)

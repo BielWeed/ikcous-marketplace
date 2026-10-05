@@ -94,7 +94,7 @@ export type CredenciaisMp = {
 // segredo e quem o lê na hora de cobrar têm de usar exatamente a mesma
 // cifra, e o `env` injetável é a única diferença.
 
-function base64ParaBytes(base64: string): Uint8Array<ArrayBuffer> {
+function base64ParaBytes(base64: string): Uint8Array {
     // Uint8Array.from em vez de índice variável (`bytes[i] =`) — mesmo
     // resultado, sem acordar a catraca de segurança do eslint.
     return Uint8Array.from(atob(base64), (caractere) => caractere.charCodeAt(0));
@@ -112,7 +112,7 @@ export async function chaveDeCifra(
 ): Promise<CryptoKey | null> {
     const segredo = env.get("MP_CHAVES_ENCRYPTION_KEY")?.trim() ?? "";
     if (!segredo) return null;
-    let bytes: Uint8Array<ArrayBuffer>;
+    let bytes: Uint8Array;
     try {
         bytes = base64ParaBytes(segredo);
     } catch {
