@@ -1330,6 +1330,7 @@ Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma popula�
       assertEquals((limpo.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 19);
       for (const col of ["total_amount", "shipping_cost"]) {
         assert(
+          // eslint-disable-next-line security/detect-non-literal-regexp -- `col` vem só do array literal ["total_amount", "shipping_cost"] da linha acima, nunca de entrada externa.
           !new RegExp(`d\\.${col}::numeric`).test(limpo),
           `${col} não pode entrar por ::numeric(12,2): arredonda a 3ª casa`,
         );
@@ -1531,6 +1532,16 @@ Deno.test("8j — no menu, UM SELECT só leitura no formato da 8c, cobre as seis
       assertStringIncludes(sql, "NÃO atesta o hash da 8i nem dispensa a 8c");
       assertStringIncludes(sql, "src/backend/utils/misc/rls.c");
       assertStringIncludes(sql, "check_enable_rls");
+      // SELECT só de COLUNA roda a consulta e a linha sai BLOQUEIA: o cabeçalho
+      // não pode voltar a dizer que esse ramo é inalcançável (revisão 05/10/2026).
+      assertStringIncludes(
+        sql,
+        'a ramificação BLOQUEIA de "sem SELECT" É alcançável',
+      );
+      assert(
+        !/não é alcançável|inalcançável/i.test(sql),
+        "o cabeçalho voltou a afirmar que o ramo BLOQUEIA de 'sem SELECT' não é alcançável",
+      );
     },
   );
 });
