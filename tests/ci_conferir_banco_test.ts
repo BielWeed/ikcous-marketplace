@@ -1015,6 +1015,129 @@ Deno.test("8a..8g — estão no menu do workflow, são UM SELECT só leitura, e 
   );
 });
 
+// 8h (04/10/2026) — PERFIL dos divergentes da 8c, só diagnóstico. Não é
+// portão: a saída é secao/chave/pedidos, não item/esperado/vivo/ok.
+Deno.test("8h — no menu, UM SELECT só leitura, mesma população da 8c, controles e nenhum dado pessoal ou de gateway", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const nome = "8h-perfil-dos-pedidos-divergentes";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const m = yaml.match(/consulta:[\s\S]*?options:\n((?:\s{6,}- .+\n?)+)/);
+    assert(m, "não achei as options de `consulta`");
+    const opcoes = m[1]
+      .split("\n")
+      .map((l) => l.replace(/^\s*-\s*/, "").trim());
+    assert(opcoes.includes(nome), `falta a opção ${nome} no workflow`);
+  });
+  await t.step(
+    "um statement, começa por WITH/SELECT, sem palavra de escrita",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*(WITH|SELECT)\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          limpo.replace(/'(?:[^']|'')*'/g, "''"),
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+    },
+  );
+  await t.step(
+    "a saída é secao, chave, pedidos e tem os controles de visibilidade",
+    () => {
+      assert(
+        /SELECT secao, chave, pedidos\s+FROM r\s+ORDER BY ordem, chave;/.test(
+          limpo,
+        ),
+      );
+      assertStringIncludes(limpo, "'controle', 'pedidos visiveis'");
+      assertStringIncludes(limpo, "'controle', 'itens de pedido visiveis'");
+      for (const tabela of [
+        "historico de status visivel",
+        "registros de pagamento visiveis",
+        "estornos visiveis",
+        "devolucoes visiveis",
+      ]) {
+        assertStringIncludes(limpo, `'controle', '${tabela}'`);
+      }
+    },
+  );
+  await t.step(
+    "nenhum campo agrupado sai cru: lista fixa ou '(fora da lista, nao impresso)'",
+    () => {
+      const campos = [
+        "status",
+        "payment_status",
+        "payment_method",
+        "metodo_online",
+        "canal",
+      ];
+      for (const f of campos) {
+        assert(
+          new RegExp(
+            `SELECT \\d+, '${f}', cat_${f}, count\\(\\*\\)::text FROM div GROUP BY 3`,
+          ).test(limpo),
+          `a seção ${f} tem de agrupar pela categoria cat_${f}`,
+        );
+        assert(
+          new RegExp(
+            `CASE WHEN o\\.${f} IS NULL THEN '\\(nulo\\)'\\s+WHEN o\\.${f} IN \\([^)]*\\)\\s+THEN o\\.${f}\\s+ELSE '\\(fora da lista, nao impresso\\)' END AS cat_${f}`,
+          ).test(limpo),
+          `cat_${f} tem de ser nulo / lista fixa / fora da lista`,
+        );
+      }
+      assertEquals(
+        (limpo.match(/'\(fora da lista, nao impresso\)'/g) ?? []).length,
+        campos.length,
+      );
+      assert(
+        /CASE WHEN subtotal IS NULL THEN '\(nulo\)'/.test(limpo),
+        "subtotal nulo nunca cai em '> 1000'",
+      );
+      assertStringIncludes(limpo, "'payment_status estornado'");
+    },
+  );
+  await t.step(
+    "a CTE `soma` é IDÊNTICA à da 8c (mesma população)",
+    async () => {
+      const soma = (texto: string) => {
+        const m = sqlSemComentarios(texto).match(
+          /WITH soma AS \(([\s\S]*?)\n\), /,
+        );
+        assert(m, "não achei a CTE soma");
+        return m[1].replace(/\s+/g, " ").trim();
+      };
+      const sql8c = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertEquals(soma(sql), soma(sql8c));
+      assertStringIncludes(
+        limpo,
+        "WHERE s.subtotal IS DISTINCT FROM s.soma_itens",
+      );
+    },
+  );
+  await t.step(
+    "nenhuma coluna de cliente, e o gateway só como presença",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name)\b/i.test(
+          limpo,
+        ),
+        "a 8h leria dado pessoal",
+      );
+      const usos = limpo.match(/gateway_payment_id[^,\n)]*/g) ?? [];
+      assertEquals(usos.length, 1, "gateway_payment_id aparece uma vez só");
+      assert(
+        /gateway_payment_id IS NOT NULL/.test(usos[0]),
+        "gateway_payment_id só como IS NOT NULL",
+      );
+    },
+  );
+});
+
 Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 desta árvore REALMENTE definem", async (t) => {
   const { createHash } = require("node:crypto");
   const nomes: string[] = [];
