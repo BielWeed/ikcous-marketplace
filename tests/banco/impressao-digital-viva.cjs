@@ -1994,6 +1994,291 @@ async function main() {
       );
     }
 
+    // 8h: PERFIL dos divergentes da 8c (diagnóstico, saída secao/chave/pedidos)
+    {
+      const NOME_8H = "8h-perfil-dos-pedidos-divergentes";
+      const perfil = async (db, papel = PAPEL_RO) => {
+        const sql = fs.readFileSync(
+          path.join(
+            REPO,
+            "scripts",
+            "publicacao",
+            "consultas",
+            `${NOME_8H}.sql`,
+          ),
+          "utf8",
+        );
+        assert.equal(CONF.contarStatements(sql), 1, "8h: 1 statement");
+        return usar(db, async (c) => {
+          await c.query(`SET ROLE ${papel}`);
+          await c.query("SET default_transaction_read_only = on");
+          try {
+            const r = await c.query(sql);
+            assert.deepEqual(
+              r.fields.map((f) => f.name),
+              ["secao", "chave", "pedidos"],
+              "8h: colunas secao/chave/pedidos",
+            );
+            return r.rows;
+          } finally {
+            await c.query("RESET ROLE");
+          }
+        });
+      };
+      const valor = (rows, secao, chave) => {
+        const l = rows.filter((r) => r.secao === secao && r.chave === chave);
+        assert.equal(
+          l.length,
+          1,
+          `8h: esperava 1 linha ${secao}/${chave}, achei ${l.length}`,
+        );
+        return l[0].pedidos;
+      };
+      const secao = (rows, s) =>
+        Object.fromEntries(
+          rows.filter((r) => r.secao === s).map((r) => [r.chave, r.pedidos]),
+        );
+
+      // fixture limpa: 0 divergentes, controles >0, nenhuma linha de perfil
+      const h0 = await perfil(semeado);
+      assert.equal(valor(h0, "controle", "pedidos visiveis"), ">0");
+      assert.equal(valor(h0, "controle", "itens de pedido visiveis"), ">0");
+      assert.equal(valor(h0, "total", "divergentes (mesma regra da 8c)"), "0");
+      assert.equal(valor(h0, "total", "dos quais sem nenhum item"), "0");
+      assert.deepEqual(
+        secao(h0, "status"),
+        {},
+        "8h: sem divergente não há perfil de status",
+      );
+
+      // os MESMOS 3 plantados da 8c, mais um id de cobrança no pedido sem item
+      const GATEWAY_8H = "MP-NAO-PODE-SAIR-8H-0001";
+      const db = await clone(semeado, "ip_j_8h");
+      await usar(db, async (c) => {
+        await c.query(
+          "UPDATE public.marketplace_order_items SET quantity = 3 WHERE order_id = $1",
+          [O1],
+        );
+        await c.query(
+          "DELETE FROM public.marketplace_order_items WHERE order_id = $1",
+          [O3],
+        );
+        await c.query(
+          "UPDATE public.marketplace_orders SET subtotal = 999 WHERE id = $1",
+          [O2],
+        );
+        await c.query(
+          "UPDATE public.marketplace_orders SET gateway_payment_id = $2 WHERE id = $1",
+          [O3, GATEWAY_8H],
+        );
+      });
+      const h1 = await perfil(db);
+      const mes = (
+        await usar(db, (c) =>
+          c.query("SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM') AS m"),
+        )
+      ).rows[0].m;
+      assert.equal(valor(h1, "total", "divergentes (mesma regra da 8c)"), "3");
+      assert.equal(valor(h1, "total", "dos quais sem nenhum item"), "1");
+      assert.deepEqual(secao(h1, "status"), {
+        delivered: "1",
+        pending: "1",
+        processing: "1",
+      });
+      assert.deepEqual(secao(h1, "payment_status"), {
+        aguardando: "1",
+        pago: "2",
+      });
+      assert.deepEqual(secao(h1, "payment_method"), { online: "3" });
+      assert.deepEqual(secao(h1, "metodo_online"), {
+        "(nulo)": "1",
+        credito: "1",
+        pix: "1",
+      });
+      assert.deepEqual(secao(h1, "canal"), { online: "3" });
+      assert.deepEqual(secao(h1, "mes de criacao (UTC)"), { [mes]: "3" });
+      assert.deepEqual(secao(h1, "faixa de subtotal"), {
+        "(10, 100]": "2",
+        "(100, 1000]": "1",
+      });
+      assert.deepEqual(secao(h1, "controle"), {
+        "pedidos visiveis": ">0",
+        "itens de pedido visiveis": ">0",
+        "historico de status visivel": ">0",
+        "registros de pagamento visiveis": ">0",
+        "estornos visiveis": ">0",
+        "devolucoes visiveis": ">0",
+      });
+      assert.deepEqual(secao(h1, "historico de status"), {
+        "com algum evento": "3",
+        "com evento para processing, shipping ou delivered": "2",
+      });
+      assert.deepEqual(secao(h1, "sinais de cobranca"), {
+        "com id de cobranca no gateway (so a presenca)": "1",
+        "payment_status pago, pago_apos_expirar ou recebido_na_entrega": "2",
+        "payment_status estornado": "0",
+        "com registro em marketplace_order_payment_history": "1",
+        "com estorno em order_refunds": "2",
+        "com devolucao": "1",
+      });
+      const texto = JSON.stringify(h1);
+      for (const proibido of [
+        GATEWAY_8H,
+        "Cliente FP",
+        "@fp.teste",
+        O1,
+        O2,
+        O3,
+        U_CLIENTE,
+      ]) {
+        assert(!texto.includes(proibido), `8h: a saída vazou ${proibido}`);
+      }
+
+      // CANÁRIO: texto arbitrário em todo campo agrupado (com os CHECK
+      // derrubados SÓ neste clone, gatilhos desligados) e subtotal nulo (NOT
+      // NULL derrubado só aqui) — nada disso pode sair cru na saída.
+      const CANARIO = "CANARIO-8H joana.canario@exemplo.com";
+      const canario = await clone(db, "ip_j_8h_canario");
+      await usar(canario, async (c) => {
+        await c.query("SET session_replication_role = replica");
+        const cks = await c.query(
+          "SELECT conname FROM pg_constraint WHERE conrelid = 'public.marketplace_orders'::regclass AND contype = 'c'",
+        );
+        for (const { conname } of cks.rows) {
+          await c.query(
+            `ALTER TABLE public.marketplace_orders DROP CONSTRAINT "${conname}"`,
+          );
+        }
+        await c.query(
+          "ALTER TABLE public.marketplace_orders ALTER COLUMN subtotal DROP NOT NULL",
+        );
+        await c.query(
+          `UPDATE public.marketplace_orders
+              SET status = $2 || ' st', payment_status = $2 || ' ps', payment_method = $2 || ' pm',
+                  metodo_online = $2 || ' mo', canal = $2 || ' ca'
+            WHERE id = $1`,
+          [O1, CANARIO],
+        );
+        await c.query(
+          "UPDATE public.marketplace_orders SET subtotal = NULL, payment_status = 'estornado' WHERE id = $1",
+          [O2],
+        );
+      });
+      const FORA = "(fora da lista, nao impresso)";
+      const h3 = await perfil(canario);
+      assert.equal(valor(h3, "total", "divergentes (mesma regra da 8c)"), "3");
+      assert.deepEqual(secao(h3, "status"), {
+        [FORA]: "1",
+        delivered: "1",
+        pending: "1",
+      });
+      assert.deepEqual(secao(h3, "payment_status"), {
+        [FORA]: "1",
+        aguardando: "1",
+        estornado: "1",
+      });
+      assert.deepEqual(secao(h3, "payment_method"), {
+        [FORA]: "1",
+        online: "2",
+      });
+      assert.deepEqual(secao(h3, "metodo_online"), {
+        [FORA]: "1",
+        "(nulo)": "1",
+        pix: "1",
+      });
+      assert.deepEqual(secao(h3, "canal"), { [FORA]: "1", online: "2" });
+      assert.deepEqual(
+        secao(h3, "faixa de subtotal"),
+        { "(nulo)": "1", "(10, 100]": "2" },
+        "8h: subtotal nulo cai em (nulo), nunca em > 1000",
+      );
+      assert.equal(
+        valor(h3, "sinais de cobranca", "payment_status estornado"),
+        "1",
+      );
+      assert.equal(
+        valor(
+          h3,
+          "sinais de cobranca",
+          "payment_status pago, pago_apos_expirar ou recebido_na_entrega",
+        ),
+        "0",
+      );
+      const texto3 = JSON.stringify(h3);
+      for (const proibido of [
+        "CANARIO",
+        "canario",
+        "exemplo.com",
+        GATEWAY_8H,
+        O1,
+        O2,
+        O3,
+      ]) {
+        assert(
+          !texto3.includes(proibido),
+          `8h: a saída vazou o canário ${proibido}`,
+        );
+      }
+
+      // RLS cega nos PEDIDOS (papel sem BYPASSRLS): a política TO public de
+      // marketplace_order_payment_history chama is_admin() sem EXECUTE para o
+      // papel — a consulta FALHA alto em vez de devolver um 0 que engana.
+      const cego = await clone(semeado, "ip_j_8h_cego");
+      await usar(cego, (c) =>
+        c.query(
+          "ALTER TABLE public.marketplace_orders ENABLE ROW LEVEL SECURITY",
+        ),
+      );
+      await assert.rejects(
+        perfil(cego, PAPEL_CEGO),
+        /permission denied for function (is_admin|rls_admin_atual)/,
+        "cego: falha alta, nunca 0 silencioso",
+      );
+      // RLS cega só nas tabelas AUXILIARES (o caminho de falha alta desligado
+      // neste clone): o sinal sai 0, MAS o controle da tabela denuncia 0 —
+      // um 0 de sinal com controle 0 é inconclusivo, não "nenhum".
+      const cegoAux = await clone(db, "ip_j_8h_cego_aux");
+      await usar(cegoAux, async (c) => {
+        for (const t of [
+          "marketplace_orders",
+          "marketplace_order_items",
+          "marketplace_order_payment_history",
+        ]) {
+          await c.query(`ALTER TABLE public.${t} DISABLE ROW LEVEL SECURITY`);
+        }
+        for (const t of [
+          "order_refunds",
+          "devolucoes",
+          "marketplace_order_history",
+        ]) {
+          await c.query(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
+        }
+      });
+      const h4 = await perfil(cegoAux, PAPEL_CEGO);
+      assert.equal(valor(h4, "total", "divergentes (mesma regra da 8c)"), "3");
+      assert.equal(
+        valor(h4, "sinais de cobranca", "com estorno em order_refunds"),
+        "0",
+        "cego aux: o 0 engana",
+      );
+      assert.equal(
+        valor(h4, "controle", "estornos visiveis"),
+        "0",
+        "...mas o controle denuncia",
+      );
+      assert.equal(valor(h4, "sinais de cobranca", "com devolucao"), "0");
+      assert.equal(valor(h4, "controle", "devolucoes visiveis"), "0");
+      assert.equal(valor(h4, "historico de status", "com algum evento"), "0");
+      assert.equal(valor(h4, "controle", "historico de status visivel"), "0");
+      assert.equal(
+        valor(h4, "controle", "registros de pagamento visiveis"),
+        ">0",
+      );
+      ok(
+        "(j) 8h: fixture → 0 divergentes e sem perfil; os 3 plantados da 8c → perfil exato e 6 controles >0; canário em todo campo agrupado + subtotal nulo → só '(fora da lista…)' e '(nulo)', nenhum texto do canário, id, nome, e-mail ou id de gateway na saída; RLS cega nos pedidos → falha alta 42501; RLS cega nas auxiliares → sinal 0 COM controle 0",
+      );
+    }
+
     // 8d: órfãs
     {
       const db = await clone(semeado, "ip_j_8d");
