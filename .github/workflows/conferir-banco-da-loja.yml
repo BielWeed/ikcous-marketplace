@@ -94,6 +94,7 @@ on:
           - 8g-cron-reconciliar
           - 8h-perfil-dos-pedidos-divergentes
           - 8i-divergentes-contra-base-atestada
+          - 8j-visibilidade-das-tabelas-auxiliares
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox ou ikcous-publicada (a CAF explicita: exige expected_sha; nunca texto livre — achado da rodada 2)"
