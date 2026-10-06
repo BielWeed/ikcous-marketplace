@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+/* eslint-disable security/detect-object-injection -- as chaves vêm da política versionada (politica.json), do inventário que este script monta e de mapas fechados; nenhuma vem de quem chama. */
+/* eslint-disable security/detect-non-literal-fs-filename -- lê a política ao lado do script e os arquivos que o dono passa por --enderecos/--json na linha de comando; não há entrada remota. */
 // Conferência CENTRAL da frota: torna VISÍVEL quando os endereços do site (um
 // projeto Vercel só, várias lojas) deixam de servir a mesma versão, diz o TIPO
 // da divergência e como recuperar.
@@ -63,7 +65,12 @@
 // tudo OK sai 0, mas o relatório avisa em voz alta que não é a frota inteira.
 
 import { execFile } from "node:child_process";
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -81,7 +88,12 @@ export const GRAVIDADE = [
 ];
 
 const RE_SHA = /^[0-9a-f]{40}$/;
-const RE_DOMINIO = /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/;
+const RE_DOMINIO = {
+  test: (d) =>
+    /^[a-z0-9.-]+$/.test(String(d)) &&
+    /^[a-z0-9]/.test(String(d)) &&
+    /[a-z0-9]$/.test(String(d)),
+};
 const AMOSTRAS = 3;
 
 export const COMO_RECUPERAR = {
@@ -106,16 +118,28 @@ export function lerPolitica(caminho = path.join(AQUI, "politica.json")) {
 
 // ---------------------------------------------------------------- HTML
 
-const ENTIDADES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const ENTIDADES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
 
 export function extrairTitulo(html) {
   if (typeof html !== "string") return null;
   const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
   if (!m) return null;
   return m[1]
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(Number.parseInt(h, 16)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) =>
+      String.fromCodePoint(Number.parseInt(h, 16)),
+    )
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
-    .replace(/&([a-z]+);/gi, (inteiro, nome) => ENTIDADES[nome.toLowerCase()] ?? inteiro)
+    .replace(
+      /&([a-z]+);/gi,
+      (inteiro, nome) => ENTIDADES[nome.toLowerCase()] ?? inteiro,
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -123,7 +147,8 @@ export function extrairTitulo(html) {
 export function extrairRefsSupabase(html) {
   if (typeof html !== "string") return [];
   const refs = new Set();
-  for (const m of html.matchAll(/https:\/\/([a-z]{20})\.supabase\.co/g)) refs.add(m[1]);
+  for (const m of html.matchAll(/https:\/\/([a-z]{20})\.supabase\.co/g))
+    refs.add(m[1]);
   return [...refs].sort();
 }
 
@@ -134,7 +159,9 @@ export function extrairRefsSupabase(html) {
  */
 export function extrairPublicUrl(html) {
   if (typeof html !== "string") return null;
-  const m = /<script[^>]*\bid="ikcous-loja"[^>]*>([\s\S]*?)<\/script>/.exec(html);
+  const m = /<script[^>]*\bid="ikcous-loja"[^>]*>([\s\S]*?)<\/script>/.exec(
+    html,
+  );
   if (!m) return null;
   try {
     const url = JSON.parse(m[1])?.identidade?.publicUrl;
@@ -163,22 +190,35 @@ const sha7 = (sha) => (shaValido(sha) ? sha.slice(0, 7) : "(sha inválido)");
 export function problemasDoContrato(v) {
   const p = [];
   if (typeof v?.codeVersion !== "string" || !RE_SEMVER.test(v.codeVersion)) {
-    p.push(`codeVersion ausente ou fora de semver (${JSON.stringify(v?.codeVersion)})`);
+    p.push(
+      `codeVersion ausente ou fora de semver (${JSON.stringify(v?.codeVersion)})`,
+    );
   }
-  if (!shaValido(v?.codeSha)) p.push(`codeSha ausente ou fora de 40 hex (${JSON.stringify(v?.codeSha)})`);
-  if (typeof v?.identityRevision !== "string" || !RE_IDENTIDADE.test(v.identityRevision)) {
-    p.push(`identityRevision ausente ou fora de 64 hex (${JSON.stringify(v?.identityRevision)})`);
+  if (!shaValido(v?.codeSha))
+    p.push(`codeSha ausente ou fora de 40 hex (${JSON.stringify(v?.codeSha)})`);
+  if (
+    typeof v?.identityRevision !== "string" ||
+    !RE_IDENTIDADE.test(v.identityRevision)
+  ) {
+    p.push(
+      `identityRevision ausente ou fora de 64 hex (${JSON.stringify(v?.identityRevision)})`,
+    );
   }
   if (typeof v?.version !== "string") {
     p.push("version ausente");
   } else if (
     p.length === 0 &&
-    v.version !== `${v.codeVersion}-sha.${v.codeSha.slice(0, 7)}-identity.${v.identityRevision}`
+    v.version !==
+      `${v.codeVersion}-sha.${v.codeSha.slice(0, 7)}-identity.${v.identityRevision}`
   ) {
     p.push("version não bate com codeVersion + codeSha + identityRevision");
   }
-  if (v?.source !== "database") p.push(`source=${JSON.stringify(v?.source)}, esperado "database"`);
-  if (v?.promotable !== true) p.push(`promotable=${JSON.stringify(v?.promotable)}, esperado true (booleano)`);
+  if (v?.source !== "database")
+    p.push(`source=${JSON.stringify(v?.source)}, esperado "database"`);
+  if (v?.promotable !== true)
+    p.push(
+      `promotable=${JSON.stringify(v?.promotable)}, esperado true (booleano)`,
+    );
   return p;
 }
 
@@ -296,19 +336,29 @@ export async function sondarEndereco(dominio, opcoes = {}) {
         signal: AbortSignal.timeout(timeoutMs),
       });
       await res.text();
-      sonda.redirecionamento = { status: res.status, location: res.headers.get("location"), pedido };
+      sonda.redirecionamento = {
+        status: res.status,
+        location: res.headers.get("location"),
+        pedido,
+      };
     } catch (e) {
-      sonda.errosPagina.push(`sonda de redirecionamento: ${descreverErroDeRede(e)}`);
+      sonda.errosPagina.push(
+        `sonda de redirecionamento: ${descreverErroDeRede(e)}`,
+      );
     }
   })();
   const [, , ...resultados] = await Promise.all([versao, redirect, ...paginas]);
   sonda.amostras = resultados.filter((r) => !r.erro);
-  sonda.errosPagina.push(...resultados.filter((r) => r.erro).map((r) => r.erro));
+  sonda.errosPagina.push(
+    ...resultados.filter((r) => r.erro).map((r) => r.erro),
+  );
   if (sonda.amostras.length) {
     const primeira = sonda.amostras[0];
     sonda.ficha = {
       ...primeira,
-      estavel: sonda.amostras.every((a) => chaveDaAmostra(a) === chaveDaAmostra(primeira)),
+      estavel: sonda.amostras.every(
+        (a) => chaveDaAmostra(a) === chaveDaAmostra(primeira),
+      ),
     };
   }
   return sonda;
@@ -329,17 +379,31 @@ export function agruparPorSha(sondas) {
   const grupos = new Map();
   for (const s of sondas) {
     if (!s.versao || !shaValido(s.versao.codeSha)) continue;
-    const g = grupos.get(s.versao.codeSha) ?? { sha: s.versao.codeSha, versoes: new Set(), dominios: [] };
+    const g = grupos.get(s.versao.codeSha) ?? {
+      sha: s.versao.codeSha,
+      versoes: new Set(),
+      dominios: [],
+    };
     g.versoes.add(String(s.versao.codeVersion));
     g.dominios.push(s.dominio);
     grupos.set(s.versao.codeSha, g);
   }
   return [...grupos.values()]
-    .map((g) => ({ sha: g.sha, codeVersion: [...g.versoes].join("/"), dominios: g.dominios }))
-    .sort((a, b) => b.dominios.length - a.dominios.length || a.sha.localeCompare(b.sha));
+    .map((g) => ({
+      sha: g.sha,
+      codeVersion: [...g.versoes].join("/"),
+      dominios: g.dominios,
+    }))
+    .sort(
+      (a, b) =>
+        b.dominios.length - a.dominios.length || a.sha.localeCompare(b.sha),
+    );
 }
 
-const norm = (s) => String(s ?? "").trim().toLowerCase();
+const norm = (s) =>
+  String(s ?? "")
+    .trim()
+    .toLowerCase();
 
 /**
  * Isolamento ENTRE endereços, só com o que o porteiro serviu: devolve
@@ -353,8 +417,20 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
     (achados[dominio] ??= []).push({ classe, motivo });
   };
   const fichas = sondas
-    .filter((s) => !ignorar.has(s.dominio) && s.ficha?.estavel && s.ficha.caderneta === "hit" && s.ficha.refs.length === 1 && s.ficha.titulo)
-    .map((s) => ({ dominio: s.dominio, ref: s.ficha.refs[0], titulo: norm(s.ficha.titulo), tituloOriginal: s.ficha.titulo }));
+    .filter(
+      (s) =>
+        !ignorar.has(s.dominio) &&
+        s.ficha?.estavel &&
+        s.ficha.caderneta === "hit" &&
+        s.ficha.refs.length === 1 &&
+        s.ficha.titulo,
+    )
+    .map((s) => ({
+      dominio: s.dominio,
+      ref: s.ficha.refs[0],
+      titulo: norm(s.ficha.titulo),
+      tituloOriginal: s.ficha.titulo,
+    }));
 
   const porRef = new Map();
   for (const f of fichas) porRef.set(f.ref, [...(porRef.get(f.ref) ?? []), f]);
@@ -364,30 +440,31 @@ export function verificarIsolamentoCruzado(sondas, ignorar = new Set()) {
     const dominante = maioriaEstrita(lista.map((f) => f.titulo));
     for (const f of lista) {
       if (f.titulo !== dominante) {
-        add(f.dominio, "LOJA_TROCADA", `ref ${ref} aparece com outro título ("${f.tituloOriginal}") que o de outros endereços da mesma loja`);
+        add(
+          f.dominio,
+          "LOJA_TROCADA",
+          `ref ${ref} aparece com outro título ("${f.tituloOriginal}") que o de outros endereços da mesma loja`,
+        );
       }
     }
   }
 
   const porTitulo = new Map();
-  for (const f of fichas) porTitulo.set(f.titulo, [...(porTitulo.get(f.titulo) ?? []), f]);
+  for (const f of fichas)
+    porTitulo.set(f.titulo, [...(porTitulo.get(f.titulo) ?? []), f]);
   for (const [, lista] of porTitulo) {
     const refs = [...new Set(lista.map((f) => f.ref))].sort();
     if (refs.length < 2) continue;
     for (const f of lista) {
-      add(f.dominio, "SUSPEITA_ISOLAMENTO", `o título "${f.tituloOriginal}" aparece em refs Supabase diferentes (${refs.join(", ")})`);
+      add(
+        f.dominio,
+        "SUSPEITA_ISOLAMENTO",
+        `o título "${f.tituloOriginal}" aparece em refs Supabase diferentes (${refs.join(", ")})`,
+      );
     }
   }
   return achados;
 }
-
-const hostDe = (url) => {
-  try {
-    return new URL(url).host;
-  } catch {
-    return null;
-  }
-};
 
 /**
  * O endereço CANÔNICO de cada loja é o publicUrl da ficha (dominio_publico do
@@ -408,7 +485,8 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
   const canonicos = new Set();
   for (const s of sondas) {
     const f = s.ficha;
-    if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit") continue;
+    if (ignorar.has(s.dominio) || !f?.estavel || f.caderneta !== "hit")
+      continue;
     if (!f.publicUrl) {
       add(s.dominio, "ficha sem publicUrl (cadastro sem dominio_publico)");
       continue;
@@ -420,18 +498,38 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
       add(s.dominio, `publicUrl inválido na ficha (${f.publicUrl})`);
       continue;
     }
-    if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || u.pathname !== "/") {
+    if (
+      u.protocol !== "https:" ||
+      u.username ||
+      u.password ||
+      u.search ||
+      u.hash ||
+      u.pathname !== "/"
+    ) {
       add(s.dominio, `publicUrl fora do formato https://host (${f.publicUrl})`);
       continue;
     }
     const destino = porDominio.get(u.host);
     const df = destino?.ficha;
     if (!destino) {
-      add(s.dominio, `publicUrl aponta para ${u.host}, que não é endereço do inventário`);
+      add(
+        s.dominio,
+        `publicUrl aponta para ${u.host}, que não é endereço do inventário`,
+      );
     } else if (!df || df.status !== 200 || df.caderneta !== "hit") {
-      add(s.dominio, `publicUrl aponta para ${u.host}, que não responde 200 hit (HTTP ${df?.status ?? "-"}, caderneta ${df?.caderneta ?? "-"})`);
-    } else if (df.refs.length !== 1 || f.refs.length !== 1 || df.refs[0] !== f.refs[0]) {
-      add(s.dominio, `o canônico ${u.host} serve outra loja (ref ${df.refs.join("+") || "-"}, esperado ${f.refs.join("+") || "-"})`);
+      add(
+        s.dominio,
+        `publicUrl aponta para ${u.host}, que não responde 200 hit (HTTP ${df?.status ?? "-"}, caderneta ${df?.caderneta ?? "-"})`,
+      );
+    } else if (
+      df.refs.length !== 1 ||
+      f.refs.length !== 1 ||
+      df.refs[0] !== f.refs[0]
+    ) {
+      add(
+        s.dominio,
+        `o canônico ${u.host} serve outra loja (ref ${df.refs.join("+") || "-"}, esperado ${f.refs.join("+") || "-"})`,
+      );
     } else {
       canonicos.add(u.host);
     }
@@ -440,26 +538,42 @@ export function verificarCanonico(sondas, ignorar = new Set()) {
 }
 
 // Monta o contexto compartilhado (SHA esperado, identidade da maioria, mapa de deployments).
-export function montarContexto(sondas, { sha, vercel = null, ignorarNoCruzamento = new Set() } = {}) {
-  if (!RE_SHA.test(String(sha))) throw new Error("--sha precisa ter 40 caracteres hexadecimais");
+export function montarContexto(
+  sondas,
+  { sha, vercel = null, ignorarNoCruzamento = new Set() } = {},
+) {
+  if (!RE_SHA.test(String(sha)))
+    throw new Error("--sha precisa ter 40 caracteres hexadecimais");
   const grupos = agruparPorSha(sondas);
   // A referência do grupo sai SÓ de quem está dentro do contrato: campo ausente
   // jamais vira referência (undefined === undefined seria "tudo igual").
   const doGrupo = sondas.filter(
-    (s) => s.versao && s.versao.codeSha === sha && problemasDoContrato(s.versao).length === 0,
+    (s) =>
+      s.versao &&
+      s.versao.codeSha === sha &&
+      problemasDoContrato(s.versao).length === 0,
   );
   const cruzado = verificarIsolamentoCruzado(sondas, ignorarNoCruzamento);
   const canonico = verificarCanonico(sondas, ignorarNoCruzamento);
-  for (const [dominio, lista] of Object.entries(canonico.achados)) (cruzado[dominio] ??= []).push(...lista);
+  for (const [dominio, lista] of Object.entries(canonico.achados))
+    (cruzado[dominio] ??= []).push(...lista);
   const ctx = {
     shaEsperado: sha,
-    identidadeRef: doGrupo.length === 1 ? doGrupo[0].versao.identityRevision : maioriaEstrita(doGrupo.map((s) => s.versao.identityRevision)),
-    codeVersionRef: doGrupo.length === 1 ? doGrupo[0].versao.codeVersion : maioriaEstrita(doGrupo.map((s) => s.versao.codeVersion)),
+    identidadeRef:
+      doGrupo.length === 1
+        ? doGrupo[0].versao.identityRevision
+        : maioriaEstrita(doGrupo.map((s) => s.versao.identityRevision)),
+    codeVersionRef:
+      doGrupo.length === 1
+        ? doGrupo[0].versao.codeVersion
+        : maioriaEstrita(doGrupo.map((s) => s.versao.codeVersion)),
     cruzado,
     canonicos: canonico.canonicos,
   };
   if (vercel?.ok) {
-    const deployments = doGrupo.map((s) => vercel.porDominio[s.dominio]?.deploymentId ?? null).filter(Boolean);
+    const deployments = doGrupo
+      .map((s) => vercel.porDominio[s.dominio]?.deploymentId ?? null)
+      .filter(Boolean);
     const esperado = maioriaEstrita(deployments);
     ctx.vercel = {
       porDominio: vercel.porDominio,
@@ -488,25 +602,63 @@ export function classificar(alvo, sonda, ctx) {
   // 1) A ficha que o porteiro serve.
   if (ficha) {
     if (!ficha.estavel) {
-      const resumo = [...new Set(sonda.amostras.map((a) => `${a.caderneta ?? "-"}/${a.titulo ?? "-"}/${a.refs.join("+") || "-"}`))].join(" | ");
-      add("LOJA_TROCADA", `as ${sonda.amostras.length} amostras de "/" divergem (caderneta/título/ref): ${resumo}`);
+      const resumo = [
+        ...new Set(
+          sonda.amostras.map(
+            (a) =>
+              `${a.caderneta ?? "-"}/${a.titulo ?? "-"}/${a.refs.join("+") || "-"}`,
+          ),
+        ),
+      ].join(" | ");
+      add(
+        "LOJA_TROCADA",
+        `as ${sonda.amostras.length} amostras de "/" divergem (caderneta/título/ref): ${resumo}`,
+      );
     }
     if (!alvo.esperado) {
       if (ficha.caderneta !== "hit") {
-        add("ESTADO_INESPERADO", `endereço sem ficha de loja (caderneta=${ficha.caderneta ?? "(ausente)"}, HTTP ${ficha.status}) e fora de enderecosEsperados da política`);
+        add(
+          "ESTADO_INESPERADO",
+          `endereço sem ficha de loja (caderneta=${ficha.caderneta ?? "(ausente)"}, HTTP ${ficha.status}) e fora de enderecosEsperados da política`,
+        );
       } else {
-        if (ficha.refs.length === 0) add("LOJA_TROCADA", "caderneta hit mas o HTML não traz ref Supabase");
-        else if (ficha.refs.length > 1) add("LOJA_TROCADA", `caderneta hit com mais de um ref Supabase no HTML (${ficha.refs.join(", ")})`);
-        if (!ficha.titulo) add("LOJA_TROCADA", "caderneta hit mas a página não tem <title>");
-        if (ficha.status !== 200) add("ESTADO_INESPERADO", `loja respondeu HTTP ${ficha.status}, esperado 200`);
+        if (ficha.refs.length === 0)
+          add("LOJA_TROCADA", "caderneta hit mas o HTML não traz ref Supabase");
+        else if (ficha.refs.length > 1)
+          add(
+            "LOJA_TROCADA",
+            `caderneta hit com mais de um ref Supabase no HTML (${ficha.refs.join(", ")})`,
+          );
+        if (!ficha.titulo)
+          add("LOJA_TROCADA", "caderneta hit mas a página não tem <title>");
+        if (ficha.status !== 200)
+          add(
+            "ESTADO_INESPERADO",
+            `loja respondeu HTTP ${ficha.status}, esperado 200`,
+          );
       }
     } else if (alvo.esperado === "manutencao") {
-      if (ficha.status !== 503) add("ESTADO_INESPERADO", `esperado manutenção (HTTP 503), veio HTTP ${ficha.status}`);
-      if (ficha.caderneta !== "miss") add("ESTADO_INESPERADO", `caderneta=${ficha.caderneta ?? "(ausente)"}, esperado miss`);
+      if (ficha.status !== 503)
+        add(
+          "ESTADO_INESPERADO",
+          `esperado manutenção (HTTP 503), veio HTTP ${ficha.status}`,
+        );
+      if (ficha.caderneta !== "miss")
+        add(
+          "ESTADO_INESPERADO",
+          `caderneta=${ficha.caderneta ?? "(ausente)"}, esperado miss`,
+        );
     } else if (alvo.esperado === "redirecionamento") {
-      if (ficha.status !== 308) add("ESTADO_INESPERADO", `esperado redirecionamento (HTTP 308), veio HTTP ${ficha.status}`);
+      if (ficha.status !== 308)
+        add(
+          "ESTADO_INESPERADO",
+          `esperado redirecionamento (HTTP 308), veio HTTP ${ficha.status}`,
+        );
     } else {
-      add("ESTADO_INESPERADO", `estado esperado desconhecido na política: ${alvo.esperado}`);
+      add(
+        "ESTADO_INESPERADO",
+        `estado esperado desconhecido na política: ${alvo.esperado}`,
+      );
     }
   }
   for (const a of ctx.cruzado?.[alvo.dominio] ?? []) add(a.classe, a.motivo);
@@ -516,13 +668,21 @@ export function classificar(alvo, sonda, ctx) {
   // caminho + query da sonda preservados.
   if (alvo.esperado === "redirecionamento") {
     const r = sonda.redirecionamento;
-    const falhou = (sonda.errosPagina ?? []).some((e) => e.startsWith("sonda de redirecionamento"));
+    const falhou = (sonda.errosPagina ?? []).some((e) =>
+      e.startsWith("sonda de redirecionamento"),
+    );
     if (!alvo.para) {
-      add("ESTADO_INESPERADO", "política sem o destino (campo para) deste redirecionamento");
+      add(
+        "ESTADO_INESPERADO",
+        "política sem o destino (campo para) deste redirecionamento",
+      );
     } else if (!r) {
       if (!falhou) add("CANONICO_INVALIDO", "redirecionamento não foi sondado");
     } else if (r.status !== 308) {
-      add("ESTADO_INESPERADO", `a sonda de redirecionamento respondeu HTTP ${r.status}, esperado 308`);
+      add(
+        "ESTADO_INESPERADO",
+        `a sonda de redirecionamento respondeu HTTP ${r.status}, esperado 308`,
+      );
     } else if (!r.location) {
       add("CANONICO_INVALIDO", "308 sem cabeçalho Location");
     } else {
@@ -533,14 +693,25 @@ export function classificar(alvo, sonda, ctx) {
         add("CANONICO_INVALIDO", `Location inválido (${r.location})`);
       }
       if (u) {
-        if (u.protocol !== "https:") add("CANONICO_INVALIDO", `Location não é https (${r.location})`);
-        if (u.host !== alvo.para) add("CANONICO_INVALIDO", `Location leva para ${u.host}, esperado ${alvo.para}`);
+        if (u.protocol !== "https:")
+          add("CANONICO_INVALIDO", `Location não é https (${r.location})`);
+        if (u.host !== alvo.para)
+          add(
+            "CANONICO_INVALIDO",
+            `Location leva para ${u.host}, esperado ${alvo.para}`,
+          );
         if (`${u.pathname}${u.search}` !== r.pedido) {
-          add("CANONICO_INVALIDO", `Location perde o caminho ou a query (${u.pathname}${u.search}, esperado ${r.pedido})`);
+          add(
+            "CANONICO_INVALIDO",
+            `Location perde o caminho ou a query (${u.pathname}${u.search}, esperado ${r.pedido})`,
+          );
         }
       }
       if (!ctx.canonicos?.has(alvo.para)) {
-        add("CANONICO_INVALIDO", `o destino ${alvo.para} não é o publicUrl de nenhuma ficha servida (cadastro frota_lojas)`);
+        add(
+          "CANONICO_INVALIDO",
+          `o destino ${alvo.para} não é o publicUrl de nenhuma ficha servida (cadastro frota_lojas)`,
+        );
       }
     }
   }
@@ -555,33 +726,62 @@ export function classificar(alvo, sonda, ctx) {
   if (versao) {
     // O contrato vale POR ENDEREÇO, antes de qualquer comparação com os outros.
     const problemas = problemasDoContrato(versao);
-    for (const p of problemas) add("BUILD_DIVERGENTE", `version.json fora do contrato: ${p}`);
-    const shaOk = shaValido(versao.codeSha) && versao.codeSha === ctx.shaEsperado;
+    for (const p of problemas)
+      add("BUILD_DIVERGENTE", `version.json fora do contrato: ${p}`);
+    const shaOk =
+      shaValido(versao.codeSha) && versao.codeSha === ctx.shaEsperado;
     if (shaValido(versao.codeSha) && !shaOk) {
-      add("ENDERECO_ANTIGO", `serve ${sha7(versao.codeSha)} (${String(versao.codeVersion)}), esperado ${ctx.shaEsperado.slice(0, 7)}`);
+      add(
+        "ENDERECO_ANTIGO",
+        `serve ${sha7(versao.codeSha)} (${String(versao.codeVersion)}), esperado ${ctx.shaEsperado.slice(0, 7)}`,
+      );
     }
     if (vercel && deployment && vercel.deploymentEsperado !== undefined) {
-      if (shaOk && vercel.deploymentEsperado && deployment !== vercel.deploymentEsperado) {
-        add("BUILD_DIVERGENTE", `mesmo SHA servido por outro deployment (${deployment}, esperado ${vercel.deploymentEsperado})`);
+      if (
+        shaOk &&
+        vercel.deploymentEsperado &&
+        deployment !== vercel.deploymentEsperado
+      ) {
+        add(
+          "BUILD_DIVERGENTE",
+          `mesmo SHA servido por outro deployment (${deployment}, esperado ${vercel.deploymentEsperado})`,
+        );
       } else if (shaOk && !vercel.deploymentEsperado && vercel.ambiguo) {
-        add("BUILD_DIVERGENTE", `mesmo SHA servido por deployments diferentes, sem maioria (${deployment})`);
-      } else if (!shaOk && vercel.deploymentEsperado && deployment !== vercel.deploymentEsperado) {
-        add("ENDERECO_ANTIGO", `aponta para ${deployment}, não para o deployment esperado ${vercel.deploymentEsperado}`);
+        add(
+          "BUILD_DIVERGENTE",
+          `mesmo SHA servido por deployments diferentes, sem maioria (${deployment})`,
+        );
+      } else if (
+        !shaOk &&
+        vercel.deploymentEsperado &&
+        deployment !== vercel.deploymentEsperado
+      ) {
+        add(
+          "ENDERECO_ANTIGO",
+          `aponta para ${deployment}, não para o deployment esperado ${vercel.deploymentEsperado}`,
+        );
       }
     }
     if (shaOk && problemas.length === 0) {
       if (versao.identityRevision !== ctx.identidadeRef) {
-        add("BUILD_DIVERGENTE", `identityRevision ${String(versao.identityRevision).slice(0, 8)} difere dos demais do mesmo SHA`);
+        add(
+          "BUILD_DIVERGENTE",
+          `identityRevision ${String(versao.identityRevision).slice(0, 8)} difere dos demais do mesmo SHA`,
+        );
       }
       if (versao.codeVersion !== ctx.codeVersionRef) {
-        add("BUILD_DIVERGENTE", `codeVersion ${versao.codeVersion} difere dos demais do mesmo SHA`);
+        add(
+          "BUILD_DIVERGENTE",
+          `codeVersion ${versao.codeVersion} difere dos demais do mesmo SHA`,
+        );
       }
     }
   }
 
   let classe = "OK";
   for (const a of achados) {
-    if (GRAVIDADE.indexOf(a.classe) < GRAVIDADE.indexOf(classe)) classe = a.classe;
+    if (GRAVIDADE.indexOf(a.classe) < GRAVIDADE.indexOf(classe))
+      classe = a.classe;
   }
   return { classe, achados };
 }
@@ -603,14 +803,22 @@ export function lerProducaoOficial(projetoJson) {
  * e pelo `promote` de scripts/frota/publicar-release.mjs.
  * Devolve { comando, prefixo }.
  */
-export function resolverCliVercel({ env = process.env, plataforma = process.platform, existe = existsSync, node = process.execPath } = {}) {
+export function resolverCliVercel({
+  env = process.env,
+  plataforma = process.platform,
+  existe = existsSync,
+  node = process.execPath,
+} = {}) {
   if (plataforma !== "win32") return { comando: "vercel", prefixo: [] };
   for (const dir of (env.PATH ?? env.Path ?? "").split(";")) {
     if (!dir) continue;
     const js = path.win32.join(dir, "node_modules", "vercel", "dist", "vc.js");
-    if (existe(path.win32.join(dir, "vercel.cmd")) && existe(js)) return { comando: node, prefixo: [js] };
+    if (existe(path.win32.join(dir, "vercel.cmd")) && existe(js))
+      return { comando: node, prefixo: [js] };
   }
-  throw new Error("CLI vercel não encontrado no PATH (procurei vercel.cmd com node_modules/vercel/dist/vc.js ao lado)");
+  throw new Error(
+    "CLI vercel não encontrado no PATH (procurei vercel.cmd com node_modules/vercel/dist/vc.js ao lado)",
+  );
 }
 
 export function criarExecutorVercel(env = process.env) {
@@ -623,8 +831,15 @@ export function criarExecutorVercel(env = process.env) {
         { timeout: 60000, maxBuffer: 32 * 1024 * 1024, windowsHide: true, env },
         (erro, stdout, stderr) => {
           if (erro) {
-            const linha = String(stderr || "").split("\n").map((l) => l.trim()).find(Boolean);
-            reject(new Error(`vercel api falhou${linha ? `: ${linha.slice(0, 200)}` : ""}`));
+            const linha = String(stderr || "")
+              .split("\n")
+              .map((l) => l.trim())
+              .find(Boolean);
+            reject(
+              new Error(
+                `vercel api falhou${linha ? `: ${linha.slice(0, 200)}` : ""}`,
+              ),
+            );
             return;
           }
           const limpo = String(stdout)
@@ -643,7 +858,8 @@ export function criarExecutorVercel(env = process.env) {
 }
 
 const RE_DEPLOYMENT = /^dpl_[A-Za-z0-9]+$/;
-const ehObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const ehObjeto = (v) =>
+  v !== null && typeof v === "object" && !Array.isArray(v);
 
 /**
  * Valida UMA página da lista de aliases. CONTRATO (medido no ar em 06/10/2026:
@@ -654,13 +870,24 @@ const ehObjeto = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
  */
 function lerPaginaDeAliases(resposta) {
   if (!ehObjeto(resposta)) return { erro: "resposta não é um objeto" };
-  if (!Array.isArray(resposta.aliases)) return { erro: "resposta sem `aliases` em array" };
-  if (!ehObjeto(resposta.pagination)) return { erro: "resposta sem `pagination` em objeto" };
+  if (!Array.isArray(resposta.aliases))
+    return { erro: "resposta sem `aliases` em array" };
+  if (!ehObjeto(resposta.pagination))
+    return { erro: "resposta sem `pagination` em objeto" };
   const next = resposta.pagination.next;
-  if (next !== undefined && next !== null && typeof next !== "number" && typeof next !== "string") {
+  if (
+    next !== undefined &&
+    next !== null &&
+    typeof next !== "number" &&
+    typeof next !== "string"
+  ) {
     return { erro: "pagination.next fora do formato" };
   }
-  if (resposta.aliases.some((a) => !ehObjeto(a) || typeof a.alias !== "string" || !a.alias)) {
+  if (
+    resposta.aliases.some(
+      (a) => !ehObjeto(a) || typeof a.alias !== "string" || !a.alias,
+    )
+  ) {
     return { erro: "item de `aliases` sem `alias` em texto" };
   }
   return { itens: resposta.aliases, proximo: next ?? null };
@@ -685,6 +912,7 @@ function lerPaginaDeAliases(resposta) {
  */
 export async function consultarVercel(politica, extras, executor) {
   const { id, time } = politica.projetoVercel;
+  // eslint-disable-next-line security/detect-non-literal-regexp -- padrões da política versionada no repositório (aliasesDePreview), revisados por PR.
   const previews = (politica.aliasesDePreview ?? []).map((p) => new RegExp(p));
   const aliasesProjeto = [];
   const avisos = [];
@@ -697,17 +925,26 @@ export async function consultarVercel(politica, extras, executor) {
         `/v4/aliases?projectId=${encodeURIComponent(id)}&teamId=${encodeURIComponent(time)}&limit=100${proximo ? `&until=${encodeURIComponent(proximo)}` : ""}`,
       );
     } catch (e) {
-      if (pagina === 0) return { ok: false, erro: `aliases do projeto não listados: ${e.message}` };
+      if (pagina === 0)
+        return {
+          ok: false,
+          erro: `aliases do projeto não listados: ${e.message}`,
+        };
       listaCompleta = false;
       avisos.push(`página ${pagina + 1} dos aliases falhou: ${e.message}`);
       break;
     }
     const lida = lerPaginaDeAliases(resposta);
-    if (lida.erro) return { ok: false, erro: `página ${pagina + 1} da lista de aliases fora do contrato: ${lida.erro}` };
+    if (lida.erro)
+      return {
+        ok: false,
+        erro: `página ${pagina + 1} da lista de aliases fora do contrato: ${lida.erro}`,
+      };
     for (const a of lida.itens) {
       aliasesProjeto.push({
         alias: a.alias,
-        deploymentId: typeof a.deploymentId === "string" ? a.deploymentId : null,
+        deploymentId:
+          typeof a.deploymentId === "string" ? a.deploymentId : null,
         projectId: typeof a.projectId === "string" ? a.projectId : null,
       });
     }
@@ -716,19 +953,34 @@ export async function consultarVercel(politica, extras, executor) {
     if (pagina === 59) listaCompleta = false;
   }
   if (aliasesProjeto.length === 0) {
-    return { ok: false, erro: "o projeto veio com ZERO aliases (tem domínios de produção: lista vazia é falha, não inventário)" };
+    return {
+      ok: false,
+      erro: "o projeto veio com ZERO aliases (tem domínios de produção: lista vazia é falha, não inventário)",
+    };
   }
   const invalidos = aliasesProjeto
     .filter((a) => !previews.some((re) => re.test(a.alias)))
-    .filter((a) => !RE_DEPLOYMENT.test(String(a.deploymentId)) || a.projectId !== id)
-    .map((a) => `${a.alias} (${!RE_DEPLOYMENT.test(String(a.deploymentId)) ? "sem deploymentId dpl_*" : `projectId ${a.projectId ?? "ausente"}`})`);
+    .filter(
+      (a) => !RE_DEPLOYMENT.test(String(a.deploymentId)) || a.projectId !== id,
+    )
+    .map(
+      (a) =>
+        `${a.alias} (${!RE_DEPLOYMENT.test(String(a.deploymentId)) ? "sem deploymentId dpl_*" : `projectId ${a.projectId ?? "ausente"}`})`,
+    );
   if (invalidos.length) {
-    return { ok: false, erro: `alias fora do contrato (sem deploymentId ou de outro projeto): ${invalidos.slice(0, 3).join(", ")}${invalidos.length > 3 ? ` e mais ${invalidos.length - 3}` : ""}` };
+    return {
+      ok: false,
+      erro: `alias fora do contrato (sem deploymentId ou de outro projeto): ${invalidos.slice(0, 3).join(", ")}${invalidos.length > 3 ? ` e mais ${invalidos.length - 3}` : ""}`,
+    };
   }
-  if (!listaCompleta) avisos.push("lista de aliases do projeto INCOMPLETA: endereço novo pode estar fora do inventário");
+  if (!listaCompleta)
+    avisos.push(
+      "lista de aliases do projeto INCOMPLETA: endereço novo pode estar fora do inventário",
+    );
 
   const porDominio = {};
-  for (const a of aliasesProjeto) porDominio[a.alias] = { deploymentId: a.deploymentId };
+  for (const a of aliasesProjeto)
+    porDominio[a.alias] = { deploymentId: a.deploymentId };
 
   const faltando = [...new Set(extras)].filter((d) => !(d in porDominio));
   const fila = [...faltando];
@@ -737,16 +989,26 @@ export async function consultarVercel(politica, extras, executor) {
       const dominio = fila.shift();
       if (!RE_DOMINIO.test(dominio)) continue;
       try {
-        const a = await executor(`/v4/aliases/${encodeURIComponent(dominio)}?teamId=${encodeURIComponent(time)}`);
-        if (ehObjeto(a) && a.projectId === id && RE_DEPLOYMENT.test(String(a.deploymentId))) {
+        const a = await executor(
+          `/v4/aliases/${encodeURIComponent(dominio)}?teamId=${encodeURIComponent(time)}`,
+        );
+        if (
+          ehObjeto(a) &&
+          a.projectId === id &&
+          RE_DEPLOYMENT.test(String(a.deploymentId))
+        ) {
           porDominio[dominio] = { deploymentId: a.deploymentId };
         } else {
           porDominio[dominio] = { deploymentId: null };
-          avisos.push(`${dominio} não é alias deste projeto (ou veio sem deploymentId): deployment não mapeado`);
+          avisos.push(
+            `${dominio} não é alias deste projeto (ou veio sem deploymentId): deployment não mapeado`,
+          );
         }
       } catch (e) {
         porDominio[dominio] = { deploymentId: null };
-        avisos.push(`${dominio} não é alias do projeto ou não foi lido: ${e.message}`);
+        avisos.push(
+          `${dominio} não é alias do projeto ou não foi lido: ${e.message}`,
+        );
       }
     }
   };
@@ -755,15 +1017,27 @@ export async function consultarVercel(politica, extras, executor) {
   let producaoOficial;
   try {
     producaoOficial = lerProducaoOficial(
-      await executor(`/v9/projects/${encodeURIComponent(id)}?teamId=${encodeURIComponent(time)}`),
+      await executor(
+        `/v9/projects/${encodeURIComponent(id)}?teamId=${encodeURIComponent(time)}`,
+      ),
     );
   } catch (e) {
     return { ok: false, erro: `produção oficial não lida: ${e.message}` };
   }
   if (!producaoOficial) {
-    return { ok: false, erro: "o projeto veio sem targets.production.id no formato dpl_* (produção oficial desconhecida)" };
+    return {
+      ok: false,
+      erro: "o projeto veio sem targets.production.id no formato dpl_* (produção oficial desconhecida)",
+    };
   }
-  return { ok: true, porDominio, producaoOficial, aliasesProjeto, listaCompleta, avisos };
+  return {
+    ok: true,
+    porDominio,
+    producaoOficial,
+    aliasesProjeto,
+    listaCompleta,
+    avisos,
+  };
 }
 
 // ---------------------------------------------------------------- inventário
@@ -773,7 +1047,8 @@ export function lerEnderecosDoArquivo(texto) {
   for (const bruta of String(texto).split(/\r?\n/)) {
     const linha = bruta.replace(/#.*$/, "").trim().toLowerCase();
     if (!linha) continue;
-    if (!RE_DOMINIO.test(linha)) throw new Error(`endereço inválido no arquivo --enderecos: ${linha}`);
+    if (!RE_DOMINIO.test(linha))
+      throw new Error(`endereço inválido no arquivo --enderecos: ${linha}`);
     dominios.push(linha);
   }
   return dominios;
@@ -788,7 +1063,9 @@ async function emLotes(itens, concorrencia, fn) {
       resultados[i] = await fn(itens[i], i);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concorrencia, itens.length) }, trabalhador));
+  await Promise.all(
+    Array.from({ length: Math.min(concorrencia, itens.length) }, trabalhador),
+  );
   return resultados;
 }
 
@@ -816,12 +1093,17 @@ export async function inventariar(politica, opcoes = {}) {
   let vercel = null;
   if (pedirVercel) {
     try {
-      vercel = await consultarVercel(politica, obrigatorios, executorVercel ?? criarExecutorVercel());
+      vercel = await consultarVercel(
+        politica,
+        obrigatorios,
+        executorVercel ?? criarExecutorVercel(),
+      );
     } catch (e) {
       vercel = { ok: false, erro: e.message };
     }
   }
 
+  // eslint-disable-next-line security/detect-non-literal-regexp -- padrões da política versionada no repositório (aliasesDePreview), revisados por PR.
   const previews = (politica.aliasesDePreview ?? []).map((p) => new RegExp(p));
   let candidatos;
   let origem;
@@ -830,94 +1112,175 @@ export async function inventariar(politica, opcoes = {}) {
   if (vercel?.ok) {
     origem = "vercel";
     candidatos = [
-      ...vercel.aliasesProjeto.map((a) => a.alias).filter((a) => !previews.some((re) => re.test(a))),
+      ...vercel.aliasesProjeto
+        .map((a) => a.alias)
+        .filter((a) => !previews.some((re) => re.test(a))),
       ...obrigatorios,
     ];
     completo = vercel.listaCompleta;
-    if (!completo) motivoParcial = "a lista de aliases da Vercel veio incompleta";
+    if (!completo)
+      motivoParcial = "a lista de aliases da Vercel veio incompleta";
   } else {
     origem = "reserva";
     candidatos = [...obrigatorios, ...(politica.enderecosDeReserva ?? [])];
     completo = false;
-    motivoParcial = pedirVercel ? `--vercel falhou: ${vercel?.erro}` : "sem --vercel";
+    motivoParcial = pedirVercel
+      ? `--vercel falhou: ${vercel?.erro}`
+      : "sem --vercel";
   }
-  const dominios = [...new Set(candidatos.filter((d) => RE_DOMINIO.test(d)))].sort();
-  const redirecionam = new Set(politica.enderecosEsperados.filter((e) => e.estado === "redirecionamento").map((e) => e.dominio));
+  const dominios = [
+    ...new Set(candidatos.filter((d) => RE_DOMINIO.test(d))),
+  ].sort();
+  const redirecionam = new Set(
+    politica.enderecosEsperados
+      .filter((e) => e.estado === "redirecionamento")
+      .map((e) => e.dominio),
+  );
   const sondas = await emLotes(dominios, concorrencia, (d) =>
-    sondarEndereco(d, { modelo, timeoutMs, fetchImpl, agora, redirecionamento: redirecionam.has(d) }),
+    sondarEndereco(d, {
+      modelo,
+      timeoutMs,
+      fetchImpl,
+      agora,
+      redirecionamento: redirecionam.has(d),
+    }),
   );
   return { origem, completo, motivoParcial, dominios, vercel, sondas };
 }
 
 // ---------------------------------------------------------------- relatório
 
-const celula = (s) => String(s ?? "").replaceAll("|", "\\|").replaceAll("\n", " ");
+const celula = (s) =>
+  String(s ?? "")
+    .replaceAll("|", "\\|")
+    .replaceAll("\n", " ");
 
-export function montarRelatorio({ resultados, sha, grupos, inventario, vercel, vercelPedido, politica }) {
+export function montarRelatorio({
+  resultados,
+  sha,
+  grupos,
+  inventario,
+  vercel,
+  vercelPedido,
+  politica,
+}) {
   const linhas = [];
   const ok = resultados.filter((r) => r.classe === "OK").length;
   linhas.push("# Conferência da frota", "");
   linhas.push(`Release esperada: \`${sha}\` (informada com --sha).`, "");
   if (inventario.completo) {
-    linhas.push("inventário: COMPLETO (todos os aliases do projeto Vercel, menos os de preview)", "");
+    linhas.push(
+      "inventário: COMPLETO (todos os aliases do projeto Vercel, menos os de preview)",
+      "",
+    );
   } else {
-    linhas.push(`inventário: PARCIAL (${inventario.motivoParcial}) — NÃO é a frota inteira: endereço fora da lista de reserva não foi conferido.`, "");
+    linhas.push(
+      `inventário: PARCIAL (${inventario.motivoParcial}) — NÃO é a frota inteira: endereço fora da lista de reserva não foi conferido.`,
+      "",
+    );
   }
   linhas.push(`**Resultado: ${ok} de ${resultados.length} endereços OK.**`, "");
   linhas.push("## Grupos por versão servida", "");
-  if (grupos.length === 0) linhas.push("- (nenhum endereço respondeu version.json)");
+  if (grupos.length === 0)
+    linhas.push("- (nenhum endereço respondeu version.json)");
   for (const g of grupos) {
     const marca = g.sha === sha ? " <- release esperada" : "";
-    linhas.push(`- \`${g.sha.slice(0, 7)}\` (${g.codeVersion}): ${g.dominios.length} endereço(s)${marca}: ${g.dominios.join(", ")}`);
+    linhas.push(
+      `- \`${g.sha.slice(0, 7)}\` (${g.codeVersion}): ${g.dominios.length} endereço(s)${marca}: ${g.dominios.join(", ")}`,
+    );
   }
   linhas.push("", "## Endereços", "");
-  linhas.push("| Endereço | Loja (ref da ficha) | Classe | Serve | HTTP / caderneta | Deployment | Detalhe |");
+  linhas.push(
+    "| Endereço | Loja (ref da ficha) | Classe | Serve | HTTP / caderneta | Deployment | Detalhe |",
+  );
   linhas.push("|---|---|---|---|---|---|---|");
-  const semBackend = new Map((politica?.lojasSemBackendGerenciado ?? []).map((l) => [l.ref, l.nome]));
+  const semBackend = new Map(
+    (politica?.lojasSemBackendGerenciado ?? []).map((l) => [l.ref, l.nome]),
+  );
   for (const r of resultados) {
-    const outras = [...new Set(r.achados.map((a) => a.classe))].filter((c) => c !== r.classe);
+    const outras = [...new Set(r.achados.map((a) => a.classe))].filter(
+      (c) => c !== r.classe,
+    );
     const detalhe = [
       ...r.achados.filter((a) => a.classe === r.classe).map((a) => a.motivo),
       ...(outras.length ? [`(também: ${outras.join(", ")})`] : []),
     ].join("; ");
-    const serve = r.versao ? `${String(r.versao.codeVersion)} (${sha7(r.versao.codeSha)})` : "-";
-    const http = r.ficha ? `${r.ficha.status} / ${r.ficha.caderneta ?? "-"}` : "-";
-    const dep = vercel?.ok ? (vercel.porDominio[r.dominio]?.deploymentId ?? "-") : "-";
+    const serve = r.versao
+      ? `${String(r.versao.codeVersion)} (${sha7(r.versao.codeSha)})`
+      : "-";
+    const http = r.ficha
+      ? `${r.ficha.status} / ${r.ficha.caderneta ?? "-"}`
+      : "-";
+    const dep = vercel?.ok
+      ? (vercel.porDominio[r.dominio]?.deploymentId ?? "-")
+      : "-";
     let loja = "-";
     if (r.esperado) loja = `(sem loja: ${r.esperado})`;
-    else if (r.ficha?.refs.length) loja = r.ficha.refs.map((ref) => (semBackend.has(ref) ? `${semBackend.get(ref)} [${ref}]` : ref)).join(" + ");
-    linhas.push(`| ${celula(r.dominio)} | ${celula(loja)} | ${r.classe} | ${celula(serve)} | ${celula(http)} | ${celula(dep)} | ${celula(detalhe)} |`);
+    else if (r.ficha?.refs.length)
+      loja = r.ficha.refs
+        .map((ref) =>
+          semBackend.has(ref) ? `${semBackend.get(ref)} [${ref}]` : ref,
+        )
+        .join(" + ");
+    linhas.push(
+      `| ${celula(r.dominio)} | ${celula(loja)} | ${r.classe} | ${celula(serve)} | ${celula(http)} | ${celula(dep)} | ${celula(detalhe)} |`,
+    );
   }
   linhas.push("", "## Endereço -> deployment", "");
   if (!vercelPedido) {
     linhas.push("endereço→deployment: NÃO CONFERIDO (sem --vercel)");
   } else if (!vercel?.ok) {
-    linhas.push(`endereço→deployment: NÃO CONFERIDO (--vercel falhou: ${vercel?.erro ?? "sem detalhe"})`);
+    linhas.push(
+      `endereço→deployment: NÃO CONFERIDO (--vercel falhou: ${vercel?.erro ?? "sem detalhe"})`,
+    );
   } else {
-    linhas.push("endereço→deployment: conferido pelo CLI vercel (somente leitura).");
+    linhas.push(
+      "endereço→deployment: conferido pelo CLI vercel (somente leitura).",
+    );
     if (vercel.deploymentEsperado) {
-      const eOficial = vercel.producaoOficial && vercel.deploymentEsperado === vercel.producaoOficial;
-      linhas.push(`- Deployment da release: \`${vercel.deploymentEsperado}\` — ${eOficial ? "É" : "NÃO É"} a produção oficial do projeto (\`${vercel.producaoOficial ?? "não lida"}\`).`);
+      const eOficial =
+        vercel.producaoOficial &&
+        vercel.deploymentEsperado === vercel.producaoOficial;
+      linhas.push(
+        `- Deployment da release: \`${vercel.deploymentEsperado}\` — ${eOficial ? "É" : "NÃO É"} a produção oficial do projeto (\`${vercel.producaoOficial ?? "não lida"}\`).`,
+      );
     } else if (vercel.deploymentEsperado === null) {
-      linhas.push("- Deployment da release: INDEFINIDO (endereços do SHA esperado estão em deployments diferentes, sem maioria).");
+      linhas.push(
+        "- Deployment da release: INDEFINIDO (endereços do SHA esperado estão em deployments diferentes, sem maioria).",
+      );
     } else {
-      linhas.push(`- Deployment da release: nenhum endereço serve o SHA esperado. Produção oficial do projeto: \`${vercel.producaoOficial ?? "não lida"}\`.`);
+      linhas.push(
+        `- Deployment da release: nenhum endereço serve o SHA esperado. Produção oficial do projeto: \`${vercel.producaoOficial ?? "não lida"}\`.`,
+      );
     }
   }
   for (const aviso of vercel?.avisos ?? []) linhas.push(`- AVISO: ${aviso}`);
 
-  const presentes = GRAVIDADE.filter((c) => c !== "OK" && resultados.some((r) => r.classe === c));
+  const presentes = GRAVIDADE.filter(
+    (c) => c !== "OK" && resultados.some((r) => r.classe === c),
+  );
   if (presentes.length) {
     linhas.push("", "## Como recuperar", "");
     for (const c of presentes) {
-      linhas.push(`- **${c}** (${resultados.filter((r) => r.classe === c).map((r) => r.dominio).join(", ")}): ${COMO_RECUPERAR[c]}`);
+      linhas.push(
+        `- **${c}** (${resultados
+          .filter((r) => r.classe === c)
+          .map((r) => r.dominio)
+          .join(", ")}): ${COMO_RECUPERAR[c]}`,
+      );
     }
   }
   const fora = politica?.migrationsForaDaRelease ?? [];
   if (fora.length) {
     linhas.push("", "## Política (para quem publica)", "");
-    for (const m of fora) linhas.push(`- Migration ${m.versao} fica FORA da release: ${m.motivo} (conferência: ${m.conferencia}).`);
-    if (semBackend.size) linhas.push(`- Lojas sem backend gerenciado: ${[...semBackend.values()].join(", ")} — ${politica.motivoLojasSemBackendGerenciado ?? ""}`);
+    for (const m of fora)
+      linhas.push(
+        `- Migration ${m.versao} fica FORA da release: ${m.motivo} (conferência: ${m.conferencia}).`,
+      );
+    if (semBackend.size)
+      linhas.push(
+        `- Lojas sem backend gerenciado: ${[...semBackend.values()].join(", ")} — ${politica.motivoLojasSemBackendGerenciado ?? ""}`,
+      );
   }
   linhas.push("");
   return linhas.join("\n");
@@ -927,9 +1290,14 @@ export function montarRelatorio({ resultados, sha, grupos, inventario, vercel, v
 
 export async function conferirFrota(politica, opcoes = {}) {
   const { sha, pedirVercel = false, inventarioPronto = null } = opcoes;
-  if (!RE_SHA.test(String(sha))) throw new Error("--sha precisa ter 40 caracteres hexadecimais");
-  const inventario = inventarioPronto ?? (await inventariar(politica, { ...opcoes, pedirVercel }));
-  const declarados = new Map(politica.enderecosEsperados.map((e) => [e.dominio, e]));
+  if (!RE_SHA.test(String(sha)))
+    throw new Error("--sha precisa ter 40 caracteres hexadecimais");
+  const inventario =
+    inventarioPronto ??
+    (await inventariar(politica, { ...opcoes, pedirVercel }));
+  const declarados = new Map(
+    politica.enderecosEsperados.map((e) => [e.dominio, e]),
+  );
   const esperados = new Map([...declarados].map(([d, e]) => [d, e.estado]));
   const { grupos, ctx } = montarContexto(inventario.sondas, {
     sha,
@@ -939,7 +1307,11 @@ export async function conferirFrota(politica, opcoes = {}) {
   const resultados = inventario.sondas.map((sonda) => {
     const esperado = esperados.get(sonda.dominio) ?? null;
     const { classe, achados } = classificar(
-      { dominio: sonda.dominio, esperado, para: declarados.get(sonda.dominio)?.para ?? null },
+      {
+        dominio: sonda.dominio,
+        esperado,
+        para: declarados.get(sonda.dominio)?.para ?? null,
+      },
       sonda,
       ctx,
     );
@@ -950,14 +1322,20 @@ export async function conferirFrota(politica, opcoes = {}) {
       achados,
       versao: sonda.versao,
       ficha: sonda.ficha,
-      deploymentId: inventario.vercel?.ok ? (inventario.vercel.porDominio[sonda.dominio]?.deploymentId ?? null) : null,
+      deploymentId: inventario.vercel?.ok
+        ? (inventario.vercel.porDominio[sonda.dominio]?.deploymentId ?? null)
+        : null,
     };
   });
   const vercelInfo = inventario.vercel?.ok
-    ? { ...inventario.vercel, deploymentEsperado: ctx.vercel?.deploymentEsperado }
+    ? {
+        ...inventario.vercel,
+        deploymentEsperado: ctx.vercel?.deploymentEsperado,
+      }
     : inventario.vercel;
   const ok =
-    resultados.every((r) => r.classe === "OK") && (!pedirVercel || (inventario.vercel?.ok === true && inventario.completo));
+    resultados.every((r) => r.classe === "OK") &&
+    (!pedirVercel || (inventario.vercel?.ok === true && inventario.completo));
   const relatorio = montarRelatorio({
     resultados,
     sha,
@@ -970,7 +1348,12 @@ export async function conferirFrota(politica, opcoes = {}) {
   return {
     ok,
     sha,
-    inventario: { origem: inventario.origem, completo: inventario.completo, motivoParcial: inventario.motivoParcial, dominios: inventario.dominios },
+    inventario: {
+      origem: inventario.origem,
+      completo: inventario.completo,
+      motivoParcial: inventario.motivoParcial,
+      dominios: inventario.dominios,
+    },
     grupos,
     resultados,
     vercel: vercelInfo,
@@ -985,25 +1368,36 @@ function lerArgumentos(argv) {
     if (a === "--vercel") args.vercel = true;
     else if (a === "--sha" || a === "--json" || a === "--enderecos") {
       const valor = argv[++i];
-      if (!valor || valor.startsWith("--")) throw new Error(`${a} exige um valor`);
+      if (!valor || valor.startsWith("--"))
+        throw new Error(`${a} exige um valor`);
       args[a.slice(2)] = valor;
     } else throw new Error(`argumento desconhecido: ${a}`);
   }
-  if (args.sha === null) throw new Error("--sha é obrigatório (sem a release esperada, frota inteira velha daria verde)");
-  if (!/^[0-9a-fA-F]{40}$/.test(args.sha)) throw new Error("--sha precisa ter 40 caracteres hexadecimais");
+  if (args.sha === null)
+    throw new Error(
+      "--sha é obrigatório (sem a release esperada, frota inteira velha daria verde)",
+    );
+  if (!/^[0-9a-fA-F]{40}$/.test(args.sha))
+    throw new Error("--sha precisa ter 40 caracteres hexadecimais");
   args.sha = args.sha.toLowerCase();
   return args;
 }
 
-const USO = "Uso: node scripts/frota/conferir-frota.mjs --sha <40hex> [--json <arquivo>] [--vercel] [--enderecos <arquivo>]";
+const USO =
+  "Uso: node scripts/frota/conferir-frota.mjs --sha <40hex> [--json <arquivo>] [--vercel] [--enderecos <arquivo>]";
 
 // `deps` ({ fetchImpl, executorVercel }) existe só para teste: injeta o I/O.
-export async function main(argv = process.argv.slice(2), env = process.env, deps = {}) {
+export async function main(
+  argv = process.argv.slice(2),
+  env = process.env,
+  deps = {},
+) {
   let args;
   let extras = [];
   try {
     args = lerArgumentos(argv);
-    if (args.enderecos) extras = lerEnderecosDoArquivo(readFileSync(args.enderecos, "utf8"));
+    if (args.enderecos)
+      extras = lerEnderecosDoArquivo(readFileSync(args.enderecos, "utf8"));
   } catch (e) {
     console.error(`${e.message}\n${USO}`);
     return 2;
@@ -1014,20 +1408,28 @@ export async function main(argv = process.argv.slice(2), env = process.env, deps
     pedirVercel: args.vercel,
     enderecosExtras: extras,
     modelo: env.FROTA_URL_MODELO || "https://{dominio}",
-    timeoutMs: Number(env.FROTA_TIMEOUT_MS) > 0 ? Number(env.FROTA_TIMEOUT_MS) : 15000,
+    timeoutMs:
+      Number(env.FROTA_TIMEOUT_MS) > 0 ? Number(env.FROTA_TIMEOUT_MS) : 15000,
     ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
     ...(deps.executorVercel ? { executorVercel: deps.executorVercel } : {}),
   });
   console.log(resultado.relatorio);
-  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${resultado.relatorio}\n`);
+  if (env.GITHUB_STEP_SUMMARY)
+    appendFileSync(env.GITHUB_STEP_SUMMARY, `${resultado.relatorio}\n`);
   if (args.json) {
     const { relatorio, ...estruturado } = resultado;
-    writeFileSync(args.json, `${JSON.stringify({ geradoEm: new Date().toISOString(), ...estruturado }, null, 2)}\n`);
+    writeFileSync(
+      args.json,
+      `${JSON.stringify({ geradoEm: new Date().toISOString(), ...estruturado }, null, 2)}\n`,
+    );
   }
   return resultado.ok ? 0 : 1;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
   main().then(
     (codigo) => {
       process.exitCode = codigo;

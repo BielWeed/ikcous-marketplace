@@ -1,4 +1,5 @@
 // @ts-nocheck
+/* eslint-disable security/detect-object-injection -- dublês de teste: as chaves vêm de constantes e mapas fechados do próprio arquivo, nunca de entrada externa. */
 /**
  * O LEDGER (`supabase_migrations.schema_migrations`) nos workflows de banco
  * (06/10/2026). Duas peças:
@@ -37,7 +38,6 @@ const MIGRATIONS = join(RAIZ, "supabase/migrations");
 const REF_CAF = "cafkrminfnokvgjqtkle";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SEM_SANITIZAR = { sanitizeOps: false, sanitizeResources: false };
-const SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 
 // ---------------------------------------------------------------------------
 // Parte 1 — o registro no ledger dentro do apply
@@ -247,7 +247,9 @@ Deno.test({
     // a prova termina em ROLLBACK, com o registro dentro dela
     assertEquals(prova[0], `BEGIN;\n${corpo}\n${REGISTRO_M201}\nROLLBACK;`);
     assertEquals(
-      r.chamadas.filter((q) => q !== apply[0] && q !== prova[0]).filter((q) => /schema_migrations/i.test(q)),
+      r.chamadas
+        .filter((q) => q !== apply[0] && q !== prova[0])
+        .filter((q) => /schema_migrations/i.test(q)),
       [],
       "o ledger só aparece na prova e no apply",
     );
@@ -267,7 +269,10 @@ Deno.test({
     assertEquals(prova.length, 1);
     assertStringIncludes(apply[0], REMOCAO_RB201);
     assertEquals(apply[0].split("schema_migrations").length - 1, 1);
-    assert(!/INSERT INTO supabase_migrations/i.test(apply[0] + prova[0]), "rollback nunca insere");
+    assert(
+      !/INSERT INTO supabase_migrations/i.test(apply[0] + prova[0]),
+      "rollback nunca insere",
+    );
     const iCorpo = apply[0].indexOf(corpo);
     const iDel = apply[0].indexOf(REMOCAO_RB201);
     const iFp = apply[0].indexOf("DO $fp_depois$");
@@ -281,7 +286,10 @@ Deno.test({
     );
     // a migration, ao contrário, nunca apaga
     const m = await rodarAplicar(M201, respostaSaudavel);
-    assert(!m.chamadas.some((q) => /DELETE FROM supabase_migrations/i.test(q)), "migration nunca apaga");
+    assert(
+      !m.chamadas.some((q) => /DELETE FROM supabase_migrations/i.test(q)),
+      "migration nunca apaga",
+    );
   },
 });
 
@@ -308,9 +316,18 @@ Deno.test({
     assertEquals(r.fim, true, r.texto);
     const applies = r.chamadas.filter((q) => q.startsWith(ENVELOPE));
     assertEquals(applies.length, 2);
-    assertStringIncludes(applies[0], "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261298000000';");
-    assertStringIncludes(applies[1], "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261299000000';");
-    assert(!applies[0].includes("20261299000000"), "cada transação só apaga a sua versão");
+    assertStringIncludes(
+      applies[0],
+      "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261298000000';",
+    );
+    assertStringIncludes(
+      applies[1],
+      "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261299000000';",
+    );
+    assert(
+      !applies[0].includes("20261299000000"),
+      "cada transação só apaga a sua versão",
+    );
   },
 });
 
@@ -334,7 +351,10 @@ Deno.test({
       applies[1],
       "VALUES ('20261299000000', 'segunda_migration') ON CONFLICT (version) DO NOTHING;",
     );
-    assert(!applies[0].includes("20261299000000"), "cada transação só registra o seu arquivo");
+    assert(
+      !applies[0].includes("20261299000000"),
+      "cada transação só registra o seu arquivo",
+    );
   },
 });
 
@@ -386,7 +406,11 @@ Deno.test({
         segredos,
       });
       assertEquals(r.fim, true, `${projeto}: ${r.texto}`);
-      assert(r.chamadas.some((q) => q.startsWith(ENVELOPE) && q.includes(REGISTRO_M201)));
+      assert(
+        r.chamadas.some(
+          (q) => q.startsWith(ENVELOPE) && q.includes(REGISTRO_M201),
+        ),
+      );
     }
   },
 });
@@ -401,7 +425,8 @@ Deno.test("impressão digital: não enxerga o ledger — só tabelas do schema p
     .join("\n");
   assert(!/supabase_migrations|schema_migrations/i.test(semComentarios));
   // toda varredura de catálogo da impressão digital filtra por public
-  const varreduras = semComentarios.match(/FROM pg_class c JOIN pg_namespace n/g) ?? [];
+  const varreduras =
+    semComentarios.match(/FROM pg_class c JOIN pg_namespace n/g) ?? [];
   assert(varreduras.length >= 2);
   assertEquals(
     (semComentarios.match(/n\.nspname = 'public'/g) ?? []).length,
@@ -436,23 +461,35 @@ Deno.test("ledger-92-202.sql: as 9 migrations 20261192..20261202 SEM a 201, com 
   );
   const noDisco: string[][] = [];
   for await (const e of Deno.readDir(MIGRATIONS)) {
-    const m = e.name.match(/^(2026119[2-9]|2026120[0-2])(000000)_([a-z0-9_-]+)\.sql$/);
+    const m = e.name.match(
+      /^(2026119[2-9]|2026120[0-2])(000000)_([a-z0-9_-]+)\.sql$/,
+    );
     if (e.isFile && m) noDisco.push([m[1] + m[2], m[3]]);
   }
   noDisco.sort((a, b) => a[0].localeCompare(b[0]));
   const semA201 = noDisco.filter(([v]) => v !== "20261201000000");
   assertEquals(semA201.length, 9);
-  assertEquals(linhas, semA201, "o INSERT é exatamente a lista dos arquivos, sem a 201");
+  assertEquals(
+    linhas,
+    semA201,
+    "o INSERT é exatamente a lista dos arquivos, sem a 201",
+  );
   assert(!sql.replace(/^--.*$/gm, "").includes("20261201000000"));
   assertStringIncludes(sql, "ON CONFLICT (version) DO NOTHING;");
   // um statement só, pinado por hash: qualquer edição é recusada
-  const { contarStatements, conferirHashDoLedger, SHA256_DO_LEDGER } = require(SCRIPT);
+  // eslint-disable-next-line security/detect-non-literal-require -- SCRIPT é o caminho fixo de scripts/publicacao/conferir-banco.cjs.
+  const { contarStatements, conferirHashDoLedger, SHA256_DO_LEDGER } = require(
+    SCRIPT,
+  );
   assertEquals(contarStatements(sql), 1);
   conferirHashDoLedger("92-202", sql);
   assert(SHA256_DO_LEDGER["92-202"]);
   let lancou = false;
   try {
-    conferirHashDoLedger("92-202", sql.replace("20261192000000", "20261201000000"));
+    conferirHashDoLedger(
+      "92-202",
+      sql.replace("20261192000000", "20261201000000"),
+    );
   } catch {
     lancou = true;
   }
@@ -461,22 +498,34 @@ Deno.test("ledger-92-202.sql: as 9 migrations 20261192..20261202 SEM a 201, com 
 
 Deno.test("conferir-banco-da-loja.yml: gravar_ledger tem a opção 92-202; o job do ledger exige expected_sha no PRIMEIRO passo e só entra nas lojas explícitas com 92-202; cada alvo com o seu segredo", async () => {
   const bruto = await Deno.readTextFile(CONFERIR);
-  assertStringIncludes(bruto, 'options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - "83"\n          - 92-202\n');
+  assertStringIncludes(
+    bruto,
+    'options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - "83"\n          - 92-202\n',
+  );
   const yaml = semComentarios(bruto);
   const ledger = bloco(yaml, "ledger");
-  const passos = ledger.slice(ledger.indexOf("    steps:\n") + "    steps:\n".length);
+  const passos = ledger.slice(
+    ledger.indexOf("    steps:\n") + "    steps:\n".length,
+  );
   assert(passos.trimStart().startsWith("- name: Confere o alvo"));
   assert(passos.indexOf("Confere o alvo") < passos.indexOf("actions/checkout"));
   assertStringIncludes(passos, '[ "$PROJETO" = "savy" ]');
-  const envs = [...ledger.matchAll(/\$\{\{[^\n]*secrets\.SUPABASE_ACCESS_TOKEN\w*[^\n]*/g)].map((m) => m[0]);
-  assertEquals(envs.sort(), [
-    "${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}",
-    "${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}",
-    "${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}",
-  ].sort());
+  const envs = [
+    ...ledger.matchAll(/\$\{\{[^\n]*secrets\.SUPABASE_ACCESS_TOKEN\w*[^\n]*/g),
+  ].map((m) => m[0]);
+  assertEquals(
+    envs.sort(),
+    [
+      "${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}",
+      "${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}",
+      "${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}",
+    ].sort(),
+  );
   assert(!/secrets\.SUPABASE_ACCESS_TOKEN\w*\s*\|\|\s*secrets/.test(ledger));
   // a expressão do `if`: loja/sandbox como sempre MENOS a 92-202; as explícitas só com 92-202; confirmar == GRAVAR sempre
-  const linhaIf = ledger.split("\n").find((l) => l.trimStart().startsWith("if:"));
+  const linhaIf = ledger
+    .split("\n")
+    .find((l) => l.trimStart().startsWith("if:"));
   assertStringIncludes(
     linhaIf,
     "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202') || ((inputs.projeto == 'ikcous-publicada' || inputs.projeto == 'savy') && inputs.gravar_ledger == '92-202'))",
@@ -501,9 +550,16 @@ function subirStub(opcoes: {
       let r = { status: 201, corpo: "[]" };
       if (url.endsWith("/database/query/read-only")) {
         if (query.includes("corpo final")) r = opcoes.leitura8e();
-        else r = { status: 201, corpo: '[{"version":"20261192000000","name":"x"}]' };
+        else
+          r = {
+            status: 201,
+            corpo: '[{"version":"20261192000000","name":"x"}]',
+          };
       }
-      return new Response(r.corpo, { status: r.status, headers: { "content-type": "application/json" } });
+      return new Response(r.corpo, {
+        status: r.status,
+        headers: { "content-type": "application/json" },
+      });
     },
   );
   return {
@@ -511,7 +567,8 @@ function subirStub(opcoes: {
     base: `http://127.0.0.1:${srv.addr.port}`,
     parar: () => srv.shutdown(),
     escritas: () => chamadas.filter((c) => c.url.endsWith("/database/query")),
-    leituras: () => chamadas.filter((c) => c.url.endsWith("/database/query/read-only")),
+    leituras: () =>
+      chamadas.filter((c) => c.url.endsWith("/database/query/read-only")),
   };
 }
 
@@ -540,21 +597,54 @@ async function rodarScript(env: Record<string, string>, base: string) {
 const OITO_E_OK = () => ({
   status: 201,
   corpo: JSON.stringify([
-    { item: "controle: funcoes de public visiveis a este papel", esperado: ">0", vivo: ">0", ok: true },
+    {
+      item: "controle: funcoes de public visiveis a este papel",
+      esperado: ">0",
+      vivo: ">0",
+      ok: true,
+    },
     { item: "corpo final fin_dre", esperado: "e58a", vivo: "e58a", ok: true },
   ]),
 });
 const OITO_E_COM_FALHA = () => ({
   status: 201,
   corpo: JSON.stringify([
-    { item: "corpo final fin_dre", esperado: "e58a", vivo: "AUSENTE", ok: false },
-    { item: "controle: funcoes de public visiveis a este papel", esperado: ">0", vivo: ">0", ok: true },
+    {
+      item: "corpo final fin_dre",
+      esperado: "e58a",
+      vivo: "AUSENTE",
+      ok: false,
+    },
+    {
+      item: "controle: funcoes de public visiveis a este papel",
+      esperado: ">0",
+      vivo: ">0",
+      ok: true,
+    },
   ]),
 });
 
 const ALVOS: [string, string, Record<string, string>, string][] = [
-  ["ikcous-publicada", REF_CAF, { SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf", SUPABASE_ACCESS_TOKEN: "tk-legado", SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy" }, "Bearer tk-caf"],
-  ["savy", REF_SAVY, { SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy", SUPABASE_ACCESS_TOKEN: "tk-legado", SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf" }, "Bearer tk-savy"],
+  [
+    "ikcous-publicada",
+    REF_CAF,
+    {
+      SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf",
+      SUPABASE_ACCESS_TOKEN: "tk-legado",
+      SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy",
+    },
+    "Bearer tk-caf",
+  ],
+  [
+    "savy",
+    REF_SAVY,
+    {
+      SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy",
+      SUPABASE_ACCESS_TOKEN: "tk-legado",
+      SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf",
+    },
+    "Bearer tk-savy",
+  ],
 ];
 
 Deno.test({
@@ -565,20 +655,30 @@ Deno.test({
     for (const [projeto, ref, segredos, auth] of ALVOS) {
       const stub = subirStub({ leitura8e: OITO_E_OK });
       try {
-        const r = await rodarScript({ PROJETO: projeto, LEDGER: "92-202", ...segredos }, stub.base);
+        const r = await rodarScript(
+          { PROJETO: projeto, LEDGER: "92-202", ...segredos },
+          stub.base,
+        );
         assertEquals(r.codigo, 0, `${projeto}: ${r.saida}`);
         const escritas = stub.escritas();
         assertEquals(escritas.length, 1, `${projeto}: uma escrita`);
         assertEquals(escritas[0].query, ins);
         assertEquals(escritas[0].url, `/v1/projects/${ref}/database/query`);
         assertEquals(escritas[0].auth, auth);
-        assert(!escritas[0].query.includes("20261201000000"), "a 201 não entra");
+        assert(
+          !escritas[0].query.includes("20261201000000"),
+          "a 201 não entra",
+        );
         // ordem: a leitura da 8e vem ANTES da escrita
         const iEscrita = stub.chamadas.indexOf(escritas[0]);
-        const i8e = stub.chamadas.findIndex((c) => c.query.includes("corpo final"));
+        const i8e = stub.chamadas.findIndex((c) =>
+          c.query.includes("corpo final"),
+        );
         assert(i8e >= 0 && i8e < iEscrita, `${projeto}: 8e antes do INSERT`);
-        for (const c of stub.chamadas) assertEquals(c.auth, auth, "só o segredo do alvo");
-        for (const s of ["tk-caf", "tk-savy", "tk-legado"]) assert(!r.saida.includes(s));
+        for (const c of stub.chamadas)
+          assertEquals(c.auth, auth, "só o segredo do alvo");
+        for (const s of ["tk-caf", "tk-savy", "tk-legado"])
+          assert(!r.saida.includes(s));
       } finally {
         await stub.parar();
       }
@@ -593,7 +693,14 @@ Deno.test({
     for (const projeto of ["loja", "sandbox"]) {
       const stub = subirStub({ leitura8e: OITO_E_OK });
       try {
-        const r = await rodarScript({ PROJETO: projeto, LEDGER: "92-202", SUPABASE_ACCESS_TOKEN: "tk-legado" }, stub.base);
+        const r = await rodarScript(
+          {
+            PROJETO: projeto,
+            LEDGER: "92-202",
+            SUPABASE_ACCESS_TOKEN: "tk-legado",
+          },
+          stub.base,
+        );
         assertEquals(r.codigo, 1, `${projeto}: ${r.saida}`);
         assertStringIncludes(r.saida, "só roda para ikcous-publicada ou savy");
         assertEquals(stub.chamadas.length, 0, `${projeto}: nenhuma requisição`);
@@ -615,10 +722,17 @@ Deno.test({
       ] as const) {
         const stub = subirStub({ leitura8e: leitura });
         try {
-          const r = await rodarScript({ PROJETO: projeto, LEDGER: "92-202", ...segredos }, stub.base);
+          const r = await rodarScript(
+            { PROJETO: projeto, LEDGER: "92-202", ...segredos },
+            stub.base,
+          );
           assertEquals(r.codigo, 1, `${projeto}/${caso}: ${r.saida}`);
           assertStringIncludes(r.saida, "pré-checagem do ledger 92-202 falhou");
-          assertEquals(stub.escritas().length, 0, `${projeto}/${caso}: NENHUMA escrita`);
+          assertEquals(
+            stub.escritas().length,
+            0,
+            `${projeto}/${caso}: NENHUMA escrita`,
+          );
           assertEquals(stub.leituras().length, 1, "parou na primeira leitura");
         } finally {
           await stub.parar();
@@ -634,9 +748,14 @@ Deno.test({
   fn: async () => {
     for (const [projeto, , segredos, auth] of ALVOS) {
       for (const status of [401, 403]) {
-        const stub = subirStub({ leitura8e: () => ({ status, corpo: '{"message":"forbidden"}' }) });
+        const stub = subirStub({
+          leitura8e: () => ({ status, corpo: '{"message":"forbidden"}' }),
+        });
         try {
-          const r = await rodarScript({ PROJETO: projeto, LEDGER: "92-202", ...segredos }, stub.base);
+          const r = await rodarScript(
+            { PROJETO: projeto, LEDGER: "92-202", ...segredos },
+            stub.base,
+          );
           assertEquals(r.codigo, 1, r.saida);
           assertStringIncludes(r.saida, "bloqueio concreto");
           assertStringIncludes(r.saida, `HTTP ${status}`);
@@ -651,8 +770,15 @@ Deno.test({
       const stub = subirStub({ leitura8e: OITO_E_OK });
       try {
         const vizinhos = { ...segredos };
-        delete vizinhos[projeto === "savy" ? "SUPABASE_ACCESS_TOKEN_SAVY" : "SUPABASE_ACCESS_TOKEN_IKCOUS"];
-        const r = await rodarScript({ PROJETO: projeto, LEDGER: "92-202", ...vizinhos }, stub.base);
+        delete vizinhos[
+          projeto === "savy"
+            ? "SUPABASE_ACCESS_TOKEN_SAVY"
+            : "SUPABASE_ACCESS_TOKEN_IKCOUS"
+        ];
+        const r = await rodarScript(
+          { PROJETO: projeto, LEDGER: "92-202", ...vizinhos },
+          stub.base,
+        );
         assertEquals(r.codigo, 1, r.saida);
         assertStringIncludes(r.saida, "bloqueio concreto");
         assertEquals(stub.chamadas.length, 0);
@@ -668,10 +794,21 @@ Deno.test({
   ...SEM_SANITIZAR,
   fn: async () => {
     for (const [projeto, , segredos] of ALVOS) {
-      for (const faixa of ["72-74", "75-78", "79-82", "83", "92-203", "92-202 ", "99-99"]) {
+      for (const faixa of [
+        "72-74",
+        "75-78",
+        "79-82",
+        "83",
+        "92-203",
+        "92-202 ",
+        "99-99",
+      ]) {
         const stub = subirStub({ leitura8e: OITO_E_OK });
         try {
-          const r = await rodarScript({ PROJETO: projeto, LEDGER: faixa, ...segredos }, stub.base);
+          const r = await rodarScript(
+            { PROJETO: projeto, LEDGER: faixa, ...segredos },
+            stub.base,
+          );
           assertEquals(r.codigo, 1, `${projeto}/${faixa}: ${r.saida}`);
           assertEquals(stub.chamadas.length, 0, `${projeto}/${faixa}`);
         } finally {

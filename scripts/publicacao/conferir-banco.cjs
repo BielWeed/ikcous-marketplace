@@ -675,14 +675,20 @@ async function rodarConsulta({ ref, token, consulta }) {
   // Linha para MÁQUINA (scripts/frota/publicar-release.mjs lê do log do run):
   // a evidência de prontidão de uma loja é "esta consulta, neste ref, neste
   // commit, N linhas, nenhuma ok=false". Só para consultas com coluna `ok`.
-  const linhaVeredito = veredictoDaConsulta({ consulta, ref, sha: process.env.GITHUB_SHA, linhas });
+  const linhaVeredito = veredictoDaConsulta({
+    consulta,
+    ref,
+    sha: process.env.GITHUB_SHA,
+    linhas,
+  });
   if (linhaVeredito) console.log(linhaVeredito);
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`. */
 function veredictoDaConsulta({ consulta, ref, sha, linhas }) {
   const prefixo = `VEREDITO-CONSULTA consulta=${consulta} ref=${ref} sha=${sha || "local"}`;
-  if (!Array.isArray(linhas) || linhas.length === 0) return `${prefixo} linhas=0 ok_false=0 ok_nao_booleano=0`;
+  if (!Array.isArray(linhas) || linhas.length === 0)
+    return `${prefixo} linhas=0 ok_false=0 ok_nao_booleano=0`;
   if (!linhas.every((l) => l && Object.hasOwn(l, "ok"))) return null;
   const okFalse = linhas.filter((l) => l.ok === false).length;
   const naoBooleano = linhas.filter((l) => typeof l.ok !== "boolean").length;

@@ -1,4 +1,5 @@
 // @ts-nocheck
+/* eslint-disable security/detect-object-injection -- dublês de teste: as chaves vêm de constantes e mapas fechados do próprio arquivo, nunca de entrada externa. */
 /**
  * O alvo SAVY EXPLÍCITO (`projeto = savy`, a loja cliente real, projeto Supabase
  * gnjsrucsmjkajijrakzr) nos workflows aplicar-migrations.yml e
@@ -209,7 +210,9 @@ for (const [nome, caminho, job] of WORKFLOWS) {
     const yaml = semComentarios(await Deno.readTextFile(caminho));
     const j = bloco(yaml, job);
     const expressao = (re: RegExp) => [...j.matchAll(re)].map((m) => m[0]);
-    const savy = expressao(/\$\{\{[^\n]*secrets\.SUPABASE_ACCESS_TOKEN_SAVY[^\n]*/g);
+    const savy = expressao(
+      /\$\{\{[^\n]*secrets\.SUPABASE_ACCESS_TOKEN_SAVY[^\n]*/g,
+    );
     const legado = expressao(
       /\$\{\{[^\n]*secrets\.SUPABASE_ACCESS_TOKEN(?!_)[^\n]*/g,
     );
@@ -278,7 +281,10 @@ Deno.test("conferir-banco-da-loja.yml: o passo `Confere o segredo` EXTRAÍDO e r
   for (const projeto of ["loja", "sandbox", "ikcous-publicada"]) {
     const r = await rodar(projeto, { SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy" });
     assertEquals(r.codigo, 1, `${projeto}: ${r.saida}`);
-    assert(!r.saida.includes(MSG_SEM_ACESSO), `${projeto} não herda a mensagem da Savy`);
+    assert(
+      !r.saida.includes(MSG_SEM_ACESSO),
+      `${projeto} não herda a mensagem da Savy`,
+    );
   }
   // a CAF mantém a mensagem de antes
   const caf = await rodar("ikcous-publicada", {});
@@ -308,7 +314,10 @@ Deno.test("conferir-banco-da-loja.yml: o job do ledger (que GRAVA em schema_migr
     assert(!/LEDGER/.test(bloco(yaml, job)), `${job} não pode passar LEDGER`);
   }
   // os jobs de pagamentos IKCOUS (original e publicado) não enxergam o da Savy
-  for (const job of ["verificar-ikcous-original", "verificar-ikcous-publicado"]) {
+  for (const job of [
+    "verificar-ikcous-original",
+    "verificar-ikcous-publicado",
+  ]) {
     assert(!bloco(yaml, job).includes("SAVY"), `${job} não vê a Savy`);
   }
   const aplicar = semComentarios(await Deno.readTextFile(APLICAR));
@@ -382,6 +391,7 @@ Deno.test({
   name: "conferir-banco.cjs: REFS_POR_PROJETO tem exatamente loja, sandbox, ikcous-publicada e savy, com os refs certos; a savy não aceita variações",
   ...SEM_SANITIZAR,
   fn: () => {
+    // eslint-disable-next-line security/detect-non-literal-require -- SCRIPT é o caminho fixo de scripts/publicacao/conferir-banco.cjs.
     const { REFS_POR_PROJETO, resolverRef } = require(SCRIPT);
     assertEquals(REFS_POR_PROJETO, {
       loja: REF_CAF,
@@ -545,7 +555,10 @@ Deno.test({
         stub,
       );
       assert(!loja.saida.includes("o ledger não roda para savy"));
-      assert(stub.chamadas.length >= 1, "em loja o ledger chega a consultar a API");
+      assert(
+        stub.chamadas.length >= 1,
+        "em loja o ledger chega a consultar a API",
+      );
     } finally {
       await stub.parar();
     }
@@ -756,7 +769,9 @@ Deno.test({
     );
     assert(
       savy.urls.every((u) =>
-        u.startsWith(`https://api.supabase.com/v1/projects/${REF_SAVY}/database/query`),
+        u.startsWith(
+          `https://api.supabase.com/v1/projects/${REF_SAVY}/database/query`,
+        ),
       ),
     );
     for (const s of ["tk-savy", "tk-legado", "tk-caf"])
@@ -793,7 +808,10 @@ Deno.test({
   ...SEM_SANITIZAR,
   fn: async () => {
     for (const segredos of [
-      { SUPABASE_ACCESS_TOKEN: "tk-legado", SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf" },
+      {
+        SUPABASE_ACCESS_TOKEN: "tk-legado",
+        SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf",
+      },
       { ...TRES_SEGREDOS, SUPABASE_ACCESS_TOKEN_SAVY: "" },
     ]) {
       const r = await rodarAplicar(
@@ -821,7 +839,11 @@ Deno.test({
         ref,
       );
       assertEquals(inverso.exit, 1, `${projeto}: ${inverso.texto}`);
-      assertEquals(inverso.chamadas.length, 0, `${projeto}: o da Savy não serve`);
+      assertEquals(
+        inverso.chamadas.length,
+        0,
+        `${projeto}: o da Savy não serve`,
+      );
     }
   },
 });
@@ -847,7 +869,8 @@ Deno.test({
       const apply = await rodarAplicar(
         M201,
         (q) =>
-          q.startsWith(ENVELOPE) && q.includes("ALTER COLUMN criada_sob_autorizacao")
+          q.startsWith(ENVELOPE) &&
+          q.includes("ALTER COLUMN criada_sob_autorizacao")
             ? { status, corpo: "denied" }
             : respostaSaudavel(q),
         "savy",
