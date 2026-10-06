@@ -84,6 +84,15 @@ async function semear(cliente) {
       [id, email, meta],
     );
   }
+  // Admin de verdade tem o papel nas DUAS fontes: desde a 20261197000000,
+  // as RPCs de devolução que movem dinheiro/estoque exigem profiles.role =
+  // 'admin' também — e desde a 20261198000000 update_order_status_atomic
+  // também (admin ATUAL: contradição nega).
+  await cliente.query(
+    `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin Devolução', 'admin')
+     ON CONFLICT (id) DO NOTHING`,
+    [U_ADMIN],
+  );
   await cliente.query(
     `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, categoria)
      VALUES ($1, 'Camisa de Prova', 40.00, 10, true, 'Camisas'),
@@ -2344,15 +2353,35 @@ PROVAS.push({
       "1 unidade reestocada pela devolução",
     );
 
-    // Agora o admin CANCELA o pedido 'delivered' — dispara devolver_estoque.
-    // Sem o desconto do achado C, creditaria as 2 unidades de novo (a
-    // unidade já devolvida vira fantasma: +3 no total, não +2).
+    // Agora o admin CANCELA o pedido 'delivered'. Desde a 20261198000000
+    // (plano S1, item 4) isto NÃO devolve estoque: a peça entregue não voltou
+    // por cancelar — estoque de mercadoria entregue só volta pelo fluxo de
+    // devolução. Antes, este cancelamento disparava devolver_estoque.
     await logar(cliente, U_ADMIN);
     await rpc(
       cliente,
       "SELECT public.update_order_status_atomic($1::uuid, 'cancelled', 'cliente devolveu o resto', false) AS r",
       [O_DEVOLVE_CANCELA],
     );
+    assert.equal(
+      Number(
+        await valorUnico(
+          cliente,
+          "SELECT estoque FROM public.produtos WHERE id = $1",
+          [P_CAMISA],
+        ),
+      ),
+      estoqueAntes + 1,
+      "20261198: entregue -> cancelado não credita nada (só a unidade da devolução voltou)",
+    );
+
+    // O achado C continua provado direto na função: quando devolver_estoque
+    // roda neste pedido (qualquer chamador), ela desconta a unidade que a
+    // devolução já repôs. Sem o desconto creditaria as 2 de novo (+3 no
+    // total, a unidade devolvida vira fantasma); com ele, só a que faltava.
+    await cliente.query("SELECT public.devolver_estoque($1::uuid)", [
+      O_DEVOLVE_CANCELA,
+    ]);
     assert.equal(
       Number(
         await valorUnico(

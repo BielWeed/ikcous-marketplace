@@ -673,7 +673,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 // lados são honestos sobre o que sabem, e reconciliar isso é outro trabalho.
 //
 // 🔴 Este bloco NÃO ancora num nome de arquivo fixo. `get_admin_analytics_v2`
-// já foi redefinida por inteiro várias vezes (hoje são 6 migrations que a
+// já foi redefinida por inteiro várias vezes (hoje são 7 migrations que a
 // redefinem) — um teste que citasse `20260902000000_kpi_usa_o_mesmo_...sql`
 // direto estaria medindo contra uma definição MORTA: mudar o limiar na
 // definição viva, ou numa migration futura, não deixaria este teste vermelho
@@ -714,7 +714,23 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
   const CAMINHO_DA_VIVA = VIVA?.[0] ?? "";
   const SQL_DA_VIVA = VIVA?.[1] ?? "";
 
-  it("achou pelo menos 2 migrations que redefinem get_admin_analytics_v2 (hoje são 6) — sem isso, tudo abaixo passaria por vacuidade", () => {
+  // A viva pode redefinir MUITAS funções no mesmo arquivo (a 20261199000000
+  // redefine 42 para exigir o admin atual). Medir o arquivo inteiro casaria o
+  // primeiro COALESCE(estoque_minimo, N) de QUALQUER função; por isso o
+  // limiar e o filtro se leem só no corpo de get_admin_analytics_v2 — do
+  // CREATE dela até o próximo CREATE OR REPLACE FUNCTION (ou o fim do arquivo).
+  const INICIO_DO_CORPO = SQL_DA_VIVA.search(
+    /CREATE OR REPLACE FUNCTION\s+public\.get_admin_analytics_v2/,
+  );
+  const RESTO_DA_VIVA =
+    INICIO_DO_CORPO < 0 ? "" : SQL_DA_VIVA.slice(INICIO_DO_CORPO);
+  const FIM_DO_CORPO = RESTO_DA_VIVA.slice(1).search(
+    /CREATE OR REPLACE FUNCTION/,
+  );
+  const CORPO_DA_VIVA =
+    FIM_DO_CORPO < 0 ? RESTO_DA_VIVA : RESTO_DA_VIVA.slice(0, FIM_DO_CORPO + 1);
+
+  it("achou pelo menos 2 migrations que redefinem get_admin_analytics_v2 (hoje são 7) — sem isso, tudo abaixo passaria por vacuidade", () => {
     expect(CAMINHOS_DAS_REDEFINICOES.length).toBeGreaterThanOrEqual(2);
     expect(
       CAMINHOS_DAS_REDEFINICOES.some((c) => c.includes("20260902000000")),
@@ -746,10 +762,18 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
     ).toEqual([]);
   });
 
-  it("a definição VIVA é a de maior carimbo — hoje, 20261062000000", () => {
+  it("a definição VIVA é a de maior carimbo — hoje, 20261199000000", () => {
     expect(CAMINHO_DA_VIVA).toContain(
-      "20261062000000_o_hoje_do_painel_e_o_dia_do_lojista.sql",
+      "20261199000000_portas_do_painel_exigem_admin_atual.sql",
     );
+  });
+
+  it("o corpo medido é o de get_admin_analytics_v2, inteiro e só ele", () => {
+    expect(CORPO_DA_VIVA).toMatch(
+      /^CREATE OR REPLACE FUNCTION\s+public\.get_admin_analytics_v2/,
+    );
+    expect(CORPO_DA_VIVA).toMatch(/low_stock_count/);
+    expect(CORPO_DA_VIVA.slice(1)).not.toMatch(/CREATE OR REPLACE FUNCTION/);
   });
 
   // ── Guarda 1 (laudo da revisão, 08/09): a viva não pode ser um rollback ──
@@ -771,7 +795,7 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
       "@/utils/avisos-do-lojista"
     );
 
-    const casado = SQL_DA_VIVA.match(/COALESCE\(estoque_minimo,\s*(\d+)\)/);
+    const casado = CORPO_DA_VIVA.match(/COALESCE\(estoque_minimo,\s*(\d+)\)/);
     expect(
       casado,
       `o literal COALESCE(estoque_minimo, N) sumiu ou mudou de forma na migration VIVA (${CAMINHO_DA_VIVA}) — confira à mão antes de mexer no limiar do front`,
@@ -782,6 +806,6 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
   });
 
   it("a RPC viva filtra o MESMO isActive (ativo = true, deleted_at IS NULL) que a tela de avisos usa", () => {
-    expect(SQL_DA_VIVA).toMatch(/p\.deleted_at IS NULL AND p\.ativo = true/);
+    expect(CORPO_DA_VIVA).toMatch(/p\.deleted_at IS NULL AND p\.ativo = true/);
   });
 });

@@ -1,5 +1,6 @@
 import { CustomerPaymentBadge } from "@/components/ui/custom/CustomerPaymentBadge";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import type { Order, OrderStatus, PaymentMethod, View } from "@/types";
 import { motion } from "framer-motion";
@@ -416,7 +417,7 @@ export const OrderList = memo(function OrderList({
                     ) : (
                       <>
                         <span className="font-mono text-[9px] font-bold uppercase tracking-tight">
-                          #{order?.id?.slice(0, 8) || "......."}
+                          #{numeroDoPedido(order?.id) || "......."}
                         </span>
                         <Copy className="size-2.5 text-zinc-400 transition-colors group-hover/id:text-zinc-500" />
                       </>

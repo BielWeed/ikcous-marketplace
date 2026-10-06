@@ -927,6 +927,1077 @@ Deno.test({
   },
 });
 
+// ---------------------------------------------------------------------------
+// 8a..8g (04/10/2026) — as consultas do lote do método de publicação na CAF.
+// ---------------------------------------------------------------------------
+const CONSULTAS_8 = [
+  "8a-antes-92-a-202-objetos-e-corpos",
+  "8b-papeis-contraditorios",
+  "8c-subtotal-divergente",
+  "8d-orfas-pos-drain",
+  "8e-conferir-92-a-202-aplicado",
+  "8f-conferir-201",
+  "8g-cron-reconciliar",
+];
+
+/** Referência CONGELADA da 8i de 084c52dc (antes do snapshot de visibilidade): o
+ * oráculo de que a impressão continua saindo igual. Não é consulta do menu. */
+const REFERENCIA_8I_084C52DC = `${RAIZ}/tests/banco/referencia/8i-084c52dc.sql`;
+
+/** As CTEs de um WITH, por nome (o corpo com o espaço em branco colapsado):
+ * "soma", "div", "alvo"... O nome vale sem a lista de colunas `alvo(ordem, tabela)`. */
+function ctesDe(sql: string): Map<string, string> {
+  const limpo = sqlSemComentarios(sql).replace(/\r/g, "");
+  const ini = limpo.indexOf("WITH ");
+  const fim = limpo.lastIndexOf("\n)\nSELECT item, esperado");
+  assert(ini >= 0 && fim > ini, "não achei o WITH ... SELECT final");
+  const partes = limpo.slice(ini + 5, fim + 2).split(/\n\), /);
+  const mapa = new Map<string, string>();
+  partes.forEach((parte, i) => {
+    // eslint-disable-next-line security/detect-unsafe-regex -- o grupo opcional roda no máximo uma vez, `\w+` e `\(` não se sobrepõem, e a entrada é SQL do próprio repositório.
+    const m = parte.match(/^(\w+)(?:\([^)]*\))? AS \(([\s\S]*)$/);
+    assert(m, `CTE ilegível: ${parte.slice(0, 40)}`);
+    const corpo = i === partes.length - 1 ? m[2].replace(/\n\)\s*$/, "") : m[2];
+    mapa.set(m[1], corpo.replace(/\s+/g, " ").trim());
+  });
+  return mapa;
+}
+
+/** O SQL sem comentários de linha (o cabeçalho EXPLICA o que a consulta não faz). */
+function sqlSemComentarios(sql: string): string {
+  return sql
+    .split(/\r?\n/)
+    .map((l) => l.replace(/--.*$/, ""))
+    .join("\n");
+}
+
+Deno.test("8a..8g — estão no menu do workflow, são UM SELECT só leitura, e a saída é item/esperado/vivo/ok", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const yaml = await Deno.readTextFile(WORKFLOW);
+  const m = yaml.match(/consulta:[\s\S]*?options:\n((?:\s{6,}- .+\n?)+)/);
+  assert(m, "não achei as options de `consulta`");
+  const opcoes = m[1].split("\n").map((l) => l.replace(/^\s*-\s*/, "").trim());
+  for (const nome of CONSULTAS_8) {
+    await t.step(nome, async () => {
+      assert(opcoes.includes(nome), `falta a opção ${nome} no workflow`);
+      const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+      assertEquals(contarStatements(sql), 1, `${nome}: exatamente 1 statement`);
+      const limpo = sqlSemComentarios(sql);
+      assert(
+        /^\s*(WITH|SELECT)\b/i.test(limpo),
+        `${nome}: tem de começar por WITH/SELECT`,
+      );
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          limpo.replace(/'(?:[^']|'')*'/g, "''"),
+        ),
+        `${nome}: palavra de escrita fora de comentário/string`,
+      );
+      assert(
+        /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok/.test(
+          limpo,
+        ),
+        `${nome}: a saída final tem de ser item, esperado, vivo, ok`,
+      );
+      assert(/ORDER BY ok, item/.test(limpo), `${nome}: reprovadas primeiro`);
+    });
+  }
+  await t.step("8b, 8c, 8d e 8g têm controle de visibilidade", async () => {
+    for (const nome of CONSULTAS_8.filter((n) => /^8[bcdg]/.test(n))) {
+      const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+      assert(
+        sqlSemComentarios(sql).includes("'controle:"),
+        `${nome}: sem linha de controle de visibilidade`,
+      );
+    }
+  });
+  await t.step(
+    "8g nunca seleciona `command` nem `return_message` do cron",
+    async () => {
+      const limpo = sqlSemComentarios(
+        await Deno.readTextFile(`${CONSULTAS_DIR}/8g-cron-reconciliar.sql`),
+      );
+      assert(
+        !/\b(command|return_message)\b/i.test(limpo),
+        "8g leria o comando do job (que consulta segredos do vault) ou a mensagem de retorno",
+      );
+    },
+  );
+  await t.step(
+    "8c cita de onde vem a fórmula (a RPC que grava subtotal)",
+    async () => {
+      const sql = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertStringIncludes(
+        sql,
+        "20260951000000_frete_do_pedido_e_do_proprio_carrinho.sql",
+      );
+      assertStringIncludes(sql, "SUM(oi.quantity * oi.price)");
+    },
+  );
+});
+
+// 8h (04/10/2026) — PERFIL dos divergentes da 8c, só diagnóstico. Não é
+// portão: a saída é secao/chave/pedidos, não item/esperado/vivo/ok.
+Deno.test("8h — no menu, UM SELECT só leitura, mesma população da 8c, controles e nenhum dado pessoal ou de gateway", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const nome = "8h-perfil-dos-pedidos-divergentes";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const m = yaml.match(/consulta:[\s\S]*?options:\n((?:\s{6,}- .+\n?)+)/);
+    assert(m, "não achei as options de `consulta`");
+    const opcoes = m[1]
+      .split("\n")
+      .map((l) => l.replace(/^\s*-\s*/, "").trim());
+    assert(opcoes.includes(nome), `falta a opção ${nome} no workflow`);
+  });
+  await t.step(
+    "um statement, começa por WITH/SELECT, sem palavra de escrita",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*(WITH|SELECT)\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          limpo.replace(/'(?:[^']|'')*'/g, "''"),
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+    },
+  );
+  await t.step(
+    "a saída é secao, chave, pedidos e tem os controles de visibilidade",
+    () => {
+      assert(
+        /SELECT secao, chave, pedidos\s+FROM r\s+ORDER BY ordem, chave;/.test(
+          limpo,
+        ),
+      );
+      assertStringIncludes(limpo, "'controle', 'pedidos visiveis'");
+      assertStringIncludes(limpo, "'controle', 'itens de pedido visiveis'");
+      for (const tabela of [
+        "historico de status visivel",
+        "registros de pagamento visiveis",
+        "estornos visiveis",
+        "devolucoes visiveis",
+      ]) {
+        assertStringIncludes(limpo, `'controle', '${tabela}'`);
+      }
+    },
+  );
+  await t.step(
+    "nenhum campo agrupado sai cru: lista fixa ou '(fora da lista, nao impresso)'",
+    () => {
+      const campos = [
+        "status",
+        "payment_status",
+        "payment_method",
+        "metodo_online",
+        "canal",
+      ];
+      for (const f of campos) {
+        assert(
+          new RegExp(
+            `SELECT \\d+, '${f}', cat_${f}, count\\(\\*\\)::text FROM div GROUP BY 3`,
+          ).test(limpo),
+          `a seção ${f} tem de agrupar pela categoria cat_${f}`,
+        );
+        assert(
+          new RegExp(
+            `CASE WHEN o\\.${f} IS NULL THEN '\\(nulo\\)'\\s+WHEN o\\.${f} IN \\([^)]*\\)\\s+THEN o\\.${f}\\s+ELSE '\\(fora da lista, nao impresso\\)' END AS cat_${f}`,
+          ).test(limpo),
+          `cat_${f} tem de ser nulo / lista fixa / fora da lista`,
+        );
+      }
+      assertEquals(
+        (limpo.match(/'\(fora da lista, nao impresso\)'/g) ?? []).length,
+        campos.length,
+      );
+      assert(
+        /CASE WHEN subtotal IS NULL THEN '\(nulo\)'/.test(limpo),
+        "subtotal nulo nunca cai em '> 1000'",
+      );
+      assertStringIncludes(limpo, "'payment_status estornado'");
+    },
+  );
+  await t.step(
+    "a CTE `soma` é IDÊNTICA à da 8c (mesma população)",
+    async () => {
+      const soma = (texto: string) => {
+        const m = sqlSemComentarios(texto).match(
+          /WITH soma AS \(([\s\S]*?)\n\), /,
+        );
+        assert(m, "não achei a CTE soma");
+        return m[1].replace(/\s+/g, " ").trim();
+      };
+      const sql8c = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertEquals(soma(sql), soma(sql8c));
+      assertStringIncludes(
+        limpo,
+        "WHERE s.subtotal IS DISTINCT FROM s.soma_itens",
+      );
+    },
+  );
+  await t.step(
+    "nenhuma coluna de cliente, e o gateway só como presença",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name)\b/i.test(
+          limpo,
+        ),
+        "a 8h leria dado pessoal",
+      );
+      const usos = limpo.match(/gateway_payment_id[^,\n)]*/g) ?? [];
+      assertEquals(usos.length, 1, "gateway_payment_id aparece uma vez só");
+      assert(
+        /gateway_payment_id IS NOT NULL/.test(usos[0]),
+        "gateway_payment_id só como IS NOT NULL",
+      );
+    },
+  );
+});
+
+// 8i (05/10/2026) — os divergentes da 8c são os atestados, no mesmo estado? Não
+// substitui a 8c: prende uma decisão do dono a uma IMPRESSÃO DE INTEGRIDADE do
+// conjunto e do estado (sha256 de uma serialização canônica; muda se qualquer
+// campo coberto mudar; não diz origem; não substitui auditoria). Formato da 8c
+// (item/esperado/vivo/ok), com a regra de privacidade da 8h: nenhum id sai.
+// Versão com PAPEL E VISIBILIDADE NO MESMO SNAPSHOT (05/10/2026): a visibilidade
+// das seis tabelas vem da derivação da 8j, calculada no mesmo statement; os
+// sinais das tabelas auxiliares só são conclusivos com a tabela VISIVEL_*; e a
+// impressão sai IDÊNTICA à de 084c52dc (referência congelada em tests/banco/referencia).
+Deno.test("8i — no menu, UM SELECT só leitura no formato da 8c, mesma população, impressão idêntica à de 084c52dc, papel e visibilidade das seis tabelas no mesmo statement, sinal auxiliar só conclusivo com tabela visível, e nenhum id sai", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const nome = "8i-divergentes-contra-base-atestada";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "não achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+      `falta a opção ${nome} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, começa por WITH/SELECT, sem palavra de escrita, saída item/esperado/vivo/ok com reprovadas primeiro",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*(WITH|SELECT)\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          limpo.replace(/'(?:[^']|'')*'/g, "''"),
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+      assert(
+        /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM r\s+ORDER BY ok, item;/.test(
+          limpo,
+        ),
+        "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+      );
+    },
+  );
+  await t.step(
+    "a CTE `soma` é IDÊNTICA à da 8c, e a população é só os divergentes",
+    async () => {
+      const soma = (texto: string) => {
+        const m = sqlSemComentarios(texto).match(
+          /WITH soma AS \(([\s\S]*?)\n\), /,
+        );
+        assert(m, "não achei a CTE soma");
+        return m[1].replace(/\s+/g, " ").trim();
+      };
+      const sql8c = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertEquals(soma(sql), soma(sql8c));
+      assertStringIncludes(
+        limpo,
+        "WHERE s.subtotal IS DISTINCT FROM s.soma_itens",
+      );
+    },
+  );
+  await t.step(
+    "PRESERVAÇÃO: soma, div, enc e imp são IDÊNTICAS às da 084c52dc (referência congelada e pinada por sha256): o hash sai igual sobre os mesmos dados",
+    async () => {
+      const refTexto = await Deno.readTextFile(REFERENCIA_8I_084C52DC);
+      const digest = new Uint8Array(
+        await crypto.subtle.digest(
+          "SHA-256",
+          new TextEncoder().encode(refTexto),
+        ),
+      );
+      const hex = Array.from(digest, (b) =>
+        b.toString(16).padStart(2, "0"),
+      ).join("");
+      assertEquals(
+        hex,
+        "d9585cdf8534f778761b01f51d0803057a8db3a2538c4eb3a0a0da7c9c8ea48a",
+        "a referência congelada da 8i (084c52dc) mudou: ela é o oráculo da impressão",
+      );
+      const novas = ctesDe(sql);
+      const antigas = ctesDe(refTexto);
+      for (const nomeCte of ["soma", "div", "enc", "imp"]) {
+        const nova = novas.get(nomeCte);
+        assert(nova, `a 8i nova perdeu a CTE ${nomeCte}`);
+        assertEquals(
+          nova,
+          antigas.get(nomeCte),
+          `a CTE ${nomeCte} mudou: a impressão deixaria de sair igual à de 084c52dc`,
+        );
+      }
+    },
+  );
+  await t.step(
+    "PAPEL E VISIBILIDADE: alvo, vis, meta e julga são IDÊNTICAS às da 8j; o papel lê as mesmas duas colunas de pg_roles; o veredito é o mesmo CASE de quatro valores",
+    async () => {
+      const sql8j = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8j-visibilidade-das-tabelas-auxiliares.sql`,
+      );
+      const novas = ctesDe(sql);
+      const da8j = ctesDe(sql8j);
+      for (const nomeCte of ["alvo", "vis", "meta", "julga"]) {
+        const nova = novas.get(nomeCte);
+        assert(nova, `a 8i perdeu a CTE ${nomeCte}`);
+        assertEquals(
+          nova,
+          da8j.get(nomeCte),
+          `a CTE ${nomeCte} diverge da 8j: a derivação tem de ser a MESMA`,
+        );
+      }
+      const papel = novas.get("papel") ?? "";
+      assertStringIncludes(papel, "current_user::text AS nome");
+      assertStringIncludes(
+        papel,
+        "(SELECT r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname = current_user) AS bypass",
+      );
+      assertStringIncludes(
+        papel,
+        "(SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user) AS super",
+      );
+      const caso = (corpo: string) =>
+        (corpo.match(/CASE WHEN[\s\S]*?END AS resultado/) ?? [""])[0];
+      assert(caso(novas.get("veredito") ?? ""), "veredito sem CASE");
+      assertEquals(
+        caso(novas.get("veredito") ?? ""),
+        caso(da8j.get("veredito") ?? ""),
+        "o veredito tem de ter os mesmos quatro valores e a mesma ordem de ramos da 8j",
+      );
+      // o `apto` confere row_security_active contra a derivação, e exige SELECT
+      const julga = novas.get("julga") ?? "";
+      assertStringIncludes(julga, "AND m.pode_ler");
+      assertStringIncludes(julga, "AND m.rls_ativa IS NOT NULL");
+      assertStringIncludes(julga, "AND m.rls_ativa = (m.rls_ligada");
+      assertStringIncludes(julga, "AND NOT (p.bypass OR p.super)");
+      assertStringIncludes(julga, "AND NOT (m.dono AND NOT m.rls_forcada)");
+      // as seis tabelas, as MESMAS da 8j, e a 8i não faz SQL dinâmico
+      assertEquals(
+        (novas.get("alvo") ?? "").match(/\(\d, '[a-z_]+'\)/g)?.length,
+        6,
+      );
+      assert(!/\b(EXECUTE|format\s*\()/i.test(limpo), "SQL dinâmico");
+    },
+  );
+  await t.step(
+    "linhas novas: `papel efetivo` contra supabase_read_only_user (vivo = current_user), uma `<tabela>: visibilidade` por tabela, e os controles de pedidos e itens seguem '>0'",
+    () => {
+      assertStringIncludes(
+        limpo,
+        "SELECT 'papel efetivo', 'supabase_read_only_user', p.nome",
+      );
+      assertEquals(
+        (limpo.match(/'papel efetivo'/g) ?? []).length,
+        1,
+        "uma linha de papel efetivo só",
+      );
+      assertStringIncludes(limpo, "SELECT lt.tabela || ': visibilidade',");
+      assertEquals((limpo.match(/': visibilidade'/g) ?? []).length, 1);
+      assertStringIncludes(
+        limpo,
+        "CASE WHEN lt.conclusivo THEN lt.resultado ELSE 'VISIVEL_VAZIA ou VISIVEL_COM_LINHAS' END",
+      );
+      assertStringIncludes(
+        limpo,
+        "(v.resultado IN ('VISIVEL_VAZIA', 'VISIVEL_COM_LINHAS')) AS conclusivo",
+      );
+      for (const c of [
+        "controle: pedidos visiveis",
+        "controle: itens de pedido visiveis",
+      ]) {
+        assertStringIncludes(limpo, `'${c}', '>0'`);
+      }
+      // os atributos do papel só INFORMAM (esperado = vivo) e saem em formato fechado
+      assertStringIncludes(
+        limpo,
+        "'atributos do papel (so informa; nunca reprova)', a.texto, a.texto",
+      );
+      assertStringIncludes(
+        limpo,
+        "'rolbypassrls=' || COALESCE(p.bypass::text, '?') || '; rolsuper=' || COALESCE(p.super::text, '?')",
+      );
+    },
+  );
+  await t.step(
+    "os três controles '>0' de tabela auxiliar SAÍRAM (zero visível de verdade não reprova) e cada sinal só é conclusivo quando a tabela é VISIVEL_*; senão sai INCONCLUSIVO (nunca ok)",
+    () => {
+      for (const c of [
+        "controle: registros de pagamento visiveis",
+        "controle: estornos visiveis",
+        "controle: devolucoes visiveis",
+      ]) {
+        assert(!limpo.includes(c), `o controle '${c}' exigia linha e saiu`);
+      }
+      assert(
+        !limpo.includes("tabela sem linha visivel"),
+        "o texto antigo do inconclusivo por falta de linha saiu",
+      );
+      const plano = limpo.replace(/\s+/g, " ");
+      for (const [tabela, campo] of [
+        ["marketplace_order_payment_history", "tem_registro_de_pagamento"],
+        ["order_refunds", "tem_estorno"],
+        ["devolucoes", "tem_devolucao"],
+      ]) {
+        assertStringIncludes(
+          plano,
+          `CASE WHEN (SELECT lt.conclusivo FROM leitura lt WHERE lt.tabela = '${tabela}') THEN (SELECT count(*) FILTER (WHERE ${campo}) FROM div)::text ELSE 'INCONCLUSIVO (a tabela nao esta visivel para o papel; ver a linha de visibilidade)' END`,
+        );
+      }
+      assertEquals(
+        (limpo.match(/'INCONCLUSIVO \(/g) ?? []).length,
+        3,
+        "exatamente os três sinais auxiliares podem ser INCONCLUSIVO",
+      );
+      // um sinal nunca é decidido por EXISTS direto na tabela auxiliar na parte
+      // que sai: a decisão é só a `leitura` (a `div` e a `vis` ficam antes)
+      const fora = limpo.slice(
+        limpo.indexOf("), r(item, esperado, vivo) AS ("),
+      );
+      assert(
+        !/EXISTS \(SELECT 1 FROM public\.(marketplace_order_payment_history|order_refunds|devolucoes)/.test(
+          fora,
+        ),
+        "a parte que sai não decide sinal por EXISTS direto",
+      );
+    },
+  );
+  await t.step(
+    "as perguntas da base atestada: 3 divergentes, todos cancelled, sem item, sem cobrança, sem status de pagamento",
+    () => {
+      assertStringIncludes(
+        limpo,
+        "'pedidos divergentes (mesma regra da 8c; base atestada)', '3'",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE NOT cancelado) FROM div",
+      );
+      assertStringIncludes(
+        limpo,
+        "(o.status IS NOT DISTINCT FROM 'cancelled') AS cancelado",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE n_itens > 0) FROM div",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE tem_cobranca_no_gateway) FROM div",
+      );
+      assertStringIncludes(
+        limpo,
+        "o.payment_status IN ('pago', 'pago_apos_expirar', 'recebido_na_entrega', 'estornado')",
+      );
+      assertStringIncludes(
+        limpo,
+        "count(*) FILTER (WHERE tem_status_de_pagamento) FROM div",
+      );
+    },
+  );
+  await t.step(
+    "a impressão de integridade: a impressão ATESTADA pelo dono (05/10/2026, run 37377459724) UMA vez só, no esperado da linha da impressão, contra o sha256 completo (64 hex) da serialização",
+    () => {
+      const atestada =
+        "6382d110fb62af00bcf3be7868185662f46b10faa3206af0fa8e01d3776d1b7b";
+      assertEquals(
+        sql.split(`'${atestada}'`).length - 1,
+        1,
+        "a impressão atestada tem de aparecer UMA vez (o teste de banco a troca em memória)",
+      );
+      assertEquals(limpo.split(`'${atestada}'`).length - 1, 1);
+      assertEquals(
+        (sql.match(/'[0-9a-f]{64}'/g) ?? []).length,
+        1,
+        "nenhum outro literal de 64 hex no arquivo",
+      );
+      assertEquals(
+        (sql.match(/'A_ATESTAR'/g) ?? []).length,
+        0,
+        "o marcador do modo medir saiu do arquivo commitado",
+      );
+      assertEquals(
+        limpo.split(
+          "encode(sha256(convert_to(string_agg(linha, '#' ORDER BY id), 'UTF8')), 'hex')",
+        ).length - 1,
+        1,
+        "a impressão é encode(sha256(convert_to(<serialização>, 'UTF8')), 'hex'): os 64 hex inteiros",
+      );
+      assert(
+        !/\bmd5\b|\bleft\(/i.test(limpo),
+        "nada de md5 nem de prefixo truncado",
+      );
+      assert(
+        /SELECT 'impressao de integridade do conjunto e do estado \(sha256, 64 hex\)', '6382d110fb62af00bcf3be7868185662f46b10faa3206af0fa8e01d3776d1b7b',\s+COALESCE\(\(SELECT hash FROM imp\), '\(sem divergentes\)'\)/.test(
+          limpo,
+        ),
+        "a linha da impressão compara a constante com o hash vivo",
+      );
+    },
+  );
+  await t.step(
+    "a serialização é canônica: 19 campos em ordem fixa, comprimento:texto, NULL = N, numeric(12,2) em texto nos de escala fixa e trim_scale (nunca numeric(12,2)) em total_amount e shipping_cost, timestamptz em UTC ISO, uma linha por divergente ordenada por id",
+    () => {
+      assertStringIncludes(
+        limpo,
+        "string_agg(CASE WHEN f.v IS NULL THEN 'N' ELSE length(f.v)::text || ':' || f.v END,",
+      );
+      assertStringIncludes(limpo, "';' ORDER BY f.n) AS linha");
+      const campos = [
+        "d.id::text",
+        "to_char(d.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+        "to_char(d.updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+        "d.status",
+        "d.payment_status",
+        "d.payment_method",
+        "d.metodo_online",
+        "d.canal",
+        "d.subtotal::numeric(12,2)::text",
+        "d.total::numeric(12,2)::text",
+        "d.shipping::numeric(12,2)::text",
+        "d.discount::numeric(12,2)::text",
+        "d.valor_estornado::numeric(12,2)::text",
+        "to_char(d.paid_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')",
+        "d.tem_cobranca_no_gateway::text",
+        "d.n_itens::text",
+        "d.soma_itens::numeric(12,2)::text",
+        // numeric SEM escala: ::numeric(12,2) arredondaria a 3ª casa e a esconderia
+        "trim_scale(d.total_amount)::text",
+        "trim_scale(d.shipping_cost)::text",
+      ];
+      campos.forEach((c, i) => {
+        assertStringIncludes(limpo, `(${i + 1}, ${c})`);
+      });
+      // só dentro da `enc` (a `alvo` da visibilidade também tem linhas `(n, 'texto')`)
+      const soEnc = limpo.slice(
+        limpo.indexOf("), enc AS ("),
+        limpo.indexOf("), imp AS ("),
+      );
+      assertEquals((soEnc.match(/\(\d+, [^\n]+\),?\n/g) ?? []).length, 19);
+      for (const col of ["total_amount", "shipping_cost"]) {
+        assert(
+          // eslint-disable-next-line security/detect-non-literal-regexp -- `col` vem só do array literal ["total_amount", "shipping_cost"] da linha acima, nunca de entrada externa.
+          !new RegExp(`d\\.${col}::numeric`).test(limpo),
+          `${col} não pode entrar por ::numeric(12,2): arredonda a 3ª casa`,
+        );
+        // e as duas colunas vêm do pedido, na CTE que alimenta a serialização
+        assertStringIncludes(limpo, `o.${col}`);
+      }
+      assertStringIncludes(limpo, ") AS f(n, v)");
+      assertStringIncludes(limpo, "GROUP BY d.id");
+    },
+  );
+  await t.step(
+    "o `id` nunca sai: fora da população (soma/div/enc/imp), a parte que sai (r e o SELECT final) não tem `id` nem `.id`, só `(SELECT hash FROM imp)`",
+    () => {
+      const marcador = "), r(item, esperado, vivo) AS (";
+      const i = limpo.indexOf(marcador);
+      assert(i > 0, "não achei a CTE r");
+      const saida = limpo.slice(i);
+      const semTexto = saida.replace(/'(?:[^']|'')*'/g, "''");
+      assert(
+        !/(\bid\b|\.id\b)/i.test(semTexto),
+        "a 8i expôs `id` na parte que sai",
+      );
+      assertEquals(
+        (saida.match(/\bFROM imp\b/g) ?? []).length,
+        1,
+        "a impressão sai só por (SELECT hash FROM imp)",
+      );
+    },
+  );
+  await t.step(
+    "nenhuma coluna de cliente, e o gateway só como presença",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name)\b/i.test(
+          limpo,
+        ),
+        "a 8i leria dado pessoal",
+      );
+      const usos = limpo.match(/gateway_payment_id[^,\n)]*/g) ?? [];
+      assertEquals(usos.length, 1, "gateway_payment_id aparece uma vez só");
+      assert(
+        /gateway_payment_id IS NOT NULL/.test(usos[0]),
+        "gateway_payment_id só como IS NOT NULL",
+      );
+    },
+  );
+});
+
+// 8j (05/10/2026) — as seis tabelas que a 8h e a 8i leem estão VISÍVEIS para o
+// papel que lê? Diagnóstico: separa "tabela vazia" de "tabela com linhas que a RLS
+// esconde". Não substitui a 8c/8h/8i e não atesta a impressão da 8i. Formato da 8c
+// (item/esperado/vivo/ok); só metadado e 0/>0; nenhum id, dinheiro ou dado pessoal.
+Deno.test("8j — no menu, UM SELECT só leitura no formato da 8c, cobre as seis tabelas da 8h/8i, usa row_security_active, contagem 0/>0 por EXISTS, quatro vereditos e nenhum dado pessoal ou financeiro", async (t) => {
+  const { contarStatements } = require(SCRIPT);
+  const nome = "8j-visibilidade-das-tabelas-auxiliares";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  const TABELAS = [
+    "marketplace_orders",
+    "marketplace_order_items",
+    "marketplace_order_history",
+    "marketplace_order_payment_history",
+    "order_refunds",
+    "devolucoes",
+  ];
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "não achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+      `falta a opção ${nome} no workflow`,
+    );
+  });
+  await t.step(
+    "um statement, começa por WITH/SELECT, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com reprovadas primeiro",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*(WITH|SELECT)\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinâmico (ou leitura de arquivo) fora do que a consulta aceita",
+      );
+      assert(
+        /SELECT item, esperado, vivo, ok\s+FROM r\s+ORDER BY ok, item;/.test(
+          limpo,
+        ),
+        "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+      );
+    },
+  );
+  await t.step(
+    "cobre as seis tabelas da 8h/8i, cada uma com um EXISTS exato (nunca a estimativa do catálogo, nunca count)",
+    () => {
+      for (const tabela of TABELAS) {
+        assertStringIncludes(limpo, `, '${tabela}')`);
+        assertStringIncludes(limpo, `EXISTS (SELECT 1 FROM public.${tabela})`);
+      }
+      assertEquals(
+        (limpo.match(/EXISTS \(SELECT 1 FROM public\./g) ?? []).length,
+        6,
+      );
+      assertEquals((limpo.match(/\bFROM public\./g) ?? []).length, 6);
+      assert(
+        !/reltuples|n_live_tup|pg_stat\w*|\bcount\s*\(|\bsum\s*\(/i.test(
+          semTexto,
+        ),
+        "a contagem é só 0/>0 por EXISTS: nada de estimativa do catálogo nem agregado",
+      );
+      assertStringIncludes(limpo, "WHEN v.tem_linha THEN '>0' ELSE '0' END");
+    },
+  );
+  await t.step(
+    "mostra os metadados do papel efetivo e usa row_security_active (nunca relrowsecurity sozinho)",
+    () => {
+      for (const trecho of [
+        "current_user::text AS nome",
+        "r.rolbypassrls FROM pg_catalog.pg_roles r WHERE r.rolname = current_user",
+        "r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user",
+        "current_setting('row_security')",
+        "c.relkind::text AS relkind",
+        "c.relrowsecurity AS rls_ligada",
+        "c.relforcerowsecurity AS rls_forcada",
+        "pg_has_role(current_user, c.relowner, 'USAGE') AS dono",
+        "has_table_privilege(current_user, c.oid, 'SELECT') AS pode_ler",
+        "row_security_active(c.oid) AS rls_ativa",
+        "m.relkind = 'r'",
+      ]) {
+        assertStringIncludes(limpo, trecho);
+      }
+      // a derivação independente que cruza com row_security_active
+      assertStringIncludes(
+        limpo.replace(/\s+/g, " "),
+        "m.rls_ativa = (m.rls_ligada AND NOT (p.bypass OR p.super) AND NOT (m.dono AND NOT m.rls_forcada))",
+      );
+    },
+  );
+  await t.step(
+    "os quatro vereditos, e só os dois conclusivos são ok; VISIVEL_VAZIA exige RLS NÃO ativa",
+    () => {
+      const usados = new Set(
+        [
+          ...limpo.matchAll(/'(VISIVEL_[A-Z_]+|RLS_ATIVA_[A-Z_]+|BLOQUEIA)'/g),
+        ].map((m) => m[1]),
+      );
+      assertEquals([...usados].sort(), [
+        "BLOQUEIA",
+        "RLS_ATIVA_INCONCLUSIVO",
+        "VISIVEL_COM_LINHAS",
+        "VISIVEL_VAZIA",
+      ]);
+      const plano = limpo.replace(/\s+/g, " ");
+      assertStringIncludes(
+        plano,
+        "WHEN j.apto AND NOT j.rls_ativa AND NOT j.tem_linha THEN 'VISIVEL_VAZIA'",
+      );
+      assertStringIncludes(
+        plano,
+        "WHEN j.apto AND NOT j.rls_ativa AND j.tem_linha THEN 'VISIVEL_COM_LINHAS'",
+      );
+      assertStringIncludes(
+        plano,
+        "WHEN j.apto AND j.rls_ativa THEN 'RLS_ATIVA_INCONCLUSIVO'",
+      );
+      assertStringIncludes(plano, "ELSE 'BLOQUEIA' END AS resultado");
+      assertStringIncludes(
+        plano,
+        "v.resultado IN ('VISIVEL_VAZIA', 'VISIVEL_COM_LINHAS')",
+      );
+    },
+  );
+  await t.step(
+    "nenhum id, valor de dinheiro, coluna de cliente ou id de gateway: só metadado",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|subtotal|total|price|valor_estornado|amount|shipping|discount|gateway_payment_id|payment_status|paid_at|quantity)\b/i.test(
+          semTexto,
+        ),
+        "a 8j leria dado pessoal ou financeiro",
+      );
+      assert(
+        !/(\bid\b|\.id\b)/i.test(semTexto),
+        "a 8j expôs `id` (nenhuma coluna de linha de tabela entra: só o catálogo e EXISTS)",
+      );
+    },
+  );
+  await t.step(
+    "o cabeçalho diz o que ela NÃO faz: não atesta a 8i, não dispensa a 8c, cita a fonte de row_security_active",
+    () => {
+      assertStringIncludes(sql, "NÃO atesta o hash da 8i nem dispensa a 8c");
+      assertStringIncludes(sql, "src/backend/utils/misc/rls.c");
+      assertStringIncludes(sql, "check_enable_rls");
+      // SELECT só de COLUNA roda a consulta e a linha sai BLOQUEIA: o cabeçalho
+      // não pode voltar a dizer que esse ramo é inalcançável (revisão 05/10/2026).
+      assertStringIncludes(
+        sql,
+        'a ramificação BLOQUEIA de "sem SELECT" É alcançável',
+      );
+      assert(
+        !/não é alcançável|inalcançável/i.test(sql),
+        "o cabeçalho voltou a afirmar que o ramo BLOQUEIA de 'sem SELECT' não é alcançável",
+      );
+    },
+  );
+});
+
+Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 desta árvore REALMENTE definem", async (t) => {
+  const { createHash } = require("node:crypto");
+  const nomes: string[] = [];
+  for await (const e of Deno.readDir(MIGRATIONS_DIR)) {
+    if (
+      e.isFile &&
+      /^2026119[2-9]|^2026120[0-2]/.test(e.name) &&
+      !e.name.startsWith("rollback") &&
+      e.name.endsWith(".sql")
+    )
+      nomes.push(e.name);
+  }
+  nomes.sort();
+  assertEquals(
+    nomes.length,
+    10,
+    "esperava as 10 migrations 92..202 (a 93 não existe)",
+  );
+  const textos: Record<string, string> = {};
+  for (const n of nomes)
+    textos[n] = await Deno.readTextFile(`${MIGRATIONS_DIR}/${n}`);
+
+  const pares = (sql: string) =>
+    new Map<string, string>(
+      [...sql.matchAll(/\('([a-z_0-9]+)', '([0-9a-f]{32})'\)/g)].map(
+        (x) => [x[1], x[2]] as [string, string],
+      ),
+    );
+  const sql8a = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/8a-antes-92-a-202-objetos-e-corpos.sql`,
+  );
+  const sql8e = await Deno.readTextFile(
+    `${CONSULTAS_DIR}/8e-conferir-92-a-202-aplicado.sql`,
+  );
+  // 8a tem DUAS listas de md5: `base` (as 53 funções que 92..202 substituem) e
+  // `base_90_91` (o que a 90/91 já têm de ter deixado). Cada uma é lida do seu CTE.
+  const fatia = (sql: string, de: string, ate: string) => {
+    const i = sql.indexOf(de);
+    const j = sql.indexOf(ate, i);
+    assert(i >= 0 && j > i, `não achei o trecho ${de} … ${ate} em 8a`);
+    return sql.slice(i, j);
+  };
+  const base = pares(fatia(sql8a, "base(fn, h) AS (VALUES", "corpos_sig AS ("));
+  // base_90_91 tem 3 colunas: fn, assinatura exata e md5.
+  const trio9091 = [
+    ...fatia(
+      sql8a,
+      "base_90_91(fn, assinatura, h) AS (VALUES",
+      "tabelas_90_91(",
+    ).matchAll(
+      /\('([a-z_0-9]+)', '([a-z_0-9]+\([a-z_0-9[\], ]*\))', '([0-9a-f]{32})'\)/g,
+    ),
+  ];
+  const base9091 = new Map<string, string>(trio9091.map((x) => [x[1], x[3]]));
+  const assinaturas9091 = new Map<string, string>(
+    trio9091.map((x) => [x[1], x[2]]),
+  );
+  const final = pares(sql8e);
+
+  /** Corpo da ÚLTIMA definição da função nas migrations 92..202. */
+  function corpoFinal(fn: string): string {
+    let ultima: { n: string; i: number } | null = null;
+    for (const n of nomes) {
+      const re = new RegExp(
+        `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`,
+        "gi",
+      );
+      let r: RegExpExecArray | null;
+      while ((r = re.exec(textos[n]))) ultima = { n, i: r.index };
+    }
+    assert(ultima, `${fn}: nenhuma migration 92..202 a define`);
+    const resto = textos[ultima.n].slice(ultima.i);
+    const abre = /\bAS\s+(\$[a-z_0-9]*\$)/i.exec(resto);
+    assert(abre, `${fn}: não achei o corpo`);
+    const ini = abre.index + abre[0].length;
+    const fim = resto.indexOf(abre[1], ini);
+    assert(fim > ini, `${fn}: não achei o fechamento do corpo`);
+    return resto.slice(ini, fim);
+  }
+
+  await t.step(
+    "as listas têm o tamanho esperado (61 funções finais, 53 de base, 8 novas)",
+    () => {
+      assertEquals(final.size, 61);
+      assertEquals(base.size, 53);
+      const novas = [...final.keys()].filter((f) => !base.has(f)).sort();
+      assertEquals(novas.length, 8);
+      for (const f of novas) assertStringIncludes(sql8a, `('${f}')`);
+      for (const f of base.keys())
+        assert(final.has(f), `${f} está na base e não no final`);
+    },
+  );
+
+  await t.step(
+    "todo md5 FINAL de 8e é o md5 do corpo da última definição da função na árvore",
+    () => {
+      for (const [fn, h] of final) {
+        const calculado = createHash("md5")
+          .update(corpoFinal(fn).replace(/\r/g, ""))
+          .digest("hex");
+        assertEquals(
+          calculado,
+          h,
+          `${fn}: o corpo na árvore mudou — recalcule 8e`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "todo md5 de BASE de 8a aparece literalmente no preflight de uma migration 92..202",
+    () => {
+      const todo = Object.values(textos).join("\n");
+      for (const [fn, h] of base) {
+        assertStringIncludes(
+          todo,
+          h,
+          `${fn}: o baseline de 8a não está em nenhum preflight`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "8a — a lista base_90_91 (5 funções): o md5 é o do corpo que a 90/91 desta árvore deixam, e consta no pré-voo do rollback delas",
+    async () => {
+      assertEquals([...base9091.keys()].sort(), [
+        "confirmar_aviso_ao_lojista",
+        "liberar_aviso_ao_lojista",
+        "marcar_visitas_da_reconciliacao",
+        "pagamentos_a_reconciliar",
+        "reservar_aviso_ao_lojista",
+      ]);
+      const arq = async (prefixo: string) => {
+        const achados: string[] = [];
+        for await (const e of Deno.readDir(MIGRATIONS_DIR))
+          if (e.isFile && e.name.startsWith(prefixo)) achados.push(e.name);
+        assertEquals(achados.length, 1, `esperava 1 arquivo ${prefixo}*`);
+        return await Deno.readTextFile(`${MIGRATIONS_DIR}/${achados[0]}`);
+      };
+      const m90 = await arq("20261190000000_");
+      const m91 = await arq("20261191000000_");
+      const rb90 = await arq("rollback-manual-20261190000000_");
+      const rb91 = await arq("rollback-manual-20261191000000_");
+      const corpoDe = (texto: string, fn: string) => {
+        const r = new RegExp(
+          `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`,
+          "i",
+        ).exec(texto);
+        assert(r, `${fn}: não definida nesta migration`);
+        const resto = texto.slice(r.index);
+        const abre = /\bAS\s+(\$[a-z_0-9]*\$)/i.exec(resto);
+        assert(abre, `${fn}: sem corpo`);
+        const ini = abre.index + abre[0].length;
+        return resto.slice(ini, resto.indexOf(abre[1], ini));
+      };
+      const donos: Record<string, [string, string]> = {
+        pagamentos_a_reconciliar: [m90, rb90],
+        marcar_visitas_da_reconciliacao: [m90, rb90],
+        reservar_aviso_ao_lojista: [m91, rb91],
+        confirmar_aviso_ao_lojista: [m91, rb91],
+        liberar_aviso_ao_lojista: [m91, rb91],
+      };
+      // a ASSINATURA em 8a = a do CREATE FUNCTION da migration (tipos, na ordem)
+      const assinaturaDe = (texto: string, fn: string) => {
+        const r = new RegExp(
+          `CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(([^)]*)\\)`,
+          "i",
+        ).exec(texto);
+        assert(r, `${fn}: não definida nesta migration`);
+        const tipos = r[1]
+          .split(",")
+          .map((a) =>
+            a
+              .trim()
+              .replace(/\s+/g, " ")
+              .replace(/ DEFAULT .*$/i, ""),
+          )
+          .filter((a) => a !== "")
+          .map((a) => a.split(" ").slice(1).join(" "));
+        return `${fn}(${tipos.join(", ")})`;
+      };
+      assertEquals(assinaturas9091.size, 5);
+      for (const [fn, assinatura] of assinaturas9091) {
+        assertEquals(
+          assinatura,
+          assinaturaDe(donos[fn][0], fn),
+          `${fn}: a assinatura em 8a difere da do CREATE FUNCTION na migration 90/91`,
+        );
+      }
+      for (const [fn, h] of base9091) {
+        const [mig, rb] = donos[fn];
+        assertEquals(
+          createHash("md5")
+            .update(corpoDe(mig, fn).replace(/\r/g, ""))
+            .digest("hex"),
+          h,
+          `${fn}: o corpo na migration 90/91 mudou — recalcule o baseline de 8a`,
+        );
+        assertStringIncludes(
+          rb,
+          h,
+          `${fn}: o pré-voo do rollback não tem o mesmo md5`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "8a — as tabelas/colunas da 90/91 em 8a existem nas migrations (nome, coluna e RLS)",
+    async () => {
+      const m90 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql`,
+      );
+      const m91 = await Deno.readTextFile(
+        `${MIGRATIONS_DIR}/20261191000000_aviso_de_cobranca_duplicada_sai_uma_vez.sql`,
+      );
+      const bloco = fatia(sql8a, "tabelas_90_91(tabela", "novas(fn)");
+      const linhas = [
+        ...bloco.matchAll(
+          /\('([a-z_]+)', '([a-z_]+)', '([a-z ]+)', '(9[01])'\)/g,
+        ),
+      ];
+      assertEquals(linhas.length, 6);
+      for (const [, tabela, coluna, , mig] of linhas) {
+        const texto = mig === "90" ? m90 : m91;
+        const ini = texto.indexOf(
+          `CREATE TABLE IF NOT EXISTS public.${tabela}`,
+        );
+        assert(ini >= 0, `${tabela}: CREATE TABLE não achado na ${mig}`);
+        const def = texto.slice(ini, texto.indexOf(");", ini));
+        assert(
+          def.includes(coluna),
+          `${tabela}.${coluna}: não está no CREATE TABLE da ${mig}`,
+        );
+        assertStringIncludes(
+          texto,
+          `ALTER TABLE public.${tabela} ENABLE ROW LEVEL SECURITY`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "as funções de 8a/8e são exatamente as que 92..202 criam ou substituem",
+    () => {
+      const definidas = new Set<string>();
+      for (const n of nomes) {
+        for (const x of textos[n].matchAll(
+          /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z_0-9]+)\s*\(/gi,
+        ))
+          definidas.add(x[1]);
+      }
+      assertEquals([...definidas].sort(), [...final.keys()].sort());
+    },
+  );
+
+  await t.step(
+    "a base do liberar_cobranca_do_pedido em 8a é a que o pin do script usa",
+    async () => {
+      // a 92..202 não a redefine (guarda em ci_verificar_pagamentos_config_cartao_test.ts)
+      for (const n of nomes) {
+        assert(
+          !/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.liberar_cobranca_do_pedido\s*\(/i.test(
+            textos[n],
+          ),
+          `${n} redefine liberar_cobranca_do_pedido: a BASE de 8a deixa de valer`,
+        );
+      }
+      assertStringIncludes(sql8a, "bae7882a60430547ee32b4b2092580a8");
+      const {
+        hashesEsperados,
+      } = require("../scripts/publicacao/verificar-pagamentos-ikcous.cjs");
+      assertEquals(
+        hashesEsperados().liberar,
+        "bae7882a60430547ee32b4b2092580a8",
+        "a BASE de 8a tem de ser o mesmo md5 que a prova do publicar-functions pina",
+      );
+    },
+  );
+});
+
 Deno.test("ehCaractereDeIdentificador — a regra real do Postgres (rodada 3)", () => {
   const { ehCaractereDeIdentificador } = require(SCRIPT);
   for (const ch of ["a", "Z", "0", "_", "$"]) {

@@ -34,6 +34,9 @@
  * (padrão `rodar`, o `execSync` de verdade) só para o teste poder injetar
  * uma saída fabricada sem mexer em PATH nem chamar processo nenhum.
  */
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   assert,
   assertEquals,
@@ -41,7 +44,7 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 
 const MODULO = new URL("../scripts/lint-ratchet.mjs", import.meta.url).href;
-const { contarBiome } = await import(MODULO);
+const { contarBiome, contarEslint } = await import(MODULO);
 
 const CABECALHO_JSON_INSTAVEL =
   "The --json option is unstable/experimental and its output might change between patches/minor releases.\n";
@@ -161,4 +164,145 @@ Deno.test("contarBiome ignora o rodapé decorativo que o Biome imprime DEPOIS do
   const saida = `${saidaBiomeContou(3, 0)}\nlixo depois do rodapé {não é json`;
   const r = contarBiome(() => saida);
   assertEquals(r, { errors: 3, warnings: 0 });
+});
+
+// ---------------------------------------------------------------------------
+// contarEslint — o ruído do Babel no stdout não pode se misturar ao JSON
+//
+// O DEFEITO: `contarEslint` lia o JSON do eslint do STDOUT (`rodar` junta
+// stdout e stderr) e fazia `JSON.parse(saida.slice(saida.indexOf("[")))`.
+// Quando o arquivo supabase/functions/criar-pagamento/index_test.ts passou de
+// 500 KB, o @babel/generator (usado por alguma regra do eslint) passou a
+// imprimir "[BABEL] Note: The code generator has deoptimised the styling of
+// ... as it exceeds the max of 500KB." — DEPOIS do JSON, na mesma saída — e o
+// parse estourava com "Unexpected non-whitespace character after JSON". O
+// ruído também pode vir ANTES do JSON, e aí o `indexOf("[")` pegaria o
+// "[BABEL]" do próprio ruído. A correção tira o JSON do canal sujo: o eslint
+// escreve o relatório em arquivo (`--output-file`) e o stdout vira só ruído.
+//
+// `eslintFalso` imita o eslint de verdade nos dois protocolos: se o comando
+// pede `--output-file "<caminho>"`, grava o relatório lá e imprime só o ruído;
+// se não pede, imprime ruído + JSON + ruído no stdout (o comportamento que o
+// script tinha — é ele que o primeiro teste reprova).
+// ---------------------------------------------------------------------------
+const NOTA_BABEL =
+  "[BABEL] Note: The code generator has deoptimised the styling of C:\\repo\\supabase\\functions\\criar-pagamento\\index_test.ts as it exceeds the max of 500KB.\n";
+
+function relatorioEslint(errors, warnings) {
+  // Dois arquivos: a catraca soma errorCount/warningCount de todos.
+  return JSON.stringify([
+    { filePath: "a.ts", messages: [], errorCount: errors, warningCount: 0 },
+    { filePath: "b.ts", messages: [], errorCount: 0, warningCount: warnings },
+  ]);
+}
+
+function eslintFalso(relatorio, antes, depois) {
+  return (comando) => {
+    const pedido = comando.match(/--output-file "([^"]+)"/);
+    if (pedido) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- o caminho é o que o próprio script sob teste pediu, numa pasta temporária
+      writeFileSync(pedido[1], relatorio);
+      return `${antes}${depois}`;
+    }
+    return `${antes}${relatorio}${depois}`;
+  };
+}
+
+function pastaTemporaria() {
+  return mkdtempSync(join(tmpdir(), "lint-ratchet-teste-"));
+}
+
+Deno.test("contarEslint conta certo quando a nota do Babel vem DEPOIS do JSON (o defeito real)", () => {
+  const r = contarEslint(eslintFalso(relatorioEslint(2, 7), "", NOTA_BABEL));
+  assertEquals(r, { errors: 2, warnings: 7 });
+});
+
+Deno.test("contarEslint conta certo quando a nota do Babel vem ANTES do JSON (o indexOf('[') pegaria o '[BABEL]')", () => {
+  const r = contarEslint(eslintFalso(relatorioEslint(0, 453), NOTA_BABEL, ""));
+  assertEquals(r, { errors: 0, warnings: 453 });
+});
+
+Deno.test("contarEslint conta certo com ruído dos dois lados, inclusive ruído que parece JSON", () => {
+  const ruido = `${NOTA_BABEL}{"errorCount": 999, "warningCount": 999}\n[1, 2, 3]\n`;
+  const r = contarEslint(eslintFalso(relatorioEslint(1, 4), ruido, ruido));
+  assertEquals(r, { errors: 1, warnings: 4 });
+});
+
+Deno.test("contarEslint REPROVA (lança) quando o eslint não escreve o relatório — nunca vira {0, 0}", () => {
+  const pasta = pastaTemporaria();
+  try {
+    assertThrows(
+      () =>
+        contarEslint(
+          () => `${NOTA_BABEL}Oops! Something went wrong! :(\n`,
+          join(pasta, "eslint.json"),
+        ),
+      Error,
+      "eslint não devolveu JSON",
+    );
+  } finally {
+    rmSync(pasta, { recursive: true, force: true });
+  }
+});
+
+Deno.test("contarEslint não lê o relatório VELHO de uma rodada anterior quando o eslint de agora falha", () => {
+  // Controle do arquivo de saída: sem apagar antes, um eslint que quebra
+  // (config inválida, falta de memória) seria satisfeito pelo JSON da última
+  // rodada boa e a catraca aprovaria um número que não é de agora.
+  const pasta = pastaTemporaria();
+  const arquivo = join(pasta, "eslint.json");
+  try {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho dentro de uma pasta temporária criada pelo próprio teste
+    writeFileSync(arquivo, relatorioEslint(0, 1));
+    assertThrows(
+      () => contarEslint(() => "eslint travou\n", arquivo),
+      Error,
+      "eslint não devolveu JSON",
+    );
+  } finally {
+    rmSync(pasta, { recursive: true, force: true });
+  }
+});
+
+Deno.test("contarEslint REPROVA quando o arquivo existe mas o conteúdo não é a lista de resultados do eslint", () => {
+  const pasta = pastaTemporaria();
+  try {
+    assertThrows(
+      () =>
+        contarEslint(
+          eslintFalso('{"nao": "e lista"}', "", ""),
+          join(pasta, "eslint.json"),
+        ),
+      Error,
+      "eslint não devolveu JSON",
+    );
+    assertThrows(
+      () =>
+        contarEslint(
+          eslintFalso("[BABEL] isto nem e JSON", "", ""),
+          join(pasta, "eslint.json"),
+        ),
+      Error,
+      "eslint não devolveu JSON",
+    );
+  } finally {
+    rmSync(pasta, { recursive: true, force: true });
+  }
+});
+
+Deno.test("contarEslint limpa a pasta temporária que criou", () => {
+  let arquivoUsado = "";
+  const r = contarEslint((comando) => {
+    arquivoUsado = comando.match(/--output-file "([^"]+)"/)[1];
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- o caminho é o que o próprio script sob teste pediu, numa pasta temporária
+    writeFileSync(arquivoUsado, relatorioEslint(0, 0));
+    return "";
+  });
+  assertEquals(r, { errors: 0, warnings: 0 });
+  assert(arquivoUsado !== "", "o comando precisa pedir --output-file");
+  assert(
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem: caminho temporário pedido pelo script sob teste
+    !existsSync(arquivoUsado),
+    "o arquivo temporário do relatório deveria ter sido removido",
+  );
 });

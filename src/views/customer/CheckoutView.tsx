@@ -36,6 +36,7 @@ import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroCancelamentoNaoConcluido,
   mensagemAmigavelErroAtualizacaoStatus,
   mensagemAmigavelErroPedido,
   useOrders,
@@ -69,6 +70,11 @@ import {
   primeiraFormaDePagamentoDisponivel,
 } from "@/lib/guarda-de-frete";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import {
+  esquecerPedidoPendenteDoCheckout,
+  guardarPedidoPendenteDoCheckout,
+} from "@/lib/pedido-pendente-do-checkout";
 import { aguardarComPrazo } from "@/lib/prazo-da-requisicao";
 import { precoVendido } from "@/lib/preco-vendido";
 import {
@@ -128,6 +134,13 @@ import { createPortal, flushSync } from "react-dom";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
+
+// F4 (fase 3 dos pagamentos, 04/10/2026): quanto a retomada espera a leitura
+// do pedido antes de avisar que não deu. Local (e não `comTempoLimite` de
+// PagamentoOnline): a leitura é um query builder do supabase-js, não uma
+// Promise, e este arquivo não importa nada de PagamentoOnline além do
+// componente e dos tipos.
+const TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS = 15_000;
 
 // Intervalo da verificação periódica da tela do PIX (ver o useEffect de
 // polling, no corpo do componente) — extraído para constante porque o teto
@@ -587,6 +600,12 @@ interface CheckoutViewProps {
   // Frente 10 (29/09/2026): id do pedido cujo pagamento está sendo retomado
   // do card do pedido — liga a tela de pagamento DIRETO, sem carrinho.
   readonly retomarPedidoId?: string;
+  // Recarga (04/10/2026): o `retomarPedidoId` veio do registro da aba
+  // (pedido-pendente-do-checkout.ts), não de um toque do cliente — o pedido
+  // que a leitura prova não ser dele, não existir ou não ser de pagamento
+  // online sai de cena calado, e o pago entre a saída e a volta mostra a
+  // confirmação.
+  readonly retomadaDaRecarga?: boolean;
 }
 
 export function CheckoutView({
@@ -597,7 +616,8 @@ export function CheckoutView({
   onClearCart: propOnClearCart,
   onNavigate,
   onSetBackOverride,
-  retomarPedidoId,
+  retomarPedidoId: retomarPedidoIdRecebido,
+  retomadaDaRecarga = false,
 }: CheckoutViewProps) {
   const {
     config,
@@ -1193,6 +1213,16 @@ export function CheckoutView({
   const [statusPagamentoPix, setStatusPagamentoPix] = useState<
     "confirmado" | "fora-do-prazo" | null
   >(null);
+  // F1 (04/10/2026): o SERVIDOR já gravou este pedido como morto
+  // (`expirado`, ou `aguardando` + `cancelled`) — a tela do PIX deixa de
+  // mostrar QR e "Copiar código" como válidos (o banco recusaria o código).
+  // Guarda o PEDIDO a que pertence (mesmo desenho de
+  // `pedidoComCobrancaIncerta`). Só o servidor decide, nunca o relógio do
+  // aparelho; e a verificação periódica NÃO para por causa disto: o pagamento
+  // que chega depois ainda vira "pago fora do prazo".
+  const [pedidoMortoNoServidorId, setPedidoMortoNoServidorId] = useState<
+    string | null
+  >(null);
   // CHECKOUT-050: falha da criação da cobrança precisa ficar NA TELA — um
   // toast (2500ms, sonner.tsx) some antes do cliente sair de olhar o botão
   // "Pagar", no rodapé, para o topo. `categoria` decide se existe "Tentar de
@@ -1391,6 +1421,53 @@ export function CheckoutView({
   // (a sessão que cai rebaixa "online" para "pix") trocaria a tela do
   // cartão por uma cobrança PIX criada sozinha.
   const [metodoDoPedido, setMetodoDoPedido] = useState<MetodoOnline>("pix");
+  // Recarga (04/10/2026): o pedido que veio do registro da aba e que a
+  // leitura provou não ser deste cliente, não existir ou não ser de pagamento
+  // online sai de cena CALADO — daqui em diante o checkout é o de sempre, e
+  // nenhum caminho que lê `retomarPedidoId` (a verificação, a escolha da
+  // forma, o "Pagar com PIX" da verificação) enxerga o id descartado.
+  const [retomadaDescartada, setRetomadaDescartada] = useState<string | null>(
+    null,
+  );
+  const retomarPedidoId =
+    retomarPedidoIdRecebido !== undefined &&
+    retomarPedidoIdRecebido !== retomadaDescartada
+      ? retomarPedidoIdRecebido
+      : undefined;
+  // O dono que a leitura da recarga confere (e de quem é o registro da aba).
+  const idDoUsuarioDaRetomada = user?.id;
+  // Recarga: pago entre a saída e a volta — a tela de confirmado, nada monta.
+  // Carrega o PEDIDO, o USUÁRIO e o VALOR a que pertence (o mesmo invariante
+  // de `falhaDaRetomada`): só vale enquanto a retomada e o usuário forem
+  // esses — outra retomada (ou outra conta) na mesma instância nunca herda a
+  // confirmação, nem o valor, de um pedido anterior.
+  const [confirmacaoDaRecarga, setConfirmacaoDaRecarga] = useState<{
+    readonly pedidoId: string;
+    readonly userId: string;
+    readonly valor: number;
+  } | null>(null);
+  const retomadaJaPaga =
+    confirmacaoDaRecarga !== null &&
+    retomarPedidoId !== undefined &&
+    confirmacaoDaRecarga.pedidoId === retomarPedidoId &&
+    idDoUsuarioDaRetomada !== undefined &&
+    confirmacaoDaRecarga.userId === idDoUsuarioDaRetomada;
+  // F4: `"falhou"` mostra a mensagem; `"relendo"` é o intervalo entre o toque
+  // em "Tentar de novo" e a resposta (a mensagem fica, sem o botão, em vez de
+  // piscar o checkout vazio). `tentativaDaRetomada` refaz a leitura.
+  //
+  // R3 (revisão): o estado carrega o PEDIDO a que pertence (mesmo desenho de
+  // `pedidoComCobrancaIncerta`) — se `retomarPedidoId` mudar, o aviso do
+  // pedido A não fica por cima da leitura do B, sem precisar de efeito.
+  const [falhaDaRetomada, setFalhaDaRetomada] = useState<{
+    readonly pedido: string;
+    readonly estado: "falhou" | "relendo";
+  } | null>(null);
+  const retomadaFalhouNaLeitura =
+    falhaDaRetomada !== null && falhaDaRetomada.pedido === retomarPedidoId
+      ? falhaDaRetomada.estado
+      : null;
+  const [tentativaDaRetomada, setTentativaDaRetomada] = useState(0);
   // ── Frente 10 (missão de pagamentos, 29/09/2026): RETOMADA ──────────────
   // O cliente que sai do checkout antes de pagar voltava pelo card do pedido
   // (OrderDetailsView → "Retomar pagamento") e caía num checkout de CARRINHO
@@ -1402,9 +1479,31 @@ export function CheckoutView({
   // vive, cria outra com chave de tentativa nova se a anterior morreu, e
   // 409 terminal se o pedido não é mais cobrável (a tela já trata o
   // terminal). Nunca cobrança duplicada, nunca pedido perdido.
+  //
+  // F4 (04/10/2026): a leitura que NÃO volta — erro, estouro de tempo ou
+  // pedido que não aparece (não existe, ou a RLS não deixa ler) — antes caía
+  // calada num checkout de carrinho vazio. Agora vira `retomadaFalhouNaLeitura`
+  // (mensagem com "Tentar de novo" e "Ver meus pedidos", mais abaixo). Nada
+  // monta nem cobra sem a leitura: tudo o que liga o pagamento continua
+  // DEPOIS de `data` chegar. Uma leitura por toque, sem repetição automática.
   useEffect(() => {
     if (!retomarPedidoId) return;
+    const pedidoRetomado = retomarPedidoId;
     let vivo = true;
+    // Só a PRIMEIRA saída vale: o estouro e a resposta correm lado a lado, e
+    // a resposta que chega depois do aviso não liga cobrança por baixo da
+    // mensagem (o cliente decide no "Tentar de novo").
+    let respondeu = false;
+    const relogio = setTimeout(
+      () => falhar(),
+      TEMPO_LIMITE_DA_LEITURA_DA_RETOMADA_MS,
+    );
+    const falhar = () => {
+      if (!vivo || respondeu) return;
+      respondeu = true;
+      clearTimeout(relogio);
+      setFalhaDaRetomada({ pedido: pedidoRetomado, estado: "falhou" });
+    };
     // P1 da revisão da PR #711 (29/09/2026): NADA liga antes da leitura do
     // método REAL do pedido. `metodoDoPedido` nasce "pix"; se
     // orderId/aguardandoPagamento ligassem aqui, um pedido de CARTÃO em
@@ -1417,12 +1516,68 @@ export function CheckoutView({
     supabase
       .from("marketplace_orders")
       .select(
-        "total, metodo_online, gateway_payment_id, payment_status, status",
+        "total, metodo_online, gateway_payment_id, payment_status, status, user_id",
       )
       .eq("id", retomarPedidoId)
       .maybeSingle()
-      .then(({ data }) => {
-        if (!vivo || !data) return;
+      .then(({ data, error }) => {
+        if (!vivo || respondeu) return;
+        // Recarga: o id veio do registro da aba, não de um toque — o que não
+        // é pedido de pagamento online DESTE cliente sai de cena calado
+        // (`retomadaDescartada`), e o checkout segue o fluxo de sempre. Erro
+        // de leitura NÃO é descarte: o aviso com "Tentar de novo" de sempre.
+        const descartarCalado = () => {
+          respondeu = true;
+          clearTimeout(relogio);
+          setFalhaDaRetomada(null);
+          setRetomadaDescartada(pedidoRetomado);
+        };
+        if (retomadaDaRecarga && !error && !data) {
+          descartarCalado();
+          return;
+        }
+        if (error || !data) {
+          falhar();
+          return;
+        }
+        if (retomadaDaRecarga) {
+          const {
+            user_id: dono,
+            payment_status: pagamento,
+            status: situacao,
+          } = data as {
+            user_id?: unknown;
+            payment_status?: unknown;
+            status?: unknown;
+          };
+          // O dono é conferido na LINHA, não só pela RLS: a política de
+          // leitura deixa o admin ver pedido alheio. Sem sessão, sem dono.
+          // Pedido de entrega tem `payment_status` NULL (ou
+          // `recebido_na_entrega`) — nunca passou por pagamento online.
+          if (
+            typeof dono !== "string" ||
+            dono !== idDoUsuarioDaRetomada ||
+            typeof pagamento !== "string" ||
+            pagamento === "recebido_na_entrega"
+          ) {
+            descartarCalado();
+            return;
+          }
+          if (pagamento === "pago" && situacao !== "cancelled") {
+            respondeu = true;
+            clearTimeout(relogio);
+            setFalhaDaRetomada(null);
+            setConfirmacaoDaRecarga({
+              pedidoId: pedidoRetomado,
+              userId: dono,
+              valor: Number((data as { total: unknown }).total ?? 0),
+            });
+            return;
+          }
+        }
+        respondeu = true;
+        clearTimeout(relogio);
+        setFalhaDaRetomada(null);
         // SENTINELA (P1 + ordem do dono, 29/09/2026): vaga
         // "verificando:..." é um CARTÃO ambíguo aguardando reconciliação
         // no servidor (metodo_online costuma vir null nesse estado, mas o
@@ -1509,11 +1664,17 @@ export function CheckoutView({
         }
         setOrderId(retomarPedidoId);
         setAguardandoPagamento(true);
-      });
+      }, falhar);
     return () => {
       vivo = false;
+      clearTimeout(relogio);
     };
-  }, [retomarPedidoId]);
+  }, [
+    retomarPedidoId,
+    tentativaDaRetomada,
+    retomadaDaRecarga,
+    idDoUsuarioDaRetomada,
+  ]);
   // Valor e método vêm do PEDIDO (o carrinho já foi limpo): o valor aqui é
   // COSMÉTICO (quem decide o valor cobrado é a edge, `pedido.total`); o
   // método retoma o da última tentativa quando legível. O gateway_payment_id
@@ -1590,6 +1751,46 @@ export function CheckoutView({
     setOrderId(pedidoDaEscolha);
     setAguardandoPagamento(true);
   };
+  // Recarga (04/10/2026): o registro da aba (SÓ o id do pedido — ver
+  // pedido-pendente-do-checkout.ts) acompanha o pedido que ESTA tela está
+  // pagando ou retomando, para a recarga voltar a ele. Some quando o pedido
+  // sai de pendente (pago, pago fora do prazo, morto no servidor, não aguarda
+  // mais) e quando não há pedido em pagamento na tela (checkout de carrinho,
+  // pedido descartado). A recusa do cartão NÃO tira o pedido de pendente: ele
+  // continua retomável (a mesma regra do "Retomar pagamento" do card).
+  // Nada é limpo ao desmontar de propósito: a recarga não desmonta, e a
+  // saída do checkout é limpa pelo App (handleNavigate).
+  const pedidoEmPagamentoNaTela =
+    aguardandoPagamento && orderId !== "" ? orderId : (retomarPedidoId ?? null);
+  const pedidoSaiuDePendente =
+    statusPagamentoPix !== null ||
+    (pedidoEmPagamentoNaTela !== null &&
+      pedidoMortoNoServidorId === pedidoEmPagamentoNaTela) ||
+    retomadaSemPagamentoPendente ||
+    retomadaJaPaga;
+  const pedidoParaARecarga = pedidoSaiuDePendente
+    ? null
+    : pedidoEmPagamentoNaTela;
+  // O registro só se apaga por uma DECISÃO: o pedido que esta instância
+  // acompanhava saiu de cena (pago, morto, descartado pela leitura, pagamento
+  // cancelado na tela). "Nenhum pedido na tela" SEM nunca ter acompanhado um
+  // NÃO é decisão: com a rede lenta este checkout monta antes de a sessão
+  // chegar (sem usuário, sem pedido), e apagar aqui desfazia a recarga — o
+  // registro do usuário que acabou de chegar sumia sem ninguém tê-lo lido.
+  const pedidoQueEstaTelaAcompanhouRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!idDoUsuarioDaRetomada) return;
+    if (pedidoParaARecarga) {
+      guardarPedidoPendenteDoCheckout(
+        idDoUsuarioDaRetomada,
+        pedidoParaARecarga,
+      );
+      pedidoQueEstaTelaAcompanhouRef.current = pedidoParaARecarga;
+    } else if (pedidoQueEstaTelaAcompanhouRef.current !== null) {
+      esquecerPedidoPendenteDoCheckout(idDoUsuarioDaRetomada);
+      pedidoQueEstaTelaAcompanhouRef.current = null;
+    }
+  }, [idDoUsuarioDaRetomada, pedidoParaARecarga]);
   // Mesmo motivo do valorDoPedido: onClearCart() zera `cart` duas linhas
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
@@ -2304,6 +2505,15 @@ export function CheckoutView({
       if (data.payment_status === "pago_apos_expirar") {
         setStatusPagamentoPix("fora-do-prazo");
         return;
+      }
+
+      // F1: o pedido morto no servidor — mesma definição de "fechado" que a
+      // regra L1, abaixo, usa para o cartão (que não é tocada por isto).
+      if (
+        data.payment_status === "expirado" ||
+        (data.payment_status === "aguardando" && data.status === "cancelled")
+      ) {
+        setPedidoMortoNoServidorId(orderId);
       }
 
       // C6 (P1, achado B1): a tentativa de cartão terminou sem pagamento.
@@ -3313,7 +3523,19 @@ export function CheckoutView({
         // `cancelamentoBloqueadoPelaGuardaDoCartao`, acima: NUNCA
         // `pedidoTemCobrancaIncerta` aqui, que também esconderia "Pagar com
         // PIX".
-        if (guardaBarrouComMensagemPropria) {
+        // S1 (04/10/2026): o cancelamento agora passa pela edge, que anula
+        // a cobrança no MP antes. Cartão em análise e "acabou de ser pago"
+        // são a mesma situação da guarda acima para este botão: cancelar de
+        // novo bateria na mesma resposta — esconde só ele (o pago aparece na
+        // tela de pedidos quando a confirmação chegar). "Tente de novo" e
+        // "mudou" mantêm o botão.
+        const naoConcluidoPelaEdge =
+          erroRpc instanceof ErroCancelamentoNaoConcluido ? erroRpc : null;
+        if (
+          guardaBarrouComMensagemPropria ||
+          naoConcluidoPelaEdge?.desfecho === "em_analise" ||
+          naoConcluidoPelaEdge?.desfecho === "ja_pago"
+        ) {
           setCancelamentoBloqueadoPelaGuardaDoCartao(true);
         }
         // Precedente ADMIN-010 (#94): só não segue em frente quando a
@@ -3322,9 +3544,11 @@ export function CheckoutView({
         setErroCancelamento(
           statusFinal && statusFinal !== "pending"
             ? "Este pedido não está mais pendente — o lojista já deve ter começado a prepará-lo. Fale com a loja se ainda quiser cancelar."
-            : guardaBarrouComMensagemPropria
-              ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
-              : "Não foi possível confirmar o cancelamento. Tente novamente.",
+            : naoConcluidoPelaEdge
+              ? naoConcluidoPelaEdge.message
+              : guardaBarrouComMensagemPropria
+                ? mensagemAmigavelErroAtualizacaoStatus(erroRpc)
+                : "Não foi possível confirmar o cancelamento. Tente novamente.",
         );
         return;
       }
@@ -3363,7 +3587,7 @@ export function CheckoutView({
     if (!lojaTemWhatsappNoCheckout) return;
     let phone = numeroLimpoDoCheckout;
     if (phone.length === 11 || phone.length === 10) phone = `55${phone}`;
-    const mensagem = `Olá! Meu pedido #${idDoPedido.slice(-6).toUpperCase()} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
+    const mensagem = `Olá! Meu pedido #${numeroDoPedido(idDoPedido)} tem um pagamento de cartão pendente de confirmação. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -3389,6 +3613,62 @@ export function CheckoutView({
         }
         onRetomadaLiberada={liberarRetomadaDepoisDaVerificacao}
         onPagarComPix={pagarComPixDepoisDaVerificacao}
+      />
+    );
+  }
+
+  if (retomadaFalhouNaLeitura !== null && retomarPedidoId) {
+    return (
+      <div className="mx-auto min-h-dvh w-full max-w-md space-y-4 bg-gray-50/10 px-3.5 pt-4">
+        <h1 className="text-lg font-bold text-zinc-900">
+          Retomar o pagamento do pedido
+        </h1>
+        {retomadaFalhouNaLeitura === "relendo" ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 text-sm text-zinc-600"
+          >
+            <Loader2 className="size-4 animate-spin" />
+            Abrindo o pedido…
+          </p>
+        ) : (
+          <>
+            <p role="alert" className="text-sm font-medium text-red-700">
+              Não foi possível abrir o pagamento deste pedido agora. Nada foi
+              cobrado nesta tentativa.
+            </p>
+            <Button
+              onClick={() => {
+                setFalhaDaRetomada({
+                  pedido: retomarPedidoId,
+                  estado: "relendo",
+                });
+                setTentativaDaRetomada((n) => n + 1);
+              }}
+              className="w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-900/90"
+            >
+              Tentar de novo
+            </Button>
+          </>
+        )}
+        <Button
+          onClick={() => onNavigate("orders")}
+          variant="outline"
+          className="w-full rounded-xl"
+        >
+          Ver meus pedidos
+        </Button>
+      </div>
+    );
+  }
+
+  if (retomadaJaPaga && confirmacaoDaRecarga) {
+    return (
+      <PagamentoConfirmadoView
+        orderId={confirmacaoDaRecarga.pedidoId}
+        valor={confirmacaoDaRecarga.valor}
+        onNavigate={onNavigate}
       />
     );
   }
@@ -3746,8 +4026,19 @@ export function CheckoutView({
                 cartão): a tela de pedidos não oferece nada que cobra, e
                 cancelar por lá esbarra na MESMA guarda P0001. */}
             {pedidoTemCobrancaIncerta ? (
-              erroPagamento.categoria === "terminal" &&
-              (lojaTemWhatsappNoCheckout ? (
+              erroPagamento.categoria !== "terminal" ? (
+                // Fase 3 (04/10/2026, R2 da revisão): erro RECUPERÁVEL com a
+                // cobrança incerta — só havia "Tentar de novo"; se o erro se
+                // repetisse, o cliente ficava sem saída. "Ver meus pedidos"
+                // não cobra nada e "Cancelar pedido" continua escondido.
+                <Button
+                  onClick={() => onNavigate("orders")}
+                  variant="outline"
+                  className="w-full rounded-xl"
+                >
+                  Ver meus pedidos
+                </Button>
+              ) : lojaTemWhatsappNoCheckout ? (
                 <Button
                   onClick={handleFalarComALojaSobreCartao}
                   variant="outline"
@@ -3763,7 +4054,7 @@ export function CheckoutView({
                 >
                   Ver meus pedidos
                 </Button>
-              ))
+              )
             ) : cancelamentoBloqueadoPelaGuardaDoCartao ? (
               lojaTemWhatsappNoCheckout ? (
                 <Button
@@ -3860,6 +4151,9 @@ export function CheckoutView({
             configDoCartao={configDoCartao}
             emailDoPagador={user?.email ?? null}
             cobrancaIncerta={pedidoTemCobrancaIncerta}
+            pedidoMortoNoServidor={
+              orderId !== "" && pedidoMortoNoServidorId === orderId
+            }
             onVerMeusPedidos={() => onNavigate("orders")}
             // "Pagar com PIX" depois de um cartão recusado: um "Tentar de
             // novo" posterior remonta já no PIX, não de volta no cartão.
@@ -3874,6 +4168,26 @@ export function CheckoutView({
             // pedido" reaparecia sobre um cartão que podia ter sido aprovado.
             onCartaoEmCurso={registrarCartaoEmCurso}
             cartaoEncerrado={cartaoEncerrado}
+            // Confirmação do cartão sem fim (03/10/2026): a consulta sem
+            // cobrança da tela do cartão (`verificar`) provou a vaga desta
+            // tentativa solta — a MESMA marca que a leitura da vaga (C6)
+            // grava, para a regra L1b reconhecer a tentativa se o pedido
+            // fechar depois.
+            onCartaoEncerradoPelaConsulta={(cartao) => {
+              if (cartao.orderId !== orderId) return;
+              cartaoEncerradoRef.current = cartao;
+              setCartaoEncerrado(cartao);
+            }}
+            // Sem sessão a consulta do cartão é recusada pela edge (404 de
+            // dono) e a verificação periódica nem roda: a tela do cartão
+            // pede para entrar de novo em vez de girar. Defesa em
+            // profundidade: no app, o App.tsx monta esta tela com a chave
+            // `checkout-${user.id}` — trocar de usuário (A→B) ou sair
+            // DESMONTA tudo, e a limpeza dos efeitos descarta a consulta
+            // pendente do usuário anterior (nenhuma resposta dele pinta a
+            // tela do outro).
+            sessaoAtiva={Boolean(user?.id)}
+            onEntrarDeNovo={() => onNavigate("auth")}
             onTrocarParaPix={(cartaoAindaVivo) => {
               if (cartaoAindaVivo) marcarCobrancaIncerta(orderId);
               // Lacuna L1b: a tela agora é do PIX — a recusa do cartão saiu
@@ -5777,7 +6091,7 @@ function SuccessView({
     if (numeroLimpo.length === 11 || numeroLimpo.length === 10) {
       numeroLimpo = `55${numeroLimpo}`;
     }
-    const mensagem = `Olá! Quero acompanhar o meu pedido #${orderId.slice(-6).toUpperCase()}.`;
+    const mensagem = `Olá! Quero acompanhar o meu pedido #${numeroDoPedido(orderId)}.`;
     const url = `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -5807,9 +6121,7 @@ function SuccessView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Identificador:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <div className="mx-auto max-w-[300px]">
           <p className="text-sm font-medium leading-relaxed text-zinc-500">
@@ -5891,9 +6203,7 @@ function PagamentoConfirmadoView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Pedido:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-emerald-700">
           R$ {valor.toFixed(2).replace(".", ",")} recebido
@@ -5969,7 +6279,7 @@ function PagamentoForaDoPrazoView({
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
     }
-    const mensagem = `Olá! Paguei o pedido #${orderId.slice(-6).toUpperCase()}, mas o prazo de reserva venceu. Podem me ajudar?`;
+    const mensagem = `Olá! Paguei o pedido #${numeroDoPedido(orderId)}, mas o prazo de reserva venceu. Podem me ajudar?`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(mensagem)}`;
     // Achado 2, rodada 5 (addendum): sem "noopener", a aba nova do wa.me
     // ganha `window.opener` apontando para esta tela — o destino (nem
@@ -5997,9 +6307,7 @@ function PagamentoForaDoPrazoView({
       <div className="mb-12 space-y-4 duration-1000 animate-in fade-in slide-in-from-bottom-8">
         <p className="text-sm font-black uppercase tracking-[0.2em] text-zinc-400">
           Pedido:{" "}
-          <span className="text-zinc-900">
-            #{orderId.slice(-6).toUpperCase()}
-          </span>
+          <span className="text-zinc-900">#{numeroDoPedido(orderId)}</span>
         </p>
         <p className="text-lg font-black text-amber-600">
           R$ {valor.toFixed(2).replace(".", ",")} recebido

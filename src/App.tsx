@@ -15,6 +15,13 @@ import {
   descreveMotivoDeRecarga,
   limpaMotivoDeRecarga,
 } from "@/lib/motivo-de-recarga";
+import {
+  PRAZO_DA_SESSAO_NA_RECARGA_MS,
+  esquecerPedidoPendenteDoCheckout,
+  esquecerTodosOsPedidosPendentesDoCheckout,
+  existeAlgumPedidoPendenteDoCheckout,
+  lerPedidoPendenteDoCheckout,
+} from "@/lib/pedido-pendente-do-checkout";
 
 // Mesmo padrão de useUpdateCheck/recuperacao-chunk: o `define` mora no build;
 // fora dele (runner de teste), o app segue de pé.
@@ -542,6 +549,86 @@ const AppContent = () => {
   const [checkoutRetomadaId, setCheckoutRetomadaId] = useState<string | null>(
     null,
   );
+  // Recarga (04/10/2026): o PIX pendente sobrevive ao F5. O CheckoutView
+  // guarda SÓ o id do pedido em pagamento no `sessionStorage`, por usuário
+  // (src/lib/pedido-pendente-do-checkout.ts); a página CARREGADA já em
+  // /checkout devolve esse id como retomada — o MESMO caminho do "Retomar
+  // pagamento" do card, com `retomadaDaRecarga` para o CheckoutView
+  // descartar calado o que não for pedido online pendente deste cliente.
+  const [retomadaDaRecarga, setRetomadaDaRecarga] = useState(false);
+  // Lido uma vez, na montagem: é a URL da CARGA da página, não a de agora.
+  const [cargaNoCheckout] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      globalThis.location.pathname.replace(/\/$/, "") === "/checkout",
+  );
+  // Até o App decidir (sessão conhecida), o checkout da carga não monta —
+  // senão um checkout de carrinho vazio montaria antes da retomada.
+  const [recargaDoCheckoutDecidida, setRecargaDoCheckoutDecidida] =
+    useState(false);
+  // O cliente navegou antes da decisão: a carga deixou de ser "o F5 no
+  // checkout", e nada é restaurado por cima da navegação dele.
+  const navegouAntesDaRecargaRef = useRef(false);
+  const idDoUsuarioDaRecarga = user?.id;
+  // Sessão ATRASADA (rede lenta: o `getSession` perde a corrida de 3 s do
+  // AuthContext e a sessão chega depois): carga em /checkout COM registro na
+  // aba e SEM usuário ainda não é "não há pedido" — é "não sei de quem é o
+  // registro". O App espera a sessão (o estado do AuthContext, sem sondagem)
+  // por no máximo PRAZO_DA_SESSAO_NA_RECARGA_MS; vencido, o checkout abre
+  // como hoje, sem retomada e SEM apagar o registro. Sem registro na carga,
+  // nada espera: o caminho normal não ganha nenhum quadro em branco a mais.
+  const [haRegistroNaCarga] = useState(
+    () => cargaNoCheckout && existeAlgumPedidoPendenteDoCheckout(),
+  );
+  const [prazoDaSessaoVencido, setPrazoDaSessaoVencido] = useState(false);
+  const aguardaASessaoDaRecarga =
+    haRegistroNaCarga && !idDoUsuarioDaRecarga && !prazoDaSessaoVencido;
+  useEffect(() => {
+    if (!aguardaASessaoDaRecarga || recargaDoCheckoutDecidida) return;
+    const relogio = setTimeout(
+      () => setPrazoDaSessaoVencido(true),
+      PRAZO_DA_SESSAO_NA_RECARGA_MS,
+    );
+    return () => clearTimeout(relogio);
+  }, [aguardaASessaoDaRecarga, recargaDoCheckoutDecidida]);
+  useEffect(() => {
+    if (recargaDoCheckoutDecidida || authLoading) return;
+    if (aguardaASessaoDaRecarga) return;
+    // Só o dono do registro o lê (a chave tem o id dele); visitante não tem
+    // pedido online. Nada aqui decide se o pedido ainda é cobrável: isso é
+    // a leitura do pedido no CheckoutView, sob RLS, antes de montar nada.
+    const pedido =
+      cargaNoCheckout &&
+      idDoUsuarioDaRecarga &&
+      !navegouAntesDaRecargaRef.current
+        ? lerPedidoPendenteDoCheckout(idDoUsuarioDaRecarga)
+        : null;
+    if (pedido) {
+      setCheckoutRetomadaId(pedido);
+      setRetomadaDaRecarga(true);
+    } else if (!cargaNoCheckout) {
+      // A página carregou FORA do checkout: um registro que sobrou na aba
+      // não tem mais tela para voltar.
+      esquecerTodosOsPedidosPendentesDoCheckout();
+    }
+    setRecargaDoCheckoutDecidida(true);
+  }, [
+    recargaDoCheckoutDecidida,
+    authLoading,
+    aguardaASessaoDaRecarga,
+    cargaNoCheckout,
+    idDoUsuarioDaRecarga,
+  ]);
+  // Troca DIRETA de conta na mesma aba (A → B sem SIGNED_OUT no meio — o
+  // logout já limpa pelo AuthContext): o registro de A sai junto com A.
+  const usuarioAnteriorDaRecargaRef = useRef(idDoUsuarioDaRecarga);
+  useEffect(() => {
+    const anterior = usuarioAnteriorDaRecargaRef.current;
+    usuarioAnteriorDaRecargaRef.current = idDoUsuarioDaRecarga;
+    if (anterior && anterior !== idDoUsuarioDaRecarga) {
+      esquecerPedidoPendenteDoCheckout(anterior);
+    }
+  }, [idDoUsuarioDaRecarga]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(
     null,
   );
@@ -770,6 +857,13 @@ const AppContent = () => {
       opts?: { retomarPedidoId?: string },
     ) => {
       setCheckoutRetomadaId(opts?.retomarPedidoId ?? null);
+      setRetomadaDaRecarga(false);
+      navegouAntesDaRecargaRef.current = true;
+      // O cliente navegou: a carga deixou de ser "o F5 no checkout" e não há
+      // mais decisão a esperar — nem a sessão atrasada pode segurar o
+      // checkout novo que ele acabou de abrir. (Carga fora do checkout não
+      // passa por aqui de propósito: ali a decisão apaga o registro velho.)
+      if (cargaNoCheckout) setRecargaDoCheckoutDecidida(true);
       // App-743: tocar a própria aba/view JÁ ativa é sempre só scroll-to-top
       // (ramo espelhado abaixo, em 834-842) — não há "para onde ir", então
       // isso precisa vencer o gate de formulário sujo, nunca abrir o
@@ -794,6 +888,18 @@ const AppContent = () => {
       if (isAdminDirtyRef.current && !bypassDirtyCheck) {
         setPendingNavigation({ view, id });
         return;
+      }
+
+      // Recarga: sair do checkout (toque do cliente — "Ver meus pedidos",
+      // "Voltar", a aba) larga o pedido em pagamento, e entrar num checkout
+      // NOVO (sem retomada) não pode herdar um registro que sobrou — senão o
+      // F5 do checkout novo cairia no pedido velho.
+      if (
+        view === "checkout"
+          ? !opts?.retomarPedidoId
+          : currentViewRef.current === "checkout"
+      ) {
+        esquecerTodosOsPedidosPendentesDoCheckout();
       }
 
       // Cancel pending timers from any previous transition
@@ -1119,6 +1225,7 @@ const AppContent = () => {
       isTransitionSupported,
       prefetchViewPromise,
       saveCurrentScroll,
+      cargaNoCheckout,
     ],
   );
 
@@ -1870,6 +1977,16 @@ const AppContent = () => {
           ? null
           : nextSelectedProductId;
 
+        // Recarga: o Voltar do navegador que sai do checkout larga o pedido
+        // em pagamento — a mesma limpeza da saída por `handleNavigate`.
+        if (
+          origem === "popstate" &&
+          currentViewRef.current === "checkout" &&
+          targetView !== "checkout"
+        ) {
+          esquecerTodosOsPedidosPendentesDoCheckout();
+        }
+
         if (
           currentViewRef.current === targetView &&
           selectedProductIdRef.current === finalSelectedProductId
@@ -2297,6 +2414,9 @@ const AppContent = () => {
         );
       }
       case "checkout": {
+        // Recarga: o checkout da CARGA da página espera o App decidir se há
+        // pedido a retomar (um quadro, depois da sessão conhecida).
+        if (cargaNoCheckout && !recargaDoCheckoutDecidida) return null;
         return (
           <PreloadedOrLazy
             component={CheckoutView}
@@ -2307,6 +2427,8 @@ const AppContent = () => {
               // Frente 10: pedido retomado do card (OrderDetailsView) — o
               // CheckoutView pula direto para a tela de pagamento dele.
               retomarPedidoId: checkoutRetomadaId ?? undefined,
+              retomadaDaRecarga:
+                retomadaDaRecarga && checkoutRetomadaId !== null,
             }}
           />
         );
@@ -2470,7 +2592,14 @@ const AppContent = () => {
 
     const isPrivateView = privateViews.includes(currentView);
 
-    if (authLoading && isPrivateView) {
+    // Recarga: o checkout da CARGA ainda espera o App decidir (sessão
+    // atrasada) — o MESMO carregamento do boot, nunca uma área vazia.
+    const esperandoARecargaDoCheckout =
+      currentView === "checkout" &&
+      cargaNoCheckout &&
+      !recargaDoCheckoutDecidida;
+
+    if ((authLoading && isPrivateView) || esperandoARecargaDoCheckout) {
       return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-4">
           <div className="size-12 animate-spin rounded-full border-4 border-zinc-900 border-t-transparent" />

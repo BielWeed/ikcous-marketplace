@@ -89,13 +89,16 @@ Deno.test("nenhum arquivo do par abre ou fecha transação de nível superior", 
   assertEquals(detectarTransacaoExplicita(removerRuido(rollback)).achados, []);
 });
 
-Deno.test("o ponto de partida é a 20261176: nenhuma OUTRA migration redefine registrar_estorno_manual depois dela", () => {
+Deno.test("o ponto de partida é a 20261176: nenhuma OUTRA migration ANTES desta redefine registrar_estorno_manual depois dela", () => {
+  // Só as ANTERIORES a esta: as posteriores (a 20261194, "Já estornei" só em
+  // pedido pago) partem do corpo DESTA e têm o próprio teste de ponto de
+  // partida — o preflight delas recusa se este corpo não estiver no ar.
   const nomes = [...Deno.readDirSync(`${DIR}../supabase/migrations`)]
     .filter((e) => e.isFile && /^\d+_.*\.sql$/.test(e.name))
     .map((e) => e.name)
     .filter(
       (n) =>
-        n !== NOME &&
+        n < NOME &&
         ler(n).includes("FUNCTION public.registrar_estorno_manual("),
     )
     .sort();

@@ -41,6 +41,7 @@ import {
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
+  ErroCancelamentoNaoConcluido,
   ErroPedidoMudou,
   mensagemAmigavelErroAtualizacaoStatus,
   useOrders,
@@ -49,6 +50,7 @@ import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
 import { horarioRelativo } from "@/lib/horario-relativo";
 import { mapOrderFromDB } from "@/lib/mappers";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
@@ -1059,7 +1061,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // Dispara aviso Toast
       if (payload.eventType === "INSERT") {
         const newId = payload.new?.id;
-        toast.info(`Novo pedido recebido! #${newId ? newId.slice(-6) : ""}`, {
+        toast.info(`Novo pedido recebido! #${numeroDoPedido(newId)}`, {
           action: {
             label: "Ver",
             onClick: () => {
@@ -1081,7 +1083,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           setRevalidacaoDaFicha((n) => n + 1);
         }
         toast.info(
-          `Pedido #${updatedId ? updatedId.slice(-6) : ""} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
+          `Pedido #${numeroDoPedido(updatedId)} atualizado para ${statusConfig[newStatus]?.label ?? `Status: ${newStatus}`}`,
         );
       }
 
@@ -1290,6 +1292,29 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         );
         throw err;
       }
+      // S1 (04/10/2026): o cancelamento pela edge NÃO aconteceu (o hook já
+      // mostrou o desfecho). Quando a edge relê o pedido (pago no meio, a
+      // cobrança mudou), a ficha passa a mostrar o estado de verdade — sem
+      // toast extra. Nunca marca cancelado: isso só vem da resposta da edge.
+      if (err instanceof ErroCancelamentoNaoConcluido && err.pedido) {
+        const relido = err.pedido;
+        setSelectedOrder((prev) =>
+          prev?.id === orderId
+            ? {
+                ...prev,
+                ...(typeof relido.status === "string"
+                  ? { status: relido.status as OrderStatus }
+                  : {}),
+                ...(typeof relido.paymentStatus === "string"
+                  ? {
+                      paymentStatus:
+                        relido.paymentStatus as Order["paymentStatus"],
+                    }
+                  : {}),
+              }
+            : prev,
+        );
+      }
       // `useOrders.updateOrderStatus` (catch de useOrders.ts, por volta da
       // linha 1115) já mostra o PRÓPRIO toast traduzido via
       // `mensagemAmigavelErroAtualizacaoStatus` sempre que `!silent` — mostrar
@@ -1336,7 +1361,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
     try {
       const title = "Status do Pedido Atualizado";
-      const body = `Seu pedido #${orderId.slice(-6)} agora está: ${statusConfig[newStatus].label}`;
+      const body = `Seu pedido #${numeroDoPedido(orderId)} agora está: ${statusConfig[newStatus].label}`;
 
       const {
         data: { session },
@@ -1396,7 +1421,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       // botaria o valor cru do banco, em inglês, dentro da mensagem que a
       // lojista manda para a cliente.
       const statusMsg = statusConfig[order.status] || statusConfig.pending;
-      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${order.id.slice(-6)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
+      const message = `Olá ${order.customer?.name || "Cliente"}!\n\nSeu pedido #${numeroDoPedido(order.id)} foi atualizado.\nStatus: ${statusMsg.label}\n\nObrigado por comprar na ${branding.appName}!`;
 
       // Laudo 0109 (A-7): número sem DDD+numero não abre conversa válida.
       // O util decide: sem link, o toque não abre janela nenhuma.

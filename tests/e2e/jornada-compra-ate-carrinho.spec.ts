@@ -4,8 +4,13 @@ import {
   PRODUTO_ACESSORIOS,
   PRODUTO_ROUPAS,
   abrirLoja,
+  exigirRedeSemImprevistos,
   instalarLojaFixtura,
 } from "./kit-jornadas";
+
+// Guarda de rede (kit das jornadas): requisição não prevista derruba o
+// teste, com a lista na mensagem.
+test.afterEach(exigirRedeSemImprevistos);
 
 /**
  * JORNADA (a) do despacho: home → categoria → produto → adicionar ao

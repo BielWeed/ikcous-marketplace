@@ -11,9 +11,13 @@
  *      nascem com o cluster, no service do CI não.
  *   2. Esquema `extensions` + extensões contrib que as migrations pedem:
  *      unaccent e pg_trgm (WITH SCHEMA extensions). pg_cron e pg_net NÃO
- *      existem no image oficial do postgres — avisam aqui e os arquivos que
- *      os pedem são PULADOS com aviso no apply (mesma ressalva da casa: não
- *      cobre o agendamento, cobre o schema).
+ *      existem no image oficial do postgres — avisam aqui; pg_cron ganha um
+ *      STUB (passo 6: schema cron, cron.job, cron.schedule/unschedule) e os
+ *      arquivos que pedem as extensões são REAPLICADOS no apply com as
+ *      linhas `CREATE EXTENSION` comentadas (util.cjs,
+ *      aplicarComProvisionamento) — o corpo deles entra no banco, o
+ *      agendamento não dispara (mesma ressalva da casa: não cobre o
+ *      agendamento, cobre o schema).
  *   3. Emulação do auth.* de fábrica: auth.uid()/auth.role() como stubs e
  *      auth.users com id/email/phone — é o que as policies e views validam
  *      na criação (medido no ADR 0003; o corpo opaco de função nunca roda
@@ -120,7 +124,7 @@ async function main() {
     }
     for (const extIndisponivel of ["pg_cron", "pg_net"]) {
       console.log(
-        `[provisionar] AVISO: extensão ${extIndisponivel} não existe no image oficial do postgres — arquivos que a pedem serão PULADOS com aviso no apply (não cobre o agendamento, cobre o schema).`,
+        `[provisionar] AVISO: extensão ${extIndisponivel} não existe no image oficial do postgres — arquivos que a pedem serão REAPLICADOS no apply com a linha CREATE EXTENSION comentada (não cobre o agendamento, cobre o schema).`,
       );
     }
     if (ausentes.length) {
@@ -209,10 +213,57 @@ async function main() {
       "[provisionar] storage.buckets + storage.objects mínimos criados (fábrica do serviço de storage, emulada).",
     );
 
+    // 6. pg_cron emulado por stub — a MESMA emulação de tests/banco/
+    // provisionar.cjs (passo 5, frente rpc-ci): schema cron, tabela cron.job e
+    // cron.schedule(text,text,text) -> bigint / cron.unschedule(text) ->
+    // boolean nas assinaturas que a fila usa. O agendador nunca dispara nada.
+    // POR QUE ESTÁ AQUI (PR 766, 04/10/2026): sem o schema `cron`, a
+    // 20260901 (que agenda a expiração) falhava e era PULADA INTEIRA — o banco
+    // do ci-banco ficava sem `devolver_uso_cupom` e com `confirmar_pagamento`
+    // no corpo da 20260810, um estado que nenhuma loja tem; a 20261195, que
+    // confere o corpo vivo por hash, recusava com B1_BASELINE_DIVERGENT.
+    await cliente.query('CREATE SCHEMA IF NOT EXISTS "cron"');
+    await cliente.query(`
+      CREATE TABLE IF NOT EXISTS cron.job (
+        jobid bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+        jobname text UNIQUE,
+        schedule text NOT NULL,
+        command text NOT NULL
+      )`);
+    await cliente.query(`
+      CREATE OR REPLACE FUNCTION cron.schedule(p_jobname text, p_schedule text, p_command text)
+      RETURNS bigint LANGUAGE plpgsql
+      AS $stub$
+      DECLARE
+        v_id bigint;
+      BEGIN
+        INSERT INTO cron.job (jobname, schedule, command)
+        VALUES (p_jobname, p_schedule, p_command)
+        ON CONFLICT (jobname) DO UPDATE
+          SET schedule = EXCLUDED.schedule, command = EXCLUDED.command
+        RETURNING jobid INTO v_id;
+        RETURN v_id;
+      END;
+      $stub$`);
+    await cliente.query(`
+      CREATE OR REPLACE FUNCTION cron.unschedule(p_jobname text) RETURNS boolean LANGUAGE plpgsql
+      AS $stub$
+      DECLARE
+        v_apagou boolean;
+      BEGIN
+        DELETE FROM cron.job WHERE jobname = p_jobname;
+        v_apagou := FOUND;
+        RETURN v_apagou;
+      END;
+      $stub$`);
+    console.log(
+      "[provisionar] pg_cron emulado por stub (cron.job/schedule/unschedule; nada dispara).",
+    );
+
     await cliente.end();
     sair(
       "OK",
-      "Banco efêmero provisionado: papéis, extensões contrib e auth.* de fábrica.",
+      "Banco efêmero provisionado: papéis, extensões contrib, auth.* de fábrica e pg_cron emulado.",
     );
   } catch (erro) {
     await cliente.end().catch(() => {});

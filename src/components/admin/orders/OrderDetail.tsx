@@ -16,6 +16,7 @@ import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
 } from "@/lib/idade-do-pedido-pendente";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
@@ -295,7 +296,8 @@ function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
     <header className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold tracking-tighter text-white">
-          Pedido <span className="text-admin-gold">#{order.id.slice(-6)}</span>
+          Pedido{" "}
+          <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
         </h1>
         <OrderStatusBadge status={order.status} />
         <PaymentStatusBadge
@@ -1512,7 +1514,7 @@ export const OrderDetail = memo(function OrderDetail({
 
   const handleWhatsAppDirect = () => {
     if (!whatsappUrl) return;
-    const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${order.id.slice(-6)}.`;
+    const message = `Olá ${order.customer?.name || "Cliente"}! Entramos em contato sobre o seu pedido #${numeroDoPedido(order.id)}.`;
     globalThis.open(
       `${whatsappUrl}?text=${encodeURIComponent(message)}`,
       "_blank",

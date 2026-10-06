@@ -1,4 +1,5 @@
 import { branding } from "@/config/branding";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import type { Order } from "@/types";
 import { memo } from "react";
 
@@ -44,7 +45,7 @@ export const OrderReceipt = memo(function OrderReceipt({
       <div className="mx-auto hidden max-w-[80mm] border border-gray-200 bg-white p-8 font-mono text-sm text-black print:block">
         <div className="mb-4 border-b border-dashed border-black pb-4 text-center">
           <h2 className="text-xl font-bold uppercase">{storeName}</h2>
-          <p className="text-xs">Pedido #{order.id.slice(-6)}</p>
+          <p className="text-xs">Pedido #{numeroDoPedido(order.id)}</p>
           <p className="text-xs">
             {order?.createdAt
               ? new Date(order.createdAt).toLocaleString("pt-BR")

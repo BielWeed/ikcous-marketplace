@@ -574,6 +574,66 @@ describe("CheckoutView — cartão em dúvida nunca vira 'em análise pelo banco
     expect(criarPagamento).not.toHaveBeenCalled();
   });
 
+  // Ressalva da revisão do lote B (04/10/2026): o cliente com o PIX VIVO na
+  // vaga tenta o cartão numa loja sem a chave de assinatura. A edge responde
+  // 409 NÃO terminal ("Seu PIX continua valendo…"); o envio do cartão
+  // entrega isso como erro recuperável sem sinal (`enviarPagamentoComCartao`,
+  // "sem o campo, recuperável"). Prova de ponta a ponta na tela: o cliente
+  // volta ao PIX, e "Cancelar pedido" nunca aparece.
+  const MENSAGEM_PIX_CONTINUA_VALENDO =
+    "Seu PIX continua valendo. Volte e pague pelo código, ou aguarde ele vencer para escolher outra forma.";
+
+  it("PIX vivo + cartão sem chave (409 NÃO terminal): verificação -> 'pix' -> escolha da forma com 'Pagar com PIX', que remonta no PIX; nunca 'Cancelar pedido'", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+    criarPagamento.mockResolvedValue({
+      verificacao: "pix",
+      paymentId: "ORDTST01PIXNAVAGA00000000000",
+      expiraEm: PRAZO_FUTURO,
+    });
+
+    await erroDoPagamento(MENSAGEM_PIX_CONTINUA_VALENDO, "recuperavel");
+
+    // A verificação só CONSULTA (GET no MP) — nada cobra nem cancela.
+    expect(criarPagamento).toHaveBeenCalledTimes(1);
+    expect(criarPagamento.mock.calls[0][0]).toEqual({
+      orderId: "ped-999",
+      metodo: "verificar",
+    });
+    expect(hospedeiro.textContent).toContain(
+      "Como você quer pagar este pedido?",
+    );
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeUndefined();
+    expect(updateOrderStatus).not.toHaveBeenCalled();
+
+    const montagensAntes = pagamentoOnlineProps.length;
+    await act(async () => {
+      botaoPorTexto(hospedeiro, "Pagar com PIX")!.click();
+    });
+    await esvaziar();
+    expect(pagamentoOnlineProps.length).toBeGreaterThan(montagensAntes);
+    expect(props().metodo).toBe("pix");
+    expect(props().orderId).toBe("ped-999");
+    expect(updateOrderStatus).not.toHaveBeenCalled();
+  });
+
+  it("CONTROLE: a MESMA frase como terminal (a resposta antiga da edge) cai na caixa vermelha com 'Cancelar pedido' como ação principal e sem PIX", async () => {
+    const { CheckoutView } = await import("@/views/customer/CheckoutView");
+    await chegarNoPagamentoComCartao(CheckoutView);
+
+    await erroDoPagamento(MENSAGEM_PIX_CONTINUA_VALENDO, "terminal");
+
+    expect(criarPagamento).not.toHaveBeenCalled();
+    expect(hospedeiro.textContent).toContain(MENSAGEM_PIX_CONTINUA_VALENDO);
+    expect(
+      botaoPorTexto(hospedeiro, "Cancelar pedido e voltar ao carrinho"),
+    ).toBeDefined();
+    expect(botaoPorTexto(hospedeiro, "Pagar com PIX")).toBeUndefined();
+    expect(botaoPorTexto(hospedeiro, "Tentar de novo")).toBeUndefined();
+  });
+
   it("sem_registro com WhatsApp: 'Falar com a loja' abre o wa.me com o pedido", async () => {
     mockWhatsappNumber = "34999990000";
     const abrir = vi.fn();
