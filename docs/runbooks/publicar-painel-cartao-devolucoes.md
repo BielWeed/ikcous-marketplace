@@ -260,7 +260,10 @@ mesma lista inteira.
   §1.1.
 - **Não roda os marcadores `VERIFICACOES`** de [`scripts/db-apply.cjs`](../../scripts/db-apply.cjs).
   Rode o §1.2.
-- **Não grava o ledger** `supabase_migrations.schema_migrations`. Veja o §1.3.
+- **Desde 06/10/2026 grava o ledger** `supabase_migrations.schema_migrations` na MESMA transação
+  do apply (e o `rollback-manual-<versão>` apaga a linha da versão, também na mesma transação).
+  Migrations aplicadas ANTES disso por este workflow não estão no ledger: veja o §1.3 e o job
+  `ledger` do `conferir-banco-da-loja.yml` (faixa `92-202`).
 
 ### 1.1 Conferir o que nasceu (SQL Editor, só leitura)
 

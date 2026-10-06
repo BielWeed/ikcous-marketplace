@@ -562,8 +562,14 @@ Deno.test({
       const q = r.chamadas;
       assertStringIncludes(q[0], "READ ONLY");
       assertStringIncludes(q[2], "marketplace_orders");
-      // PROVA: o arquivo todo entre BEGIN e ROLLBACK
-      assertEquals(q[3], `BEGIN;\n${corpo}\nROLLBACK;`);
+      // O ledger (06/10/2026): a migration se REGISTRA (INSERT) e o rollback-manual
+      // APAGA a linha daquela versão (DELETE), ambos na mesma transação do corpo.
+      const registro =
+        arquivo === M201
+          ? "INSERT INTO supabase_migrations.schema_migrations (version, name) VALUES ('20261201000000', 'linha_nova_nasce_sob_autorizacao') ON CONFLICT (version) DO NOTHING;\n"
+          : "DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261201000000';\n";
+      // PROVA: o arquivo todo (e o registro do ledger, se migration) entre BEGIN e ROLLBACK
+      assertEquals(q[3], `BEGIN;\n${corpo}\n${registro}ROLLBACK;`);
       // APPLY: UMA requisição, BEGIN ... COMMIT no mesmo corpo
       const applies = q.filter((x) =>
         x.startsWith("BEGIN ISOLATION LEVEL REPEATABLE READ;\n"),
@@ -581,6 +587,14 @@ Deno.test({
       assert(
         apply.lastIndexOf("$fp_depois$") > apply.indexOf(corpo),
         "a impressão digital DEPOIS vem depois do corpo",
+      );
+      // o INSERT/DELETE do ledger vai NA MESMA requisição, entre o corpo e a
+      // impressão digital DEPOIS (um RAISE da divergência o desfaz também)
+      assertEquals(apply.split(registro.trimEnd()).length - 1, 1);
+      assert(
+        apply.indexOf(registro) > apply.indexOf(corpo) &&
+          apply.indexOf(registro) < apply.indexOf("$fp_depois$"),
+        "o ledger fica entre o corpo e a impressão digital DEPOIS",
       );
       assert(
         apply.trimEnd().endsWith("COMMIT;"),
@@ -691,7 +705,7 @@ Deno.test("workflow: o único ROLLBACK; do script é o da PROVA (BEGIN … ROLLB
   assertEquals(rollbacks.length, 1);
   assertStringIncludes(
     semComentarios,
-    "'BEGIN;\\\\n' + corpo + '\\\\nROLLBACK;'",
+    "'BEGIN;\\\\n' + corpo + '\\\\n' + (registro ? registro + '\\\\n' : '') + 'ROLLBACK;'",
   );
   assert(
     !/retry|tentativa\s*<|for \(let t/i.test(semComentarios),
@@ -926,7 +940,7 @@ Deno.test("CAF explícita: o mapeamento de loja e sandbox é byte a byte o de an
   const yaml = await Deno.readTextFile(WORKFLOW);
   assertStringIncludes(
     yaml,
-    "const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg', 'ikcous-publicada': 'cafkrminfnokvgjqtkle' };",
+    "const REFS = { loja: 'cafkrminfnokvgjqtkle', sandbox: 'lofznuxcvezrhxsgjqyg', 'ikcous-publicada': 'cafkrminfnokvgjqtkle', savy: 'gnjsrucsmjkajijrakzr' };",
   );
   const trecho = extrairTrechoDeResolucaoDoRef(yaml);
   assertEquals(

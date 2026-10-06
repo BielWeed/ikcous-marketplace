@@ -1,0 +1,43 @@
+{
+  "_comentario": "Por onde o backend de cada loja ASSINANTE recebe uma release: o alvo (input `projeto`) dos workflows aplicar-migrations.yml e publicar-functions.yml. Isto NAO e lista de clientes por release: a lista de lojas vem do inventario (aliases do projeto Vercel + ficha servida pelo porteiro, cadastro frota_lojas). Uma loja assinante nova entra aqui UMA vez, no cadastro dela (quando o dono cria o segredo e o alvo do workflow); ate entrar, publicar-release.mjs BLOQUEIA a publicacao e diz o nome dela. Loja de teste nao entra aqui: ela esta em politica.json (lojasSemBackendGerenciado).",
+  "ramoDaRelease": "claude/app-major-upgrade-wmc8x2",
+  "funcoesNaoPublicadas": ["send-order-whatsapp"],
+  "validadeDaEvidenciaHoras": 6,
+  "provasDeObjetos": [
+    {
+      "consulta": "8e-conferir-92-a-202-aplicado",
+      "versoes": [
+        "20261192000000",
+        "20261194000000",
+        "20261195000000",
+        "20261196000000",
+        "20261197000000",
+        "20261198000000",
+        "20261199000000",
+        "20261200000000",
+        "20261202000000"
+      ],
+      "backfillLedger": "92-202",
+      "ausenciaConfirmadaPor": "8a-antes-92-a-202-objetos-e-corpos",
+      "conferenciasAntesDoApply": ["8a-antes-92-a-202-objetos-e-corpos", "8b-papeis-contraditorios", "8c-subtotal-divergente"],
+      "_comentario": "O ledger diz que a migration foi registrada; esta consulta (so leitura, papel read-only) prova os OBJETOS e CORPOS no banco. Toda migration NOVA de uma release (ausente do SHA que a loja serve hoje) precisa estar coberta por uma prova daqui; sem cobertura, publicar-release.mjs bloqueia. Ledger com lacuna NUNCA vira apply direto: primeiro esta prova; positiva = so o backfill do registro (gravar_ledger=backfillLedger, com a pre-checagem da propria prova); negativa = diagnostico (ausenciaConfirmadaPor + conferenciasAntesDoApply) e apply SO com o lote inteiro provado ausente e tudo ok=true."
+    }
+  ],
+  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = so as cinco financeiras); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
+  "canais": {
+    "cafkrminfnokvgjqtkle": {
+      "nome": "IKCOUS",
+      "migrations": "ikcous-publicada",
+      "functions": "ikcous-publicada",
+      "projetosNoMesmoBanco": ["loja"],
+      "functionsPublicaveis": ["criar-pagamento", "webhook-mercadopago", "reconciliar-pagamentos", "estornar-pagamento", "credenciais-mercado-pago"]
+    },
+    "gnjsrucsmjkajijrakzr": {
+      "nome": "Savy",
+      "migrations": "savy",
+      "functions": "savy",
+      "projetosNoMesmoBanco": [],
+      "functionsPublicaveis": ["criar-pagamento", "webhook-mercadopago", "reconciliar-pagamentos", "estornar-pagamento", "credenciais-mercado-pago"]
+    }
+  }
+}

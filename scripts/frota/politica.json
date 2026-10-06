@@ -1,0 +1,45 @@
+{
+  "projetoVercel": {
+    "id": "prj_JMNo9fA1kfDS7pxalOjhVaEr7QKY",
+    "time": "team_k1ETBasMWOehKveplLOcKxFA",
+    "escopo": "gabriels-projects-5a19f6ee"
+  },
+  "lojasSemBackendGerenciado": [
+    { "ref": "cuemaffjmhkebhmghbap", "nome": "Almeida Store" },
+    { "ref": "htblgvlosaihdgckokld", "nome": "Brand Meliz" },
+    { "ref": "bgwpxpcbffxazrxjduns", "nome": "Space Loja dos Kit" }
+  ],
+  "motivoLojasSemBackendGerenciado": "lojas de teste: banco e functions não se mexem (decisão do dono, 03/10/2026)",
+  "enderecosEsperados": [
+    { "dominio": "savy-collection.vercel.app", "estado": "manutencao" },
+    { "dominio": "loja-savy-collection.vercel.app", "estado": "manutencao" },
+    { "dominio": "teste-frota-a-0911.vercel.app", "estado": "manutencao" },
+    { "dominio": "teste-frota-ikcous-0911.vercel.app", "estado": "manutencao" },
+    {
+      "dominio": "ickous-marketplace-gabriels-projects-5a19f6ee.vercel.app",
+      "estado": "redirecionamento",
+      "para": "ickous-marketplace.vercel.app"
+    }
+  ],
+  "migrationsForaDaRelease": [
+    {
+      "versao": "20261201000000",
+      "motivo": "201 só depois das edges novas + escoamento >=15 min com 1 ciclo do cron (ver cabeçalho da 201)",
+      "conferencia": "8f-conferir-201"
+    }
+  ],
+  "aliasesDePreview": ["^ickous-marketplace-git-.+\\.vercel\\.app$"],
+  "enderecosDeReserva": [
+    "ickous-marketplace.vercel.app",
+    "savycollection.vercel.app",
+    "almeidastore.vercel.app",
+    "brandmeliz.vercel.app",
+    "spacelojadoskit.vercel.app"
+  ],
+  "_comentario": {
+    "estado": "manutencao = HTTP 503 + caderneta miss; redirecionamento = HTTP 308. Só política: quais endereços NÃO são loja. Quem é loja e qual loja vem da FICHA que o porteiro serve (cadastro frota_lojas), nunca daqui.",
+    "aliasesDePreview": "Aliases automáticos de branch/preview do projeto (não são lojas); a inventariação por --vercel os ignora.",
+    "enderecosDeReserva": "SÓ para rodar sem --vercel (CI). Pode ficar velha: por isso a saída diz inventário PARCIAL. A fonte oficial do inventário é a lista de aliases do projeto Vercel (--vercel).",
+    "migrationsForaDaRelease": "Lida pelo orquestrador de publicação; a conferência da frota só a mostra."
+  }
+}
