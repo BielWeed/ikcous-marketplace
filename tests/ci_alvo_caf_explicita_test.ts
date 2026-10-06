@@ -214,7 +214,7 @@ for (const [nome, caminho, job] of WORKFLOWS) {
     assertEquals(
       [
         ...j.matchAll(
-          /inputs\.projeto != 'ikcous-publicada' && secrets\.SUPABASE_ACCESS_TOKEN \|\| ''/g,
+          /inputs\.projeto != 'ikcous-publicada' && inputs\.projeto != 'savy' && secrets\.SUPABASE_ACCESS_TOKEN \|\| ''/g,
         ),
       ].length,
       legado.length,
@@ -254,9 +254,13 @@ Deno.test("conferir-banco-da-loja.yml: o job do ledger (que GRAVA em schema_migr
   }
   const aplicar = semComentarios(await Deno.readTextFile(APLICAR));
   assert(!/\n {2}ledger:/.test(aplicar));
-  assert(
-    !/INSERT INTO supabase_migrations|schema_migrations/i.test(aplicar),
-    "aplicar-migrations não grava o ledger",
+  // 06/10/2026: o apply de MIGRATION registra a versão no ledger DENTRO da mesma
+  // transação (função `registroNoLedger`, um único INSERT, nunca job à parte nem
+  // para rollback-manual — o comportamento está em tests/ci_ledger_do_apply_test.ts).
+  assertEquals(
+    (aplicar.match(/INSERT INTO supabase_migrations/gi) ?? []).length,
+    1,
+    "um único INSERT no ledger no aplicar-migrations",
   );
 });
 
@@ -318,7 +322,7 @@ const LINHA_OK = JSON.stringify([
 const CONSULTA = "8f-conferir-201";
 
 Deno.test({
-  name: "conferir-banco.cjs: REFS_POR_PROJETO tem exatamente loja, sandbox e ikcous-publicada, com os refs certos",
+  name: "conferir-banco.cjs: REFS_POR_PROJETO tem exatamente loja, sandbox, ikcous-publicada e savy, com os refs certos",
   ...SEM_SANITIZAR,
   fn: () => {
     const { REFS_POR_PROJETO, resolverRef } = require(SCRIPT);
@@ -326,6 +330,8 @@ Deno.test({
       loja: REF_CAF,
       sandbox: "lofznuxcvezrhxsgjqyg",
       "ikcous-publicada": REF_CAF,
+      // a Savy explícita entrou em 06/10/2026 (tests/ci_alvo_savy_explicita_test.ts)
+      savy: "gnjsrucsmjkajijrakzr",
     });
     assertEquals(resolverRef("ikcous-publicada"), REF_CAF);
     for (const ruim of [

@@ -19,7 +19,7 @@
 # job que ESCREVE é o `ledger`, e só quando `confirmar` for exatamente
 # `GRAVAR` — e só depois de uma pré-checagem do schema da própria faixa.
 #
-# PROJETO: fechado em "loja"/"sandbox"/"ikcous-publicada" (nunca um ref de texto livre — a
+# PROJETO: fechado em "loja"/"sandbox"/"ikcous-publicada"/"savy" (nunca um ref de texto livre — a
 # rodada 2 da revisão provou que `projeto_ref` cru habilitava
 # "<ref>/restart#" e "x/../outroref.../database/query#" com o mesmo token,
 # que vale para TODOS os projetos da conta). O ref de 20 letras é resolvido
@@ -29,10 +29,14 @@
 # aplicar-migrations.yml e publicar-functions.yml já usam, para `loja` e
 # `sandbox` (mapeamento e segredo de antes, sem mudança). Só `ikcous-publicada`
 # (a CAF explícita) usa o segredo de NOME `SUPABASE_ACCESS_TOKEN_IKCOUS` — o
-# mesmo que publicar-functions.yml já usa para a CAF —, nunca o legado, e sem
-# fallback entre os dois. Nenhuma credencial nova. As consultas 8a..8g rodam por
-# aqui contra qualquer um dos três alvos; o job `ledger` continua só para as
-# faixas 72..83 e NUNCA roda para `ikcous-publicada`.
+# mesmo que publicar-functions.yml já usa para a CAF —, e só `savy` (a loja
+# cliente explícita, 06/10/2026; ref fixo gnjsrucsmjkajijrakzr) usa o de NOME
+# `SUPABASE_ACCESS_TOKEN_SAVY` — o mesmo que publicar-functions.yml já usa para
+# a Savy. Nunca o legado, e sem fallback entre eles: cada alvo enxerga SÓ o seu
+# segredo. Nenhuma credencial nova. As consultas 8a..8j rodam por aqui contra
+# qualquer um dos quatro alvos; o job `ledger` continua só para as faixas 72..83
+# e NUNCA roda para `ikcous-publicada` nem para `savy`, EXCETO a faixa 92-202 (backfill
+# do registro das migrations 92..202 sem a 201, só com a pré-checagem da 8e).
 #
 # CONCORRÊNCIA: o job `ledger` compartilha o grupo `banco-da-loja` com
 # `aplicar-migrations.yml` — o ledger não roda enquanto uma migration está
@@ -41,17 +45,23 @@
 # USO: Actions → Run workflow →
 #   consulta      = um arquivo de scripts/publicacao/consultas/ (sem `.sql`),
 #                   ou "backups";
-#   projeto       = "loja" (default), "sandbox" ou "ikcous-publicada" (a CAF
+#   projeto       = "loja" (default), "sandbox", "ikcous-publicada" (a CAF
 #                   explícita: segredo SUPABASE_ACCESS_TOKEN_IKCOUS, exige
-#                   expected_sha = SHA completo deste run, nunca grava ledger,
-#                   e 401/403 PARA sem tentar outro segredo);
-#   gravar_ledger = "nao" (default), "72-74", "75-78", "79-82" ou "83";
+#                   expected_sha = SHA completo deste run, grava ledger só a faixa 92-202,
+#                   e 401/403 PARA sem tentar outro segredo) ou "savy" (a loja
+#                   cliente explícita, as mesmas travas: segredo
+#                   SUPABASE_ACCESS_TOKEN_SAVY, expected_sha, ledger só a faixa 92-202,
+#                   401/403 PARA);
+#   gravar_ledger = "nao" (default), "72-74", "75-78", "79-82", "83" ou "92-202";
 #   confirmar     = só o job do ledger olha isto — precisa ser exatamente
 #                   "GRAVAR" para gravar de verdade.
 #
 # Testado por tests/ci_conferir_banco_test.ts.
 
 name: Conferir banco da loja
+# Título do run = evidência localizável: scripts/frota/publicar-release.mjs
+# procura "conferir <consulta> em <projeto>" para saber de QUAL loja é o run.
+run-name: "conferir ${{ inputs.consulta }} em ${{ inputs.projeto }}"
 
 on:
   workflow_dispatch:
@@ -97,7 +107,7 @@ on:
           - 8j-visibilidade-das-tabelas-auxiliares
           - backups
       projeto:
-        description: "Projeto de destino: loja, sandbox ou ikcous-publicada (a CAF explicita: exige expected_sha; nunca texto livre — achado da rodada 2)"
+        description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"
         required: false
         type: choice
         default: loja
@@ -105,8 +115,9 @@ on:
           - loja
           - sandbox
           - ikcous-publicada
+          - savy
       expected_sha:
-        description: "So para projeto = ikcous-publicada: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio nas outras lojas"
+        description: "So para projeto = ikcous-publicada ou savy: o SHA completo (40 hex) do commit deste run (igual ao GITHUB_SHA); vazio nas outras lojas"
         required: false
         default: ""
       gravar_ledger:
@@ -120,6 +131,7 @@ on:
           - 75-78
           - 79-82
           - "83"
+          - 92-202
       confirmar:
         description: "Só o job do ledger olha isto: precisa ser exatamente GRAVAR"
         required: false
@@ -135,15 +147,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # PRIMEIRO passo, antes de checkout e de qualquer requisição: a CAF
-      # explícita só roda com expected_sha completo e igual ao GITHUB_SHA
+      # PRIMEIRO passo, antes de checkout e de qualquer requisição: a CAF e a
+      # Savy explícitas só rodam com expected_sha completo e igual ao GITHUB_SHA
       # (mesmo padrão e mesma mensagem do publicar-functions.yml).
-      - name: Confere o alvo (expected_sha na CAF explícita)
+      - name: Confere o alvo (expected_sha na CAF e na Savy explícitas)
         env:
           PROJETO: ${{ inputs.projeto }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          if [ "$PROJETO" = "ikcous-publicada" ]; then
+          if [ "$PROJETO" = "ikcous-publicada" ] || [ "$PROJETO" = "savy" ]; then
             if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
               echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
             fi
@@ -159,13 +171,18 @@ jobs:
       # no outro (segredo vazio dá '', não o segredo do vizinho).
       - name: Confere o segredo
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
           PROJETO: ${{ inputs.projeto }}
         run: |
           if [ "$PROJETO" = "ikcous-publicada" ]; then
             if [ -z "$SUPABASE_ACCESS_TOKEN_IKCOUS" ]; then
               echo "::error::sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto"; exit 1
+            fi
+          elif [ "$PROJETO" = "savy" ]; then
+            if [ -z "$SUPABASE_ACCESS_TOKEN_SAVY" ]; then
+              echo "::error::sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto"; exit 1
             fi
           elif [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
             echo "::error::segredo SUPABASE_ACCESS_TOKEN ausente no repositório (Settings → Secrets and variables → Actions)"; exit 1
@@ -173,17 +190,26 @@ jobs:
 
       - name: Roda a consulta (só leitura)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
           PROJETO: ${{ inputs.projeto }}
           CONSULTA: ${{ inputs.consulta }}
         run: node scripts/publicacao/conferir-banco.cjs
 
   ledger:
     name: Gravar ledger ${{ inputs.gravar_ledger }}
-    # `ikcous-publicada` NUNCA grava ledger (as faixas dele são 72..83; a CAF
-    # explícita é só leitura aqui).
-    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && inputs.projeto != 'ikcous-publicada' && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
+    # `ikcous-publicada` e `savy` NÃO gravam as faixas 72..83 (as lojas explícitas
+    # são só leitura nelas). ÚNICA EXCEÇÃO (06/10/2026): a faixa `92-202`, o
+    # BACKFILL do registro das 9 migrations 20261192..20261202 (sem a 201) que a CAF
+    # já tem aplicadas, e que o aplicar-migrations.yml passa a registrar no próprio
+    # apply daqui para a frente. Só grava depois da pré-checagem OBRIGATÓRIA da
+    # 8e-conferir-92-a-202-aplicado (todas as linhas ok=true, feita ANTES do
+    # INSERT em conferir-banco.cjs), com INSERT fixo, idempotente (ON CONFLICT DO
+    # NOTHING) e pinado por SHA-256, e `confirmar` = GRAVAR. E a faixa 92-202 é SÓ
+    # das lojas explícitas: `loja`/`sandbox` (segredo legado, sem expected_sha)
+    # não a gravam (revisão final de 06/10; a recusa também está no script).
+    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && ((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202') || ((inputs.projeto == 'ikcous-publicada' || inputs.projeto == 'savy') && inputs.gravar_ledger == '92-202')) && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
@@ -196,15 +222,34 @@ jobs:
       # esperar a vez — achado da rodada 3 da revisão de risco.
       queue: max
     steps:
+      # Nas lojas explícitas (única faixa permitida: 92-202) vale a mesma trava de
+      # sempre: expected_sha completo e igual ao GITHUB_SHA, no PRIMEIRO passo,
+      # antes do checkout e de qualquer requisição.
+      - name: Confere o alvo (expected_sha na CAF e na Savy explícitas)
+        env:
+          PROJETO: ${{ inputs.projeto }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          if [ "$PROJETO" = "ikcous-publicada" ] || [ "$PROJETO" = "savy" ]; then
+            if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || [ "${EXPECTED_SHA,,}" != "${GITHUB_SHA,,}" ]; then
+              echo "::error::Loja cliente ($PROJETO) exige expected_sha completo e igual ao GITHUB_SHA do run"; exit 1
+            fi
+          fi
+
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
         with:
           node-version: "20"
 
+      # Cada alvo enxerga SÓ o seu segredo (mesmas expressões do job `conferir`).
+      # O script recusa, antes de qualquer requisição, qualquer faixa que não seja
+      # a 92-202 nas lojas explícitas, e só grava depois da pré-checagem da 8e.
       - name: Pré-confere o schema da faixa, grava o ledger e confere 72-78/72-82 (leitura)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}
+          SUPABASE_ACCESS_TOKEN_SAVY: ${{ inputs.projeto == 'savy' && secrets.SUPABASE_ACCESS_TOKEN_SAVY || '' }}
           PROJETO: ${{ inputs.projeto }}
           LEDGER: ${{ inputs.gravar_ledger }}
         run: node scripts/publicacao/conferir-banco.cjs

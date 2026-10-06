@@ -10,16 +10,24 @@
  * USO (variáveis de ambiente, o mesmo estilo de aplicar-migrations.yml):
  *   SUPABASE_ACCESS_TOKEN  o segredo do repositório (o mesmo que publica
  *                          as functions e aplica migrations).
- *   PROJETO                "loja" (default) ou "sandbox" — NUNCA um ref cru.
- *                          Resolvido para o ref de 20 letras por
- *                          `resolverRef` (ver abaixo, achado da rodada 2).
+ *   PROJETO                "loja" (default), "sandbox", "ikcous-publicada" (a
+ *                          CAF explícita) ou "savy" (a loja cliente explícita)
+ *                          — NUNCA um ref cru. Resolvido para o ref de 20
+ *                          letras por `resolverRef` (ver abaixo, achado da
+ *                          rodada 2). A CAF usa SÓ SUPABASE_ACCESS_TOKEN_IKCOUS
+ *                          e a Savy SÓ SUPABASE_ACCESS_TOKEN_SAVY (sem
+ *                          fallback); nenhuma das duas roda o LEDGER, salvo a
+ *                          faixa 92-202 (pré-checagem 8e obrigatória).
  *   CONSULTA                nome (sem `.sql`) de um arquivo em
  *                          scripts/publicacao/consultas/, ou "backups".
- *   LEDGER                 "72-74", "75-78", "79-82" ou "83" — pré-confere o
- *                          schema, grava o ledger fixo daquela faixa e
- *                          confere 72-78 (ou 72-82/72-83, para as faixas
- *                          novas) depois. Mutuamente exclusivo com CONSULTA
- *                          (o workflow só passa um).
+ *   LEDGER                 "72-74", "75-78", "79-82", "83" ou "92-202" —
+ *                          pré-confere o schema, grava o ledger fixo daquela
+ *                          faixa e confere 72-78 (ou 72-82/72-83/72-202, para
+ *                          as faixas novas) depois. Mutuamente exclusivo com
+ *                          CONSULTA (o workflow só passa um). Em
+ *                          `ikcous-publicada` e `savy` SÓ a faixa 92-202 (o
+ *                          backfill das migrations 92..202 sem a 201), com a
+ *                          pré-checagem da 8e obrigatória.
  *
  *   node scripts/publicacao/conferir-banco.cjs
  *
@@ -189,7 +197,15 @@ const CONSULTAS_DIR = path.join(
 // real de produção é sempre o host oficial da Management API.
 const API_BASE =
   process.env.CONFERIR_BANCO_API_BASE || "https://api.supabase.com";
-const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83"];
+const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83", "92-202"];
+/** A ÚNICA faixa do ledger permitida nas lojas explícitas (`ikcous-publicada` e
+ * `savy`) — 06/10/2026. A regra de antes ("a CAF não grava o ledger") continua
+ * valendo para as faixas 72..83; esta é o BACKFILL das 9 migrations
+ * 20261192..20261202 (sem a 201) que o apply central já deixa registradas daqui
+ * para a frente, mas que na CAF subiram antes disso. Só vale com a pré-checagem
+ * da 8e (todas as linhas ok=true, feita ANTES do INSERT em `rodarLedger`) e com
+ * o INSERT fixo e pinado por SHA-256. */
+const FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS = "92-202";
 
 /** Os únicos dois projetos que este token alcança (mesmos refs de
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
@@ -202,12 +218,22 @@ const REFS_POR_PROJETO = {
   // para a CAF) e só com `expected_sha` igual ao do run (conferido no workflow
   // ANTES de qualquer requisição). `loja` e `sandbox` NÃO mudam de significado.
   "ikcous-publicada": "cafkrminfnokvgjqtkle",
+  // O alvo SAVY EXPLÍCITO (06/10/2026): a loja cliente real, ref FIXO (nunca
+  // texto livre), pelo segredo de NOME `SUPABASE_ACCESS_TOKEN_SAVY` (o que
+  // publicar-functions.yml já usa para a Savy) e só com `expected_sha` igual ao
+  // do run (conferido no workflow ANTES de qualquer requisição). Mesmas travas
+  // da CAF explícita: só grava ledger na faixa 92-202 (com a 8e toda ok), 401/403 PARA.
+  savy: "gnjsrucsmjkajijrakzr",
 };
 
 /** O alvo que exige o segredo próprio da CAF (e nunca cai em outro). */
 const PROJETO_CAF = "ikcous-publicada";
 const SEM_ACESSO_CAF =
   "sem acesso legítimo à CAF por SUPABASE_ACCESS_TOKEN_IKCOUS — bloqueio concreto";
+/** O alvo que exige o segredo próprio da Savy (e nunca cai em outro). */
+const PROJETO_SAVY = "savy";
+const SEM_ACESSO_SAVY =
+  "sem acesso legítimo à Savy por SUPABASE_ACCESS_TOKEN_SAVY — bloqueio concreto";
 
 /**
  * Resolve "loja"/"sandbox" para o ref de 20 letras minúsculas — nunca
@@ -221,7 +247,7 @@ const SEM_ACESSO_CAF =
 function resolverRef(projeto) {
   if (!Object.hasOwn(REFS_POR_PROJETO, projeto)) {
     throw new Error(
-      `projeto desconhecido: "${projeto}" (use loja, sandbox ou ikcous-publicada)`,
+      `projeto desconhecido: "${projeto}" (use loja, sandbox, ikcous-publicada ou savy)`,
     );
   }
   const ref = REFS_POR_PROJETO[projeto];
@@ -646,6 +672,27 @@ async function rodarConsulta({ ref, token, consulta }) {
   escreverResumo(
     `## Consulta \`${consulta}\` — projeto \`${ref}\`\n\n\`\`\`\n${tabela}\n\`\`\``,
   );
+  // Linha para MÁQUINA (scripts/frota/publicar-release.mjs lê do log do run):
+  // a evidência de prontidão de uma loja é "esta consulta, neste ref, neste
+  // commit, N linhas, nenhuma ok=false". Só para consultas com coluna `ok`.
+  const linhaVeredito = veredictoDaConsulta({
+    consulta,
+    ref,
+    sha: process.env.GITHUB_SHA,
+    linhas,
+  });
+  if (linhaVeredito) console.log(linhaVeredito);
+}
+
+/** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`. */
+function veredictoDaConsulta({ consulta, ref, sha, linhas }) {
+  const prefixo = `VEREDITO-CONSULTA consulta=${consulta} ref=${ref} sha=${sha || "local"}`;
+  if (!Array.isArray(linhas) || linhas.length === 0)
+    return `${prefixo} linhas=0 ok_false=0 ok_nao_booleano=0`;
+  if (!linhas.every((l) => l && Object.hasOwn(l, "ok"))) return null;
+  const okFalse = linhas.filter((l) => l.ok === false).length;
+  const naoBooleano = linhas.filter((l) => typeof l.ok !== "boolean").length;
+  return `${prefixo} linhas=${linhas.length} ok_false=${okFalse} ok_nao_booleano=${naoBooleano}`;
 }
 
 async function rodarBackups({ ref, token }) {
@@ -673,6 +720,9 @@ const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
   "75-78": ["1a-conferir-o-que-nasceu", "1b-conferir-marcadores"],
   "79-82": ["6a-conferir-79-a-82"],
   83: ["7a-conferir-83"],
+  // O backfill 92-202 só grava se a 8e (o corpo vivo de cada função que 92..202
+  // definem + os objetos que criam) der ok=true em TODAS as linhas.
+  "92-202": ["8e-conferir-92-a-202-aplicado"],
 };
 
 /** Linhas que são dado AO VIVO da loja — mudam legitimamente com o tempo ou
@@ -745,6 +795,7 @@ const SHA256_DO_LEDGER = {
   "75-78": "aa0d443015102f3fba7f326cbcd40f36f3cba9426800e3fb2787e6697062600f",
   "79-82": "505f62dd9be2da3e9af9607b700ee30c681ce5afe339fe61bcfe8b44db86a0bf",
   83: "e30d8ee7c2a1bb94ef90540e9341bd799c0d421585e4813f8fc88914934d79ae",
+  "92-202": "ad494d1358fd13ac49119f2fcfd9823b430ee79042810e67fa7a1f59b66a0ff0",
 };
 
 function conferirHashDoLedger(faixa, conteudo) {
@@ -769,6 +820,7 @@ const VERIFICACAO_POS_LEDGER = {
   "75-78": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "79-82": { rotulo: "72–82", limiteSuperior: "20261182999999" },
   83: { rotulo: "72–83", limiteSuperior: "20261183999999" },
+  "92-202": { rotulo: "72–202", limiteSuperior: "20261202999999" },
 };
 
 async function rodarLedger({ ref, token, faixa }) {
@@ -813,21 +865,52 @@ async function rodarLedger({ ref, token, faixa }) {
 async function main() {
   const projeto = process.env.PROJETO || "loja";
   const ehCaf = projeto === PROJETO_CAF;
-  // CAF explícita: SÓ o segredo próprio dela. Sem ele, PARA — nunca tenta
-  // SUPABASE_ACCESS_TOKEN (o de `loja`/`sandbox`) nem outro alvo.
+  const ehSavy = projeto === PROJETO_SAVY;
+  // CAF e Savy explícitas: SÓ o segredo próprio de cada uma. Sem ele, PARA —
+  // nunca tenta SUPABASE_ACCESS_TOKEN (o de `loja`/`sandbox`), o segredo da
+  // outra loja explícita nem outro alvo.
   const token = ehCaf
     ? process.env.SUPABASE_ACCESS_TOKEN_IKCOUS
-    : process.env.SUPABASE_ACCESS_TOKEN;
+    : ehSavy
+      ? process.env.SUPABASE_ACCESS_TOKEN_SAVY
+      : process.env.SUPABASE_ACCESS_TOKEN;
   if (!token) {
-    console.error(ehCaf ? SEM_ACESSO_CAF : "SEM SUPABASE_ACCESS_TOKEN");
+    console.error(
+      ehCaf
+        ? SEM_ACESSO_CAF
+        : ehSavy
+          ? SEM_ACESSO_SAVY
+          : "SEM SUPABASE_ACCESS_TOKEN",
+    );
     process.exit(1);
     return;
   }
-  if (ehCaf && process.env.LEDGER) {
+  const ledgerPedido = process.env.LEDGER;
+  const ledgerRecusadoNaLojaExplicita =
+    ledgerPedido && ledgerPedido !== FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS;
+  if (ehCaf && ledgerRecusadoNaLojaExplicita) {
     // O ledger GRAVA em supabase_migrations.schema_migrations e as faixas dele
-    // (72..83) não são deste lote: a CAF explícita só lê.
+    // (72..83) não são deste lote: a CAF explícita só lê — EXCETO a faixa
+    // 92-202 (backfill), que só grava depois da pré-checagem da 8e.
     console.error(
-      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script)",
+      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
+    );
+    process.exit(1);
+    return;
+  }
+  if (ehSavy && ledgerRecusadoNaLojaExplicita) {
+    // Idem para a Savy explícita.
+    console.error(
+      "FALHOU: o ledger não roda para savy (a loja cliente explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
+    );
+    process.exit(1);
+    return;
+  }
+  if (ledgerPedido === FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS && !ehCaf && !ehSavy) {
+    // O backfill 92-202 é das lojas explícitas (segredo próprio + expected_sha):
+    // `loja`/`sandbox` não o gravam, nem com a pré-checagem verde.
+    console.error(
+      `FALHOU: a faixa ${FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS} do ledger só roda para ikcous-publicada ou savy, não para ${projeto}`,
     );
     process.exit(1);
     return;
@@ -859,8 +942,10 @@ async function main() {
     }
     await rodarConsulta({ ref, token, consulta });
   } catch (erro) {
-    if (ehCaf && (erro.status === 401 || erro.status === 403)) {
-      console.error(`FALHOU: ${SEM_ACESSO_CAF} (HTTP ${erro.status})`);
+    if ((ehCaf || ehSavy) && (erro.status === 401 || erro.status === 403)) {
+      console.error(
+        `FALHOU: ${ehCaf ? SEM_ACESSO_CAF : SEM_ACESSO_SAVY} (HTTP ${erro.status})`,
+      );
     } else {
       console.error("FALHOU:", erro.message);
     }
@@ -897,6 +982,7 @@ if (require.main === module) {
 module.exports = {
   REFS_POR_PROJETO,
   resolverRef,
+  veredictoDaConsulta,
   listarConsultas,
   ehCaractereDeIdentificador,
   dividirEmStatements,
