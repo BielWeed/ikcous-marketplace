@@ -5,8 +5,10 @@
 #
 # PARA QUE SERVE: rodar ANTES de publicar (a frota está toda na versão
 # anterior e íntegra?) e DEPOIS de publicar (todos os endereços subiram para o
-# SHA novo?). Em 06/10/2026 a release 1.5.18 ficou só em 1 endereço e 9
-# continuaram na 1.5.17 sem nada avisar; esta conferência torna isso visível,
+# SHA novo?). Em 05/10/2026 a release 1.5.18 ficou só em 1 endereço e 9
+# continuaram na 1.5.17, por publicação parcial deliberada (dependências da
+# Savy, coordenação manual) e sem conferência central que mostrasse quem
+# ficou para trás; esta conferência torna isso visível,
 # diz o TIPO da divergência (endereço antigo, loja trocada, build divergente,
 # inalcançável...) e como recuperar. A lógica mora em
 # scripts/frota/conferir-frota.mjs; a política da casa, em

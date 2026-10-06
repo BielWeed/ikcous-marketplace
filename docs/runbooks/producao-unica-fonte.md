@@ -3,12 +3,15 @@
 ## Por que este runbook mudou
 
 Em 05/10/2026 a release 1.5.18 foi ao ar so na IKCOUS (`ickous-marketplace.vercel.app`) e os
-outros 9 enderecos do projeto (Savy, lojas de teste e enderecos auxiliares) ficaram na 1.5.17
-sem nada avisar. A causa (checkpoint `DISTRIBUICAO-FROTA-20261006.md`): o site novo cancela
-pedido online pela `criar-pagamento` nova, que depende das migrations 20261192..20261202; a Savy
-nao tinha esse banco, NAO existia caminho central de banco para ela, e a saida foi publicar
-endereco por endereco (`vercel --prod --skip-domain` + `vercel alias set` so na IKCOUS). A
-correcao e um portao unico: nada de alias por endereco.
+outros 9 enderecos do projeto (Savy, lojas de teste e enderecos auxiliares) ficaram na 1.5.17.
+A publicacao parcial foi DELIBERADA, por coordenacao manual (plano `PLANO-PUBLICAR-SO-IKCOUS`
+§7): o site novo cancela pedido online pela `criar-pagamento` nova, que depende das migrations
+20261192..20261202, e a Savy ainda nao tinha esse banco. O defeito (checkpoint
+`DISTRIBUICAO-FROTA-20261006.md`) e o que tornou essa excecao necessaria: NAO existia caminho
+central de banco para a Savy, entao a saida foi publicar endereco por endereco
+(`vercel --prod --skip-domain` + `vercel alias set` so na IKCOUS), e nenhuma conferencia da
+frota mostrava quais enderecos ficaram para tras. A correcao e um portao unico: nada de alias
+por endereco.
 
 ## Como funciona
 

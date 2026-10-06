@@ -5,12 +5,13 @@
  * publicar-release.mjs — UMA publicação para a frota inteira (06/10/2026).
  *
  * POR QUE EXISTE: em 05/10 a release 1.5.18 foi ao ar só na loja principal e
- * 9 endereços (Savy, lojas de teste, endereços auxiliares) ficaram na 1.5.17
- * sem nada avisar. Causa: o front é UM projeto Vercel para todas as lojas, mas
- * banco e functions são um projeto Supabase por loja; a Savy não tinha o
- * backend que o site novo exige, não havia caminho central para levá-lo, e a
- * saída foi publicar endereço por endereço (`alias set`). Este comando troca a
- * manutenção por cliente por um portão único:
+ * 9 endereços (Savy, lojas de teste, endereços auxiliares) ficaram na 1.5.17.
+ * A publicação parcial foi deliberada, por coordenação manual: a Savy ainda
+ * não tinha o backend que o site novo exige. Causa de ter de ser assim: o
+ * front é UM projeto Vercel para todas as lojas, mas banco e functions são um
+ * projeto Supabase por loja, não havia caminho central para levar o backend à
+ * Savy, e a saída foi publicar endereço por endereço (`alias set`). Este
+ * comando troca a manutenção por cliente por um portão único:
  *
  *   1. CANDIDATO: o deployment parado (`vercel --prod --skip-domain`) é deste
  *      projeto, é produção, está READY e serve o version.json da release
