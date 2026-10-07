@@ -3318,3 +3318,77 @@ Deno.test("R1-C4 - só com a 96 (criada_sob_autorizacao NULL vindo do banco), PO
     true,
   );
 });
+
+// ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
+// Premissa (não medida), a mesma do webhook (ver
+// webhook-mercadopago/index_test.ts, bloco "Cartão PARCELADO"): o MP cobra os juros por cima do pedido, só o valor
+// PAGO sobe, e a conferência daqui lê o `total_amount`. Se a leitura virar o
+// valor pago, o cron passa a deixar o 2x/3x pago parado para sempre. Os
+// valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas medidas
+// no MP; a premissa continua declarada, não provada por esta suíte.
+const PARCELADOS_COM_JUROS = [
+  { parcelas: 1, pago: "149.90" },
+  { parcelas: 2, pago: "164.35" },
+  { parcelas: 3, pago: "168.49" },
+];
+
+function orderParceladaComJuros(id: string, parcelas: number, pago: string): Record<string, unknown> {
+  return {
+    id,
+    external_reference: UUID_PEDIDO_1,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    total_paid_amount: pago,
+    date_created: "2026-09-30T12:00:00.000Z",
+    transactions: {
+      payments: [{
+        amount: "149.90",
+        paid_amount: pago,
+        status: "processed",
+        status_detail: "accredited",
+        payment_method: { id: "visa", type: "credit_card", installments: parcelas },
+      }],
+    },
+  };
+}
+
+for (const caso of PARCELADOS_COM_JUROS) {
+  Deno.test(`cartão parcelado ${caso.parcelas}x — order aprovada com valor pago ${caso.pago} (pedido 149,90) -> confirmados:1, nunca ignorado por valor`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder = "ORDTST01PARCELADOCOMJUROS";
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+    const fetchImpl = fetchConsulta(200, orderParceladaComJuros(idOrder, caso.parcelas, caso.pago));
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 1, "juros do parcelado não é valor divergente");
+    assertEquals(corpo.ignorados, 0);
+    assertEquals(registro.chamadasConfirmar.length, 1);
+    assertEquals(registro.chamadasConfirmar[0].args.p_payment_id, idOrder);
+    assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+  });
+
+  Deno.test(`cartão parcelado ${caso.parcelas}x — sentinela com a order capturada e valor pago ${caso.pago} -> adota com parcelas ${caso.parcelas} e confirma`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+    const supabase = clienteFalso({ candidatos, registro });
+    const urls: string[] = [];
+    const order = orderParceladaComJuros("ORDTST01CARTAOCAPTURADO", caso.parcelas, caso.pago);
+    const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [order] } }, order, urls);
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.adocoesPedido.length, 1);
+    assertEquals(registro.adocoesPedido[0].valores.metodo_online, "credito");
+    assertEquals(registro.adocoesPedido[0].valores.parcelas, caso.parcelas);
+    assertEquals(registro.chamadasConfirmar.length, 1);
+    assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+    assertEquals(corpo.confirmados, 1);
+  });
+}

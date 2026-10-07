@@ -13165,3 +13165,106 @@ Deno.test("CORRIDA T3 (e) — FUMAÇA de concorrência no caminho observado (a c
   // Registro (não asserção de ordem): quais desfechos de fato ocorreram.
   console.log("CORRIDA T3 (e) caminhos observados:", [...caminhos].sort().join(" | "));
 });
+
+// ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
+// Um pagamento 1x à vista não exercita o parcelado: sem juros, o valor pago
+// e o pedido são iguais. Aqui, o 1x, o 2x e o 3x passam pela MESMA prova
+// (`provarPagamentoPelaConsulta`) com uma order coerente: o que a loja
+// mandou (`total_amount` e `amount` do pagamento) = o pedido; o valor PAGO
+// (`total_paid_amount` e `paid_amount`) = o pedido + juros do comprador.
+// Os valores pagos (109,64 / 112,40) são FIXTURES SINTÉTICAS, não taxas
+// medidas no MP. Premissa declarada, NÃO provada por esta suíte: o MP mantém
+// o `total_amount` sem juros. Aprovação de um 2x/3x em sandbox é compatível
+// com ela, mas não a prova sozinha (nem prova que houve juros): só a leitura
+// dos campos da order (`total_amount`/`amount` contra
+// `total_paid_amount`/`paid_amount`) e dos valores por parcela do gateway
+// comprova.
+const PARCELADOS_COM_JUROS_CI = [
+  { parcelas: 1, pago: "100.00" },
+  { parcelas: 2, pago: "109.64" },
+  { parcelas: 3, pago: "112.40" },
+];
+
+function cartaoParceladoComJuros(base: Record<string, unknown>, parcelas: number, pago: string): Record<string, unknown> {
+  const transacoes = base.transactions as Record<string, unknown>;
+  const pagamento = (transacoes.payments as Array<Record<string, unknown>>)[0];
+  return {
+    ...base,
+    total_paid_amount: pago,
+    transactions: {
+      ...transacoes,
+      payments: [{
+        ...pagamento,
+        paid_amount: pago,
+        payment_method: { ...(pagamento.payment_method as Record<string, unknown>), installments: parcelas },
+      }],
+    },
+  };
+}
+
+for (const caso of PARCELADOS_COM_JUROS_CI) {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA parcelado ${caso.parcelas}x: verificar com valor pago ${caso.pago} (pedido 100) e a vaga com a order -> confirma 'pago' 1x`, async () => {
+    const { db, contado } = bancoContandoEscritas(pedidoCI({ parcelas: caso.parcelas }));
+    const ef = efeitosCI();
+    const order = cartaoParceladoComJuros(cartaoPagoCI(), caso.parcelas, caso.pago);
+    const r = await verificarCI(contado, mpDaConsulta({ orders: [order] }), ef.deps);
+
+    assertEquals(r.corpo.verificacao, "pago", JSON.stringify(r.corpo));
+    assertEquals(confirmacoesCI(db).map((c) => c.args), [
+      { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" },
+    ]);
+    assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  });
+
+  Deno.test(`CONFIRMAÇÃO IMEDIATA parcelado ${caso.parcelas}x: a CRIAÇÃO manda installments ${caso.parcelas} ao MP, grava parcelas ${caso.parcelas} e confirma com o valor pago ${caso.pago} no GET`, async () => {
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const corpoDoGet = cartaoParceladoComJuros(aprovadaDaCriacao(), caso.parcelas, caso.pago);
+    const mp = mpDaCriacaoComGet({ post: corpoDoGet, get: corpoDoGet });
+    const corposPostados: Array<Record<string, unknown>> = [];
+    const fnQueGuarda = async (url: string, init?: RequestInit): Promise<Response> => {
+      if ((init?.method ?? "GET") === "POST" && url.endsWith("/v1/orders")) {
+        corposPostados.push(JSON.parse(String(init?.body)));
+      }
+      return await mp.fn(url, init);
+    };
+    const ef = efeitosCI();
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao({ parcelas: caso.parcelas }), montarToken(DONO_LOGADO)), {
+        supabase: contado as never,
+        fetchImpl: fnQueGuarda as typeof fetch,
+        credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS,
+        alertarAdminCartaoOrfao: async () => {},
+        ...ef.deps,
+      })
+    );
+    const texto = await resposta.text();
+
+    assertEquals(resposta.status, 200, texto);
+    assertEquals(texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(corposPostados.length, 1);
+    const pagamentoPostado = ((corposPostados[0].transactions as Record<string, unknown>).payments as Array<
+      Record<string, unknown>
+    >)[0];
+    assertEquals((pagamentoPostado.payment_method as Record<string, unknown>).installments, caso.parcelas);
+    // O que a loja manda é o total do pedido — os juros são do MP, nunca da loja.
+    assertEquals(corposPostados[0].total_amount, "100.00");
+    assertEquals(pagamentoPostado.amount, "100.00");
+    assertEquals(db.linha.parcelas, caso.parcelas);
+    assertEquals(db.linha.metodo_online, "credito");
+    assertEquals(confirmacoesCI(db).map((c) => c.args), [
+      { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+    ]);
+    assertEquals(db.linha.payment_status, "pago");
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA parcelado 3x — CONTROLE: valor pago MENOR que o pedido (parcial) no 3x continua sem confirmar", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ parcelas: 3 }));
+  const ef = efeitosCI();
+  const order = cartaoParceladoComJuros(cartaoPagoCI(), 3, "60.00");
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [order] }), ef.deps);
+
+  assertEquals(confirmacoesCI(db).length, 0);
+  assertEquals(ef.pushes, []);
+  assertEquals(r.status, 200);
+});

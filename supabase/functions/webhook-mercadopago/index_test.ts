@@ -7187,3 +7187,145 @@ Deno.test("rota payment — pagamento RECUSADO com id CLÁSSICO gravado (PIX leg
   assertEquals(registro.chamadasRpc[0].args.p_status, "recusado");
   assertEquals(registro.chamadasRpc[0].args.p_payment_id, String(ID_PAGAMENTO_DO_MP));
 });
+
+// ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
+// Um pagamento 1x à vista não exercita o parcelado. Premissa (não medida):
+// no parcelado com juros do comprador o MP cobra MAIS que o pedido, o que a
+// loja mandou (`total_amount` da raiz e `amount` do pagamento) continua o
+// total do pedido, e só o valor PAGO (`total_paid_amount`/`paid_amount`)
+// sobe. A conferência de valor desta rota lê `extrairValorDaOrder` (o
+// `total_amount`); se alguém trocar a leitura pelo valor PAGO, o 2x e o 3x
+// deixam de confirmar e o dinheiro do cliente fica parado sem pedido pago.
+// Os valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas
+// medidas no MP. Premissa declarada, NÃO provada por esta suíte: o MP mantém
+// o `total_amount` sem juros. Aprovação de um 2x/3x em sandbox é compatível
+// com ela, mas não a prova sozinha (nem prova que houve juros): só a leitura
+// dos campos da order (`total_amount`/`amount` contra
+// `total_paid_amount`/`paid_amount`) e dos valores por parcela do gateway
+// comprova.
+const PARCELADOS_COM_JUROS = [
+  { parcelas: 1, pago: "149.90" },
+  { parcelas: 2, pago: "164.35" },
+  { parcelas: 3, pago: "168.49" },
+];
+
+function orderParceladaComJuros(parcelas: number, pago: string): Record<string, unknown> {
+  return {
+    id: ID_ORDER_CARTAO_MP,
+    external_reference: UUID_PEDIDO,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    total_paid_amount: pago,
+    transactions: {
+      payments: [{
+        id: "PAY01CARTAO",
+        amount: "149.90",
+        paid_amount: pago,
+        status: "processed",
+        status_detail: "accredited",
+        payment_method: { id: "master", type: "credit_card", installments: parcelas },
+      }],
+    },
+  };
+}
+
+for (const caso of PARCELADOS_COM_JUROS) {
+  Deno.test(`cartão parcelado ${caso.parcelas}x — order aprovada com valor pago ${caso.pago} (pedido 149,90) e a vaga com a order -> confirma 'pago', nunca 'valor divergente'`, async () => {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      total: 149.9,
+      total_amount: null,
+      gateway_payment_id: ID_ORDER_CARTAO_MP,
+      metodo_online: "credito",
+      parcelas: caso.parcelas,
+    };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderParceladaComJuros(caso.parcelas, caso.pago)),
+      enviarPush: async () => {},
+      enviarComprovante: async () => {},
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.ignorado, undefined, "juros do parcelado não é valor divergente");
+    assertEquals(registro.chamadasLiberar.length, 0);
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+    assertEquals(registro.chamadasRpc[0].args.p_payment_id, ID_ORDER_CARTAO_MP);
+    assertEquals(registro.chamadasRpc[0].args.p_order_id, UUID_PEDIDO);
+  });
+
+  Deno.test(`cartão parcelado ${caso.parcelas}x — ADOÇÃO da vaga vazia grava parcelas ${caso.parcelas} e 'credito' lidos da order, e confirma mesmo com o valor pago ${caso.pago}`, async () => {
+    ambienteDoWebhook();
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      total: 149.9,
+      total_amount: null,
+      gateway_payment_id: null,
+      metodo_online: null,
+      parcelas: null,
+    };
+    const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+
+    const resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, orderParceladaComJuros(caso.parcelas, caso.pago)),
+      enviarPush: async () => {},
+      enviarComprovante: async () => {},
+    });
+
+    assertEquals(resposta.status, 200);
+    assertEquals(pedido.gateway_payment_id, ID_ORDER_CARTAO_MP);
+    assertEquals(pedido.metodo_online, "credito");
+    assertEquals(pedido.parcelas, caso.parcelas);
+    assertEquals(registro.chamadasRpc.length, 1);
+    assertEquals(registro.chamadasRpc[0].args.p_status, "pago");
+  });
+}
+
+Deno.test("cartão parcelado 3x — CONTROLE: o MESMO parcelado com total_amount MENOR que o pedido continua 'valor divergente', sem confirmar", async () => {
+  ambienteDoWebhook();
+  const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+  const pedido = {
+    id: UUID_PEDIDO,
+    customer_name: "Maria",
+    total: 149.9,
+    total_amount: null,
+    gateway_payment_id: ID_ORDER_CARTAO_MP,
+    metodo_online: "credito",
+    parcelas: 3,
+  };
+  const supabase = clienteFalso({ rpcResultado: "pago", pedido, registro });
+  const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+  const order = { ...orderParceladaComJuros(3, "168.49"), total_amount: "100.00" };
+
+  const erroReal = console.error;
+  console.error = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(req, {
+      supabase,
+      fetchImpl: fetchConsulta(200, order),
+      enviarPush: async () => {},
+      enviarComprovante: async () => {},
+    });
+  } finally {
+    console.error = erroReal;
+  }
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorado, "valor divergente");
+  assertEquals(registro.chamadasRpc.length, 0);
+});
