@@ -115,6 +115,33 @@ export function lerCanais(caminho = path.join(AQUI, "canais-de-backend.json")) {
       throw new Error(
         `canais-de-backend.json: backfillLedger inválido ${p.backfillLedger}`,
       );
+    if (p.nuncaAplicar !== undefined && typeof p.nuncaAplicar !== "boolean")
+      throw new Error(
+        `canais-de-backend.json: nuncaAplicar do lote ${p.consulta} precisa ser booleano`,
+      );
+    // Lote que NUNCA se aplica não carrega o caminho que leva ao apply: a
+    // consulta de ausência e as conferências de antes do apply não têm o que
+    // fazer ali, e declará-las seria deixar a porta entreaberta.
+    if (
+      p.nuncaAplicar === true &&
+      (p.ausenciaConfirmadaPor !== undefined ||
+        (p.conferenciasAntesDoApply ?? []).length > 0)
+    )
+      throw new Error(
+        `canais-de-backend.json: o lote ${p.consulta} é nuncaAplicar e não pode declarar ausenciaConfirmadaPor nem conferenciasAntesDoApply`,
+      );
+    if (p.soNosRefs !== undefined) {
+      if (!Array.isArray(p.soNosRefs) || p.soNosRefs.length === 0)
+        throw new Error(
+          `canais-de-backend.json: soNosRefs do lote ${p.consulta} precisa ser uma lista não vazia`,
+        );
+      for (const ref of p.soNosRefs) {
+        if (!RE_REF.test(ref) || !Object.hasOwn(c.canais ?? {}, ref))
+          throw new Error(
+            `canais-de-backend.json: soNosRefs do lote ${p.consulta} cita um ref que não é um canal: ${ref}`,
+          );
+      }
+    }
   }
   return c;
 }
@@ -361,10 +388,21 @@ export function versoesAplicadas(saida) {
   return new Set(versoes);
 }
 
+/**
+ * As consultas de ROL FECHADO (a mesma lista que `ROL_FECHADO_POR_CONSULTA` de
+ * scripts/publicacao/conferir-banco.cjs; tests/ci_conferir_banco_test.ts prova
+ * que as duas listas são iguais). Para elas o veredito só vale como evidência
+ * com ` rol=ok`: a resposta foi EXATAMENTE o rol, sem faltar, repetir nem sobrar.
+ */
+export const CONSULTAS_DE_ROL_FECHADO = new Set([
+  "9a-conferir-60-a-66-aplicado",
+  "8e-conferir-92-a-202-aplicado",
+]);
+
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
 export function lerVeredicto(log, consulta) {
   const re =
-    /VEREDITO-CONSULTA consulta=(\S+) ref=([a-z]{20}) sha=([0-9a-f]{40}|local) linhas=(\d+) ok_false=(\d+) ok_nao_booleano=(\d+)/g;
+    /VEREDITO-CONSULTA consulta=(\S+) ref=([a-z]{20}) sha=([0-9a-f]{40}|local) linhas=(\d+) ok_false=(\d+) ok_nao_booleano=(\d+)(?: rol=(ok|invalido))?/g;
   const achados = [];
   for (const m of String(log).matchAll(re)) {
     if (m[1] === consulta) {
@@ -374,6 +412,7 @@ export function lerVeredicto(log, consulta) {
         linhas: Number(m[4]),
         okFalse: Number(m[5]),
         naoBooleano: Number(m[6]),
+        ...(m[7] ? { rol: m[7] } : {}),
       });
     }
   }
@@ -509,6 +548,16 @@ export async function evidenciaDaProva({
       `run ${run.databaseId}: consulta sem linhas (nada conferido)`,
       run,
     );
+  // Consulta de ROL FECHADO: sem o rol exato declarado no veredito, a resposta
+  // pode ter sido PARCIAL (os presentes ok=true), repetida, com item
+  // desconhecido, coluna errada ou ok não booleano. Formato desconhecido não é
+  // evidência: nem POSITIVA nem NEGATIVA, só SEM_EVIDENCIA.
+  if (CONSULTAS_DE_ROL_FECHADO.has(consulta) && v.rol !== "ok") {
+    return sem(
+      `run ${run.databaseId}: ${consulta} é de rol fechado e o veredito não confirma o rol exato (rol=${v.rol ?? "ausente"}) — formato desconhecido não é evidência`,
+      run,
+    );
+  }
   if (v.naoBooleano > 0)
     return sem(
       `run ${run.databaseId}: ${v.okFalse} linha(s) ok=false, ${v.naoBooleano} sem ok booleano`,
@@ -592,6 +641,14 @@ export function decidirLote({
       acao: "CONFERIR",
       consultas: [consulta],
       motivo: `ledger sem ${lista}; primeiro a prova ${consulta} (${prova.motivo})`,
+    };
+  }
+  // NUNCA APLICAR: prova negativa num lote histórico PARA, mesmo que haja
+  // diagnóstico que "prove ausência". Esta é a ÚNICA porta que leva ao APLICAR.
+  if (lote.nuncaAplicar) {
+    return {
+      acao: "PARAR",
+      motivo: `ledger sem ${lista} e prova ${consulta} negativa (${prova.motivo}): o lote é histórico e NUNCA se aplica (reaplicar é regressivo); o que faltar vira migration nova para a frente, com o dono`,
     };
   }
   const ausencia = lote.ausenciaConfirmadaPor;
@@ -808,7 +865,11 @@ async function prontidaoDaLoja(loja, canal, ctx) {
       );
     }
   }
-  const lotes = canais.provasDeObjetos ?? [];
+  // Lote com `soNosRefs` só existe para esses refs (o 60-66 é só da CAF: a Savy
+  // nunca exige a 9a nem cai em PARAR por ela).
+  const lotes = (canais.provasDeObjetos ?? []).filter(
+    (p) => p.soNosRefs === undefined || p.soNosRefs.includes(loja.ref),
+  );
   const noLote = (v) => lotes.some((p) => (p.versoes ?? []).includes(v));
   for (const v of novas) {
     if (!noLote(v))
@@ -994,6 +1055,12 @@ export function comandosDeConserto(loja, pront, canal, ctx) {
             f("gravar_ledger", l.lote.backfillLedger),
             f("confirmar", "GRAVAR"),
           ]),
+        );
+      } else if (d.acao === "APLICAR" && l.lote.nuncaAplicar) {
+        // Defesa em profundidade: decidirLote já não devolve APLICAR para lote
+        // histórico, mas nenhum comando de apply sai dele em hipótese alguma.
+        cmds.push(
+          `# ${quem} — ${l.consulta}: lote histórico, NUNCA se aplica — sem comando de apply`,
         );
       } else if (d.acao === "APLICAR") {
         const nomes = d.versoes.map((v) => nomesPorVersao.get(v));

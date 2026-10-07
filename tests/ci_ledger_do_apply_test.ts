@@ -500,7 +500,7 @@ Deno.test("conferir-banco-da-loja.yml: gravar_ledger tem a opção 92-202; o job
   const bruto = await Deno.readTextFile(CONFERIR);
   assertStringIncludes(
     bruto,
-    'options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - "83"\n          - 92-202\n',
+    'options:\n          - nao\n          - 72-74\n          - 75-78\n          - 79-82\n          - "83"\n          - 92-202\n          - 60-66\n',
   );
   const yaml = semComentarios(bruto);
   const ledger = bloco(yaml, "ledger");
@@ -528,7 +528,7 @@ Deno.test("conferir-banco-da-loja.yml: gravar_ledger tem a opção 92-202; o job
     .find((l) => l.trimStart().startsWith("if:"));
   assertStringIncludes(
     linhaIf,
-    "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202') || ((inputs.projeto == 'ikcous-publicada' || inputs.projeto == 'savy') && inputs.gravar_ledger == '92-202'))",
+    "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202'))",
   );
   assertStringIncludes(linhaIf, "inputs.confirmar == 'GRAVAR'");
   assertStringIncludes(linhaIf, "inputs.gravar_ledger != 'nao'");
@@ -594,34 +594,26 @@ async function rodarScript(env: Record<string, string>, base: string) {
   return { codigo: r.code, saida: dec.decode(r.stdout) + dec.decode(r.stderr) };
 }
 
+// A 8e da faixa 92-202 passou a ser ROL FECHADO (06/10/2026): só a resposta com
+// EXATAMENTE os itens da consulta, cada um uma vez, todos ok=true, autoriza gravar.
+// eslint-disable-next-line security/detect-non-literal-require -- caminho constante do próprio teste
+const ITENS_DA_8E: string[] = require(SCRIPT).ROL_DA_8E;
 const OITO_E_OK = () => ({
   status: 201,
-  corpo: JSON.stringify([
-    {
-      item: "controle: funcoes de public visiveis a este papel",
-      esperado: ">0",
-      vivo: ">0",
-      ok: true,
-    },
-    { item: "corpo final fin_dre", esperado: "e58a", vivo: "e58a", ok: true },
-  ]),
+  corpo: JSON.stringify(
+    ITENS_DA_8E.map((item) => ({ item, esperado: "x", vivo: "x", ok: true })),
+  ),
 });
 const OITO_E_COM_FALHA = () => ({
   status: 201,
-  corpo: JSON.stringify([
-    {
-      item: "corpo final fin_dre",
-      esperado: "e58a",
-      vivo: "AUSENTE",
-      ok: false,
-    },
-    {
-      item: "controle: funcoes de public visiveis a este papel",
-      esperado: ">0",
-      vivo: ">0",
-      ok: true,
-    },
-  ]),
+  corpo: JSON.stringify(
+    ITENS_DA_8E.map((item) => ({
+      item,
+      esperado: "x",
+      vivo: item === "corpo final fin_dre" ? "AUSENTE" : "x",
+      ok: item !== "corpo final fin_dre",
+    })),
+  ),
 });
 
 const ALVOS: [string, string, Record<string, string>, string][] = [
@@ -817,4 +809,55 @@ Deno.test({
       }
     }
   },
+});
+
+Deno.test("conferir-banco-da-loja.yml: o `if` do job do ledger ESPELHA o mapa do script (60-66 só na CAF; 92-202 na CAF e na Savy; loja/sandbox nenhuma das duas) — tabela-verdade avaliada", async () => {
+  const yaml = semComentarios(await Deno.readTextFile(CONFERIR));
+  const linhaIf = bloco(yaml, "ledger")
+    .split("\n")
+    .find((l) => l.trimStart().startsWith("if:"))!;
+  const expr = linhaIf
+    .replace(/^\s*if:\s*\$\{\{/, "")
+    .replace(/\}\}\s*$/, "")
+    .trim();
+  const roda = (projeto: string, gravar_ledger: string, confirmar = "GRAVAR") =>
+    new Function("inputs", `return Boolean(${expr})`)({
+      ikcous_original: false,
+      ikcous_publicado: false,
+      projeto,
+      gravar_ledger,
+      confirmar,
+    });
+  // eslint-disable-next-line security/detect-non-literal-require -- caminho constante do próprio teste
+  const { FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA } = require(SCRIPT);
+  const faixas = ["72-74", "75-78", "79-82", "83", "92-202", "60-66"];
+  for (const projeto of ["loja", "sandbox", "ikcous-publicada", "savy"]) {
+    for (const faixa of faixas) {
+      const esperado = Object.hasOwn(
+        FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
+        projeto,
+      )
+        ? FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA[projeto].includes(faixa)
+        : !["92-202", "60-66"].includes(faixa);
+      assertEquals(
+        roda(projeto, faixa),
+        esperado,
+        `${projeto} + ${faixa}: o workflow e o mapa do script divergem`,
+      );
+    }
+    assertEquals(roda(projeto, "nao"), false, `${projeto} + nao`);
+    for (const faixa of faixas)
+      assertEquals(
+        roda(projeto, faixa, ""),
+        false,
+        `${projeto} + ${faixa} sem GRAVAR`,
+      );
+  }
+  // os casos que o dono pediu por nome
+  assertEquals(roda("loja", "60-66"), false);
+  assertEquals(roda("sandbox", "60-66"), false);
+  assertEquals(roda("savy", "60-66"), false);
+  assertEquals(roda("ikcous-publicada", "60-66"), true);
+  assertEquals(roda("ikcous-publicada", "72-74"), false);
+  assertEquals(roda("loja", "92-202"), false);
 });

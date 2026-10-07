@@ -91,6 +91,47 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       (ex.: `send-otp-email`), a loja fica PARADA pelo nome, sem comando: o caminho central nao a
       publica, e como seguir (canal novo no workflow ou publicacao separada) e decisao do dono.
    7. Passo 2 de novo. So segue com PRONTO.
+   8. **Faixa historica 20261160..20261166 (so a IKCOUS/CAF; lote com `nuncaAplicar`).** O
+      ledger da CAF salta de 20261150 para 20261167, mas o efeito dessas 7 migrations JA ESTA no
+      banco (achado de 21/09). Reaplicar e regressivo e destrutivo (a 63 faz `DROP FUNCTION` e
+      recria o corpo antigo; a 62 e a 65 devolvem corpo velho; a 66 apaga duplicados e faz
+      `ADD CONSTRAINT`/`CREATE INDEX`/`CREATE TRIGGER` sem `IF NOT EXISTS`). Por isso NUNCA se
+      aplica: `aplicar-migrations.yml` RECUSA esses arquivos e os `rollback-manual-2026116[0-6]*`
+      em `ikcous-publicada`, `loja` e `savy` (a Savy ja tem as 7 no banco e no ledger; reaplicar a
+      62, 63 ou 64 troca o corpo pelo anterior a 20261199, sem a trava de admin atual), antes de
+      qualquer requisicao. O caminho e so este:
+      1. **Ordem.** Antes da 9a, a 8e da CAF tem de estar POSITIVA e o backfill 92-202 feito
+         (os corpos que a 9a compara so batem com a 92..202 no banco).
+      2. **9a (so leitura):** `conferir-banco-da-loja.yml` com `projeto=ikcous-publicada` e
+         `consulta=9a-conferir-60-a-66-aplicado` (47 itens: objetos, ACL das funcoes 61..64,
+         overload da `get_admin_orders_paged`, metadados das 7 funcoes - SECURITY, search_path,
+         volatilidade, STRICT, dono, argumentos, retorno e linguagem -, vistas por
+         colunas/opcoes/definicao, CHECK e defaults por lista fechada, restricao adiavel e
+         collation/opclass do indice com o schema). Ela le o estado ATUAL: os corpos atuais valem so como verificacao do
+         estado exigido; a evidencia de 62..64 e a ACL e o overload, nao o corpo.
+      3. **9a POSITIVA** (todas as linhas ok=true, e o veredito traz `rol=ok`) = falta so o
+         REGISTRO: o unico comando e o backfill `gravar_ledger=60-66` + `confirmar=GRAVAR`. O
+         script le o ledger (150 e 167 presentes, nenhuma das 7), refaz a 9a (rol fechado), grava
+         com UM INSERT guardado (UMA tentativa, sem retry) e rele o ledger: confere
+         exatamente as 7 versoes com os nomes, a 150 e a 167. Se as 7 ja estiverem la, sai 0 com
+         "ja registrado: nada a gravar" e NENHUMA escrita. Escrita com resultado desconhecido
+         (timeout, rede, 5xx) NAO e repetida: o script faz UMA leitura de reconciliacao e diz
+         REGISTRADO / NAO REGISTRADO / PARCIAL; so se tenta de novo se a leitura mostrar que nao esta
+         la.
+      4. **9a NEGATIVA** (qualquer `ok=false`, ou resposta que nao seja o rol exato) = PARAR.
+         Nada se aplica; o que faltar vira migration NOVA para a frente, so com o objeto ausente.
+      5. **Limites.** A prova foi feita num Postgres 17 local (`tests/banco/lote-60-66-viva.cjs`);
+         a versao da CAF nao foi medida. O deparse de CHECK, default e vista depende da versao:
+         se divergir, a 9a falha FECHADA (vira NEGATIVA, nunca uma POSITIVA falsa). A guarda do
+         INSERT reduz o risco de gravar sobre uma forma inesperada, mas nao serializa (cada
+         comando ve o proprio snapshot sob READ COMMITTED): a evidencia e a leitura posterior, e a
+         exclusao contra um apply e o grupo de concorrencia `banco-da-loja` do workflow. O DONO das
+         funcoes (`postgres`) foi medido so no banco local: se na CAF for outro, a 9a sai NEGATIVA e
+         o backfill para (nao ha excecao por ambiente). `indnullsnotdistinct` exige PG 15 ou mais.
+         Risco residual do privilegio de `produtos.codigo_barras`: a 9a prova o GRANT explicito da
+         coluna ao authenticated e que a tabela NAO da SELECT ao authenticated nem a PUBLIC, direto
+         ou herdado de outro papel (`has_table_privilege`). Ela NAO le GRANT de coluna das OUTRAS
+         colunas (ex.: `custo`) nem papeis que nao sejam o authenticated: isso nao esta provado aqui.
 
 4. **Promover UM front e conferir a frota.**
 

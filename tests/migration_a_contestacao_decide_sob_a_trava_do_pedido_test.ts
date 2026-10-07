@@ -398,6 +398,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/invariantes-dinheiro.cjs",
     // send-order-whatsapp: cada select da edge executa no schema real.
     "tests/banco/whatsapp-edge-consultas-viva.cjs",
+    // Lote 60-66: a consulta 9a reprova cada desvio e o backfill do ledger só grava com ela positiva.
+    "tests/banco/lote-60-66-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

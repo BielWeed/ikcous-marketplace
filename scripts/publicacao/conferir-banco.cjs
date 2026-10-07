@@ -17,17 +17,21 @@
  *                          rodada 2). A CAF usa SÓ SUPABASE_ACCESS_TOKEN_IKCOUS
  *                          e a Savy SÓ SUPABASE_ACCESS_TOKEN_SAVY (sem
  *                          fallback); nenhuma das duas roda o LEDGER, salvo a
- *                          faixa 92-202 (pré-checagem 8e obrigatória).
+ *                          faixa 92-202 (pré-checagem 8e obrigatória) e, SÓ na
+ *                          CAF, a faixa 60-66 (pré-checagem 9a obrigatória).
  *   CONSULTA                nome (sem `.sql`) de um arquivo em
  *                          scripts/publicacao/consultas/, ou "backups".
- *   LEDGER                 "72-74", "75-78", "79-82", "83" ou "92-202" —
- *                          pré-confere o schema, grava o ledger fixo daquela
- *                          faixa e confere 72-78 (ou 72-82/72-83/72-202, para
- *                          as faixas novas) depois. Mutuamente exclusivo com
- *                          CONSULTA (o workflow só passa um). Em
+ *   LEDGER                 "72-74", "75-78", "79-82", "83", "92-202" ou
+ *                          "60-66" — pré-confere o schema, grava o ledger fixo
+ *                          daquela faixa e confere 72-78 (ou 72-82/72-83/
+ *                          72-202, para as faixas novas) depois. Mutuamente
+ *                          exclusivo com CONSULTA (o workflow só passa um). Em
  *                          `ikcous-publicada` e `savy` SÓ a faixa 92-202 (o
  *                          backfill das migrations 92..202 sem a 201), com a
- *                          pré-checagem da 8e obrigatória.
+ *                          pré-checagem da 8e obrigatória; a faixa 60-66 (o
+ *                          backfill do REGISTRO das 20261160..20261166, cujo
+ *                          efeito já está vivo na CAF) é SÓ de
+ *                          `ikcous-publicada`, com a 9a por ROL FECHADO.
  *
  *   node scripts/publicacao/conferir-banco.cjs
  *
@@ -197,7 +201,7 @@ const CONSULTAS_DIR = path.join(
 // real de produção é sempre o host oficial da Management API.
 const API_BASE =
   process.env.CONFERIR_BANCO_API_BASE || "https://api.supabase.com";
-const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83", "92-202"];
+const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83", "92-202", "60-66"];
 /** A ÚNICA faixa do ledger permitida nas lojas explícitas (`ikcous-publicada` e
  * `savy`) — 06/10/2026. A regra de antes ("a CAF não grava o ledger") continua
  * valendo para as faixas 72..83; esta é o BACKFILL das 9 migrations
@@ -206,6 +210,21 @@ const FAIXAS_DE_LEDGER = ["72-74", "75-78", "79-82", "83", "92-202"];
  * da 8e (todas as linhas ok=true, feita ANTES do INSERT em `rodarLedger`) e com
  * o INSERT fixo e pinado por SHA-256. */
 const FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS = "92-202";
+/** A faixa 60-66 do ledger (06/10/2026): o backfill do REGISTRO das 7 migrations
+ * 20261160..20261166, cujo efeito já está VIVO na CAF (o ledger salta de
+ * 20261150 para 20261167). É SÓ de `ikcous-publicada`: nem `savy` (o ledger dela
+ * não tem esse buraco) nem `loja`/`sandbox`/lojas de teste. Nunca aplica nada —
+ * só grava as 7 linhas, depois da 9a toda ok=true, por ROL FECHADO. */
+const FAIXA_LEDGER_SO_DA_CAF = "60-66";
+/** O MAPA das faixas de ledger que cada loja explícita aceita (D4). Fora dele
+ * (`loja`, `sandbox`, lojas de teste e qualquer outro alvo) nenhuma das duas. */
+const FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA = {
+  "ikcous-publicada": [
+    FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS,
+    FAIXA_LEDGER_SO_DA_CAF,
+  ],
+  savy: [FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS],
+};
 
 /** Os únicos dois projetos que este token alcança (mesmos refs de
  * `publicar-functions.yml`). Nunca aceitar um terceiro valor aqui: é isso
@@ -581,6 +600,9 @@ function escreverResumo(markdown) {
   if (destino) fs.appendFileSync(destino, `${markdown}\n`);
 }
 
+/** Teto de uma requisição à Management API (leitura ou escrita). */
+const TEMPO_LIMITE_DA_REQUISICAO_MS = 120_000;
+
 /** Erro de HTTP com o status à mão: o `main` precisa distinguir 401/403 (sem
  * acesso à CAF = PARADA, nunca outro segredo) de qualquer outra falha. */
 function erroDeHttp(status, texto) {
@@ -600,6 +622,10 @@ async function chamarManagementApi(caminho, { token, corpo }) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(corpo),
+    // Sem isto uma resposta que nunca chega prendia o job até o timeout do
+    // workflow, sem mensagem. Na ESCRITA o estouro vira "ESTADO DESCONHECIDO"
+    // (`gravarUmaVez`): o servidor pode ter gravado mesmo assim.
+    signal: AbortSignal.timeout(TEMPO_LIMITE_DA_REQUISICAO_MS),
   });
   const texto = await r.text();
   if (!r.ok) throw erroDeHttp(r.status, texto);
@@ -684,9 +710,24 @@ async function rodarConsulta({ ref, token, consulta }) {
   if (linhaVeredito) console.log(linhaVeredito);
 }
 
-/** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`. */
+/** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
+ * Nas consultas de ROL FECHADO (9a, 8e — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
+ * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
+ * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
 function veredictoDaConsulta({ consulta, ref, sha, linhas }) {
   const prefixo = `VEREDITO-CONSULTA consulta=${consulta} ref=${ref} sha=${sha || "local"}`;
+  if (Object.hasOwn(ROL_FECHADO_POR_CONSULTA, consulta)) {
+    const lista = Array.isArray(linhas) ? linhas : [];
+    const estruturaOk =
+      estruturaDoRolFechado(lista, ROL_FECHADO_POR_CONSULTA[consulta]) ===
+        null && lista.every((l) => typeof l.ok === "boolean");
+    const okFalse = lista.filter((l) => l && l.ok === false).length;
+    const naoBooleano = lista.filter(
+      (l) => !l || typeof l.ok !== "boolean",
+    ).length;
+    return `${prefixo} linhas=${lista.length} ok_false=${okFalse} ok_nao_booleano=${naoBooleano} rol=${estruturaOk ? "ok" : "invalido"}`;
+  }
   if (!Array.isArray(linhas) || linhas.length === 0)
     return `${prefixo} linhas=0 ok_false=0 ok_nao_booleano=0`;
   if (!linhas.every((l) => l && Object.hasOwn(l, "ok"))) return null;
@@ -723,6 +764,10 @@ const CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER = {
   // O backfill 92-202 só grava se a 8e (o corpo vivo de cada função que 92..202
   // definem + os objetos que criam) der ok=true em TODAS as linhas.
   "92-202": ["8e-conferir-92-a-202-aplicado"],
+  // O backfill 60-66 só grava se a 9a devolver EXATAMENTE o rol fechado, todo
+  // ok=true (`conferirRolFechado`). A forma do ledger NÃO é da 9a: `rodarLedger`
+  // a lê e a confere à parte (`classificarLedgerDa60a66`).
+  "60-66": ["9a-conferir-60-a-66-aplicado"],
 };
 
 /** Linhas que são dado AO VIVO da loja — mudam legitimamente com o tempo ou
@@ -753,6 +798,17 @@ async function conferirAntesDeGravar({ ref, token, faixa }) {
     const selectUnico = fs.readFileSync(arquivo, "utf8");
     const corpo = await chamarLeitura({ ref, token, query: selectUnico });
     const linhas = extrairLinhas(corpo);
+    if (Object.hasOwn(ROL_FECHADO_POR_CONSULTA, nomeConsulta)) {
+      // ROL FECHADO (9a e 8e): ver `conferirRolFechado`. A MESMA tabela
+      // (`ROL_FECHADO_POR_CONSULTA`) que o veredito da consulta usa.
+      conferirRolFechado({
+        faixa,
+        nomeConsulta,
+        linhas,
+        rol: ROL_FECHADO_POR_CONSULTA[nomeConsulta],
+      });
+      continue;
+    }
     if (linhas.length === 0) {
       throw new Error(
         `pré-checagem do ledger ${faixa} falhou: ${nomeConsulta} devolveu 0 linhas`,
@@ -767,6 +823,376 @@ async function conferirAntesDeGravar({ ref, token, faixa }) {
         );
       }
     }
+  }
+}
+
+/**
+ * O ROL FECHADO das consultas de pré-checagem das faixas 60-66 (9a) e 92-202
+ * (8e): os itens que a consulta devolve, cada um UMA vez. A pré-checagem das
+ * faixas 72..83 só recusa "0 linhas" ou `ok !== true` — para elas isso já
+ * bastava e mudar o critério delas é fora de escopo. Para estas duas é FRACO:
+ * uma resposta PARCIAL (faltam itens, mas os presentes são ok=true), uma linha
+ * duplicada, um item desconhecido ou um `ok` que não é o booleano `true`
+ * autorizariam gravar o ledger de uma faixa cujo efeito não foi provado inteiro.
+ * Gravar registro de migration NÃO tem desfazer barato (o portão passa a
+ * acreditar que a faixa está lá), por isso o critério aqui é o de lista fechada
+ * — e a Savy vai usar a 92-202. Nenhum rótulo destes está em
+ * `IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER` (as faixas de rol fechado nem consultam
+ * essa lista). tests/banco/lote-60-66-viva.cjs prova, num Postgres real, que
+ * cada rol é EXATAMENTE o que a consulta devolve; tests/ci_conferir_banco_test.ts
+ * prova que cada item de rol existe no .sql.
+ */
+const ROL_DA_9A = [
+  "acl buscar_por_codigo_barras",
+  "acl get_admin_orders_cancelados_recentes",
+  "acl get_admin_orders_paged",
+  "acl registrar_venda_presencial",
+  "assinatura get_admin_orders_paged",
+  "atributos buscar_por_codigo_barras",
+  "atributos get_admin_orders_cancelados_recentes",
+  "atributos get_admin_orders_paged",
+  "atributos get_product_recommendations",
+  "atributos limpar_cotacoes_fora_da_janela",
+  "atributos registrar_venda_presencial",
+  "atributos upsert_store_config",
+  "coluna marketplace_orders.canal",
+  "coluna marketplace_orders.vendedor_id",
+  "coluna product_variants.codigo_barras",
+  "coluna produtos.codigo_barras",
+  "controle: funcoes de public visiveis a este papel",
+  "corpo final buscar_por_codigo_barras",
+  "corpo final get_admin_orders_cancelados_recentes",
+  "corpo final get_admin_orders_paged",
+  "corpo final get_product_recommendations",
+  "corpo final limpar_cotacoes_fora_da_janela",
+  "corpo final registrar_venda_presencial",
+  "corpo final upsert_store_config",
+  "default de store_config.free_shipping_min",
+  "fk marketplace_orders.vendedor_id",
+  "gatilho shipping_quotes_cache_limpa_ao_gravar",
+  "indice idx_marketplace_orders_presencial",
+  "indice product_variants_codigo_barras_unico",
+  "indice produtos_codigo_barras_unico",
+  "indice shipping_quotes_cache_created_at_idx",
+  "privilegio authenticated le produtos.codigo_barras",
+  "restricao marketplace_orders_canal_check",
+  "restricao shipping_quotes_cache_chave_unica",
+  "sobrecargas buscar_por_codigo_barras",
+  "sobrecargas get_admin_orders_cancelados_recentes",
+  "sobrecargas get_admin_orders_paged",
+  "sobrecargas get_product_recommendations",
+  "sobrecargas limpar_cotacoes_fora_da_janela",
+  "sobrecargas registrar_venda_presencial",
+  "sobrecargas upsert_store_config",
+  "vista vw_produtos_admin colunas",
+  "vista vw_produtos_admin definicao",
+  "vista vw_produtos_admin opcoes",
+  "vista vw_produtos_public colunas",
+  "vista vw_produtos_public definicao",
+  "vista vw_produtos_public opcoes",
+];
+const ROL_DA_8E = [
+  "coluna order_refunds.criada_sob_autorizacao existe",
+  "coluna order_refunds.mp_chargeback_case_id existe",
+  "coluna order_refunds.mp_chargeback_id existe",
+  "coluna order_refunds.mp_chargeback_valor_do_caso existe",
+  "coluna order_refunds.post_autorizado_em existe",
+  "controle: funcoes de public visiveis a este papel",
+  "corpo final admin_devolucao_concluir",
+  "corpo final admin_devolucao_decidir",
+  "corpo final admin_devolucao_liberar_vinculo_reverso",
+  "corpo final admin_devolucao_reemitir_reembolso",
+  "corpo final admin_devolucao_registrar",
+  "corpo final admin_devolucao_reprovar",
+  "corpo final admin_devolucoes_listar",
+  "corpo final autorizar_post_do_estorno",
+  "corpo final cancelar_pedido_com_cobranca",
+  "corpo final confirmar_pagamento",
+  "corpo final confirmar_retorno_do_produto",
+  "corpo final crm_clientes",
+  "corpo final crm_visao",
+  "corpo final devolucao_detalhe",
+  "corpo final devolucao_elegibilidade",
+  "corpo final devolucoes_do_pedido",
+  "corpo final ensure_role_protection",
+  "corpo final fin_caixa_abrir",
+  "corpo final fin_caixa_atual",
+  "corpo final fin_caixa_fechar",
+  "corpo final fin_caixa_historico",
+  "corpo final fin_caixa_movimentar",
+  "corpo final fin_categoria_salvar",
+  "corpo final fin_categorias_listar",
+  "corpo final fin_conta_salvar",
+  "corpo final fin_contas_listar",
+  "corpo final fin_dre",
+  "corpo final fin_extrato",
+  "corpo final fin_lancamento_baixar",
+  "corpo final fin_lancamento_cancelar",
+  "corpo final fin_lancamento_salvar",
+  "corpo final fin_previstos",
+  "corpo final fin_resumo",
+  "corpo final get_admin_analytics_v2",
+  "corpo final get_admin_customers_paged",
+  "corpo final get_admin_orders_cancelados_recentes",
+  "corpo final get_admin_orders_paged",
+  "corpo final get_admin_user_detail",
+  "corpo final get_category_analytics",
+  "corpo final get_coupon_stats",
+  "corpo final get_retention_rate",
+  "corpo final get_segmented_push_count",
+  "corpo final get_segmented_push_targets",
+  "corpo final handle_profile_role_sync_to_auth",
+  "corpo final is_admin_atual",
+  "corpo final painel_inicio",
+  "corpo final pedido__mudar_status",
+  "corpo final pedido__saldo_a_estornar",
+  "corpo final prevent_role_change",
+  "corpo final registrar_contestacao_no_ledger",
+  "corpo final registrar_estorno_externo_do_mp",
+  "corpo final registrar_estorno_manual",
+  "corpo final registrar_pagamento_recebido",
+  "corpo final registrar_venda_presencial",
+  "corpo final rls_admin_atual",
+  "corpo final salvar_config_pagamento_cartao",
+  "corpo final salvar_politica_de_devolucao",
+  "corpo final save_store_identity",
+  "corpo final solicitar_estorno",
+  "corpo final update_order_status_atomic",
+  "corpo final upsert_store_config",
+  "indice uq_order_refunds_pedido_contestacao existe",
+  "indice uq_order_refunds_pedido_refund_mp existe",
+  "politica marketplace_order_history.order_history_select_policy existe",
+  "politica marketplace_order_items.order_items_select_policy existe",
+  "politicas de public que citam rls_admin_atual",
+  "tabela contestacoes_decisao_final existe",
+];
+/** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
+ * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
+ * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
+ * 72..83 e as antigas (1a/2a/6a/7a…) ficam de fora de propósito. */
+const ROL_FECHADO_POR_CONSULTA = {
+  "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
+  "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
+};
+const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
+
+/** A ESTRUTURA da resposta de uma consulta de rol fechado: devolve null quando é
+ * exatamente o rol (todas as linhas objetos com EXATAMENTE as colunas
+ * item/esperado/vivo/ok, cada item do rol uma vez, nenhum desconhecido), ou o
+ * texto do que está errado. NÃO olha o valor de `ok` (isso é o resultado). */
+function estruturaDoRolFechado(linhas, rol) {
+  if (!Array.isArray(linhas) || linhas.length === 0) return "devolveu 0 linhas";
+  for (const linha of linhas) {
+    const ehObjeto =
+      linha && typeof linha === "object" && !Array.isArray(linha);
+    if (
+      !ehObjeto ||
+      JSON.stringify(Object.keys(linha).sort()) !==
+        JSON.stringify(COLUNAS_DO_ROL)
+    ) {
+      return `devolveu uma linha sem exatamente as colunas item/esperado/vivo/ok: ${JSON.stringify(linha)?.slice(0, 200)}`;
+    }
+  }
+  const contagem = new Map();
+  for (const linha of linhas) {
+    contagem.set(linha.item, (contagem.get(linha.item) ?? 0) + 1);
+  }
+  const duplicados = [...contagem].filter(([, n]) => n > 1).map(([i]) => i);
+  const desconhecidos = [...contagem.keys()].filter((i) => !rol.includes(i));
+  const faltando = rol.filter((i) => !contagem.has(i));
+  if (duplicados.length || desconhecidos.length || faltando.length) {
+    const partes = [];
+    if (faltando.length)
+      partes.push(`faltam ${faltando.length}: ${faltando.join("; ")}`);
+    if (duplicados.length) partes.push(`repetidos: ${duplicados.join("; ")}`);
+    if (desconhecidos.length)
+      partes.push(`desconhecidos: ${desconhecidos.join("; ")}`);
+    return `não devolveu EXATAMENTE o rol de ${rol.length} itens (${partes.join(" | ")})`;
+  }
+  return null;
+}
+
+/** Confere as linhas de uma consulta de rol fechado. Lança se: alguma linha não é
+ * um objeto com EXATAMENTE as colunas item/esperado/vivo/ok; falta item, sobra item
+ * ou algum item aparece mais de uma vez; ou qualquer `ok` não é o booleano `true`. */
+function conferirRolFechado({ faixa, nomeConsulta, linhas, rol }) {
+  const prefixo = `pré-checagem do ledger ${faixa} falhou: ${nomeConsulta}`;
+  const estrutura = estruturaDoRolFechado(linhas, rol);
+  if (estrutura) throw new Error(`${prefixo} ${estrutura}`);
+  const reprovadas = linhas.filter((l) => l.ok !== true);
+  if (reprovadas.length === 0) return;
+  const l = reprovadas[0];
+  throw new Error(
+    `${prefixo} tem "${l.item}" com ok=${JSON.stringify(l.ok)} (esperado ${JSON.stringify(l.esperado)}, vivo ${JSON.stringify(l.vivo)})${reprovadas.length > 1 ? ` e mais ${reprovadas.length - 1} reprovada(s)` : ""}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// A forma do ledger da faixa 60-66 (D2): NÃO é da 9a (que só olha objetos e dá a
+// mesma resposta antes e depois do backfill) — é lida AQUI, antes de gravar e de
+// novo depois.
+// ---------------------------------------------------------------------------
+const LEDGER_60_66_PISO = "20261150000000";
+const LEDGER_60_66_TETO = "20261167000000";
+const LEDGER_60_66_PRIMEIRA = "20261160000000";
+const MENSAGEM_LEDGER_60_66_JA_REGISTRADO =
+  "ledger 60-66 já registrado: nada a gravar (as 7 versões 20261160..20261166 já estão no ledger com os nomes certos; NENHUMA escrita foi feita e nada foi reaplicado)";
+
+/** O ledger já tem as 7, com os nomes certos: estado EXPLÍCITO, não prova
+ * negativa. `main` o imprime e termina com saída 0, sem escrever. */
+class LedgerJaRegistrado extends Error {
+  constructor(faixa) {
+    super(MENSAGEM_LEDGER_60_66_JA_REGISTRADO);
+    this.name = "LedgerJaRegistrado";
+    this.faixa = faixa;
+  }
+}
+
+/** Lê do INSERT fixo (já conferido por hash) as linhas (version, name) que ele
+ * grava. */
+function versoesDoInsert(sql) {
+  return [...String(sql).matchAll(/\('(\d{14})', '([a-z0-9_]+)'\)/g)].map(
+    (m) => ({ version: m[1], name: m[2] }),
+  );
+}
+
+/**
+ * Classifica a leitura do ledger entre 20261150 e 20261167999999:
+ *   LACUNA          150 e 167 presentes e NENHUMA versão em 160..166 → pode gravar;
+ *   JA_REGISTRADO   as 7 com os nomes certos, nem uma a mais na faixa → nada a gravar;
+ *   PARCIAL         algumas das 7 (ou versão a mais/nome trocado) → PARAR;
+ *   FORMA_INESPERADA  zero da faixa mas 150 ou 167 ausentes → PARAR.
+ * `ladoDeFora` descreve o que ficou fora do esperado, para a mensagem.
+ */
+function classificarLedgerDa60a66(linhas, esperadas) {
+  if (!Array.isArray(linhas)) {
+    return {
+      estado: "FORMA_INESPERADA",
+      detalhe: "leitura do ledger em formato inesperado",
+    };
+  }
+  // FORMATO de TODAS as linhas, ANTES de classificar (desconhecido não é
+  // sucesso): uma linha fora do formato não pode ser filtrada em silêncio — as
+  // âncoras 150/167 mais uma linha inválida virariam LACUNA e autorizariam a
+  // escrita. Cada linha: objeto com EXATAMENTE as colunas version e name,
+  // version string de 14 dígitos, name string não vazia.
+  for (const [i, l] of linhas.entries()) {
+    const chaves =
+      l && typeof l === "object" && !Array.isArray(l)
+        ? Object.keys(l).sort()
+        : null;
+    const formaOk =
+      chaves !== null &&
+      chaves.length === 2 &&
+      chaves[0] === "name" &&
+      chaves[1] === "version" &&
+      typeof l.version === "string" &&
+      /^\d{14}$/.test(l.version) &&
+      typeof l.name === "string" &&
+      l.name.length > 0;
+    if (!formaOk) {
+      return {
+        estado: "FORMA_INESPERADA",
+        detalhe: `linha ${i + 1} da leitura do ledger fora do formato (esperava { version: 14 dígitos, name: texto não vazio }, leu ${JSON.stringify(l)})`,
+      };
+    }
+  }
+  const tem150 = linhas.some((l) => l && l.version === LEDGER_60_66_PISO);
+  const tem167 = linhas.some((l) => l && l.version === LEDGER_60_66_TETO);
+  const dentro = linhas.filter(
+    (l) =>
+      l &&
+      typeof l.version === "string" &&
+      l.version >= LEDGER_60_66_PRIMEIRA &&
+      l.version < LEDGER_60_66_TETO,
+  );
+  if (dentro.length === 0) {
+    if (tem150 && tem167)
+      return { estado: "LACUNA", detalhe: "registrado: 0 de 7" };
+    const ausentes = [];
+    if (!tem150) ausentes.push(LEDGER_60_66_PISO);
+    if (!tem167) ausentes.push(LEDGER_60_66_TETO);
+    return {
+      estado: "FORMA_INESPERADA",
+      detalhe: `nenhuma das 7 registrada, mas ${ausentes.join(" e ")} ausente(s) do ledger: não é a forma da CAF`,
+    };
+  }
+  const problemas = [];
+  const porVersao = new Map();
+  for (const l of dentro) {
+    porVersao.set(l.version, [...(porVersao.get(l.version) ?? []), l.name]);
+  }
+  for (const e of esperadas) {
+    const nomes = porVersao.get(e.version);
+    if (!nomes) problemas.push(`falta ${e.version}`);
+    else if (nomes.length !== 1 || nomes[0] !== e.name)
+      problemas.push(
+        `${e.version} com nome divergente (esperado "${e.name}", leu ${JSON.stringify(nomes)})`,
+      );
+  }
+  const conhecidas = new Set(esperadas.map((e) => e.version));
+  for (const v of porVersao.keys()) {
+    if (!conhecidas.has(v)) problemas.push(`versão a mais na faixa: ${v}`);
+  }
+  if (problemas.length === 0) {
+    return {
+      estado: "JA_REGISTRADO",
+      detalhe: "registrado: 7 de 7",
+      guardasPresentes: tem150 && tem167,
+    };
+  }
+  const registradas = esperadas.filter((e) => porVersao.has(e.version)).length;
+  return {
+    estado: "PARCIAL",
+    detalhe: `registrado: ${registradas} de ${esperadas.length} (${problemas.join("; ")})`,
+  };
+}
+
+/** Uma leitura do ledger entre 20261150 e 20261167999999 (só leitura). */
+async function lerLedgerDa60a66({ ref, token }) {
+  const query = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '${LEDGER_60_66_PISO}' AND '20261167999999' ORDER BY version;`;
+  const corpo = await chamarLeitura({ ref, token, query });
+  return extrairLinhas(corpo);
+}
+
+/**
+ * A ÚNICA escrita deste script, UMA tentativa só (sem retry automático). Se ela
+ * falhar por timeout, rede, HTTP 5xx, 4xx diferente de 401/403 ou corpo
+ * inesperado, o INSERT PODE ter sido gravado — o resultado é DESCONHECIDO. Na
+ * faixa 60-66 roda UMA leitura de reconciliação (a mesma leitura prévia) e a
+ * mensagem diz REGISTRADO / NÃO REGISTRADO / PARCIAL; nas outras, manda
+ * reconciliar por leitura. Em qualquer caso lança com "ESTADO DESCONHECIDO" e o
+ * `main` sai 1. 401/403 não é desconhecido: o acesso foi recusado antes de
+ * qualquer escrita, e o `main` PARA com o bloqueio concreto.
+ */
+async function gravarUmaVez({ ref, token, faixa, query, esperadas }) {
+  try {
+    await chamarEscrita({ ref, token, query });
+  } catch (erro) {
+    if (erro && (erro.status === 401 || erro.status === 403)) throw erro;
+    let reconciliacao;
+    if (faixa === FAIXA_LEDGER_SO_DA_CAF) {
+      try {
+        const c = classificarLedgerDa60a66(
+          await lerLedgerDa60a66({ ref, token }),
+          esperadas,
+        );
+        reconciliacao =
+          {
+            LACUNA: "NÃO REGISTRADO (0 de 7)",
+            JA_REGISTRADO: "REGISTRADO (7 de 7)",
+          }[c.estado] ?? `PARCIAL / forma inesperada (${c.detalhe})`;
+      } catch (erroDeLeitura) {
+        reconciliacao = `a leitura de reconciliação TAMBÉM falhou (${erroDeLeitura?.message ?? erroDeLeitura}): estado do registro não determinado`;
+      }
+    }
+    const consultaDaFaixa = (CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER[faixa] ??
+      [])[0];
+    const novo = new Error(
+      `ESTADO DESCONHECIDO: a escrita do ledger ${faixa} falhou (${erro?.message ?? erro}) e NÃO foi repetida — o INSERT pode ter sido gravado ou não.${reconciliacao ? ` Leitura de reconciliação: ${reconciliacao}.` : ""} Antes de qualquer nova tentativa, reconcilie POR LEITURA (consulta ${consultaDaFaixa} e supabase_migrations.schema_migrations; workflow conferir-banco-da-loja com gravar_ledger = nao). Só tente gravar de novo se a leitura mostrar que o registro NÃO está lá.`,
+    );
+    novo.estadoDesconhecido = true;
+    throw novo;
   }
 }
 
@@ -796,6 +1222,7 @@ const SHA256_DO_LEDGER = {
   "79-82": "505f62dd9be2da3e9af9607b700ee30c681ce5afe339fe61bcfe8b44db86a0bf",
   83: "e30d8ee7c2a1bb94ef90540e9341bd799c0d421585e4813f8fc88914934d79ae",
   "92-202": "ad494d1358fd13ac49119f2fcfd9823b430ee79042810e67fa7a1f59b66a0ff0",
+  "60-66": "616290407aa9abcb8b0f300efcdddb2a5af2e7775bdcefa422232b7a35ed58aa",
 };
 
 function conferirHashDoLedger(faixa, conteudo) {
@@ -814,13 +1241,20 @@ function conferirHashDoLedger(faixa, conteudo) {
 
 /** A leitura pós-gravação (achado desta tarefa: a faixa nova amplia o que já
  * estava no ledger, então a leitura de conferência amplia junto — sempre
- * mostrando desde 72, nunca só a faixa recém-gravada isolada). */
+ * mostrando desde 72, nunca só a faixa recém-gravada isolada). A faixa 60-66 tem
+ * o PRÓPRIO intervalo (20261150..20261167999999): ler "desde 72" não serve a ela,
+ * e a leitura dela é CONFERIDA (`classificarLedgerDa60a66`), não só impressa. */
 const VERIFICACAO_POS_LEDGER = {
   "72-74": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "75-78": { rotulo: "72–78", limiteSuperior: "20261178999999" },
   "79-82": { rotulo: "72–82", limiteSuperior: "20261182999999" },
   83: { rotulo: "72–83", limiteSuperior: "20261183999999" },
   "92-202": { rotulo: "72–202", limiteSuperior: "20261202999999" },
+  "60-66": {
+    rotulo: "50–67",
+    limiteInferior: LEDGER_60_66_PISO,
+    limiteSuperior: "20261167999999",
+  },
 };
 
 async function rodarLedger({ ref, token, faixa }) {
@@ -829,10 +1263,7 @@ async function rodarLedger({ ref, token, faixa }) {
       `LEDGER inválido: "${faixa}" (esperava uma de: ${FAIXAS_DE_LEDGER.join(", ")})`,
     );
   }
-
-  console.log(`=== PRÉ-CHECAGEM antes de gravar o ledger ${faixa} ===`);
-  await conferirAntesDeGravar({ ref, token, faixa });
-  console.log("Pré-checagem OK: todas as linhas relevantes vieram ok=true.");
+  const ehDa60a66 = faixa === FAIXA_LEDGER_SO_DA_CAF;
 
   const arquivo = path.join(CONSULTAS_DIR, `ledger-${faixa}.sql`);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- `faixa` já foi conferida contra FAIXAS_DE_LEDGER (lista fixa) acima.
@@ -844,22 +1275,88 @@ async function rodarLedger({ ref, token, faixa }) {
       `ledger-${faixa}.sql tem ${total} statements — precisa ser exatamente 1 INSERT`,
     );
   }
+  const esperadas = versoesDoInsert(insertUnico);
+
+  if (ehDa60a66) {
+    // LEITURA PRÉVIA (D2): a forma do ledger decide ANTES de qualquer outra
+    // coisa. Já registrado = estado explícito, saída 0, nenhuma escrita; qualquer
+    // outra forma que não seja a lacuna da CAF PARA (saída 1).
+    console.log(
+      `=== LEITURA PRÉVIA do ledger ${faixa} (${LEDGER_60_66_PISO}..20261167999999) ===`,
+    );
+    const previa = classificarLedgerDa60a66(
+      await lerLedgerDa60a66({ ref, token }),
+      esperadas,
+    );
+    // "Já registrado" só vale com as âncoras 20261150 e 20261167 TAMBÉM no ledger
+    // (a releitura pós-gravação exige o mesmo): 7 linhas sem elas é forma
+    // inesperada, não estado explícito.
+    if (previa.estado === "JA_REGISTRADO" && previa.guardasPresentes === true)
+      throw new LedgerJaRegistrado(faixa);
+    if (previa.estado !== "LACUNA") {
+      throw new Error(
+        `ledger ${faixa} em forma inesperada (${previa.estado}: ${previa.detalhe}${previa.estado === "JA_REGISTRADO" ? "; 20261150/20261167 ausentes" : ""}) — PARAR: nenhuma escrita; alguém mexeu no registro e o diagnóstico vem antes`,
+      );
+    }
+    console.log(
+      "Forma do ledger OK: 20261150 e 20261167 presentes, nenhuma das 7 registrada (a lacuna da CAF).",
+    );
+  }
+
+  console.log(`=== PRÉ-CHECAGEM antes de gravar o ledger ${faixa} ===`);
+  await conferirAntesDeGravar({ ref, token, faixa });
+  console.log("Pré-checagem OK: todas as linhas relevantes vieram ok=true.");
+
   console.log(`=== GRAVANDO ledger ${faixa} (endpoint de escrita) ===`);
   // A ÚNICA escrita deste script: o INSERT fixo do arquivo, idempotente
-  // por ON CONFLICT DO NOTHING.
-  await chamarEscrita({ ref, token, query: insertUnico });
+  // por ON CONFLICT DO NOTHING, UMA tentativa só (`gravarUmaVez`).
+  await gravarUmaVez({ ref, token, faixa, query: insertUnico, esperadas });
   console.log(
-    `Ledger ${faixa} gravado (ou já estava — ON CONFLICT DO NOTHING).`,
+    ehDa60a66
+      ? `INSERT do ledger ${faixa} enviado (a leitura a seguir CONFERE o resultado).`
+      : `Ledger ${faixa} gravado (ou já estava — ON CONFLICT DO NOTHING).`,
   );
 
-  const { rotulo, limiteSuperior } = VERIFICACAO_POS_LEDGER[faixa];
-  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '20261172000000' AND '${limiteSuperior}' ORDER BY version;`;
-  const corpo = await chamarLeitura({ ref, token, query: verificacao });
-  const linhas = extrairLinhas(corpo);
-  const tabela = formatarTabela(linhas);
+  const {
+    rotulo,
+    limiteInferior = "20261172000000",
+    limiteSuperior,
+  } = VERIFICACAO_POS_LEDGER[faixa];
+  const verificacao = `SELECT version, name FROM supabase_migrations.schema_migrations WHERE version BETWEEN '${limiteInferior}' AND '${limiteSuperior}' ORDER BY version;`;
+  let linhas;
+  try {
+    const corpo = await chamarLeitura({ ref, token, query: verificacao });
+    linhas = extrairLinhas(corpo);
+  } catch (erro) {
+    if (!ehDa60a66) throw erro;
+    if (erro && (erro.status === 401 || erro.status === 403)) throw erro;
+    throw new Error(
+      `o INSERT do ledger ${faixa} foi enviado, mas a leitura de conferência falhou (${erro?.message ?? erro}): reconcilie POR LEITURA (9a-conferir-60-a-66-aplicado e supabase_migrations.schema_migrations) antes de qualquer nova tentativa`,
+    );
+  }
+  let tabela;
+  try {
+    tabela = formatarTabela(linhas);
+  } catch {
+    // linha fora do formato (null, não objeto): a classificação abaixo PARA com a
+    // mensagem certa; aqui só se evita que a impressão da tabela a esconda.
+    tabela = JSON.stringify(linhas);
+  }
   escreverResumo(
     `## Ledger ${rotulo} depois da gravação de \`${faixa}\`\n\n\`\`\`\n${tabela}\n\`\`\``,
   );
+  if (ehDa60a66) {
+    // A leitura posterior CONFERE: exatamente as 7, com os nomes, e 150 e 167.
+    const depois = classificarLedgerDa60a66(linhas, esperadas);
+    if (depois.estado !== "JA_REGISTRADO" || !depois.guardasPresentes) {
+      throw new Error(
+        `leitura pós-gravação do ledger ${faixa} NÃO bate com as 7 linhas esperadas (${depois.estado}: ${depois.detalhe}${depois.estado === "JA_REGISTRADO" ? "; 20261150/20261167 ausentes" : ""}) — o INSERT foi enviado: reconcilie antes de qualquer nova tentativa`,
+      );
+    }
+    console.log(
+      "Leitura pós-gravação OK: as 7 versões 20261160..20261166 estão no ledger com os nomes do ledger-60-66.sql, e 20261150/20261167 continuam lá.",
+    );
+  }
 }
 
 async function main() {
@@ -886,31 +1383,43 @@ async function main() {
     return;
   }
   const ledgerPedido = process.env.LEDGER;
+  // MAPA EXPLÍCITO (D4): quais faixas cada loja explícita aceita. Qualquer outro
+  // alvo (`loja`, `sandbox`, lojas de teste) recusa as duas, ANTES de qualquer
+  // requisição. O `if` do job `ledger` do workflow espelha este mapa.
+  const faixasDoAlvo = Object.hasOwn(
+    FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
+    projeto,
+  )
+    ? FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA[projeto]
+    : [];
   const ledgerRecusadoNaLojaExplicita =
-    ledgerPedido && ledgerPedido !== FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS;
+    ledgerPedido && !faixasDoAlvo.includes(ledgerPedido);
   if (ehCaf && ledgerRecusadoNaLojaExplicita) {
     // O ledger GRAVA em supabase_migrations.schema_migrations e as faixas dele
-    // (72..83) não são deste lote: a CAF explícita só lê — EXCETO a faixa
-    // 92-202 (backfill), que só grava depois da pré-checagem da 8e.
+    // (72..83) não são deste lote: a CAF explícita só lê — EXCETO as faixas
+    // 92-202 e 60-66 (backfill), que só gravam depois da pré-checagem (8e / 9a).
     console.error(
-      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
+      "FALHOU: o ledger não roda para ikcous-publicada (a CAF explícita é só leitura neste script, exceto as faixas 92-202 (pré-checagem da 8e) e 60-66 (pré-checagem da 9a), as duas por rol fechado)",
     );
     process.exit(1);
     return;
   }
   if (ehSavy && ledgerRecusadoNaLojaExplicita) {
-    // Idem para a Savy explícita.
+    // Idem para a Savy explícita (que NÃO tem a faixa 60-66).
     console.error(
       "FALHOU: o ledger não roda para savy (a loja cliente explícita é só leitura neste script, exceto a faixa 92-202, com a pré-checagem da 8e obrigatória)",
     );
     process.exit(1);
     return;
   }
-  if (ledgerPedido === FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS && !ehCaf && !ehSavy) {
-    // O backfill 92-202 é das lojas explícitas (segredo próprio + expected_sha):
-    // `loja`/`sandbox` não o gravam, nem com a pré-checagem verde.
+  const lojasDaFaixa = Object.entries(FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA)
+    .filter(([, faixas]) => faixas.includes(ledgerPedido))
+    .map(([loja]) => loja);
+  if (ledgerPedido && lojasDaFaixa.length > 0 && !ehCaf && !ehSavy) {
+    // Os backfills 92-202 e 60-66 são das lojas explícitas (segredo próprio +
+    // expected_sha): `loja`/`sandbox` não os gravam, nem com a pré-checagem verde.
     console.error(
-      `FALHOU: a faixa ${FAIXA_LEDGER_DAS_LOJAS_EXPLICITAS} do ledger só roda para ikcous-publicada ou savy, não para ${projeto}`,
+      `FALHOU: a faixa ${ledgerPedido} do ledger só roda para ${lojasDaFaixa.join(" ou ")}, não para ${projeto}`,
     );
     process.exit(1);
     return;
@@ -942,6 +1451,11 @@ async function main() {
     }
     await rodarConsulta({ ref, token, consulta });
   } catch (erro) {
+    if (erro instanceof LedgerJaRegistrado) {
+      // Estado explícito, não falha: nada a gravar, saída 0, sem escrita.
+      console.log(erro.message);
+      return;
+    }
     if ((ehCaf || ehSavy) && (erro.status === 401 || erro.status === 403)) {
       console.error(
         `FALHOU: ${ehCaf ? SEM_ACESSO_CAF : SEM_ACESSO_SAVY} (HTTP ${erro.status})`,
@@ -996,6 +1510,20 @@ module.exports = {
   chamarEscrita,
   buscarBackups,
   conferirAntesDeGravar,
+  conferirRolFechado,
+  classificarLedgerDa60a66,
+  versoesDoInsert,
+  gravarUmaVez,
+  rodarLedger,
+  LedgerJaRegistrado,
+  ROL_DA_9A,
+  ROL_DA_8E,
+  ROL_FECHADO_POR_CONSULTA,
+  estruturaDoRolFechado,
+  FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
+  IGNORAR_NA_PRE_CHECAGEM_DO_LEDGER,
+  CONSULTAS_DA_PRE_CHECAGEM_DO_LEDGER,
+  VERIFICACAO_POS_LEDGER,
   SHA256_DO_LEDGER,
   conferirHashDoLedger,
   main,

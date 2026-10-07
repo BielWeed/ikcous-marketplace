@@ -39,6 +39,11 @@ on:
       - "tests/banco/**"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      # A prova viva do lote 60-66 (abaixo) roda estes três: mudar a consulta
+      # 9a, o INSERT do backfill ou o script que os executa dispara a prova.
+      - "scripts/publicacao/conferir-banco.cjs"
+      - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-60-66.sql"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
@@ -46,6 +51,9 @@ on:
       - "tests/banco/**"
       - "supabase/functions/send-order-whatsapp/**"
       - ".github/workflows/rpc-ci.yml"
+      - "scripts/publicacao/conferir-banco.cjs"
+      - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-60-66.sql"
   workflow_dispatch:
 
 permissions:
@@ -199,6 +207,15 @@ jobs:
       - name: Prova viva da impressão digital do apply (envelope do aplicar-migrations)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/impressao-digital-viva.cjs
+      # Lote 60-66 (06/10/2026): a consulta 9a (prova por OBJETO das migrations
+      # 20261160..20261166, que nunca se reaplicam) e o backfill ledger-60-66 —
+      # positivo na árvore final, controle negativo pré-60, defeitos isolados
+      # (índice, CHECK, UNIQUE, FK, gatilho, default, vista, ACL, overload,
+      # corpo antigo) reprovando a linha certa, INSERT guardado 0→7→0 e o
+      # conferir-banco.cjs ponta a ponta. Monta o SEU banco-base (CLONE próprio).
+      - name: Prova viva do lote 60-66 (consulta 9a + backfill do ledger)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/lote-60-66-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
