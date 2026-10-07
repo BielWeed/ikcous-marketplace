@@ -1,4 +1,3 @@
-import { LazyImage } from "@/components/LazyImage";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import {
   AdminKpiCarousel,
@@ -10,17 +9,15 @@ import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
+import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
 import { GuiaDoPagamentoQueNaoFechou } from "@/components/admin/orders/GuiaDoPagamentoQueNaoFechou";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
-  OrderStatusBadge,
-  PaymentStatusBadge,
   type PaymentStatusKey,
   getPaymentStatusConfig,
   paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
-import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
 import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
@@ -48,10 +45,9 @@ import {
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
-import { horarioRelativo } from "@/lib/horario-relativo";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
-import { pedidosParaCsv, rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
+import { pedidosParaCsv } from "@/lib/pedidos-csv";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -68,11 +64,8 @@ import type {
 } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
-import { motion } from "framer-motion";
 import {
-  Calendar,
   CheckCircle2,
-  ChevronRight,
   Clock,
   DollarSign,
   Download,
@@ -81,11 +74,9 @@ import {
   LayoutGrid,
   List,
   Loader2,
-  MessageCircle,
   Package,
   Search,
   TrendingUp,
-  User,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -1976,7 +1967,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               )}
               {!isLoaded && paginatedOrders.length === 0 ? (
                 viewMode === "detailed" ? (
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
                     {Array.from({ length: 6 }).map((_, i) => (
                       <div
                         key={i}
@@ -2007,7 +1998,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
                     {Array.from({ length: 10 }).map((_, i) => (
                       <div
                         key={i}
@@ -2125,7 +2116,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   )}
                 </div>
               ) : viewMode === "detailed" ? (
-                <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
                   {paginatedOrders.map((order) => (
                     <AdminOrderCard
                       key={order.id}
@@ -2140,7 +2131,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   ))}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
                   {paginatedOrders.map((order) => (
                     <AdminOrderCard
                       key={order.id}
@@ -2273,423 +2264,5 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         </div>
       </AdminHelpModal>
     </div>
-  );
-});
-
-interface AdminOrderCardProps {
-  readonly order: Order;
-  readonly viewMode: "detailed" | "compact";
-  readonly onSelect: (order: Order) => void;
-  readonly onWhatsApp: (order: Order) => void;
-  readonly changeType?: "INSERT" | "UPDATE";
-  /** Task 4 — chama `registrarPagamentoRecebido(orderId, recebido)` do hook. */
-  readonly onRegistrarPagamento: (orderId: string, recebido: boolean) => void;
-  /** Task 4 — true enquanto ESTE pedido está em voo na RPC (desabilita o botão). */
-  readonly registrandoPagamento: boolean;
-}
-
-const AdminOrderCard = memo(function AdminOrderCard({
-  order,
-  viewMode,
-  onSelect,
-  onWhatsApp,
-  changeType,
-  onRegistrarPagamento,
-  registrandoPagamento,
-}: AdminOrderCardProps) {
-  if (viewMode === "detailed") {
-    return (
-      <motion.div
-        layout
-        onClick={() => onSelect(order)}
-        role="button"
-        // Âncora estável para teste (achado 6 da rodada de correção do
-        // C4.4): a tela tem outros elementos com `role="button"` (os
-        // atalhos de Feedback/Dúvidas), então medir o subárvore do card
-        // pelo primeiro `[role="button"]` encontrado pega o card errado.
-        data-testid="pedido-card"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect(order);
-          }
-        }}
-        className={cn(
-          "group relative bg-zinc-950/40 backdrop-blur-md border rounded-[3rem] p-8 transition-all duration-500 hover:scale-[1.01] hover:shadow-[0_20px_60px_rgba(212,175,55,0.05)] hover:border-admin-gold/30 active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 content-visibility-auto animate-in fade-in slide-in-from-bottom-2 duration-300 min-h-[278px] flex flex-col justify-between transform-gpu",
-          changeType === "INSERT" &&
-            "border-admin-gold shadow-[0_0_25px_rgba(212,175,55,0.3)] animate-pulse",
-          changeType === "UPDATE" &&
-            "border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse",
-          !changeType && "border-white/5",
-        )}
-      >
-        {/* Glow Background */}
-        <div className="pointer-events-none absolute inset-0 z-0 rounded-[3rem] bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
-
-        <div className="relative z-10 mb-8 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative shrink-0">
-              {order.items?.[0]?.image ? (
-                <LazyImage
-                  src={order.items[0].image}
-                  alt="Produto"
-                  className="size-10 shrink-0 rounded-xl border border-white/10 object-cover"
-                />
-              ) : (
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900">
-                  <Package className="size-5 text-zinc-600" />
-                </div>
-              )}
-              {order.items?.length > 1 && (
-                <div className="absolute -right-2 -top-2 flex size-5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[9px] font-black text-black shadow-lg">
-                  +{order.items.length - 1}
-                </div>
-              )}
-            </div>
-            <div>
-              <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover:text-admin-gold">
-                #{order.id.slice(-6).toUpperCase()}
-              </span>
-              <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-600">
-                <Calendar className="size-3" />
-                {new Date(order.createdAt).toLocaleDateString("pt-BR", {
-                  day: "2-digit",
-                  month: "short",
-                })}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1.5">
-            {/* C4.4 (rodada de correção, achado "ANTES DE CRESCER" sobre a
-                altura do card): o selo de canal vai na MESMA linha do
-                OrderStatusBadge, não empilhado como uma terceira pill. Esta
-                coluna dita, junto com a miniatura do outro lado, a altura da
-                fileira inteira do grid — uma pill a mais aqui esticaria
-                TODOS os cards vizinhos na mesma fileira, não só este. Com o
-                selo ao lado do status, a coluna continua com duas linhas
-                (status+canal, depois pagamento) com ou sem venda de balcão. */}
-            <div className="flex items-center gap-1.5">
-              <OrderStatusBadge status={order.status} />
-              {order.canal === "presencial" && (
-                <span
-                  data-testid="selo-canal"
-                  className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-                >
-                  Balcão
-                </span>
-              )}
-            </div>
-            <PaymentStatusBadge
-              paymentStatus={order.paymentStatus}
-              orderStatus={order.status}
-              canal={order.canal}
-            />
-          </div>
-        </div>
-
-        <div className="relative z-10 space-y-6">
-          <div>
-            <h4 className="mb-2 truncate text-lg font-black text-white transition-colors group-hover:text-admin-gold sm:text-xl">
-              {(() => {
-                if (!order.items || order.items.length === 0)
-                  return "Pedido Vazio";
-                if (order.items.length === 1) return order.items[0].name;
-                return `${order.items[0].name} e mais ${order.items.length - 1}`;
-              })()}
-            </h4>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-400">
-                <User className="size-3" />
-                {(() => {
-                  const nameParts = (order.customer?.name || "Cliente").split(
-                    " ",
-                  );
-                  return nameParts.length > 1
-                    ? `${nameParts[0][0]}. ${nameParts.at(-1)}`
-                    : nameParts[0];
-                })()}
-              </div>
-              <span className="rounded-md border border-white/5 bg-white/5 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-zinc-500">
-                {order.items?.length || 0} Prod.
-              </span>
-              <div className="size-1 rounded-full bg-zinc-800" />
-              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                {rotuloDaFormaDePagamento(order.paymentMethod)}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-end justify-between border-t border-white/5 pt-6">
-            <div className="space-y-1">
-              {/* "Valor": o termo antigo "Valor Capital" não dizia nada para
-                  o lojista leigo (relato do Gabriel, 02/09). */}
-              <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-600 ">
-                Valor
-              </span>
-              <p className="text-2xl font-black tabular-nums tracking-widest text-white">
-                <span className="mr-1 text-[10px] font-black uppercase text-zinc-500">
-                  R$
-                </span>
-                {(order.total || 0).toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Laudo 0109 (A-7, ressalva da revisão): sem número válido o
-                  toque não tinha efeito — botão mudo. Some como na ficha. */}
-              {linkWhatsappDoCliente(order.customer?.whatsapp) && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onWhatsApp(order);
-                  }}
-                  className="relative z-10 flex size-12 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 shadow-xl transition-all hover:bg-emerald-500 hover:text-black"
-                >
-                  <MessageCircle className="size-5" />
-                </button>
-              )}
-              <div className="flex size-12 items-center justify-center text-zinc-500 transition-all duration-300 group-hover:text-admin-gold">
-                <ChevronRight className="size-6 transform filter transition-transform duration-300 group-hover:translate-x-1 group-hover:drop-shadow-[0_0_8px_rgba(212,175,55,0.5)]" />
-              </div>
-            </div>
-          </div>
-
-          {/* Task 4 do plano recebimento-na-entrega — botão de pagamento
-              recebido na mão. `podeRegistrarPagamento` é a MESMA condição
-              (definida uma vez, acima) que decide se este bloco existe e
-              qual dos dois ramos aparece dentro dele. */}
-          {podeRegistrarPagamento(order) && (
-            <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-4">
-              {order.pagamentoRecebidoEm ? (
-                <>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                    Recebido em{" "}
-                    {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
-                      "pt-BR",
-                      { day: "2-digit", month: "short" },
-                    )}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRegistrarPagamento(order.id, false);
-                    }}
-                    disabled={registrandoPagamento}
-                    className="relative z-10 shrink-0 rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-                  >
-                    Desfazer
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRegistrarPagamento(order.id, true);
-                  }}
-                  disabled={registrandoPagamento}
-                  className="relative z-10 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-                >
-                  {registrandoPagamento
-                    ? "Registrando..."
-                    : "Marcar como recebido"}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      </motion.div>
-    );
-  }
-
-  // compact mode — REDESENHO (relato do Gabriel, 02/09: card com visual
-  // mal acabado — id e data truncados, badge de pagamento estourando a
-  // coluna ("PAGÃO FORA DO FLUXO — PRECIS..."), hierarquia invertida).
-  // Hierarquia nova, por pergunta do lojista: QUEM comprou (destaque) e O
-  // QUÊ (apoio) no topo, com id/data como metadado; badges com rótulo CURTO
-  // e truncamento limpo (a frase inteira vai no title); dinheiro e ações no
-  // rodapé, sem elemento dominando o card.
-  return (
-    <motion.div
-      layout
-      onClick={() => onSelect(order)}
-      role="button"
-      data-testid="pedido-card"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(order);
-        }
-      }}
-      className={cn(
-        "group relative flex flex-col rounded-[1.5rem] border bg-zinc-950/40 p-4 backdrop-blur-md transition-all duration-300 hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] cursor-pointer focus:outline-none focus:ring-2 focus:ring-admin-gold focus:ring-offset-2 focus:ring-offset-zinc-950 animate-in fade-in slide-in-from-bottom-2 duration-300 transform-gpu",
-        changeType === "INSERT" &&
-          "border-admin-gold shadow-[0_0_20px_rgba(212,175,55,0.3)] animate-pulse",
-        changeType === "UPDATE" &&
-          "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse",
-        !changeType && "border-white/10",
-      )}
-    >
-      {/* Topo — hierarquia da direção A (Missão 06): VALOR dominante no canto
-          superior direito; nome e produto na coluna do meio, protegida com
-          min-w-0. Sem badges aqui: em card de ~250px a coluna direita com
-          badge largo esmagava o nome até sumir (achado do Gabriel no ao-vivo,
-          02/09) — os badges ganham faixa própria logo abaixo. */}
-      <div className="flex items-start gap-3">
-        <div className="relative shrink-0">
-          {order.items?.[0]?.image ? (
-            <LazyImage
-              src={order.items[0].image}
-              alt="Produto"
-              className="size-11 shrink-0 rounded-xl border border-white/10 object-cover"
-            />
-          ) : (
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900">
-              <Package className="size-5 text-zinc-600" />
-            </div>
-          )}
-          {order.items?.length > 1 && (
-            <div className="absolute -right-1.5 -top-1.5 flex size-4.5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold text-[8px] font-black text-black shadow-lg">
-              +{order.items.length - 1}
-            </div>
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h4
-            title={order.customer?.name || "Cliente"}
-            className="line-clamp-2 text-[13px] font-bold leading-tight text-white transition-colors group-hover:text-admin-gold"
-          >
-            {order.customer?.name || "Cliente"}
-          </h4>
-          <p
-            title={(() => {
-              if (!order.items || order.items.length === 0)
-                return "Pedido vazio";
-              if (order.items.length === 1) return order.items[0].name;
-              return `${order.items[0].name} e mais ${order.items.length - 1}`;
-            })()}
-            className="mt-0.5 truncate text-[11px] font-medium text-zinc-400"
-          >
-            {(() => {
-              if (!order.items || order.items.length === 0)
-                return "Pedido vazio";
-              if (order.items.length === 1) return order.items[0].name;
-              return `${order.items[0].name} e mais ${order.items.length - 1}`;
-            })()}
-          </p>
-        </div>
-
-        <p className="shrink-0 text-xl font-black tabular-nums leading-none text-white">
-          <span className="mr-1 text-[10px] font-bold uppercase text-zinc-500">
-            R$
-          </span>
-          {(order.total || 0).toLocaleString("pt-BR", {
-            minimumFractionDigits: 2,
-          })}
-        </p>
-      </div>
-
-      {/* Faixa de identificação: id · horário relativo (quem opera pensa em
-          "há 5 min", não em "23/08") e os badges com largura de card inteira
-          — wrap honesto: nunca estouram a borda nem esmagam vizinho. */}
-      <div className="relative z-10 mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-        <span className="text-[10px] font-semibold tabular-nums text-zinc-500">
-          #{order.id.slice(-6).toUpperCase()} ·{" "}
-          {horarioRelativo(order.createdAt)}
-        </span>
-        <div className="flex flex-wrap items-center gap-1">
-          <OrderStatusBadge status={order.status} />
-          <PaymentStatusBadge
-            paymentStatus={order.paymentStatus}
-            orderStatus={order.status}
-            canal={order.canal}
-            compact
-          />
-          {/* C4.4: mesmo selo do card detalhado — o `flex-wrap` do
-              container já absorve a peça extra sem estourar a borda.
-              `data-testid` igual ao do card detalhado (rodada de correção,
-              achado sobre a prova por texto): ancora a prova no ELEMENTO,
-              não no texto da subárvore, que também contém "balcão" minúsculo
-              no rótulo do PaymentStatusBadge ("Recebido no balcão"). */}
-          {order.canal === "presencial" && (
-            <span
-              data-testid="selo-canal"
-              className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-zinc-400"
-            >
-              Balcão
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Rodapé — Missão 06 (direção A): o dinheiro subiu para o topo do card;
-          sobram as ações, com o WhatsApp discreto (fim da fileira de botões
-          verdes grandes) e o chevron de abertura. */}
-      <div className="relative z-10 mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
-        {linkWhatsappDoCliente(order.customer?.whatsapp) ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onWhatsApp(order);
-            }}
-            className="relative z-10 flex size-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
-            title="WhatsApp"
-          >
-            <MessageCircle className="size-4" />
-          </button>
-        ) : (
-          <span className="text-[9px] font-black uppercase tracking-widest text-zinc-600">
-            Ver detalhes
-          </span>
-        )}
-        <ChevronRight className="size-4.5 shrink-0 text-zinc-500 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-admin-gold" />
-      </div>
-
-      {/* Task 4 do plano recebimento-na-entrega — mesmo bloco do modo
-          "detailed", ver o comentário lá. */}
-      {podeRegistrarPagamento(order) && (
-        <div className="relative z-10 mt-3 flex items-center justify-between gap-1.5 border-t border-white/10 pt-3">
-          {order.pagamentoRecebidoEm ? (
-            <>
-              <span className="truncate text-[8px] font-black uppercase tracking-widest text-emerald-400">
-                Recebido em{" "}
-                {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
-                  "pt-BR",
-                  { day: "2-digit", month: "short" },
-                )}
-              </span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRegistrarPagamento(order.id, false);
-                }}
-                disabled={registrandoPagamento}
-                className="relative z-10 shrink-0 rounded-lg border border-zinc-700/50 bg-zinc-800/50 px-2 py-1 text-[8px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-              >
-                Desfazer
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRegistrarPagamento(order.id, true);
-              }}
-              disabled={registrandoPagamento}
-              className="relative z-10 w-full rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1.5 text-[8px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
-            >
-              {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
-            </button>
-          )}
-        </div>
-      )}
-    </motion.div>
   );
 });

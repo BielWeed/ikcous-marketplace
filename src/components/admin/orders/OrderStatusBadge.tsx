@@ -56,23 +56,46 @@ export const statusConfig: Record<
   },
 };
 
+/**
+ * "padrao" é o selo de sempre (9px, usado na ficha e nas filas). "cartao" é
+ * a escala do card de pedido da lista (AdminOrderCard): 10px com menos
+ * espaçamento entre letras, mais respiro e um ponto de cor na frente — o
+ * selo antigo ficava ilegível ao lado do valor em tela de celular.
+ */
+type TamanhoDoSelo = "padrao" | "cartao";
+
 interface OrderStatusBadgeProps {
   status: OrderStatus;
   className?: string;
+  tamanho?: TamanhoDoSelo;
 }
 
 export const OrderStatusBadge = memo(function OrderStatusBadge({
   status,
   className,
+  tamanho = "padrao",
 }: Readonly<OrderStatusBadgeProps>) {
   const cfg = statusConfig[status || "pending"] || statusConfig.pending;
+  const cartao = tamanho === "cartao";
 
   return (
     <div
-      className={`flex items-center rounded-full px-2 py-0.5 ${cfg.bgColor} ${className}`}
+      className={`flex items-center rounded-full ${
+        cartao ? "gap-1.5 px-2.5 py-1" : "px-2 py-0.5"
+      } ${cfg.bgColor} ${className}`}
     >
+      {cartao && (
+        <span
+          aria-hidden="true"
+          className={`size-1.5 shrink-0 rounded-full bg-current ${cfg.color}`}
+        />
+      )}
       <span
-        className={`text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`uppercase ${
+          cartao
+            ? "text-[10px] font-bold tracking-wider"
+            : "text-[9px] font-black tracking-widest"
+        } ${cfg.color}`}
       >
         {cfg.label}
       </span>
@@ -239,6 +262,8 @@ interface PaymentStatusBadgeProps {
    * frase inteira; o card fica limpo.
    */
   compact?: boolean;
+  /** Escala do selo — ver `TamanhoDoSelo`. */
+  tamanho?: TamanhoDoSelo;
 }
 
 /**
@@ -328,6 +353,7 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   canal,
   className,
   compact = false,
+  tamanho = "padrao",
 }: Readonly<PaymentStatusBadgeProps>) {
   // `recebido_na_entrega` (Task 3b de
   // docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md) entra no
@@ -339,12 +365,18 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
   return (
     <div
       title={compact ? label : undefined}
-      className={`flex max-w-full items-center rounded-full border px-2 py-0.5 ${cfg.bgColor} ${cfg.borderColor} ${
+      className={`flex max-w-full items-center rounded-full border ${
+        tamanho === "cartao" ? "px-2.5 py-1" : "px-2 py-0.5"
+      } ${cfg.bgColor} ${cfg.borderColor} ${
         cfg.needsAttention ? "animate-pulse ring-1 ring-red-500/60" : ""
       } ${className || ""}`}
     >
       <span
-        className={`truncate text-[9px] font-black uppercase tracking-widest ${cfg.color}`}
+        className={`truncate uppercase ${
+          tamanho === "cartao"
+            ? "text-[10px] font-bold tracking-wider"
+            : "text-[9px] font-black tracking-widest"
+        } ${cfg.color}`}
       >
         {compact ? (cfg.shortLabel ?? label) : label}
       </span>
