@@ -397,6 +397,7 @@ export function versoesAplicadas(saida) {
 export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "9a-conferir-60-a-66-aplicado",
   "8e-conferir-92-a-202-aplicado",
+  "8k-subtotal-divergente-ou-vazia-provada",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
@@ -588,7 +589,7 @@ export async function evidenciaDaProva({
  *     ledger, nenhum apply. Sem evidência → só a prova.
  *   - prova negativa: diagnóstico antes de qualquer apply. Apply só quando a
  *     consulta de ausência (8a) PROVA o lote inteiro ausente, as conferências
- *     de antes (8b, 8c) estão ok e o ledger não registra nenhuma versão dele.
+ *     de antes (8b, 8k) estão ok e o ledger não registra nenhuma versão dele.
  *     Qualquer ok=false do diagnóstico, ou contradição, PARA e vai ao dono.
  * Devolve { acao: NADA|CONFERIR|BACKFILL|APLICAR|PARAR, motivo, consultas?, versoes? }.
  */

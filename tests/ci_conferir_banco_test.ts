@@ -1716,6 +1716,233 @@ Deno.test("8j — no menu, UM SELECT só leitura no formato da 8c, cobre as seis
   );
 });
 
+// 8k (07/10/2026) — a 8c com a prova de loja VAZIA. Substitui a 8c nas
+// `conferenciasAntesDoApply` do lote 92-202 (a 8c fica no menu, LEGADA). Mesma
+// população e mesma fórmula da 8c; em todos os ramos exige tabela comum, SELECT de
+// tabela inteira, row_security_active=false (coerente com a derivação) e os tipos;
+// a vazia só é provada para AS DUAS tabelas. O rol fechado tem 20 itens.
+Deno.test("8k — no menu, UM SELECT só leitura, `soma` IDÊNTICA à da 8c, sem ONLY, tabelas achadas pelo schema public, pré-condição em todos os ramos, vazia CONJUNTA, rol fechado de 20 itens e nenhum dado pessoal ou financeiro", async (t) => {
+  const { contarStatements, ROL_DA_8K, ROL_FECHADO_POR_CONSULTA } =
+    require(SCRIPT);
+  const nome = "8k-subtotal-divergente-ou-vazia-provada";
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+  const plano = limpo.replace(/\s+/g, " ");
+  await t.step("está no menu do workflow", async () => {
+    const yaml = await Deno.readTextFile(WORKFLOW);
+    const i = yaml.indexOf("consulta:");
+    assert(i >= 0, "não achei a entrada `consulta`");
+    assert(
+      yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+      `falta a opção ${nome} no workflow`,
+    );
+    // a 8c LEGADA continua no menu
+    assert(yaml.indexOf("\n          - 8c-subtotal-divergente\n", i) > i);
+  });
+  await t.step(
+    "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico nem ONLY, saída item/esperado/vivo/ok com reprovadas primeiro",
+    () => {
+      assertEquals(contarStatements(sql), 1);
+      assert(/^\s*WITH\b/i.test(limpo));
+      assert(
+        !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+          semTexto,
+        ),
+        "palavra de escrita fora de comentário/string",
+      );
+      assert(
+        !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+          semTexto,
+        ),
+        "SQL dinâmico (ou leitura de arquivo)",
+      );
+      assert(
+        !/\bONLY\b/i.test(semTexto),
+        "ONLY esconderia as linhas dos filhos por herança sob um pai vazio",
+      );
+      assert(
+        !/::regclass/i.test(semTexto),
+        "tabela achada por ::regclass seguiria o search_path",
+      );
+      assert(
+        /SELECT item, esperado, vivo, ok\s+FROM r\s+ORDER BY ok, item;/.test(
+          limpo,
+        ),
+        "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+      );
+    },
+  );
+  await t.step(
+    "a CTE `soma` é IDÊNTICA à da 8c (mesma população e fórmula) e o cabeçalho cita de onde vem a fórmula",
+    async () => {
+      const sql8c = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8c-subtotal-divergente.sql`,
+      );
+      assertEquals(ctesDe(sql).get("soma"), ctesDe(sql8c).get("soma"));
+      assertStringIncludes(
+        sql,
+        "20260951000000_frete_do_pedido_e_do_proprio_carrinho.sql",
+      );
+      assertStringIncludes(sql, "SUM(oi.quantity * oi.price)");
+      // as contagens e os divergentes são os da 8c
+      assertStringIncludes(
+        plano,
+        "(SELECT count(*) FROM soma WHERE subtotal IS DISTINCT FROM soma_itens) AS divergentes",
+      );
+      assertStringIncludes(
+        plano,
+        "(SELECT count(*) FROM soma WHERE subtotal IS DISTINCT FROM soma_itens AND n_itens = 0) AS divergentes_sem_item",
+      );
+      assertStringIncludes(
+        plano,
+        "(SELECT count(*) FROM public.marketplace_order_items) AS itens",
+      );
+    },
+  );
+  await t.step(
+    "as duas tabelas são achadas pelo schema public (relnamespace) e pelo nome; os metadados são os de row_security_active, has_table_privilege (tabela inteira), relkind e format_type",
+    () => {
+      for (const tabela of ["marketplace_orders", "marketplace_order_items"])
+        assertStringIncludes(
+          plano,
+          `ON c.relname = '${tabela}' AND c.relnamespace = 'public'::regnamespace`,
+        );
+      assertEquals(
+        (limpo.match(/c\.relnamespace = 'public'::regnamespace/g) ?? []).length,
+        2,
+      );
+      for (const trecho of [
+        "has_table_privilege(current_user, c.oid, 'SELECT') AS pode_ler",
+        "row_security_active(c.oid) AS rls_ativa",
+        "c.relkind::text AS relkind",
+        "pg_has_role(current_user, c.relowner, 'USAGE') AS dono",
+        "format_type(a.atttypid, a.atttypmod)",
+        "current_setting('row_security')",
+      ])
+        assertStringIncludes(plano, trecho);
+      assert(
+        !/has_column_privilege|has_any_column_privilege/i.test(semTexto),
+        "SELECT só de coluna não serve",
+      );
+    },
+  );
+  await t.step(
+    "pré-condição em TODOS os ramos: relkind r, SELECT de tabela, row_security_active falso E igual à derivação (a mesma da 8j), nas duas tabelas",
+    () => {
+      assertStringIncludes(
+        plano,
+        "(po.rls_ligada AND NOT (p.bypass OR p.super) AND NOT (po.dono AND NOT po.rls_forcada)) AS ped",
+      );
+      assertStringIncludes(
+        plano,
+        "(it.rls_ligada AND NOT (p.bypass OR p.super) AND NOT (it.dono AND NOT it.rls_forcada)) AS ite",
+      );
+      assertStringIncludes(
+        plano,
+        "COALESCE(po.relkind = 'r' AND po.pode_ler AND po.rls_ativa IS NOT NULL AND po.rls_ativa = d.ped AND NOT po.rls_ativa, false) AS ped_pronta",
+      );
+      assertStringIncludes(
+        plano,
+        "COALESCE(it.relkind = 'r' AND it.pode_ler AND it.rls_ativa IS NOT NULL AND it.rls_ativa = d.ite AND NOT it.rls_ativa, false) AS ite_pronta",
+      );
+      // as linhas de metadado reprovam em qualquer ramo (o `ok` delas não depende das contagens)
+      assertStringIncludes(
+        plano,
+        "COALESCE(po.rls_ativa = d.ped AND NOT po.rls_ativa, false)",
+      );
+      assertStringIncludes(
+        plano,
+        "COALESCE(it.rls_ativa = d.ite AND NOT it.rls_ativa, false)",
+      );
+      assertStringIncludes(plano, "COALESCE(po.pode_ler, false)");
+      assertStringIncludes(plano, "COALESCE(it.pode_ler, false)");
+      assertStringIncludes(plano, "COALESCE(po.relkind = 'r', false)");
+      assertStringIncludes(plano, "COALESCE(it.relkind = 'r', false)");
+    },
+  );
+  await t.step(
+    "a vazia é CONJUNTA (as duas contagens em 0 E as duas tabelas prontas) e os controles só passam com mais de 0 ou vazia provada",
+    () => {
+      assertStringIncludes(
+        plano,
+        "(j.zero_nas_duas AND j.ped_pronta AND j.ite_pronta) AS vazia_provada",
+      );
+      assertStringIncludes(
+        plano,
+        "(v.pedidos = 0 AND v.itens = 0) AS zero_nas_duas",
+      );
+      assertStringIncludes(plano, "(j.pedidos > 0 OR j.vazia_provada)");
+      assertStringIncludes(plano, "(j.itens > 0 OR j.vazia_provada)");
+      assertStringIncludes(plano, "(NOT j.zero_nas_duas OR j.vazia_provada)");
+      assertStringIncludes(plano, "(j.divergentes = 0)");
+      assertStringIncludes(plano, "(j.divergentes_sem_item = 0)");
+    },
+  );
+  await t.step(
+    "o rol fechado do código tem 20 itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)",
+    () => {
+      assertEquals(ROL_DA_8K.length, 20);
+      assertEquals(new Set(ROL_DA_8K).size, ROL_DA_8K.length);
+      assertEquals(
+        Object.entries(ROL_FECHADO_POR_CONSULTA).find(([n]) => n === nome)?.[1],
+        ROL_DA_8K,
+      );
+      for (const item of ROL_DA_8K)
+        assertStringIncludes(
+          limpo,
+          `'${item}'`,
+          `o item do rol "${item}" não existe no .sql`,
+        );
+      const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',\s+'[^']*',/g)].map(
+        (m) => m[1],
+      );
+      assertEquals(doSql.length, 20, "o .sql monta 20 linhas de resultado");
+      for (const item of doSql)
+        assert(
+          ROL_DA_8K.includes(item),
+          `o .sql monta "${item}" e o rol do código não o tem`,
+        );
+    },
+  );
+  await t.step(
+    "nenhum id, valor de dinheiro, coluna de cliente ou id de gateway sai na resposta: só agregados e metadado",
+    () => {
+      assert(
+        !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|valor_estornado|amount|shipping|discount|gateway_payment_id|payment_status|paid_at)\b/i.test(
+          semTexto,
+        ),
+        "a 8k leria dado pessoal ou financeiro",
+      );
+      // a parte que MONTA a saída (r) só usa agregados e metadados, nunca colunas de linha
+      const r = semTexto.slice(
+        semTexto.indexOf("r(item, esperado, vivo, ok) AS ("),
+      );
+      assert(
+        !/\b(o|oi|soma)\.(id|subtotal|price|quantity|order_id|soma_itens)\b/.test(
+          r,
+        ),
+        "a saída leria uma coluna de linha de pedido ou item",
+      );
+    },
+  );
+  await t.step(
+    "o cabeçalho declara os limites: evidência local não prova a Savy vazia, RLS ativa reprova (lado seguro), PG17, ONLY, falha alta, e cita a fonte de row_security_active",
+    () => {
+      assertStringIncludes(sql, "Evidência LOCAL não prova a Savy vazia");
+      assertStringIncludes(sql, "src/backend/utils/misc/rls.c");
+      assertStringIncludes(sql, "check_enable_rls");
+      assertStringIncludes(sql, "Postgres 17");
+      assertStringIncludes(sql, "42P01");
+      assertStringIncludes(sql, "42501");
+      assertStringIncludes(sql, "ONLY");
+      assertStringIncludes(sql, "VAZIA PROVADA");
+      assertStringIncludes(sql, "estritamente igual ou mais forte que a 8c");
+      assertStringIncludes(sql, "BYPASSRLS");
+    },
+  );
+});
+
 Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 desta árvore REALMENTE definem", async (t) => {
   const { createHash } = require("node:crypto");
   const nomes: string[] = [];
@@ -4258,6 +4485,51 @@ Deno.test("rpc-ci.yml roda a prova viva do lote 60-66 no job bloqueante e é dis
       "scripts/publicacao/conferir-banco.cjs",
       "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql",
       "scripts/publicacao/consultas/ledger-60-66.sql",
+      "tests/banco/**",
+    ]) {
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+    }
+  }
+});
+
+Deno.test("rpc-ci.yml roda a prova viva da 8k no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pela consulta e pela prova", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(
+    !/^\s*continue-on-error:/m.test(bloqueante),
+    "o job bloqueante não pode ter continue-on-error",
+  );
+  const passo = bloqueante.match(
+    /- name: Prova viva da 8k[^\n]*\n\s+if: \$\{\{ !cancelled\(\) && steps\.aplica\.outcome == 'success' \}\}\n\s+run: node tests\/banco\/rodar-isolado\.cjs tests\/banco\/subtotal-vazia-provada-viva\.cjs\n/,
+  );
+  assert(
+    passo,
+    "o passo da prova viva da 8k não está no job bloqueante com o if certo",
+  );
+  const posAplica = bloqueante.indexOf("id: aplica");
+  assert(posAplica > 0 && bloqueante.indexOf(passo[0]) > posAplica);
+  assert(
+    !/subtotal-vazia-provada-viva/.test(yaml.slice(inicioInformacional)),
+    "a prova da 8k não pode ficar no job informacional",
+  );
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql",
       "tests/banco/**",
     ]) {
       assertStringIncludes(

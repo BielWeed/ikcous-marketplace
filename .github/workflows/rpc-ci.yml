@@ -44,6 +44,7 @@ on:
       - "scripts/publicacao/conferir-banco.cjs"
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
+      - "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
@@ -54,6 +55,7 @@ on:
       - "scripts/publicacao/conferir-banco.cjs"
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
+      - "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql"
   workflow_dispatch:
 
 permissions:
@@ -216,6 +218,17 @@ jobs:
       - name: Prova viva do lote 60-66 (consulta 9a + backfill do ledger)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/lote-60-66-viva.cjs
+      # 8k (07/10/2026): a conferência de subtotal do portão da Savy — a 8c com a
+      # prova de loja VAZIA. Executada num Postgres real, como papel de leitura
+      # (bypass, sem bypass com RLS ativa, dono, só-coluna, superuser): vazia provada
+      # SÓ com RLS não ativa e SELECT de tabela inteira nas duas tabelas; com dados
+      # reproduz a 8c; metadado errado (tipo, relkind, privilégio) e tabela ausente
+      # NÃO são positivos; o conferir-banco.cjs de verdade a executa ponta a ponta.
+      # BLOQUEANTE (job do dinheiro): o portão do apply do lote 92-202 depende dela.
+      # CLONE próprio (rodar-isolado.cjs).
+      - name: Prova viva da 8k (subtotal divergente, ou vazia PROVADA)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/subtotal-vazia-provada-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

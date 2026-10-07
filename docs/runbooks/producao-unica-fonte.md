@@ -75,11 +75,45 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       o caso da IKCOUS (CAF), que recebeu 92..202 sem registro. Limite conhecido: a pre-checagem e
       o INSERT sao duas requisicoes; o job divide o grupo `banco-da-loja` com o apply, mas escrita
       FORA dos workflows nessa janela nao e vista.
-   3. **Prova com `ok=false`** = diagnostico antes de qualquer apply: `8a`, `8b`, `8c` (so
-      leitura). Apply SO quando a `8a` prova o lote inteiro AUSENTE, `8b`/`8c` estao `ok=true` e o
+   3. **Prova com `ok=false`** = diagnostico antes de qualquer apply: `8a`, `8b`, `8k` (so
+      leitura). Apply SO quando a `8a` prova o lote inteiro AUSENTE, `8b`/`8k` estao `ok=true` e o
       ledger nao registra nenhuma versao dele: `aplicar-migrations.yml` com as migrations NA
       ORDEM, sem a 201 (o apply grava o ledger na mesma transacao). Depois do apply, a prova de
       novo. E o caminho esperado da Savy.
+      **A `8k` (`8k-subtotal-divergente-ou-vazia-provada`) e a `8c` com a prova de loja VAZIA.**
+      A `8c` reprovava por construcao numa loja sem pedido (os dois controles de visibilidade leem
+      0) e nao dava para distinguir "loja vazia" de "papel cego pela RLS" (Row Level Security, a
+      regra do banco que decide quais linhas cada papel enxerga). A `8k` conta as MESMAS tabelas
+      (`marketplace_orders` e `marketplace_order_items`) com a MESMA formula da `8c` (`subtotal` =
+      soma de `quantity * price` dos itens, `IS DISTINCT FROM`) e decide assim:
+      - **Em TODOS os ramos (com ou sem pedido), nas DUAS tabelas:** a `8k` exige tabela comum
+        (`relkind = r`, achada no schema `public`, nao por `search_path`), SELECT de tabela inteira,
+        `row_security_active = false` (e igual a derivacao do catalogo) e os tipos medidos (ids
+        `uuid`, `subtotal` e `price` `numeric(10,2)`, `quantity` `integer`). Papel sem BYPASSRLS e
+        com RLS ativa reprova SEMPRE, ate com dados: e o lado seguro (a `8c` aceitava a parte
+        visivel). O papel de leitura do Supabase (`supabase_read_only_user`: BYPASSRLS +
+        `pg_read_all_data`) passa. Cada item errado reprova na linha do proprio metadado.
+      - **Com pedidos ou itens visiveis:** as mesmas regras da `8c`, sem afrouxar (controles
+        "pedidos visiveis" e "itens de pedido visiveis" maiores que 0, divergentes = 0, divergentes
+        sem item = 0).
+      - **Sem nenhum pedido nem item (0 e 0):** so e positiva como **VAZIA PROVADA**: a pre-condicao
+        acima vale para AS DUAS tabelas (a prova e conjunta). Sem ela o 0 nao prova nada (a RLS pode
+        esconder pedidos) e a linha `vazia provada` diz `ZERO NAO PROVADO`.
+      - **Falha alta:** tabela ausente (42P01), papel sem nenhum SELECT (42501) ou `row_security = off`
+        com RLS aplicavel (42501) fazem a consulta INTEIRA falhar: o run termina vermelho, sem
+        `VEREDITO-CONSULTA`, e o portao trata como SEM EVIDENCIA, nunca como positiva.
+      - **Limites:** a prova local (Postgres 17 efemero, `tests/banco/subtotal-vazia-provada-viva.cjs`)
+        prova que a consulta DECIDE certo, nao que a Savy esta vazia: so o run da `8k` na Savy diz
+        isso, e so como o papel que leu. Com dados, o limite da `8c` continua para quem ve tudo
+        (a soma e a das linhas visiveis). `ALTER ROLE ... BYPASSRLS` ou `GRANT` concorrente durante a
+        consulta (exige um administrador agindo naquele instante) pode aparecer so num dos lados do
+        statement. A janela entre a `8k` e o apply (ate `validadeDaEvidenciaHoras`) e a mesma
+        limitacao que a `8c` tinha. O veredito so vale como evidencia com `rol=ok` (as 20 linhas
+        exatas). A `8c` continua no menu como consulta legada; o portao nao a usa mais.
+      - **Depois do merge, a ordem importa:** mudar `conferir-banco.cjs` e o workflow invalida a
+        evidencia antiga (o portao compara a ferramenta do run com a do topo do ramo). Rodar PRIMEIRO
+        a `8e`; depois `8a`, `8b` e `8k`, todas MAIS NOVAS que a `8e` (diagnostico mais velho que a
+        prova negativa e descartado).
    4. **Qualquer `ok=false` no diagnostico, ou contradicao** (ledger parcial com a 8a dizendo
       ausente; ledger completo com a prova negativa): PARADO, sem comando — vai ao dono.
    5. **Versao ausente do ledger fora de qualquer lote declarado**: PARADA, sem comando
