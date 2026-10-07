@@ -26,10 +26,13 @@ import {
 } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { resolverCliVercel } from "../scripts/frota/conferir-frota.mjs";
 import {
+  CONSULTAS_DE_ROL_FECHADO,
   argumentosDoPromote,
   arquivosEsperados,
   classificarFuncao,
+  comandosDeConserto,
   decidirLote,
+  evidenciaDaProva,
   importsRelativos,
   lerArgumentos,
   lerVeredicto,
@@ -158,8 +161,26 @@ function log8e(ref, sha, okFalse = 0, linhas = 61) {
   return logConsulta(PROVA, ref, sha, okFalse, linhas);
 }
 
-function logConsulta(consulta, ref, sha, okFalse = 0, linhas = 10) {
-  return `algo\nVEREDITO-CONSULTA consulta=${consulta} ref=${ref} sha=${sha} linhas=${linhas} ok_false=${okFalse} ok_nao_booleano=0\n`;
+// As consultas de ROL FECHADO (9a, 8e) só valem como evidência com ` rol=ok` no
+// veredito (a resposta foi EXATAMENTE o rol); o helper imprime como o
+// conferir-banco.cjs imprime. `rol` explícito sobrescreve (null = veredito ANTIGO, sem o campo).
+function logConsulta(
+  consulta,
+  ref,
+  sha,
+  okFalse = 0,
+  linhas = 10,
+  rol = undefined,
+) {
+  const campo =
+    rol === null
+      ? ""
+      : rol !== undefined
+        ? ` rol=${rol}`
+        : CONSULTAS_DE_ROL_FECHADO.has(consulta)
+          ? " rol=ok"
+          : "";
+  return `algo\nVEREDITO-CONSULTA consulta=${consulta} ref=${ref} sha=${sha} linhas=${linhas} ok_false=${okFalse} ok_nao_booleano=0${campo}\n`;
 }
 
 /** Run verde de `conferir <consulta> em <projeto>` (databaseId próprio). */
@@ -906,6 +927,16 @@ for (const [nome, ajuste, trecho] of [
     "sem linhas",
   ],
   ["8e sem veredicto no log", { logs: { 11: "nada" } }, "VEREDITO"],
+  [
+    "8e com veredito de rol INVÁLIDO (resposta parcial, repetida, com item desconhecido ou coluna errada)",
+    { logs: { 11: logConsulta(PROVA, SAVY, OUTRO, 0, 61, "invalido") } },
+    "rol fechado",
+  ],
+  [
+    "8e com o veredito ANTIGO (sem o campo rol): só `ok` não basta",
+    { logs: { 11: logConsulta(PROVA, SAVY, OUTRO, 0, 61, null) } },
+    "rol fechado",
+  ],
   [
     "8e com dois veredictos (ambíguo)",
     { logs: { 11: log8e(SAVY, OUTRO) + log8e(SAVY, OUTRO) } },
@@ -1702,6 +1733,7 @@ const { veredictoDaConsulta } = requireCjs(
   "../scripts/publicacao/conferir-banco.cjs",
 );
 
+const CONSULTA_ANTIGA = "6a-conferir-79-a-82"; // fora do rol fechado: o formato antigo vale
 Deno.test("VEREDITO-CONSULTA: o que conferir-banco.cjs imprime, lerVeredicto entende (ok, ok=false, sem linhas, sem coluna ok)", () => {
   const linhas = [
     { item: "a", ok: true },
@@ -1709,8 +1741,13 @@ Deno.test("VEREDITO-CONSULTA: o que conferir-banco.cjs imprime, lerVeredicto ent
     { item: "c", ok: "t" },
   ];
   const v = lerVeredicto(
-    veredictoDaConsulta({ consulta: PROVA, ref: SAVY, sha: OUTRO, linhas }),
-    PROVA,
+    veredictoDaConsulta({
+      consulta: CONSULTA_ANTIGA,
+      ref: SAVY,
+      sha: OUTRO,
+      linhas,
+    }),
+    CONSULTA_ANTIGA,
   );
   assertEquals(v, {
     ref: SAVY,
@@ -1720,8 +1757,13 @@ Deno.test("VEREDITO-CONSULTA: o que conferir-banco.cjs imprime, lerVeredicto ent
     naoBooleano: 1,
   });
   const vazio = lerVeredicto(
-    veredictoDaConsulta({ consulta: PROVA, ref: SAVY, sha: OUTRO, linhas: [] }),
-    PROVA,
+    veredictoDaConsulta({
+      consulta: CONSULTA_ANTIGA,
+      ref: SAVY,
+      sha: OUTRO,
+      linhas: [],
+    }),
+    CONSULTA_ANTIGA,
   );
   assertEquals(vazio?.linhas, 0);
   assertEquals(
@@ -1737,13 +1779,558 @@ Deno.test("VEREDITO-CONSULTA: o que conferir-banco.cjs imprime, lerVeredicto ent
   assertEquals(
     lerVeredicto(
       veredictoDaConsulta({
-        consulta: PROVA,
+        consulta: CONSULTA_ANTIGA,
         ref: SAVY,
         sha: undefined,
         linhas: [{ ok: true }],
       }),
-      PROVA,
+      CONSULTA_ANTIGA,
     )?.sha,
     "local",
   );
+});
+
+// ===========================================================================
+// Lote 60-66 (06/10/2026) — a faixa histórica da CAF: prova 9a, backfill do
+// registro e NUNCA apply (flag `nuncaAplicar`), só no canal da CAF (`soNosRefs`).
+// ===========================================================================
+const PROVA_9A = "9a-conferir-60-a-66-aplicado";
+const VERSOES_60_66 = [
+  "20261160000000",
+  "20261161000000",
+  "20261162000000",
+  "20261163000000",
+  "20261164000000",
+  "20261165000000",
+  "20261166000000",
+];
+const MIGRATIONS_60_66 = VERSOES_60_66.map((v) => `${v}_lote.sql`);
+const ESTE_LOTE = {
+  consulta: PROVA_9A,
+  versoes: VERSOES_60_66,
+  backfillLedger: "60-66",
+  nuncaAplicar: true,
+  soNosRefs: [CAF],
+};
+const QUANDO = { run: { createdAt: "2026-10-06T19:00:00Z" } };
+const POS = { ok: true, estado: "POSITIVA", motivo: "ok", ...QUANDO };
+const NEG = { ok: false, estado: "NEGATIVA", motivo: "x", ...QUANDO };
+const SEM = { ok: false, estado: "SEM_EVIDENCIA", motivo: "sem run" };
+
+Deno.test("decidirLote 60-66: nuncaAplicar com lacuna — POSITIVA = só BACKFILL; SEM_EVIDENCIA = só a 9a (CONFERIR); NEGATIVA = PARAR, MESMO com diagnóstico que prova a ausência", () => {
+  const lote = { ...ESTE_LOTE, versoes: ["1", "2"] };
+  assertEquals(
+    decidirLote({ lote, faltam: ["1", "2"], exigeProva: false, prova: POS })
+      .acao,
+    "BACKFILL",
+  );
+  const sem = decidirLote({
+    lote,
+    faltam: ["1", "2"],
+    exigeProva: false,
+    prova: SEM,
+  });
+  assertEquals(sem.acao, "CONFERIR");
+  assertEquals(sem.consultas, [PROVA_9A]);
+  assertEquals(
+    decidirLote({ lote, faltam: ["1", "2"], exigeProva: false, prova: NEG })
+      .acao,
+    "PARAR",
+  );
+  // O MUTANTE: lote COM `ausenciaConfirmadaPor` e diagnóstico TODO positivo — sem
+  // a checagem de nuncaAplicar este é exatamente o caminho que devolve APLICAR.
+  const comAusencia = {
+    ...lote,
+    ausenciaConfirmadaPor: A8,
+    conferenciasAntesDoApply: [A8, B8, C8],
+  };
+  const diagnostico = () =>
+    new Map([
+      [A8, POS],
+      [B8, POS],
+      [C8, POS],
+    ]);
+  const nunca = decidirLote({
+    lote: comAusencia,
+    faltam: ["1", "2"],
+    exigeProva: true,
+    prova: NEG,
+    diagnostico: diagnostico(),
+  });
+  assertEquals(nunca.acao, "PARAR", JSON.stringify(nunca));
+  assert(
+    nunca.versoes === undefined,
+    "nuncaAplicar não devolve versões a aplicar",
+  );
+  // CONTROLE: o mesmo lote SEM a flag chega ao APLICAR (a fixture alcança o caminho que a flag fecha)
+  assertEquals(
+    decidirLote({
+      lote: { ...comAusencia, nuncaAplicar: false },
+      faltam: ["1", "2"],
+      exigeProva: true,
+      prova: NEG,
+      diagnostico: diagnostico(),
+    }).acao,
+    "APLICAR",
+  );
+});
+
+Deno.test("decidirLote 60-66: com o ledger COMPLETO a lógica de ledger completo vale INTEIRA — nuncaAplicar só bloqueia o APLICAR, não dispensa prova", () => {
+  const lote = { ...ESTE_LOTE, versoes: ["1", "2"] };
+  const d = (exigeProva: boolean, prova: any) =>
+    decidirLote({ lote, faltam: [], exigeProva, prova });
+  // exigeProva=true + NEGATIVA conhecida → PARAR (o atalho "NADA" a esconderia)
+  const negativa = d(true, NEG);
+  assertEquals(negativa.acao, "PARAR", JSON.stringify(negativa));
+  assertEquals(d(true, SEM).acao, "CONFERIR");
+  assertEquals(d(true, SEM).consultas, [PROVA_9A]);
+  assertEquals(d(true, POS).acao, "NADA");
+  assertEquals(d(false, undefined).acao, "NADA");
+});
+
+Deno.test("comandosDeConserto: lote nuncaAplicar NUNCA imprime aplicar-migrations (defesa em profundidade, mesmo se a decisão vier APLICAR)", () => {
+  const loja = { titulo: "IKCOUS", ref: CAF };
+  const canal = canais.canais[CAF];
+  const ctx = {
+    ramo: canais.ramoDaRelease,
+    topo: TOPO,
+    topoBancoIgual: true,
+    topoFunctionsIgual: true,
+    nomesPorVersao: new Map(VERSOES_60_66.map((v) => [v, `${v}_lote.sql`])),
+  };
+  const lote = { ...ESTE_LOTE };
+  const pront = {
+    lotes: [
+      {
+        consulta: PROVA_9A,
+        lote,
+        faltam: VERSOES_60_66,
+        decisao: { acao: "APLICAR", versoes: VERSOES_60_66, motivo: "x" },
+      },
+    ],
+    funcoes: [],
+    bancoPronto: false,
+  };
+  const cmds = comandosDeConserto(loja, pront, canal, ctx);
+  assert(!cmds.join("\n").includes("aplicar-migrations"), cmds.join("\n"));
+  assert(!cmds.some((c) => c.startsWith("gh ")), "nenhum comando gh");
+  // controle: o mesmo lote SEM a flag imprime o apply
+  pront.lotes[0].lote = { ...lote, nuncaAplicar: false };
+  assertStringIncludes(
+    comandosDeConserto(loja, pront, canal, ctx).join("\n"),
+    "aplicar-migrations.yml",
+  );
+});
+
+/** CAF sem as 7 no ledger (a lacuna de verdade); Savy e o resto em dia. */
+function depsLacunaDaCaf(
+  ajuste: Record<string, unknown> = {},
+  runsExtra: any[] = [],
+  logsExtra: Record<number, string> = {},
+) {
+  const ledgerCompleto = ["20261190000000", "20261192000000", ...VERSOES_60_66];
+  const x = deps({
+    ledger: {
+      [CAF]: ["20261190000000", "20261192000000"],
+      [SAVY]: ledgerCompleto,
+    },
+    // a Savy tem a 8e verde (a evidência dela, de antes): o ruído dela fica de fora
+    runsConferir: [runConferir(11, PROVA, "savy"), ...runsExtra],
+    logs: { 11: log8e(SAVY, OUTRO), ...logsExtra },
+    ...ajuste,
+  });
+  const antigo = x.d.listarMigrationsNoSha;
+  x.d.listarMigrationsNoSha = async (sha: string) => [
+    ...(await antigo(sha)),
+    ...MIGRATIONS_60_66,
+  ];
+  x.d.canais = {
+    ...canais,
+    provasDeObjetos: [...canais.provasDeObjetos, ESTE_LOTE],
+  };
+  return x;
+}
+const logs9a = (id: number, okFalse = 0) => ({
+  [id]: logConsulta(PROVA_9A, CAF, OUTRO, okFalse, 38),
+});
+
+Deno.test("CAF com a 9a POSITIVA e as 7 fora do ledger: SÓ o backfill 60-66 (nenhum apply)", async () => {
+  const { d } = depsLacunaDaCaf(
+    {},
+    [runConferir(31, PROVA_9A, "ikcous-publicada")],
+    logs9a(31),
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [
+    `gh workflow run conferir-banco-da-loja.yml --ref "claude/app-major-upgrade-wmc8x2" -f "consulta=${PROVA_9A}" -f "projeto=ikcous-publicada" -f "expected_sha=${TOPO}" -f "gravar_ledger=60-66" -f "confirmar=GRAVAR"`,
+  ]);
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("CAF com a 9a NEGATIVA (com e sem o diagnóstico de ausência no ar): PARADA, sem comando de banco e SEM apply", async () => {
+  for (const diag of [false, true]) {
+    const logsNeg: Record<number, string> = { ...logs9a(31, 3) };
+    const runs: any[] = [runConferir(31, PROVA_9A, "ikcous-publicada")];
+    if (diag) {
+      for (const [i, c] of [A8, B8, C8].entries()) {
+        runs.push(
+          runConferir(41 + i, c, "ikcous-publicada", "2026-10-06T19:30:00Z"),
+        );
+        logsNeg[41 + i] = logConsulta(c, CAF, OUTRO, 0, 10);
+      }
+    }
+    const { d } = depsLacunaDaCaf({}, runs, logsNeg);
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1);
+    assertEquals(comandosGh(r.relatorio), [], `diag=${diag}: ${r.relatorio}`);
+    assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+    assert(
+      r.bloqueios.some(
+        (b) => b.alvo.includes(CAF) && b.motivo.includes("PARAR"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+  }
+});
+
+Deno.test("CAF sem evidência da 9a: o único comando é a 9a (só leitura) — nem backfill, nem apply", async () => {
+  const { d } = depsLacunaDaCaf();
+  const r = await executar(d, true);
+  assertEquals(comandosGh(r.relatorio), [
+    `gh workflow run conferir-banco-da-loja.yml --ref "claude/app-major-upgrade-wmc8x2" -f "consulta=${PROVA_9A}" -f "projeto=ikcous-publicada" -f "expected_sha=${TOPO}"`,
+  ]);
+  assert(
+    !r.relatorio.includes("GRAVAR") &&
+      !r.relatorio.includes("aplicar-migrations.yml"),
+  );
+});
+
+Deno.test("CAF com as 7 já no ledger: nada a fazer para o lote (nem 9a, nem backfill)", async () => {
+  const { d } = depsLacunaDaCaf();
+  d.migrationList = async (_ref: string) =>
+    tabelaDoLedger(["20261190000000", "20261192000000", ...VERSOES_60_66]);
+  const r = await executar(d, true);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assert(!r.relatorio.includes(PROVA_9A), r.relatorio);
+});
+
+Deno.test("a Savy NUNCA exige a 9a: sem o lote declarado para o ref dela, a lacuna de 60..66 na Savy é 'fora de qualquer lote' e nenhum comando cita a 9a", async () => {
+  const { d } = depsLacunaDaCaf();
+  d.migrationList = async (ref: string) =>
+    tabelaDoLedger(
+      ref === CAF
+        ? ["20261190000000", "20261192000000", ...VERSOES_60_66]
+        : ["20261190000000", "20261192000000"],
+    );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1);
+  assert(!r.relatorio.includes(PROVA_9A), r.relatorio);
+  assert(
+    r.bloqueios.some(
+      (b) =>
+        b.alvo.includes(SAVY) &&
+        b.motivo.includes("fora de qualquer lote declarado"),
+    ),
+    JSON.stringify(r.bloqueios),
+  );
+});
+
+Deno.test("lerCanais — o canais-de-backend.json real declara o lote 60-66 só na CAF e nuncaAplicar; lote nuncaAplicar com ausenciaConfirmadaPor é recusado", async () => {
+  const { writeFileSync, mkdtempSync, readFileSync } = await import("node:fs");
+  const { lerCanais } = await import("../scripts/frota/publicar-release.mjs");
+  const real = lerCanais();
+  const lote = real.provasDeObjetos.find((p: any) => p.consulta === PROVA_9A);
+  assert(lote, "o lote 60-66 não está no canais-de-backend.json");
+  assertEquals(lote.versoes, VERSOES_60_66);
+  assertEquals(lote.nuncaAplicar, true);
+  assertEquals(lote.backfillLedger, "60-66");
+  assertEquals(lote.soNosRefs, [CAF]);
+  assertEquals(lote.ausenciaConfirmadaPor, undefined);
+  assertEquals(lote.conferenciasAntesDoApply, undefined);
+  const dir = mkdtempSync(`${Deno.env.get("TEMP") ?? "/tmp"}/canais-`);
+  const base = JSON.parse(
+    readFileSync(
+      new URL("../scripts/frota/canais-de-backend.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const escrever = (mutar: (c: any) => void) => {
+    const c = structuredClone(base);
+    mutar(c);
+    const f = `${dir}/c-${Math.random().toString(36).slice(2)}.json`;
+    writeFileSync(f, JSON.stringify(c));
+    return f;
+  };
+  assertThrows(
+    () =>
+      lerCanais(
+        escrever((c) => {
+          c.provasDeObjetos[1].ausenciaConfirmadaPor =
+            "8a-antes-92-a-202-objetos-e-corpos";
+        }),
+      ),
+    Error,
+    "nuncaAplicar",
+  );
+  assertThrows(
+    () =>
+      lerCanais(
+        escrever((c) => {
+          c.provasDeObjetos[1].conferenciasAntesDoApply = [
+            "8b-papeis-contraditorios",
+          ];
+        }),
+      ),
+    Error,
+    "nuncaAplicar",
+  );
+  assertThrows(
+    () =>
+      lerCanais(
+        escrever((c) => {
+          c.provasDeObjetos[1].soNosRefs = ["zzzzzzzzzzzzzzzzzzzz"];
+        }),
+      ),
+    Error,
+    "soNosRefs",
+  );
+  assertThrows(
+    () =>
+      lerCanais(
+        escrever((c) => {
+          c.provasDeObjetos[1].nuncaAplicar = "sim";
+        }),
+      ),
+    Error,
+    "booleano",
+  );
+  // o lote da 92-202 continua válido e SEM a flag
+  assertEquals(real.provasDeObjetos[0].nuncaAplicar, undefined);
+});
+
+// ===========================================================================
+// O CONSUMIDOR da prova (06/10/2026): o veredito da 9a e da 8e só vale com o ROL
+// FECHADO exato. Antes, uma resposta com UMA linha ok=true gerava um veredito
+// aparentemente positivo, e o portão publicava em cima dela.
+// ===========================================================================
+const { ROL_DA_9A, ROL_DA_8E, ROL_FECHADO_POR_CONSULTA } = requireCjs(
+  "../scripts/publicacao/conferir-banco.cjs",
+);
+const linhasOk = (rol: string[]) =>
+  rol.map((item) => ({ item, esperado: "x", vivo: "x", ok: true }));
+
+const RESPOSTAS_QUE_NAO_SAO_O_ROL: Array<
+  [string, (rol: string[]) => unknown[]]
+> = [
+  ["parcial (os presentes TODOS ok=true)", (rol) => linhasOk(rol).slice(0, 1)],
+  ["parcial, só uma linha a menos", (rol) => linhasOk(rol).slice(1)],
+  ["duplicada", (rol) => [...linhasOk(rol), linhasOk(rol)[0]]],
+  [
+    "com item desconhecido",
+    (rol) => [
+      ...linhasOk(rol),
+      { item: "intruso", esperado: "x", vivo: "x", ok: true },
+    ],
+  ],
+  [
+    "com item trocado por outro",
+    (rol) =>
+      linhasOk(rol).map((l, i) => (i === 2 ? { ...l, item: "outro" } : l)),
+  ],
+  [
+    "com coluna a mais",
+    (rol) => linhasOk(rol).map((l, i) => (i === 2 ? { ...l, extra: 1 } : l)),
+  ],
+  [
+    "com coluna faltando (sem vivo)",
+    (rol) =>
+      linhasOk(rol).map((l: any, i) => {
+        return i === 2
+          ? Object.fromEntries(Object.entries(l).filter(([k]) => k !== "vivo"))
+          : l;
+      }),
+  ],
+  [
+    "com ok string",
+    (rol) => linhasOk(rol).map((l, i) => (i === 2 ? { ...l, ok: "true" } : l)),
+  ],
+  [
+    "com ok null",
+    (rol) => linhasOk(rol).map((l, i) => (i === 2 ? { ...l, ok: null } : l)),
+  ],
+  ["sem nenhuma linha", () => []],
+];
+
+/** A evidência que o portão acharia para este log, com um run verde e fresco. */
+async function evidenciaDoLog(
+  consulta: string,
+  projeto: string,
+  ref: string,
+  log: string,
+) {
+  return await evidenciaDaProva({
+    consulta,
+    projeto,
+    ref,
+    sha: SHA,
+    topo: TOPO,
+    validadeHoras: 48,
+    agora: AGORA,
+    deps: {
+      listarRuns: async (wf: string) =>
+        wf === "conferir-banco-da-loja.yml"
+          ? [runConferir(77, consulta, projeto)]
+          : [],
+      logDoRun: async () => log,
+      arvoreIgual: async () => true,
+    },
+  });
+}
+
+Deno.test("rol fechado: UMA fonte — o contrato por consulta do conferir-banco.cjs e o conjunto do portão são os mesmos, e cada rol é o da consulta certa", () => {
+  assertEquals(
+    [...Object.keys(ROL_FECHADO_POR_CONSULTA)].sort(),
+    [...CONSULTAS_DE_ROL_FECHADO].sort(),
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[PROVA_9A], ROL_DA_9A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[PROVA], ROL_DA_8E);
+});
+
+for (const [consulta, rol, projeto, ref] of [
+  [PROVA_9A, ROL_DA_9A, "ikcous-publicada", CAF],
+  [PROVA, ROL_DA_8E, "savy", SAVY],
+] as Array<[string, string[], string, string]>) {
+  Deno.test(`veredictoDaConsulta ${consulta}: resposta que NÃO é o rol exato NUNCA vira veredito positivo (rol=invalido) e o portão a trata como SEM_EVIDENCIA`, async () => {
+    for (const [nome, monta] of RESPOSTAS_QUE_NAO_SAO_O_ROL) {
+      const linha = veredictoDaConsulta({
+        consulta,
+        ref,
+        sha: OUTRO,
+        linhas: monta(rol),
+      });
+      assert(linha, `${nome}: tem de haver uma linha de veredito`);
+      assertStringIncludes(linha, " rol=invalido", nome);
+      const v = lerVeredicto(linha, consulta);
+      assertEquals(v?.rol, "invalido", nome);
+      const e = await evidenciaDoLog(consulta, projeto, ref, `x\n${linha}\n`);
+      assertEquals(e.estado, "SEM_EVIDENCIA", `${nome}: ${JSON.stringify(e)}`);
+      assertEquals(e.ok, false, nome);
+    }
+  });
+
+  Deno.test(`veredictoDaConsulta ${consulta}: o rol EXATO todo ok=true é POSITIVA; com uma ok=false é NEGATIVA (estrutura válida); o veredito antigo (sem rol) é SEM_EVIDENCIA`, async () => {
+    const positiva = veredictoDaConsulta({
+      consulta,
+      ref,
+      sha: OUTRO,
+      linhas: linhasOk(rol),
+    });
+    assertStringIncludes(
+      positiva,
+      `linhas=${rol.length} ok_false=0 ok_nao_booleano=0 rol=ok`,
+    );
+    const e = await evidenciaDoLog(consulta, projeto, ref, positiva);
+    assertEquals(e.estado, "POSITIVA", JSON.stringify(e));
+    const reprovada = veredictoDaConsulta({
+      consulta,
+      ref,
+      sha: OUTRO,
+      linhas: linhasOk(rol).map((l, i) => (i === 3 ? { ...l, ok: false } : l)),
+    });
+    assertStringIncludes(reprovada, "ok_false=1 ok_nao_booleano=0 rol=ok");
+    assertEquals(
+      (await evidenciaDoLog(consulta, projeto, ref, reprovada)).estado,
+      "NEGATIVA",
+    );
+    // o veredito ANTIGO: as mesmas contagens sem o campo `rol`
+    const antigo = positiva.replace(" rol=ok", "");
+    assertEquals(lerVeredicto(antigo, consulta)?.rol, undefined);
+    const ea = await evidenciaDoLog(consulta, projeto, ref, antigo);
+    assertEquals(ea.estado, "SEM_EVIDENCIA", JSON.stringify(ea));
+    assertStringIncludes(ea.motivo, "rol fechado");
+  });
+}
+
+Deno.test("consulta FORA do rol fechado (as faixas 72..83 e as antigas) segue com o formato antigo, sem o campo rol", () => {
+  for (const consulta of [
+    "1a-conferir-o-que-nasceu",
+    "2a-marcadores-72-74",
+    CONSULTA_ANTIGA,
+    "7a-conferir-83",
+  ]) {
+    const linha = veredictoDaConsulta({
+      consulta,
+      ref: SAVY,
+      sha: OUTRO,
+      linhas: [{ item: "a", ok: true }],
+    });
+    assert(!linha.includes("rol="), linha);
+    assertEquals(lerVeredicto(linha, consulta)?.rol, undefined);
+  }
+});
+
+Deno.test("portão, 92-202 (8e) com o ledger COMPLETO: resposta parcial da 8e (rol=invalido) NUNCA gera 'pronto para publicar' nem libera o promote", async () => {
+  const parcial = veredictoDaConsulta({
+    consulta: PROVA,
+    ref: SAVY,
+    sha: OUTRO,
+    linhas: linhasOk(ROL_DA_8E).slice(0, 1),
+  });
+  const { d, chamadas } = deps({ logs: { 11: `x\n${parcial}\n` } });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  assert(
+    r.bloqueios.some(
+      (b) => b.alvo.includes(SAVY) && b.motivo.includes("rol fechado"),
+    ),
+    JSON.stringify(r.bloqueios),
+  );
+  // controle: o MESMO cenário com o rol exato libera
+  const exata = veredictoDaConsulta({
+    consulta: PROVA,
+    ref: SAVY,
+    sha: OUTRO,
+    linhas: linhasOk(ROL_DA_8E),
+  });
+  const ok = deps({ logs: { 11: `x\n${exata}\n` } });
+  const r2 = await executar(ok.d, true);
+  assertEquals(r2.codigo, 0, r2.relatorio);
+});
+
+Deno.test("portão, 60-66 (9a) na CAF: resposta parcial da 9a NUNCA vira backfill nem apply — só pede a 9a de novo", async () => {
+  const parcial = veredictoDaConsulta({
+    consulta: PROVA_9A,
+    ref: CAF,
+    sha: OUTRO,
+    linhas: linhasOk(ROL_DA_9A).slice(0, 1),
+  });
+  const { d } = depsLacunaDaCaf(
+    {},
+    [runConferir(31, PROVA_9A, "ikcous-publicada")],
+    { 31: `x\n${parcial}\n` },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assert(!r.relatorio.includes("GRAVAR"), r.relatorio);
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [
+    `gh workflow run conferir-banco-da-loja.yml --ref "claude/app-major-upgrade-wmc8x2" -f "consulta=${PROVA_9A}" -f "projeto=ikcous-publicada" -f "expected_sha=${TOPO}"`,
+  ]);
+  // controle: o rol exato todo ok libera SÓ o backfill
+  const exata = veredictoDaConsulta({
+    consulta: PROVA_9A,
+    ref: CAF,
+    sha: OUTRO,
+    linhas: linhasOk(ROL_DA_9A),
+  });
+  const ok = depsLacunaDaCaf(
+    {},
+    [runConferir(31, PROVA_9A, "ikcous-publicada")],
+    { 31: `x\n${exata}\n` },
+  );
+  const r2 = await executar(ok.d, true);
+  assertEquals(comandosGh(r2.relatorio).length, 1);
+  assertStringIncludes(r2.relatorio, "gravar_ledger=60-66");
 });

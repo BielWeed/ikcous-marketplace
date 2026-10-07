@@ -52,7 +52,8 @@
 #                   cliente explícita, as mesmas travas: segredo
 #                   SUPABASE_ACCESS_TOKEN_SAVY, expected_sha, ledger só a faixa 92-202,
 #                   401/403 PARA);
-#   gravar_ledger = "nao" (default), "72-74", "75-78", "79-82", "83" ou "92-202";
+#   gravar_ledger = "nao" (default), "72-74", "75-78", "79-82", "83", "92-202" ou
+#                   "60-66" (esta SÓ em ikcous-publicada);
 #   confirmar     = só o job do ledger olha isto — precisa ser exatamente
 #                   "GRAVAR" para gravar de verdade.
 #
@@ -105,6 +106,7 @@ on:
           - 8h-perfil-dos-pedidos-divergentes
           - 8i-divergentes-contra-base-atestada
           - 8j-visibilidade-das-tabelas-auxiliares
+          - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
         description: "Projeto de destino: loja, sandbox, ikcous-publicada (a CAF explicita) ou savy (a loja cliente explicita, mesmas travas): as duas exigem expected_sha; nunca texto livre — achado da rodada 2"
@@ -132,6 +134,7 @@ on:
           - 79-82
           - "83"
           - 92-202
+          - 60-66
       confirmar:
         description: "Só o job do ledger olha isto: precisa ser exatamente GRAVAR"
         required: false
@@ -209,7 +212,15 @@ jobs:
     # NOTHING) e pinado por SHA-256, e `confirmar` = GRAVAR. E a faixa 92-202 é SÓ
     # das lojas explícitas: `loja`/`sandbox` (segredo legado, sem expected_sha)
     # não a gravam (revisão final de 06/10; a recusa também está no script).
-    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && ((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202') || ((inputs.projeto == 'ikcous-publicada' || inputs.projeto == 'savy') && inputs.gravar_ledger == '92-202')) && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
+    # A faixa `60-66` (06/10/2026) é o BACKFILL do REGISTRO das 7 migrations
+    # 20261160..20261166, cujo efeito já está vivo na CAF e que NUNCA se reaplicam: é
+    # SÓ de `ikcous-publicada` (a Savy não tem esse buraco; loja/sandbox/lojas de teste
+    # nunca). Só grava depois da leitura prévia do ledger (a lacuna da CAF) e da
+    # pré-checagem OBRIGATÓRIA da 9a-conferir-60-a-66-aplicado (rol fechado, todas as
+    # linhas ok=true), com INSERT guardado e pinado por SHA-256, e relê o ledger para
+    # CONFERIR as 7 linhas. A expressão do `if` espelha o mapa do script:
+    # ikcous-publicada: 92-202 e 60-66; savy: 92-202; qualquer outro: nenhuma das duas.
+    if: ${{ !inputs.ikcous_original && !inputs.ikcous_publicado && ((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202')) && inputs.gravar_ledger != 'nao' && inputs.confirmar == 'GRAVAR' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Mesmo grupo de aplicar-migrations.yml: nunca gravar o ledger enquanto
@@ -245,7 +256,7 @@ jobs:
       # Cada alvo enxerga SÓ o seu segredo (mesmas expressões do job `conferir`).
       # O script recusa, antes de qualquer requisição, qualquer faixa que não seja
       # a 92-202 nas lojas explícitas, e só grava depois da pré-checagem da 8e.
-      - name: Pré-confere o schema da faixa, grava o ledger e confere 72-78/72-82 (leitura)
+      - name: Pré-confere o schema da faixa, grava o ledger e confere a leitura posterior (72-78/72-82/72-202; 50-67 na faixa 60-66)
         env:
           SUPABASE_ACCESS_TOKEN: ${{ inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
           SUPABASE_ACCESS_TOKEN_IKCOUS: ${{ inputs.projeto == 'ikcous-publicada' && secrets.SUPABASE_ACCESS_TOKEN_IKCOUS || '' }}

@@ -398,6 +398,24 @@ jobs:
               if (rollbacks.length > 0 && rollbacks.length !== arquivos.length) {
                 throw new Error('RECUSADO (lista mista: migration e rollback-manual no mesmo dispatch — rode um de cada vez): ' + arquivos.join(', '));
               }
+              // FAIXA HISTÓRICA (06/10/2026): as 7 migrations 20261160..20261166 e os
+              // rollback-manual delas JÁ ESTÃO VIVAS no banco da CAF (só o registro
+              // no ledger falta) e reaplicá-las é regressivo e destrutivo: a 63 faz
+              // DROP FUNCTION e recria o corpo antigo; a 62 e a 65 devolvem corpo
+              // velho; a 66 apaga duplicados do cache e faz ADD CONSTRAINT/CREATE
+              // INDEX/CREATE TRIGGER sem IF NOT EXISTS. O alvo loja e o alvo
+              // ikcous-publicada são o MESMO banco (a CAF): a recusa vale nos
+              // dois, e também na savy (loja cliente real, que já tem as 7 no
+              // banco e no ledger: reaplicar a 62, 63 ou 64 troca o corpo pelo
+              // anterior à 20261199, sem a trava de admin atual). Vale antes de
+              // qualquer requisição. Lojas novas e de teste seguem livres.
+              if (projeto === 'ikcous-publicada' || projeto === 'loja' || projeto === 'savy') {
+                for (const arquivo of arquivos) {
+                  if (/^(rollback-manual-)?2026116[0-6][0-9]{6}_/.test(arquivo)) {
+                    throw new Error('RECUSADO (faixa histórica: só prova 9a + backfill 60-66; a faixa 20261160..20261166 nunca se reaplica nem se desfaz no banco da CAF): ' + arquivo);
+                  }
+                }
+              }
               const corpos = {};
               for (const arquivo of arquivos) {
                 const caminho = 'supabase/migrations/' + arquivo;

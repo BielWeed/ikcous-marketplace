@@ -303,7 +303,7 @@ Deno.test("conferir-banco-da-loja.yml: o job do ledger (que GRAVA em schema_migr
   // a única exceção: as lojas explícitas só entram no job com a faixa 92-202
   assertStringIncludes(
     linhaIf,
-    "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202') || ((inputs.projeto == 'ikcous-publicada' || inputs.projeto == 'savy') && inputs.gravar_ledger == '92-202'))",
+    "((inputs.projeto != 'ikcous-publicada' && inputs.projeto != 'savy' && inputs.gravar_ledger != '92-202' && inputs.gravar_ledger != '60-66') || (inputs.projeto == 'ikcous-publicada' && (inputs.gravar_ledger == '92-202' || inputs.gravar_ledger == '60-66')) || (inputs.projeto == 'savy' && inputs.gravar_ledger == '92-202'))",
   );
   // nenhum outro job do conferir passa LEDGER
   for (const job of [

@@ -965,3 +965,81 @@ Deno.test("CAF explícita: o mapeamento de loja e sandbox é byte a byte o de an
     assertEquals(avaliarResolucaoDoRef(trecho, ruim).codigoSaida, 1, ruim);
   }
 });
+
+// ---------------------------------------------------------------------------
+// FAIXA HISTÓRICA 20261160..20261166 (06/10/2026): já está VIVA no banco da CAF
+// (só o registro no ledger falta) e reaplicá-la é regressivo e destrutivo. Nenhum
+// apply nem rollback-manual dessas 7 versões roda nas TRÊS rotas (a CAF por
+// `ikcous-publicada` e `loja`, o mesmo banco, e a Savy), ANTES de qualquer requisição.
+// ---------------------------------------------------------------------------
+const FAIXA_HISTORICA = [
+  "20261160000000_o_codigo_de_barras_e_o_canal_nascem_no_banco.sql",
+  "20261161000000_o_balcao_acha_o_produto_pelo_codigo.sql",
+  "20261162000000_a_venda_no_balcao_nasce_inteira.sql",
+  "20261163000000_a_lista_de_pedidos_filtra_por_canal.sql",
+  "20261164000000_a_varredura_de_cancelados_enxerga_o_cancelamento.sql",
+  "20261165000000_a_loja_nasce_com_frete_gratis_desligado.sql",
+  "20261166000000_o_cache_de_cotacao_nao_guarda_repeticao.sql",
+];
+const ROTAS_DA_CAF: Array<[string, Record<string, string>]> = [
+  ["ikcous-publicada", { SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf" }],
+  ["loja", { SUPABASE_ACCESS_TOKEN: "tk-legado" }],
+  // a Savy (loja cliente real): já tem as 7 no banco e no ledger; reaplicar a
+  // 62, 63 ou 64 regride o corpo (provado pelo revisor) — a recusa vale nas 3 rotas
+  ["savy", { SUPABASE_ACCESS_TOKEN_SAVY: "tk-savy" }],
+];
+
+Deno.test({
+  name: "aplicar-migrations: as 7 migrations 20261160..66 e os rollback-manual delas são RECUSADAS nas TRÊS rotas (ikcous-publicada, loja e savy), antes de qualquer requisição",
+  ...SEM_SANITIZAR,
+  fn: async () => {
+    for (const [projeto, segredos] of ROTAS_DA_CAF) {
+      for (const arquivo of FAIXA_HISTORICA) {
+        for (const alvo of [arquivo, `rollback-manual-${arquivo}`]) {
+          const r = await rodarWorkflow(
+            alvo,
+            respostaSaudavel,
+            projeto,
+            segredos,
+          );
+          assertEquals(r.exit, 1, `${projeto} ${alvo}: ${r.texto}`);
+          assertEquals(
+            r.chamadas.length,
+            0,
+            `${projeto} ${alvo}: nenhuma requisição`,
+          );
+          assertStringIncludes(
+            r.texto,
+            "faixa histórica: só prova 9a + backfill 60-66",
+          );
+          assertStringIncludes(r.texto, alvo);
+        }
+      }
+    }
+  },
+});
+
+Deno.test({
+  name: "aplicar-migrations: a recusa da faixa histórica pega o arquivo no MEIO de uma lista (a lista inteira passa ou nada sai) e não pega os vizinhos 20261159 e 20261167",
+  ...SEM_SANITIZAR,
+  fn: async () => {
+    const meio = await rodarWorkflow(
+      `${M201},${FAIXA_HISTORICA[3]}`,
+      respostaSaudavel,
+      "ikcous-publicada",
+      { SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf" },
+    );
+    assertEquals(meio.exit, 1, meio.texto);
+    assertEquals(meio.chamadas.length, 0);
+    assertStringIncludes(meio.texto, "faixa histórica");
+    // controle: o vizinho 20261167 NÃO cai na regra (segue o fluxo normal da CAF)
+    const vizinho = await rodarWorkflow(
+      "20261167000000_sobre_a_loja_ganha_endereco_e_descricao.sql",
+      respostaSaudavel,
+      "ikcous-publicada",
+      { SUPABASE_ACCESS_TOKEN_IKCOUS: "tk-caf" },
+    );
+    assert(!vizinho.texto.includes("faixa histórica"), vizinho.texto);
+    assert(vizinho.chamadas.length > 0, "o vizinho chega a consultar o banco");
+  },
+});
