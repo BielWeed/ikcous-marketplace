@@ -57,7 +57,9 @@ const AGORA = Date.parse("2026-10-06T20:00:00Z");
 const PROVA = "8e-conferir-92-a-202-aplicado";
 const A8 = "8a-antes-92-a-202-objetos-e-corpos";
 const B8 = "8b-papeis-contraditorios";
-const C8 = "8c-subtotal-divergente";
+const K8 = "8k-subtotal-divergente-ou-vazia-provada";
+// A conferência de subtotal ANTIGA (legada): o portão não a usa mais.
+const C8_LEGADA = "8c-subtotal-divergente";
 const TOPO = "c".repeat(40);
 
 const politica = {
@@ -76,7 +78,7 @@ const canais = {
       versoes: ["20261192000000"],
       backfillLedger: "92-202",
       ausenciaConfirmadaPor: A8,
-      conferenciasAntesDoApply: [A8, B8, C8],
+      conferenciasAntesDoApply: [A8, B8, K8],
     },
   ],
   canais: {
@@ -446,7 +448,7 @@ Deno.test("CAF com ledger faltando e SEM evidência da 8e: o único comando é a
   );
 });
 
-Deno.test("Savy com ledger faltando e 8e NEGATIVA sem diagnóstico: pede 8a/8b/8c (só leitura), nenhum apply", async () => {
+Deno.test("Savy com ledger faltando e 8e NEGATIVA sem diagnóstico: pede 8a/8b/8k (só leitura), nenhum apply", async () => {
   const { d } = deps({
     ledger: LEDGER_SAVY_SEM_92,
     logs: { 11: log8e(SAVY, OUTRO, 61) },
@@ -455,7 +457,7 @@ Deno.test("Savy com ledger faltando e 8e NEGATIVA sem diagnóstico: pede 8a/8b/8
   assertEquals(r.codigo, 1);
   const gh = comandosGh(r.relatorio);
   assertEquals(gh.length, 3, r.relatorio);
-  for (const [i, c] of [A8, B8, C8].entries())
+  for (const [i, c] of [A8, B8, K8].entries())
     assertStringIncludes(gh[i], `-f "consulta=${c}" -f "projeto=savy"`);
   assert(
     !r.relatorio.includes("aplicar-migrations.yml") &&
@@ -463,20 +465,20 @@ Deno.test("Savy com ledger faltando e 8e NEGATIVA sem diagnóstico: pede 8a/8b/8
   );
 });
 
-Deno.test("Savy com lote AUSENTE confirmado pela 8a (e 8b/8c ok): apply com nomes COMPLETOS e SHA efetivo; functions só depois", async () => {
+Deno.test("Savy com lote AUSENTE confirmado pela 8a (e 8b/8k ok): apply com nomes COMPLETOS e SHA efetivo; functions só depois", async () => {
   const { d, estado } = deps({
     ledger: LEDGER_SAVY_SEM_92,
     runsConferir: [
       runConferir(11, PROVA, "savy"),
       runConferir(31, A8, "savy"),
       runConferir(32, B8, "savy"),
-      runConferir(33, C8, "savy"),
+      runConferir(33, K8, "savy"),
     ],
     logs: {
       11: log8e(SAVY, OUTRO, 61),
       31: logConsulta(A8, SAVY, OUTRO),
       32: logConsulta(B8, SAVY, OUTRO),
-      33: logConsulta(C8, SAVY, OUTRO),
+      33: logConsulta(K8, SAVY, OUTRO),
     },
   });
   estado.noAr[SAVY]["criar-pagamento"] = arquivosEsperados(
@@ -493,19 +495,84 @@ Deno.test("Savy com lote AUSENTE confirmado pela 8a (e 8b/8c ok): apply com nome
   assert(!r.relatorio.includes("publicar-functions.yml"));
 });
 
+Deno.test("Savy: 8k POSITIVA (vazia provada) + 8a + 8b positivas e a 8c LEGADA NEGATIVA no histórico: apply — a 8c saiu do portão", async () => {
+  const { d } = deps({
+    ledger: LEDGER_SAVY_SEM_92,
+    runsConferir: [
+      runConferir(11, PROVA, "savy"),
+      runConferir(31, A8, "savy"),
+      runConferir(32, B8, "savy"),
+      runConferir(33, K8, "savy"),
+      // uma 8c legada mais NOVA que tudo e NEGATIVA (loja vazia: os controles leem 0)
+      runConferir(34, C8_LEGADA, "savy", "2026-10-06T19:30:00Z"),
+    ],
+    logs: {
+      11: log8e(SAVY, OUTRO, 61),
+      31: logConsulta(A8, SAVY, OUTRO),
+      32: logConsulta(B8, SAVY, OUTRO),
+      33: logConsulta(K8, SAVY, OUTRO),
+      34: logConsulta(C8_LEGADA, SAVY, OUTRO, 2),
+    },
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1);
+  const gh = comandosGh(r.relatorio);
+  assertEquals(gh.length, 1, r.relatorio);
+  assertStringIncludes(gh[0], "aplicar-migrations.yml");
+  assertStringIncludes(gh[0], '-f "projeto=savy"');
+  assert(!r.relatorio.includes(C8_LEGADA), "o relatório não cita mais a 8c");
+});
+
+Deno.test("Savy: 8k SEM evidência (8a e 8b positivas): pede SÓ a 8k, nenhum apply; veredito da 8k com rol=invalido também é sem evidência", async () => {
+  for (const [rotulo, logK] of [
+    ["sem run", null],
+    ["rol=invalido", logConsulta(K8, SAVY, OUTRO, 0, 20, "invalido")],
+    [
+      "veredito antigo, sem o campo rol",
+      logConsulta(K8, SAVY, OUTRO, 0, 20, null),
+    ],
+  ] as Array<[string, string | null]>) {
+    const runs = [
+      runConferir(11, PROVA, "savy"),
+      runConferir(31, A8, "savy"),
+      runConferir(32, B8, "savy"),
+    ];
+    const logs: Record<number, string> = {
+      11: log8e(SAVY, OUTRO, 61),
+      31: logConsulta(A8, SAVY, OUTRO),
+      32: logConsulta(B8, SAVY, OUTRO),
+    };
+    if (logK !== null) {
+      runs.push(runConferir(33, K8, "savy"));
+      logs[33] = logK;
+    }
+    const { d } = deps({
+      ledger: LEDGER_SAVY_SEM_92,
+      runsConferir: runs,
+      logs,
+    });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, rotulo);
+    const gh = comandosGh(r.relatorio);
+    assertEquals(gh.length, 1, `${rotulo}: ${r.relatorio}`);
+    assertStringIncludes(gh[0], `-f "consulta=${K8}" -f "projeto=savy"`);
+    assert(!r.relatorio.includes("aplicar-migrations.yml"), rotulo);
+  }
+});
+
 for (const [nome, negativa] of [
   ["8a (nem aplicado nem ausente: estado parcial)", A8],
   ["8b (papéis contraditórios)", B8],
-  ["8c (subtotal divergente)", C8],
+  ["8k (subtotal divergente ou vazia provada)", K8],
 ]) {
   Deno.test(`Savy: 8e NEGATIVA e ${nome} com ok=false: PARADO, nenhum comando de banco`, async () => {
     const logs = {
       11: log8e(SAVY, OUTRO, 61),
       31: logConsulta(A8, SAVY, OUTRO),
       32: logConsulta(B8, SAVY, OUTRO),
-      33: logConsulta(C8, SAVY, OUTRO),
+      33: logConsulta(K8, SAVY, OUTRO),
     };
-    const id = { [A8]: 31, [B8]: 32, [C8]: 33 }[negativa];
+    const id = { [A8]: 31, [B8]: 32, [K8]: 33 }[negativa];
     logs[id] = logConsulta(negativa, SAVY, OUTRO, 2);
     const { d } = deps({
       ledger: LEDGER_SAVY_SEM_92,
@@ -513,7 +580,7 @@ for (const [nome, negativa] of [
         runConferir(11, PROVA, "savy"),
         runConferir(31, A8, "savy"),
         runConferir(32, B8, "savy"),
-        runConferir(33, C8, "savy"),
+        runConferir(33, K8, "savy"),
       ],
       logs,
     });
@@ -640,7 +707,7 @@ Deno.test("decidirLote: ledger PARCIAL com a 8a dizendo AUSENTE é contradição
     versoes: ["1", "2"],
     backfillLedger: "92-202",
     ausenciaConfirmadaPor: A8,
-    conferenciasAntesDoApply: [A8, B8, C8],
+    conferenciasAntesDoApply: [A8, B8, K8],
   };
   const quando = { run: { createdAt: "2026-10-06T19:00:00Z" } };
   const pos = { estado: "POSITIVA", motivo: "ok", ...quando };
@@ -648,7 +715,7 @@ Deno.test("decidirLote: ledger PARCIAL com a 8a dizendo AUSENTE é contradição
     new Map([
       [A8, pos],
       [B8, pos],
-      [C8, pos],
+      [K8, pos],
     ]);
   const neg = { estado: "NEGATIVA", motivo: "x", ...quando };
   assertEquals(
@@ -1383,20 +1450,20 @@ Deno.test("evidência de um commit com OUTRA ferramenta de conferência (conferi
 });
 
 // ---- achado 3: 8a "tudo ausente" mais VELHA que uma 8e negativa não autoriza apply
-Deno.test("Savy: 8a/8b/8c verdes MAIS VELHAS que a 8e negativa: pede de novo, nenhum apply", async () => {
+Deno.test("Savy: 8a/8b/8k verdes MAIS VELHAS que a 8e negativa: pede de novo, nenhum apply", async () => {
   const { d } = deps({
     ledger: LEDGER_SAVY_SEM_92,
     runsConferir: [
       runConferir(11, PROVA, "savy", "2026-10-06T19:30:00Z"),
       runConferir(31, A8, "savy", "2026-10-06T19:00:00Z"),
       runConferir(32, B8, "savy", "2026-10-06T19:00:00Z"),
-      runConferir(33, C8, "savy", "2026-10-06T19:00:00Z"),
+      runConferir(33, K8, "savy", "2026-10-06T19:00:00Z"),
     ],
     logs: {
       11: log8e(SAVY, OUTRO, 12),
       31: logConsulta(A8, SAVY, OUTRO),
       32: logConsulta(B8, SAVY, OUTRO),
-      33: logConsulta(C8, SAVY, OUTRO),
+      33: logConsulta(K8, SAVY, OUTRO),
     },
   });
   const r = await executar(d, true);
@@ -1842,13 +1909,13 @@ Deno.test("decidirLote 60-66: nuncaAplicar com lacuna — POSITIVA = só BACKFIL
   const comAusencia = {
     ...lote,
     ausenciaConfirmadaPor: A8,
-    conferenciasAntesDoApply: [A8, B8, C8],
+    conferenciasAntesDoApply: [A8, B8, K8],
   };
   const diagnostico = () =>
     new Map([
       [A8, POS],
       [B8, POS],
-      [C8, POS],
+      [K8, POS],
     ]);
   const nunca = decidirLote({
     lote: comAusencia,
@@ -1973,7 +2040,7 @@ Deno.test("CAF com a 9a NEGATIVA (com e sem o diagnóstico de ausência no ar): 
     const logsNeg: Record<number, string> = { ...logs9a(31, 3) };
     const runs: any[] = [runConferir(31, PROVA_9A, "ikcous-publicada")];
     if (diag) {
-      for (const [i, c] of [A8, B8, C8].entries()) {
+      for (const [i, c] of [A8, B8, K8].entries()) {
         runs.push(
           runConferir(41 + i, c, "ikcous-publicada", "2026-10-06T19:30:00Z"),
         );
@@ -2107,6 +2174,15 @@ Deno.test("lerCanais — o canais-de-backend.json real declara o lote 60-66 só 
   );
   // o lote da 92-202 continua válido e SEM a flag
   assertEquals(real.provasDeObjetos[0].nuncaAplicar, undefined);
+  // o lote da 92-202 exige a 8k (a 8c com a prova de vazia) e NÃO a 8c legada
+  assertEquals(real.provasDeObjetos[0].consulta, PROVA);
+  assertEquals(real.provasDeObjetos[0].conferenciasAntesDoApply, [A8, B8, K8]);
+  assert(
+    !JSON.stringify(real.provasDeObjetos[0].conferenciasAntesDoApply).includes(
+      C8_LEGADA,
+    ),
+    "a 8c legada saiu do portão",
+  );
 });
 
 // ===========================================================================
@@ -2114,9 +2190,8 @@ Deno.test("lerCanais — o canais-de-backend.json real declara o lote 60-66 só 
 // FECHADO exato. Antes, uma resposta com UMA linha ok=true gerava um veredito
 // aparentemente positivo, e o portão publicava em cima dela.
 // ===========================================================================
-const { ROL_DA_9A, ROL_DA_8E, ROL_FECHADO_POR_CONSULTA } = requireCjs(
-  "../scripts/publicacao/conferir-banco.cjs",
-);
+const { ROL_DA_9A, ROL_DA_8E, ROL_DA_8K, ROL_FECHADO_POR_CONSULTA } =
+  requireCjs("../scripts/publicacao/conferir-banco.cjs");
 const linhasOk = (rol: string[]) =>
   rol.map((item) => ({ item, esperado: "x", vivo: "x", ok: true }));
 
@@ -2195,11 +2270,17 @@ Deno.test("rol fechado: UMA fonte — o contrato por consulta do conferir-banco.
   );
   assertEquals(ROL_FECHADO_POR_CONSULTA[PROVA_9A], ROL_DA_9A);
   assertEquals(ROL_FECHADO_POR_CONSULTA[PROVA], ROL_DA_8E);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[K8], ROL_DA_8K);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(K8),
+    "a 8k do portão é de rol fechado: só vale com rol=ok",
+  );
 });
 
 for (const [consulta, rol, projeto, ref] of [
   [PROVA_9A, ROL_DA_9A, "ikcous-publicada", CAF],
   [PROVA, ROL_DA_8E, "savy", SAVY],
+  [K8, ROL_DA_8K, "savy", SAVY],
 ] as Array<[string, string[], string, string]>) {
   Deno.test(`veredictoDaConsulta ${consulta}: resposta que NÃO é o rol exato NUNCA vira veredito positivo (rol=invalido) e o portão a trata como SEM_EVIDENCIA`, async () => {
     for (const [nome, monta] of RESPOSTAS_QUE_NAO_SAO_O_ROL) {
