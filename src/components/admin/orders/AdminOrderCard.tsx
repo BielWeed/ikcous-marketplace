@@ -26,23 +26,27 @@ interface AdminOrderCardProps {
 }
 
 /**
- * Faixa de cor na borda esquerda do card: o lojista varre a lista pelo
- * estado do pedido antes de ler qualquer texto. Mesmas famílias de cor do
- * `statusConfig` (azul novo, âmbar separando, índigo a caminho, verde
- * finalizado, cinza cancelado).
+ * Cor do estado do pedido: uma faixa na borda esquerda e um brilho suave que
+ * sai dela. O lojista varre a lista pelo estado antes de ler qualquer texto.
+ * Mesmas famílias de cor do `statusConfig` (azul novo, âmbar separando,
+ * índigo a caminho, verde finalizado, cinza cancelado). As classes ficam
+ * escritas por extenso: o Tailwind só gera o que encontra no código.
  */
-function faixaDoStatus(status: OrderStatus | undefined): string {
+function corDoStatus(status: OrderStatus | undefined): {
+  faixa: string;
+  brilho: string;
+} {
   switch (status) {
     case "processing":
-      return "bg-amber-500";
+      return { faixa: "bg-amber-500", brilho: "from-amber-500/[0.08]" };
     case "shipping":
-      return "bg-indigo-500";
+      return { faixa: "bg-indigo-500", brilho: "from-indigo-500/[0.08]" };
     case "delivered":
-      return "bg-emerald-500";
+      return { faixa: "bg-emerald-500", brilho: "from-emerald-500/[0.07]" };
     case "cancelled":
-      return "bg-zinc-600";
+      return { faixa: "bg-zinc-600", brilho: "from-zinc-500/[0.05]" };
     default:
-      return "bg-blue-500";
+      return { faixa: "bg-blue-500", brilho: "from-blue-500/[0.08]" };
   }
 }
 
@@ -55,17 +59,17 @@ function resumoDosItens(order: Order): string {
 
 /**
  * Card de pedido da lista do painel. Redesenho de 07/10/2026 (relato do
- * Gabriel: "esse card dos pedidos está muito ruim"): o card antigo tinha
- * texto de 8–9px, uma linha de rodapé quase vazia (um ícone e uma seta) e o
- * botão de recebimento solto numa segunda faixa.
+ * Gabriel: "esse card dos pedidos está muito ruim"), refinado na segunda
+ * rodada do mesmo dia: o card antigo tinha texto de 8–9px, um rodapé quase
+ * vazio e o botão de recebimento solto numa segunda faixa.
  *
  * Leitura de cima para baixo, uma pergunta por faixa:
- *  1. ESTADO — número, há quanto tempo e em que pé está (faixa colorida na
- *     borda + selo do pedido);
- *  2. QUEM e O QUÊ — cliente e produto, com a miniatura;
- *  3. DINHEIRO — valor, como vai pagar e a situação da cobrança;
- *  4. AÇÃO — WhatsApp e "Marcar como recebido" na MESMA linha, com área de
- *     toque de 40px.
+ *  1. ESTADO — o selo do pedido (e a faixa/brilho colorido na borda), com
+ *     número e idade no canto;
+ *  2. QUEM, O QUÊ e QUANTO — miniatura, cliente e produto de um lado, valor do
+ *     outro (em card estreito o valor desce sozinho);
+ *  3. COBRANÇA e AÇÃO — situação do dinheiro à esquerda; WhatsApp e "Marcar
+ *     como recebido" à direita, com área de toque de 40px.
  *
  * Os dois modos de visualização (`compact`/`detailed`) usam a mesma estrutura;
  * só a escala muda. O contrato com os testes e o resto do painel não mudou:
@@ -94,6 +98,8 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   });
   const linkWhatsapp = linkWhatsappDoCliente(order.customer?.whatsapp);
   const registra = podeRegistrarPagamento(order);
+  const cor = corDoStatus(order.status);
+  const tamanhoDaMiniatura = grande ? "size-16" : "size-14";
 
   return (
     <motion.div
@@ -113,8 +119,8 @@ export const AdminOrderCard = memo(function AdminOrderCard({
         }
       }}
       className={cn(
-        "group relative flex cursor-pointer flex-col overflow-hidden border bg-zinc-950/60 backdrop-blur-md transition-all duration-300 transform-gpu animate-in fade-in slide-in-from-bottom-2",
-        "hover:border-admin-gold/40 hover:bg-zinc-900/50 active:scale-[0.99]",
+        "group relative flex cursor-pointer flex-col overflow-hidden border bg-gradient-to-b from-zinc-900/70 to-zinc-950/80 backdrop-blur-md transition-all duration-300 transform-gpu animate-in fade-in slide-in-from-bottom-2",
+        "hover:border-admin-gold/40 hover:shadow-[0_12px_32px_rgba(0,0,0,0.35)] active:scale-[0.99]",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950",
         grande ? "rounded-3xl content-visibility-auto" : "rounded-2xl",
         changeType === "INSERT" &&
@@ -126,27 +132,26 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     >
       <span
         aria-hidden="true"
+        className={cn("absolute inset-y-0 left-0 w-1", cor.faixa)}
+      />
+      <span
+        aria-hidden="true"
         className={cn(
-          "absolute inset-y-0 left-0 w-1",
-          faixaDoStatus(order.status),
+          "pointer-events-none absolute inset-y-0 left-0 w-3/5 bg-gradient-to-r to-transparent",
+          cor.brilho,
         )}
       />
 
       <div
         className={cn(
           "relative z-10 flex flex-1 flex-col",
-          grande ? "gap-5 p-6 pl-7" : "gap-3.5 p-4 pl-5",
+          grande ? "gap-5 p-6 pl-7" : "gap-4 p-4 pl-5",
         )}
       >
-        {/* 1. ESTADO. `flex-wrap`: em card estreito o selo desce para a linha
-            de baixo em vez de espremer o número ou estourar a borda. */}
+        {/* 1. ESTADO: o selo do pedido à frente (é o que o lojista procura
+            primeiro) e, no canto, número e idade. `flex-wrap`: em card
+            estreito o número desce em vez de espremer o selo. */}
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-          <span className="text-[11px] font-semibold tabular-nums text-zinc-500">
-            <span className="text-zinc-300 transition-colors group-hover:text-admin-gold">
-              #{order.id.slice(-6).toUpperCase()}
-            </span>
-            {tempo ? ` · ${tempo}` : ""}
-          </span>
           <div className="flex items-center gap-1.5">
             <OrderStatusBadge status={order.status} tamanho="cartao" />
             {/* C4.4: selo de canal na MESMA fileira do status — um selo a
@@ -163,54 +168,76 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               </span>
             )}
           </div>
+          <span className="text-[11px] font-semibold tabular-nums text-zinc-500">
+            <span className="text-zinc-300 transition-colors group-hover:text-admin-gold">
+              #{order.id.slice(-6).toUpperCase()}
+            </span>
+            {tempo ? ` · ${tempo}` : ""}
+          </span>
         </div>
 
-        {/* 2. QUEM e O QUÊ */}
-        <div className="flex items-center gap-3">
-          <div className="relative shrink-0">
-            {miniatura ? (
-              <LazyImage
-                src={miniatura}
-                alt="Produto"
-                className={cn(
-                  "shrink-0 rounded-xl border border-white/10 object-cover",
-                  grande ? "size-16" : "size-12",
-                )}
-              />
-            ) : (
-              <div
-                className={cn(
-                  "flex shrink-0 items-center justify-center rounded-xl border border-white/10 bg-zinc-900",
-                  grande ? "size-16" : "size-12",
-                )}
-              >
-                <Package className="size-5 text-zinc-600" />
-              </div>
-            )}
-            {itens.length > 1 && (
-              <div className="absolute -right-1.5 -top-1.5 flex min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold px-1 text-[10px] font-black leading-5 text-black shadow-lg">
-                +{itens.length - 1}
-              </div>
-            )}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h4
-              title={nome}
-              className={cn(
-                "line-clamp-2 font-bold leading-snug text-white transition-colors group-hover:text-admin-gold",
-                grande ? "text-lg" : "text-[15px]",
+        {/* 2. QUEM, O QUÊ e QUANTO numa linha só quando o card é largo; em
+            card estreito o valor desce sozinho para baixo do cliente, sem
+            ninguém ficar espremido (`flex-wrap` + `basis` mínimo). */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="flex min-w-0 flex-1 basis-[13rem] items-center gap-3.5">
+            <div className="relative shrink-0">
+              {miniatura ? (
+                <LazyImage
+                  src={miniatura}
+                  alt="Produto"
+                  className={cn(
+                    "shrink-0 rounded-2xl border border-white/10 object-cover shadow-md",
+                    tamanhoDaMiniatura,
+                  )}
+                />
+              ) : (
+                <div
+                  className={cn(
+                    "flex shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-zinc-900",
+                    tamanhoDaMiniatura,
+                  )}
+                >
+                  <Package className="size-6 text-zinc-600" />
+                </div>
               )}
-            >
-              {nome}
-            </h4>
-            {!grande && (
-              <p
-                title={resumo}
-                className="mt-0.5 truncate text-xs text-zinc-400"
+              {itens.length > 1 && (
+                <div className="absolute -right-1.5 -top-1.5 flex min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold px-1 text-[10px] font-black leading-5 text-black shadow-lg">
+                  +{itens.length - 1}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h4
+                title={nome}
+                className={cn(
+                  "line-clamp-2 font-bold leading-snug text-white transition-colors group-hover:text-admin-gold",
+                  grande ? "text-xl" : "text-base",
+                )}
               >
-                {resumo}
-              </p>
-            )}
+                {nome}
+              </h4>
+              {!grande && (
+                <p
+                  title={resumo}
+                  className="mt-0.5 truncate text-[13px] text-zinc-400"
+                >
+                  {resumo}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="shrink-0">
+            <p className="flex items-baseline gap-1 font-black tabular-nums leading-none text-white">
+              <span className="text-xs font-bold text-zinc-500">R$</span>
+              <span className={grande ? "text-4xl" : "text-[26px]"}>
+                {total}
+              </span>
+            </p>
+            <p className="mt-1.5 text-[11px] font-medium text-zinc-500">
+              {forma} · {unidades} {unidades === 1 ? "item" : "itens"}
+            </p>
           </div>
         </div>
 
@@ -237,19 +264,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
           </ul>
         )}
 
-        {/* 3. DINHEIRO: valor, como vai pagar e a situação da cobrança. */}
-        <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-2">
-          <div>
-            <p className="flex items-baseline gap-1 font-black tabular-nums leading-none text-white">
-              <span className="text-xs font-bold text-zinc-500">R$</span>
-              <span className={grande ? "text-3xl" : "text-[22px]"}>
-                {total}
-              </span>
-            </p>
-            <p className="mt-1.5 text-[11px] font-medium text-zinc-500">
-              {forma} · {unidades} {unidades === 1 ? "item" : "itens"}
-            </p>
-          </div>
+        {/* 3. COBRANÇA e AÇÃO na mesma faixa: à esquerda a situação do
+            dinheiro, à direita o que o lojista pode fazer com ele. Em card
+            estreito as ações descem para a linha de baixo e ocupam a largura.
+            Laudo 0109 (A-7): sem número válido o toque do WhatsApp não tinha
+            efeito — o botão simplesmente não existe. */}
+        <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-2.5 border-t border-white/10 pt-3.5">
           <PaymentStatusBadge
             paymentStatus={order.paymentStatus}
             orderStatus={order.status}
@@ -259,76 +279,74 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             // a coluna (relato do Gabriel, 02/09); o detalhado tem folga.
             compact={!grande}
           />
-        </div>
 
-        {/* 4. AÇÃO. Laudo 0109 (A-7): sem número válido o toque do WhatsApp
-            não tinha efeito — o botão simplesmente não existe. */}
-        <div className="mt-auto flex items-center gap-2 border-t border-white/10 pt-3.5">
-          {linkWhatsapp && (
-            <button
-              type="button"
-              title="WhatsApp"
-              aria-label="Chamar o cliente no WhatsApp"
-              onClick={(e) => {
-                e.stopPropagation();
-                onWhatsApp(order);
-              }}
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-400 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
-            >
-              <MessageCircle className="size-[18px]" />
-            </button>
-          )}
+          <div className="ml-auto flex min-w-0 flex-1 basis-[13rem] items-center justify-end gap-2">
+            {linkWhatsapp && (
+              <button
+                type="button"
+                title="WhatsApp"
+                aria-label="Chamar o cliente no WhatsApp"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onWhatsApp(order);
+                }}
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-400 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
+              >
+                <MessageCircle className="size-[18px]" />
+              </button>
+            )}
 
-          {/* Task 4 do plano recebimento-na-entrega: `podeRegistrarPagamento`
-              é a MESMA condição (definida uma vez, em outro módulo) que
-              decide se este bloco existe e qual dos dois ramos aparece. */}
-          {registra ? (
-            order.pagamentoRecebidoEm ? (
-              <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-emerald-400">
-                  <Check className="size-4 shrink-0" />
-                  <span className="truncate">
-                    Recebido em{" "}
-                    {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
-                      "pt-BR",
-                      { day: "2-digit", month: "short" },
-                    )}
+            {/* Task 4 do plano recebimento-na-entrega: `podeRegistrarPagamento`
+                é a MESMA condição (definida uma vez, em outro módulo) que
+                decide se este bloco existe e qual dos dois ramos aparece. */}
+            {registra ? (
+              order.pagamentoRecebidoEm ? (
+                <>
+                  <span className="flex min-w-0 flex-1 items-center justify-end gap-1.5 text-xs font-semibold text-emerald-400">
+                    <Check className="size-4 shrink-0" />
+                    <span className="truncate">
+                      Recebido em{" "}
+                      {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
+                        "pt-BR",
+                        { day: "2-digit", month: "short" },
+                      )}
+                    </span>
                   </span>
-                </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRegistrarPagamento(order.id, false);
+                    }}
+                    disabled={registrandoPagamento}
+                    className="h-10 shrink-0 rounded-xl border border-zinc-700/60 bg-zinc-800/50 px-3.5 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+                  >
+                    Desfazer
+                  </button>
+                </>
+              ) : (
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRegistrarPagamento(order.id, false);
+                    onRegistrarPagamento(order.id, true);
                   }}
                   disabled={registrandoPagamento}
-                  className="h-10 shrink-0 rounded-xl border border-zinc-700/60 bg-zinc-800/50 px-3.5 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+                  className="flex h-10 min-w-0 max-w-[15rem] flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-300 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
                 >
-                  Desfazer
+                  <Check className="size-4 shrink-0" />
+                  {registrandoPagamento
+                    ? "Registrando..."
+                    : "Marcar como recebido"}
                 </button>
-              </div>
+              )
             ) : (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRegistrarPagamento(order.id, true);
-                }}
-                disabled={registrandoPagamento}
-                className="flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-300 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
-              >
-                <Check className="size-4 shrink-0" />
-                {registrandoPagamento
-                  ? "Registrando..."
-                  : "Marcar como recebido"}
-              </button>
-            )
-          ) : (
-            <span className="ml-auto flex items-center gap-1 text-xs font-semibold text-zinc-500 transition-colors group-hover:text-admin-gold">
-              Ver detalhes
-              <ChevronRight className="size-4 transition-transform duration-300 group-hover:translate-x-0.5" />
-            </span>
-          )}
+              <span className="flex items-center gap-1 text-xs font-semibold text-zinc-500 transition-colors group-hover:text-admin-gold">
+                Ver detalhes
+                <ChevronRight className="size-4 transition-transform duration-300 group-hover:translate-x-0.5" />
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </motion.div>
