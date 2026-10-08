@@ -199,6 +199,7 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("VITE_SUPABASE_URL", "https://loja.supabase.co");
     // `clearAllMocks` não esvazia a fila dos `...Once`: um teste que falha antes
     // de consumi-la vazaria envio pendente para o seguinte.
     mocks.uploadProductImages.mockReset();
@@ -229,6 +230,7 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -282,14 +284,18 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
       expect(mocks.storageRemove).not.toHaveBeenCalled();
 
       // O upload original, que ninguém cancelou, termina: o objeto JÁ existe.
-      envio.resolver([urlDe("uuid-atrasado.jpg")]);
+      envio.resolver([urlDe("11111111-1111-4111-8111-aaaaaaaaaaaa.jpg")]);
       await drenar();
 
       expect(mocks.storageFrom).toHaveBeenCalledWith("products");
       expect(mocks.storageRemove).toHaveBeenCalledTimes(1);
-      expect(mocks.storageRemove).toHaveBeenCalledWith(["uuid-atrasado.jpg"]);
+      expect(mocks.storageRemove).toHaveBeenCalledWith([
+        "11111111-1111-4111-8111-aaaaaaaaaaaa.jpg",
+      ]);
       // A foto que a tela deu por falha NÃO entrou no produto.
-      expect(fotoNaTela(urlDe("uuid-atrasado.jpg"))).toBe(false);
+      expect(
+        fotoNaTela(urlDe("11111111-1111-4111-8111-aaaaaaaaaaaa.jpg")),
+      ).toBe(false);
       expect(textoDe("fotos-com-falha")).toContain("a.jpg");
     });
 
@@ -298,14 +304,16 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
       const primeiro = envioAdiado();
       mocks.uploadProductImages
         .mockReturnValueOnce(primeiro.promessa)
-        .mockResolvedValueOnce([urlDe("uuid-da-segunda.jpg")]);
+        .mockResolvedValueOnce([
+          urlDe("33333333-3333-4333-8333-cccccccccccc.jpg"),
+        ]);
       relogioFalso();
 
       await act(async () => {
         escolherFotos([foto("a.jpg")]);
       });
       await avancar(PRAZO_DA_FOTO_MS + 1);
-      primeiro.resolver([urlDe("uuid-da-primeira.jpg")]);
+      primeiro.resolver([urlDe("22222222-2222-4222-8222-bbbbbbbbbbbb.jpg")]);
       await drenar();
 
       await act(async () => {
@@ -313,10 +321,12 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
       });
       await drenar();
 
-      expect(fotoNaTela(urlDe("uuid-da-segunda.jpg"))).toBe(true);
+      expect(
+        fotoNaTela(urlDe("33333333-3333-4333-8333-cccccccccccc.jpg")),
+      ).toBe(true);
       expect(mocks.storageRemove).toHaveBeenCalledTimes(1);
       expect(mocks.storageRemove).toHaveBeenCalledWith([
-        "uuid-da-primeira.jpg",
+        "22222222-2222-4222-8222-bbbbbbbbbbbb.jpg",
       ]);
     });
 
@@ -330,12 +340,14 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
         escolherFotos([foto("a.jpg")]);
       });
       await avancar(PRAZO_DA_FOTO_MS - 1000);
-      envio.resolver([urlDe("uuid-no-prazo.jpg")]);
+      envio.resolver([urlDe("44444444-4444-4444-8444-dddddddddddd.jpg")]);
       await drenar();
       // Passa do instante do prazo: o relógio já foi desarmado e não apaga nada.
       await avancar(5000);
 
-      expect(fotoNaTela(urlDe("uuid-no-prazo.jpg"))).toBe(true);
+      expect(
+        fotoNaTela(urlDe("44444444-4444-4444-8444-dddddddddddd.jpg")),
+      ).toBe(true);
       expect(textoDe("fotos-com-falha")).toBeNull();
       expect(mocks.storageRemove).not.toHaveBeenCalled();
     });
@@ -375,7 +387,7 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
         escolherFotos([foto("a.jpg")]);
       });
       await avancar(PRAZO_DA_FOTO_MS + 1);
-      primeiro.resolver([urlDe("uuid-1.jpg")]);
+      primeiro.resolver([urlDe("55555555-5555-4555-8555-eeeeeeeeeeee.jpg")]);
       await drenar();
       expect(mocks.storageRemove).toHaveBeenCalledTimes(1);
 
@@ -385,7 +397,7 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
         escolherFotos([foto("b.jpg")]);
       });
       await avancar(PRAZO_DA_FOTO_MS + 1);
-      segundo.resolver([urlDe("uuid-2.jpg")]);
+      segundo.resolver([urlDe("66666666-6666-4666-8666-ffffffffffff.jpg")]);
       await drenar();
       expect(mocks.storageRemove).toHaveBeenCalledTimes(2);
 
@@ -457,30 +469,34 @@ describe("AdminProductFormView — foto que chega DEPOIS do prazo não vira arqu
       );
       expect(mocks.storageRemove).not.toHaveBeenCalled();
 
-      envio.resolver([urlDe("uuid-do-recorte.webp")]);
+      envio.resolver([urlDe("88888888-8888-4888-8888-222222222222.webp")]);
       await drenar();
 
       expect(mocks.storageFrom).toHaveBeenCalledWith("products");
       expect(mocks.storageRemove).toHaveBeenCalledTimes(1);
       expect(mocks.storageRemove).toHaveBeenCalledWith([
-        "uuid-do-recorte.webp",
+        "88888888-8888-4888-8888-222222222222.webp",
       ]);
       // A foto original continua; o recorte descartado não entrou.
       expect(fotoNaTela(urlDe("original.jpg"))).toBe(true);
-      expect(fotoNaTela(urlDe("uuid-do-recorte.webp"))).toBe(false);
+      expect(
+        fotoNaTela(urlDe("88888888-8888-4888-8888-222222222222.webp")),
+      ).toBe(false);
     });
 
     it("controle: o recorte termina DENTRO do prazo -- troca a foto e nada é apagado", async () => {
       await montarPreenchido();
       await abrirRecorteDeUmaFotoJaNoProduto();
       mocks.uploadProductImages.mockResolvedValueOnce([
-        urlDe("uuid-do-recorte-ok.webp"),
+        urlDe("77777777-7777-4777-8777-111111111111.webp"),
       ]);
 
       await confirmarRecorte();
       await drenar();
 
-      expect(fotoNaTela(urlDe("uuid-do-recorte-ok.webp"))).toBe(true);
+      expect(
+        fotoNaTela(urlDe("77777777-7777-4777-8777-111111111111.webp")),
+      ).toBe(true);
       expect(mocks.storageRemove).not.toHaveBeenCalled();
     });
   });
