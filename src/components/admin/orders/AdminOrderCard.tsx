@@ -145,7 +145,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
       <div
         className={cn(
           "relative z-10 flex flex-1 flex-col",
-          grande ? "gap-5 p-6 pl-7" : "gap-4 p-4 pl-5",
+          grande ? "gap-5 p-6 pl-7" : "gap-3.5 p-4 pl-5",
         )}
       >
         {/* 1. ESTADO: o selo do pedido à frente (é o que o lojista procura
@@ -168,7 +168,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
               </span>
             )}
           </div>
-          <span className="text-[11px] font-semibold tabular-nums text-zinc-500">
+          <span className="text-[11px] font-semibold tabular-nums text-zinc-400">
             <span className="text-zinc-300 transition-colors group-hover:text-admin-gold">
               #{order.id.slice(-6).toUpperCase()}
             </span>
@@ -230,12 +230,12 @@ export const AdminOrderCard = memo(function AdminOrderCard({
 
           <div className="shrink-0">
             <p className="flex items-baseline gap-1 font-black tabular-nums leading-none text-white">
-              <span className="text-xs font-bold text-zinc-500">R$</span>
+              <span className="text-xs font-bold text-zinc-400">R$</span>
               <span className={grande ? "text-4xl" : "text-[26px]"}>
                 {total}
               </span>
             </p>
-            <p className="mt-1.5 text-[11px] font-medium text-zinc-500">
+            <p className="mt-1.5 text-[11px] font-medium text-zinc-400">
               {forma} · {unidades} {unidades === 1 ? "item" : "itens"}
             </p>
           </div>
@@ -250,13 +250,13 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 className="flex items-center justify-between gap-3"
               >
                 <span className="truncate">{item.name}</span>
-                <span className="shrink-0 font-semibold tabular-nums text-zinc-500">
+                <span className="shrink-0 font-semibold tabular-nums text-zinc-400">
                   {item.quantity || 1}×
                 </span>
               </li>
             ))}
             {itens.length > 3 && (
-              <li className="text-xs text-zinc-500">
+              <li className="text-xs text-zinc-400">
                 + {itens.length - 3}{" "}
                 {itens.length - 3 === 1 ? "outro" : "outros"}
               </li>
@@ -290,7 +290,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   e.stopPropagation();
                   onWhatsApp(order);
                 }}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-emerald-400 transition-all hover:bg-emerald-500 hover:text-black active:scale-90"
+                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-300 active:scale-90"
               >
                 <MessageCircle className="size-[18px]" />
               </button>
@@ -341,7 +341,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 </button>
               )
             ) : (
-              <span className="flex items-center gap-1 text-xs font-semibold text-zinc-500 transition-colors group-hover:text-admin-gold">
+              <span className="flex items-center gap-1 text-xs font-semibold text-zinc-400 transition-colors group-hover:text-admin-gold">
                 Ver detalhes
                 <ChevronRight className="size-4 transition-transform duration-300 group-hover:translate-x-0.5" />
               </span>
