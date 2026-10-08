@@ -128,7 +128,12 @@ export function FolhaEditarVitrine({
     } finally {
       if (aberta.current) setSalvando(false);
     }
-    if (salvou && aberta.current) aoFechar();
+    // Só fecha se não surgiu um nome MAIS NOVO durante a espera (gravação em
+    // andamento ou texto ainda por gravar): senão ele se perderia. Fica aberta
+    // e o toque seguinte resolve.
+    const haNomeMaisNovo =
+      gravandoNome.current !== null || nomePendente.current !== null;
+    if (salvou && !haNomeMaisNovo && aberta.current) aoFechar();
   };
 
   return (
@@ -173,6 +178,10 @@ export function FolhaEditarVitrine({
         id={idDoCampoDeNome}
         name="title"
         value={secao.title || ""}
+        // Somente leitura (e não desabilitado) enquanto "Concluir" espera: o
+        // campo não desmonta nem perde o foco/valor, mas nada novo entra numa
+        // janela em que a folha está prestes a fechar.
+        readOnly={salvando}
         onFlush={(titulo) => void gravarNome(titulo)}
         placeholder="Título da vitrine"
         useShadcn={true}

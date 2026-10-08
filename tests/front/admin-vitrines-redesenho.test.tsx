@@ -922,8 +922,10 @@ describe("dado antigo e avisos", () => {
 // confirmada. Se falhou, o painel fica aberto com o texto digitado e o botão
 // tenta de novo; "Fechar" (X) continua descartando, sem trava.
 describe("Concluir não perde o nome digitado", () => {
-  // `clearAllMocks` limpa as chamadas mas deixa a implementação: voltar ao normal.
+  // `clearAllMocks` limpa as chamadas mas deixa a implementação (e a fila de
+  // `...Once` que um teste não consumiu): voltar ao normal.
   afterEach(() => {
+    updateConfig.mockReset();
     updateConfig.mockImplementation(async () => true);
   });
 
@@ -1085,6 +1087,100 @@ describe("Concluir não perde o nome digitado", () => {
     await clicar(botao);
     expect(updateConfig).toHaveBeenCalledTimes(2);
     expect(painel()).toBeNull();
+  });
+
+  describe("texto novo digitado enquanto 'Salvando…'", () => {
+    // Duas gravações controláveis: a 1ª (do blur) e a 2ª (de um nome mais novo).
+    function gravacoesControlaveis() {
+      const resolvers: Array<(salvou: boolean) => void> = [];
+      const pendurada = () =>
+        new Promise<boolean>((resolver) => {
+          resolvers.push(resolver);
+        });
+      updateConfig.mockImplementationOnce(pendurada);
+      updateConfig.mockImplementationOnce(pendurada);
+      return resolvers;
+    }
+    const pausa = (ms: number) =>
+      act(async () => {
+        await new Promise((resolver) => setTimeout(resolver, ms));
+      });
+
+    it("o campo de nome fica somente leitura enquanto salva, e volta a editar depois", async () => {
+      const resolvers = gravacoesControlaveis();
+      const nome = await abrirKitsEDigitar("Presentes");
+      expect(campoDeNome()?.readOnly).toBe(false);
+      await concluirComoNoNavegador(nome);
+
+      expect(campoDeNome()?.readOnly).toBe(true);
+      // não desmontou nem perdeu o texto
+      expect(campoDeNome()).toBe(nome);
+      expect(campoDeNome()?.value).toBe("Presentes");
+
+      await act(async () => {
+        resolvers[0](false);
+      });
+      expect(campoDeNome()?.readOnly).toBe(false);
+    });
+
+    it("pausa de mais de 200 ms: a 2ª gravação ainda corre quando a 1ª confirma, e a folha NÃO fecha", async () => {
+      const resolvers = gravacoesControlaveis();
+      const nome = await abrirKitsEDigitar("Presentes");
+      await concluirComoNoNavegador(nome);
+      // (o campo é somente leitura de verdade; aqui o texto entra pelo DOM de
+      // propósito, para provar a barreira de depois do await)
+      await digitar(nome, "Presentes de Natal");
+      await pausa(250);
+      expect(updateConfig).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        resolvers[0](true);
+      });
+      expect(painel()).not.toBeNull();
+      expect(campoDeNome()?.value).toBe("Presentes de Natal");
+
+      // a 2ª confirma: o toque seguinte só fecha, sem gravar de novo
+      await act(async () => {
+        resolvers[1](true);
+      });
+      expect(painel()).not.toBeNull();
+      await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+      expect(updateConfig).toHaveBeenCalledTimes(2);
+      expect(ultimaGravacao()).toEqual({
+        homeSections: [
+          secaoLancamentos,
+          { ...secaoKits, title: "Presentes de Natal" },
+          secaoDestaques,
+        ],
+      });
+      expect(painel()).toBeNull();
+    });
+
+    it("se a 2ª gravação falha, a folha segue aberta com o texto novo e avisa; o toque seguinte tenta de novo", async () => {
+      const resolvers = gravacoesControlaveis();
+      const nome = await abrirKitsEDigitar("Presentes");
+      await concluirComoNoNavegador(nome);
+      await digitar(nome, "Presentes de Natal");
+      await pausa(250);
+
+      await act(async () => {
+        resolvers[0](true);
+      });
+      await act(async () => {
+        resolvers[1](false);
+      });
+      expect(painel()).not.toBeNull();
+      expect(campoDeNome()?.value).toBe("Presentes de Natal");
+      expect(painel()?.querySelector('[role="alert"]')).not.toBeNull();
+
+      // (o 1º toque pode só consumir o resultado da falha; o seguinte regrava)
+      for (let toques = 0; toques < 2 && painel(); toques++) {
+        await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+      }
+      expect(updateConfig).toHaveBeenCalledTimes(3);
+      expect(ultimaGravacao().homeSections[1].title).toBe("Presentes de Natal");
+      expect(painel()).toBeNull();
+    });
   });
 
   it("caminho feliz: grava uma vez e fecha", async () => {
