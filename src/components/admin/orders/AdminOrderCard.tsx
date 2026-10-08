@@ -181,7 +181,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             card estreito o valor desce sozinho para baixo do cliente, sem
             ninguém ficar espremido (`flex-wrap` + `basis` mínimo). */}
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <div className="flex min-w-0 flex-1 basis-[13rem] items-center gap-3.5">
+          <div className="flex min-w-0 flex-1 basis-52 items-center gap-3.5">
             <div className="relative shrink-0">
               {miniatura ? (
                 <LazyImage
@@ -281,7 +281,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             compact={!grande}
           />
 
-          <div className="ml-auto flex min-w-0 flex-1 basis-[13rem] items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 flex-1 basis-52 items-center justify-end gap-2">
             {linkWhatsapp && (
               <button
                 type="button"
@@ -333,7 +333,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                     onRegistrarPagamento(order.id, true);
                   }}
                   disabled={registrandoPagamento}
-                  className="flex h-10 min-w-0 max-w-[15rem] flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-300 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+                  className="flex h-10 min-w-0 max-w-60 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-300 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
                 >
                   <Check className="size-4 shrink-0" />
                   {registrandoPagamento
@@ -400,6 +400,11 @@ export function AdminOrderCardSkeleton({
             <Skeleton className="ml-auto h-3 w-16 bg-white/5" />
           </div>
         </div>
+        {/* Modo detalhado: o card carregado tem o painel com os itens do
+            pedido (2 linhas, em média) — reservar o espaço evita que a lista
+            e a paginação desçam quando os pedidos chegam. */}
+        {grande && <Skeleton className="h-[4.5rem] rounded-2xl bg-white/5" />}
+
         <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3.5">
           <Skeleton className="h-6 w-24 rounded-full bg-white/5" />
           <Skeleton className="h-10 w-44 rounded-xl bg-white/5" />
