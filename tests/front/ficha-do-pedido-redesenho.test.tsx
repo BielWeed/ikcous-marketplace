@@ -839,5 +839,108 @@ describe("ficha do pedido (redesenho 08/10/2026)", () => {
       expect(barra?.className).not.toMatch(/bg-admin-bg\/\d+/);
       expect(barra?.className).toContain("bg-admin-bg");
     });
+
+    // Medido na tela de 375px (08/10): "Cancelar pedido" tomava 149px e o texto
+    // do botão principal saía cortado ("Avançar → Em Se"). jsdom não faz
+    // layout, então o que se prova é o PADRÃO de classes que garante: o texto
+    // do principal nunca é cortado (nada de truncate/line-clamp, e quebra
+    // linha se faltar espaço), e o Cancelar encolhe para "Cancelar" em tela
+    // estreita sem perder o nome acessível.
+    it("barra de ação em tela estreita: o 'Avançar → …' nunca é cortado e o Cancelar encolhe, mantendo o nome acessível", async () => {
+      await renderizar(pedidoFake({ status: "pending" }));
+
+      const avancar = botao("Avançar →");
+      const textoDoAvancar = avancar?.querySelector("span");
+      expect(textoDoAvancar?.textContent).toBe("Avançar → Em Separação");
+      for (const el of [avancar, textoDoAvancar]) {
+        expect(el?.className).not.toMatch(/truncate|line-clamp|text-ellipsis/);
+      }
+      // O Button base é `whitespace-nowrap`: sem sobrescrever, o texto
+      // vazaria em vez de quebrar linha.
+      expect(avancar?.className).toContain("whitespace-normal");
+      expect(avancar?.className.split(" ")).toContain("flex-1");
+
+      const cancelar = hospedeiro.querySelector<HTMLButtonElement>(
+        'button[title="Cancelar pedido"]',
+      );
+      expect(cancelar?.getAttribute("aria-label")).toBe("Cancelar pedido");
+      expect(cancelar?.textContent).toBe("Cancelar pedido");
+      // O " pedido" só aparece a partir de 420px.
+      const resto = cancelar?.querySelector("span span");
+      expect(resto?.className).toMatch(/hidden/);
+      expect(resto?.className).toContain("min-[420px]:inline");
+    });
+
+    it("o nome da cliente quebra linha (não é cortado com reticências)", async () => {
+      await renderizar(pedidoFake());
+
+      const nome = Array.from(
+        porId("bloco-entrega")?.querySelectorAll("p") ?? [],
+      ).find((p) => p.textContent === "Cliente Teste");
+      expect(nome?.className).toContain("break-words");
+      expect(nome?.className).not.toMatch(/truncate|line-clamp/);
+    });
+
+    it("'Copiar endereço' e 'Ver no Maps' têm o mesmo tamanho e ficam em uma linha cada", async () => {
+      await renderizar(pedidoFake());
+
+      const copiar = porId("bloco-entrega")?.querySelector(
+        'button[title="Copiar Endereço"]',
+      );
+      const maps = porId("bloco-entrega")?.querySelector(
+        'a[title="Ver no Google Maps"]',
+      );
+      expect(copiar?.textContent).toBe("Copiar endereço");
+      expect(maps?.textContent).toBe("Ver no Maps");
+      expect(copiar?.className).toBe(maps?.className);
+      expect(copiar?.className).toContain("whitespace-nowrap");
+      expect(copiar?.className.split(" ")).toContain("h-10");
+    });
+
+    it("o título de cada linha do envio tem o MESMO estilo nos três estados (vazio, com texto, editando)", async () => {
+      const ESTILO = ["text-sm", "font-medium", "text-zinc-200"];
+      // Título (h3 ou label) da linha `nome` que tem as três classes do estilo.
+      const temEstilo = (nome: string) =>
+        Array.from(
+          porId("envio-lista")?.querySelectorAll("h3, label") ?? [],
+        ).some(
+          (t) =>
+            t.textContent === nome &&
+            ESTILO.every((classe) => t.classList.contains(classe)),
+        );
+
+      // Vazio: Etiqueta, Rastreio e Anotações.
+      await renderizar(pedidoFake());
+      for (const nome of [
+        "Etiqueta de envio",
+        "Código de rastreio",
+        "Anotações internas",
+      ]) {
+        expect(temEstilo(nome)).toBe(true);
+      }
+
+      // Com texto.
+      await renderizar(
+        pedidoFake({ trackingCode: "BR123456789BR", notes: "Combinado 18h" }),
+      );
+      for (const nome of ["Código de rastreio", "Anotações internas"]) {
+        expect(temEstilo(nome)).toBe(true);
+      }
+
+      // Editando (os dois campos abertos): o label tem o mesmo estilo.
+      await act(async () => {
+        botao("Editar")?.dispatchEvent(
+          new MouseEvent("click", { bubbles: true }),
+        );
+        porId("envio-lista")
+          ?.querySelector<HTMLButtonElement>('button[title="Editar Código"]')
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(hospedeiro.querySelector("#notes-textarea")).not.toBeNull();
+      expect(hospedeiro.querySelector("#tracking-input")).not.toBeNull();
+      for (const nome of ["Código de rastreio", "Anotações internas"]) {
+        expect(temEstilo(nome)).toBe(true);
+      }
+    });
   });
 });

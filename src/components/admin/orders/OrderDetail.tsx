@@ -428,11 +428,18 @@ function OrderActionBar({
             onClick={() => onCancel(orderId)}
             disabled={isOffline || isUpdatingStatus}
             variant="ghost"
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-11 shrink-0 items-center gap-1 rounded-xl px-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40 min-[420px]:gap-1.5 min-[420px]:px-3"
             title="Cancelar pedido"
+            aria-label="Cancelar pedido"
           >
             <XCircle className="size-4" />
-            Cancelar pedido
+            {/* Em tela estreita o botão principal precisa do espaço para o
+                texto COMPLETO ("Avançar → Em Separação"): o Cancelar encolhe
+                para "Cancelar" e o " pedido" volta a partir de 420px. O nome
+                acessível continua "Cancelar pedido" (title e aria-label). */}
+            <span>
+              Cancelar<span className="hidden min-[420px]:inline"> pedido</span>
+            </span>
           </Button>
         )}
 
@@ -440,7 +447,7 @@ function OrderActionBar({
           <Button
             onClick={() => onAdvance(orderId, nextStatus)}
             disabled={isOffline || isUpdatingStatus}
-            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-admin-gold px-3 text-sm font-semibold leading-tight text-black transition-colors hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-admin-gold px-2.5 text-sm font-semibold leading-tight text-black transition-colors hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
           >
             {isUpdatingStatus ? (
               <>
@@ -448,7 +455,7 @@ function OrderActionBar({
                 <span>Processando</span>
               </>
             ) : (
-              <span className="line-clamp-2">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
+              <span className="text-center">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
             )}
           </Button>
         )}
@@ -577,7 +584,7 @@ function OrderDeliveryCard({
           empilhados, e o botão verde do WhatsApp à direita. */}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-base font-medium leading-tight text-white">
+          <p className="break-words text-base font-medium leading-tight text-white">
             {order.customer.name}
           </p>
           <p className="mt-0.5 text-sm tabular-nums text-zinc-400">
@@ -636,17 +643,17 @@ function OrderDeliveryCard({
         <div className="flex items-center gap-2 pt-1">
           <button
             onClick={onCopyAddress}
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 text-sm font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/5 bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
             title="Copiar Endereço"
           >
             {copiedAddress ? (
               <>
-                <Check className="size-4 text-emerald-400" />
+                <Check className="size-[15px] text-emerald-400" />
                 Copiado
               </>
             ) : (
               <>
-                <Copy className="size-4 text-zinc-400" />
+                <Copy className="size-[15px] text-zinc-400" />
                 Copiar endereço
               </>
             )}
@@ -655,10 +662,10 @@ function OrderDeliveryCard({
             href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 text-sm font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/5 bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
             title="Ver no Google Maps"
           >
-            <MapPin className="size-4 text-zinc-400" />
+            <MapPin className="size-[15px] text-zinc-400" />
             Ver no Maps
           </a>
         </div>
@@ -1015,7 +1022,7 @@ function OrderLogisticsCard({
   return (
     <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
-        <h3 className="text-xs font-normal text-zinc-400">
+        <h3 className="text-sm font-medium text-zinc-200">
           Código de rastreio
         </h3>
         <span className="block select-all break-all font-mono text-sm font-medium tracking-wider text-white">
@@ -1166,7 +1173,7 @@ function OrderNotesCard({
   return (
     <div className="space-y-2 px-4 py-3.5">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-normal text-zinc-400">
+        <h3 className="text-sm font-medium text-zinc-200">
           Anotações internas
         </h3>
         <Button
