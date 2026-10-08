@@ -199,23 +199,28 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
     handleUpdateHomeSections(updated, false);
   };
 
-  const handleRenameSection = (sectionId: string, newTitle: string) => {
+  // Devolve `true` quando o nome já está gravado (inclusive "nada mudou"): o
+  // painel de edição só fecha por "Concluir" com isso confirmado.
+  const handleRenameSection = async (
+    sectionId: string,
+    newTitle: string,
+  ): Promise<boolean> => {
     // O campo de nome grava ao sair dele, mesmo sem ter mudado nada: sem este
     // corte, abrir e fechar o painel regravava a vitrine (e, sem internet,
     // reclamava de uma edição que ninguém fez).
     if (homeSections.find((s) => s.id === sectionId)?.title === newTitle) {
-      return;
+      return true;
     }
     if (isOffline) {
       toast.error("Sem conexão com a internet", {
         description: "Você precisa estar online para renomear as vitrines.",
       });
-      return;
+      return false;
     }
     const updated = homeSections.map((s) =>
       s.id === sectionId ? { ...s, title: newTitle } : s,
     );
-    handleUpdateHomeSections(updated, false);
+    return handleUpdateHomeSections(updated, false);
   };
 
   const handleUpdateMaxItems = (sectionId: string, maxItems: number) => {
