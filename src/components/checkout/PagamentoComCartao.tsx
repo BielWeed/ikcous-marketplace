@@ -10,6 +10,7 @@ import {
   parcelasMaximasNoBrick,
   tiposDeCartaoAceitos,
 } from "@/lib/config-do-cartao";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -20,10 +21,21 @@ import type {
 import { comTempoLimite } from "./PagamentoOnline";
 import type { PontoDePartidaDaVerificacao } from "./VerificacaoDoPagamento";
 import {
+  ESPERAS_DA_CONFIRMACAO_MS,
+  ESPERAS_DA_RODADA_MANUAL_MS,
+  ESPERA_ANTES_DO_AVISO_DO_APROVADO_MS,
+  RETOMADAS_PELA_ABA_DA_CONFIRMACAO,
+  RODADAS_MANUAIS_DA_CONFIRMACAO,
+  TEMPO_LIMITE_DA_CONSULTA_DO_CARTAO_MS,
+  desfechoDaConsultaDoCartao,
+  desfechoDoErroDaConsulta,
+} from "./confirmacao-do-cartao";
+import {
   carregarDeviceIdMercadoPago,
   deviceIdValido,
   lerDeviceIdDoMercadoPago,
 } from "./device-id-mercado-pago";
+import { emailDeTesteDoMercadoPago } from "./email-de-teste-do-mercado-pago";
 import { carregarSdkMercadoPago } from "./sdk-mercado-pago";
 
 /**
@@ -118,10 +130,21 @@ const MENSAGEM_FORMA_DESLIGADA =
 type EtapaDoCartao =
   | { readonly tipo: "formulario" }
   | { readonly tipo: "confirmando-desafio"; readonly paymentId: string | null }
+  // Confirmação do cartão sem fim (03/10/2026): a consulta sem cobrança
+  // respondeu que o pedido não espera mais pagamento (prazo acabou, pedido
+  // cancelado, não encontrado). Sem outro cartão e sem PIX — os dois só
+  // bateriam no mesmo 409/404 terminal da edge.
+  | { readonly tipo: "encerrado"; readonly mensagem: string }
   | Exclude<
       ResultadoDoCartao,
       { tipo: "erro" } | { tipo: "forma-desligada" } | { tipo: "em-duvida" }
     >;
+
+/** As etapas em que a tela consulta o servidor sozinha (com limite). */
+const ETAPAS_QUE_CONSULTAM: ReadonlySet<EtapaDoCartao["tipo"]> = new Set([
+  "confirmando-desafio",
+  "em-analise",
+]);
 
 const MOTIVO_PADRAO_DA_RECUSA =
   "O banco recusou este cartão. Tente outro cartão ou pague com PIX.";
@@ -285,6 +308,7 @@ export function montarCorpoDoCartao({
   adicionais,
   config,
   deviceId,
+  emailDeTeste = emailDeTesteDoMercadoPago(),
 }: {
   orderId: string;
   dados: DadosDoCartaoDoBrick | null | undefined;
@@ -293,6 +317,9 @@ export function montarCorpoDoCartao({
   // Device ID do comprador (antifraude do MP; ver `device-id-mercado-pago.ts`).
   // Opcional: ausente ou fora do formato SAI DO CORPO — nunca bloqueia nada.
   deviceId?: string | null;
+  // Só a prévia de desenvolvimento (ver `email-de-teste-do-mercado-pago.ts`);
+  // fora dela é sempre `null`. Parâmetro só para o teste injetar o ambiente.
+  emailDeTeste?: string | null;
 }): { ok: true; corpo: CorpoDoCartao } | { ok: false; mensagem: string } {
   const token = textoNaoVazio(dados?.token);
   const paymentMethodId = textoNaoVazio(dados?.payment_method_id);
@@ -355,7 +382,10 @@ export function montarCorpoDoCartao({
     };
   }
 
-  const email = textoNaoVazio(dados?.payer?.email);
+  // Opção de teste ligada: o e-mail da tentativa É o literal de teste, diga o
+  // Brick o que disser (omitido ou outro) — a garantia mora aqui, no corpo que
+  // vai para a edge, e não no `initialization` do Brick.
+  const email = emailDeTeste ?? textoNaoVazio(dados?.payer?.email);
   return {
     ok: true,
     corpo: {
@@ -681,7 +711,10 @@ export function montarBrickDeCartao({
 
       // @ts-expect-error o SDK entra pelo global
       const mp = new globalThis.MercadoPago(publicKey, { locale: "pt-BR" });
-      const email = textoNaoVazio(emailDoPagador);
+      // Prévia de desenvolvimento com a opção de teste: o Brick já nasce com o
+      // e-mail de teste (o corpo também o força — ver `montarCorpoDoCartao`).
+      const email =
+        emailDeTesteDoMercadoPago() ?? textoNaoVazio(emailDoPagador);
 
       const criado = await mp.bricks().create("cardPayment", containerId, {
         initialization: {
@@ -750,6 +783,10 @@ export function PagamentoComCartao({
   onCobrancaEmDuvida,
   onCartaoEmCurso,
   cartaoEncerrado = null,
+  onCartaoEncerradoPelaConsulta,
+  onVerMeusPedidos,
+  sessaoAtiva = true,
+  onEntrarDeNovo,
 }: {
   orderId: string;
   valor: number;
@@ -785,6 +822,18 @@ export function PagamentoComCartao({
   // solta DEPOIS deste aviso.
   onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
   cartaoEncerrado?: CartaoEmCurso | null;
+  // Confirmação do cartão sem fim (03/10/2026): a consulta sem cobrança
+  // provou a vaga DESTA tentativa solta — o pai grava a mesma marca do C6
+  // (`cartaoEncerrado`), que volta para cá como a recusa de sempre.
+  onCartaoEncerradoPelaConsulta?: (cartao: CartaoEmCurso) => void;
+  // Ausente = o botão "Ver meus pedidos" não aparece.
+  onVerMeusPedidos?: () => void;
+  // `false` = o cliente perdeu a sessão: a edge recusa a consulta (404 de
+  // dono) e a verificação periódica do pai nem roda. A tela pede para entrar
+  // de novo — nunca oferece PIX nem outro cartão (cobrança nova) nesse
+  // estado, e não consulta nada sem conta.
+  sessaoAtiva?: boolean;
+  onEntrarDeNovo?: () => void;
 }) {
   // Mesma escolha do PIX: só `criarPagamento`, sem realtime — quem vê o
   // pedido virar pago é o CheckoutView.
@@ -802,11 +851,15 @@ export function PagamentoComCartao({
   const onFormaDesligadaRef = useRef(onFormaDesligada);
   const onCobrancaEmDuvidaRef = useRef(onCobrancaEmDuvida);
   const onCartaoEmCursoRef = useRef(onCartaoEmCurso);
+  const onCartaoEncerradoPelaConsultaRef = useRef(
+    onCartaoEncerradoPelaConsulta,
+  );
   useEffect(() => {
     onErroRef.current = onErro;
     onFormaDesligadaRef.current = onFormaDesligada;
     onCobrancaEmDuvidaRef.current = onCobrancaEmDuvida;
     onCartaoEmCursoRef.current = onCartaoEmCurso;
+    onCartaoEncerradoPelaConsultaRef.current = onCartaoEncerradoPelaConsulta;
   });
   const montadoRef = useRef(false);
   useEffect(() => {
@@ -961,6 +1014,307 @@ export function PagamentoComCartao({
     setEtapa({ tipo: "recusado", motivo: MOTIVO_DA_TENTATIVA_ENCERRADA });
   }, [encerradoAqui]);
 
+  // ── Confirmação do cartão sem fim (03/10/2026) ──────────────────────────
+  // "Confirmando com o banco…" e "em análise" consultam o SERVIDOR sozinhos,
+  // numa cadência limitada (`ESPERAS_DA_CONFIRMACAO_MS`), com a consulta SEM
+  // COBRANÇA (`verificar`: só GET no Mercado Pago e a RPC de liberação por
+  // prova). Antes, a tela só esperava o pedido virar `pago` no banco — sem
+  // webhook válido ela girava para sempre (ver `confirmacao-do-cartao.ts`).
+  //
+  // O que esta consulta NUNCA faz: POST de cobrança, cancelamento, escrita
+  // de status pelo front, ou conclusão de "aprovado" sem o servidor dizer
+  // `pago`. Sem resposta final ao fim da cadência, a tela PARA de girar e diz
+  // a verdade ("o banco ainda não respondeu"), com "Verificar de novo" — e o
+  // cartão continua tratado como VIVO (a tentativa segue armada para o pai, e
+  // "Pagar com PIX" continua `true`: a edge cancela o cartão ou responde 409).
+  //
+  // Cerca contra resposta velha: a consulta pertence à CHAVE (tentativa do
+  // formulário + token de cerca) e à rodada; trocar qualquer um cancela a
+  // consulta em voo (o `.then` não pinta nada) e o `setEtapa` só age se a
+  // etapa ATUAL ainda for uma que consulta.
+  const consultaAtiva =
+    ETAPAS_QUE_CONSULTAM.has(etapa.tipo) && sessaoAtiva !== false;
+  const chaveDaConsulta = `${tentativa}|${tokenDeCerca ?? ""}`;
+  const [consultaParada, setConsultaParada] = useState<{
+    readonly chave: string;
+  } | null>(null);
+  const [rodadaDaConsulta, setRodadaDaConsulta] = useState<{
+    readonly chave: string;
+    readonly numero: number;
+  }>({ chave: "", numero: 0 });
+  const paradaAqui = consultaParada?.chave === chaveDaConsulta;
+  const rodadaAqui =
+    rodadaDaConsulta.chave === chaveDaConsulta ? rodadaDaConsulta.numero : 0;
+  const ultimaConsultaEmRef = useRef(0);
+
+  // NO MÁXIMO UMA consulta REAL pendente por tela (achado 1 da revisão
+  // independente, 03/10/2026): o tempo limite é só da TELA — ele não aborta
+  // a chamada (o `functions.invoke` não recebe sinal de cancelamento aqui).
+  // Estourado o limite, a cadência segue SEM ela: enquanto a chamada
+  // pendurada não voltar, cada tentativa seguinte conta como "sem resposta"
+  // e nenhuma outra chamada abre; e o ref atravessa as rodadas (trocar a
+  // chave ou tocar "Verificar de novo" também não abre uma segunda chamada
+  // em paralelo). Chamada que nunca volta: a cadência termina do mesmo jeito
+  // no estado explícito "o banco ainda não confirmou", sem spinner.
+  const consultaPendenteRef = useRef<Promise<unknown> | null>(null);
+
+  useEffect(() => {
+    if (!consultaAtiva || paradaAqui) return;
+    const cerca = tokenDeCerca;
+    const esperas =
+      rodadaAqui === 0
+        ? ESPERAS_DA_CONFIRMACAO_MS
+        : ESPERAS_DA_RODADA_MANUAL_MS;
+    let cancelado = false;
+    let esperandoAAba = false;
+    let indice = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const parar = () => {
+      if (!cancelado) setConsultaParada({ chave: chaveDaConsulta });
+    };
+    const agendar = () => {
+      if (cancelado) return;
+      if (indice >= esperas.length) {
+        parar();
+        return;
+      }
+      timer = setTimeout(disparar, esperas.at(indice) ?? 0);
+    };
+    const aindaConsulta = (atual: EtapaDoCartao) =>
+      ETAPAS_QUE_CONSULTAM.has(atual.tipo);
+
+    // `podeAgendar = false`: a resposta chegou DEPOIS do limite da tela — a
+    // cadência já seguiu sem ela (há outra espera agendada). Um desfecho
+    // final ainda vale (é a resposta do servidor, e nenhuma outra chamada
+    // rodou em paralelo); um "continue esperando" não agenda nada de novo.
+    const aplicar = (
+      resultado:
+        | { readonly ok: true; readonly resposta: unknown }
+        | { readonly ok: false; readonly erro: unknown },
+      podeAgendar: boolean,
+    ) => {
+      const seguir = () => {
+        if (podeAgendar) agendar();
+      };
+      if (!resultado.ok) {
+        const doErro = desfechoDoErroDaConsulta(resultado.erro);
+        if (doErro.tipo === "terminal") {
+          setEtapa((atual) =>
+            aindaConsulta(atual)
+              ? { tipo: "encerrado", mensagem: doErro.mensagem }
+              : atual,
+          );
+          return;
+        }
+        seguir();
+        return;
+      }
+      const desfecho = desfechoDaConsultaDoCartao(resultado.resposta, {
+        cerca,
+      });
+      switch (desfecho.tipo) {
+        case "aprovado":
+          setEtapa((atual) =>
+            aindaConsulta(atual) ? { tipo: "aprovado" } : atual,
+          );
+          return;
+        case "em-analise":
+          // Ressalva B4 da revisão de risco: vindo do 3DS SEM token, o
+          // `paymentId` desta resposta vira o token de cerca e arma o C6 do
+          // pai. Seguro pela invariante da vaga: o arme acontece DEPOIS da
+          // leitura que viu essa order na vaga, então uma vaga vazia depois
+          // prova que ela foi solta. A chave da consulta muda uma vez só
+          // (null → order); outra order depois disso vira `indefinida`.
+          setEtapa((atual) =>
+            atual.tipo === "confirmando-desafio"
+              ? { tipo: "em-analise", paymentId: desfecho.paymentId }
+              : atual,
+          );
+          seguir();
+          return;
+        case "aguardando-banco":
+        case "sem-resposta":
+          seguir();
+          return;
+        case "encerrada":
+          // `cerca` não nula por construção (`desfechoDaConsultaDoCartao`).
+          if (cerca !== null) {
+            onCartaoEncerradoPelaConsultaRef.current?.({
+              orderId,
+              paymentId: cerca,
+            });
+          }
+          setEtapa((atual) =>
+            aindaConsulta(atual)
+              ? { tipo: "recusado", motivo: MOTIVO_DA_TENTATIVA_ENCERRADA }
+              : atual,
+          );
+          return;
+        case "indefinida":
+          parar();
+          return;
+      }
+    };
+
+    function disparar() {
+      timer = undefined;
+      if (cancelado) return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        // Aba escondida: espera ela voltar, sem gastar a tentativa.
+        esperandoAAba = true;
+        return;
+      }
+      esperandoAAba = false;
+      if (consultaPendenteRef.current !== null) {
+        // Uma chamada (desta rodada ou de outra) ainda não voltou — e pode
+        // NUNCA voltar. Não abre uma segunda: a tentativa conta como "sem
+        // resposta" e o relógio segue, então a cadência SEMPRE termina no
+        // estado explícito "o banco ainda não confirmou" (bloqueio da
+        // revisão independente: esperar a pendente sem prazo deixava o
+        // spinner infinito de novo).
+        indice += 1;
+        agendar();
+        return;
+      }
+      indice += 1;
+      ultimaConsultaEmRef.current = Date.now();
+      let venceuOLimite = false;
+      const limite = setTimeout(() => {
+        venceuOLimite = true;
+        // A tela não espera mais por esta chamada: conta como "sem
+        // resposta" e a cadência segue (a próxima espera a pendente).
+        agendar();
+      }, TEMPO_LIMITE_DA_CONSULTA_DO_CARTAO_MS);
+      const chamada = criarPagamento({ orderId, metodo: "verificar" }).then(
+        (resposta) => ({ ok: true as const, resposta }),
+        (erro: unknown) => ({ ok: false as const, erro }),
+      );
+      consultaPendenteRef.current = chamada;
+      chamada.then((resultado) => {
+        if (consultaPendenteRef.current === chamada) {
+          consultaPendenteRef.current = null;
+        }
+        clearTimeout(limite);
+        if (cancelado || !montadoRef.current) return;
+        aplicar(resultado, !venceuOLimite);
+      });
+    }
+
+    const aoVoltarAFicarVisivel = () => {
+      if (
+        esperandoAAba &&
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
+        disparar();
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", aoVoltarAFicarVisivel);
+    }
+    agendar();
+
+    return () => {
+      cancelado = true;
+      if (timer !== undefined) clearTimeout(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", aoVoltarAFicarVisivel);
+      }
+    };
+  }, [
+    consultaAtiva,
+    paradaAqui,
+    rodadaAqui,
+    chaveDaConsulta,
+    tokenDeCerca,
+    orderId,
+    criarPagamento,
+  ]);
+
+  // Cadência parada sem resposta final: a volta para a aba (o cliente foi ao
+  // app do banco e voltou) abre UMA rodada curta — no máximo uma a cada 30 s
+  // e no máximo `RETOMADAS_PELA_ABA_DA_CONFIRMACAO` por tentativa (achado 2
+  // da revisão independente: sem teto, idas e voltas repetidas consultavam
+  // sem limite). Não gasta os toques do "Verificar de novo".
+  const [retomadasPelaAba, setRetomadasPelaAba] = useState<{
+    readonly chave: string;
+    readonly vezes: number;
+  }>({ chave: "", vezes: 0 });
+  const retomadasAqui =
+    retomadasPelaAba.chave === chaveDaConsulta ? retomadasPelaAba.vezes : 0;
+  const podeRetomarPelaAba = retomadasAqui < RETOMADAS_PELA_ABA_DA_CONFIRMACAO;
+  useEffect(() => {
+    if (!consultaAtiva || !paradaAqui || !podeRetomarPelaAba) return;
+    if (typeof document === "undefined") return;
+    const aoVoltar = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - ultimaConsultaEmRef.current < 30_000) return;
+      setRetomadasPelaAba({
+        chave: chaveDaConsulta,
+        vezes: retomadasAqui + 1,
+      });
+      setConsultaParada(null);
+      setRodadaDaConsulta({ chave: chaveDaConsulta, numero: rodadaAqui + 1 });
+    };
+    document.addEventListener("visibilitychange", aoVoltar);
+    return () => document.removeEventListener("visibilitychange", aoVoltar);
+  }, [
+    consultaAtiva,
+    paradaAqui,
+    podeRetomarPelaAba,
+    chaveDaConsulta,
+    retomadasAqui,
+    rodadaAqui,
+  ]);
+
+  // "Verificar de novo": uma rodada curta por toque, no máximo
+  // `RODADAS_MANUAIS_DA_CONFIRMACAO` por tentativa.
+  const [toquesDeVerificar, setToquesDeVerificar] = useState<{
+    readonly chave: string;
+    readonly toques: number;
+  }>({ chave: "", toques: 0 });
+  const toquesAqui =
+    toquesDeVerificar.chave === chaveDaConsulta ? toquesDeVerificar.toques : 0;
+  const podeVerificarDeNovo =
+    paradaAqui && toquesAqui < RODADAS_MANUAIS_DA_CONFIRMACAO;
+  const verificarDeNovo = () => {
+    if (!podeVerificarDeNovo) return;
+    setToquesDeVerificar({ chave: chaveDaConsulta, toques: toquesAqui + 1 });
+    setConsultaParada(null);
+    setRodadaDaConsulta({ chave: chaveDaConsulta, numero: rodadaAqui + 1 });
+  };
+
+  // Aprovado pelo banco, pedido ainda não confirmado no nosso banco (quem
+  // grava é o servidor: a confirmação imediata que a criação dispara em
+  // segundo plano pela prova do GET, o webhook ou a reconciliação): depois de
+  // um minuto a tela avisa que pode demorar e oferece "Ver meus pedidos" —
+  // sem nunca oferecer pagar de novo. A tela NÃO consulta nada nesta etapa.
+  const aprovado = etapa.tipo === "aprovado";
+  const [avisoDoAprovado, setAvisoDoAprovado] = useState(false);
+  useEffect(() => {
+    if (!aprovado) {
+      setAvisoDoAprovado(false);
+      return;
+    }
+    const id = setTimeout(
+      () => setAvisoDoAprovado(true),
+      ESPERA_ANTES_DO_AVISO_DO_APROVADO_MS,
+    );
+    return () => clearTimeout(id);
+  }, [aprovado]);
+
+  // Sem sessão depois que o banco já recebeu o cartão: nada de PIX nem de
+  // outro cartão (cobrança nova sem dono confirmado) — só entrar de novo /
+  // ver os pedidos. O desafio 3DS ABERTO fica de fora: ele é a página do
+  // banco e não depende da nossa sessão para ser concluído.
+  const semSessaoComCartaoVivo =
+    sessaoAtiva === false &&
+    (ETAPAS_QUE_CONSULTAM.has(etapa.tipo) || etapa.tipo === "aprovado");
+
   const tentarOutroCartao = () => {
     setFormularioPronto(false);
     setTentativa((n) => n + 1);
@@ -1013,7 +1367,9 @@ export function PagamentoComCartao({
           </p>
         )}
         {orderId && (
-          <p className="text-xs text-zinc-500">Pedido #{orderId.slice(0, 8)}</p>
+          <p className="text-xs text-zinc-500">
+            Pedido #{numeroDoPedido(orderId)}
+          </p>
         )}
       </header>
 
@@ -1050,20 +1406,119 @@ export function PagamentoComCartao({
           </div>
         )}
 
-        {etapa.tipo === "aprovado" && (
-          <p className="flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-            <Check aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
-            Pagamento aprovado! Confirmando seu pedido…
-          </p>
+        {semSessaoComCartaoVivo && (
+          // Confirmação do cartão sem fim (03/10/2026): sem sessão, a
+          // consulta é recusada pela edge (404 de dono) e a verificação do
+          // pai nem roda — a tela pararia num spinner sem fim. O cartão pode
+          // estar vivo: nada de PIX nem de outro cartão aqui.
+          <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="flex items-start gap-2 text-sm font-medium text-amber-800">
+              <AlertCircle
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0"
+              />
+              Sua sessão expirou. Entre de novo para ver a confirmação deste
+              pagamento. Não pague de novo enquanto isso.
+            </p>
+            <div className="grid gap-2">
+              {onEntrarDeNovo && (
+                <button
+                  type="button"
+                  onClick={onEntrarDeNovo}
+                  className="flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-bold text-white active:bg-zinc-700"
+                >
+                  Entrar de novo
+                </button>
+              )}
+              {onVerMeusPedidos && (
+                <button
+                  type="button"
+                  onClick={onVerMeusPedidos}
+                  className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+                >
+                  Ver meus pedidos
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
-        {etapa.tipo === "em-analise" && (
+        {etapa.tipo === "aprovado" && !semSessaoComCartaoVivo && (
+          <div className="space-y-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+            <p className="flex items-start gap-2 text-sm font-medium text-emerald-800">
+              <Check aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
+              Pagamento aprovado! Confirmando seu pedido…
+            </p>
+            {/* Quem grava o pedido como pago é o webhook/reconciliação —
+                pode levar alguns minutos. Nunca oferece pagar de novo. */}
+            {avisoDoAprovado && (
+              <>
+                <p className="text-xs text-emerald-900">
+                  O banco aprovou o pagamento; a loja ainda está registrando o
+                  pedido como pago, e isso pode levar alguns minutos. Não pague
+                  de novo — o pedido aparece como pago em Meus pedidos assim que
+                  for registrado.
+                </p>
+                {onVerMeusPedidos && (
+                  <button
+                    type="button"
+                    onClick={onVerMeusPedidos}
+                    className="flex min-h-11 w-full items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-900"
+                  >
+                    Ver meus pedidos
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {etapa.tipo === "encerrado" && (
+          <div className="space-y-3 rounded-xl border border-red-100 bg-red-50 p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle
+                aria-hidden="true"
+                className="mt-0.5 size-5 shrink-0 text-red-500"
+              />
+              <p className="text-sm font-medium text-red-700">
+                {etapa.mensagem}
+              </p>
+            </div>
+            {onVerMeusPedidos && (
+              <button
+                type="button"
+                onClick={onVerMeusPedidos}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+              >
+                Ver meus pedidos
+              </button>
+            )}
+          </div>
+        )}
+
+        {etapa.tipo === "em-analise" && !semSessaoComCartaoVivo && (
           <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="flex items-start gap-2 text-sm font-medium text-amber-800">
               <Clock aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
               Pagamento em análise pelo banco. Você será avisado quando for
               aprovado.
             </p>
+            {paradaAqui && (
+              <p className="text-xs text-amber-900">
+                O banco ainda não deu a resposta final. Não pague de novo com
+                cartão — se ele aprovar, a confirmação aparece aqui e em Meus
+                pedidos.
+              </p>
+            )}
+            {paradaAqui && podeVerificarDeNovo && (
+              <button
+                type="button"
+                onClick={verificarDeNovo}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-bold text-white active:bg-zinc-700"
+              >
+                Verificar de novo
+              </button>
+            )}
             {/* B2: só depois de alguns minutos — ver
                 MINUTOS_ANTES_DE_OFERECER_PIX_EM_ANALISE. Antes disso a
                 maioria das análises já teria decidido, e oferecer PIX cedo
@@ -1079,22 +1534,63 @@ export function PagamentoComCartao({
                 Pagar com PIX
               </button>
             )}
+            {paradaAqui && onVerMeusPedidos && (
+              <button
+                type="button"
+                onClick={onVerMeusPedidos}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-300 bg-white px-3 text-xs font-bold text-amber-900"
+              >
+                Ver meus pedidos
+              </button>
+            )}
           </div>
         )}
 
-        {etapa.tipo === "confirmando-desafio" && (
+        {etapa.tipo === "confirmando-desafio" && !semSessaoComCartaoVivo && (
           <div className="space-y-3 rounded-xl border border-zinc-100 bg-zinc-50 p-3">
-            <p className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-              <Loader2
-                aria-hidden="true"
-                className="size-5 shrink-0 animate-spin text-zinc-500"
-              />
-              Confirmando com o banco…
-            </p>
-            <p className="text-xs text-zinc-500">
-              A confirmação aparece nesta tela. Se o banco não aprovar, você
-              pode pagar com PIX.
-            </p>
+            {paradaAqui ? (
+              // A cadência terminou sem resposta final: a tela PARA de girar
+              // e diz o que sabe. O cartão continua tratado como vivo.
+              <>
+                <p className="flex items-start gap-2 text-sm font-medium text-zinc-800">
+                  <Clock
+                    aria-hidden="true"
+                    className="mt-0.5 size-5 shrink-0 text-zinc-500"
+                  />
+                  O banco ainda não confirmou este pagamento.
+                </p>
+                <p className="text-xs text-zinc-500">
+                  Não pague de novo com cartão. Se o banco aprovar, a
+                  confirmação aparece aqui e em Meus pedidos. Se tocar em
+                  &quot;Pagar com PIX&quot;, este pagamento é conferido com o
+                  banco antes: o PIX só é gerado se o banco confirmar que o
+                  pagamento com cartão foi cancelado.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="flex items-center gap-2 text-sm font-medium text-zinc-800">
+                  <Loader2
+                    aria-hidden="true"
+                    className="size-5 shrink-0 animate-spin text-zinc-500"
+                  />
+                  Confirmando com o banco…
+                </p>
+                <p className="text-xs text-zinc-500">
+                  A confirmação aparece nesta tela. Se o banco não aprovar, você
+                  pode pagar com PIX.
+                </p>
+              </>
+            )}
+            {paradaAqui && podeVerificarDeNovo && (
+              <button
+                type="button"
+                onClick={verificarDeNovo}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl bg-zinc-900 px-3 text-xs font-bold text-white active:bg-zinc-700"
+              >
+                Verificar de novo
+              </button>
+            )}
             {/* B2, rodada 2 da revisão de risco pré-publicação (26/09/2026):
                 "Tentar outro cartão" saiu — com o cartão ainda em
                 `action_required`, a edge NUNCA cria uma segunda cobrança
@@ -1112,6 +1608,15 @@ export function PagamentoComCartao({
             >
               Pagar com PIX
             </button>
+            {paradaAqui && onVerMeusPedidos && (
+              <button
+                type="button"
+                onClick={onVerMeusPedidos}
+                className="flex min-h-11 w-full items-center justify-center rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-800"
+              >
+                Ver meus pedidos
+              </button>
+            )}
           </div>
         )}
       </div>

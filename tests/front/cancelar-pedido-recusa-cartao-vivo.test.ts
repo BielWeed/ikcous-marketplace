@@ -53,24 +53,13 @@ vi.mock("@/contexts/StoreContext", () => ({
   }),
 }));
 
-function criarQueryEncadeavel(resultado: { data: any; error: any }) {
-  const chain: any = {
-    insert: vi.fn(() => chain),
-    update: vi.fn(() => chain),
-    select: vi.fn(() => chain),
-    eq: vi.fn(() => chain),
-    single: vi.fn(() => Promise.resolve(resultado)),
-  };
-  return chain;
-}
-
-const mock = { from: vi.fn(), rpc: vi.fn() };
+const mock = { from: vi.fn(), rpc: vi.fn(), invoke: vi.fn() };
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     from: (...args: unknown[]) => mock.from(...args),
     rpc: (...args: unknown[]) => mock.rpc(...args),
-    functions: { invoke: vi.fn() },
+    functions: { invoke: (...args: unknown[]) => mock.invoke(...args) },
   },
 }));
 
@@ -79,9 +68,11 @@ vi.mock("sonner", () => ({
 }));
 
 import {
+  ErroCancelamentoNaoConcluido,
   mensagemAmigavelErroAtualizacaoStatus,
   useOrders,
 } from "@/hooks/useOrders";
+
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -99,39 +90,47 @@ describe("mensagemAmigavelErroAtualizacaoStatus — recusa de cancelamento com c
   });
 });
 
-describe("updateOrderStatus toasta a mensagem exata da guarda, nunca um genérico (mirror do achado 26/09/2026)", () => {
+// S1 (04/10/2026, migration 20261198000000): o cancelamento de pedido ONLINE
+// (ou que a tela não tem em memória, como aqui: `orders` vazio) não chama
+// mais `update_order_status_atomic` — vai pela edge `criar-pagamento`
+// (ação `cancelar`), que consulta a cobrança no Mercado Pago. O cartão em
+// análise volta como desfecho `em_analise`, com a frase da edge; a guarda
+// da 80 continua no banco para quem chamar a RPC direto.
+const MENSAGEM_EM_ANALISE =
+  "Há um pagamento com cartão em análise para este pedido. Ele não pode ser cancelado agora — aguarde a confirmação do banco.";
+
+describe("updateOrderStatus: cartão em análise volta da EDGE como em_analise, com a frase dela — nunca um genérico, nunca a RPC direta", () => {
   beforeEach(() => {
     vi.stubGlobal("navigator", { onLine: true });
     mock.rpc.mockReset();
+    mock.invoke.mockReset();
     vi.mocked(toast.error).mockReset();
+    vi.mocked(toast.warning).mockReset();
   });
 
-  it("cliente tenta cancelar pedido com cartão em confirmação: a RPC recusa (P0001) e o toast mostra a MESMA frase, não 'tente novamente'", async () => {
-    mock.from.mockReturnValue(
-      criarQueryEncadeavel({ data: { status: "pending" }, error: null }),
-    );
-    mock.rpc.mockResolvedValue({
-      data: null,
-      error: { code: "P0001", message: MENSAGEM_CARTAO_VIVO },
+  it("cliente tenta cancelar pedido com cartão em confirmação: a edge responde em_analise, o toast mostra a frase dela e nada chama a RPC", async () => {
+    mock.invoke.mockResolvedValue({
+      data: { cancelamento: "em_analise", mensagem: MENSAGEM_EM_ANALISE },
+      error: null,
     });
     // isAdmin=false, autoFetch=true: mesma forma que OrderDetailsView usa
     // (useOrders(true, false)) para o cliente cancelar o próprio pedido.
     const { updateOrderStatus } = useOrders(true, false);
 
-    await expect(updateOrderStatus("pedido-1", "cancelled")).rejects.toThrow();
+    const erro = await updateOrderStatus("pedido-1", "cancelled").catch(
+      (e: unknown) => e,
+    );
+    expect(erro).toBeInstanceOf(ErroCancelamentoNaoConcluido);
+    expect((erro as ErroCancelamentoNaoConcluido).desfecho).toBe("em_analise");
 
-    expect(mock.rpc).toHaveBeenCalledWith(
-      "update_order_status_atomic",
-      expect.objectContaining({
-        p_order_id: "pedido-1",
-        p_new_status: "cancelled",
-      }),
+    expect(mock.invoke).toHaveBeenCalledWith("criar-pagamento", {
+      body: { orderId: "pedido-1", metodo: "cancelar" },
+    });
+    expect(mock.rpc).not.toHaveBeenCalled();
+    expect(toast.warning).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(toast.warning).mock.calls[0][0])).toBe(
+      MENSAGEM_EM_ANALISE,
     );
-    expect(toast.error).toHaveBeenCalledTimes(1);
-    const mensagemMostrada = String(vi.mocked(toast.error).mock.calls[0][0]);
-    expect(mensagemMostrada).toBe(MENSAGEM_CARTAO_VIVO);
-    expect(mensagemMostrada).not.toBe(
-      "Não foi possível atualizar o status do pedido agora. Tente novamente em instantes.",
-    );
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

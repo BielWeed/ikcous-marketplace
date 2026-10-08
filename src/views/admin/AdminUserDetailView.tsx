@@ -33,6 +33,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
@@ -985,7 +986,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                     <span className="mr-1 text-zinc-600">
                                       #
                                     </span>
-                                    {order.id.substring(0, 8).toUpperCase()}
+                                    {numeroDoPedido(order.id)}
                                   </TableCell>
                                   <TableCell className="py-4 text-xs font-medium text-zinc-400">
                                     {format(

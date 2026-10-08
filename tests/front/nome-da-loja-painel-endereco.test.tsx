@@ -156,7 +156,7 @@ describe("nome configurado no painel e no endereço", () => {
       );
       await act(async () => raiz.render(<AddressFormView onBack={vi.fn()} />));
       expect(hospedeiro.textContent).toContain(
-        `Onde entregaremos seu produto da ${config.storeName || branding.appName}?`,
+        `Seu pedido da ${config.storeName || branding.appName}:`,
       );
     },
   );

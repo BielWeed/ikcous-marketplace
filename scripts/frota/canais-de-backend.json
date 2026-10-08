@@ -1,0 +1,75 @@
+{
+  "_comentario": "Por onde o backend de cada loja ASSINANTE recebe uma release: o alvo (input `projeto`) dos workflows aplicar-migrations.yml e publicar-functions.yml. Isto NAO e lista de clientes por release: a lista de lojas vem do inventario (aliases do projeto Vercel + ficha servida pelo porteiro, cadastro frota_lojas). Uma loja assinante nova entra aqui UMA vez, no cadastro dela (quando o dono cria o segredo e o alvo do workflow); ate entrar, publicar-release.mjs BLOQUEIA a publicacao e diz o nome dela. Loja de teste nao entra aqui: ela esta em politica.json (lojasSemBackendGerenciado).",
+  "ramoDaRelease": "claude/app-major-upgrade-wmc8x2",
+  "funcoesNaoPublicadas": ["send-order-whatsapp"],
+  "validadeDaEvidenciaHoras": 6,
+  "provasDeObjetos": [
+    {
+      "consulta": "8e-conferir-92-a-202-aplicado",
+      "versoes": [
+        "20261192000000",
+        "20261194000000",
+        "20261195000000",
+        "20261196000000",
+        "20261197000000",
+        "20261198000000",
+        "20261199000000",
+        "20261200000000",
+        "20261202000000"
+      ],
+      "backfillLedger": "92-202",
+      "ausenciaConfirmadaPor": "8a-antes-92-a-202-objetos-e-corpos",
+      "conferenciasAntesDoApply": [
+        "8a-antes-92-a-202-objetos-e-corpos",
+        "8b-papeis-contraditorios",
+        "8k-subtotal-divergente-ou-vazia-provada"
+      ],
+      "_comentario": "O ledger diz que a migration foi registrada; esta consulta (so leitura, papel read-only) prova os OBJETOS e CORPOS no banco. Toda migration NOVA de uma release (ausente do SHA que a loja serve hoje) precisa estar coberta por uma prova daqui; sem cobertura, publicar-release.mjs bloqueia. Ledger com lacuna NUNCA vira apply direto: primeiro esta prova; positiva = so o backfill do registro (gravar_ledger=backfillLedger, com a pre-checagem da propria prova); negativa = diagnostico (ausenciaConfirmadaPor + conferenciasAntesDoApply) e apply SO com o lote inteiro provado ausente e tudo ok=true. A conferencia de subtotal e a 8k (a 8c com a prova de loja VAZIA: o 0 so vale com RLS nao ativa e SELECT de tabela inteira nas duas tabelas; com dados reproduz a 8c); a 8c segue no menu como consulta legada."
+    },
+    {
+      "consulta": "9a-conferir-60-a-66-aplicado",
+      "versoes": [
+        "20261160000000",
+        "20261161000000",
+        "20261162000000",
+        "20261163000000",
+        "20261164000000",
+        "20261165000000",
+        "20261166000000"
+      ],
+      "backfillLedger": "60-66",
+      "nuncaAplicar": true,
+      "soNosRefs": ["cafkrminfnokvgjqtkle"],
+      "_comentario": "Faixa HISTORICA so da CAF: o efeito das 7 migrations ja esta vivo no banco e o ledger salta de 20261150 para 20261167. NUNCA se aplica (a 63 recria o corpo antigo, a 66 apaga e recria sem IF NOT EXISTS): POSITIVA = so o backfill do registro (60-66, que le a forma do ledger e refaz a prova antes de gravar); NEGATIVA = PARAR, e o que faltar vira migration NOVA para a frente; sem evidencia = so a leitura 9a. Com as 7 no ledger vale a logica normal de ledger completo (nada a gravar; a prova so se o lote for novo para a loja). nuncaAplicar so BLOQUEIA o apply, nao dispensa nenhuma verificacao. `soNosRefs`: o lote so existe para esses refs (a Savy nunca exige a 9a)."
+    }
+  ],
+  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = so as cinco financeiras); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
+  "canais": {
+    "cafkrminfnokvgjqtkle": {
+      "nome": "IKCOUS",
+      "migrations": "ikcous-publicada",
+      "functions": "ikcous-publicada",
+      "projetosNoMesmoBanco": ["loja"],
+      "functionsPublicaveis": [
+        "criar-pagamento",
+        "webhook-mercadopago",
+        "reconciliar-pagamentos",
+        "estornar-pagamento",
+        "credenciais-mercado-pago"
+      ]
+    },
+    "gnjsrucsmjkajijrakzr": {
+      "nome": "Savy",
+      "migrations": "savy",
+      "functions": "savy",
+      "projetosNoMesmoBanco": [],
+      "functionsPublicaveis": [
+        "criar-pagamento",
+        "webhook-mercadopago",
+        "reconciliar-pagamentos",
+        "estornar-pagamento",
+        "credenciais-mercado-pago"
+      ]
+    }
+  }
+}

@@ -20,6 +20,20 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   host sem sensibilidade a maiúscula; inativo e chave errada devolvem zero
   linhas (sem oráculo).
 
+- **pagamentos (`pagamentos-rpc-viva.cjs`, via `rodar-isolado.cjs`)**:
+  `confirmar_pagamento` e `registrar_pagamento_recebido` — transições,
+  estoque devolvido uma vez, expiração, permissão por papel e corridas com
+  duas conexões reais (a 2a espera o `FOR UPDATE`).
+- **admin atual (`admin-atual-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration 20261197000000 — admin rebaixado com JWT de admin ainda válido
+  (só no `profiles`, só no `auth.users`, nos dois) é recusado nas seis RPCs
+  de dinheiro sem escrever nada, e a RLS de `marketplace_orders`/
+  `order_refunds` não mostra a ele linha alheia; controle sem a guarda (e
+  com a política antiga) escreve/vaza; rollback byte a byte e preflights
+  recusando sem escrita. A prova concede `USAGE` no schema `auth` a
+  anon/authenticated/service_role **no clone** (o Supabase real concede; o
+  `provisionar.cjs` não).
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do

@@ -7,9 +7,10 @@ import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useDevolucaoCliente } from "@/hooks/useDevolucaoCliente";
 import { useDevolucaoDoPedidoCliente } from "@/hooks/useDevolucaoDoPedidoCliente";
-import { useOrders } from "@/hooks/useOrders";
+import { ErroCancelamentoNaoConcluido, useOrders } from "@/hooks/useOrders";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { supabase } from "@/lib/supabase";
 import {
   type LinhaDevolucaoDoCliente,
@@ -364,6 +365,17 @@ export function OrderDetailsView({
       setOrder((prev) => (prev ? { ...prev, status: "cancelled" } : null));
     } catch (error) {
       console.error("Failed to cancel order:", error);
+      // S1 (04/10/2026): o pedido NÃO foi cancelado e o aviso já saiu (o
+      // hook mostrou o desfecho da edge). Pago no meio ou mudou: relê do
+      // servidor para a tela mostrar o estado de verdade (o pago aparece
+      // quando a confirmação do Mercado Pago chegar). Em análise e "tente de
+      // novo" não mudam nada na tela.
+      if (
+        error instanceof ErroCancelamentoNaoConcluido &&
+        (error.desfecho === "ja_pago" || error.desfecho === "mudou")
+      ) {
+        void loadOrder();
+      }
     } finally {
       setIsCancelling(false);
     }
@@ -499,7 +511,7 @@ export function OrderDetailsView({
   };
 
   const handleWhatsAppSupport = () => {
-    const message = `Olá! Tenho uma dúvida sobre meu pedido #${orderId.slice(0, 8)}.`;
+    const message = `Olá! Tenho uma dúvida sobre meu pedido #${numeroDoPedido(orderId)}.`;
     let phone = (config.whatsappNumber || "").replace(/\D/g, "");
     if (phone.length === 11 || phone.length === 10) {
       phone = `55${phone}`;
@@ -737,7 +749,7 @@ export function OrderDetailsView({
               }
             }}
           >
-            <span className="font-mono">#{order.id.slice(0, 8)}</span>
+            <span className="font-mono">#{numeroDoPedido(order.id)}</span>
             {/* Laudo Opus 07/09 (C2): `zinc-550` é token VIVO — o
                 tailwind.config.js define os tons intermediários
                 550/650/750/850 de propósito. */}

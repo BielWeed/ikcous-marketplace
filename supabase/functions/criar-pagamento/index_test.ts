@@ -18,6 +18,7 @@ import {
   expiracaoRealinhavel,
   handler,
   MENSAGEM_CREDENCIAL_RECUSADA,
+  MENSAGEM_PIX_CONTINUA_VALENDO,
   MINUTOS_DESAFIO_3DS,
   pareceUuid,
   podeCobrar,
@@ -49,6 +50,16 @@ import {
   WEBHOOK_LOJISTA_FALSO,
 } from "../_shared/credenciais-mp_fixtures.ts";
 import type { CredenciaisMp } from "../_shared/credenciais-mp.ts";
+// Confirmação imediata (04/10/2026): as fixtures copiadas da doc oficial
+// (cabeçalho do arquivo de fixtures cita as URLs) e o handler do WEBHOOK de
+// verdade — para as provas de paridade do push e de concorrência com a rota
+// rápida (o módulo do webhook não sobe servidor no runner de teste: mesmo
+// guard `emTeste` deste arquivo).
+import {
+  orderCartaoAprovadaDaDoc,
+  orderPixPagaDaDoc,
+} from "../_shared/prova-de-pagamento_fixtures.ts";
+import { handler as handlerDoWebhook } from "../webhook-mercadopago/index.ts";
 
 const UUID = "3f2a1b8c-4d5e-4f60-9a7b-1c2d3e4f5a6b";
 const AGORA = new Date("2026-08-06T12:00:00.000Z");
@@ -163,6 +174,12 @@ function clienteFalso(opts: {
   // "erro" -> `{data:null,error}`; "lanca" -> exceção — para TODAS as leituras.
   falhaNaLeituraDoAntifraude?: "erro" | "lanca";
   leiturasDoAntifraude?: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }>;
+  // Nome na fatura (03/10/2026): a leitura de `store_config.store_name`. Ramo
+  // PRÓPRIO do dublê (nunca conta na `chamadasSelect` do pedido nem na lista
+  // do antifraude). Default: linha sem nome — o cartão segue sem o campo.
+  nomeDaLoja?: unknown;
+  falhaNaLeituraDoNome?: "erro" | "lanca";
+  leiturasDoNome?: Array<{ tabela: string; colunas: string }>;
 }) {
   let chamadasSelect = 0;
   const leituraDoAntifraude = (tabela: string, colunas: string, resposta: unknown) => {
@@ -204,6 +221,14 @@ function clienteFalso(opts: {
   return {
     rpc: async (nome: string, args: Record<string, unknown>) => {
       opts.chamadasRpc?.push({ nome, args });
+      // Confirmação imediata (04/10/2026): a transição da RPC real, sobre o
+      // pedido com as escritas desta chamada — 'pago' UMA vez, depois 'ja_pago'.
+      if (nome === "confirmar_pagamento") {
+        const linha = opts.pedido === null ? null : { ...opts.pedido, ...estadoGravado };
+        const { resultado, mudanca } = transicaoDeConfirmarPagamento(linha, args);
+        if (mudanca) Object.assign(estadoGravado, mudanca);
+        return { data: resultado, error: null };
+      }
       if (nome !== "liberar_cobranca_do_pedido") {
         throw new Error(`rpc inesperada nos testes da criar-pagamento: ${nome}`);
       }
@@ -231,6 +256,26 @@ function clienteFalso(opts: {
       if (tabela === "user_addresses") {
         return {
           select: (colunas: string) => leituraDoAntifraude(tabela, colunas, opts.enderecoSalvo ?? null),
+        };
+      }
+      if (tabela === "store_config") {
+        return {
+          select(colunas: string) {
+            opts.leiturasDoNome?.push({ tabela, colunas });
+            return {
+              limit: () => ({
+                maybeSingle: () => {
+                  if (opts.falhaNaLeituraDoNome === "lanca") {
+                    throw new Error("banco caiu — loja Nome Secreto da Loja");
+                  }
+                  if (opts.falhaNaLeituraDoNome === "erro") {
+                    return Promise.resolve({ data: null, error: { message: "falha Nome Secreto da Loja" } });
+                  }
+                  return Promise.resolve({ data: { store_name: opts.nomeDaLoja ?? null }, error: null });
+                },
+              }),
+            };
+          },
         };
       }
       if (tabela === "config_pagamento_cartao") {
@@ -392,6 +437,44 @@ function clienteFalso(opts: {
 }
 
 /**
+ * Confirmação imediata (04/10/2026): a TRANSIÇÃO de `confirmar_pagamento`
+ * para `p_status = 'pago'`, espelhando a RPC real
+ * (`20261195000000_recusado_e_recebido_recusam_nulo.sql`, provada em Postgres
+ * em `tests/banco/pagamentos-rpc-viva.cjs`): inexistente → divergente (id
+ * nulo/diferente) → ja_pago → expirado vira pago_apos_expirar → aguardando
+ * cancelado vira pago_apos_expirar → aguardando vira pago → resto ignorado.
+ * Devolve o rótulo e a MUDANÇA a aplicar na linha (nunca a aplica sozinha).
+ * Em JS a chamada é atômica (nenhum `await` no meio), que é o que o
+ * `FOR UPDATE` garante no banco: duas chamadas concorrentes nunca leem as
+ * duas o mesmo 'aguardando'.
+ */
+function transicaoDeConfirmarPagamento(
+  linha: Record<string, unknown> | null,
+  a: Record<string, unknown>,
+): { resultado: string; mudanca: Record<string, unknown> | null } {
+  if (!linha || linha.id !== a.p_order_id) return { resultado: "inexistente", mudanca: null };
+  const vaga = linha.gateway_payment_id ?? null;
+  if (a.p_payment_id === null || a.p_payment_id === undefined || vaga === null || vaga !== a.p_payment_id) {
+    return { resultado: "divergente", mudanca: null };
+  }
+  if (a.p_status !== "pago") throw new Error(`transição não modelada no dublê: ${String(a.p_status)}`);
+  if (linha.payment_status === "pago" || linha.payment_status === "pago_apos_expirar") {
+    return { resultado: "ja_pago", mudanca: null };
+  }
+  const pagoEm = "2026-10-04T12:00:00.000Z";
+  if (linha.payment_status === "expirado") {
+    return { resultado: "pago_apos_expirar", mudanca: { payment_status: "pago_apos_expirar", paid_at: pagoEm } };
+  }
+  if (linha.payment_status === "aguardando") {
+    if (linha.status === "cancelled") {
+      return { resultado: "pago_apos_expirar", mudanca: { payment_status: "pago_apos_expirar", paid_at: pagoEm } };
+    }
+    return { resultado: "pago", mudanca: { payment_status: "pago", paid_at: pagoEm } };
+  }
+  return { resultado: "ignorado", mudanca: null };
+}
+
+/**
  * Reduz um fixture às colunas que `.select("a, b, c")` pediu de verdade —
  * Achado 2 da revisão (14/08/2026). Coluna pedida que não existe no fixture
  * simplesmente não entra no objeto devolvido (equivalente a `undefined` na
@@ -454,6 +537,10 @@ function pedidoBase(overrides: Record<string, unknown> = {}) {
     expires_at: "2099-01-01T00:00:00.000Z",
     gateway_payment_id: null,
     customer_data: { email: "cliente@exemplo.com" },
+    // S5 (04/10/2026): só pedido 'online' vira cobrança — a forma que a v24
+    // grava quando o front escolhe "Pagar agora". Os testes da trava passam
+    // a forma de entrega por override.
+    payment_method: "online",
     ...overrides,
   };
 }
@@ -696,7 +783,16 @@ Deno.test("donoConfere: pedido de convidado passa sem sessão", () => {
 Deno.test("descricaoDoPedido não vaza o id inteiro", () => {
   const d = descricaoDoPedido(UUID);
   assertEquals(d.includes(UUID), false);
-  assertEquals(d.includes("3f2a1b8c"), true);
+});
+
+// F6 (revisão do lote B, 04/10/2026): o aviso que vai à LOJA fala do pedido
+// pelo número que o painel, o PDV, o WhatsApp e o cliente já usam — os 6
+// ÚLTIMOS caracteres, em maiúsculas (`numeroDoPedido` de _shared/pedido.ts).
+// Antes ia "Pedido 3f2a1b8c" (os 8 primeiros), que a lojista não acha em
+// lugar nenhum.
+Deno.test("descricaoDoPedido usa o número da casa: 6 últimos caracteres, em maiúsculas", () => {
+  assertEquals(descricaoDoPedido(UUID), "Pedido #4F5A6B");
+  assertEquals(descricaoDoPedido(UUID).includes("3f2a1b8c"), false);
 });
 
 // --- subDoToken: JWT usa base64url, não base64 puro -------------------
@@ -2468,6 +2564,15 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
         "o próximo retry relê o estado real (se o PIX foi pago, vira 'pago')",
     ],
     [
+      // Ressalva da revisão do lote B (04/10/2026): troca PIX→cartão numa
+      // loja sem a chave de assinatura com o PIX da vaga AINDA VIVO.
+      "MENSAGEM_PIX_CONTINUA_VALENDO",
+      "o QR da vaga continua pagável no MP: o cliente volta a ele (a " +
+        "verificação responde 'pix' e a escolha da forma devolve o MESMO " +
+        "QR); terminal ofereceria 'Cancelar pedido' com o PIX vivo, e o " +
+        "pagamento posterior cairia num pedido cancelado. Nada foi tocado",
+    ],
+    [
       "Há um pagamento com cartão em análise para este pedido.",
       "o desfecho do cartão chega em minutos pelo webhook: aprovado, o " +
         "retry devolve 'pago'; recusado, a vaga é liberada e o PIX sai",
@@ -2829,7 +2934,27 @@ Deno.test("toda recusa (status >= 400) da criar-pagamento leva 'terminal' ou est
   // reler a vaga; levam `terminal: true`). O 503 "Não foi possível consultar
   // o pagamento agora." do C3 mudou de lugar para `respostaIndisponivel`
   // (continua UM ponto de retorno, usado pelo C3 e pelo C2). 58 + 2 = 60.
-  assertEquals(achados, 60);
+  //
+  // 61, não mais 60: S5 (04/10/2026) — pedido que não é de pagamento online
+  // responde o 409 "Este pedido não é de pagamento online." no ponto em que
+  // toda criação passa (leva `terminal: true`: a forma do pedido não muda
+  // com "Tentar de novo"). 60 + 1 = 61.
+  //
+  // 62, não mais 61: S2 (04/10/2026) — o cartão do LOJISTA sem a chave de
+  // assinatura do webhook responde o 409 "Para pagar com cartão, a loja
+  // precisa cadastrar…" (leva `terminal: true` e a flag
+  // `cartaoSemChaveDeAssinatura`, mesmo contrato do PIX). 61 + 1 = 62.
+  //
+  // 63, não mais 62: R8 (04/10/2026) — pedido online de R$ 0,00 responde o
+  // 409 "Este pedido não tem valor a pagar online." antes de qualquer
+  // chamada ao MP (leva `terminal: true`: o total não muda com outra
+  // tentativa; antes era 502 recuperável em laço). 62 + 1 = 63.
+  //
+  // 64, não mais 63: ressalva da revisão do lote B (04/10/2026) — a troca
+  // PIX→cartão numa loja sem a chave de assinatura, com o PIX da vaga AINDA
+  // VIVO, responde o 409 NÃO terminal `MENSAGEM_PIX_CONTINUA_VALENDO` (na
+  // lista de recuperáveis, acima) antes do terminal de sempre. 63 + 1 = 64.
+  assertEquals(achados, 64);
 });
 
 // Achado B3 (revisão do checkout front, 26/09/2026), ampliado na 6ª, na 7ª e
@@ -3743,6 +3868,9 @@ function cenarioCartao(opts: {
   colunasExtrasDoPedido?: Record<string, unknown> | null;
   enderecoSalvo?: Record<string, unknown> | null;
   falhaNaLeituraDoAntifraude?: "erro" | "lanca";
+  // Nome na fatura (03/10/2026) — ver `clienteFalso`.
+  nomeDaLoja?: unknown;
+  falhaNaLeituraDoNome?: "erro" | "lanca";
 } = {}) {
   Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
   // Baseline do cofre para o registro default/repassado desta política —
@@ -3758,7 +3886,11 @@ function cenarioCartao(opts: {
   const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
   const leiturasConfigCartao: Array<{ colunas: string; filtro: [string, unknown] }> = [];
   const leiturasDoAntifraude: Array<{ tabela: string; colunas: string; filtros: Array<[string, unknown]> }> = [];
+  const leiturasDoNome: Array<{ tabela: string; colunas: string }> = [];
   const supabase = clienteFalso({
+    nomeDaLoja: opts.nomeDaLoja,
+    falhaNaLeituraDoNome: opts.falhaNaLeituraDoNome,
+    leiturasDoNome,
     itensDoPedido: opts.itensDoPedido,
     colunasExtrasDoPedido: opts.colunasExtrasDoPedido,
     enderecoSalvo: opts.enderecoSalvo,
@@ -3787,7 +3919,7 @@ function cenarioCartao(opts: {
     resultadoLiberar: opts.resultadoLiberar,
     erroLiberar: opts.erroLiberar,
   });
-  return { supabase, registro, chamadasRpc, leiturasConfigCartao, leiturasDoAntifraude };
+  return { supabase, registro, chamadasRpc, leiturasConfigCartao, leiturasDoAntifraude, leiturasDoNome };
 }
 
 const liberacoes = (chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }>) =>
@@ -5325,7 +5457,14 @@ function bancoComEstado(
   // TODAS as vezes, mesmo com o retry de `liberarCobranca` (index.ts) — a
   // "chave presa" (tentativas_de_pagamento nunca avança) acontece quando a
   // RPC falha de forma PERSISTENTE, não só uma vez.
-  opts: { liberarSempreFalha?: boolean } = {},
+  opts: {
+    liberarSempreFalha?: boolean;
+    // Confirmação imediata (04/10/2026): roda ANTES da transição de
+    // `confirmar_pagamento` (simula quem chegou primeiro: o webhook, o
+    // pg_cron) — e, se devolver algo, É a resposta da RPC (`{ error }`,
+    // rótulo forçado ou exceção).
+    antesDeConfirmar?: (linha: Record<string, unknown>) => unknown;
+  } = {},
 ) {
   const chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> = [];
   return {
@@ -5333,6 +5472,13 @@ function bancoComEstado(
     chamadasRpc,
     rpc: async (nome: string, a: Record<string, unknown>) => {
       chamadasRpc.push({ nome, args: a });
+      if (nome === "confirmar_pagamento") {
+        const forcado = opts.antesDeConfirmar?.(linha);
+        if (forcado !== undefined) return forcado;
+        const { resultado, mudanca } = transicaoDeConfirmarPagamento(linha, a);
+        if (mudanca) Object.assign(linha, mudanca);
+        return { data: resultado, error: null };
+      }
       if (nome !== "liberar_cobranca_do_pedido") throw new Error(`rpc inesperada nas corridas: ${nome}`);
       if (opts.liberarSempreFalha) return { data: null, error: { message: "deadlock" } };
       if (a.p_gateway_payment_id === null) {
@@ -6587,15 +6733,218 @@ Deno.test("POLÍTICA PIX — lojista COM chave de assinatura: PIX criado normalm
   assertEquals(mp.criacoes().length, 1);
 });
 
-Deno.test("POLÍTICA PIX — delimitação: CARTÃO com lojista SEM chave de assinatura NÃO é tocado pelo gate do PIX (atravessa para o portão PRÓPRIO do cartão)", async () => {
-  // Prova pela diferença: sem a chave, o pedido de CARTÃO não pode morrer no
-  // 409 do PIX — ele atravessa o gate novo e bate no portão do CARTÃO (config
-  // ausente -> a mensagem PRÓPRIA do cartão, sem flag do PIX). Se um dia o
-  // gate do PIX engolir o cartão, este teste cai na mensagem errada.
-  const { supabase } = cenarioCartao({
-    configCartao: null,
+// S2 (04/10/2026): até aqui este teste provava o contrário — "o cartão com
+// lojista SEM chave atravessa o gate". A decisão do dono de 30/09 (pagamento
+// pelo app só com as 3 chaves) superou a de 29/09: o cartão do LOJISTA sem a
+// chave de assinatura também para, com a flag própria. A delimitação que
+// continua valendo é a da ORIGEM: loja nas chaves da plataforma não é tocada.
+Deno.test("S2: CARTÃO com lojista SEM chave de assinatura -> 409 terminal cartaoSemChaveDeAssinatura, ZERO chamadas ao MP, nada gravado", async () => {
+  const { supabase, registro, chamadasRpc, leiturasConfigCartao } = cenarioCartao({
     registroMp: await registroMpDeTeste({ webhookSecret: null }),
   });
+  const mp = fetchMP({}); // qualquer chamada ao MP estoura
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+  assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+  assertEquals(
+    corpo.error,
+    "Para pagar com cartão, a loja precisa cadastrar a chave de assinatura do webhook do Mercado Pago.",
+  );
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(leiturasConfigCartao.length, 0);
+});
+
+// S2, revisão externa (04/10/2026): a trava separa CRIAÇÃO/troca (POST novo
+// ou cancelamento no MP) de CONSULTA da cobrança própria que já existe. Sem a
+// chave: zero POST novo — mas a outra aba que já tem um cartão vivo, em
+// análise ou em desafio 3DS continua recebendo o MESMO estado pelo GET.
+for (
+  const caso of [
+    { nome: "desafio 3DS", order: () => orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }), status: "aguardando", desafio: URL_DESAFIO },
+    { nome: "em análise", order: () => orderDeCartao("processing", "in_review", { id: ORDER_CARTAO_NA_VAGA }), status: "aguardando", desafio: undefined },
+    { nome: "aprovado", order: () => orderDeCartao("processed", "accredited", { id: ORDER_CARTAO_NA_VAGA }), status: "pago", desafio: undefined },
+  ]
+) {
+  Deno.test(`S2: segunda aba + cartão ${caso.nome} na vaga + lojista SEM chave -> a MESMA cobrança pelo GET, ZERO POST, nada gravado`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({ consultar: { status: 200, corpo: caso.order() } });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+        statusesCartaoDesconhecidosAvisados: new Set(),
+      })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200, JSON.stringify(corpo));
+    assertEquals(corpo.paymentId, ORDER_CARTAO_NA_VAGA);
+    assertEquals(corpo.statusPagamento, caso.status);
+    assertEquals(corpo.desafio3ds?.url, caso.desafio);
+    assertEquals(corpo.cartaoSemChaveDeAssinatura, undefined);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+    assertEquals(chamadasRpc.length, 0);
+  });
+}
+
+Deno.test("S2: sentinela `verificando:` sem desfecho + lojista SEM chave -> resposta de acompanhamento ('sem_registro'), ZERO POST novo", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { db, mp } = sentinelaSemOrderNoMp();
+  // 1ª chamada COM a chave: deixa o sentinela (5xx sem order no MP).
+  await emSilencio(() => chamar(db, mp, corpoCartao()));
+  const sentinela = String(db.linha.gateway_payment_id);
+  assertEquals(sentinela.startsWith("verificando:"), true);
+  const postsAntes = mp.posts.length;
+
+  // A chave de assinatura sai do cadastro; a outra aba tenta de novo.
+  const r = await emSilencio(async () => {
+    const resposta = await handler(
+      requisicao(corpoCartao({ token: OUTRO_TOKEN_CARTAO }), montarToken(DONO_LOGADO)),
+      {
+        supabase: db as never,
+        fetchImpl: mp.fn as typeof fetch,
+        alertarAdminCartaoOrfao: async () => {},
+        credenciaisMp: { origem: "lojista", token: TOKEN_LOJISTA_FALSO, segredoWebhook: null, publicKey: PUBLIC_KEY_LOJISTA_FALSA },
+      },
+    );
+    return { status: resposta.status, corpo: await resposta.json() };
+  });
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, SEM_REGISTRO_DO_PEDIDO_BASE);
+  assertEquals(mp.posts.length, postsAntes, "POST novo sem a chave de assinatura");
+  assertEquals(db.linha.gateway_payment_id, sentinela);
+  assertEquals(db.chamadasRpc.length, 0);
+});
+
+// Ressalva da revisão do lote B (04/10/2026): o PIX VIVO na vaga continua
+// pagável no Mercado Pago. Um 409 TERMINAL aqui virava, na tela do cartão, a
+// caixa vermelha com "Cancelar pedido e voltar ao carrinho" como ação
+// principal — o cliente cancelava e o pagamento posterior do QR caía num
+// pedido cancelado. Agora: 409 SEM `terminal`, com a frase que manda voltar
+// ao PIX; nada é cancelado, nada é criado, nada é gravado. "Par
+// desconhecido" entra junto: nunca é morto (`mapearStatusOrder` devolve
+// null), então a cobrança pode estar viva.
+for (
+  const caso of [
+    { nome: "aberto (aguardando transferência)", order: () => orderDePix("action_required", "waiting_transfer") },
+    { nome: "com par de status desconhecido", order: () => orderDePix("action_required", "status_novo_do_mp") },
+  ]
+) {
+  Deno.test(`S2: PIX ${caso.nome} na vaga + pedido de cartão + lojista SEM chave -> 409 NÃO terminal mandando voltar ao PIX, PIX NÃO cancelado, ZERO POST`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: caso.order() },
+      cancelar: { status: 200, corpo: orderDePix("canceled", "canceled") },
+      criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409, JSON.stringify(corpo));
+    assertEquals(corpo.terminal, undefined, "terminal encerra a tela e oferece 'Cancelar pedido' com o PIX vivo");
+    assertEquals(
+      corpo.error,
+      "Seu PIX continua valendo. Volte e pague pelo código, ou aguarde ele vencer para escolher outra forma.",
+    );
+    assertEquals(corpo.error, MENSAGEM_PIX_CONTINUA_VALENDO);
+    // A flag do cartão sem chave anda SEMPRE com o terminal — aqui o desfecho
+    // é outro (o PIX vale), e a flag não vai junto.
+    assertEquals(corpo.cartaoSemChaveDeAssinatura, undefined);
+    assertEquals(mp.cancelamentos().length, 0, "o PIX foi cancelado antes de saber que o cartão era impossível");
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+// CONTROLE do bloco acima: PIX já MORTO (vencido/recusado) não tem para onde
+// o cliente voltar — sem a chave, nem cartão nem PIX novo nascem. Continua o
+// 409 terminal com a flag, como antes.
+for (
+  const caso of [
+    { nome: "vencido", order: () => orderDePix("expired", "expired") },
+    { nome: "recusado", order: () => orderDePix("failed", "failed") },
+  ]
+) {
+  Deno.test(`S2 — CONTROLE: PIX ${caso.nome} na vaga + pedido de cartão + lojista SEM chave -> continua 409 terminal com a flag, ZERO POST`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await registroMpDeTeste({ webhookSecret: null }),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: caso.order() },
+      criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409, JSON.stringify(corpo));
+    assertEquals(corpo.terminal, true);
+    assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+Deno.test("S2: cartão MORTO na vaga + pedido de cartão + lojista SEM chave -> 409 terminal, sem liberar a vaga, ZERO POST", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+    releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+    registroMp: await registroMpDeTeste({ webhookSecret: null }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+    criar: { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  });
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, true);
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("S2 — delimitação: CARTÃO com loja nas chaves da PLATAFORMA (sem registro) NÃO é tocado (atravessa para o portão PRÓPRIO do cartão)", async () => {
+  // Prova pela diferença: sem registro do lojista, o pedido de CARTÃO não
+  // pode morrer no 409 da chave de assinatura — ele atravessa e bate no
+  // portão do CARTÃO (config ausente -> a mensagem PRÓPRIA do cartão, sem
+  // flag nenhuma). Se a trava um dia engolir a plataforma, cai aqui.
+  const { supabase } = cenarioCartao({ configCartao: null, registroMp: null });
   const mp = fetchMP({});
 
   const resposta = await handler(
@@ -6607,8 +6956,37 @@ Deno.test("POLÍTICA PIX — delimitação: CARTÃO com lojista SEM chave de ass
   assertEquals(resposta.status, 409);
   assertEquals(corpo.error, "Esta forma de pagamento não está disponível nesta loja.");
   assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+  assertEquals(corpo.cartaoSemChaveDeAssinatura, undefined);
   assertEquals(corpo.terminal, undefined);
   assertEquals(mp.chamadas.length, 0);
+});
+
+Deno.test("S2 — delimitação: CARTÃO com loja nas chaves da PLATAFORMA cobra normalmente (200, UMA order no MP)", async () => {
+  const { supabase } = cenarioCartao({ registroMp: null });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200, JSON.stringify(corpo));
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("S2 — delimitação: CARTÃO com lojista COM chave de assinatura cobra normalmente (200, UMA order no MP)", async () => {
+  const { supabase } = cenarioCartao(); // registro default: lojista COM chave
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.criacoes().length, 1);
 });
 
 // =============================================================================
@@ -8513,7 +8891,11 @@ for (
     assertEquals(db.linha.gateway_payment_id, ID_CARTAO_DO_POST, "a cobrança viva ficou sem registro no pedido");
     assertEquals(db.linha.metodo_online, "credito");
     assertEquals(db.linha.parcelas, 3);
-    assertEquals(consultas.length, 1);
+    // 1 GET do próprio ramo; quando a resposta diz 'pago' entra MAIS UM — o GET
+    // NOVO da confirmação imediata (04/10/2026), que não reaproveita o do ramo.
+    // A order desta fixture não traz valor pago, então a prova recusa e a RPC
+    // de confirmação NÃO é chamada (a asserção das RPCs abaixo segue em 1).
+    assertEquals(consultas.length, caso.status === "pago" ? 2 : 1);
     assertEquals(avisos.length, 0, "com registro, quem fecha é o webhook — não o admin");
     assertEquals(mp.cancelamentos.length, 0);
     assertEquals(mp.posts.length, 1, "nenhum POST novo");
@@ -8987,8 +9369,11 @@ function sentinelaDeTeste(chave: string, limiteMs: number): string {
 }
 
 /** Banco com estado + contador de escritas (UPDATE) na tabela de pedidos. */
-function bancoContandoEscritas(linha: Record<string, unknown>) {
-  const db = bancoComEstado(linha);
+function bancoContandoEscritas(
+  linha: Record<string, unknown>,
+  opts: Parameters<typeof bancoComEstado>[2] = {},
+) {
+  const db = bancoComEstado(linha, CONFIG_CARTAO_LIGADO, opts);
   const escritas: Array<Record<string, unknown>> = [];
   const contado = {
     ...db,
@@ -10652,4 +11037,2234 @@ Deno.test("handler PIX: NÃO lê itens, telefone nem endereço e o corpo não ga
   for (const campo of ["phone", "address"]) {
     assertEquals(campo in ((corpoDoPost?.payer as Record<string, unknown>) ?? {}), false, campo);
   }
+});
+
+// ═══ Campo OPCIONAL de antifraude recusado não derruba o cartão (03/10/2026) ═
+//
+// Um 400 `property_value` em `items[0].external_code` derrubou a cobrança de
+// cartão inteira em produção. Agora, 400 de validação que cita SÓ campo
+// opcional repete UMA vez sem eles (`_shared/order-cartao-repeticao.ts` — a
+// regra e a prova de cada guarda moram no teste de lá; aqui, o que a
+// function FAZ com cada desfecho da repetição, com a reserva da vaga).
+
+/** POST /v1/orders respondendo em SEQUÊNCIA (1a chamada, 2a chamada...);
+ * a última resposta vale para as seguintes. Cancelamento não existe, e o GET
+ * só existe quando o teste o declara em `consultar` — e SÓ para a order do
+ * cartão (`ORDER_CARTAO`): desde a confirmação imediata na criação (04/10/2026)
+ * o cartão aprovado no POST faz UM GET por id dessa order. */
+function fetchMPEmSequencia(
+  criar: Array<{ status: number; corpo: unknown }>,
+  consultar?: { status: number; corpo: unknown },
+) {
+  const chamadas: ChamadaMP[] = [];
+  const fn = (url: string, init?: RequestInit) => {
+    chamadas.push({
+      url,
+      method: init?.method,
+      corpo: init?.body ? JSON.parse(String(init.body)) : undefined,
+      headers: init?.headers as Record<string, string> | undefined,
+    });
+    if (consultar && init?.method === "GET" && url === `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`) {
+      return Promise.resolve(new Response(JSON.stringify(consultar.corpo), { status: consultar.status }));
+    }
+    if (init?.method !== "POST" || url.endsWith("/cancel")) {
+      return Promise.reject(new Error(`fetch inesperado nos testes da repetição: ${init?.method} ${url}`));
+    }
+    const resposta = criar[Math.min(chamadas.length - 1, criar.length - 1)];
+    return Promise.resolve(new Response(JSON.stringify(resposta.corpo), { status: resposta.status }));
+  };
+  return { fn, chamadas };
+}
+
+const ERRO_400_DE_ITEM = {
+  errors: [{
+    code: "property_value",
+    message: "invalid",
+    details: ["items[0].external_code must be at most 30 characters"],
+  }],
+};
+
+function cenarioDeCartaoComAntifraude() {
+  return cenarioCartao({
+    pedido: pedidoDeEntrega(),
+    itensDoPedido: LINHAS_DO_PEDIDO,
+    colunasExtrasDoPedido: { customer_phone: null, address_id: null, shipping: 12.5 },
+  });
+}
+
+Deno.test("handler cartão: MP recusa um campo OPCIONAL (400 em items) -> repete sem eles, com chave NOVA, e o cartão APROVA (a vaga fica com a order)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    { status: 400, corpo: ERRO_400_DE_ITEM },
+    { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  ], { status: 200, corpo: orderDeCartao("processed", "accredited") });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  assertEquals(corpo.paymentId, ORDER_CARTAO);
+  // As DUAS criações de antes (400, depois 201) + o GET por id da confirmação
+  // imediata (a order do orderDeCartao não traz valor pago: a prova recusa).
+  assertEquals(mp.chamadas.length, 3);
+  assertEquals(mp.chamadas.filter((c) => c.method === "POST").length, 2);
+  assertEquals(mp.chamadas[2].method, "GET");
+  assertEquals(mp.chamadas[2].url, `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`);
+
+  const [primeira, segunda] = mp.chamadas;
+  // 1a: o corpo completo, com a chave da tentativa. 2a: sem NENHUM opcional.
+  assertEquals("items" in (primeira.corpo as Record<string, unknown>), true);
+  assertEquals("shipment" in (primeira.corpo as Record<string, unknown>), true);
+  for (const campo of ["items", "shipment"]) assertEquals(campo in (segunda.corpo as Record<string, unknown>), false);
+  const payer2 = (segunda.corpo as Record<string, unknown>).payer as Record<string, unknown>;
+  for (const campo of ["phone", "address"]) assertEquals(campo in payer2, false);
+  // O que cobra segue igual nas duas.
+  assertEquals((segunda.corpo as Record<string, unknown>).total_amount, "112.50");
+  assertEquals(payer2.identification, { type: "CPF", number: CPF_TITULAR });
+  // Chave: a 1a e' a da tentativa; a 2a e' OUTRA (mesma chave + corpo diferente = 409 no MP).
+  const chave1 = primeira.headers?.["X-Idempotency-Key"];
+  const chave2 = segunda.headers?.["X-Idempotency-Key"];
+  assertEquals(chave1, `${UUID}:c0`);
+  assertEquals(chave2 === chave1, false);
+  assertEquals(String(chave2).startsWith(`${UUID}:c0:`), true);
+  // A vaga: reserva + gravação final com a order da 2a chamada; nada liberado.
+  assertEquals(registro.chamadasUpdate, 2);
+  assertEquals(registro.valoresUpdate?.gateway_payment_id, ORDER_CARTAO);
+  assertEquals(chamadasRpc.length, 0);
+});
+
+Deno.test("handler cartão: 400 em campo OBRIGATORIO (payer.email) -> NÃO repete: 1 chamada, 502, reserva solta (igual a antes)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    {
+      status: 400,
+      corpo: { errors: [{ code: "property_value", details: ["payer.email domain is not allowed"] }] },
+    },
+    { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 502);
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+});
+
+Deno.test("handler cartão: 400 de opcional e a REPETIÇÃO volta 5xx -> cartão em análise (ambíguo), reserva MANTIDA, nunca uma terceira chamada", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    { status: 400, corpo: ERRO_400_DE_ITEM },
+    { status: 500, corpo: { message: "falha do MP" } },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+    alertarAdminCartaoOrfao: async () => {},
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 502);
+  assertEquals(corpo.cartaoEmAnalise, true);
+  assertEquals(mp.chamadas.length, 2);
+  // O sentinela continua na vaga: a 2a chamada pode ter criado a order.
+  assertEquals(liberacoes(chamadasRpc), []);
+  assertEquals(registro.chamadasUpdate, 1, "só a reserva — nada gravado nem solto");
+});
+
+Deno.test("handler cartão: 400 de opcional e a REPETIÇÃO é recusada pelo emissor (402) -> 200 'recusado', vaga solta, 2 chamadas", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioDeCartaoComAntifraude();
+  const mp = fetchMPEmSequencia([
+    { status: 400, corpo: ERRO_400_DE_ITEM },
+    {
+      status: 402,
+      corpo: { errors: [{ code: "failed", details: ["PAY01CARTAO:high_risk"] }], data: orderDeCartao("failed", "failed") },
+    },
+  ]);
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "recusado");
+  assertEquals(mp.chamadas.length, 2);
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: sentinelaDaReserva(registro) }]);
+});
+
+Deno.test("handler cartão: 5xx ou rede com campo opcional citado no corpo -> NÃO repete (o MP pode ter criado a order): 1 chamada, ambíguo", async () => {
+  for (const status of [500, 503, 0]) {
+    const { supabase } = cenarioDeCartaoComAntifraude();
+    const mp = fetchMPEmSequencia([{ status: status === 0 ? 500 : status, corpo: ERRO_400_DE_ITEM }]);
+    const fetchImpl = status === 0
+      ? () => {
+        mp.chamadas.push({ url: "rede", method: "POST" });
+        return Promise.reject(new TypeError("network error"));
+      }
+      : mp.fn;
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl,
+      alertarAdminCartaoOrfao: async () => {},
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 502, String(status));
+    assertEquals(corpo.cartaoEmAnalise, true, String(status));
+    assertEquals(mp.chamadas.length, 1, String(status));
+  }
+});
+
+// ═══ Nome na FATURA do cartão (03/10/2026) ══════════════════════════════════
+//
+// `statement_descriptor` em `transactions.payments[0].payment_method` (Orders
+// API), com o nome da loja (`store_config.store_name`). OPCIONAL: leitura de
+// melhor esforço, só no cartão, e o primeiro dos campos que a repetição tira.
+
+const descritorDoPost = (corpo: Record<string, unknown> | undefined) =>
+  (corpo?.transactions as { payments: Array<{ payment_method: Record<string, unknown> }> }).payments[0]
+    .payment_method.statement_descriptor;
+
+Deno.test("handler cartão: o nome da loja vai como statement_descriptor — sem acento, maiúsculo, só caractere seguro", async () => {
+  const { supabase, leiturasDoNome, leiturasDoAntifraude } = cenarioCartao({ nomeDaLoja: "Açaí do Zé" });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(descritorDoPost(mp.criacoes()[0].corpo), "ACAI DO ZE");
+  assertEquals(leiturasDoNome, [{ tabela: "store_config", colunas: "store_name" }]);
+  // A leitura do nome NÃO entra na lista das leituras do antifraude.
+  assertEquals(leiturasDoAntifraude.some((l) => l.tabela === "store_config"), false);
+  assertEquals(mp.criacoes().length, 1);
+});
+
+Deno.test("handler cartão: nome longo da loja é CORTADO no limite (13) e não termina em espaço", async () => {
+  const { supabase } = cenarioCartao({ nomeDaLoja: "Loja Muito Grande Mesmo Mesmo" });
+  const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(descritorDoPost(mp.criacoes()[0].corpo), "LOJA MUITO GR");
+});
+
+Deno.test("handler cartão: loja SEM nome (ausente, vazio ou só símbolo) NÃO manda statement_descriptor e cobra normalmente", async () => {
+  for (const nomeDaLoja of [null, "", "   ", "★★★"]) {
+    const { supabase } = cenarioCartao({ nomeDaLoja });
+    const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+
+    const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+
+    assertEquals(resposta.status, 200, String(nomeDaLoja));
+    const metodo = ((mp.criacoes()[0].corpo as Record<string, unknown>).transactions as {
+      payments: Array<{ payment_method: Record<string, unknown> }>;
+    }).payments[0].payment_method;
+    assertEquals("statement_descriptor" in metodo, false, String(nomeDaLoja));
+  }
+});
+
+Deno.test("handler cartão: leitura do nome FALHANDO (erro de banco OU exceção) não bloqueia a cobrança e nada do nome vai para o log", async () => {
+  const logs: string[] = [];
+  const originais = { log: console.log, error: console.error, warn: console.warn };
+  console.log = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  console.error = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  console.warn = (...a: unknown[]) => void logs.push(a.map(String).join(" "));
+  try {
+    for (const falha of ["erro", "lanca"] as const) {
+      const { supabase } = cenarioCartao({ nomeDaLoja: "Loja Teste", falhaNaLeituraDoNome: falha });
+      const mp = fetchMP({ criar: { status: 201, corpo: orderDeCartao("processed", "accredited") } });
+      const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+        supabase,
+        fetchImpl: mp.fn,
+      });
+      assertEquals(resposta.status, 200, falha);
+      assertEquals(mp.criacoes().length, 1, falha);
+      assertEquals(descritorDoPost(mp.criacoes()[0].corpo), undefined, falha);
+    }
+  } finally {
+    console.log = originais.log;
+    console.error = originais.error;
+    console.warn = originais.warn;
+  }
+  assertEquals(logs.some((l) => l.includes("Nome Secreto")), false);
+});
+
+Deno.test("handler cartão: o MP recusa o statement_descriptor (400 só nele) -> repete SEM ele, com chave nova, e o cartão APROVA", async () => {
+  const { supabase } = cenarioCartao({ nomeDaLoja: "Loja Teste" });
+  const mp = fetchMPEmSequencia([
+    {
+      status: 400,
+      corpo: {
+        errors: [{
+          code: "property_value",
+          details: ["transactions.payments[0].payment_method.statement_descriptor is invalid"],
+        }],
+      },
+    },
+    { status: 201, corpo: orderDeCartao("processed", "accredited") },
+  ], { status: 200, corpo: orderDeCartao("processed", "accredited") });
+
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.statusPagamento, "pago");
+  // As DUAS criações de antes + o GET por id da confirmação imediata.
+  assertEquals(mp.chamadas.length, 3);
+  assertEquals(mp.chamadas.filter((c) => c.method === "POST").length, 2);
+  assertEquals(mp.chamadas[2].method, "GET");
+  assertEquals(descritorDoPost(mp.chamadas[0].corpo), "LOJA TESTE");
+  assertEquals(descritorDoPost(mp.chamadas[1].corpo), undefined);
+  assertEquals(
+    mp.chamadas[0].headers?.["X-Idempotency-Key"] === mp.chamadas[1].headers?.["X-Idempotency-Key"],
+    false,
+  );
+});
+
+Deno.test("handler PIX: NÃO lê o nome da loja nem manda statement_descriptor — o escopo é só o cartão", async () => {
+  const { supabase, leiturasDoNome } = cenarioCartao({ nomeDaLoja: "Loja Teste" });
+  let corpoDoPost: Record<string, unknown> | undefined;
+  const base = fetchFalsoMP({});
+  const fetchImpl = (url: string, init?: RequestInit) => {
+    if (init?.method === "POST") corpoDoPost = JSON.parse(String(init.body));
+    return base(url, init);
+  };
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl,
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(leiturasDoNome, []);
+  assertEquals(JSON.stringify(corpoDoPost).includes("statement_descriptor"), false);
+});
+
+// =============================================================================
+// S5 (travas onde a cobrança nasce, 04/10/2026): a FORMA do pedido. Desde a
+// 20261174000000 a v24 grava 'aguardando' para QUALQUER forma aceita pela
+// loja (online, pix/card/cash na entrega) — só o front chamava esta function
+// para o 'online'. Uma requisição montada à mão com o id de um pedido "pagar
+// na entrega" virava cobrança online. A trava vale SÓ para criar cobrança
+// nova; reconsultar a que já existe e o `verificar` seguem livres.
+// =============================================================================
+for (const forma of ["cash", "pix", "card", null]) {
+  for (const metodo of ["pix", "cartao"] as const) {
+    Deno.test(`S5: pedido com forma '${forma}' (não online) + ${metodo} -> 409 terminal, ZERO chamadas ao MP, nada gravado`, async () => {
+      const { supabase, registro, chamadasRpc } = cenarioCartao({
+        pedido: pedidoBase({ user_id: DONO_LOGADO, payment_method: forma }),
+      });
+      const mp = fetchMP({}); // qualquer chamada ao MP estoura
+
+      const resposta = await emSilencio(() =>
+        handler(
+          requisicao(metodo === "pix" ? { orderId: UUID, metodo: "pix" } : corpoCartao(), montarToken(DONO_LOGADO)),
+          { supabase, fetchImpl: mp.fn },
+        )
+      );
+      const corpo = await resposta.json();
+
+      assertEquals(resposta.status, 409);
+      assertEquals(corpo.terminal, true);
+      assertEquals(corpo.error, "Este pedido não é de pagamento online.");
+      assertEquals(mp.chamadas.length, 0);
+      assertEquals(registro.chamadasUpdate, 0);
+      assertEquals(chamadasRpc.length, 0);
+    });
+  }
+}
+
+Deno.test("S5: pedido NÃO online com PIX já na vaga -> a RECONSULTA continua devolvendo o MESMO QR (a trava é só de criação)", async () => {
+  const { supabase, registro, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, payment_method: "cash", gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(chamadasRpc.length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+Deno.test("S5: pedido NÃO online -> o `verificar` (consulta sem cobrança) não é bloqueado", async () => {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const { contado } = bancoContandoEscritas(
+    pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0, payment_method: "cash" }),
+  );
+  const r = await verificar(contado, mpDaConsulta());
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.verificacao, "livre");
+});
+
+Deno.test("S5: cartão MORTO na vaga de um pedido NÃO online + PIX -> libera a vaga, mas NÃO cria a cobrança nova (a trava pega a criação depois da liberação)", async () => {
+  const { supabase, chamadasRpc } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, payment_method: "cash", gateway_payment_id: ORDER_CARTAO_NA_VAGA }),
+    releitura: pedidoBase({
+      user_id: DONO_LOGADO,
+      payment_method: "cash",
+      gateway_payment_id: null,
+      tentativas_de_pagamento: 1,
+    }),
+  });
+  const mp = fetchMP({
+    consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+  });
+
+  const resposta = await emSilencio(() =>
+    handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+  );
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 409);
+  assertEquals(corpo.terminal, true);
+  assertEquals(corpo.error, "Este pedido não é de pagamento online.");
+  assertEquals(liberacoes(chamadasRpc), [{ p_order_id: UUID, p_gateway_payment_id: ORDER_CARTAO_NA_VAGA }]);
+  assertEquals(mp.criacoes().length, 0);
+});
+
+// =============================================================================
+// R8 (travas onde a cobrança nasce, 04/10/2026): pedido online de R$ 0,00. A
+// v24 calcula o total com GREATEST(0, ...) (cupom maior que a compra), e o
+// montador do corpo PIX em _shared não guarda valor > 0: o MP recusava, a
+// function devolvia 502 recuperável e o cliente ficava num laço de "Tentar
+// de novo" até a reserva vencer. A recusa vem ANTES de qualquer chamada ao
+// MP, terminal, para PIX e cartão.
+// =============================================================================
+for (const total of [0, "0.00", -5, null]) {
+  for (const metodo of ["pix", "cartao"] as const) {
+    Deno.test(`R8: pedido online com total ${JSON.stringify(total)} + ${metodo} -> 409 terminal, ZERO chamadas ao MP, nada gravado`, async () => {
+      const { supabase, registro, chamadasRpc } = cenarioCartao({
+        pedido: pedidoBase({ user_id: DONO_LOGADO, total }),
+      });
+      const mp = fetchMP({}); // qualquer chamada ao MP estoura
+
+      const resposta = await emSilencio(() =>
+        handler(
+          requisicao(metodo === "pix" ? { orderId: UUID, metodo: "pix" } : corpoCartao(), montarToken(DONO_LOGADO)),
+          { supabase, fetchImpl: mp.fn },
+        )
+      );
+      const corpo = await resposta.json();
+
+      assertEquals(resposta.status, 409);
+      assertEquals(corpo.terminal, true);
+      assertEquals(corpo.error, "Este pedido não tem valor a pagar online.");
+      assertEquals(mp.chamadas.length, 0);
+      assertEquals(registro.chamadasUpdate, 0);
+      assertEquals(chamadasRpc.length, 0);
+    });
+  }
+}
+
+Deno.test("R8 — controle: total de UM centavo cria o PIX normalmente (a trava é > 0, não um piso de valor)", async () => {
+  const { supabase } = cenarioCartao({ pedido: pedidoBase({ user_id: DONO_LOGADO, total: 0.01 }) });
+  const capturado: { corpo?: Record<string, unknown> } = {};
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: fetchFalsoMP(capturado),
+  });
+
+  assertEquals(resposta.status, 200);
+  assertEquals(capturado.corpo?.total_amount, "0.01");
+});
+
+Deno.test("R8: pedido de R$ 0,00 com PIX já na vaga -> a RECONSULTA não é bloqueada (a trava é só de criação)", async () => {
+  const { supabase, registro } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, total: 0, gateway_payment_id: ORDER_PIX_NA_VAGA }),
+  });
+  const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+  const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+    supabase,
+    fetchImpl: mp.fn,
+  });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+  assertEquals(mp.criacoes().length, 0);
+  assertEquals(registro.chamadasUpdate, 0);
+});
+
+// =============================================================================
+// R9 (travas onde a cobrança nasce, 04/10/2026): a criação da order PIX não
+// passava `corpoNoLog: false` — o default de `criarOrder` joga o corpo INTEIRO
+// da recusa do MP no log, e esse corpo traz `data.payer` (e-mail e CPF do
+// pagador). O cartão já passava; o PIX passa a passar igual.
+// =============================================================================
+Deno.test("R9: PIX recusado (402) cujo corpo traz o pagador -> e-mail e CPF NUNCA aparecem no log nem na resposta", async () => {
+  const { supabase } = cenarioCartao({
+    pedido: pedidoBase({ user_id: DONO_LOGADO, customer_data: { email: "pagador-pix@exemplo.com" } }),
+  });
+  const mp = fetchMP({
+    criar: {
+      status: 402,
+      corpo: {
+        errors: [{ code: "failed" }],
+        data: {
+          ...orderDePix("failed", "failed"),
+          payer: { email: "pagador-pix@exemplo.com", identification: { type: "CPF", number: CPF_TITULAR } },
+        },
+      },
+    },
+  });
+  const logados: unknown[] = [];
+  const originais = { error: console.error, warn: console.warn, log: console.log };
+  console.error = (...a: unknown[]) => logados.push(a);
+  console.warn = (...a: unknown[]) => logados.push(a);
+  console.log = (...a: unknown[]) => logados.push(a);
+  let status: number;
+  let texto: string;
+  try {
+    const resposta = await handler(
+      requisicao(
+        { orderId: UUID, metodo: "pix", documento: { type: "CPF", number: CPF_TITULAR } },
+        montarToken(DONO_LOGADO),
+      ),
+      { supabase, fetchImpl: mp.fn },
+    );
+    status = resposta.status;
+    texto = await resposta.text();
+  } finally {
+    console.error = originais.error;
+    console.warn = originais.warn;
+    console.log = originais.log;
+  }
+
+  assertEquals(status, 502);
+  assertEquals(mp.criacoes().length, 1);
+  // A recusa CHEGOU ao log (só que resumida) — sem isto o teste passaria com
+  // um log que nem foi escrito.
+  assertEquals(JSON.stringify(logados).includes("mercadopago: orders recusou"), true);
+  const tudo = JSON.stringify(logados) + texto;
+  assertEquals(tudo.includes("pagador-pix@exemplo.com"), false);
+  assertEquals(tudo.includes(CPF_TITULAR), false);
+});
+
+// =============================================================================
+// Trava do PIX sem chave de assinatura (revisão externa, 04/10/2026, mesma
+// lógica do S2 corrigido): a guarda de 29/09 rodava ANTES de ler o pedido — a
+// tela que reconsulta com `metodo: "pix"` para recuperar o QR que JÁ existe
+// perdia o QR se a chave saísse do cadastro depois. Agora: consulta/retomada
+// da cobrança própria livre; a trava vale só antes de criar, de liberar e de
+// cancelar um cartão vivo para trocar por PIX.
+// =============================================================================
+for (
+  const loja of [
+    { nome: "chaves da PLATAFORMA (sem registro)", registro: () => Promise.resolve(null) },
+    { nome: "lojista SEM chave", registro: () => registroMpDeTeste({ webhookSecret: null }) },
+  ]
+) {
+  Deno.test(`PIX sem chave (${loja.nome}): QR JÁ criado na vaga -> o MESMO QR, ZERO POST, nada gravado`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_PIX_NA_VAGA, metodo_online: "pix" }),
+      registroMp: await loja.registro(),
+    });
+    const mp = fetchMP({ consultar: { status: 200, corpo: orderDePix("action_required", "waiting_transfer") } });
+
+    const resposta = await handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), {
+      supabase,
+      fetchImpl: mp.fn,
+    });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200, JSON.stringify(corpo));
+    assertEquals(corpo.qrCode, "QRCODE-DA-VAGA");
+    assertEquals(corpo.pixSemChaveDeAssinatura, undefined);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(mp.cancelamentos().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+
+  Deno.test(`PIX sem chave (${loja.nome}): cartão em DESAFIO 3DS na vaga + pedido de PIX -> o cartão NÃO é cancelado, ZERO POST, segue 'em análise'`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await loja.registro(),
+    });
+    const mp = fetchMP({
+      consultar: {
+        status: 200,
+        corpo: orderDeCartao("action_required", "pending_challenge", { id: ORDER_CARTAO_NA_VAGA, url3ds: URL_DESAFIO }),
+      },
+      cancelar: { status: 200, corpo: orderDeCartao("canceled", "canceled", { id: ORDER_CARTAO_NA_VAGA }) },
+      criar: { status: 201, corpo: orderDePix("action_required", "waiting_transfer") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(mp.cancelamentos().length, 0, "o cartão vivo foi cancelado para um PIX que não pode nascer");
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.cartaoEmAnalise, true);
+    assertEquals(corpo.terminal, undefined);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+
+  Deno.test(`PIX sem chave (${loja.nome}): cartão MORTO na vaga + pedido de PIX -> 409 terminal pixSemChaveDeAssinatura, sem liberar, ZERO POST`, async () => {
+    const { supabase, registro, chamadasRpc } = cenarioCartao({
+      pedido: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: ORDER_CARTAO_NA_VAGA, metodo_online: "credito" }),
+      releitura: pedidoBase({ user_id: DONO_LOGADO, gateway_payment_id: null, tentativas_de_pagamento: 1 }),
+      registroMp: await loja.registro(),
+    });
+    const mp = fetchMP({
+      consultar: { status: 200, corpo: orderDeCartao("failed", "failed", { id: ORDER_CARTAO_NA_VAGA }) },
+      criar: { status: 201, corpo: orderDePix("action_required", "waiting_transfer") },
+    });
+
+    const resposta = await emSilencio(() =>
+      handler(requisicao({ orderId: UUID, metodo: "pix" }, montarToken(DONO_LOGADO)), { supabase, fetchImpl: mp.fn })
+    );
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 409);
+    assertEquals(corpo.terminal, true);
+    assertEquals(corpo.pixSemChaveDeAssinatura, true);
+    assertEquals(mp.criacoes().length, 0);
+    assertEquals(chamadasRpc.length, 0);
+    assertEquals(registro.chamadasUpdate, 0);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIRMAÇÃO IMEDIATA (04/10/2026) — a consulta autenticada do cliente
+// confirma o pedido NA HORA quando PROVA que o Mercado Pago capturou.
+//
+// Defeito medido: no ensaio TEST c35ce4dd o `verificar` viu a order
+// `processed:accredited`, a tela disse "Pagamento aprovado! Confirmando seu
+// pedido...", e o banco só virou 'pago' ~2 min depois, pela reconciliação.
+//
+// As fixtures vêm da doc oficial (cartão aprovado:
+// https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/cards
+// — PIX derivado de
+// https://www.mercadopago.com.br/developers/pt/docs/checkout-api-orders/payment-integration/pix;
+// ver o cabeçalho de `_shared/prova-de-pagamento_fixtures.ts`), não de
+// `orderAvulsa`: aquela não traz valor pago, e a prova (com razão) não
+// confirma sem ele.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VAGA_CI = "ORDTST04CONFIRMACAOIMEDIATA00";
+const PUSH_PAGO_CI = { title: "Pedido pago", body: "#4F5A6B · R$ 100,00", url: "/admin-orders" };
+const PUSH_FORA_DO_FLUXO_CI = {
+  title: "Pagamento fora do fluxo",
+  body: "#4F5A6B · R$ 100,00 · estoque já devolvido",
+  url: "/admin-orders",
+};
+
+const cartaoPagoCI = (extra: Record<string, unknown> = {}) => ({
+  ...orderCartaoAprovadaDaDoc({ id: VAGA_CI, externalReference: UUID, valor: "100.00" }),
+  ...extra,
+});
+const pixPagoCI = (extra: Record<string, unknown> = {}) => ({
+  ...orderPixPagaDaDoc({ id: VAGA_CI, externalReference: UUID, valor: "100.00" }),
+  ...extra,
+});
+
+function pagamentoDaOrderCI(o: Record<string, unknown>): Record<string, unknown> {
+  return ((o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>)[0];
+}
+
+function pedidoCI(extra: Record<string, unknown> = {}) {
+  return pedidoBase({
+    user_id: DONO_LOGADO,
+    tentativas_de_pagamento: 0,
+    gateway_payment_id: VAGA_CI,
+    metodo_online: "credito",
+    ...extra,
+  });
+}
+
+/** Os três efeitos, contados — um coletor COMPARTILHADO entre a rota rápida e
+ * o webhook prova "exatamente 1" no total, não "1 por handler". */
+function efeitosCI() {
+  const pushes: unknown[] = [];
+  const comprovantes: string[] = [];
+  const atrasados: string[] = [];
+  return {
+    pushes,
+    comprovantes,
+    atrasados,
+    deps: {
+      enviarPush: async (a: { aviso: unknown }) => {
+        pushes.push(a.aviso);
+      },
+      enviarComprovante: async (a: { orderId: string }) => {
+        comprovantes.push(a.orderId);
+      },
+      enviarAvisoAtrasado: async (a: { orderId: string }) => {
+        atrasados.push(a.orderId);
+      },
+    },
+  };
+}
+
+const confirmacoesCI = (db: { chamadasRpc: Array<{ nome: string; args: Record<string, unknown> }> }) =>
+  db.chamadasRpc.filter((c) => c.nome === "confirmar_pagamento");
+
+async function verificarCI(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown>,
+): Promise<{ status: number; corpo: Record<string, unknown> }> {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const r = await emSilencio(() =>
+    handler(requisicao(PEDIDO_VERIFICAR, montarToken(DONO_LOGADO)), {
+      supabase: db as never,
+      fetchImpl: mp.fn as typeof fetch,
+      alertarAdminCartaoOrfao: async () => {},
+      ...deps,
+    })
+  );
+  return { status: r.status, corpo: await r.json() };
+}
+
+async function reconsultarCI(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  corpo: Record<string, unknown>,
+  deps: Record<string, unknown>,
+): Promise<{ status: number; corpo: Record<string, unknown> }> {
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const r = await emSilencio(() =>
+    handler(requisicao(corpo, montarToken(DONO_LOGADO)), {
+      supabase: db as never,
+      fetchImpl: mp.fn as typeof fetch,
+      alertarAdminCartaoOrfao: async () => {},
+      ...deps,
+    })
+  );
+  return { status: r.status, corpo: await r.json() };
+}
+
+// ── (1) o caminho que fecha o defeito ─────────────────────────────────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (1): verificar + cartão pago com PROVA -> confirmar_pagamento 1x com os args EXATOS, push e comprovante 1x, responde 'pago' pelo BANCO; ZERO POST/PUT no MP", async () => {
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(db.chamadasRpc, [{
+    nome: "confirmar_pagamento",
+    args: { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" },
+  }]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+  assertEquals(escritas.length, 0, "a confirmação é a RPC, nunca um UPDATE direto");
+  assertEquals(mp.posts, []);
+  assertEquals(mp.chamadas, [`GET https://api.mercadopago.com/v1/orders/${VAGA_CI}`]);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (1b): repetir o verificar depois de confirmado -> 'pago' pela ENTRADA, sem MP, sem RPC, sem efeito novo", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  await verificarCI(contado, mp, ef.deps);
+  const segunda = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(segunda.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(mp.chamadas.length, 1);
+  assertEquals(ef.pushes.length, 1);
+  assertEquals(ef.comprovantes.length, 1);
+});
+
+// ── (2) e (3): a transição é da RPC, não desta rota ───────────────────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (2): o webhook confirmou entre a releitura e a RPC -> 'ja_pago': responde 'pago', ZERO efeito", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI(), {
+    antesDeConfirmar: (linha) => {
+      linha.payment_status = "pago";
+      return undefined;
+    },
+  });
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200);
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(ef.pushes, []);
+  assertEquals(ef.comprovantes, []);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (3): o pg_cron expirou o pedido entre a releitura e a RPC -> 'pago_apos_expirar': push 'fora do fluxo' + aviso ATRASADO, nunca o comprovante", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI(), {
+    antesDeConfirmar: (linha) => {
+      linha.payment_status = "expirado";
+      linha.status = "cancelled";
+      return undefined;
+    },
+  });
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200);
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(db.linha.payment_status, "pago_apos_expirar");
+  assertEquals(ef.pushes, [PUSH_FORA_DO_FLUXO_CI]);
+  assertEquals(ef.comprovantes, []);
+  assertEquals(ef.atrasados, [UUID]);
+});
+
+// ── (4) a RPC não confirmou: contrato de antes, nunca 503 ─────────────────
+
+for (
+  const caso of [
+    { nome: "'divergente'", resposta: () => ({ data: "divergente", error: null }) },
+    { nome: "'ignorado'", resposta: () => ({ data: "ignorado", error: null }) },
+    { nome: "'inexistente'", resposta: () => ({ data: "inexistente", error: null }) },
+    { nome: "{ error }", resposta: () => ({ data: null, error: { code: "57014", message: "statement timeout" } }) },
+    { nome: "exceção", resposta: () => Promise.reject(new Error("rede caiu")) },
+  ]
+) {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA (4): a RPC devolve ${caso.nome} -> ZERO efeito, resposta do contrato de antes ('pago' pela order, 200 — nunca 503), nenhuma cobrança`, async () => {
+    const { db, contado } = bancoContandoEscritas(pedidoCI(), { antesDeConfirmar: caso.resposta });
+    const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+    const ef = efeitosCI();
+    const r = await verificarCI(contado, mp, ef.deps);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+    assertEquals(confirmacoesCI(db).length, 1);
+    assertEquals(db.linha.payment_status, "aguardando");
+    assertEquals(ef.pushes, []);
+    assertEquals(ef.comprovantes, []);
+    assertEquals(ef.atrasados, []);
+    assertEquals(mp.posts, []);
+  });
+}
+
+// ── (5) cada falha de prova, isolada: ZERO RPC ────────────────────────────
+
+// Cópia SEM os campos (Object.entries + filter, não `delete o[c]`: indexar
+// por variável é o `security/detect-object-injection` da catraca).
+const semCampo = (o: Record<string, unknown>, ...campos: string[]): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(o).filter(([chave]) => !campos.includes(chave)));
+
+for (
+  const caso of [
+    { nome: "external_reference de OUTRO pedido", order: () => cartaoPagoCI({ external_reference: "9e9e9e9e-1111-2222-3333-444455556666" }) },
+    {
+      nome: "100,06 contra o total 100",
+      order: () => {
+        const o = cartaoPagoCI({ total_amount: "100.06" });
+        pagamentoDaOrderCI(o).amount = "100.06";
+        return o;
+      },
+    },
+    {
+      nome: "valor AUSENTE",
+      order: () => {
+        const o = semCampo(cartaoPagoCI(), "total_amount");
+        delete pagamentoDaOrderCI(o).amount;
+        return o;
+      },
+    },
+    { nome: "processed:partially_refunded", order: () => cartaoPagoCI({ status_detail: "partially_refunded" }) },
+    { nome: "action_required:waiting_capture", order: () => cartaoPagoCI({ status: "action_required", status_detail: "waiting_capture" }) },
+    { nome: "processing:in_process", order: () => cartaoPagoCI({ status: "processing", status_detail: "in_process" }) },
+    { nome: "\"approved\" na raiz", order: () => cartaoPagoCI({ status: "approved" }) },
+    {
+      nome: "pagamento refunded",
+      order: () => {
+        const o = cartaoPagoCI();
+        pagamentoDaOrderCI(o).status = "refunded";
+        pagamentoDaOrderCI(o).status_detail = "refunded";
+        return o;
+      },
+    },
+    { nome: "currency_id USD", order: () => cartaoPagoCI({ currency_id: "USD" }) },
+    { nome: "type qr", order: () => cartaoPagoCI({ type: "qr" }) },
+    { nome: "country_code AR", order: () => cartaoPagoCI({ country_code: "AR" }) },
+    {
+      nome: "2 pagamentos",
+      order: () => {
+        const o = cartaoPagoCI();
+        const lista = (o.transactions as Record<string, unknown>).payments as Array<Record<string, unknown>>;
+        lista.push({ ...lista[0], id: "PAY-SEGUNDO" });
+        return o;
+      },
+    },
+    { nome: "valor pago 0 na raiz", order: () => cartaoPagoCI({ total_paid_amount: "0.00" }) },
+    { nome: "valor pago PARCIAL (60 de 100)", order: () => cartaoPagoCI({ total_paid_amount: "60.00" }) },
+    {
+      nome: "refunds[] não vazio",
+      order: () => {
+        const o = cartaoPagoCI();
+        (o.transactions as Record<string, unknown>).refunds = [{ id: "REF1", amount: "10.00", status: "processed" }];
+        return o;
+      },
+    },
+    {
+      nome: "chargebacks[] não vazio",
+      order: () => {
+        const o = cartaoPagoCI();
+        (o.transactions as Record<string, unknown>).chargebacks = [{ id: "CBK1", status: "in_process" }];
+        return o;
+      },
+    },
+    {
+      nome: "valor pago AUSENTE (pendente)",
+      order: () => {
+        const o = semCampo(cartaoPagoCI(), "total_paid_amount");
+        delete pagamentoDaOrderCI(o).paid_amount;
+        return o;
+      },
+    },
+  ]
+) {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA (5): ${caso.nome} -> ZERO RPC, ZERO efeito, nada gravado, ZERO POST`, async () => {
+    const { db, contado, escritas } = bancoContandoEscritas(pedidoCI());
+    const mp = mpDaConsulta({ orders: [caso.order()] });
+    const ef = efeitosCI();
+    const r = await verificarCI(contado, mp, ef.deps);
+
+    assertEquals(r.status, 200, JSON.stringify(r.corpo));
+    assertEquals(confirmacoesCI(db), []);
+    assertEquals(db.linha.payment_status, "aguardando");
+    assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+    assertEquals(escritas.length, 0);
+    assertEquals(mp.posts, []);
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (5b): valor pago AUSENTE -> a resposta é a de ANTES ('pago' pela order, nunca afirmado pelo banco), sem RPC", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const o = semCampo(cartaoPagoCI(), "total_paid_amount");
+  delete pagamentoDaOrderCI(o).paid_amount;
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [o] }), efeitosCI().deps);
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db), []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (5c): juros — valor pago MAIOR que o pedido (112,40 de 100) confirma", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI({ total_paid_amount: "112.40" })] }), ef.deps);
+  assertEquals(r.corpo.verificacao, "pago");
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+});
+
+// ── (6) pedido já pago na entrada ─────────────────────────────────────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (6): pedido que já CHEGA 'pago' -> ZERO MP, ZERO RPC, ZERO efeito", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ payment_status: "pago" }));
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(mp.chamadas, []);
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length, 0);
+});
+
+// ── (7) sentinela: a prova usa o objeto do GET, nunca o da busca ──────────
+
+/** MP com DOIS retratos da mesma order: o da BUSCA e o do GET por id. */
+function mpBuscaEGetCI(daBusca: Record<string, unknown>, doGet: Record<string, unknown>) {
+  const chamadas: string[] = [];
+  const posts: string[] = [];
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    chamadas.push(`${verbo} ${url.split("?")[0]}`);
+    if (verbo !== "GET") {
+      posts.push(url);
+      throw new Error(`o verificar nunca faz ${verbo}: ${url}`);
+    }
+    if (url.includes("/v1/orders?")) return new Response(JSON.stringify({ data: [daBusca] }), { status: 200 });
+    if (url.includes(`/v1/orders/${VAGA_CI}`)) return new Response(JSON.stringify(doGet), { status: 200 });
+    return new Response(JSON.stringify({ message: "not_found" }), { status: 404 });
+  };
+  return { fn, chamadas, posts };
+}
+
+function sentinelaCI() {
+  const limite = Date.now() - 10 * 60 * 1000;
+  const sentinela = sentinelaDeTeste(`${UUID}:c0`, limite);
+  return { limite, sentinela };
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (7): sentinela -> busca -> adoção -> GET por id -> a prova roda sobre o objeto do GET (a busca SEM valor pago; o GET completo) -> confirma", async () => {
+  const { limite, sentinela } = sentinelaCI();
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ gateway_payment_id: sentinela, metodo_online: null }));
+  const completa = { ...cartaoPagoCI(), date_created: new Date(limite + 60_000).toISOString() };
+  const resumoDaBusca = semCampo({ ...completa }, "total_paid_amount");
+  resumoDaBusca.transactions = {
+    payments: [semCampo({ ...pagamentoDaOrderCI(completa) }, "paid_amount")],
+  };
+  const mp = mpBuscaEGetCI(resumoDaBusca, completa);
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(mp.chamadas, [
+    "GET https://api.mercadopago.com/v1/orders",
+    `GET https://api.mercadopago.com/v1/orders/${VAGA_CI}`,
+  ]);
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [{ p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" }]);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (7b): o INVERSO — a busca COMPLETA e o GET sem valor pago -> ZERO RPC (a busca nunca prova)", async () => {
+  const { limite, sentinela } = sentinelaCI();
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ gateway_payment_id: sentinela, metodo_online: null }));
+  const completa = { ...cartaoPagoCI(), date_created: new Date(limite + 60_000).toISOString() };
+  const getSemPago = semCampo({ ...completa }, "total_paid_amount");
+  getSemPago.transactions = { payments: [semCampo({ ...pagamentoDaOrderCI(completa) }, "paid_amount")] };
+  const mp = mpBuscaEGetCI(completa, getSemPago);
+  const r = await verificarCI(contado, mp, efeitosCI().deps);
+
+  assertEquals(r.corpo.verificacao, "pago");
+  assertEquals(db.linha.gateway_payment_id, VAGA_CI, "a adoção continua acontecendo");
+  assertEquals(confirmacoesCI(db), []);
+});
+
+// ── (8) PIX ───────────────────────────────────────────────────────────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (8): verificar + PIX PAGO na vaga com prova -> confirma e responde 'pago' (antes: 'pix'); push e comprovante 1x", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const mp = mpDaConsulta({ orders: [pixPagoCI()] });
+  const ef = efeitosCI();
+  const r = await verificarCI(contado, mp, ef.deps);
+
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (8b): PIX AINDA ABERTO na vaga -> 'pix' como antes, ZERO RPC", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const aberto = pixPagoCI({ status: "action_required", status_detail: "waiting_transfer" });
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [aberto] }), efeitosCI().deps);
+  assertEquals(r.corpo, { verificacao: "pix", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db), []);
+});
+
+// ── (9) id clássico ───────────────────────────────────────────────────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (9): id CLÁSSICO na vaga -> 'pix' sem tocar o MP, ZERO RPC", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ gateway_payment_id: "123456789", metodo_online: "pix" }));
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI({ id: "123456789" })] });
+  const r = await verificarCI(contado, mp, efeitosCI().deps);
+  assertEquals(r.corpo, { verificacao: "pix", paymentId: "123456789", expiraEm: PRAZO_BASE });
+  assertEquals(mp.chamadas, []);
+  assertEquals(confirmacoesCI(db), []);
+});
+
+// ── (10) efeito lento ou quebrado não atrasa nem muda a resposta ──────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (10): com EdgeRuntime.waitUntil, um push que NUNCA termina não segura a resposta; o efeito vai para o waitUntil", async () => {
+  const global = globalThis as { EdgeRuntime?: unknown };
+  const antes = global.EdgeRuntime;
+  const entregues: Promise<unknown>[] = [];
+  global.EdgeRuntime = { waitUntil: (p: Promise<unknown>) => entregues.push(p) };
+  try {
+    const { db, contado } = bancoContandoEscritas(pedidoCI());
+    const ef = efeitosCI();
+    const inicio = Date.now();
+    const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), {
+      ...ef.deps,
+      enviarPush: () => new Promise<void>(() => {}),
+    });
+    const levou = Date.now() - inicio;
+
+    assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+    assertEquals(confirmacoesCI(db).length, 1);
+    assertEquals(entregues.length, 1, "os efeitos saem pelo waitUntil");
+    assertEquals(levou < 1000, true, `a resposta esperou o push: ${levou} ms`);
+  } finally {
+    global.EdgeRuntime = antes;
+  }
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (10b): push e comprovante que LANÇAM -> a resposta é a MESMA ('pago', 200)", async () => {
+  const { contado } = bancoContandoEscritas(pedidoCI());
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), {
+    enviarPush: () => Promise.reject(new Error("push fora")),
+    enviarComprovante: () => {
+      throw new Error("smtp fora");
+    },
+    enviarAvisoAtrasado: async () => {},
+  });
+  assertEquals(r.status, 200);
+  assertEquals(r.corpo, { verificacao: "pago", paymentId: VAGA_CI, expiraEm: PRAZO_BASE });
+});
+
+// ── Reconsulta: ramos (a) cartão pago e (e) PIX pago ──────────────────────
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-a): reconsulta de CARTÃO com cartão PAGO na vaga e prova -> RPC 1x, efeitos 1x, resposta de SEMPRE, ZERO POST", async () => {
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  const ef = efeitosCI();
+  const r = await reconsultarCI(contado, mp, corpoCartao(), ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [{ p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" }]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(escritas.length, 0);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-e): reconsulta de PIX com PIX PAGO na vaga e prova -> RPC 1x, efeitos 1x, a MESMA resposta com o QR", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ metodo_online: "pix" }));
+  const mp = mpDaConsulta({ orders: [pixPagoCI()] });
+  const ef = efeitosCI();
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.paymentId, VAGA_CI);
+  assertEquals(r.corpo.statusPagamento, "pago");
+  assertEquals(r.corpo.qrCode, "00020126580014br.gov.bcb.pix-exemplo-da-doc");
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-convidado): reconsulta de PIX pago num pedido de CONVIDADO -> ZERO RPC (dono autenticado é condição), resposta de sempre", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ user_id: null, metodo_online: "pix" }));
+  const mp = mpDaConsulta({ orders: [pixPagoCI()] });
+  const r = await reconsultarCI(contado, mp, { orderId: UUID, metodo: "pix" }, efeitosCI().deps);
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.statusPagamento, "pago");
+  assertEquals(confirmacoesCI(db), []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-sem-prova): reconsulta de cartão pago PARCIAL -> ZERO RPC, ZERO efeito, resposta de sempre", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const ef = efeitosCI();
+  const r = await reconsultarCI(
+    contado,
+    mpDaConsulta({ orders: [cartaoPagoCI({ total_paid_amount: "60.00" })] }),
+    corpoCartao(),
+    ef.deps,
+  );
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(ef.pushes.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-releitura): o pg_cron EXPIRA o pedido durante o GET da reconsulta -> a releitura não está 'aguardando': ZERO RPC (a confirmação fica para o webhook), resposta de sempre", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({
+    orders: [cartaoPagoCI()],
+    aoConsultar: () => {
+      db.linha.payment_status = "expirado";
+      db.linha.status = "cancelled";
+    },
+  });
+  const ef = efeitosCI();
+  const r = await reconsultarCI(contado, mp, corpoCartao(), ef.deps);
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(ef.pushes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-vaga-trocada): a vaga é lida como A, o GET de A volta PAGO, e a vaga vira B antes da releitura -> ZERO RPC, ZERO efeito, nenhum 'dinheiro aprovado sem registro' falso (a prova usa a vaga RELIDA, não o id consultado)", async () => {
+  const OUTRA_VAGA = "ORDTST04OUTRAVAGADEPOISDOGET0";
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({
+    orders: [cartaoPagoCI()],
+    // Durante o GET de A: o pedido troca de cobrança (a vaga foi liberada e
+    // outra aba ocupou com B). A releitura da reconsulta passa a ver B.
+    aoConsultar: () => {
+      db.linha.gateway_payment_id = OUTRA_VAGA;
+    },
+  });
+  const ef = efeitosCI();
+  Deno.env.set("MP_ACCESS_TOKEN", "token-de-teste");
+  const erros: unknown[][] = [];
+  const avisos: unknown[][] = [];
+  const erroOriginal = console.error;
+  const avisoOriginal = console.warn;
+  console.error = (...a: unknown[]) => {
+    erros.push(a);
+  };
+  console.warn = (...a: unknown[]) => {
+    avisos.push(a);
+  };
+  let r: Response;
+  try {
+    r = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+      supabase: contado as never,
+      fetchImpl: mp.fn as typeof fetch,
+      alertarAdminCartaoOrfao: async () => {},
+      ...ef.deps,
+    });
+  } finally {
+    console.error = erroOriginal;
+    console.warn = avisoOriginal;
+  }
+  const corpo = await r.json();
+
+  // A resposta é a de sempre: a order DA VAGA LIDA (A) está paga.
+  assertEquals(r.status, 200, JSON.stringify(corpo));
+  assertEquals(corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+  // Nada foi confirmado: a RPC nem foi chamada (com a vaga B no banco ela só
+  // devolveria 'divergente' e a rota gritaria "dinheiro aprovado sem registro").
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(db.linha.gateway_payment_id, OUTRA_VAGA);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  assertEquals(
+    erros.some((a) => String(a[0]).includes("desfecho inesperado")),
+    false,
+    "alarme falso de dinheiro aprovado sem registro",
+  );
+  // A recusa é por vaga e deixa rastro no log (a prova nomeia quem recusou).
+  assertEquals(
+    avisos.some((a) => String(a[0]).includes("sem PROVA") && (a[1] as Record<string, unknown>)?.motivo === "vaga"),
+    true,
+    JSON.stringify(avisos),
+  );
+  assertEquals(mp.posts, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (R-rpc-falha): reconsulta com a RPC lançando -> a MESMA resposta, nunca 503", async () => {
+  const { contado } = bancoContandoEscritas(pedidoCI(), {
+    antesDeConfirmar: () => Promise.reject(new Error("banco caiu")),
+  });
+  const r = await reconsultarCI(contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), corpoCartao(), efeitosCI().deps);
+  assertEquals(r.status, 200);
+  assertEquals(r.corpo, { paymentId: VAGA_CI, statusPagamento: "pago", expiraEm: PRAZO_BASE });
+});
+
+// ── (12) a criação confirma pela MESMA prova — do GET por id, nunca do POST ──
+//
+// Desenho "cartão aprovado já no POST" (04/10/2026): o POST aprovado na hora
+// só dispara a confirmação; quem PROVA é o GET por id da vaga relida, pela
+// mesma `provarPagamentoPelaConsulta` do `verificar`. O objeto do POST nunca
+// é prova (`_shared/prova-de-pagamento.ts`, regra (a)).
+
+/** O corpo que a tela recebe de um cartão aprovado na criação — o mesmo de
+ * ANTES do desenho, byte a byte (a confirmação roda em segundo plano). */
+const CORPO_DA_CRIACAO_APROVADA =
+  `{"paymentId":"${ORDER_CARTAO}","statusPagamento":"pago","expiraEm":"2099-01-01T00:00:00.000Z"}`;
+
+const aprovadaDaCriacao = (extra: Record<string, unknown> = {}) => ({
+  ...orderCartaoAprovadaDaDoc({ id: ORDER_CARTAO, externalReference: UUID, valor: "100.00" }),
+  ...extra,
+});
+
+/**
+ * MP falso da CRIAÇÃO: POST /v1/orders devolve o cartão aprovado; o GET por id
+ * da order é configurável. Preso a rota, método e `Authorization` (a
+ * credencial é a mesma do POST). Rota fora disto ESTOURA.
+ * - `get` objeto: 200 com esse corpo; número: esse status de erro;
+ *   "rede": o fetch lança; "preso": só volta quando o teste solta.
+ * - `aoPostar`/`aoConsultar`: simulam o mundo mudando no meio da chamada.
+ */
+function mpDaCriacaoComGet(opts: {
+  post?: Record<string, unknown>;
+  get?: Record<string, unknown> | number | "rede" | "preso";
+  aoPostar?: () => void;
+  // Como `aoPostar`, AGUARDADO antes de o POST responder (o webhook chega com a
+  // vaga ainda no sentinela — CORRIDAS T3).
+  aoPostarAssinc?: () => Promise<void>;
+  aoConsultar?: () => void;
+  // Como `aoConsultar`, mas AGUARDADO antes de o GET responder: deixa o teste
+  // entregar um webhook de verdade no meio da chamada (CORRIDAS T3).
+  aoConsultarAssinc?: () => Promise<void>;
+  // Um PIX concorrente ABERTO na vaga: o GET dele e o cancelamento são servidos.
+  pixOcupante?: { id: string; aberto: Record<string, unknown>; cancelado: Record<string, unknown> };
+} = {}) {
+  const chamadas: Array<{ verbo: string; url: string; autorizacao?: string }> = [];
+  let soltar: (() => void) | null = null;
+  const fn = async (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    const autorizacao = (init?.headers as Record<string, string> | undefined)?.Authorization;
+    chamadas.push({ verbo, url, autorizacao });
+    if (verbo === "POST" && url.endsWith("/v1/orders")) {
+      opts.aoPostar?.();
+      if (opts.aoPostarAssinc) await opts.aoPostarAssinc();
+      return new Response(JSON.stringify(opts.post ?? aprovadaDaCriacao()), { status: 201 });
+    }
+    const pix = opts.pixOcupante;
+    if (pix && verbo === "GET" && url === `https://api.mercadopago.com/v1/orders/${pix.id}`) {
+      return new Response(JSON.stringify(pix.aberto), { status: 200 });
+    }
+    if (pix && verbo === "POST" && url === `https://api.mercadopago.com/v1/orders/${pix.id}/cancel`) {
+      return new Response(JSON.stringify(pix.cancelado), { status: 200 });
+    }
+    if (verbo === "GET" && url === `https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`) {
+      opts.aoConsultar?.();
+      if (opts.aoConsultarAssinc) await opts.aoConsultarAssinc();
+      const g = opts.get;
+      if (g === undefined) throw new Error(`GET sem rota configurada neste teste: ${url}`);
+      if (g === "rede") throw new Error("rede caiu");
+      if (g === "preso") {
+        await new Promise<void>((resolver) => {
+          soltar = resolver;
+        });
+        return new Response(JSON.stringify({ message: "not_found" }), { status: 404 });
+      }
+      if (typeof g === "number") return new Response(JSON.stringify({ message: "erro" }), { status: g });
+      return new Response(JSON.stringify(g), { status: 200 });
+    }
+    throw new Error(`fetch inesperado na criação: ${verbo} ${url}`);
+  };
+  return {
+    fn,
+    chamadas,
+    // Só as chamadas da ORDER do cartão (o GET do PIX ocupante e o cancelamento
+    // dele não contam como "GET da criação").
+    gets: () => chamadas.filter((c) => c.verbo === "GET" && c.url.endsWith(`/${ORDER_CARTAO}`)),
+    posts: () => chamadas.filter((c) => c.verbo === "POST" && c.url.endsWith("/v1/orders")),
+    soltarGet: () => soltar?.(),
+  };
+}
+
+async function criarCartaoCI(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown> = {},
+  authorization = montarToken(DONO_LOGADO),
+): Promise<{ status: number; texto: string }> {
+  const resposta = await emSilencio(() =>
+    handler(requisicao(corpoCartao(), authorization), {
+      supabase: db as never,
+      fetchImpl: mp.fn as typeof fetch,
+      credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS,
+      alertarAdminCartaoOrfao: async () => {},
+      ...deps,
+    })
+  );
+  return { status: resposta.status, texto: await resposta.text() };
+}
+
+const pedidoDaCriacaoCI = () => pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 });
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12): a CRIAÇÃO de um cartão aprovado na hora confirma pela prova do GET por id — RPC 1x com os args exatos, push 1x, comprovante 1x, 1 POST e 1 GET, resposta byte a byte a de antes", async () => {
+  const { db, contado, escritas } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+  assertEquals(mp.posts().length, 1);
+  assertEquals(mp.gets().map((c) => c.url), [`https://api.mercadopago.com/v1/orders/${ORDER_CARTAO}`]);
+  // MESMA credencial do POST.
+  assertEquals(mp.gets()[0].autorizacao, mp.posts()[0].autorizacao);
+  assertEquals(mp.gets()[0].autorizacao, `Bearer ${CREDENCIAIS_LOJISTA_FIXAS.token}`);
+  // A confirmação é a RPC: nenhuma escrita direta de payment_status.
+  assertEquals(escritas.every((v) => !("payment_status" in v)), true);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12b): a PROVA é a do GET, nunca a do POST — POST 'accredited' com GET 'processing' -> ZERO RPC (mata o mutante 'passa o objeto do POST à prova')", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao({ status: "processing", status_detail: "in_process" }) });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  assertEquals(mp.gets().length, 1);
+});
+
+// ── (12c) cada falha da confirmação, isolada: a resposta é a MESMA ────────
+
+for (
+  const caso of [
+    { nome: "GET com falha de rede (status 0)", get: "rede" as const },
+    { nome: "GET 500", get: 500 },
+    { nome: "GET 404", get: 404 },
+    {
+      nome: "GET com order.id DIFERENTE da vaga",
+      get: aprovadaDaCriacao({ id: "ORDTST01OUTRAORDEMNOGET000000" }),
+    },
+    {
+      nome: "valor +R$ 0,06 (100,06 contra o total 100)",
+      get: (() => {
+        const o = aprovadaDaCriacao({ total_amount: "100.06" });
+        pagamentoDaOrderCI(o).amount = "100.06";
+        return o;
+      })(),
+    },
+    { nome: "valor pago PARCIAL (60 de 100)", get: aprovadaDaCriacao({ total_paid_amount: "60.00" }) },
+    {
+      nome: "external_reference de OUTRO pedido",
+      get: aprovadaDaCriacao({ external_reference: "9e9e9e9e-1111-2222-3333-444455556666" }),
+    },
+  ]
+) {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA (12c): ${caso.nome} -> ZERO RPC, ZERO efeito, pedido segue aguardando, resposta byte a byte a de antes`, async () => {
+    const { db, contado, escritas } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: caso.get });
+    const ef = efeitosCI();
+    const r = await criarCartaoCI(contado, mp, ef.deps);
+
+    assertEquals(r.status, 200, r.texto);
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(confirmacoesCI(db), []);
+    assertEquals(db.chamadasRpc, []);
+    assertEquals(db.linha.payment_status, "aguardando");
+    assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+    assertEquals(escritas.every((v) => !("payment_status" in v)), true);
+    assertEquals(mp.posts().length, 1);
+    assertEquals(mp.gets().length, 1);
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12d): releitura 'expirado' (o pg_cron expirou DURANTE o GET) -> ZERO RPC, ZERO efeito, resposta a de antes", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoConsultar: () => {
+      db.linha.payment_status = "expirado";
+      db.linha.status = "cancelled";
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(db.linha.payment_status, "expirado");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12e): a RPC LANÇA -> a resposta continua 200 'pago' a de antes, nada gravado, ZERO efeito", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI(), {
+    antesDeConfirmar: () => Promise.reject(new Error("banco caiu")),
+  });
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12f): pedido de CONVIDADO (user_id nulo) -> 403 'exige conta' como sempre, ZERO GET, ZERO RPC (a condição user_id do gancho é defesa em profundidade)", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoBase({ user_id: null, tentativas_de_pagamento: 0 }));
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 403);
+  assertEquals(mp.chamadas, []);
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12g): cartão EM ANÁLISE (processing) na criação -> o gancho NÃO roda: ZERO GET, ZERO RPC", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    post: aprovadaDaCriacao({ status: "processing", status_detail: "in_process" }),
+    get: aprovadaDaCriacao(),
+  });
+  const r = await criarCartaoCI(contado, mp, efeitosCI().deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(JSON.parse(r.texto).statusPagamento, "aguardando");
+  assertEquals(mp.gets().length, 0);
+  assertEquals(db.chamadasRpc, []);
+});
+
+// ── (12h) com o runtime do Edge: UM waitUntil, e a resposta não espera ────
+
+/** Instala um `EdgeRuntime.waitUntil` falso que guarda as promessas. */
+function comEdgeRuntimeFalso<T>(corpo: (entregues: Promise<unknown>[]) => Promise<T>): Promise<T> {
+  const global = globalThis as { EdgeRuntime?: unknown };
+  const antes = global.EdgeRuntime;
+  const entregues: Promise<unknown>[] = [];
+  global.EdgeRuntime = { waitUntil: (p: Promise<unknown>) => entregues.push(p) };
+  return corpo(entregues).finally(() => {
+    global.EdgeRuntime = antes;
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12h): com EdgeRuntime.waitUntil a criação registra EXATAMENTE UMA promessa (sem waitUntil aninhado), e ela só resolve DEPOIS de o push e o comprovante resolverem", () =>
+  comEdgeRuntimeFalso(async (entregues) => {
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+    let soltarPush!: () => void;
+    let soltarComprovante!: () => void;
+    const feitos: string[] = [];
+    const deps = {
+      enviarPush: async () => {
+        await new Promise<void>((r) => (soltarPush = r));
+        feitos.push("push");
+      },
+      enviarComprovante: async () => {
+        await new Promise<void>((r) => (soltarComprovante = r));
+        feitos.push("comprovante");
+      },
+      enviarAvisoAtrasado: async () => {},
+    };
+    const inicio = Date.now();
+    const r = await criarCartaoCI(contado, mp, deps);
+    const levou = Date.now() - inicio;
+
+    // A resposta saiu sem esperar nada do segundo plano.
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(levou < 1000, true, `a resposta esperou o segundo plano: ${levou} ms`);
+    assertEquals(entregues.length, 1, "UM waitUntil, registrado antes da resposta");
+
+    let resolveu = false;
+    entregues[0].then(() => {
+      resolveu = true;
+    });
+    const tique = () => new Promise<void>((r) => setTimeout(r, 20));
+    await tique();
+    // A RPC já rodou (a confirmação AGUARDA o efeito), mas o efeito pendura.
+    assertEquals(confirmacoesCI(db).length, 1);
+    assertEquals(resolveu, false, "a promessa entregue resolveu antes dos efeitos");
+    assertEquals(entregues.length, 1, "nenhum waitUntil novo depois do primeiro");
+
+    // Solta o push: o comprovante ainda pendura -> a promessa segue aberta.
+    soltarPush();
+    await tique();
+    assertEquals(resolveu, false, "resolveu sem o comprovante");
+    soltarComprovante();
+    await entregues[0];
+    assertEquals(resolveu, true);
+    assertEquals(feitos.sort(), ["comprovante", "push"]);
+    assertEquals(entregues.length, 1);
+  }));
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12i): com EdgeRuntime.waitUntil e um GET que NUNCA volta, a resposta sai mesmo assim (a confirmação vai para o waitUntil e nada foi confirmado ainda)", () =>
+  comEdgeRuntimeFalso(async (entregues) => {
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: "preso" });
+    const ef = efeitosCI();
+    const inicio = Date.now();
+    const r = await criarCartaoCI(contado, mp, ef.deps);
+    const levou = Date.now() - inicio;
+
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(levou < 1000, true, `a resposta esperou o GET: ${levou} ms`);
+    assertEquals(entregues.length, 1);
+    assertEquals(db.chamadasRpc, []);
+    // Solta o GET (404) para o teste não deixar timer pendurado.
+    mp.soltarGet();
+    await entregues[0];
+    assertEquals(db.chamadasRpc, []);
+    assertEquals(ef.pushes.length + ef.comprovantes.length, 0);
+  }));
+
+// ── (12j) as duas saídas de sucesso da criação que o gancho cobre/não cobre ──
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12j): a saída `vagaAdotada` (um PIX concorrente aberto ocupou a vaga; é cancelado e o cartão aprovado é adotado) também confirma 1x pela prova do GET — mesma resposta, 1 push, 1 comprovante", async () => {
+  const idPix = "ORDTST01PIXCONCORRENTE000000";
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    // O PIX concorrente grava a vaga enquanto o POST do cartão está no ar: a
+    // gravação final perde, o PIX é cancelado e o cartão aprovado é adotado.
+    aoPostar: () => {
+      db.linha.gateway_payment_id = idPix;
+    },
+    pixOcupante: {
+      id: idPix,
+      aberto: orderDePix("action_required", "waiting_transfer", idPix),
+      cancelado: orderDePix("canceled", "canceled", idPix),
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "a saída `vagaAdotada` foi a que respondeu");
+  assertEquals(mp.chamadas.some((c) => c.url.endsWith(`/${idPix}/cancel`)), true, "o PIX concorrente foi cancelado");
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(mp.gets().length, 1);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12k): a CONVERGÊNCIA (o webhook já adotou esta mesma order antes do UPDATE da criação) NÃO confirma pela criação — ZERO GET da criação, ZERO RPC, mesma resposta", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoPostar: () => {
+      db.linha.gateway_payment_id = ORDER_CARTAO;
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(mp.gets().length, 0, "a convergência nunca faz GET da criação");
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12l): a adoção da BLINDAGEM (o sentinela da MESMA chave, gravado por outra aba durante o POST, é trocado pela order aprovada) também confirma 1x pela prova do GET — 1 RPC, 1 push, 1 comprovante, mesmo corpo", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoPostar: () => {
+      db.linha.gateway_payment_id = `verificando:${UUID}:c0:1790000000000`;
+    },
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "a adoção da blindagem foi a que respondeu");
+  assertEquals(db.linha.metodo_online, "credito");
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(mp.gets().length, 1);
+});
+
+/** A notificação soltou a vaga e AVANÇOU a tentativa durante o POST: a criação
+ * perde a gravação, relê a linha (vaga livre, tentativa 1 ≠ 0) e cai no ramo
+ * que decide pelo GET da order (`adotadaPeloGet`). */
+const tentativaAvancouNoPost = (db: { linha: Record<string, unknown> }) => () => {
+  db.linha.gateway_payment_id = null;
+  db.linha.tentativas_de_pagamento = 1;
+};
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12m): o ramo `adotadaPeloGet` com a order PAGA no GET confirma 1x — o GET do ramo NÃO é a prova: há um GET NOVO + a mesma prova (2 GETs, 1 RPC, 1 push, 1 comprovante), mesmo corpo", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao(), aoPostar: tentativaAvancouNoPost(db) });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "o ramo `adotadaPeloGet` adotou a order na vaga livre");
+  assertEquals(mp.gets().length, 2, "1 GET do próprio ramo + 1 GET novo da confirmação");
+  assertEquals(confirmacoesCI(db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+  ]);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (12n): o ramo `adotadaPeloGet` com a order NÃO paga no GET (em análise) NÃO confirma — ZERO GET extra (só o do ramo), ZERO RPC, a resposta diz o status do GET", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao({ status: "processing", status_detail: "in_process" }),
+    aoPostar: tentativaAvancouNoPost(db),
+  });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(JSON.parse(r.texto).statusPagamento !== "pago", true, r.texto);
+  assertEquals(db.linha.gateway_payment_id, ORDER_CARTAO, "o ramo `adotadaPeloGet` adotou a order");
+  assertEquals(mp.gets().length, 1, "só o GET do próprio ramo");
+  assertEquals(db.chamadasRpc, []);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+});
+
+// ── Webhook de verdade: paridade do push e concorrência ───────────────────
+
+async function assinarWebhookCI(dataId: string, ts: number, requestId: string): Promise<string> {
+  const manifesto = `id:${dataId};request-id:${requestId};ts:${ts};`;
+  const chave = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(WEBHOOK_LOJISTA_FALSO),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const assinado = await crypto.subtle.sign("HMAC", chave, new TextEncoder().encode(manifesto));
+  return Array.from(new Uint8Array(assinado)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Uma entrega do webhook da order `VAGA_CI`, assinada com o segredo DO
+ * LOJISTA (o registro que `bancoComEstado` serve em app_settings). */
+async function entregarWebhookCI(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown>,
+  // Default: a order dos testes de `verificar`. As CORRIDAS da criação passam
+  // `ORDER_CARTAO`, a order que o POST de criação grava na vaga.
+  orderId: string = VAGA_CI,
+): Promise<{ status: number; corpo: Record<string, unknown> }> {
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = `req-${crypto.randomUUID()}`;
+  const v1 = await assinarWebhookCI(orderId, ts, requestId);
+  const req = new Request("http://localhost/webhook-mercadopago", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-signature": `ts=${ts},v1=${v1}`, "x-request-id": requestId },
+    body: JSON.stringify({ type: "order", action: "order.processed", data: { id: orderId } }),
+  });
+  const r = await emSilencio(() =>
+    handlerDoWebhook(req, { supabase: db as never, fetchImpl: mp.fn as typeof fetch, ...deps })
+  );
+  return { status: r.status, corpo: await r.json() };
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (11): PARIDADE do push — o webhook de verdade e a rota rápida mandam o MESMO aviso, byte a byte", async () => {
+  const pelaRotaRapida = efeitosCI();
+  const db1 = bancoContandoEscritas(pedidoCI());
+  await verificarCI(db1.contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), pelaRotaRapida.deps);
+
+  const peloWebhook = efeitosCI();
+  const db2 = bancoContandoEscritas(pedidoCI());
+  const w = await entregarWebhookCI(db2.contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), peloWebhook.deps);
+
+  assertEquals(w.status, 200, JSON.stringify(w.corpo));
+  assertEquals(w.corpo, { ok: true, resultado: "pago" });
+  assertEquals(peloWebhook.pushes, [PUSH_PAGO_CI]);
+  assertEquals(pelaRotaRapida.pushes, peloWebhook.pushes);
+  assertEquals(pelaRotaRapida.comprovantes, peloWebhook.comprovantes);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (11b): PARIDADE do 'pago_apos_expirar' — mesmo push 'fora do fluxo' e mesmo efeito ao cliente nos dois caminhos", async () => {
+  const expirarAntes = (linha: Record<string, unknown>) => {
+    if (linha.payment_status === "aguardando") {
+      linha.payment_status = "expirado";
+      linha.status = "cancelled";
+    }
+    return undefined;
+  };
+  const pelaRotaRapida = efeitosCI();
+  const db1 = bancoContandoEscritas(pedidoCI(), { antesDeConfirmar: expirarAntes });
+  await verificarCI(db1.contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), pelaRotaRapida.deps);
+
+  const peloWebhook = efeitosCI();
+  const db2 = bancoContandoEscritas(pedidoCI(), { antesDeConfirmar: expirarAntes });
+  const w = await entregarWebhookCI(db2.contado, mpDaConsulta({ orders: [cartaoPagoCI()] }), peloWebhook.deps);
+
+  assertEquals(w.corpo, { ok: true, resultado: "pago_apos_expirar" });
+  assertEquals(peloWebhook.pushes, [PUSH_FORA_DO_FLUXO_CI]);
+  assertEquals(pelaRotaRapida.pushes, peloWebhook.pushes);
+  assertEquals(pelaRotaRapida.atrasados, peloWebhook.atrasados);
+  assertEquals(pelaRotaRapida.comprovantes, []);
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (concorrência): verificar ∥ webhook em Promise.all, banco de transição ÚNICA -> exatamente 1 push e 1 comprovante no total; as duas respostas 200", async () => {
+  for (let rodada = 0; rodada < 5; rodada++) {
+    const ef = efeitosCI();
+    const { db, contado } = bancoContandoEscritas(pedidoCI());
+    const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+    const [v, w] = await Promise.all([
+      verificarCI(contado, mp, ef.deps),
+      entregarWebhookCI(contado, mp, ef.deps),
+    ]);
+
+    assertEquals(v.status, 200, JSON.stringify(v.corpo));
+    assertEquals(v.corpo.verificacao, "pago");
+    assertEquals(w.status, 200, JSON.stringify(w.corpo));
+    // 1 ou 2 chamadas da RPC, conforme a ordem: se o webhook confirmar antes
+    // da releitura do verificar, o verificar responde pelo banco sem RPC.
+    // O que NÃO pode variar é o efeito: exatamente um de cada.
+    const chamadasDaRpc = confirmacoesCI(db).length;
+    assertEquals(chamadasDaRpc >= 1 && chamadasDaRpc <= 2, true, `RPC chamada ${chamadasDaRpc}x`);
+    assertEquals(db.linha.payment_status, "pago");
+    assertEquals(ef.pushes, [PUSH_PAGO_CI], `rodada ${rodada}`);
+    assertEquals(ef.comprovantes, [UUID], `rodada ${rodada}`);
+    assertEquals(mp.posts, []);
+  }
+});
+
+Deno.test("CONFIRMAÇÃO IMEDIATA (concorrência): o webhook entregue 3x DEPOIS da rota rápida -> 'ja_pago' nas três, ZERO efeito novo, 200", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoCI());
+  const mp = mpDaConsulta({ orders: [cartaoPagoCI()] });
+  await verificarCI(contado, mp, ef.deps);
+  assertEquals(ef.pushes.length, 1);
+
+  for (let entrega = 0; entrega < 3; entrega++) {
+    const w = await entregarWebhookCI(contado, mp, ef.deps);
+    assertEquals(w.status, 200, JSON.stringify(w.corpo));
+    assertEquals(w.corpo, { ok: true, resultado: "ja_pago" });
+  }
+  assertEquals(confirmacoesCI(db).length, 4);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDIÇÃO LOCAL (T0-LOCAL, 04/10/2026, sobre a prévia cccee4b8) — o que
+// acontecia com um cartão aprovado já no POST de criação ANTES de a criação
+// confirmar pela prova do GET: só o webhook (atrasado) ou o cron confirmavam.
+// Depois do desenho "a criação confirma pela prova do GET" (testes (12), acima)
+// esse atraso continua sendo o comportamento quando o GET da criação NÃO
+// prova (falha, 5xx): estes testes seguem como documentação desse piso — o
+// GET da criação falha, a criação responde 'pago' e quem confirma é o webhook.
+// Banco COM ESTADO + o handler do webhook DE VERDADE; nada sai para a rede.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** MP falso: o POST de criação devolve o cartão APROVADO (objeto da doc); o
+ * GET por id devolve a mesma order SÓ quando `getFunciona.valor` é true (o
+ * GET da criação roda com ele false: 500; o do webhook, depois, com true). */
+function mpDaCriacaoAprovadaT0() {
+  const chamadas: string[] = [];
+  const getFunciona = { valor: false };
+  const fn = (url: string, init?: RequestInit): Promise<Response> => {
+    const verbo = init?.method ?? "GET";
+    chamadas.push(`${verbo} ${url}`);
+    if (verbo === "POST" && url.endsWith("/v1/orders")) {
+      return Promise.resolve(new Response(JSON.stringify(cartaoPagoCI()), { status: 201 }));
+    }
+    if (verbo === "GET" && url.endsWith(`/v1/orders/${VAGA_CI}`)) {
+      if (!getFunciona.valor) {
+        return Promise.resolve(new Response(JSON.stringify({ message: "erro" }), { status: 500 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(cartaoPagoCI()), { status: 200 }));
+    }
+    return Promise.reject(new Error(`fetch inesperado na medição T0: ${verbo} ${url}`));
+  };
+  return { fn, chamadas, getFunciona };
+}
+
+async function criarCartaoAprovadoT0(
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown>,
+) {
+  const resposta = await handler(requisicao(corpoCartao(), montarToken(DONO_LOGADO)), {
+    supabase: db as never,
+    fetchImpl: mp.fn as typeof fetch,
+    credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS,
+    alertarAdminCartaoOrfao: async () => {},
+    ...deps,
+  });
+  return { status: resposta.status, corpo: await resposta.json() };
+}
+
+Deno.test("T0-LOCAL (b): POST de cartão aprovado e o GET da criação FALHANDO (webhook ausente) -> responde 'pago' à tela, mas o pedido segue 'aguardando': ZERO confirmar_pagamento, ZERO efeito", async () => {
+  const db = bancoComEstado(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpDaCriacaoAprovadaT0();
+  const ef = efeitosCI();
+  const r = await criarCartaoAprovadoT0(db, mp, ef.deps);
+
+  assertEquals(r.status, 200, JSON.stringify(r.corpo));
+  assertEquals(r.corpo.statusPagamento, "pago");
+  assertEquals(r.corpo.paymentId, VAGA_CI);
+  // A vaga foi gravada com a order, e só isso.
+  assertEquals(db.linha.gateway_payment_id, VAGA_CI);
+  assertEquals(db.linha.payment_status, "aguardando");
+  assertEquals(confirmacoesCI(db), []);
+  assertEquals(ef.pushes.length + ef.comprovantes.length + ef.atrasados.length, 0);
+  // O POST e UM GET por id (que falhou).
+  assertEquals(mp.chamadas, [
+    "POST https://api.mercadopago.com/v1/orders",
+    `GET https://api.mercadopago.com/v1/orders/${VAGA_CI}`,
+  ]);
+});
+
+Deno.test("T0-LOCAL (d): o mesmo pedido, WEBHOOK ATRASADO — com o GET da criação falho, só quando o webhook chega o pedido vira 'pago' (RPC 1x, push 1x, comprovante 1x); entregas repetidas dão 'ja_pago'", async () => {
+  const db = bancoContandoEscritas(pedidoBase({ user_id: DONO_LOGADO, tentativas_de_pagamento: 0 }));
+  const mp = mpDaCriacaoAprovadaT0();
+  const ef = efeitosCI();
+  const criacao = await criarCartaoAprovadoT0(db.contado, mp, ef.deps);
+  assertEquals(criacao.corpo.statusPagamento, "pago");
+
+  // Passa o tempo, ninguém confirma: o pedido espera.
+  assertEquals(db.db.linha.payment_status, "aguardando");
+  assertEquals(confirmacoesCI(db.db), []);
+
+  // O webhook atrasado chega (o MP voltou a responder o GET).
+  mp.getFunciona.valor = true;
+  const w = await entregarWebhookCI(db.contado, mp, ef.deps);
+  assertEquals(w.status, 200, JSON.stringify(w.corpo));
+  assertEquals(w.corpo, { ok: true, resultado: "pago" });
+  assertEquals(db.db.linha.payment_status, "pago");
+  assertEquals(confirmacoesCI(db.db).map((c) => c.args), [
+    { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" },
+  ]);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+
+  // O MP reenvia a notificação: nada novo.
+  const reenvio = await entregarWebhookCI(db.contado, mp, ef.deps);
+  assertEquals(reenvio.corpo, { ok: true, resultado: "ja_pago" });
+  assertEquals(ef.pushes.length, 1);
+  assertEquals(ef.comprovantes.length, 1);
+  // A única escrita direta em marketplace_orders foi a da CRIAÇÃO (reserva +
+  // gravação da vaga); a confirmação é só a RPC.
+  assertEquals(db.escritas.every((v) => !("payment_status" in v)), true);
+});
+
+Deno.test("T0-LOCAL (d, cron): o agendamento de reconciliar-pagamentos é de 10 em 10 minutos e é o ÚNICO agendamento dele nas migrations; a fila alcança o cartão 'aguardando'+'pending' com a vaga gravada", async () => {
+  const dir = new URL("../../migrations/", import.meta.url);
+  const migrations: Array<{ nome: string; texto: string }> = [];
+  for await (const e of Deno.readDir(dir)) {
+    if (e.isFile && e.name.endsWith(".sql") && !e.name.startsWith("rollback")) {
+      migrations.push({ nome: e.name, texto: await Deno.readTextFile(new URL(e.name, dir)) });
+    }
+  }
+  // `cron.schedule(` seguido do nome do job, em qualquer migration.
+  const agendadoras = migrations.filter((m) => /cron\.schedule\(\s*'reconciliar-pagamentos'/.test(m.texto));
+  assertEquals(agendadoras.map((m) => m.nome), ["20260808000100_reconciliacao.sql"]);
+  assertEquals(/cron\.schedule\(\s*'reconciliar-pagamentos',\s*'\*\/10 \* \* \* \*'/.test(agendadoras[0].texto), true);
+
+  // A última definição de `pagamentos_a_reconciliar` (a de 20261190...).
+  const definidoras = migrations
+    .filter((m) => /CREATE OR REPLACE FUNCTION public\.pagamentos_a_reconciliar\(\)/.test(m.texto))
+    .map((m) => m.nome)
+    .sort();
+  assertEquals(definidoras.at(-1), "20261190000000_a_reconciliacao_alcanca_o_cartao_tardio.sql");
+  const texto = migrations.find((m) => m.nome === definidoras.at(-1))!.texto;
+  const corpo = texto.slice(texto.lastIndexOf("FUNCTION public.pagamentos_a_reconciliar()"));
+  assertEquals(corpo.includes("o.gateway_payment_id IS NOT NULL"), true);
+  assertEquals(corpo.includes("o.paid_at IS NULL"), true);
+  assertEquals(corpo.includes("o.payment_status = 'aguardando' AND o.status = 'pending'"), true);
+  assertEquals(corpo.includes("o.metodo_online IN ('credito', 'debito')"), true);
+  // Nenhuma idade mínima: o pedido aprovado entra na fila no ciclo seguinte.
+  assertEquals(/created_at\s*<|paid_at\s*<|interval '[0-9]+ minutes?'/i.test(corpo), false);
+  assertEquals(corpo.includes("LIMIT 100"), true);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CORRIDAS T3 (04/10/2026) — a CRIAÇÃO que confirma pela prova do GET contra o
+// webhook DE VERDADE da FASE2 (`handlerDoWebhook`, mesmos efeitos de
+// `_shared/efeitos-do-pagamento.ts`). Banco com estado e transição ÚNICA
+// (`transicaoDeConfirmarPagamento`, espelho de `confirmar_pagamento` sob FOR
+// UPDATE). Em todas: UM coletor de efeitos compartilhado, então "1" é o total
+// dos dois caminhos, nunca "1 por handler". Nada sai para a rede; credenciais
+// só pelas fixtures `*_FALSO`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const webhookDaCriacaoCI = (
+  db: unknown,
+  mp: { fn: (url: string, init?: RequestInit) => Promise<Response> },
+  deps: Record<string, unknown>,
+) => entregarWebhookCI(db, mp, deps, ORDER_CARTAO);
+
+Deno.test("CORRIDA T3 (a): a criação confirma e DEPOIS o webhook chega 3x -> 'ja_pago' nas três, ZERO efeito novo (1 push, 1 comprovante no total)", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const ef = efeitosCI();
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+
+  for (let entrega = 0; entrega < 3; entrega++) {
+    const w = await webhookDaCriacaoCI(contado, mp, ef.deps);
+    assertEquals(w.status, 200, JSON.stringify(w.corpo));
+    assertEquals(w.corpo, { ok: true, resultado: "ja_pago" });
+  }
+  // 1 da criação + 3 do webhook; só a primeira transitou.
+  assertEquals(confirmacoesCI(db).length, 4);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CORRIDA T3 (b): o webhook confirma ANTES da releitura da criação (durante o GET dela) -> a criação não chama a RPC (pedido já 'pago'); 1 RPC no total, 1 push, 1 comprovante", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mpDoWebhook = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  let webhook: { status: number; corpo: Record<string, unknown> } | undefined;
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoConsultarAssinc: async () => {
+      webhook = await webhookDaCriacaoCI(contado, mpDoWebhook, ef.deps);
+    },
+  });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(webhook?.status, 200, JSON.stringify(webhook));
+  assertEquals(webhook?.corpo, { ok: true, resultado: "pago" });
+  assertEquals(db.linha.payment_status, "pago");
+  // Só o webhook transitou: a criação releu 'pago' e nem chegou na RPC.
+  assertEquals(confirmacoesCI(db).length, 1);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CORRIDA T3 (c): o webhook confirma ENTRE a releitura e a RPC da criação -> a criação recebe 'ja_pago' e não dispara efeito; 2 RPC, 1 push, 1 comprovante", async () => {
+  const ef = efeitosCI();
+  const mpDoWebhook = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  let webhook: { status: number; corpo: Record<string, unknown> } | undefined;
+  let jaDisparou = false;
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI(), {
+    antesDeConfirmar: (linha) => {
+      // A 2ª chamada (a do próprio webhook, aninhada) segue a transição real.
+      if (jaDisparou) return undefined;
+      jaDisparou = true;
+      return (async () => {
+        webhook = await webhookDaCriacaoCI(contado, mpDoWebhook, ef.deps);
+        // A RPC da CRIAÇÃO só executa agora, com o pedido já pago pelo webhook.
+        const { resultado, mudanca } = transicaoDeConfirmarPagamento(linha, {
+          p_order_id: UUID,
+          p_payment_id: ORDER_CARTAO,
+          p_status: "pago",
+        });
+        if (mudanca) Object.assign(linha, mudanca);
+        return { data: resultado, error: null };
+      })();
+    },
+  });
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(webhook?.corpo, { ok: true, resultado: "pago" });
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(confirmacoesCI(db).length, 2);
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+});
+
+Deno.test("CORRIDA T3 (d): o pedido EXPIRA entre a releitura e a RPC da criação -> 'pago_apos_expirar': 1 push 'Pagamento fora do fluxo', 1 aviso atrasado, ZERO comprovante; o webhook que chega depois não repete nada", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI(), {
+    antesDeConfirmar: (linha) => {
+      if (linha.payment_status === "aguardando") {
+        linha.payment_status = "expirado";
+        linha.status = "cancelled";
+      }
+      return undefined;
+    },
+  });
+  const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(db.linha.payment_status, "pago_apos_expirar");
+  assertEquals(ef.pushes, [PUSH_FORA_DO_FLUXO_CI]);
+  assertEquals(ef.atrasados, [UUID]);
+  assertEquals(ef.comprovantes, []);
+
+  const w = await webhookDaCriacaoCI(contado, mp, ef.deps);
+  assertEquals(w.status, 200, JSON.stringify(w.corpo));
+  assertEquals(w.corpo, { ok: true, resultado: "ja_pago" });
+  assertEquals(ef.pushes, [PUSH_FORA_DO_FLUXO_CI]);
+  assertEquals(ef.atrasados, [UUID]);
+  assertEquals(ef.comprovantes, []);
+});
+
+Deno.test("CORRIDA T3 (f): o webhook chega com a vaga ainda no SENTINELA (durante o POST da criação) -> qualquer que seja o desfecho dele, a criação termina com 1 push, 1 comprovante, pedido 'pago'", async () => {
+  const ef = efeitosCI();
+  const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+  const mpDoWebhook = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+  let webhook: { status: number; corpo: Record<string, unknown> } | undefined;
+  let vagaVistaPeloWebhook: unknown;
+  const mp = mpDaCriacaoComGet({
+    get: aprovadaDaCriacao(),
+    aoPostarAssinc: async () => {
+      vagaVistaPeloWebhook = db.linha.gateway_payment_id;
+      webhook = await webhookDaCriacaoCI(contado, mpDoWebhook, ef.deps);
+    },
+  });
+  const r = await criarCartaoCI(contado, mp, ef.deps);
+
+  assertEquals(String(vagaVistaPeloWebhook).startsWith("verificando:"), true, String(vagaVistaPeloWebhook));
+  assertEquals(r.status, 200, r.texto);
+  assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+  assertEquals(webhook?.status, 200, JSON.stringify(webhook));
+  assertEquals(db.linha.payment_status, "pago");
+  assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  assertEquals(ef.comprovantes, [UUID]);
+  assertEquals(ef.atrasados, []);
+  // O webhook ADOTA a vaga do sentinela e confirma ele mesmo (1 RPC); a criação
+  // acha a vaga já adotada e a releitura 'pago' a faz parar sem RPC nem efeito.
+  assertEquals(webhook?.corpo, { ok: true, resultado: "pago" });
+  assertEquals(confirmacoesCI(db).length, 1);
+});
+
+Deno.test("CORRIDA T3 (e) — FUMAÇA de concorrência no caminho observado (a criação confirma primeiro; o webhook vê ja_pago; não varia a ordem): Promise.all(criação, webhook) em 5 rodadas (webhook largando 0..4 macrotarefas depois) -> em TODAS exatamente 1 push, 1 comprovante, pedido 'pago', resposta da criação byte a byte a de antes", async () => {
+  const caminhos = new Set<string>();
+  for (let rodada = 0; rodada < 5; rodada++) {
+    const ef = efeitosCI();
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const mp = mpDaCriacaoComGet({ get: aprovadaDaCriacao() });
+    const atrasoDoWebhook = async () => {
+      // Tenta variar a ordem de chegada; as ordens GARANTIDAS são as dos
+      // testes (b), (c) e (f), com portão determinístico.
+      for (let passo = 0; passo < rodada; passo++) await new Promise<void>((r) => setTimeout(r, 0));
+      return webhookDaCriacaoCI(contado, mp, ef.deps);
+    };
+    const [r, w] = await Promise.all([criarCartaoCI(contado, mp, ef.deps), atrasoDoWebhook()]);
+
+    assertEquals(r.status, 200, r.texto);
+    assertEquals(r.texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(w.status, 200, JSON.stringify(w.corpo));
+    assertEquals(db.linha.payment_status, "pago", `rodada ${rodada}`);
+    assertEquals(ef.pushes, [PUSH_PAGO_CI], `rodada ${rodada}`);
+    assertEquals(ef.comprovantes, [UUID], `rodada ${rodada}`);
+    assertEquals(ef.atrasados, [], `rodada ${rodada}`);
+    caminhos.add(`webhook=${String(w.corpo.resultado)} rpcs=${confirmacoesCI(db).length}`);
+  }
+  // Registro (não asserção de ordem): quais desfechos de fato ocorreram.
+  console.log("CORRIDA T3 (e) caminhos observados:", [...caminhos].sort().join(" | "));
+});
+
+// ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
+// Um pagamento 1x à vista não exercita o parcelado: sem juros, o valor pago
+// e o pedido são iguais. Aqui, o 1x, o 2x e o 3x passam pela MESMA prova
+// (`provarPagamentoPelaConsulta`) com uma order coerente: o que a loja
+// mandou (`total_amount` e `amount` do pagamento) = o pedido; o valor PAGO
+// (`total_paid_amount` e `paid_amount`) = o pedido + juros do comprador.
+// Os valores pagos (109,64 / 112,40) são FIXTURES SINTÉTICAS, não taxas
+// medidas no MP. Premissa declarada, NÃO provada por esta suíte: o MP mantém
+// o `total_amount` sem juros. Aprovação de um 2x/3x em sandbox é compatível
+// com ela, mas não a prova sozinha (nem prova que houve juros): só a leitura
+// dos campos da order (`total_amount`/`amount` contra
+// `total_paid_amount`/`paid_amount`) e dos valores por parcela do gateway
+// comprova.
+const PARCELADOS_COM_JUROS_CI = [
+  { parcelas: 1, pago: "100.00" },
+  { parcelas: 2, pago: "109.64" },
+  { parcelas: 3, pago: "112.40" },
+];
+
+function cartaoParceladoComJuros(base: Record<string, unknown>, parcelas: number, pago: string): Record<string, unknown> {
+  const transacoes = base.transactions as Record<string, unknown>;
+  const pagamento = (transacoes.payments as Array<Record<string, unknown>>)[0];
+  return {
+    ...base,
+    total_paid_amount: pago,
+    transactions: {
+      ...transacoes,
+      payments: [{
+        ...pagamento,
+        paid_amount: pago,
+        payment_method: { ...(pagamento.payment_method as Record<string, unknown>), installments: parcelas },
+      }],
+    },
+  };
+}
+
+for (const caso of PARCELADOS_COM_JUROS_CI) {
+  Deno.test(`CONFIRMAÇÃO IMEDIATA parcelado ${caso.parcelas}x: verificar com valor pago ${caso.pago} (pedido 100) e a vaga com a order -> confirma 'pago' 1x`, async () => {
+    const { db, contado } = bancoContandoEscritas(pedidoCI({ parcelas: caso.parcelas }));
+    const ef = efeitosCI();
+    const order = cartaoParceladoComJuros(cartaoPagoCI(), caso.parcelas, caso.pago);
+    const r = await verificarCI(contado, mpDaConsulta({ orders: [order] }), ef.deps);
+
+    assertEquals(r.corpo.verificacao, "pago", JSON.stringify(r.corpo));
+    assertEquals(confirmacoesCI(db).map((c) => c.args), [
+      { p_order_id: UUID, p_payment_id: VAGA_CI, p_status: "pago" },
+    ]);
+    assertEquals(ef.pushes, [PUSH_PAGO_CI]);
+  });
+
+  Deno.test(`CONFIRMAÇÃO IMEDIATA parcelado ${caso.parcelas}x: a CRIAÇÃO manda installments ${caso.parcelas} ao MP, grava parcelas ${caso.parcelas} e confirma com o valor pago ${caso.pago} no GET`, async () => {
+    const { db, contado } = bancoContandoEscritas(pedidoDaCriacaoCI());
+    const corpoDoGet = cartaoParceladoComJuros(aprovadaDaCriacao(), caso.parcelas, caso.pago);
+    const mp = mpDaCriacaoComGet({ post: corpoDoGet, get: corpoDoGet });
+    const corposPostados: Array<Record<string, unknown>> = [];
+    const fnQueGuarda = async (url: string, init?: RequestInit): Promise<Response> => {
+      if ((init?.method ?? "GET") === "POST" && url.endsWith("/v1/orders")) {
+        corposPostados.push(JSON.parse(String(init?.body)));
+      }
+      return await mp.fn(url, init);
+    };
+    const ef = efeitosCI();
+    const resposta = await emSilencio(() =>
+      handler(requisicao(corpoCartao({ parcelas: caso.parcelas }), montarToken(DONO_LOGADO)), {
+        supabase: contado as never,
+        fetchImpl: fnQueGuarda as typeof fetch,
+        credenciaisMp: CREDENCIAIS_LOJISTA_FIXAS,
+        alertarAdminCartaoOrfao: async () => {},
+        ...ef.deps,
+      })
+    );
+    const texto = await resposta.text();
+
+    assertEquals(resposta.status, 200, texto);
+    assertEquals(texto, CORPO_DA_CRIACAO_APROVADA);
+    assertEquals(corposPostados.length, 1);
+    const pagamentoPostado = ((corposPostados[0].transactions as Record<string, unknown>).payments as Array<
+      Record<string, unknown>
+    >)[0];
+    assertEquals((pagamentoPostado.payment_method as Record<string, unknown>).installments, caso.parcelas);
+    // O que a loja manda é o total do pedido — os juros são do MP, nunca da loja.
+    assertEquals(corposPostados[0].total_amount, "100.00");
+    assertEquals(pagamentoPostado.amount, "100.00");
+    assertEquals(db.linha.parcelas, caso.parcelas);
+    assertEquals(db.linha.metodo_online, "credito");
+    assertEquals(confirmacoesCI(db).map((c) => c.args), [
+      { p_order_id: UUID, p_payment_id: ORDER_CARTAO, p_status: "pago" },
+    ]);
+    assertEquals(db.linha.payment_status, "pago");
+  });
+}
+
+Deno.test("CONFIRMAÇÃO IMEDIATA parcelado 3x — CONTROLE: valor pago MENOR que o pedido (parcial) no 3x continua sem confirmar", async () => {
+  const { db, contado } = bancoContandoEscritas(pedidoCI({ parcelas: 3 }));
+  const ef = efeitosCI();
+  const order = cartaoParceladoComJuros(cartaoPagoCI(), 3, "60.00");
+  const r = await verificarCI(contado, mpDaConsulta({ orders: [order] }), ef.deps);
+
+  assertEquals(confirmacoesCI(db).length, 0);
+  assertEquals(ef.pushes, []);
+  assertEquals(r.status, 200);
 });

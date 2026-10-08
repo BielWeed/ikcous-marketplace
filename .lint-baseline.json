@@ -157,11 +157,18 @@
     "teto'. A queda VEIO do PR: as rodadas 2 e 3 das edges do cartão (457 → 454 → 453)",
     "entraram com 0 warning novo e levaram velhos junto nos arquivos que reescreveram.",
     "Biome ficou 15/1. Baixado",
-    "SÓ DEPOIS do CI, como as quedas anteriores."
+    "SÓ DEPOIS do CI, como as quedas anteriores.",
+    "",
+    "06/10/2026 — warnings de eslint de 453 para 451. Medido no CI, run 37540722254",
+    "(push do merge do PR #767, c7ce4b65, job 'Catraca de lint'): 'eslint warnings",
+    "451 / teto 453 — baixou -2 — abaixe o teto'. A queda NÃO veio do lote 60-66: o",
+    "CI da base já media 451 (o #767 também mediu 451 local). O lote 60-66 entra com",
+    "0 warning novo líquido (catraca local 451). Biome ficou 15/1. Baixado SÓ DEPOIS",
+    "do CI, como as quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 453
+    "warnings": 451
   },
   "biome": {
     "errors": 15,

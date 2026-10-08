@@ -2759,3 +2759,127 @@ Deno.test("montarCorpoPixOrders: o PIX NAO ganha items, shipment, phone nem addr
     assertEquals(campo in (corpo.payer as Record<string, unknown>), false, campo);
   }
 });
+
+// ─── Nome na fatura do cartão (03/10/2026) ──────────────────────────────────
+
+const PARAMS_CARTAO_FATURA = {
+  orderId: "11111111-2222-4333-8444-555555555555",
+  valor: 100,
+  email: "comprador.falso@exemplo.test",
+  documento: { type: "CPF", number: "12345678909" },
+  token: "ff8080814c11e237014c1ff593b57b4d",
+  paymentMethodId: "master",
+  paymentTypeId: "credit_card",
+  parcelas: 2,
+};
+
+function metodoDoPagamento(corpo: Record<string, unknown>): Record<string, unknown> {
+  return (corpo.transactions as { payments: Array<{ payment_method: Record<string, unknown> }> }).payments[0]
+    .payment_method;
+}
+
+Deno.test("montarCorpoCartaoOrders: nomeNaFatura vai em transactions.payments[0].payment_method.statement_descriptor, normalizado", () => {
+  const corpo = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: "Açaí do Zé" });
+  assertEquals(metodoDoPagamento(corpo).statement_descriptor, "ACAI DO ZE");
+});
+
+Deno.test("montarCorpoCartaoOrders: nome longo e' CORTADO em 13 caracteres, sem espaco no fim", () => {
+  const corpo = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: "Loja Muito Grande Mesmo" });
+  assertEquals(metodoDoPagamento(corpo).statement_descriptor, "LOJA MUITO GR");
+});
+
+Deno.test("montarCorpoCartaoOrders: nome vazio, so' simbolo ou ausente NAO manda a chave", () => {
+  for (const nome of [undefined, null, "", "   ", "★★", 7]) {
+    const corpo = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: nome });
+    assertEquals("statement_descriptor" in metodoDoPagamento(corpo), false, String(nome));
+  }
+});
+
+Deno.test("montarCorpoCartaoOrders: o nome na fatura NAO altera mais nada do corpo (so' acrescenta a chave)", () => {
+  const sem = montarCorpoCartaoOrders(PARAMS_CARTAO_FATURA);
+  const com = montarCorpoCartaoOrders({ ...PARAMS_CARTAO_FATURA, nomeNaFatura: "Loja Teste" });
+  delete metodoDoPagamento(com).statement_descriptor;
+  assertEquals(com, sem);
+});
+
+// ---------------------------------------------------------------------------
+// R9 (Lote A, 04/10/2026) — a leitura CLÁSSICA (`consultarPagamento`) não
+// põe o pagador no log. O GET /v1/payments/{id} traz e-mail, CPF e nome; a
+// recusa clássica pode ecoar o valor em `message`/`cause[].description`.
+// ---------------------------------------------------------------------------
+
+const PII_R9 = {
+  email: "cliente.r9@exemplo.com",
+  cpf: "52998224725",
+  nome: "Josefina Albuquerque",
+  tokenCartao: "ff8080814c11e237014c1ff593b5r9r9",
+};
+
+async function logDeConsultarPagamento(status: number, corpoCru: string): Promise<string> {
+  const chamadas: unknown[][] = [];
+  const real = console.error;
+  console.error = (...args: unknown[]) => {
+    chamadas.push(args);
+  };
+  try {
+    await consultarPagamento({
+      token: "TEST-token-r9",
+      paymentId: "999",
+      fetchImpl: (() => Promise.resolve(new Response(corpoCru, { status }))) as unknown as typeof fetch,
+    });
+  } finally {
+    console.error = real;
+  }
+  return chamadas
+    .map((args) =>
+      args.map((a) => a instanceof Error ? `${a.name}: ${a.message}` : typeof a === "string" ? a : JSON.stringify(a))
+        .join(" ")
+    )
+    .join("\n");
+}
+
+function semDadoPessoalR9(texto: string, corpoCru: string) {
+  for (const [rotulo, valor] of Object.entries(PII_R9)) {
+    assertEquals(texto.includes(valor), false, `${rotulo} vazou no log: ${texto}`);
+  }
+  assertEquals(texto.includes("Josefina"), false, `nome vazou no log: ${texto}`);
+  assertEquals(texto.includes("TEST-token-r9"), false);
+  assertEquals(texto.includes(corpoCru), false, "o corpo cru foi para o log");
+}
+
+Deno.test("R9 - consultarPagamento recusado (clássico) com o pagador no corpo: log com status, `error` e `cause[].code`, sem e-mail, CPF, nome, token nem corpo cru", async () => {
+  const cru = JSON.stringify({
+    message: `invalid payer ${PII_R9.email}`,
+    error: "bad_request",
+    status: 400,
+    // `code` em texto livre (defensivo): só palavra-código atravessa.
+    cause: [{ code: 2034, description: `payer ${PII_R9.nome} ${PII_R9.cpf}` }, { code: `payer ${PII_R9.email}` }],
+    payer: { email: PII_R9.email, first_name: PII_R9.nome, identification: { number: PII_R9.cpf } },
+    card: { token: PII_R9.tokenCartao },
+  });
+  const log = await logDeConsultarPagamento(400, cru);
+  semDadoPessoalR9(log, cru);
+  assertStringIncludes(log, "mercadopago: recusou");
+  assertStringIncludes(log, "400");
+  assertStringIncludes(log, "2034");
+  assertStringIncludes(log, "bad_request");
+});
+
+Deno.test("R9 - consultarPagamento recusado com corpo NAO-JSON que traz o pagador: não vai ao log", async () => {
+  const cru = `${PII_R9.nome} ${PII_R9.cpf} ${PII_R9.email}`;
+  const log = await logDeConsultarPagamento(502, cru);
+  semDadoPessoalR9(log, cru);
+  assertStringIncludes(log, "502");
+});
+
+Deno.test("R9 - consultarPagamento 2xx SEM id com o pagador no corpo: o log diz 'sem id' e omite o corpo", async () => {
+  const cru = JSON.stringify({
+    status: "approved",
+    payer: { email: PII_R9.email, first_name: PII_R9.nome, identification: { number: PII_R9.cpf } },
+    card: { token: PII_R9.tokenCartao },
+  });
+  const log = await logDeConsultarPagamento(200, cru);
+  semDadoPessoalR9(log, cru);
+  assertStringIncludes(log, "mercadopago: resposta 2xx sem id");
+  assertStringIncludes(log, "200");
+});

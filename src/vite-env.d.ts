@@ -13,6 +13,9 @@ declare global {
     readonly VITE_BRAND_PRIMARY?: string;
     readonly VITE_BRAND_SECONDARY?: string;
     readonly VITE_BRAND_ACCENT?: string;
+    // Só a prévia de desenvolvimento (ver
+    // src/components/checkout/email-de-teste-do-mercado-pago.ts).
+    readonly VITE_MP_TEST_PAYER_EMAIL?: string;
   }
 
   interface ImportMeta {

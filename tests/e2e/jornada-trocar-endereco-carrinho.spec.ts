@@ -13,9 +13,14 @@ import {
   PRODUTO_ROUPAS,
   abrirLoja,
   enderecosFixtura,
+  exigirRedeSemImprevistos,
   instalarLojaFixtura,
   instalarSessaoClienteFixtura,
 } from "./kit-jornadas";
+
+// Guarda de rede (kit das jornadas): requisição não prevista derruba o
+// teste, com a lista na mensagem.
+test.afterEach(exigirRedeSemImprevistos);
 
 /**
  * JORNADA "TROCAR O ENDEREÇO NO CARRINHO" NO CELULAR (22/09/2026, relato da

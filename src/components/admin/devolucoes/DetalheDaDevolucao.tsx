@@ -26,6 +26,7 @@ import {
   rotuloStatus,
   textoDoPrazo,
 } from "@/lib/devolucao";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 
@@ -199,7 +200,7 @@ export function DetalheDaDevolucao({
                   className={BOTAO_SECUNDARIO}
                 >
                   <ExternalLink className="size-4" />
-                  Pedido #{detalhe.order_id.slice(0, 8)}
+                  Pedido #{numeroDoPedido(detalhe.order_id)}
                 </button>
                 {whatsapp && (
                   <a

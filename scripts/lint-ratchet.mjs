@@ -23,6 +23,7 @@
 
 import { execSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -82,29 +83,67 @@ function rodar(comando) {
  *
  * No CI nao ha cache em disco, entao a primeira (e unica) rodada mede tudo do
  * zero, como antes. Quem cobra continua sendo o CI.
+ *
+ * O RELATORIO JSON NAO VEM PELO STDOUT. `rodar` junta stdout e stderr, e o
+ * eslint pode imprimir ruido ali — medido em 04/10/2026: o @babel/generator
+ * escreve "[BABEL] Note: The code generator has deoptimised the styling of
+ * ...criar-pagamento/index_test.ts as it exceeds the max of 500KB." depois do
+ * JSON, e o `JSON.parse` estourava com "Unexpected non-whitespace character
+ * after JSON". Fatiar a saida a partir do primeiro `[` nao resolve: o ruido
+ * tambem pode vir ANTES e comecar por `[BABEL]`. Por isso o eslint escreve o
+ * relatorio em arquivo (`--output-file`) e o stdout fica so como diagnostico,
+ * quando algo da errado.
+ *
+ * O arquivo e' apagado ANTES de rodar: se o eslint quebrar sem escrever
+ * (config invalida, falta de memoria), o relatorio da rodada anterior nao pode
+ * satisfazer esta — a catraca aprovaria um numero que nao e' de agora. E o
+ * conteudo tem de ser a LISTA de resultados do eslint: qualquer outra coisa e'
+ * falha de execucao e reprova, nunca vira {0, 0} ("a divida caiu").
+ *
+ * `executar` e `arquivoDeSaida` tem valor padrao so para o teste injetar um
+ * eslint falso (tests/lint_ratchet_biome_nao_rodou_test.ts).
  */
-function contarEslint() {
-  const saida = rodar(
-    "npx eslint . --format json --cache --cache-strategy content",
-  );
-  const inicio = saida.indexOf("[");
-  if (inicio === -1) {
-    throw new Error(`eslint não devolveu JSON:\n${saida.slice(0, 800)}`);
+export function contarEslint(executar = rodar, arquivoDeSaida = null) {
+  const pasta = arquivoDeSaida
+    ? null
+    : fs.mkdtempSync(path.join(os.tmpdir(), "lint-ratchet-"));
+  const arquivo = arquivoDeSaida ?? path.join(pasta, "eslint.json");
+  try {
+    fs.rmSync(arquivo, { force: true });
+    const saida = executar(
+      `npx eslint . --format json --output-file "${arquivo}" --cache --cache-strategy content`,
+    );
+    let relatorio;
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- idem: o caminho e' o do relatorio que este proprio script pediu
+      relatorio = JSON.parse(fs.readFileSync(arquivo, "utf8"));
+    } catch (e) {
+      throw new Error(
+        `eslint não devolveu JSON (relatório ${arquivo} ausente ou ilegível: ${e.message}):\n${saida.slice(0, 800)}`,
+      );
+    }
+    if (!Array.isArray(relatorio)) {
+      throw new Error(
+        `eslint não devolveu JSON (o relatório não é a lista de resultados):\n${saida.slice(0, 800)}`,
+      );
+    }
+    let errors = 0;
+    let warnings = 0;
+    for (const resultado of relatorio) {
+      errors += resultado.errorCount;
+      warnings += resultado.warningCount;
+    }
+    return { errors, warnings };
+  } finally {
+    if (pasta) fs.rmSync(pasta, { recursive: true, force: true });
   }
-  let errors = 0;
-  let warnings = 0;
-  for (const arquivo of JSON.parse(saida.slice(inicio))) {
-    errors += arquivo.errorCount;
-    warnings += arquivo.warningCount;
-  }
-  return { errors, warnings };
 }
 
 /**
  * Acha o primeiro objeto JSON top-level dentro de `saida` e devolve o seu
  * `JSON.parse`, ou `null` se não achar chave casada.
  *
- * Por que não dá pra fazer como o `contarEslint` faz com `[` — pegar do
+ * Por que não dá pra fazer como o `contarEslint` fazia com `[` — pegar do
  * primeiro caractere até o fim e mandar direto pro `JSON.parse`: o
  * `--reporter=json` do Biome escreve o resumo JSON e DEPOIS ainda imprime,
  * na MESMA saída, o rodapé decorativo ("check ━━━...", "× Some errors...");

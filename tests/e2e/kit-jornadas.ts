@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { type Page, type Route, expect } from "@playwright/test";
 import {
   type IdentityAsset,
   type PublicStoreIdentity,
@@ -25,8 +25,11 @@ import {
  *     molde do kit `tests/browser-identity-app` (contratos medidos lá):
  *     `v_store_config`, `categorias` e `vw_produtos_public`.
  *  4. Logos/imagens da marca (Storage público) recebem um PNG 1x1.
- *  5. Qualquer outra leitura do banco recebe lista vazia — a jornada
- *     precisa de catálogo, não de resto.
+ *  5. Qualquer outra leitura do banco (e qualquer outra requisição que não
+ *     tenha resposta definida) é NEGADA, registrada e faz o teste FALHAR no
+ *     `afterEach` (`exigirRedeSemImprevistos`) — nunca recebe lista vazia por
+ *     padrão. A jornada precisa de catálogo, e o resto tem de ser pedido
+ *     por quem escreve o teste.
  *
  * A identidade da ficha é VALIDADA AQUI contra o módulo de verdade
  * (`cloneStoreIdentity`/`identityRevision` de `src/lib/storeIdentity.ts`):
@@ -292,20 +295,189 @@ const ENV_GUARD_DO_SERVICE_WORKER = "[EnvGuard] Variáveis de ambiente ausentes"
 
 const JSON_HEADERS = { "content-type": "application/json" };
 
+// ---------------------------------------------------------------------------
+// GUARDA DE REDE — NEGA O DESCONHECIDO (04/10/2026, revisão de risco das
+// jornadas de pagamento).
+//
+// Antes, o que não tinha stub ia para a REDE REAL (qualquer origem fora do
+// banco fixture caía em `fallback()`) e toda leitura desconhecida do banco
+// fixture recebia `[]` — uma RPC que devolve objeto ou `text` recebendo `[]`
+// virava defeito FALSO na tela (o `get_my_cpf` quebrava a máscara de CPF),
+// e uma chamada nova do app passava calada. Agora:
+//
+//  - só passa o que está numa LISTA BRANCA explícita: estáticos GET/HEAD do
+//    próprio preview, a fonte simulada, e cada caminho do banco fixture com
+//    resposta DEFINIDA (`STUBS_DO_BANCO` abaixo, mais os kits que se
+//    registram por cima: sessão e pagamento);
+//  - todo o resto é ABORTADO e REGISTRADO (método + origem + caminho + só os
+//    NOMES dos parâmetros — nunca os valores, onde moraria uma chave);
+//  - cada spec chama `exigirRedeSemImprevistos` no `afterEach`: lista não
+//    vazia derruba o teste com a lista na mensagem.
+//
+// O service worker fica bloqueado no config das jornadas: requisição feita
+// por ele não passa pelas rotas da PÁGINA (o SW busca imagens do Storage
+// direto). A guarda de CONTEXTO abaixo é a segunda trava: o que escapar das
+// rotas da página e não for do preview também é negado e registrado.
+// ---------------------------------------------------------------------------
+
+const registrosDaRede = new WeakMap<Page, string[]>();
+
+/** As requisições NÃO previstas que a guarda abortou nesta página. */
+export function requisicoesNaoPrevistas(page: Page): string[] {
+  let lista = registrosDaRede.get(page);
+  if (!lista) {
+    lista = [];
+    registrosDaRede.set(page, lista);
+  }
+  return lista;
+}
+
+/** Método + origem + caminho + NOMES dos parâmetros (valores nunca). */
+export function descreverSemSegredo(metodo: string, urlCrua: string): string {
+  try {
+    const url = new URL(urlCrua);
+    const nomes = [...new Set(url.searchParams.keys())];
+    const busca = nomes.length > 0 ? `?{${nomes.join(",")}}` : "";
+    return `${metodo} ${url.origin}${url.pathname}${busca}`;
+  } catch {
+    return `${metodo} <url ilegível>`;
+  }
+}
+
+/** Aborta a requisição e a registra como NÃO prevista. */
+export async function negarNaoPrevista(page: Page, rota: Route): Promise<void> {
+  const pedido = rota.request();
+  requisicoesNaoPrevistas(page).push(
+    descreverSemSegredo(pedido.method(), pedido.url()),
+  );
+  await rota.abort("blockedbyclient");
+}
+
+/**
+ * Para o `test.afterEach` de TODO spec das jornadas: falha com a lista das
+ * requisições não previstas.
+ */
+export async function exigirRedeSemImprevistos({
+  page,
+}: {
+  page: Page;
+}): Promise<void> {
+  expect(
+    requisicoesNaoPrevistas(page),
+    "requisições NÃO previstas (abortadas pela guarda de rede)",
+  ).toEqual([]);
+}
+
+/**
+ * Arquivos da RAIZ do build que o index.html carrega (medidos: são os que as
+ * jornadas pedem). Qualquer outro caminho do preview é desconhecido.
+ */
+const ESTATICOS_DA_RAIZ: ReadonlySet<string> = new Set<string>([
+  "/loading.css",
+  "/silent-guardian.js",
+]);
+
+/**
+ * Pastas do build com nome por conteúdo: o bundle (`/assets/`, com hash) e a
+ * identidade FIXTURE da loja que o build assa (`/store-identity/v1/<sha>/`).
+ */
+const PASTAS_DO_BUILD = ["/assets/", "/store-identity/v1/"] as const;
+
+/** Estático do build: uma das pastas acima ou um arquivo da raiz listado. */
+function estaticoDoBuild(caminho: string): boolean {
+  return (
+    PASTAS_DO_BUILD.some((pasta) => caminho.startsWith(pasta)) ||
+    ESTATICOS_DA_RAIZ.has(caminho)
+  );
+}
+
+/**
+ * Busca o documento no servidor de preview. Se ele não responde, o erro diz
+ * ONDE está a causa: o log da rodada grava a hora e o código de saída do
+ * preview (medido em 04/10/2026: o varredor de órfãos da máquina matava o
+ * `vite preview` no meio da rodada — ECONNREFUSED em toda jornada seguinte).
+ */
+export async function buscarDocumentoDoPreview(rota: Route) {
+  try {
+    return await rota.fetch();
+  } catch (erro) {
+    const rodada = process.env.IKCOUS_E2E_RODADA ?? "?";
+    throw new Error(
+      `O servidor de preview (127.0.0.1:4173) não respondeu: ${String(erro)}. Se ele morreu no meio da rodada, a hora e o código de saída estão em test-results/preview-logs/preview-${rodada}.log`,
+    );
+  }
+}
+
+/** A fonte Inter do index.html: CSS vazio (a tela cai na fonte do sistema). */
+const URL_DA_FONTE_DO_GOOGLE = "https://fonts.googleapis.com/css2?";
+
+/**
+ * Leituras do banco fixture com resposta DEFINIDA além do catálogo. Cada uma
+ * tem a FORMA que a fonte real devolve (lista para tabela/view; o tipo da
+ * RPC para RPC). Só GET (leitura) — escrita sem stub é negada.
+ */
+const STUBS_DO_BANCO: ReadonlyMap<string, unknown> = new Map<string, unknown>([
+  // Tabelas que o app lê no boot e na navegação; a loja fixture não tem
+  // nenhuma linha delas (lista vazia é o que a tabela real devolve vazia).
+  ["/rest/v1/banners", []],
+  ["/rest/v1/favorites", []],
+  ["/rest/v1/notificacoes", []],
+  ["/rest/v1/cart_items", []],
+  // Tela do produto: perguntas e avaliações públicas (nenhuma na fixture).
+  ["/rest/v1/vw_questions_public", []],
+  ["/rest/v1/vw_reviews_public", []],
+]);
+
 /**
  * Instala TODAS as rotas sintéticas da jornada. Chamar UMA vez por teste,
  * antes do primeiro `goto`. Depois, usar `abrirLoja`.
  */
 export async function instalarLojaFixtura(page: Page): Promise<void> {
   const ficha = await fichaDaLojaFixtura();
+  requisicoesNaoPrevistas(page);
+
+  // Segunda trava (contexto): o que não é do preview e escapou das rotas da
+  // página é negado e registrado. Do preview, segue para o servidor local.
+  await page.context().route("**/*", async (rota) => {
+    const pedido = rota.request();
+    const url = new URL(pedido.url());
+    if (
+      url.origin === URL_DO_PREVIEW &&
+      pedido.method() === "GET" &&
+      estaticoDoBuild(url.pathname)
+    ) {
+      await rota.fallback();
+      return;
+    }
+    await negarNaoPrevista(page, rota);
+  });
+
+  // Realtime: aceito e MUDO — nenhum socket chega a servidor nenhum (sem
+  // `connectToServer`). Socket de qualquer outro lugar é negado.
+  await page.routeWebSocket(/.*/, (ws) => {
+    const url = new URL(ws.url());
+    const doBanco =
+      url.origin.replace(/^wss:/, "https:") === ORIGEM_BANCO_FIXTURA &&
+      url.pathname.startsWith("/realtime/");
+    if (!doBanco) {
+      requisicoesNaoPrevistas(page).push(
+        descreverSemSegredo("WEBSOCKET", ws.url()),
+      );
+      ws.close();
+    }
+  });
 
   await page.route("**/*", async (rota) => {
     const pedido = rota.request();
     const url = new URL(pedido.url());
 
     // 1) Documentos da própria origem: o HTML do preview ganha a ficha.
-    if (pedido.resourceType() === "document" && url.origin === URL_DO_PREVIEW) {
-      const resposta = await rota.fetch();
+    if (
+      pedido.resourceType() === "document" &&
+      pedido.method() === "GET" &&
+      url.origin === URL_DO_PREVIEW
+    ) {
+      const resposta = await buscarDocumentoDoPreview(rota);
       const corpo = (await resposta.text()).replace(
         "<head>",
         `<head><script type="application/json" id="ikcous-loja">${ficha}</script>`,
@@ -319,14 +491,44 @@ export async function instalarLojaFixtura(page: Page): Promise<void> {
     }
 
     // 2) A mesma ficha em JSON puro para o service worker (caminho do porteiro).
-    if (url.origin === URL_DO_PREVIEW && url.pathname === "/identidade.json") {
+    if (
+      url.origin === URL_DO_PREVIEW &&
+      pedido.method() === "GET" &&
+      url.pathname === "/identidade.json"
+    ) {
       await rota.fulfill({ status: 200, headers: JSON_HEADERS, body: ficha });
       return;
     }
 
-    // 3) Fora do banco fixture, deixa o preview responder (estáticos do dist).
-    if (url.origin !== ORIGEM_BANCO_FIXTURA) {
-      await rota.fallback();
+    // 3) Estáticos do BUILD servidos pelo preview: só GET e só os caminhos
+    // da lista — o resto do preview cai na mesma regra do desconhecido.
+    if (url.origin === URL_DO_PREVIEW) {
+      if (pedido.method() === "GET" && estaticoDoBuild(url.pathname)) {
+        await rota.fallback();
+        return;
+      }
+      await negarNaoPrevista(page, rota);
+      return;
+    }
+
+    // 3b) A fonte do index.html: simulada, nunca vai à rede.
+    if (
+      pedido.method() === "GET" &&
+      pedido.url().startsWith(URL_DA_FONTE_DO_GOOGLE)
+    ) {
+      await rota.fulfill({
+        status: 200,
+        headers: { "content-type": "text/css" },
+        body: "/* fonte simulada (jornadas e2e) */",
+      });
+      return;
+    }
+
+    // Qualquer outra origem fora do banco fixture: NEGADA. Do banco, só
+    // LEITURA tem stub aqui (o que escreve vem dos kits por cima, por
+    // método + caminho).
+    if (url.origin !== ORIGEM_BANCO_FIXTURA || pedido.method() !== "GET") {
+      await negarNaoPrevista(page, rota);
       return;
     }
 
@@ -371,8 +573,19 @@ export async function instalarLojaFixtura(page: Page): Promise<void> {
       return;
     }
 
-    // 6) Qualquer outra leitura do banco fixture: lista vazia.
-    await rota.fulfill({ status: 200, headers: JSON_HEADERS, body: "[]" });
+    // 6) Leituras com resposta DEFINIDA (tabela acima).
+    if (STUBS_DO_BANCO.has(url.pathname)) {
+      await rota.fulfill({
+        status: 200,
+        headers: JSON_HEADERS,
+        body: JSON.stringify(STUBS_DO_BANCO.get(url.pathname)),
+      });
+      return;
+    }
+
+    // 7) Todo o resto do banco fixture (RPC, tabela, edge, escrita) sem
+    // resposta definida: NEGADO e registrado. Nunca mais `[]` por padrão.
+    await negarNaoPrevista(page, rota);
   });
 }
 
@@ -401,7 +614,7 @@ export async function abrirLoja(
   }
 
   await page.waitForFunction(
-    () => document.querySelector("#root")?.children.length > 0,
+    () => (document.querySelector("#root")?.children.length ?? 0) > 0,
     undefined,
     { timeout: 30_000 },
   );
@@ -608,19 +821,26 @@ export async function instalarSessaoClienteFixtura(
         body: JSON.stringify(corpo),
       });
 
-    if (url.pathname === "/auth/v1/user") {
+    const chave = `${pedido.method()} ${url.pathname}`;
+    if (chave === "GET /auth/v1/user") {
       await responderJson(usuarioFixtura());
       return;
     }
-    if (url.pathname === "/auth/v1/token") {
+    if (chave === "POST /auth/v1/token") {
       await responderJson(sessaoFixtura());
       return;
     }
-    if (url.pathname === "/auth/v1/logout") {
+    if (chave === "POST /auth/v1/logout") {
       await rota.fulfill({ status: 204, body: "" });
       return;
     }
-    if (url.pathname === "/rest/v1/rpc/get_my_complete_profile") {
+    // O carrinho do cliente logado sincroniza com o banco (CartContext). A
+    // RPC real devolve `void` — o PostgREST responde 204 sem corpo.
+    if (chave === "POST /rest/v1/rpc/sync_cart_atomic") {
+      await rota.fulfill({ status: 204, body: "" });
+      return;
+    }
+    if (chave === "POST /rest/v1/rpc/get_my_complete_profile") {
       await responderJson([
         {
           id: ID_CLIENTE_FIXTURA,
@@ -634,15 +854,12 @@ export async function instalarSessaoClienteFixtura(
       ]);
       return;
     }
-    if (url.pathname === "/rest/v1/rpc/is_admin") {
+    if (chave === "POST /rest/v1/rpc/is_admin") {
       await responderJson(false);
       return;
     }
-    if (url.pathname === "/rest/v1/user_addresses") {
-      if (pedido.method() !== "GET") {
-        await responderJson([]);
-        return;
-      }
+    // Só a LEITURA dos endereços: escrita não tem stub (cai na guarda).
+    if (chave === "GET /rest/v1/user_addresses") {
       await responderJson(
         opcoes.enderecos.map((e) => ({
           ...e,
@@ -656,7 +873,7 @@ export async function instalarSessaoClienteFixtura(
       );
       return;
     }
-    if (url.pathname === "/functions/v1/calculate-shipping") {
+    if (chave === "POST /functions/v1/calculate-shipping") {
       let cep = "";
       try {
         cep = String(

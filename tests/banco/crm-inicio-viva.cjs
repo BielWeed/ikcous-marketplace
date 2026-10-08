@@ -85,6 +85,13 @@ PROVAS.push({
        ON CONFLICT (id) DO NOTHING`,
       [U_ADMIN, C1, C2, C4],
     );
+    // 20261199000000 (admin ATUAL): CRM e Início exigem o papel admin AGORA
+    // em auth.users E em profiles — o admin da prova tem os dois.
+    await cliente.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Admin CRM', 'admin')
+       ON CONFLICT (id) DO NOTHING`,
+      [U_ADMIN],
+    );
     // C1: 7 pedidos de 100 nos últimos 7 dias (hoje incluso) → campeoes
     for (let d = 0; d < 7; d += 1)
       await venda(cliente, {
@@ -248,7 +255,7 @@ PROVAS.push({
       em_risco: 1,
       // Migration 20261183000000 (o CRM vê todo mundo): estes 2 aparecem
       // SEMPRE, mesmo com 0 — este fixture não tem ninguém sem conta
-      // (`profiles` nunca é populada aqui) nem identidade só com pedido não
+      // (em `profiles` só o admin, e staff não entra) nem identidade só com pedido não
       // pago (C2 já é comprador; "Na entrega" não tem chave nenhuma).
       pediu_nao_pagou: 0,
       nunca_comprou: 0,

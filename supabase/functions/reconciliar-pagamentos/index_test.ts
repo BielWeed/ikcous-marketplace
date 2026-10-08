@@ -21,6 +21,11 @@
  */
 import { assertEquals, assertStringIncludes } from "https://deno.land/std@0.177.0/testing/asserts.ts";
 import { handler, htmlDoAvisoDePagamentoAtrasado } from "./index.ts";
+import {
+  MOTIVO_LINHA_INCERTA,
+  MOTIVO_SALDO_MUDOU_ANTES_DO_POST,
+  MOTIVO_SALDO_NAO_COBRE_MAIS,
+} from "../_shared/estorno.ts";
 // Tarefa mp-2: as MESMAS primitivas de cifra da produção montam o registro
 // do lojista nos testes MP-1/MP-2 do fim deste arquivo. Desde a tarefa mp-6
 // o fixture vem PRONTO de `_shared/credenciais-mp_fixtures.ts` — era a
@@ -53,6 +58,25 @@ function fetchConsulta(status: number, corpo: Record<string, unknown>) {
   return async (_url: string, _init?: RequestInit) =>
     new Response(JSON.stringify(corpo), { status });
 }
+
+/**
+ * A lista de contestações presas (FASE 2, `reconsulta-de-contestacao.ts`) lê
+ * `order_refunds` com `.eq().lt().order().limit()`: estes testes não têm
+ * contestação nenhuma, então a cadeia devolve vazio (e a reconsulta não faz
+ * nada, sem ruído de TypeError engolido).
+ */
+function cadeiaVazia() {
+  const q = {
+    eq: () => q,
+    lt: () => q,
+    order: () => q,
+    limit: () => q,
+    then: (res: (v: unknown) => void, rej?: (e: unknown) => void) =>
+      Promise.resolve({ data: [], error: null }).then(res, rej),
+  };
+  return q;
+}
+const ehLeituraDeContestacao = (colunas: string) => colunas.trim() === "id" || colunas.trim() === "id, order_id, updated_at";
 
 /**
  * Cliente Supabase falso: distingue as duas RPCs de pagamento pelo nome.
@@ -93,8 +117,15 @@ function clienteFalso(opts: {
     chamadasLiberar?: Array<{ args: Record<string, unknown> }>;
     chamouCandidatos: boolean;
     chamadasConcluirEstorno?: Array<{ args: Record<string, unknown> }>;
+    chamadasAutorizarPost?: Array<{ args: Record<string, unknown> }>;
     atualizacoesOrderRefunds?: Array<
-      { id: string; valores: Record<string, unknown>; statusFiltro: string[] }
+      {
+        id: string;
+        valores: Record<string, unknown>;
+        statusFiltro: string[];
+        // R1: `.is(coluna, valor)` encadeado depois do `.in()`.
+        filtroIs?: [string, unknown];
+      }
     >;
   };
 
@@ -134,6 +165,11 @@ function clienteFalso(opts: {
   // ainda roda pelas chaves da plataforma, que é o que todos os testes
   // anteriores a esta tarefa exercitam.
   registroMp?: Record<string, unknown> | null;
+  // --- Lote A (04/10/2026): autorizar_post_do_estorno, a pergunta do
+  // executor ao banco imediatamente antes do POST. Default: autorizado com o
+  // pedido fresco ATUAL da linha (`resolverPedidoFresco`) — o banco relê o
+  // mesmo estado que o handler leu, no instante da pergunta.
+  autorizarPost?: (args: Record<string, unknown>) => { data: unknown; error: unknown };
 }) {
   return {
     rpc: async (nome: string, args?: Record<string, unknown>) => {
@@ -157,6 +193,14 @@ function clienteFalso(opts: {
         if (opts.liberarErro) return { data: null, error: opts.liberarErro };
         return { data: opts.liberarResultado ?? true, error: null };
       }
+      if (nome === "autorizar_post_do_estorno") {
+        opts.registro.chamadasAutorizarPost?.push({ args: args ?? {} });
+        if (opts.autorizarPost) return opts.autorizarPost(args ?? {});
+        const refund = (opts.refundsPendentes ?? []).find((r) => r.id === args?.p_refund_id);
+        const pedido = refund ? opts.resolverPedidoFresco?.(String(refund.order_id)) : null;
+        if (!pedido) throw new Error("autorizar_post_do_estorno sem pedido conhecido neste teste");
+        return { data: { decisao: "autorizado", pedido }, error: null };
+      }
       if (nome === "concluir_estorno") {
         opts.registro.chamadasConcluirEstorno?.push({ args: args ?? {} });
         opts.aoConcluirEstorno?.(args ?? {});
@@ -168,7 +212,17 @@ function clienteFalso(opts: {
     from(tabela: string) {
       if (tabela === "order_refunds") {
         return {
-          select(_colunas: string) {
+          select(colunasPedidas: string) {
+            if (ehLeituraDeContestacao(colunasPedidas)) return cadeiaVazia();
+            // R1 (20261196000000): a fila devolve SÓ as colunas que o SELECT
+            // da produção pediu (mais as que o dublê usa para filtrar e
+            // ordenar já foram usadas antes da projeção) — tirar
+            // `post_autorizado_em` do SELECT tira o campo da linha.
+            const colunasDoSelect = colunasPedidas.split(",").map((c) => c.trim());
+            const projetar = (linha: Record<string, unknown>) =>
+              colunasDoSelect.includes("*")
+                ? linha
+                : Object.fromEntries(Object.entries(linha).filter(([k]) => colunasDoSelect.includes(k)));
             return {
               // item 1 do brief P0: `.select("mp_refund_id").eq("order_id",
               // x).neq("id", y).not("mp_refund_id", "is", null)` — chain
@@ -275,7 +329,10 @@ function clienteFalso(opts: {
                           }
                           return 0;
                         });
-                        return { data: ordenados.slice(0, n), error: null };
+                        return {
+                          data: ordenados.slice(0, n).map((r) => projetar(r as Record<string, unknown>)),
+                          error: null,
+                        };
                       },
                     });
                     return comCriterios([]);
@@ -290,20 +347,25 @@ function clienteFalso(opts: {
               eq(_coluna: string, id: string) {
                 return {
                   in(_coluna2: string, statusFiltro: string[]) {
-                    const executar = async () => {
-                      opts.registro.atualizacoesOrderRefunds?.push({ id, valores, statusFiltro });
+                    const executar = async (filtroIs?: [string, unknown]) => {
+                      opts.registro.atualizacoesOrderRefunds?.push(
+                        filtroIs ? { id, valores, statusFiltro, filtroIs } : { id, valores, statusFiltro },
+                      );
                       if (opts.atualizarOrderRefunds) {
                         return opts.atualizarOrderRefunds(id, valores, statusFiltro);
                       }
                       return { data: [{ id }], error: null };
                     };
-                    return {
-                      select: () => executar(),
+                    const encadeavel = (filtroIs?: [string, unknown]) => ({
+                      // R1: `.is("post_autorizado_em", null)` no recusado.
+                      is: (coluna: string, valor: unknown) => encadeavel([coluna, valor]),
+                      select: () => executar(filtroIs),
                       then: (
                         res: (v: { data: unknown; error: unknown }) => void,
                         rej?: (e: unknown) => void,
-                      ) => executar().then(res, rej),
-                    };
+                      ) => executar(filtroIs).then(res, rej),
+                    });
+                    return encadeavel();
                   },
                 };
               },
@@ -611,6 +673,70 @@ Deno.test("order expirada (expired:expired) -> NÃO chama confirmar_pagamento, i
   // 'expirado' — a RPC não conhece esse valor e cairia no RETURN 'ignorado'
   // do fim, indistinguível no log de um 'ignorado' que passou pela RPC de
   // verdade.
+  assertEquals(registro.chamadasConfirmar.length, 0);
+});
+
+// --- 5b. contestação (chargeback): o mapa compartilhado diz 'estornado', mas
+// a reconciliação NÃO confirma — Lote A (04/10/2026, R1/A2). `confirmar_
+// pagamento('estornado')` é IRREVERSÍVEL e, no pedido 'aguardando'+'pending',
+// ainda CANCELA e devolve o estoque — para uma disputa que pode estar em
+// análise (in_process) ou ter sido ganha pela loja (reimbursed). O ledger da
+// contestação é do webhook; aqui o candidato só é ignorado, com log.
+
+Deno.test("Lote A — order 'charged_back' (os três detalhes) -> NÃO chama confirmar_pagamento, ignorados:1", async () => {
+  for (const detalhe of ["in_process", "settled", "reimbursed"]) {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder = "ORDTST03CHARGEDBACK";
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "estornado", registro });
+    const fetchImpl = fetchConsulta(200, {
+      id: idOrder,
+      status: "charged_back",
+      status_detail: detalhe,
+      total_amount: "149.90",
+    });
+    const avisoReal = console.warn;
+    console.warn = () => {};
+    let resposta: Response;
+    try {
+      resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    } finally {
+      console.warn = avisoReal;
+    }
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200, detalhe);
+    assertEquals(corpo.ignorados, 1, detalhe);
+    assertEquals(corpo.falhas, 0, detalhe);
+    assertEquals(registro.chamadasConfirmar.length, 0, `${detalhe}: confirmar_pagamento NÃO pode rodar para contestação`);
+  }
+});
+
+Deno.test("Lote A — candidato LEGADO com pagamento clássico 'charged_back' -> NÃO chama confirmar_pagamento, ignorados:1", async () => {
+  const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+  const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: "999" }];
+  const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "estornado", registro });
+  const fetchImpl = async (url: string) => {
+    if (url.includes("/v1/payments/999")) {
+      return new Response(
+        JSON.stringify({ id: 999, status: "charged_back", status_detail: "in_process" }),
+        { status: 200 },
+      );
+    }
+    throw new Error(`fetch inesperado nos testes: ${url}`);
+  };
+  const avisoReal = console.warn;
+  console.warn = () => {};
+  let resposta: Response;
+  try {
+    resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+  } finally {
+    console.warn = avisoReal;
+  }
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(corpo.ignorados, 1);
   assertEquals(registro.chamadasConfirmar.length, 0);
 });
 
@@ -2208,6 +2334,7 @@ function supabaseRealMinimo(opts: {
       if (tabela === "order_refunds") {
         return {
           select(_cols: string) {
+            if (ehLeituraDeContestacao(_cols)) return cadeiaVazia();
             return {
               in(_col: string, _vals: string[]) {
                 return {
@@ -2817,3 +2944,451 @@ Deno.test("invariante confirmados + ignorados + falhas === verificados continua 
   assertEquals(corpo.ignorados, 1);
   assertEquals(corpo.cobrancasLiberadas, 1);
 });
+
+
+// ── LEASE (Lote A, 04/10/2026 — achado causal do 01765261): o cron entrega
+// ao executor a pergunta ao banco feita IMEDIATAMENTE antes do POST
+// (autorizar_post_do_estorno), nos DOIS caminhos que POSTam: a linha
+// solicitado e o retry da em_processamento. Não cabe => nenhum POST, a linha
+// fica em_processamento com o motivo em ultimo_erro, nada terminal.
+
+function registroDoLease() {
+  return {
+    chamadasConfirmar: [] as Array<{ args: Record<string, unknown> }>,
+    chamouCandidatos: false,
+    chamadasConcluirEstorno: [] as Array<{ args: Record<string, unknown> }>,
+    chamadasAutorizarPost: [] as Array<{ args: Record<string, unknown> }>,
+    atualizacoesOrderRefunds: [] as Array<
+      { id: string; valores: Record<string, unknown>; statusFiltro: string[]; filtroIs?: [string, unknown] }
+    >,
+  };
+}
+
+Deno.test("LEASE-C1 - linha solicitado: o banco diz que o POST não cabe mais -> NENHUM POST; a linha nunca teve POST -> recusado (R1), condicionado ao carimbo", async () => {
+  // R1 (revisão Opus de 14d77a5b): antes "adiada, nada terminal" — e a
+  // linha, sem POST nenhum, ficava reservada para sempre. A linha INCERTA
+  // no mesmo nao_cabe segue adiada: LEASE-C2 e R1-C2.
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 20 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rl1", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 10 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 999, status: "approved", amount: 20 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(resposta.status, 200);
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0, "nenhum POST saiu");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  assertEquals(registro.chamadasAutorizarPost.map((c) => c.args), [{ p_refund_id: "rl1", p_valor: 20 }]);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  const terminal = registro.atualizacoesOrderRefunds.filter((a) => a.valores.status === "recusado");
+  assertEquals(terminal.length, 1);
+  assertEquals(terminal[0].valores.ultimo_erro, MOTIVO_SALDO_NAO_COBRE_MAIS);
+  assertEquals(terminal[0].statusFiltro, ["em_processamento"]);
+  assertEquals(terminal[0].filtroIs, ["post_autorizado_em", null], "o recusado só pega linha sem POST autorizado");
+});
+
+Deno.test("LEASE-C2 - retry da em_processamento (consulta sem refund): o banco diz que não cabe -> só o GET, NENHUM POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 20 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rl2", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 10 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 20 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta; nenhum POST");
+  assertEquals(corpo.estornos.adiados, 1);
+  assertEquals(registro.chamadasAutorizarPost.map((c) => c.args), [{ p_refund_id: "rl2", p_valor: 20 }]);
+  // Linha LEGADA (sem criada_sob_autorizacao) com tentativas 2: incerta —
+  // o motivo diz que o valor segue reservado (sufixo MOTIVO_LINHA_INCERTA).
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) =>
+        a.id === "rl2" && String(a.valores.ultimo_erro ?? "").startsWith(MOTIVO_SALDO_MUDOU_ANTES_DO_POST) &&
+        String(a.valores.ultimo_erro ?? "").includes(MOTIVO_LINHA_INCERTA),
+    ),
+    true,
+  );
+});
+
+Deno.test("LEASE-C3 - autorizado: os dois caminhos perguntam ao banco UMA vez cada e o POST sai (controle positivo)", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "rl3", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+      { id: "rl4", order_id: pedido.id, amount: 30, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "in_process" } },
+  ]);
+
+  await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+
+  assertEquals(
+    registro.chamadasAutorizarPost.map((c) => c.args.p_refund_id).sort(),
+    ["rl3", "rl4"],
+  );
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").map((c) => c.chave).sort(), ["rl3", "rl4"]);
+});
+
+
+// ── LINHA INCERTA (Lote A, 04/10/2026 — achado do coordenador em 1a823e3f):
+// a 2ª passada do cron numa linha em_processamento (tentativas >= 1: o POST
+// anterior pode ter chegado ao MP) com o pedido já em 90 NUNCA a termina; a
+// prova externa (consulta ao MP mostrando o refund) conclui. A linha
+// 'solicitado' (nunca marcada, nunca POSTada) continua recusada como antes.
+
+Deno.test("INCERTA-C1 - retry de linha em_processamento (tentativas 2) com o pedido em 90: tentar_depois, ZERO POST, nada terminal, reserva preservada", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 90 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "ri1", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 2, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([
+    // A consulta não esclarece (sem refunds) — é o caminho que levaria ao retry.
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 20 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"], "só a consulta; ZERO POST novo");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "falhou" || a.valores.status === "recusado"),
+    false,
+    "nada terminal: a reserva fica",
+  );
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "ri1" && String(a.valores.ultimo_erro ?? "").includes(MOTIVO_LINHA_INCERTA),
+    ),
+    true,
+  );
+});
+
+Deno.test("INCERTA-C2 (controle) - linha 'solicitado' (nunca marcada) com o pedido em 90: recusado como antes, zero chamada ao MP", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 90 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "ri2", order_id: pedido.id, amount: 20, status: "solicitado", tentativas: 0, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+  });
+  const mp = fetchDubleReconciliacao([]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.length, 0);
+  assertEquals(corpo.estornos.falhos, 1);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.id === "ri2" && a.valores.status === "recusado"),
+    true,
+  );
+});
+
+Deno.test("INCERTA-C3 - prova externa: a consulta ao MP mostra o refund da linha incerta -> conclui pela RPC, ZERO POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 20 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [
+      { id: "ri3", order_id: pedido.id, amount: 20, status: "em_processamento", tentativas: 3, mp_refund_id: null },
+    ],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["REF_ANTIGO"],
+  });
+  const mp = fetchDubleReconciliacao([
+    {
+      metodo: "GET",
+      trecho: "/v1/payments/123456789",
+      status: 200,
+      corpo: {
+        id: 123456789,
+        status: "approved",
+        transaction_amount_refunded: 40,
+        refunds: [
+          { id: "REF_ANTIGO", amount: 20, status: "approved" },
+          { id: "REF_DA_INCERTA", amount: 20, status: "approved" },
+        ],
+      },
+    },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.map((c) => c.metodo), ["GET"]);
+  assertEquals(corpo.estornos.concluidos, 1);
+  assertEquals(registro.chamadasConcluirEstorno.map((c) => c.args.p_mp_refund_id), ["REF_DA_INCERTA"]);
+});
+
+// ── R1 (revisão Opus de 14d77a5b, 04/10/2026): reserva presa para sempre ──
+// O cenário do revisor no cron: linha do app nascida DEPOIS da 20261196000000
+// (criada_sob_autorizacao true), em_processamento, tentativas 2, SEM POST
+// autorizado nunca (post_autorizado_em NULL), num pedido de 100 cujo saldo
+// caiu por um REF externo de 70. Antes: tentativas > 1 = "incerta" ->
+// tentar_depois em todo ciclo até o teto de 5, e depois só consulta — a
+// reserva de 50 presa para sempre, sem dinheiro nenhum ter saído. Agora:
+// consulta (nada), retry, a guarda recusa -> recusado, reserva liberada,
+// ZERO POST. Controle: a MESMA linha com post_autorizado_em -> adiada.
+
+function linhaDoCenarioR1(extras: Record<string, unknown> = {}) {
+  return {
+    id: "rr1",
+    order_id: "pedido-fresco",
+    amount: 50,
+    status: "em_processamento",
+    tentativas: 2,
+    mp_refund_id: null,
+    post_autorizado_em: null,
+    criada_sob_autorizacao: true,
+    ...extras,
+  };
+}
+
+Deno.test("R1-C1 - linha nova sem POST autorizado, pedido em 70 de 100: consulta, retry, recusado (reserva liberada), ZERO POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 70 });
+  const linha = linhaDoCenarioR1({ order_id: pedido.id });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [linha],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["REF-EXT"],
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 30 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 50 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0, "ZERO POST");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 0, falhos: 1 });
+  const terminal = registro.atualizacoesOrderRefunds.filter((a) => a.valores.status === "recusado");
+  assertEquals(terminal.length, 1, "recusado: a reserva é liberada");
+  assertEquals(terminal[0].id, "rr1");
+  assertEquals(terminal[0].filtroIs, ["post_autorizado_em", null]);
+  assertEquals(registro.chamadasConcluirEstorno.length, 0);
+});
+
+Deno.test("R1-C2 (controle) - a MESMA linha com post_autorizado_em: adiada, nada terminal, reserva mantida, ZERO POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 70 });
+  const linha = linhaDoCenarioR1({ order_id: pedido.id, post_autorizado_em: "2026-10-04T10:00:00Z" });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [linha],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["REF-EXT"],
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 30 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 50 } },
+  ]);
+
+  const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f });
+  const corpo = await resposta.json();
+
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0);
+  assertEquals(corpo.estornos.adiados, 1);
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "recusado" || a.valores.status === "falhou"),
+    false,
+    "nada terminal",
+  );
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "rr1" && String(a.valores.ultimo_erro ?? "").includes(MOTIVO_LINHA_INCERTA),
+    ),
+    true,
+  );
+});
+
+Deno.test("R1-C3 - duas passadas do cron (o liveness do revisor): passada 1 com o banco dizendo nao_cabe numa linha 'solicitado' nova já termina em recusado; ZERO POST nas duas", async () => {
+  // Passada 1: a linha nasceu agora (solicitado, criada_sob_autorizacao
+  // true), o retrato do pedido ainda é o de antes do REF externo (a guarda
+  // passa) e o banco, sob a trava, diz nao_cabe. Nenhum POST foi autorizado
+  // -> recusado já aqui; o pedido do revisor era "no máximo na 2a passada".
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 0 });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [linhaDoCenarioR1({ order_id: pedido.id, status: "solicitado", tentativas: 0 })],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 30 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 50 } },
+  ]);
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+  assertEquals(mp.chamadas.length, 0, "ZERO chamada ao MP");
+  assertEquals(corpo.estornos.falhos, 1);
+  const terminal = registro.atualizacoesOrderRefunds.filter((a) => a.valores.status === "recusado");
+  assertEquals(terminal.length, 1);
+  assertEquals(terminal[0].valores.ultimo_erro, MOTIVO_SALDO_NAO_COBRE_MAIS);
+  assertEquals(terminal[0].filtroIs, ["post_autorizado_em", null]);
+});
+
+// ── Roteiro de publicação (revisão Opus, cenários C4 e D1): o DEFAULT true de
+// criada_sob_autorizacao saiu da 96 para a 20261201000000. Enquanto só a 96
+// está no ar, a linha nova nasce NULL — o banco devolve o campo NULL de
+// verdade (não ausente) — e o executor a trata como LEGADO: com tentativas 2
+// (a edge ANTIGA marcou e pode ter mandado o POST, sem carimbo), ela é
+// incerta e a reserva fica. O mesmo cenário com true (R1-C1) é recusado: por
+// isso a 201 só sobe depois das edges novas e do escoamento das antigas.
+
+Deno.test("R1-C4 - só com a 96 (criada_sob_autorizacao NULL vindo do banco), POST da edge antiga sem carimbo, tentativas 2, pedido em 70: adiada, nada terminal, ZERO POST", async () => {
+  const registro = registroDoLease();
+  const pedido = pedidoFrescoPara({ total: 100, valor_estornado: 70 });
+  const linha = linhaDoCenarioR1({ order_id: pedido.id, criada_sob_autorizacao: null });
+  const supabase = clienteFalso({
+    candidatos: [],
+    registro,
+    refundsPendentes: [linha],
+    resolverPedidoFresco: (orderId) => (orderId === pedido.id ? pedido : null),
+    idsJaReivindicadosPorPedido: () => ["REF-EXT"],
+    autorizarPost: () => ({ data: { decisao: "nao_cabe", disponivel: 30 }, error: null }),
+  });
+  const mp = fetchDubleReconciliacao([
+    { metodo: "GET", trecho: "/v1/payments/123456789", status: 200, corpo: { id: 123456789, status: "approved" } },
+    { metodo: "POST", trecho: "/v1/payments/123456789/refunds", status: 201, corpo: { id: 555, status: "approved", amount: 50 } },
+  ]);
+
+  const corpo = await (await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl: mp.f })).json();
+
+  assertEquals(mp.chamadas.filter((c) => c.metodo === "POST").length, 0, "ZERO POST");
+  assertEquals(corpo.estornos, { vistos: 1, concluidos: 0, adiados: 1, falhos: 0 });
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some((a) => a.valores.status === "recusado" || a.valores.status === "falhou"),
+    false,
+    "nada terminal: a reserva fica",
+  );
+  assertEquals(
+    registro.atualizacoesOrderRefunds.some(
+      (a) => a.id === "rr1" && String(a.valores.ultimo_erro ?? "").includes(MOTIVO_LINHA_INCERTA),
+    ),
+    true,
+  );
+});
+
+// ── Cartão PARCELADO com juros do comprador (07/10/2026) ───────────────────
+// Premissa (não medida), a mesma do webhook (ver
+// webhook-mercadopago/index_test.ts, bloco "Cartão PARCELADO"): o MP cobra os juros por cima do pedido, só o valor
+// PAGO sobe, e a conferência daqui lê o `total_amount`. Se a leitura virar o
+// valor pago, o cron passa a deixar o 2x/3x pago parado para sempre. Os
+// valores pagos (164,35 / 168,49) são FIXTURES SINTÉTICAS, não taxas medidas
+// no MP; a premissa continua declarada, não provada por esta suíte.
+const PARCELADOS_COM_JUROS = [
+  { parcelas: 1, pago: "149.90" },
+  { parcelas: 2, pago: "164.35" },
+  { parcelas: 3, pago: "168.49" },
+];
+
+function orderParceladaComJuros(id: string, parcelas: number, pago: string): Record<string, unknown> {
+  return {
+    id,
+    external_reference: UUID_PEDIDO_1,
+    status: "processed",
+    status_detail: "accredited",
+    total_amount: "149.90",
+    total_paid_amount: pago,
+    date_created: "2026-09-30T12:00:00.000Z",
+    transactions: {
+      payments: [{
+        amount: "149.90",
+        paid_amount: pago,
+        status: "processed",
+        status_detail: "accredited",
+        payment_method: { id: "visa", type: "credit_card", installments: parcelas },
+      }],
+    },
+  };
+}
+
+for (const caso of PARCELADOS_COM_JUROS) {
+  Deno.test(`cartão parcelado ${caso.parcelas}x — order aprovada com valor pago ${caso.pago} (pedido 149,90) -> confirmados:1, nunca ignorado por valor`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false };
+    const idOrder = "ORDTST01PARCELADOCOMJUROS";
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: idOrder }];
+    const supabase = clienteFalso({ candidatos, rpcConfirmarResultado: "pago", registro });
+    const fetchImpl = fetchConsulta(200, orderParceladaComJuros(idOrder, caso.parcelas, caso.pago));
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(corpo.confirmados, 1, "juros do parcelado não é valor divergente");
+    assertEquals(corpo.ignorados, 0);
+    assertEquals(registro.chamadasConfirmar.length, 1);
+    assertEquals(registro.chamadasConfirmar[0].args.p_payment_id, idOrder);
+    assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+  });
+
+  Deno.test(`cartão parcelado ${caso.parcelas}x — sentinela com a order capturada e valor pago ${caso.pago} -> adota com parcelas ${caso.parcelas} e confirma`, async () => {
+    const registro = { chamadasConfirmar: [], chamouCandidatos: false, adocoesPedido: [] as any[] };
+    const candidatos = [{ order_id: UUID_PEDIDO_1, gateway_payment_id: SENTINELA_1 }];
+    const supabase = clienteFalso({ candidatos, registro });
+    const urls: string[] = [];
+    const order = orderParceladaComJuros("ORDTST01CARTAOCAPTURADO", caso.parcelas, caso.pago);
+    const fetchImpl = fetchSentinela({ status: 200, corpo: { results: [order] } }, order, urls);
+
+    const resposta = await handler(requisicaoComSegredo(SEGREDO), { supabase, fetchImpl });
+    const corpo = await resposta.json();
+
+    assertEquals(resposta.status, 200);
+    assertEquals(registro.adocoesPedido.length, 1);
+    assertEquals(registro.adocoesPedido[0].valores.metodo_online, "credito");
+    assertEquals(registro.adocoesPedido[0].valores.parcelas, caso.parcelas);
+    assertEquals(registro.chamadasConfirmar.length, 1);
+    assertEquals(registro.chamadasConfirmar[0].args.p_status, "pago");
+    assertEquals(corpo.confirmados, 1);
+  });
+}

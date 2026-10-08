@@ -10,6 +10,7 @@ import {
   esquecerConfigDoCartao,
 } from "@/lib/config-do-cartao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { cn, formatCurrency } from "@/lib/utils";
 import { AlertCircle, Check, Clock, Copy, Loader2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -345,7 +346,16 @@ export function dispararPagamentoPix({
       // vindo de `criarPagamento` (useOrders.ts) é um DADO lido do corpo do
       // 409/etc. da edge function, nunca reconstruído a partir do texto da
       // mensagem — texto que muda quebraria uma comparação por igualdade.
-      const terminal = err?.terminal === true;
+      //
+      // F3 (fase 3 dos pagamentos, 04/10/2026): o 503 NÃO é terminal, mesmo
+      // marcado. A edge também grava `terminal: true` no 503 "Pagamento
+      // indisponível." (a credencial do Mercado Pago não pôde ser lida
+      // AGORA), que não fala do pedido — o PIX nem foi criado, e repetir é
+      // seguro: a edge reavalia `podeCobrar` e reconsulta a vaga por CAS,
+      // nunca cria uma segunda cobrança. Mesma régua do cartão
+      // (confirmacao-do-cartao.ts, achado M1): `terminal` com 409/404/403 e
+      // sem status legível segue terminal como sempre foi.
+      const terminal = err?.terminal === true && err?.httpStatus !== 503;
       const mensagem = err?.message ?? "Não foi possível gerar a cobrança.";
       const categoria = terminal ? "terminal" : "recuperavel";
       // Terceiro argumento OMITIDO quando não há sinal (não `undefined`
@@ -394,11 +404,15 @@ export function PagamentoOnline({
   configDoCartao = null,
   emailDoPagador,
   cobrancaIncerta = false,
+  pedidoMortoNoServidor = false,
   onTrocarParaPix,
   onVerMeusPedidos,
   onCobrancaEmDuvida,
   onCartaoEmCurso,
   cartaoEncerrado,
+  onCartaoEncerradoPelaConsulta,
+  sessaoAtiva = true,
+  onEntrarDeNovo,
 }: {
   orderId: string;
   valor: number;
@@ -412,6 +426,10 @@ export function PagamentoOnline({
   configDoCartao?: ConfigDoCartao | null;
   emailDoPagador?: string | null;
   cobrancaIncerta?: boolean;
+  // F1 (04/10/2026): o SERVIDOR já gravou o pedido como morto (`expirado`, ou
+  // `aguardando` + `cancelled`). Só o PIX o lê: o código deixa de aparecer
+  // como válido. Nunca é inferido do relógio do aparelho.
+  pedidoMortoNoServidor?: boolean;
   // Achado 2, rodada 4 da revisão de risco pré-publicação (26/09/2026):
   // repassa se o cartão ainda podia estar vivo NO MOMENTO da troca — ver o
   // comentário grande em `PagamentoComCartao`'s `onPagarComPix`.
@@ -422,6 +440,11 @@ export function PagamentoOnline({
   // C6 (P1): repassados à tela do cartão — ver `CartaoEmCurso`.
   onCartaoEmCurso?: (cartao: CartaoEmCurso | null) => void;
   cartaoEncerrado?: CartaoEmCurso | null;
+  // Confirmação do cartão sem fim (03/10/2026): repassados à tela do cartão
+  // — ver `confirmacao-do-cartao.ts` e `PagamentoComCartao`.
+  onCartaoEncerradoPelaConsulta?: (cartao: CartaoEmCurso) => void;
+  sessaoAtiva?: boolean;
+  onEntrarDeNovo?: () => void;
 }) {
   const [trocouParaPix, setTrocouParaPix] = useState(false);
   // Tipos que o servidor recusou com "forma desligada" NESTE pedido. Só o
@@ -494,6 +517,10 @@ export function PagamentoOnline({
           onCobrancaEmDuvida={onCobrancaEmDuvida}
           onCartaoEmCurso={onCartaoEmCurso}
           cartaoEncerrado={cartaoEncerrado}
+          onCartaoEncerradoPelaConsulta={onCartaoEncerradoPelaConsulta}
+          onVerMeusPedidos={onVerMeusPedidos}
+          sessaoAtiva={sessaoAtiva}
+          onEntrarDeNovo={onEntrarDeNovo}
         />
       );
     }
@@ -536,16 +563,30 @@ export function PagamentoOnline({
     );
   }
 
-  return <PagamentoComPix orderId={orderId} valor={valor} onErro={onErro} />;
+  return (
+    <PagamentoComPix
+      orderId={orderId}
+      valor={valor}
+      onErro={onErro}
+      pedidoMortoNoServidor={pedidoMortoNoServidor}
+      onVerMeusPedidos={onVerMeusPedidos}
+    />
+  );
 }
 
 function PagamentoComPix({
   orderId,
   valor,
   onErro,
+  pedidoMortoNoServidor = false,
+  onVerMeusPedidos,
 }: {
   orderId: string;
   valor: number;
+  pedidoMortoNoServidor?: boolean;
+  // Saída do aviso de pedido morto: leva à lista de pedidos. Ausente = o
+  // botão não aparece (nunca um botão mudo).
+  onVerMeusPedidos?: () => void;
   // Terceiro parâmetro opcional — ver `SinalDeErroPagamento`.
   onErro: (
     msg: string,
@@ -721,6 +762,57 @@ function PagamentoComPix({
     );
   }
 
+  // F1 (04/10/2026): o servidor já gravou o pedido como morto — o código que
+  // o cliente tem na mão o banco recusaria. QR, "Copiar código", o texto do
+  // copia e cola e o link saem da tela; fica o aviso. Quem pagou antes
+  // continua vendo a confirmação (o CheckoutView segue verificando e troca a
+  // tela quando o pagamento atrasado chega). O texto NÃO diz "prazo de
+  // reserva venceu": essa frase é da tela de "pago fora do prazo".
+  if (pix && pedidoMortoNoServidor) {
+    return (
+      <section
+        aria-labelledby={idTitulo}
+        className="mx-auto w-full max-w-md space-y-4 rounded-2xl border border-zinc-100 bg-white p-4 sm:p-6"
+      >
+        <header className="space-y-1 text-center">
+          <h2
+            id={idTitulo}
+            className="text-xs font-bold uppercase tracking-wider text-zinc-500"
+          >
+            Pagamento via Pix
+          </h2>
+          {orderId && (
+            <p className="text-xs text-zinc-500">
+              Pedido #{numeroDoPedido(orderId)}
+            </p>
+          )}
+        </header>
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3"
+        >
+          <AlertCircle
+            aria-hidden="true"
+            className="mt-0.5 size-5 shrink-0 text-amber-600"
+          />
+          <p className="text-sm text-amber-800">
+            Este código não vale mais. Se você já pagou, fique nesta tela: a
+            confirmação aparece aqui. Se ainda não pagou, faça um pedido novo.
+          </p>
+        </div>
+        {onVerMeusPedidos && (
+          <button
+            type="button"
+            onClick={onVerMeusPedidos}
+            className="flex min-h-12 w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-bold text-white active:bg-zinc-700"
+          >
+            Ver meus pedidos
+          </button>
+        )}
+      </section>
+    );
+  }
+
   if (pix) {
     const valorConhecido = Number.isFinite(valor) && valor > 0;
     const descritoPeloAviso = horarioPrevistoPassou
@@ -750,7 +842,7 @@ function PagamentoComPix({
           )}
           {orderId && (
             <p className="text-xs text-zinc-500">
-              Pedido #{orderId.slice(0, 8)}
+              Pedido #{numeroDoPedido(orderId)}
             </p>
           )}
         </header>

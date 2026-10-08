@@ -23,6 +23,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Order, OrderStatus } from "@/types";
 
 const rpc = vi.fn();
+// S1 (04/10/2026): cancelar pedido que a tela NÃO tem em memória (o
+// "pedido-x" abaixo) vai pela edge `criar-pagamento` (ação `cancelar`), que
+// anula a cobrança antes — o cancelamento só "aconteceu" com a resposta dela.
+const invoke = vi.fn();
 
 // Achado A da revisão de 26/08/2026 (rodada 4), "cuide do caminho do
 // realtime também": para exercitar o handler REAL que `channel.on(
@@ -34,7 +38,7 @@ let mockRealtimeOnHandler: ((payload: unknown) => unknown) | null = null;
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    functions: { invoke: vi.fn() },
+    functions: { invoke: (...args: unknown[]) => invoke(...args) },
     rpc,
     from: () => ({
       select: () => ({
@@ -561,6 +565,10 @@ describe("updateOrderStatus (admin) recarrega pedidosCancelados sozinho — acha
   });
 
   it("depois de cancelar um pedido pelo painel, o hook busca a lista PRÓPRIA de cancelados sozinho — sem precisar trocar de aba", async () => {
+    invoke.mockResolvedValue({
+      data: { cancelamento: "cancelado", jaEstava: false },
+      error: null,
+    });
     const { chamarUpdateOrderStatus } = await montarSondaAdmin();
 
     await act(async () => {

@@ -54,7 +54,15 @@ let mockRealtimeOnHandler: ((payload: unknown) => unknown) | null = null;
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
-    functions: { invoke: vi.fn() },
+    // S1 (04/10/2026, migration 20261198000000): o cancelamento pelo painel
+    // de um pedido que a tela não tem em memória ("pedido-A") vai pela edge
+    // `criar-pagamento` (ação `cancelar`), que anula a cobrança no MP antes.
+    // O que este arquivo prova (a varredura de cancelados depois do clique)
+    // é o mesmo nos dois caminhos — a edge aqui só confirma o cancelamento.
+    functions: {
+      invoke: () =>
+        Promise.resolve({ data: { cancelamento: "cancelado" }, error: null }),
+    },
     rpc,
     from: () => ({
       select: () => ({

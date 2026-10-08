@@ -90,7 +90,7 @@ const FONTES = import.meta.glob<string>(
   [
     "/src/components/admin/orders/EstornoCard.tsx",
     "/src/views/admin/AlertasCancelados.tsx",
-    "/supabase/functions/webhook-mercadopago/index.ts",
+    "/supabase/functions/_shared/efeitos-do-pagamento.ts",
     "/src/views/admin/AdminProductFormView.tsx",
     "/src/components/admin/orders/OrderDetail.tsx",
     "/src/lib/valor-devolver-agora.ts",
@@ -397,9 +397,11 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
         arquivo: "src/views/admin/AlertasCancelados.tsx",
       },
       // o push ao admin quando confirmar_pagamento devolve pago_apos_expirar
+      // (texto único dos três caminhos — webhook, cron e criação — desde
+      // 10b8a809, que levou o push do webhook para o módulo compartilhado)
       {
         rotulo: 'title: "Pagamento fora do fluxo"',
-        arquivo: "supabase/functions/webhook-mercadopago/index.ts",
+        arquivo: "supabase/functions/_shared/efeitos-do-pagamento.ts",
       },
       // o campo de estoque do cadastro do produto
       {
