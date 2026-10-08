@@ -404,6 +404,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/subtotal-vazia-provada-viva.cjs",
     // 20261203000000: cupons desligados não dão desconto (gatilho + validação).
     "tests/banco/cupons-desligados-viva.cjs",
+    // 20261203000000: o portão da release (consultas 10a e 10b do lote) decide certo.
+    "tests/banco/cupons-desligados-portao-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

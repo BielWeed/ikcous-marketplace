@@ -166,6 +166,50 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
          coluna ao authenticated e que a tabela NAO da SELECT ao authenticated nem a PUBLIC, direto
          ou herdado de outro papel (`has_table_privilege`). Ela NAO le GRANT de coluna das OUTRAS
          colunas (ex.: `custo`) nem papeis que nao sejam o authenticated: isso nao esta provado aqui.
+   9. **Lote de UMA migration, de apply normal: `20261203000000` (cupons desligados nao dao
+      desconto, issue #645).** Sem `backfillLedger` e sem `nuncaAplicar`; vale nas duas lojas
+      assinantes (IKCOUS e Savy). A migration cria o gatilho `tr_pedido_com_cupom_exige_a_chave_ligada`
+      em `marketplace_orders` (com a funcao dele) e troca o corpo de `validate_coupon_secure_v2`. As
+      duas consultas, so leitura e de ROL FECHADO (so valem com `rol=ok` no veredito), leem o
+      catalogo e nenhuma linha de pedido, cupom ou cliente:
+      - **`10a-conferir-cupons-desligados-aplicado`** (a consulta do lote, 21 linhas) prova os OBJETOS
+        e CORPOS DEPOIS do apply: gatilho `BEFORE INSERT FOR EACH ROW` habilitado (`O`) com
+        `WHEN (new.coupon_id IS NOT NULL)` apontando para a funcao certa; funcao do gatilho
+        `SECURITY DEFINER`, `search_path=public`, corpo com o sha256 da migration (LF ou CRLF, a
+        mesma conta do pre-voo dela) e SEM `EXECUTE` para PUBLIC, anon e authenticated;
+        `validate_coupon_secure_v2` com uma sobrecarga so, corpo novo, `SECURITY DEFINER`,
+        `search_path=public`, sem `EXECUTE` para PUBLIC e com para authenticated; e o indice unico
+        `marketplace_orders_chave_da_compra_unica` sobre `(idempotency_key)` parcial `IS NOT NULL` (o
+        curto-circuito do gatilho depende desse predicado exato). Cada item errado reprova na PROPRIA
+        linha.
+      - **`10b-antes-cupons-desligados-gatilho-e-corpo`** (`ausenciaConfirmadaPor`, 6 linhas) prova o
+        ANTES, as mesmas condicoes do pre-voo da migration: gatilho AUSENTE (mesmo desabilitado conta
+        como presente), uma sobrecarga so de `validate_coupon_secure_v2` com o corpo do baseline (LF
+        ou CRLF; o corpo novo reprova aqui de proposito), e as colunas `marketplace_orders.coupon_id` e
+        `store_config.enable_coupons`.
+      - **Caminho, uma loja por vez:** ledger sem a versao e sem evidencia → `10a` (ela sai NEGATIVA:
+        a migration ainda nao esta no banco) → `10b` MAIS NOVA que a `10a` e POSITIVA → o comando
+        `aplicar-migrations.yml` com o arquivo `20261203000000_cupons_desligados_nao_dao_desconto.sql`
+        (o apply grava o ledger na mesma transacao) → o ensaio pede a `10a` DE NOVO, que tem de sair
+        POSITIVA. `10a` POSITIVA com a versao fora do ledger e PARAR (sem backfill: registrar a mao e
+        decisao do dono). `10a` e `10b` NEGATIVAS, ou ledger com a versao e `10a` NEGATIVA: PARAR,
+        diagnostico com o dono, nenhum apply.
+      - **Ordem com o front:** o banco novo de CADA loja primeiro e o front desta release logo
+        depois. A regra `remover_cupom` de `src/lib/recusaDoPedido.ts` e quem troca o botao da recusa
+        nova ("Os cupons estao desativados nesta loja."); com o banco novo e o front velho nenhum pedido
+        com cupom nasce, so o botao e pior.
+      - **Efeito no banco durante o apply:** `CREATE TRIGGER` pede um lock curto em
+        `marketplace_orders` (bloqueia escrita por instantes); a migration nao le nem grava linha
+        nenhuma e e idempotente (`CREATE OR REPLACE`, pre-voo que aceita o corpo antigo ou o novo).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga
+        (o portao compara a ferramenta do run com a do topo do ramo): rodar a `10a` e a `10b` DEPOIS
+        da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/cupons-desligados-portao-viva.cjs` (Postgres 17 efemero, rodado no
+        `rpc-ci.yml`) prova que as consultas DECIDEM certo, nao que a IKCOUS ou a Savy estao no
+        estado A ou B: so o run contra o ref de cada loja diz. O papel de leitura da Supabase
+        (`supabase_read_only_user`) e o deparse do `WHEN` em PG15 nao foram medidos aqui; o `WHEN` e
+        comparado sem espacos nem parenteses, e qualquer divergencia reprova (lado seguro). A ACL de
+        `anon` na `validate_coupon_secure_v2` nao e conferida (a migration nao a toca).
 
 4. **Promover UM front e conferir a frota.**
 
