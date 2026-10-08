@@ -26,6 +26,19 @@
 --      ANTES da baixa de estoque e do usage_count; como e' a mesma transacao
 --      e o unico tratamento de excecao em volta do INSERT e' `WHEN
 --      unique_violation`, o P0001 sobe e desfaz tudo.
+--      A CORRIDA QUE O CURTO-CIRCUITO FECHA (revisao Opus, 08/10/2026, com 2
+--      conexoes reais): A cria o pedido com cupom e chave K e ainda nao
+--      commitou; a lojista desliga a chave; B (a retentativa gemea, mesma K)
+--      espera a trava do cupom; A commita; B chega ao INSERT e o gatilho,
+--      sem o curto-circuito, recusava com P0001 em vez de deixar o indice unico
+--      cair no unique_violation que devolve o pedido de A. A tela entao
+--      oferecia "Tirar o cupom", girava a chave e nascia um SEGUNDO pedido
+--      (cobranca e estoque em dobro). Agora o gatilho, com a chave desligada,
+--      faz RETURN NEW quando ja existe pedido com a MESMA idempotency_key
+--      (predicado do indice marketplace_orders_chave_da_compra_unica, so a
+--      coluna da chave) e deixa o indice agir. Chave NULL, chave nova ou chave
+--      de outro cliente NAO escapam: sem colisao a recusa vale, e com colisao
+--      o tratamento da v23/v24 so devolve pedido do proprio dono.
 --   2. `public.validate_coupon_secure_v2(text, numeric)` -- corpo VIVO (o do
 --      baseline 20260806000000; nenhuma migration a redefiniu depois) byte a
 --      byte, com UM bloco a mais no inicio: chave em FALSO devolve
@@ -171,6 +184,29 @@ BEGIN
   -- IS FALSE, nunca IS NOT TRUE: NULL e linha ausente = default (true).
   IF NEW.coupon_id IS NOT NULL
      AND EXISTS (SELECT 1 FROM public.store_config WHERE id = 1 AND enable_coupons IS FALSE) THEN
+    -- CURTO-CIRCUITO DA IDEMPOTENCIA (achado da revisao Opus, 08/10/2026):
+    -- se este INSERT vai COLIDIR com um pedido que ja existe pela chave de
+    -- compra, nao e' um pedido NOVO -- e' a retentativa gemea de um pedido que
+    -- nasceu quando a chave estava ligada. O RETURN NEW deixa o indice unico
+    -- agir: o unique_violation cai no tratamento da v23/v24, que devolve o
+    -- pedido existente (so ao dono, ou ao convidado). Recusar aqui trocaria
+    -- esse retorno por "Tirar o cupom", e a tela giraria a chave e criaria um
+    -- SEGUNDO pedido (cobranca e estoque em dobro).
+    -- O predicado e' EXATAMENTE o do indice unico
+    -- marketplace_orders_chave_da_compra_unica (20261038000000): so a coluna
+    -- idempotency_key, parcial WHERE idempotency_key IS NOT NULL -- sem
+    -- chave (NULL) o `=` nunca casa e a recusa vale. Chave que NAO colide
+    -- (nova, ou de outro cliente que nao existe) tambem recusa. Se a linha
+    -- sumisse entre esta leitura e o indice, o INSERT nasceria; pedido nao
+    -- e' apagado por nenhum caminho do app, e o indice e' a trava final.
+    -- Chave de OUTRO cliente: colide no indice, e o tratamento da v23/v24 so
+    -- devolve pedido do proprio dono -- sem dono, "Nao foi possivel criar o
+    -- pedido" (nenhum pedido nasce). SECURITY DEFINER: precisa enxergar a
+    -- linha que o outro commit acabou de gravar, sem depender de RLS.
+    IF NEW.idempotency_key IS NOT NULL
+       AND EXISTS (SELECT 1 FROM public.marketplace_orders WHERE idempotency_key = NEW.idempotency_key) THEN
+      RETURN NEW;
+    END IF;
     RAISE EXCEPTION 'Os cupons estão desativados nesta loja.';
   END IF;
   RETURN NEW;

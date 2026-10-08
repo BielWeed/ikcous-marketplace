@@ -132,6 +132,31 @@ Deno.test("203: o gatilho é BEFORE INSERT só com cupom, DEFINER com search_pat
   );
 });
 
+Deno.test("203: o curto-circuito da idempotência usa o predicado EXATO do índice único da chave de compra", () => {
+  // O índice (20261038000000) é só pela coluna da chave, parcial.
+  const indice = ler("20261038000000_o_pedido_nao_nasce_em_dobro.sql");
+  assert(
+    /CREATE UNIQUE INDEX IF NOT EXISTS marketplace_orders_chave_da_compra_unica\s+ON public\.marketplace_orders \(idempotency_key\)\s+WHERE idempotency_key IS NOT NULL;/.test(
+      indice,
+    ),
+    "o índice único da chave mudou: o predicado do gatilho precisa acompanhar",
+  );
+  const m = semComentarios(migration);
+  // A recusa só vem DEPOIS do curto-circuito, e o curto-circuito exige chave
+  // preenchida E pedido existente com a MESMA chave (nunca só "tem chave").
+  const curto = m.indexOf("IF NEW.idempotency_key IS NOT NULL");
+  const recusa = m.indexOf(
+    "RAISE EXCEPTION 'Os cupons estão desativados nesta loja.';",
+  );
+  assert(curto > 0 && recusa > curto, "curto-circuito antes da recusa");
+  assert(
+    /IF NEW\.idempotency_key IS NOT NULL\s+AND EXISTS \(SELECT 1 FROM public\.marketplace_orders WHERE idempotency_key = NEW\.idempotency_key\) THEN\s+RETURN NEW;\s+END IF;/.test(
+      m,
+    ),
+    "curto-circuito sem o EXISTS pela chave",
+  );
+});
+
 Deno.test("203: aditiva e sem tocar create_marketplace_order_v23/v24 nem grants", () => {
   const m = semComentarios(migration);
   assert(!/create_marketplace_order_v2[34]/.test(m), "redefine v23/v24");

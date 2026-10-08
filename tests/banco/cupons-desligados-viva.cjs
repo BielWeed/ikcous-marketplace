@@ -31,7 +31,17 @@
  *       alterado) recusa a migration e o rollback; CRLF do corpo novo é aceito.
  *   (f) MUTANTES: sem o gatilho a prova (b) fica VERMELHA; gatilho com `IS NOT
  *       TRUE` deixa o caso NULL/ausente VERMELHO; validação sem a checagem
- *       deixa (b) validação VERMELHA.
+ *       deixa (b) validação VERMELHA; curto-circuito só por "chave preenchida"
+ *       deixa (b) VERMELHA.
+ *   (g) chave de compra de OUTRO cliente com a chave de cupons desligada: o
+ *       índice único é só pela chave (global), o INSERT colide e a v23/v24 só
+ *       devolve pedido ao dono — nenhum pedido nasce; chave nova e NULL
+ *       continuam recusadas.
+ *   (h) CORRIDA com 2 conexões e COMMIT real (revisão Opus, 08/10/2026): A cria
+ *       o pedido com cupom e chave K sem commitar, a lojista desliga, a
+ *       retentativa gêmea B (mesma K) espera a trava do cupom, A commita — B
+ *       tem de receber o pedido de A (curto-circuito do gatilho), 1 pedido só.
+ *   (i) MUTANTE da corrida: sem o curto-circuito, B é recusada (o defeito).
  *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/cupons-desligados-viva.cjs
  */
@@ -665,6 +675,27 @@ PROVAS.push({
         await casoValidacaoDesligada(c);
       });
 
+      // M4: curto-circuito SEM checar que o pedido existe (basta a chave vir
+      // preenchida) — qualquer chave NOVA pularia a recusa: o pedido com cupom
+      // nasceria com a chave desligada. A prova (b) usa chave nova.
+      await exigirVermelho(
+        c,
+        "curto-circuito só por chave preenchida",
+        async () => {
+          await c.query(`CREATE OR REPLACE FUNCTION public.pedido_com_cupom_exige_a_chave_ligada()
+          RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $m$
+          BEGIN
+            IF NEW.coupon_id IS NOT NULL
+               AND EXISTS (SELECT 1 FROM public.store_config WHERE id = 1 AND enable_coupons IS FALSE) THEN
+              IF NEW.idempotency_key IS NOT NULL THEN RETURN NEW; END IF;
+              RAISE EXCEPTION '${MENSAGEM}';
+            END IF;
+            RETURN NEW;
+          END; $m$`);
+          await casosDesligados(c);
+        },
+      );
+
       // Controle dos controles: restaurado, tudo isso passa de novo.
       await c.query("SAVEPOINT controle");
       await casosDesligados(c);
@@ -672,6 +703,196 @@ PROVAS.push({
       await casoValidacaoDesligada(c);
       await c.query("ROLLBACK TO SAVEPOINT controle");
     });
+  },
+});
+
+const U_OUTRO = "99222222-2222-4222-8222-222222222222";
+const MSG_CHAVE_SEM_DONO =
+  "Não foi possível criar o pedido. Atualize a página e tente de novo.";
+
+/**
+ * Chave de compra de OUTRO cliente + chave de cupons desligada = nenhum pedido
+ * nasce. O índice único é só pela chave (global): o INSERT colide, e o
+ * tratamento de unique_violation da v23/v24 só devolve pedido do próprio dono.
+ */
+async function casoChaveDeOutroCliente(c) {
+  const cen = await cenario(c, true);
+  const K = crypto.randomUUID();
+  const [sqlA, parA] = chamar("create_marketplace_order_v24", cen, {
+    cupom: cen.codigo,
+    total: 90,
+    chave: K,
+  });
+  const a = await tentar(c, sqlA, parA);
+  assert.ok(a.ok, `pedido do dono com a chave ligada: ${a.e?.message}`);
+  await virarChave(c, false);
+
+  await c.query(
+    `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1, 'outro@cupons203.teste', '{}'::jsonb)
+     ON CONFLICT (id) DO NOTHING`,
+    [U_OUTRO],
+  );
+  await c.query(
+    `INSERT INTO public.profiles (id, full_name, role) VALUES ($1, 'Outro 203', 'customer')
+     ON CONFLICT (id) DO NOTHING`,
+    [U_OUTRO],
+  );
+  await c.query("SELECT set_config('app.rpc.user_id', $1, true)", [U_OUTRO]);
+  const antes = await medir(c, cen);
+  for (const rpc of RPCS) {
+    const [sql, par] = chamar(rpc, cen, {
+      cupom: cen.codigo,
+      total: 90,
+      chave: K,
+    });
+    const r = await tentar(c, sql, par);
+    assert.ok(!r.ok, `${rpc}: a chave de outro cliente não pode criar pedido`);
+    assert.equal(r.e.code, "P0001");
+    assert.equal(r.e.message, MSG_CHAVE_SEM_DONO, `${rpc}: ${r.e.message}`);
+  }
+  // INSERT direto com a chave de outro cliente: o índice único recusa.
+  const direto = await tentar(
+    c,
+    `INSERT INTO public.marketplace_orders
+       (user_id, customer_name, customer_data, total, subtotal, status, payment_method, coupon_id, idempotency_key)
+     VALUES ($1, 'Direto', '{}'::jsonb, 90, 100, 'pending', 'cash', $2, $3)`,
+    [U_OUTRO, cen.cupom, K],
+  );
+  assert.ok(!direto.ok, "INSERT direto com a chave de outro cliente nasceu");
+  assert.equal(direto.e.code, "23505");
+  await c.query("SELECT set_config('app.rpc.user_id', $1, true)", [
+    U_COMPRADOR,
+  ]);
+  const dono = await c.query(
+    "SELECT user_id FROM public.marketplace_orders WHERE idempotency_key = $1",
+    [K],
+  );
+  assert.equal(dono.rowCount, 1, "continua 1 pedido só com a chave");
+  assert.equal(dono.rows[0].user_id, U_COMPRADOR);
+  const depois = await medir(c, cen);
+  assert.deepEqual(depois, antes, "nada mudou: pedido, uso do cupom, estoque");
+}
+
+async function esperarTrava(observador, pidAlvo, rotulo) {
+  for (let i = 0; i < 150; i += 1) {
+    const w = await observador.query(
+      "SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1",
+      [pidAlvo],
+    );
+    if (w.rows[0]?.wait_event_type === "Lock") return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.fail(`${rotulo}: a conexão devia estar esperando um lock`);
+}
+
+/**
+ * A CORRIDA da revisão Opus, com duas conexões reais e COMMIT de verdade:
+ * A cria o pedido com cupom e chave K e ainda não commitou; a lojista desliga
+ * a chave; B (retentativa gêmea, mesma K) espera a trava do cupom; A commita.
+ * Devolve o que B recebeu e o que ficou no banco.
+ */
+async function corridaGemea(url) {
+  const s = new Client({ connectionString: url });
+  const a = new Client({ connectionString: url });
+  const b = new Client({ connectionString: url });
+  await s.connect();
+  await a.connect();
+  await b.connect();
+  try {
+    const cen = await cenario(s, true);
+    const K = crypto.randomUUID();
+    const [sql, par] = chamar("create_marketplace_order_v24", cen, {
+      cupom: cen.codigo,
+      total: 90,
+      chave: K,
+    });
+    for (const x of [a, b]) {
+      await x.query("SELECT set_config('app.rpc.user_id', $1, false)", [
+        U_COMPRADOR,
+      ]);
+    }
+    await a.query("BEGIN");
+    const ra = await a.query(sql, par);
+    await virarChave(s, false);
+    const pidB = (await b.query("SELECT pg_backend_pid() AS p")).rows[0].p;
+    const pb = b.query(sql, par).then(
+      (r) => ({ ok: true, id: r.rows[0].id }),
+      (e) => ({ ok: false, code: e.code, message: e.message }),
+    );
+    await esperarTrava(s, pidB, "B (retentativa gêmea)");
+    await a.query("COMMIT");
+    const rb = await pb;
+    const n = (
+      await s.query(
+        "SELECT count(*)::int AS n FROM public.marketplace_orders WHERE idempotency_key = $1",
+        [K],
+      )
+    ).rows[0].n;
+    const m = await medir(s, cen);
+    return { idA: ra.rows[0].id, rb, n, usos: m.usos, estoque: m.estoque };
+  } finally {
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+    await s.end().catch(() => {});
+  }
+}
+
+async function exigirCorridaCerta(url) {
+  const r = await corridaGemea(url);
+  assert.ok(
+    r.rb.ok,
+    `B (retentativa gêmea) tem de receber o pedido de A, recebeu: ${r.rb.message}`,
+  );
+  assert.equal(r.rb.id, r.idA, "B recebe o MESMO pedido de A");
+  assert.equal(r.n, 1, "1 pedido só com a chave K");
+  assert.equal(r.usos, 1, "o cupom gastou 1 uso");
+  assert.equal(r.estoque, 49, "o estoque baixou 1");
+}
+
+PROVAS.push({
+  nome: "(g) chave de compra de OUTRO cliente com a chave de cupons desligada: nenhum pedido nasce (o índice é global e a v23/v24 só devolve ao dono); sem chave (NULL) e chave nova a recusa vale",
+  corpo: async (c) => {
+    await numaTransacao(c, async () => {
+      await casoChaveDeOutroCliente(c);
+      // NULL e chave nova continuam recusados (já em (b); aqui explícito).
+      await casosDesligados(c);
+    });
+  },
+});
+
+PROVAS.push({
+  nome: "(h) CORRIDA com 2 conexões: A cria o pedido com cupom, a lojista desliga, a retentativa gêmea B (mesma chave) devolve o pedido de A — 1 pedido só",
+  corpo: async (_c, url) => {
+    await exigirCorridaCerta(url);
+  },
+});
+
+PROVAS.push({
+  nome: "(i) MUTANTES da corrida: sem o curto-circuito (h) fica vermelha (B é recusada e o cliente giraria a chave); depois de restaurar, passa de novo",
+  corpo: async (c, url) => {
+    // DDL COMMITADA (a corrida usa 3 conexões); o `finally` reaplica a migration.
+    try {
+      await c.query(`CREATE OR REPLACE FUNCTION public.pedido_com_cupom_exige_a_chave_ligada()
+        RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $m$
+        BEGIN
+          IF NEW.coupon_id IS NOT NULL
+             AND EXISTS (SELECT 1 FROM public.store_config WHERE id = 1 AND enable_coupons IS FALSE) THEN
+            RAISE EXCEPTION '${MENSAGEM}';
+          END IF;
+          RETURN NEW;
+        END; $m$`);
+      const r = await corridaGemea(url);
+      assert.ok(
+        !r.rb.ok && r.rb.message === MENSAGEM,
+        `sem o curto-circuito B tinha de ser recusada com a frase dos cupons: ${JSON.stringify(r.rb)}`,
+      );
+      console.log(
+        `    mutante "sem o curto-circuito" MORTO: B recusada (${r.rb.code}: ${r.rb.message}); pedidos com a chave: ${r.n}`,
+      );
+    } finally {
+      await c.query(SQL_MIGRATION);
+    }
+    await exigirCorridaCerta(url);
   },
 });
 
@@ -687,7 +908,7 @@ async function main() {
   try {
     for (const { nome, corpo } of PROVAS) {
       try {
-        await corpo(cliente);
+        await corpo(cliente, url);
         console.log(`  PASSOU ${nome}`);
         linhas.push(`- ✅ ${nome}`);
       } catch (erro) {
