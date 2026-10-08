@@ -3,7 +3,7 @@ import { OPCOES_MAX_ITENS_CARROSSEL } from "@/config/carrossel";
 import { cn, formatCurrency, normalizeText } from "@/lib/utils";
 import type { Product } from "@/types";
 import { Hand, Search, Sparkles, Tag, Trash2, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FolhaInferior } from "./FolhaInferior";
 import { QUANTIDADE_PADRAO, type SecaoDaHome, tipoDaVitrine } from "./tipos";
 
@@ -11,6 +11,12 @@ import { QUANTIDADE_PADRAO, type SecaoDaHome, tipoDaVitrine } from "./tipos";
  * O painel de UMA vitrine: nome, quantidade e escolha dos produtos no mesmo
  * lugar. Não grava nada sozinho — cada mudança sobe pelo callback e quem
  * grava é a tela, pelo mesmo caminho de sempre.
+ *
+ * O nome grava ao sair do campo, e clicar em "Concluir" já tira o foco dele.
+ * O texto só existe no campo, então fechar o painel sem a gravação confirmada
+ * o jogaria fora: "Concluir" espera a gravação e só fecha se ela foi
+ * confirmada. Se falhou, o painel fica aberto com o texto digitado e o botão
+ * tenta de novo o mesmo nome. Fechar (X, véu, Esc) segue descartando.
  */
 export function FolhaEditarVitrine({
   secao,
@@ -31,7 +37,8 @@ export function FolhaEditarVitrine({
   /** Ids que aparecem hoje na loja: os escolhidos, ou os do modo automático. */
   readonly idsEmExibicao: readonly string[];
   readonly aoFechar: () => void;
-  readonly aoRenomear: (titulo: string) => void;
+  /** Devolve `true` quando o nome já está gravado (ou nada mudou). */
+  readonly aoRenomear: (titulo: string) => Promise<boolean>;
   readonly aoMudarQuantidade: (quantidade: number) => void;
   readonly aoAlternarProduto: (idDoProduto: string) => void;
   readonly aoVoltarAoAutomatico: () => void;
@@ -68,6 +75,47 @@ export function FolhaEditarVitrine({
 
   const idDoCampoDeNome = `vitrine-title-${secao.id}`;
 
+  // Último nome que subiu e ainda não foi confirmado (`null` = nada a perder).
+  const nomePendente = useRef<string | null>(null);
+  // A gravação do nome em andamento (a do blur ou a de uma nova tentativa).
+  const gravandoNome = useRef<Promise<boolean> | null>(null);
+  const [falhouNome, setFalhouNome] = useState(false);
+  const aberta = useRef(true);
+  useEffect(() => {
+    aberta.current = true;
+    return () => {
+      aberta.current = false;
+    };
+  }, []);
+
+  const gravarNome = (titulo: string): Promise<boolean> => {
+    nomePendente.current = titulo;
+    const gravacao = aoRenomear(titulo).then(
+      (salvou) => salvou,
+      () => false,
+    );
+    gravandoNome.current = gravacao;
+    void gravacao.then((salvou) => {
+      if (gravandoNome.current !== gravacao) return; // já existe uma mais nova
+      gravandoNome.current = null;
+      if (salvou) nomePendente.current = null;
+      if (aberta.current) setFalhouNome(!salvou);
+    });
+    return gravacao;
+  };
+
+  const concluir = async () => {
+    // Em andamento (o blur do clique acabou de disparar): espera essa mesma,
+    // sem gravar de novo. Senão, se sobrou um nome por gravar, tenta outra vez.
+    let salvou = true;
+    if (gravandoNome.current) {
+      salvou = await gravandoNome.current;
+    } else if (nomePendente.current !== null) {
+      salvou = await gravarNome(nomePendente.current);
+    }
+    if (salvou && aberta.current) aoFechar();
+  };
+
   return (
     <FolhaInferior
       titulo="Editar vitrine"
@@ -91,7 +139,7 @@ export function FolhaEditarVitrine({
           ) : null}
           <button
             type="button"
-            onClick={aoFechar}
+            onClick={concluir}
             className="h-12 flex-1 rounded-[14px] bg-admin-gold text-[15px] font-extrabold text-zinc-950 transition-colors hover:bg-admin-gold/90 active:scale-[0.99]"
           >
             Concluir
@@ -109,11 +157,17 @@ export function FolhaEditarVitrine({
         id={idDoCampoDeNome}
         name="title"
         value={secao.title || ""}
-        onFlush={aoRenomear}
+        onFlush={(titulo) => void gravarNome(titulo)}
         placeholder="Título da vitrine"
         useShadcn={true}
         className="h-12 rounded-[14px] border-white/10 bg-zinc-900 px-3.5 text-[15px] font-semibold text-white placeholder:text-zinc-600 focus-visible:border-admin-gold focus-visible:ring-admin-gold/20"
       />
+      {falhouNome ? (
+        <p role="alert" className="mt-1.5 px-0.5 text-xs text-rose-400">
+          Não deu para salvar o nome. Toque em Concluir para tentar de novo, ou
+          feche para descartar.
+        </p>
+      ) : null}
 
       <p className="mb-1.5 mt-4 px-0.5 text-xs font-semibold text-zinc-400">
         Quantos produtos mostrar
