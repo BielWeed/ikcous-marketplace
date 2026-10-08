@@ -398,6 +398,22 @@ const ehErroDeFormaDePagamentoDesligada = (error: unknown): boolean => {
 };
 
 /**
+ * CUPONS DESLIGADOS (issue #645, 08/10/2026, migration 20261203000000): a
+ * lojista desliga a chave `enable_coupons` com o cupom já aplicado numa aba
+ * aberta — a RPC recusa com esta frase (a regra irmã em `recusaDoPedido.ts`
+ * leva a "Tirar o cupom"). Por TEXTO e `includes`, mesma razão dos marcadores
+ * acima. Aqui serve só para pedir a config NOVA, para a tela parar de
+ * oferecer o campo de cupom.
+ */
+const MARCADOR_DE_CUPONS_DESLIGADOS = "Os cupons estão desativados nesta loja";
+
+const ehErroDeCuponsDesligados = (error: unknown): boolean => {
+  const detalhes = (error ?? {}) as { message?: unknown };
+  const mensagem = typeof detalhes.message === "string" ? detalhes.message : "";
+  return mensagem.includes(MARCADOR_DE_CUPONS_DESLIGADOS);
+};
+
+/**
  * Para ONDE cada ação leva. Tabela, e não cadeia de `if`, pelo mesmo motivo do
  * `ROTULO_DA_ACAO` no componente: `Record<AcaoDeRecusa, …>` **para de compilar**
  * no dia em que `AcaoDeRecusa` ganhar um caso novo, em vez de deixá-lo cair num
@@ -1795,10 +1811,25 @@ export function CheckoutView({
   // abaixo, e cancelar o pagamento precisa devolver estes itens depois. Um
   // ref (não estado) porque nada aqui precisa re-renderizar a tela.
   const itensDoPedidoParaRestaurarRef = useRef<CartItem[]>([]);
-  const [appliedCoupon, setAppliedCoupon] = useState<{
+  const [cupomGuardado, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
   } | null>(null);
+  // CUPONS DESLIGADOS (issue #645, decisão do dono 08/10/2026): com a chave
+  // `enable_coupons` em FALSO nenhum desconto de cupom entra no pedido — nem o
+  // de quem aplicou antes de a lojista desligar, nem o que o rascunho da
+  // sessão repõe antes de a config chegar. Só `=== false` conta (o
+  // StoreContext já trata NULL como ligado). `appliedCoupon` é o cupom que
+  // VALE: todo consumidor abaixo (desconto, total, código enviado ao pedido,
+  // rascunho, painel do resumo) lê esta visão e enxerga null na hora, sem
+  // esperar o efeito que limpa o estado guardado e avisa a pessoa.
+  const cuponsDesligados = config.enableCoupons === false;
+  const appliedCoupon = cuponsDesligados ? null : cupomGuardado;
+  // O código do cupom que a loja tirou do pedido (aviso fixo na tela: toast
+  // some antes de a pessoa ler e o campo de cupom nem está visível).
+  const [cupomTiradoPelaLoja, setCupomTiradoPelaLoja] = useState<string | null>(
+    null,
+  );
   const [couponError, setCouponError] = useState<string>("");
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
@@ -1997,6 +2028,25 @@ export function CheckoutView({
   // em falha de REDE a revalidação mantém o cupom com desconto 0 e não
   // havia retry — com a conexão de volta o efeito roda de novo e o desconto
   // real chega (ou o motivo da recusa aparece na tela).
+
+  // CUPONS DESLIGADOS (#645): reage à CONFIG, não só uma vez. Cobre o cupom
+  // aplicado antes de a lojista desligar (a config chega por realtime/refresh
+  // com a tela aberta) e o rascunho restaurado antes de a config assentar.
+  // Tira o cupom do estado, do rascunho da sessão e do erro do campo, e deixa
+  // o aviso fixo (o campo de cupom nem aparece com a chave desligada).
+  useEffect(() => {
+    if (!cuponsDesligados || !cupomGuardado) return;
+    setCupomTiradoPelaLoja(cupomGuardado.code);
+    setAppliedCoupon(null);
+    setCouponError("");
+    const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+    if (rascunho?.cupom) {
+      salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+        ...rascunho,
+        cupom: null,
+      });
+    }
+  }, [cuponsDesligados, cupomGuardado]);
 
   // GRAVAÇÃO DO RASCUNHO (laudo ofensiva 3108, N7): cada mudança de campo,
   // de notas ou de cupom repõe o rascunho da sessão. Os espelhos em ref
@@ -3393,6 +3443,12 @@ export function CheckoutView({
       // página. Fogo-e-esquece: a tela já segue o caminho normal (toast +
       // painel) abaixo, com ou sem essa atualização ter terminado.
       if (ehErroDeFormaDePagamentoDesligada(error)) {
+        refreshStoreConfig({ onlyConfig: true }).catch(() => {});
+      }
+      // CUPONS DESLIGADOS (#645): a mesma corrida — a chave virou entre a
+      // tela e o clique. A recusa já leva a "Tirar o cupom" (painel
+      // genérico); a config nova faz o campo de cupom sumir da tela.
+      if (ehErroDeCuponsDesligados(error)) {
         refreshStoreConfig({ onlyConfig: true }).catch(() => {});
       }
       // Este catch recebe o MESMO erro que useOrders.ts (createOrder) já
@@ -5209,6 +5265,19 @@ export function CheckoutView({
             // a lista inteira, sem nenhuma mudança de comportamento.
             modoResumo
           />
+        )}
+
+        {/* CUPONS DESLIGADOS (#645): o campo de cupom some com a chave
+            desligada, então o motivo de o desconto ter saído mora FORA dele.
+            Fixo na tela (toast some antes de a pessoa ler). */}
+        {cuponsDesligados && cupomTiradoPelaLoja && (
+          <div
+            role="status"
+            className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-medium leading-snug text-amber-900"
+          >
+            A loja desativou os cupons de desconto. O desconto do cupom{" "}
+            {cupomTiradoPelaLoja} foi removido do seu pedido.
+          </div>
         )}
 
         {/* Coupon */}

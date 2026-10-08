@@ -229,6 +229,16 @@ jobs:
       - name: Prova viva da 8k (subtotal divergente, ou vazia PROVADA)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/subtotal-vazia-provada-viva.cjs
+      # Cupons desligados (migration 20261203000000, issue #645, 08/10/2026):
+      # com store_config.enable_coupons IS FALSE nenhum pedido novo nasce com
+      # cupom (gatilho BEFORE INSERT em marketplace_orders, pela v24 E pela
+      # v23) e a validação recusa com o motivo; ligada/NULL/sem linha segue como
+      # antes; o retry idempotente de pedido criado antes devolve o mesmo
+      # pedido; ACL e rollback byte a byte; mutantes (sem gatilho, IS NOT TRUE,
+      # validação sem a checagem) ficam vermelhos. CLONE próprio.
+      - name: Prova viva dos cupons desligados (migration 20261203000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-desligados-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

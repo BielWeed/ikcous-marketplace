@@ -34,6 +34,14 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   anon/authenticated/service_role **no clone** (o Supabase real concede; o
   `provisionar.cjs` não).
 
+- **cupons desligados (`cupons-desligados-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration 20261203000000 — com `store_config.enable_coupons IS FALSE` nenhum
+  pedido novo nasce com cupom (gatilho BEFORE INSERT em `marketplace_orders`,
+  pela v24 e pela v23) e `validate_coupon_secure_v2` recusa com o motivo; chave
+  ligada, NULL ou sem linha segue como antes; o retry idempotente de pedido
+  criado antes devolve o mesmo pedido; ACL igual antes/depois, rollback byte a
+  byte e mutantes (sem gatilho, `IS NOT TRUE`, validação sem a checagem) pegos.
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do
