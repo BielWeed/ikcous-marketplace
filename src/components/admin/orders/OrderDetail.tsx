@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
+import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
@@ -24,21 +25,16 @@ import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
 import {
   Check,
-  CheckCircle2,
   Clock,
   Copy,
-  DollarSign,
   Edit3,
   ExternalLink,
   Loader2,
   MapPin,
   MessageCircle,
-  Package,
   Plus,
   Printer,
-  QrCode,
   Truck,
-  Users,
   X,
   XCircle,
 } from "lucide-react";
@@ -78,7 +74,7 @@ const statusFlow: OrderStatus[] = [
 // 20260807000002), e pedido cancelado não mostra o botão "Avançar". Ou
 // seja: a lista está certa por uma garantia que mora em OUTRO arquivo.
 //
-// ⚠️ Se algum dia existir caminho que deixe um `expirado` com status vivo
+// ! Se algum dia existir caminho que deixe um `expirado` com status vivo
 // (um "reabrir pedido", uma reconciliação que marque sem cancelar), o
 // aviso deixa de disparar EM SILÊNCIO no caso mais óbvio de "não pagou".
 // Achado da 2ª revisão da ficha, que derrubou o próprio achado para hoje e
@@ -238,6 +234,27 @@ interface OrderDetailProps {
 
 const globalSkuCache: Record<string, string> = {};
 
+// Redesenho da ficha (08/10/2026, aprovado pelo dono): a MESMA linguagem do
+// card de pedido redesenhado em 07/10 (`AdminOrderCard`) — blocos
+// `rounded-2xl border-white/5 bg-white/[0.03]`, sem vidro pesado nem brilho,
+// rótulos em minúsculas com inicial maiúscula, nada abaixo de 12px. Só
+// APARÊNCIA e ORDEM mudaram: nenhuma regra de dinheiro, status ou permissão.
+const blocoDaFicha = "rounded-2xl border border-white/5 bg-white/[0.03]";
+const tituloDoBloco = "text-sm font-medium text-zinc-200";
+
+// Os selos de status vêm de `OrderStatusBadge.tsx` (componente compartilhado
+// com a lista, escrito em caixa alta de 9px e com `truncate`). Aqui, por
+// fora, o texto do selo ganha a escala da ficha e QUEBRA linha em vez de
+// virar "PAGO E CANCELADO — PRECIS…" — sem tocar no componente dos outros
+// usos (que continua como está).
+const seloDaFicha =
+  "selo-ficha w-fit [&>span]:whitespace-normal [&>span]:text-xs [&>span]:font-semibold [&>span]:normal-case [&>span]:tracking-normal";
+
+// Mesmo número que o resto da ficha sempre mostrou (`toLocaleString` pt-BR com
+// duas casas) — só deixou de repetir a chamada em cada linha.
+const formatarValor = (valor: number) =>
+  valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+
 function ItemSkuBadge({
   loading,
   itemSku,
@@ -249,14 +266,14 @@ function ItemSkuBadge({
 }>) {
   if (loading) {
     return (
-      <span className="animate-pulse font-mono text-[8px] text-zinc-600">
+      <span className="animate-pulse font-mono text-xs text-zinc-400">
         Carregando SKU...
       </span>
     );
   }
   if (itemSku) {
     return (
-      <span className="rounded border border-admin-gold/20 bg-admin-gold/10 px-1.5 py-0.5 font-mono text-[8px] font-black uppercase tracking-wider text-admin-gold">
+      <span className="rounded bg-admin-gold/10 px-1.5 py-0.5 font-mono text-xs text-admin-gold">
         SKU: {itemSku}
       </span>
     );
@@ -269,46 +286,85 @@ function ItemSkuBadge({
     return null;
   }
   return (
-    <span className="font-mono text-[8px] uppercase text-zinc-500">
+    <span className="font-mono text-xs text-zinc-400">
       ID: #{productId.slice(-6)}
     </span>
   );
 }
 
-// T3 (lote B, 12/09) — "Mesa do lojista": o cabeçalho da ficha vira o topo
-// da comanda — título, pills de status do pedido e do pagamento, e a linha
-// meta com data e método. Os botões de ação MIGRARAM para a barra sticky
-// no topo (`OrderActionBar`, pedido do dono 20/09): o header fica só com o
-// que se LÊ.
+// Cabeçalho da ficha: título curto, data e hora, e a frase de espera (pedido
+// pendente parado) em linha discreta. Os botões de ação moram na barra fixa
+// do topo (`OrderActionBar`, pedido do dono 20/09). O status do PEDIDO já é
+// lido na trilha e a situação do PAGAMENTO mora no bloco do dinheiro (uma
+// vez só) — por isso nenhum dos dois selos fica aqui, com TRÊS exceções:
+//  - pedido CANCELADO não tem trilha: o aviso "Pedido cancelado" é o status;
+//  - status FORA da trilha que não seja cancelado (ex.: `new`, desconhecido):
+//    o selo do pedido fica aqui, senão a ficha não diria em que pé ele está;
+//  - pagamento que "precisa de atenção" (pago e cancelado, estornado, pago
+//    fora do fluxo): o selo continua no TOPO, onde o olho cai primeiro — o
+//    dinheiro preso não pode ficar só no meio da ficha.
 interface OrderHeaderProps {
   order: Order;
+  avisoDeEspera: string | null;
 }
 
-function OrderHeader({ order }: Readonly<OrderHeaderProps>) {
+function OrderHeader({ order, avisoDeEspera }: Readonly<OrderHeaderProps>) {
   const criadoEm = new Date(order.createdAt);
   const data = criadoEm.toLocaleDateString("pt-BR");
   const hora = criadoEm.toLocaleTimeString("pt-BR", {
     hour: "2-digit",
     minute: "2-digit",
   });
+  const statusForaDaTrilha =
+    order.status !== "cancelled" && !statusFlow.includes(order.status);
+  const pagamentoPedeAtencao = rotuloDoPagamento(
+    order.paymentStatus,
+    order.status,
+    order.canal,
+  ).includes("precisa de atenção");
 
   return (
     <header className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-bold tracking-tighter text-white">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h1 className="text-[22px] font-medium leading-tight tracking-tight text-white">
           Pedido{" "}
           <span className="text-admin-gold">#{numeroDoPedido(order.id)}</span>
         </h1>
-        <OrderStatusBadge status={order.status} />
+        {statusForaDaTrilha && (
+          <OrderStatusBadge status={order.status} className={seloDaFicha} />
+        )}
+      </div>
+      <p className="text-sm tabular-nums text-zinc-400">
+        {data} às {hora}
+      </p>
+
+      {pagamentoPedeAtencao && (
         <PaymentStatusBadge
           paymentStatus={order.paymentStatus}
           orderStatus={order.status}
           canal={order.canal}
+          className={seloDaFicha}
         />
-      </div>
-      <p className="text-[11px] font-medium text-zinc-500">
-        Feito em {data} às {hora} · {getPaymentMethodLabel(order.paymentMethod)}
-      </p>
+      )}
+
+      {order.status === "cancelled" && (
+        <div className="flex items-start gap-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-3.5">
+          <XCircle className="mt-0.5 size-5 shrink-0 text-red-400" />
+          <div>
+            <p className="text-sm font-medium text-red-300">Pedido cancelado</p>
+            <p className="mt-0.5 text-xs text-zinc-400">
+              Este pedido foi cancelado e não pode prosseguir.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {avisoDeEspera && (
+        <p className="flex items-center gap-1.5 text-sm text-amber-400">
+          <Clock className="size-4 shrink-0" />
+          {avisoDeEspera}
+        </p>
+      )}
     </header>
   );
 }
@@ -334,8 +390,10 @@ interface OrderActionBarProps {
 // exatamente sob a barra ADMIN (h-11, lg:hidden), e não depende de
 // containing block — a mesma lição do bug da barra que rolava junto. No
 // desktop a barra ADMIN não existe e ela gruda no topo do painel. São os
-// MESMOS botões e guardas de sempre: 🖨️ imprime · ✕ Cancelar pedido
-// (vermelho suave) · Avançar → próxima etapa (dourado, primária).
+// MESMOS botões e guardas de sempre: 🖨 imprime · ✕ Cancelar pedido
+// (texto vermelho suave, sem preenchimento) · Avançar → próxima etapa
+// (dourado, primária, ocupa o resto). Redesenho de 08/10: menos brilho e
+// sombra, letra de 14px em vez de 10–11px em caixa alta, alvo de toque de 44px.
 function OrderActionBar({
   orderId,
   orderStatus,
@@ -352,13 +410,14 @@ function OrderActionBar({
   // z-40 basta: dentro do painel é o elemento mais alto ao rolar; a barra
   // ADMIN (z-50) e o menu inferior (z-[60]) vivem FORA do painel e não
   // competem. Linha separadora embaixo (border-b): ela é o teto da ficha.
+  // Fundo OPACO: o conteúdo rola por baixo e não pode aparecer através.
   return (
-    <div className="sticky top-0 z-40 border-b border-white/5 bg-admin-bg/95 shadow-2xl backdrop-blur-xl">
-      <div className="mx-auto flex w-full max-w-[600px] items-center gap-2.5 px-4 py-3">
+    <div className="sticky top-0 z-40 border-b border-white/5 bg-admin-bg">
+      <div className="mx-auto flex w-full max-w-[600px] items-center gap-2 px-4 py-3">
         <Button
           variant="ghost"
           onClick={() => globalThis.print()}
-          className="size-11 shrink-0 rounded-2xl border border-white/5 bg-white/5 p-0 text-white transition-all duration-300 hover:bg-white/10 active:scale-95"
+          className="size-11 shrink-0 rounded-xl border border-white/5 bg-white/5 p-0 text-zinc-200 transition-colors hover:bg-white/10 active:scale-95"
           title="Imprimir Pedido"
         >
           <Printer className="size-5" />
@@ -369,11 +428,18 @@ function OrderActionBar({
             onClick={() => onCancel(orderId)}
             disabled={isOffline || isUpdatingStatus}
             variant="ghost"
-            className="flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-red-500/10 bg-red-500/5 px-3 text-[10px] font-black uppercase tracking-wider text-red-400 transition-all duration-300 hover:bg-red-500/15 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-11 shrink-0 items-center gap-1 rounded-xl px-2 text-sm font-medium text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300 active:scale-95 disabled:pointer-events-none disabled:opacity-40 min-[420px]:gap-1.5 min-[420px]:px-3"
             title="Cancelar pedido"
+            aria-label="Cancelar pedido"
           >
             <XCircle className="size-4" />
-            Cancelar pedido
+            {/* Em tela estreita o botão principal precisa do espaço para o
+                texto COMPLETO ("Avançar → Em Separação"): o Cancelar encolhe
+                para "Cancelar" e o " pedido" volta a partir de 420px. O nome
+                acessível continua "Cancelar pedido" (title e aria-label). */}
+            <span>
+              Cancelar<span className="hidden min-[420px]:inline"> pedido</span>
+            </span>
           </Button>
         )}
 
@@ -381,7 +447,7 @@ function OrderActionBar({
           <Button
             onClick={() => onAdvance(orderId, nextStatus)}
             disabled={isOffline || isUpdatingStatus}
-            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-2xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-wider text-black shadow-[0_0_24px_rgba(234,179,8,0.2)] transition-all duration-300 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-normal rounded-xl bg-admin-gold px-2.5 text-sm font-semibold leading-tight text-black transition-colors hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
           >
             {isUpdatingStatus ? (
               <>
@@ -389,7 +455,7 @@ function OrderActionBar({
                 <span>Processando</span>
               </>
             ) : (
-              <span className="truncate">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
+              <span className="text-center">{`Avançar → ${statusConfigByKey.get(nextStatus)?.label ?? nextStatus}`}</span>
             )}
           </Button>
         )}
@@ -402,13 +468,16 @@ interface OrderStepperPipelineProps {
   orderStatus: OrderStatus;
 }
 
-const statusesStepper: { key: OrderStatus; label: string; icon: any }[] = [
-  { key: "pending", label: "Novo", icon: Package },
-  { key: "processing", label: "Separação", icon: Clock },
-  { key: "shipping", label: "Trânsito", icon: Truck },
-  { key: "delivered", label: "Finalizado", icon: CheckCircle2 },
+const statusesStepper: { key: OrderStatus; label: string }[] = [
+  { key: "pending", label: "Novo" },
+  { key: "processing", label: "Separação" },
+  { key: "shipping", label: "Trânsito" },
+  { key: "delivered", label: "Finalizado" },
 ];
 
+// Trilha fina: bolinhas pequenas ligadas por uma linha. Cada etapa desenha o
+// trecho de linha que chega nela (da etapa anterior até aqui): dourado quando
+// o pedido já chegou nesta etapa, apagado quando ainda não.
 function OrderStepperPipeline({
   orderStatus,
 }: Readonly<OrderStepperPipelineProps>) {
@@ -417,213 +486,231 @@ function OrderStepperPipeline({
   const currentStepperIndex = statusFlow.indexOf(orderStatus);
 
   return (
-    <div className="admin-glass relative overflow-hidden rounded-3xl border border-white/5 p-4 shadow-2xl">
-      <div className="relative flex w-full items-center justify-between">
-        <div className="absolute inset-x-6 top-1/2 z-0 h-[2px] -translate-y-1/2 bg-white/5" />
-        <div
-          className="absolute left-6 top-1/2 z-0 h-[2px] -translate-y-1/2 bg-admin-gold transition-all duration-500"
-          style={{
-            width: `${currentStepperIndex >= 0 ? (currentStepperIndex / (statusesStepper.length - 1)) * 90 : 0}%`,
-          }}
-        />
+    <ol aria-label="Etapas do pedido" className="flex w-full items-start px-1">
+      {statusesStepper.map((step, idx) => {
+        const isCompleted = idx < currentStepperIndex;
+        const isActive = idx === currentStepperIndex;
 
-        {statusesStepper.map((step, idx) => {
-          const Icon = step.icon;
-          const isCompleted = idx < currentStepperIndex;
-          const isActive = idx === currentStepperIndex;
-          const isFuture = idx > currentStepperIndex;
-
-          return (
-            <div
-              key={step.key}
-              className="relative z-10 flex flex-1 flex-col items-center"
-            >
-              <div
-                className={cn(
-                  "w-9 h-9 rounded-full flex items-center justify-center border transition-all duration-300",
-                  isActive &&
-                    "bg-zinc-950 border-admin-gold text-admin-gold shadow-[0_0_12px_rgba(234,179,8,0.3)] scale-110",
-                  isCompleted && "bg-admin-gold border-admin-gold text-black",
-                  isFuture && "bg-zinc-900 border-white/5 text-zinc-500",
-                )}
-              >
-                <Icon className="size-4" />
-              </div>
+        return (
+          <li
+            key={step.key}
+            aria-current={isActive ? "step" : undefined}
+            className="relative flex flex-1 flex-col items-center gap-1.5"
+          >
+            {idx > 0 && (
               <span
+                aria-hidden="true"
                 className={cn(
-                  "text-[8px] md:text-[9px] font-black uppercase tracking-wider mt-2 text-center",
-                  isActive && "text-admin-gold font-black",
-                  isCompleted && "text-zinc-300 font-bold",
-                  isFuture && "text-zinc-500 font-medium",
+                  "absolute right-1/2 top-[5px] h-px w-full",
+                  idx <= currentStepperIndex ? "bg-admin-gold" : "bg-white/10",
                 )}
-              >
-                {step.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+              />
+            )}
+            <span
+              aria-hidden="true"
+              className={cn(
+                "relative z-10 size-[11px] rounded-full border",
+                isActive &&
+                  "border-admin-gold bg-admin-gold ring-4 ring-admin-gold/20",
+                isCompleted && "border-admin-gold bg-admin-gold",
+                !isActive && !isCompleted && "border-white/20 bg-admin-bg",
+              )}
+            />
+            <span
+              className={cn(
+                "text-center text-xs",
+                isActive && "font-medium text-admin-gold",
+                isCompleted && "text-zinc-300",
+                !isActive && !isCompleted && "text-zinc-400",
+              )}
+            >
+              {step.label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
-interface OrderCustomerCardProps {
+interface OrderDeliveryCardProps {
   order: Order;
   isOffline: boolean;
   copiedAddress: boolean;
   mapsUrlQuery: string;
+  /** Estado LOCAL das anotações (`localNotes` de OrderDetail): a linha "Como
+   * vai" lê daqui, não de `order.notes`, para não ficar velha depois que a
+   * lojista salva uma anotação. */
+  notes: string;
   onCopyAddress: () => void;
   onWhatsAppDirect: () => void;
   // Laudo 0109 (A-7): null = número não abre conversa — sem botão.
   whatsappUrl: string | null;
 }
 
-function OrderCustomerCard({
+// Bloco "Entrega": junta quem recebe (nome + WhatsApp), onde (endereço, ou
+// o painel de retirada na loja) e como vai (forma de entrega da nota do
+// checkout). Antes eram o card "Cliente" e, soltas na etiqueta, as dicas de
+// frete.
+function OrderDeliveryCard({
   order,
   isOffline,
   copiedAddress,
   mapsUrlQuery,
+  notes,
   onCopyAddress,
   onWhatsAppDirect,
   whatsappUrl,
-}: Readonly<OrderCustomerCardProps>) {
+}: Readonly<OrderDeliveryCardProps>) {
+  // Retirada na loja: a cliente BUSCA — a linha diz isso em vez de ler a nota
+  // de frete. Entrega comum: nome e prazo da nota do checkout (se a lojista
+  // apagar a frase ao editar a anotação, a linha some — aceito); sem nota
+  // (pedido antigo, venda de balcão), a linha simplesmente não aparece.
+  const formaDeEntrega = order.retiradaNaLoja
+    ? "Retirada na loja"
+    : (() => {
+        const forma = formaDeEntregaDaNota(notes);
+        return forma ? `${forma.nome} · ${forma.prazo}` : null;
+      })();
+
   return (
-    <div className="admin-glass space-y-4 rounded-3xl border border-white/5 p-5">
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          <Users className="size-3.5 text-zinc-500" />
-          Cliente
-        </h3>
-      </div>
+    <section
+      data-testid="bloco-entrega"
+      className={cn(blocoDaFicha, "space-y-4 p-5")}
+    >
+      <h3 className={tituloDoBloco}>Entrega</h3>
+
       {/* T3 (lote B, 12/09): a comanda é de coluna única — nome e WhatsApp
-          descem empilhados (era um grid de 2 colunas), na largura de leitura
-          de uma comanda de papel. */}
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-            Nome
-          </p>
-          <p className="text-base font-bold leading-tight text-white">
+          empilhados, e o botão verde do WhatsApp à direita. */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="break-words text-base font-medium leading-tight text-white">
             {order.customer.name}
           </p>
-        </div>
-        <div className="space-y-1">
-          <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-            WhatsApp
+          <p className="mt-0.5 text-sm tabular-nums text-zinc-400">
+            {order.customer.whatsapp}
           </p>
-          <div className="flex items-center gap-2">
-            <p className="font-mono text-sm font-semibold text-white">
-              {order.customer.whatsapp}
-            </p>
-            {whatsappUrl && (
-              <button
-                onClick={onWhatsAppDirect}
-                disabled={isOffline}
-                className="rounded p-1 text-emerald-400 transition-colors hover:bg-emerald-500/10 hover:text-emerald-300 disabled:pointer-events-none disabled:opacity-40"
-                title="Conversar no WhatsApp"
-              >
-                <MessageCircle className="size-4 fill-current" />
-              </button>
-            )}
-          </div>
         </div>
+        {whatsappUrl && (
+          <button
+            onClick={onWhatsAppDirect}
+            disabled={isOffline}
+            className="flex size-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400 transition-colors hover:bg-emerald-500/25 disabled:pointer-events-none disabled:opacity-40"
+            title="Conversar no WhatsApp"
+            aria-label="Conversar no WhatsApp"
+          >
+            <MessageCircle className="size-5 fill-current" />
+          </button>
+        )}
       </div>
+
       {order.retiradaNaLoja && (
         // Retirada na loja: a cliente BUSCA — nada a enviar nem etiqueta a
         // gerar. O endereço é o retrato da compra (customer_data).
         <div
-          className="space-y-1 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3"
+          className="space-y-1 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3"
           aria-label="Retirada na loja"
         >
-          <p className="text-[9px] font-black uppercase tracking-widest text-emerald-300">
+          <p className="text-sm font-medium text-emerald-300">
             Retirada na loja
           </p>
-          <p className="text-xs leading-relaxed text-zinc-200">
+          <p className="text-sm leading-relaxed text-zinc-200">
             A cliente busca o pedido em: {order.enderecoDeRetirada}
           </p>
         </div>
       )}
-      <div className="space-y-2 border-t border-white/5 pt-2">
-        <p className="text-[9px] font-black uppercase tracking-widest text-zinc-500">
-          {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de Entrega"}
+
+      <div className="space-y-2 border-t border-white/5 pt-4">
+        <p className="text-xs text-zinc-400">
+          {order.retiradaNaLoja ? "Endereço do cliente" : "Endereço de entrega"}
         </p>
-        <div className="flex flex-col justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-3 md:flex-row md:items-start">
-          <p className="flex-1 text-xs uppercase leading-relaxed text-zinc-300">
-            {order.customer.address}
-            {order.customer.number ? `, ${order.customer.number}` : ""}
-            {order.customer.complement ? ` - ${order.customer.complement}` : ""}
-            <br />
-            <span className="text-[10px] normal-case text-zinc-400">
-              {order.customer.neighborhood}
-              {order.customer.city
-                ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
-                : ""}
-              {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
-              {order.customer.reference
-                ? ` • Ref: ${order.customer.reference}`
-                : ""}
-            </span>
-          </p>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              onClick={onCopyAddress}
-              className="flex items-center gap-1 rounded-xl border border-white/5 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 active:scale-95"
-              title="Copiar Endereço"
-            >
-              {copiedAddress ? (
-                <>
-                  <Check className="size-3 text-emerald-400" />
-                  Copiado
-                </>
-              ) : (
-                <>
-                  <Copy className="size-3 text-zinc-400" />
-                  Copiar endereço
-                </>
-              )}
-            </button>
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 rounded-xl border border-white/5 bg-white/5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 active:scale-95"
-              title="Ver no Google Maps"
-            >
-              <MapPin className="size-3 text-zinc-400" />
-              Ver no Maps
-            </a>
-          </div>
+        <p className="text-sm leading-relaxed text-zinc-200">
+          {order.customer.address}
+          {order.customer.number ? `, ${order.customer.number}` : ""}
+          {order.customer.complement ? ` - ${order.customer.complement}` : ""}
+          <br />
+          <span className="text-zinc-400">
+            {order.customer.neighborhood}
+            {order.customer.city
+              ? ` • ${order.customer.city}${order.customer.state ? `/${order.customer.state}` : ""}`
+              : ""}
+            {order.customer.cep ? ` • CEP: ${order.customer.cep}` : ""}
+            {order.customer.reference
+              ? ` • Ref: ${order.customer.reference}`
+              : ""}
+          </span>
+        </p>
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            onClick={onCopyAddress}
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/5 bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+            title="Copiar Endereço"
+          >
+            {copiedAddress ? (
+              <>
+                <Check className="size-[15px] text-emerald-400" />
+                Copiado
+              </>
+            ) : (
+              <>
+                <Copy className="size-[15px] text-zinc-400" />
+                Copiar endereço
+              </>
+            )}
+          </button>
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsUrlQuery)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-10 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-white/5 bg-white/5 px-2 text-[13px] font-medium text-white transition-colors hover:bg-white/10 active:scale-95"
+            title="Ver no Google Maps"
+          >
+            <MapPin className="size-[15px] text-zinc-400" />
+            Ver no Maps
+          </a>
         </div>
       </div>
-    </div>
+
+      {formaDeEntrega && (
+        <p
+          data-testid="forma-de-entrega"
+          className="flex items-center gap-2 border-t border-white/5 pt-4 text-sm text-zinc-300"
+        >
+          <Truck className="size-4 shrink-0 text-zinc-400" />
+          <span>Como vai: {formaDeEntrega}</span>
+        </p>
+      )}
+    </section>
   );
 }
 
 interface OrderItemsCardProps {
-  items: Order["items"];
+  order: Order;
   skus: Record<string, string>;
   loadingSkus: boolean;
 }
 
+// Bloco "Itens": linhas compactas e, logo abaixo, a conta do pedido
+// (subtotal, desconto, frete, total) — que antes morava no bloco de
+// pagamento. Os números e as fórmulas são os mesmos de sempre, só mudaram
+// de lugar.
 function OrderItemsCard({
-  items,
+  order,
   skus,
   loadingSkus,
 }: Readonly<OrderItemsCardProps>) {
+  const { items } = order;
   const totalUnits = items.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
-    <div className="admin-glass space-y-4 rounded-3xl border border-white/5 p-5">
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          <Package className="size-3.5 text-zinc-500" />
-          Itens do Pedido
-        </h3>
-        <span className="rounded-full bg-white/5 px-2 py-0.5 text-[9px] font-bold text-zinc-400">
-          {totalUnits} {totalUnits === 1 ? "Unidade" : "Unidades"}
+    <section data-testid="bloco-itens" className={cn(blocoDaFicha, "p-5")}>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={tituloDoBloco}>Itens do pedido</h3>
+        <span className="text-xs text-zinc-400">
+          {totalUnits} {totalUnits === 1 ? "unidade" : "unidades"}
         </span>
       </div>
-      <div className="divide-y divide-white/5">
+      <div className="mt-3 divide-y divide-white/5">
         {items.map((item) => {
           const itemSku = item.variantId
             ? skus[`var-${item.variantId}`] || skus[`prod-${item.productId}`]
@@ -632,28 +719,22 @@ function OrderItemsCard({
           return (
             <div
               key={`${item.productId}-${item.variantId || "default"}`}
-              className="group/item flex items-center gap-4 py-3 first:pt-0 last:pb-0"
+              className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
             >
-              <div className="relative size-14 shrink-0 overflow-hidden rounded-xl border border-white/10 shadow-lg">
+              <div className="size-12 shrink-0 overflow-hidden rounded-xl border border-white/10">
                 <LazyImage
                   src={item.image}
                   alt={item.name}
-                  className="group-hover/item:scale-115 size-full object-cover transition-transform duration-500"
+                  className="size-full object-cover"
                 />
-                <div className="absolute right-0.5 top-0.5 rounded-md border border-white/10 bg-black/85 px-1.5 py-0.5 text-[8px] font-black text-white">
-                  {item.quantity}X
-                </div>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold text-white transition-colors group-hover/item:text-admin-gold">
+                <p className="truncate text-sm font-medium text-white">
                   {item.name}
                 </p>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <span className="rounded border border-white/5 bg-white/5 px-1.5 py-0.5 text-[9px] font-bold text-zinc-400">
-                    R${" "}
-                    {item.price.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                    })}
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-xs tabular-nums text-zinc-400">
+                    {item.quantity} × R$ {formatarValor(item.price)}
                   </span>
                   <ItemSkuBadge
                     loading={loadingSkus}
@@ -662,22 +743,56 @@ function OrderItemsCard({
                   />
                 </div>
               </div>
-              <div className="shrink-0 text-right">
-                <p className="text-xs font-black tabular-nums text-white">
-                  R${" "}
-                  {((item.price || 0) * (item.quantity || 0)).toLocaleString(
-                    "pt-BR",
-                    {
-                      minimumFractionDigits: 2,
-                    },
-                  )}
-                </p>
-              </div>
+              <p className="shrink-0 text-sm font-medium tabular-nums text-white">
+                R$ {formatarValor((item.price || 0) * (item.quantity || 0))}
+              </p>
             </div>
           );
         })}
       </div>
-    </div>
+
+      <div
+        className={cn(
+          "space-y-1.5 text-sm tabular-nums",
+          items.length > 0 && "mt-4 border-t border-white/5 pt-4",
+        )}
+      >
+        <div className="flex justify-between text-zinc-300">
+          <span>Subtotal</span>
+          <span>R$ {formatarValor(order?.subtotal || 0)}</span>
+        </div>
+
+        {(order?.discount > 0 || order?.couponCode) && (
+          <div className="flex justify-between text-amber-400">
+            <span className="flex items-center gap-1.5">
+              Desconto
+              {order.couponCode && (
+                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-xs font-medium">
+                  {order.couponCode}
+                </span>
+              )}
+            </span>
+            <span>- R$ {formatarValor(order?.discount || 0)}</span>
+          </div>
+        )}
+
+        <div className="flex justify-between text-zinc-300">
+          <span>Frete</span>
+          <span
+            className={(order?.shipping || 0) === 0 ? "text-emerald-400" : ""}
+          >
+            {(order?.shipping || 0) === 0
+              ? "Grátis"
+              : `R$ ${formatarValor(order?.shipping || 0)}`}
+          </span>
+        </div>
+
+        <div className="flex justify-between border-t border-white/5 pt-2 text-base font-semibold text-white">
+          <span>Total</span>
+          <span>R$ {formatarValor(order?.total || 0)}</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -690,16 +805,20 @@ interface OrderFinanceCardProps {
   registrandoPagamento?: boolean;
 }
 
+// Bloco do dinheiro ("Pagamento"), logo depois da trilha: a forma de pagamento
+// ao lado do título, o total grande, UMA frase com a situação (e o selo, uma
+// vez só) e, por último, o botão de recebimento. A conta (subtotal, desconto, frete) foi
+// para o bloco "Itens".
 function OrderFinanceCard({
   order,
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
-  // T3 (lote B, 12/09) — a frase-situação do dinheiro abre a seção: "esse
-  // pedido está pago?" é respondido antes de qualquer número. Verde quando o
-  // dinheiro entrou SEM pendência; âmbar para tudo o mais — inclusive os
-  // "precisa de atenção", que não podem pintar de verde só porque a frase
-  // começa com "Pago" (pago e cancelado é dinheiro PRESO, não resolvido).
+  // T3 (lote B, 12/09) — a frase-situação do dinheiro responde "esse pedido
+  // está pago?" antes de qualquer outra coisa. Verde quando o dinheiro entrou
+  // SEM pendência; âmbar para tudo o mais — inclusive os "precisa de
+  // atenção", que não podem pintar de verde só porque a frase começa com
+  // "Pago" (pago e cancelado é dinheiro PRESO, não resolvido).
   const situacao = fraseSituacaoDoPagamento(order);
   // "Recebido no balcão" (D1, lote C4) é o MESMO fato que "Recebido na
   // entrega" num canal diferente — dinheiro entrou, sem pendência. Sem esta
@@ -712,143 +831,83 @@ function OrderFinanceCard({
       situacao.startsWith("Recebido no balcão"));
 
   return (
-    <div className="group relative overflow-hidden rounded-[2rem] border border-white/10 bg-zinc-950 p-6 text-white shadow-2xl">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          <DollarSign className="size-4 text-admin-gold" />
-          Pagamento
-        </h3>
-        <span
+    <section
+      data-testid="bloco-dinheiro"
+      className={cn(blocoDaFicha, "space-y-4 p-5")}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className={tituloDoBloco}>Pagamento</h3>
+        <p className="text-sm font-medium text-zinc-300">
+          {getPaymentMethodLabel(order.paymentMethod)}
+        </p>
+      </div>
+
+      <div>
+        <p className="text-xs text-zinc-400">Total do pedido</p>
+        <p className="mt-0.5 text-3xl font-semibold tabular-nums leading-none text-white">
+          <span className="mr-1 text-lg font-medium text-zinc-400">R$</span>
+          {formatarValor(order?.total || 0)}
+        </p>
+      </div>
+
+      {/* A frase e o selo vão em LINHAS PRÓPRIAS, largura cheia: o selo tem
+          `truncate` e, dividindo linha com outra coisa, voltava a virar
+          "PAGO E CANCELADO — PRECIS…". */}
+      <div className="space-y-2">
+        <p
           className={cn(
-            "rounded-full border px-2.5 py-1 text-[9.5px] font-black uppercase tracking-wider",
-            situacaoPositiva
-              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
-              : "border-amber-500/30 bg-amber-500/10 text-amber-400",
+            "text-sm font-medium",
+            situacaoPositiva ? "text-emerald-400" : "text-amber-400",
           )}
         >
           {situacao}
-        </span>
+        </p>
+        <PaymentStatusBadge
+          paymentStatus={order.paymentStatus}
+          orderStatus={order.status}
+          canal={order.canal}
+          className={seloDaFicha}
+        />
       </div>
 
-      <div className="relative z-10 space-y-4">
-        <div className="flex justify-between text-xs font-bold text-zinc-400">
-          <span className="uppercase tracking-widest">Subtotal</span>
-          <span className="font-mono">
-            R${" "}
-            {(order?.subtotal || 0).toLocaleString("pt-BR", {
-              minimumFractionDigits: 2,
-            })}
-          </span>
-        </div>
-
-        {(order?.discount > 0 || order?.couponCode) && (
-          <div className="flex justify-between text-xs font-bold text-amber-500">
-            <span className="flex items-center gap-1.5 uppercase tracking-widest">
-              Desconto
-              {order.couponCode && (
-                <span className="rounded border border-amber-500/20 bg-amber-500/10 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-amber-500">
-                  {order.couponCode}
-                </span>
-              )}
-            </span>
-            <span className="font-mono">
-              - R${" "}
-              {(order?.discount || 0).toLocaleString("pt-BR", {
-                minimumFractionDigits: 2,
-              })}
-            </span>
-          </div>
-        )}
-
-        <div className="flex justify-between text-xs font-bold text-emerald-400">
-          <span className="uppercase tracking-widest">Frete</span>
-          <span className="font-mono">
-            {(order?.shipping || 0) === 0
-              ? "GRÁTIS"
-              : `R$ ${(order?.shipping || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-          </span>
-        </div>
-
-        <div className="mt-4 border-t border-white/10 pt-4">
-          <div className="mb-4 flex items-start justify-between">
-            <div>
-              <span className="mb-1 block text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Total do pedido
+      {/* Task 4b do plano recebimento-na-entrega — o botão de pagamento
+          recebido na mão fica disponível na FICHA o tempo todo, mesma
+          condição (`podeRegistrarPagamento`) e mesmo comportamento do
+          cartão da lista (Task 4). `onRegistrarPagamento` falta só nos
+          testes que montam `<OrderDetail>` direto sem a prop. */}
+      {onRegistrarPagamento && podeRegistrarPagamento(order) && (
+        <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-4">
+          {order.pagamentoRecebidoEm ? (
+            <>
+              <span className="text-sm font-medium text-emerald-400">
+                Recebido em{" "}
+                {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
+                  "pt-BR",
+                  { day: "2-digit", month: "short" },
+                )}
               </span>
-              <span className="text-3xl font-black tracking-tighter text-white">
-                <span className="mr-1 text-lg text-admin-gold">R$</span>
-                {(order?.total || 0).toLocaleString("pt-BR", {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 p-3">
-            <div className="shrink-0 rounded-xl bg-emerald-500/15 p-2">
-              <QrCode className="size-4 text-emerald-400" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                  Como vai ser pago
-                </p>
-                <PaymentStatusBadge
-                  paymentStatus={order.paymentStatus}
-                  orderStatus={order.status}
-                  canal={order.canal}
-                />
-              </div>
-              <p className="mt-1 truncate text-xs font-bold uppercase tracking-tight text-white">
-                {getPaymentMethodLabel(order.paymentMethod)}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Task 4b do plano recebimento-na-entrega — o botão de pagamento
-            recebido na mão fica disponível na FICHA o tempo todo, mesma
-            condição (`podeRegistrarPagamento`) e mesmo comportamento do
-            cartão da lista (Task 4). `onRegistrarPagamento` falta só nos
-            testes que montam `<OrderDetail>` direto sem a prop. */}
-        {onRegistrarPagamento && podeRegistrarPagamento(order) && (
-          <div className="flex items-center justify-between gap-2 border-t border-white/10 pt-4">
-            {order.pagamentoRecebidoEm ? (
-              <>
-                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
-                  Recebido em{" "}
-                  {new Date(order.pagamentoRecebidoEm).toLocaleDateString(
-                    "pt-BR",
-                    { day: "2-digit", month: "short" },
-                  )}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRegistrarPagamento(order.id, false)}
-                  disabled={registrandoPagamento}
-                  className="shrink-0 rounded-xl border border-zinc-700/50 bg-zinc-800/50 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
-                >
-                  Desfazer
-                </button>
-              </>
-            ) : (
               <button
                 type="button"
-                onClick={() => onRegistrarPagamento(order.id, true)}
+                onClick={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
-                className="w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+                className="h-10 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
               >
-                {registrandoPagamento
-                  ? "Registrando..."
-                  : "Marcar como recebido"}
+                Desfazer
               </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="absolute right-0 top-0 size-32 bg-admin-gold opacity-5 blur-[100px]" />
-    </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onRegistrarPagamento(order.id, true)}
+              disabled={registrandoPagamento}
+              className="h-11 w-full rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 text-sm font-semibold text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+            >
+              {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -865,6 +924,10 @@ interface OrderLogisticsCardProps {
   onCopyTracking: () => void;
 }
 
+// Linha "Código de rastreio" da lista de envio: vazia convida com "Adicionar"
+// (dourado); preenchida mostra o código em fonte mono com copiar / rastrear /
+// editar; editar abre o campo ali mesmo. O "rastreio" fica só para leitor de
+// tela (`sr-only`): na lista há dois "Adicionar" e o botão precisa dizer qual.
 function OrderLogisticsCard({
   localTrackingCode,
   isEditingTracking,
@@ -877,128 +940,125 @@ function OrderLogisticsCard({
   onSaveTracking,
   onCopyTracking,
 }: Readonly<OrderLogisticsCardProps>) {
-  return (
-    <div className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5">
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          <Truck className="size-3.5 text-zinc-500" />
-          Entrega e rastreio
-        </h3>
+  if (isEditingTracking) {
+    return (
+      <div className="space-y-3 px-4 py-3.5 duration-300 animate-in fade-in">
+        <label
+          htmlFor="tracking-input"
+          className="block text-sm font-medium text-zinc-200"
+        >
+          Código de rastreio
+        </label>
+        <Input
+          id="tracking-input"
+          name="trackingCode"
+          autoComplete="off"
+          value={trackingValue}
+          onChange={(e) => setTrackingValue(e.target.value.toUpperCase())}
+          placeholder="EX: BR123456789BR"
+          className="h-11 rounded-xl border-white/10 bg-zinc-950 font-mono text-sm text-white focus:border-admin-gold/30"
+          disabled={isSavingTracking}
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setTrackingValue(localTrackingCode);
+              setIsEditingTracking(false);
+            }}
+            className="h-10 rounded-xl px-3 text-zinc-300 hover:text-white"
+            disabled={isSavingTracking}
+            aria-label="Cancelar edição do código"
+          >
+            <X className="size-4" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={onSaveTracking}
+            className="flex h-10 items-center gap-1.5 rounded-xl bg-admin-gold px-4 text-sm font-semibold text-black hover:bg-admin-gold/90"
+            disabled={isSavingTracking}
+          >
+            {isSavingTracking ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Check className="size-4" />
+            )}
+            Salvar
+          </Button>
+        </div>
       </div>
+    );
+  }
 
-      {isEditingTracking ? (
-        <div className="space-y-3 duration-300 animate-in fade-in">
-          <div className="space-y-1">
-            <label
-              htmlFor="tracking-input"
-              className="text-[8px] font-black uppercase tracking-widest text-zinc-500"
-            >
-              Código de rastreio
-            </label>
-            <Input
-              id="tracking-input"
-              name="trackingCode"
-              autoComplete="off"
-              value={trackingValue}
-              onChange={(e) => setTrackingValue(e.target.value.toUpperCase())}
-              placeholder="EX: BR123456789BR"
-              className="h-10 rounded-xl border-white/10 bg-zinc-950 font-mono text-xs text-white focus:border-admin-gold/30"
-              disabled={isSavingTracking}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setTrackingValue(localTrackingCode);
-                setIsEditingTracking(false);
-              }}
-              className="h-8 rounded-lg px-2.5 text-zinc-400 hover:text-white"
-              disabled={isSavingTracking}
-            >
-              <X className="size-4" />
-            </Button>
-            <Button
-              size="sm"
-              onClick={onSaveTracking}
-              className="flex h-8 items-center gap-1 rounded-lg bg-admin-gold px-3 text-[9px] font-black uppercase tracking-wider text-black hover:bg-admin-gold/90"
-              disabled={isSavingTracking}
-            >
-              {isSavingTracking ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Check className="size-3.5" />
-              )}
-              Salvar
-            </Button>
-          </div>
+  if (!localTrackingCode) {
+    // T3 (lote B, 12/09) — estado vazio como CONVITE, agora em linha (era uma
+    // caixa tracejada grande).
+    return (
+      <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-zinc-200">
+            Código de rastreio
+          </h3>
+          <p className="text-xs text-zinc-400">
+            Quando despachar, cole o código dos Correios.
+          </p>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {localTrackingCode ? (
-            <div className="space-y-2">
-              <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
-                Código de rastreio
-              </p>
-              <div className="flex items-center justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                <span className="select-all font-mono text-xs font-bold tracking-widest text-white">
-                  {localTrackingCode}
-                </span>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    onClick={onCopyTracking}
-                    className="rounded p-1.5 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
-                    title="Copiar Código"
-                  >
-                    {copiedTracking ? (
-                      <Check className="size-3.5 text-emerald-400" />
-                    ) : (
-                      <Copy className="size-3.5" />
-                    )}
-                  </button>
-                  <a
-                    href={`https://linkrastreio.com/?codigo=${localTrackingCode}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded p-1.5 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
-                    title="Rastrear nos Correios"
-                  >
-                    <ExternalLink className="size-3.5" />
-                  </a>
-                  <button
-                    onClick={() => setIsEditingTracking(true)}
-                    disabled={isOffline}
-                    className="rounded p-1.5 text-zinc-400 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
-                    title="Editar Código"
-                  >
-                    <Edit3 className="size-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
+        <Button
+          variant="ghost"
+          onClick={() => setIsEditingTracking(true)}
+          disabled={isOffline}
+          className="flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-sm font-medium text-admin-gold hover:bg-admin-gold/10 hover:text-admin-gold active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+        >
+          <Plus className="size-4" />
+          <span>
+            Adicionar<span className="sr-only"> rastreio</span>
+          </span>
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0">
+        <h3 className="text-sm font-medium text-zinc-200">
+          Código de rastreio
+        </h3>
+        <span className="block select-all break-all font-mono text-sm font-medium tracking-wider text-white">
+          {localTrackingCode}
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center">
+        <button
+          onClick={onCopyTracking}
+          className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+          title="Copiar Código"
+        >
+          {copiedTracking ? (
+            <Check className="size-4 text-emerald-400" />
           ) : (
-            // T3 (lote B, 12/09) — estado vazio como CONVITE: tracejado,
-            // frase curta e botão dourado (era um botão cinza discreto).
-            <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 bg-zinc-950/20 p-4 text-center">
-              <p className="text-[11px] font-semibold text-zinc-400">
-                Sem código de rastreio ainda
-              </p>
-              <p className="text-[10px] text-zinc-500">
-                Quando o pedido despachar, cole o código dos Correios aqui.
-              </p>
-              <Button
-                onClick={() => setIsEditingTracking(true)}
-                disabled={isOffline}
-                className="mt-1.5 flex h-9 items-center gap-1 rounded-lg bg-admin-gold px-4 text-[9px] font-black uppercase tracking-wider text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-              >
-                <Plus className="size-3.5" />
-                Adicionar rastreio
-              </Button>
-            </div>
+            <Copy className="size-4" />
           )}
-        </div>
-      )}
+        </button>
+        <a
+          href={`https://linkrastreio.com/?codigo=${localTrackingCode}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white"
+          title="Rastrear nos Correios"
+        >
+          <ExternalLink className="size-4" />
+        </a>
+        <button
+          onClick={() => setIsEditingTracking(true)}
+          disabled={isOffline}
+          className="flex size-10 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-white/5 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+          title="Editar Código"
+        >
+          <Edit3 className="size-4" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1014,6 +1074,14 @@ interface OrderNotesCardProps {
   onSaveNotes: () => void;
 }
 
+// Linha "Anotações internas" da lista de envio — mesma ideia do rastreio:
+// vazia convida com "Adicionar", preenchida mostra o texto INTEIRO (sem
+// aspas nem itálico, com as quebras de linha) com "Editar", e editar abre o
+// campo ali mesmo. O texto inteiro importa: `notes` traz a observação da
+// cliente, a variante escolhida ("Produto: Tamanho G") e a frase do frete, e
+// a ficha não tem a variante em outro lugar. As palavras
+// "anotação"/"notas" ficam só para leitor de tela (`sr-only`), como no
+// rastreio.
 function OrderNotesCard({
   localNotes,
   isEditingNotes,
@@ -1024,103 +1092,105 @@ function OrderNotesCard({
   setIsEditingNotes,
   onSaveNotes,
 }: Readonly<OrderNotesCardProps>) {
+  if (isEditingNotes) {
+    return (
+      <div className="space-y-3 px-4 py-3.5 duration-300 animate-in fade-in">
+        <label
+          htmlFor="notes-textarea"
+          className="block text-sm font-medium text-zinc-200"
+        >
+          Anotações internas
+        </label>
+        <textarea
+          id="notes-textarea"
+          name="notes"
+          autoComplete="off"
+          value={notesValue}
+          onChange={(e) => setNotesValue(e.target.value)}
+          placeholder="Ex: Cliente solicitou entrega após as 18h..."
+          className="h-24 w-full resize-none rounded-xl border border-white/10 bg-zinc-950 p-3 text-sm text-white focus:border-admin-gold/30 focus:outline-none"
+          disabled={isSavingNotes}
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              setNotesValue(localNotes);
+              setIsEditingNotes(false);
+            }}
+            className="h-10 rounded-xl px-3 text-zinc-300 hover:text-white"
+            disabled={isSavingNotes}
+            aria-label="Cancelar edição das anotações"
+          >
+            <X className="size-4" />
+          </Button>
+          <Button
+            size="sm"
+            onClick={onSaveNotes}
+            className="flex h-10 items-center gap-1.5 rounded-xl bg-admin-gold px-4 text-sm font-semibold text-black hover:bg-admin-gold/90"
+            disabled={isSavingNotes}
+          >
+            {isSavingNotes ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Check className="size-4" />
+            )}
+            Salvar
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!localNotes) {
+    // T3 (lote B, 12/09) — estado vazio como CONVITE, agora em linha.
+    return (
+      <div className="flex min-h-14 items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-zinc-200">
+            Anotações internas
+          </h3>
+          <p className="text-xs text-zinc-400">
+            Combinados com o cliente: horário, presente, troca…
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          onClick={() => setIsEditingNotes(true)}
+          disabled={isOffline}
+          className="flex h-10 shrink-0 items-center gap-1 rounded-xl px-3 text-sm font-medium text-admin-gold hover:bg-admin-gold/10 hover:text-admin-gold active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+        >
+          <Plus className="size-4" />
+          <span>
+            Adicionar<span className="sr-only"> anotação</span>
+          </span>
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5">
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          <MessageCircle className="size-3.5 text-zinc-500" />
+    <div className="space-y-2 px-4 py-3.5">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-medium text-zinc-200">
           Anotações internas
         </h3>
+        <Button
+          variant="ghost"
+          onClick={() => setIsEditingNotes(true)}
+          disabled={isOffline}
+          className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-zinc-300 hover:bg-white/5 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+        >
+          <Edit3 className="size-4 text-zinc-400" />
+          <span>
+            Editar<span className="sr-only"> notas</span>
+          </span>
+        </Button>
       </div>
-
-      {isEditingNotes ? (
-        <div className="space-y-3 duration-300 animate-in fade-in">
-          <div className="space-y-1">
-            <label
-              htmlFor="notes-textarea"
-              className="text-[8px] font-black uppercase tracking-widest text-zinc-500"
-            >
-              Anotações Internas
-            </label>
-            <textarea
-              id="notes-textarea"
-              name="notes"
-              autoComplete="off"
-              value={notesValue}
-              onChange={(e) => setNotesValue(e.target.value)}
-              placeholder="Ex: Cliente solicitou entrega após as 18h..."
-              className="h-20 w-full resize-none rounded-xl border border-white/10 bg-zinc-950 p-3 text-xs text-white focus:border-admin-gold/30 focus:outline-none"
-              disabled={isSavingNotes}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setNotesValue(localNotes);
-                setIsEditingNotes(false);
-              }}
-              className="h-8 rounded-lg px-2.5 text-zinc-400 hover:text-white"
-              disabled={isSavingNotes}
-            >
-              <X className="size-4" />
-            </Button>
-            <Button
-              size="sm"
-              onClick={onSaveNotes}
-              className="flex h-8 items-center gap-1 rounded-lg bg-admin-gold px-3 text-[9px] font-black uppercase tracking-wider text-black hover:bg-admin-gold/90"
-              disabled={isSavingNotes}
-            >
-              {isSavingNotes ? (
-                <Loader2 className="size-3 animate-spin" />
-              ) : (
-                <Check className="size-3.5" />
-              )}
-              Salvar
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {localNotes ? (
-            <div className="space-y-3">
-              <p className="rounded-2xl border border-amber-500/10 bg-amber-500/5 p-3 text-xs font-medium italic leading-relaxed text-amber-200">
-                "{localNotes}"
-              </p>
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => setIsEditingNotes(true)}
-                  disabled={isOffline}
-                  className="flex h-8 items-center gap-1 rounded-lg border border-white/5 bg-white/5 px-3 text-[9px] font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-                >
-                  <Edit3 className="size-3.5 text-zinc-400" />
-                  Editar Notas
-                </Button>
-              </div>
-            </div>
-          ) : (
-            // T3 (lote B, 12/09) — estado vazio como CONVITE: tracejado,
-            // frase curta e botão dourado (era um botão cinza discreto).
-            <div className="flex flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-white/10 bg-zinc-950/20 p-4 text-center">
-              <p className="text-[11px] font-semibold text-zinc-400">
-                Nenhuma anotação neste pedido
-              </p>
-              <p className="text-[10px] text-zinc-500">
-                Anote combinados com o cliente: horário, presente, troca…
-              </p>
-              <Button
-                onClick={() => setIsEditingNotes(true)}
-                disabled={isOffline}
-                className="mt-1.5 flex h-9 items-center gap-1 rounded-lg bg-admin-gold px-4 text-[9px] font-black uppercase tracking-wider text-black transition-all hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
-              >
-                <Plus className="size-3.5" />
-                Adicionar anotação
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+      <p className="whitespace-pre-line text-sm leading-relaxed text-zinc-200">
+        {localNotes}
+      </p>
     </div>
   );
 }
@@ -1542,51 +1612,16 @@ export const OrderDetail = memo(function OrderDetail({
         onAdvance={requestStatusChange}
         onCancel={handleCancelarComConfirmacao}
       />
-      {/* T3 (lote B, 12/09) — "Mesa do lojista": coluna ÚNICA tipo comanda
-          (~600px centrados), na ordem em que o lojista LÊ a ficha: ação (fixa
-          no topo desde 20/09) → header → espera → trilha → cliente → itens →
-          pagamento (+ devolução) → entrega → anotações. O grid de 2 colunas
-          saiu. */}
+      {/* Redesenho de 08/10/2026 — coluna ÚNICA (~600px centrados), na ordem
+          em que o lojista LÊ a ficha: ação (fixa no topo desde 20/09) →
+          cabeçalho → trilha → dinheiro (+ devolução do produto e do
+          dinheiro, coladas nele) → entrega → itens (com a conta) → envio
+          (etiqueta, rastreio e anotações em linhas). O grid de 2 colunas saiu. */}
       <div className="mx-auto w-full max-w-[600px] space-y-4 px-4 pt-5 md:px-6 md:pt-6">
-        <OrderHeader order={order} />
-
-        {order.status === "cancelled" && (
-          <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-950/20 p-4 text-red-400 duration-300 animate-in slide-in-from-top">
-            <XCircle className="size-5 shrink-0" />
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider">
-                Pedido cancelado
-              </p>
-              <p className="mt-0.5 text-[10px] text-zinc-400">
-                Este pedido foi cancelado e não pode prosseguir.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {avisoDeEspera && (
-          <div className="flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 text-amber-400 duration-300 animate-in slide-in-from-top">
-            <Clock className="size-5 shrink-0" />
-            <p className="text-[11px] font-semibold">{avisoDeEspera}</p>
-          </div>
-        )}
+        <OrderHeader order={order} avisoDeEspera={avisoDeEspera} />
 
         <OrderStepperPipeline orderStatus={order.status} />
 
-        <OrderCustomerCard
-          order={order}
-          isOffline={isOffline}
-          copiedAddress={copiedAddress}
-          mapsUrlQuery={mapsUrlQuery}
-          onCopyAddress={handleCopyAddress}
-          onWhatsAppDirect={handleWhatsAppDirect}
-          whatsappUrl={whatsappUrl}
-        />
-        <OrderItemsCard
-          items={order.items}
-          skus={skus}
-          loadingSkus={loadingSkus}
-        />
         <OrderFinanceCard
           order={order}
           onRegistrarPagamento={
@@ -1615,60 +1650,81 @@ export const OrderDetail = memo(function OrderDetail({
             order.paymentStatus === "estornado") && (
             <EstornoCard order={order} />
           )}
-        {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
-            Admin > Frete (busca/seleção global) para o pedido já aberto.
-            Venda de balcão (`canal === "presencial"`) não tem envio: a
-            cliente leva o produto na hora, não existe etiqueta para gerar. */}
-        {order.canal !== "presencial" && (
-          <EtiquetaDoPedidoCard
-            // `key={order.id}` aqui NÃO é o que impede o vazamento entre
-            // pedidos — 2ª rodada da revisão Opus sobre aadbf4c corrigiu um
-            // comentário anterior que dizia o contrário. O que protege é a
-            // dupla checagem por `orderId` (dentro do card, via
-            // `useEffect`+cleanup; e aqui embaixo, no `onTrackingAtualizado`)
-            // — essa dupla checagem funciona COM ou SEM o `key`. Mantemos o
-            // `key` só pelo ganho de UX: ele força o card a desmontar e
-            // remontar ao trocar de pedido, então a troca já entra direto no
-            // skeleton de "carregando" em vez de mostrar por um instante os
-            // dados do pedido anterior antes do `useEffect` interno do card
-            // zerar o estado.
-            key={order.id}
-            orderId={order.id}
+
+        <OrderDeliveryCard
+          order={order}
+          isOffline={isOffline}
+          copiedAddress={copiedAddress}
+          mapsUrlQuery={mapsUrlQuery}
+          notes={localNotes}
+          onCopyAddress={handleCopyAddress}
+          onWhatsAppDirect={handleWhatsAppDirect}
+          whatsappUrl={whatsappUrl}
+        />
+        <OrderItemsCard order={order} skus={skus} loadingSkus={loadingSkus} />
+
+        {/* Envio em linhas simples, separadas por divisores: uma linha por
+            assunto, e tocar abre/edita ali mesmo. */}
+        <section
+          data-testid="envio-lista"
+          aria-label="Envio e anotações"
+          className={cn(blocoDaFicha, "divide-y divide-white/5")}
+        >
+          {/* Emissão da etiqueta de envio dentro da ficha do pedido — migrou de
+              Admin > Frete (busca/seleção global) para o pedido já aberto.
+              Venda de balcão (`canal === "presencial"`) não tem envio: a
+              cliente leva o produto na hora, não existe etiqueta para gerar. */}
+          {order.canal !== "presencial" && (
+            <EtiquetaDoPedidoCard
+              // `key={order.id}` aqui NÃO é o que impede o vazamento entre
+              // pedidos — 2ª rodada da revisão Opus sobre aadbf4c corrigiu um
+              // comentário anterior que dizia o contrário. O que protege é a
+              // dupla checagem por `orderId` (dentro do card, via
+              // `useEffect`+cleanup; e aqui embaixo, no `onTrackingAtualizado`)
+              // — essa dupla checagem funciona COM ou SEM o `key`. Mantemos o
+              // `key` só pelo ganho de UX: ele força o card a desmontar e
+              // remontar ao trocar de pedido, então a troca já entra direto no
+              // skeleton de "carregando" em vez de mostrar por um instante os
+              // dados do pedido anterior antes do `useEffect` interno do card
+              // zerar o estado.
+              key={order.id}
+              orderId={order.id}
+              isOffline={isOffline}
+              onTrackingAtualizado={(orderIdDaResposta, codigo) => {
+                // A resposta pode ser de um pedido que este componente não
+                // mostra mais (card desmontado com a resposta ainda em voo, ou
+                // clique antigo cuja resposta chegou depois da troca) —
+                // ignora sem tocar no estado local se não bater com o pedido
+                // ATUAL. Independe de o card ainda existir na árvore.
+                if (orderIdDaResposta !== orderIdAtualRef.current) return;
+                setLocalTrackingCode(codigo);
+                setTrackingValue(codigo);
+              }}
+            />
+          )}
+          <OrderLogisticsCard
+            localTrackingCode={localTrackingCode}
+            isEditingTracking={isEditingTracking}
+            trackingValue={trackingValue}
+            isSavingTracking={isSavingTracking}
+            copiedTracking={copiedTracking}
             isOffline={isOffline}
-            onTrackingAtualizado={(orderIdDaResposta, codigo) => {
-              // A resposta pode ser de um pedido que este componente não
-              // mostra mais (card desmontado com a resposta ainda em voo, ou
-              // clique antigo cuja resposta chegou depois da troca) —
-              // ignora sem tocar no estado local se não bater com o pedido
-              // ATUAL. Independe de o card ainda existir na árvore.
-              if (orderIdDaResposta !== orderIdAtualRef.current) return;
-              setLocalTrackingCode(codigo);
-              setTrackingValue(codigo);
-            }}
+            setTrackingValue={setTrackingValue}
+            setIsEditingTracking={setIsEditingTracking}
+            onSaveTracking={handleSaveTracking}
+            onCopyTracking={handleCopyTracking}
           />
-        )}
-        <OrderLogisticsCard
-          localTrackingCode={localTrackingCode}
-          isEditingTracking={isEditingTracking}
-          trackingValue={trackingValue}
-          isSavingTracking={isSavingTracking}
-          copiedTracking={copiedTracking}
-          isOffline={isOffline}
-          setTrackingValue={setTrackingValue}
-          setIsEditingTracking={setIsEditingTracking}
-          onSaveTracking={handleSaveTracking}
-          onCopyTracking={handleCopyTracking}
-        />
-        <OrderNotesCard
-          localNotes={localNotes}
-          isEditingNotes={isEditingNotes}
-          notesValue={notesValue}
-          isSavingNotes={isSavingNotes}
-          isOffline={isOffline}
-          setNotesValue={setNotesValue}
-          setIsEditingNotes={setIsEditingNotes}
-          onSaveNotes={handleSaveNotes}
-        />
+          <OrderNotesCard
+            localNotes={localNotes}
+            isEditingNotes={isEditingNotes}
+            notesValue={notesValue}
+            isSavingNotes={isSavingNotes}
+            isOffline={isOffline}
+            setNotesValue={setNotesValue}
+            setIsEditingNotes={setIsEditingNotes}
+            onSaveNotes={handleSaveNotes}
+          />
+        </section>
       </div>
 
       <OrderReceipt order={order} storeName={storeName} />

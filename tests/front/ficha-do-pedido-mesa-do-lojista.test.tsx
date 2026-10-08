@@ -161,11 +161,14 @@ describe("ficha do pedido (mesa do lojista) — frase-situação do dinheiro no 
     // Âncora de render de verdade: a ficha desenhou o pedido.
     expect(texto).toContain("Pedido");
     expect(texto).toContain("Falta receber na entrega · R$ 100,00");
-    // A frase é a SITUAÇÃO do cabeçalho da seção Pagamento: vem ANTES do
-    // "Total do pedido" (que mora no corpo da mesma seção), não depois.
-    expect(texto.indexOf("Falta receber na entrega")).toBeLessThan(
-      texto.indexOf("Total do pedido"),
-    );
+    // Redesenho 08/10/2026: o total grande abre o bloco e a frase-situação
+    // vem logo abaixo dele, no MESMO bloco "Pagamento" (antes ela ficava no
+    // cabeçalho da seção, acima da conta, que saiu para o bloco de itens).
+    const secao = Array.from(hospedeiro.querySelectorAll("h3"))
+      .find((h) => h.textContent?.trim() === "Pagamento")
+      ?.closest("section");
+    expect(secao?.textContent).toContain("Total do pedido");
+    expect(secao?.textContent).toContain("Falta receber na entrega");
   });
 
   it("pedido pago no site: 'Pago no site · R$ 100,00'", async () => {
@@ -359,7 +362,7 @@ describe("ficha do pedido (mesa do lojista) — vocabulário novo", () => {
     expect(texto).toContain("Anotações internas");
   });
 
-  it("tabela do vocabulário: Consolidado Financeiro/Montante Final/Taxa Logística/BONIFICADO/Liquidação/Rede PIX/Contato Comercial/Portfólio Ativo/Notas Operacionais/Logística & Rastreio/Código Cadastrado saem; Pagamento/Frete/GRÁTIS/Como vai ser pago/PIX/Entrega e rastreio/Código de rastreio entram", async () => {
+  it("tabela do vocabulário: Consolidado Financeiro/Montante Final/Taxa Logística/BONIFICADO/Liquidação/Rede PIX/Contato Comercial/Portfólio Ativo/Notas Operacionais/Logística & Rastreio/Código Cadastrado saem; Pagamento/Frete/Grátis/PIX/Código de rastreio entram (redesenho 08/10: sem a caixa Como vai ser pago)", async () => {
     // PIX na entrega com frete grátis: cobre "Frete → GRÁTIS" e "Rede PIX →
     // PIX". Com código de rastreio gravado: o rótulo de EXIBIÇÃO "Código de
     // rastreio" (era "Código Cadastrado") renderiza de verdade — sem código e
@@ -391,14 +394,16 @@ describe("ficha do pedido (mesa do lojista) — vocabulário novo", () => {
     for (const novo of [
       "Pagamento",
       "Frete",
-      "GRÁTIS",
-      "Como vai ser pago",
+      "Grátis",
       "PIX",
-      "Entrega e rastreio",
       "Código de rastreio",
     ]) {
       expect(texto).toContain(novo);
     }
+    // Redesenho 08/10/2026: a forma de pagamento já está ao lado do total
+    // (a caixa "Como vai ser pago" saiu) e "GRÁTIS" virou "Grátis".
+    expect(texto).not.toContain("Como vai ser pago");
+    expect(texto).not.toContain("GRÁTIS");
   });
 
   it("método cartão na entrega: 'Cartão de crédito' (era 'Rede Crédito')", async () => {
@@ -437,17 +442,21 @@ describe("ficha do pedido (mesa do lojista) — coluna única tipo comanda", () 
     });
   }
 
-  it("as seções descem na ordem da comanda: Cliente → Itens → Pagamento → Entrega e rastreio → Anotações internas", async () => {
+  it("as seções descem na ordem da comanda (redesenho 08/10): Pagamento → Entrega → Itens → Etiqueta → Rastreio → Anotações internas", async () => {
     await renderizar(pedidoFake({ status: "pending" }));
 
-    const texto = hospedeiro.textContent ?? "";
+    // Cada bloco tem UM título (h3): a ordem dos títulos é a ordem da ficha.
+    const titulos = Array.from(hospedeiro.querySelectorAll("h3")).map(
+      (h) => h.textContent?.trim() ?? "",
+    );
     const posicoes = [
-      "Cliente",
-      "Itens do Pedido",
-      "Total do pedido",
-      "Entrega e rastreio",
+      "Pagamento",
+      "Entrega",
+      "Itens do pedido",
+      "Etiqueta de envio",
+      "Código de rastreio",
       "Anotações internas",
-    ].map((termo) => texto.indexOf(termo));
+    ].map((termo) => titulos.indexOf(termo));
     // Sanidade: TODAS as seções renderizaram (indexOf -1 mentiria na ordem).
     for (const posicao of posicoes) {
       expect(posicao).toBeGreaterThan(-1);

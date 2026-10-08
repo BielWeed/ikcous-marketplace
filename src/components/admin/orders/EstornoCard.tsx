@@ -181,7 +181,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
 
   if (erro) {
     return (
-      <div className="admin-glass space-y-3 rounded-[2rem] border border-red-500/20 p-5 text-white">
+      <div className="space-y-3 rounded-2xl border border-red-500/20 bg-red-500/5 p-5 text-white">
         <p className="text-xs font-bold text-red-400">
           Não consegui carregar as devoluções deste pedido.
         </p>
@@ -204,11 +204,11 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
   // mentir para o lojista sobre dinheiro.
   if (!pedidoCarregado) {
     return (
-      <div className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5 text-white">
-        <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+      <div className="space-y-4 rounded-2xl border border-white/5 bg-white/[0.03] p-5 text-white">
+        <h3 className="text-sm font-medium text-zinc-200">
           Devolução de dinheiro
         </h3>
-        <p className="text-[10px] font-bold text-zinc-600">Carregando…</p>
+        <p className="text-xs text-zinc-400">Carregando…</p>
       </div>
     );
   }
@@ -243,8 +243,8 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
   }
 
   return (
-    <div className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5 text-white">
-      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+    <div className="space-y-4 rounded-2xl border border-white/5 bg-white/[0.03] p-5 text-white">
+      <h3 className="text-sm font-medium text-zinc-200">
         Devolução de dinheiro
       </h3>
 
@@ -299,7 +299,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
             <div className="space-y-1">
               <label
                 htmlFor={`valor-outro-estorno-${order.id}`}
-                className="text-[8px] font-black uppercase tracking-widest text-zinc-500"
+                className="text-xs text-zinc-400"
               >
                 Valor a devolver
               </label>
@@ -320,7 +320,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
               {!campoValido && (
                 <p
                   id={`valor-outro-estorno-aviso-${order.id}`}
-                  className="text-[10px] font-bold text-red-400"
+                  className="text-xs font-medium text-red-400"
                 >
                   O valor tem de ficar entre {formatCurrency(VALOR_MINIMO)} e{" "}
                   {formatCurrency(disponivel)}
@@ -337,10 +337,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
           const podeTentarComSaldo =
             podeTentarDeNovo && disponivel >= linha.amount;
           return (
-            <p
-              key={linha.id}
-              className="text-[11px] font-semibold text-zinc-300"
-            >
+            <p key={linha.id} className="text-xs font-medium text-zinc-300">
               {texto}
               {podeTentarComSaldo && (
                 <Button
@@ -359,7 +356,7 @@ export function EstornoCard({ order }: Readonly<EstornoCardProps>) {
       </div>
 
       {carregando && linhas.length === 0 && (
-        <p className="text-[10px] font-bold text-zinc-600">Carregando…</p>
+        <p className="text-xs text-zinc-400">Carregando…</p>
       )}
     </div>
   );
