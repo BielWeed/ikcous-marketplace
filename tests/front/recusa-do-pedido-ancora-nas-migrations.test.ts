@@ -79,6 +79,10 @@ const FRASES_DO_BANCO = [
   // regra irmã em recusaDoPedido.ts (trocar_entrega) morre calada se a
   // frase sumir ou for reescrita no SQL.
   "Esta forma de pagamento não está disponível nesta loja. Escolha outra.",
+  // CUPONS DESLIGADOS (08/10/2026 — migration 20261203000000, issue #645): a
+  // regra irmã em recusaDoPedido.ts (remover_cupom) morre calada se a frase
+  // sumir ou for reescrita no SQL (gatilho de marketplace_orders).
+  "Os cupons estão desativados nesta loja.",
 ];
 
 const sql = Object.values(MIGRATIONS).join("\n");

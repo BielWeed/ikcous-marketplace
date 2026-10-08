@@ -416,8 +416,10 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                         descontos especiais.
                       </p>
                       <p>
-                        Se desativado, o campo de cupom ficará totalmente oculto
-                        na loja.
+                        Se desativado, o campo de cupom some do checkout e
+                        nenhum desconto de cupom é aplicado em pedidos novos —
+                        nem para quem já tinha aplicado um cupom antes. Pedidos
+                        já feitos não mudam.
                       </p>
                       <p>
                         Use isso para criar campanhas promocionais e incentivar

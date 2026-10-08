@@ -34,6 +34,32 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   anon/authenticated/service_role **no clone** (o Supabase real concede; o
   `provisionar.cjs` não).
 
+- **cupons desligados (`cupons-desligados-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration 20261203000000 — com `store_config.enable_coupons IS FALSE` nenhum
+  pedido novo nasce com cupom (gatilho BEFORE INSERT em `marketplace_orders`,
+  pela v24 e pela v23) e `validate_coupon_secure_v2` recusa com o motivo; chave
+  ligada, NULL ou sem linha segue como antes; o retry idempotente de pedido
+  criado antes devolve o mesmo pedido; ACL igual antes/depois, rollback byte a
+  byte e mutantes (sem gatilho, `IS NOT TRUE`, validação sem a checagem) pegos.
+- **portão dos cupons desligados (`cupons-desligados-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `10a-conferir-cupons-desligados-aplicado`
+  (DEPOIS do apply, 21 linhas) e `10b-antes-cupons-desligados-gatilho-e-corpo`
+  (ANTES, 6 linhas), que são a "prova de objetos" do lote 20261203000000 em
+  `scripts/frota/canais-de-backend.json`, executadas como papel de leitura num
+  Postgres real e levadas até o portão (`evidenciaDaProva` e `decidirLote`).
+  Monta o SEU banco-base **sem** a migration (a 10b positiva ali), aplica o
+  ARQUIVO dela de verdade (LF e CRLF; a 10a positiva e igual à da árvore
+  inteira) e prova um defeito por vez — gatilho ausente, desabilitado, sem
+  `WHEN`, em outro evento, corpo da validate ou do gatilho com 1 byte a mais,
+  função sem `search_path`, `EXECUTE` para PUBLIC, índice único ausente ou de
+  outra forma — cada um reprovando a SUA linha e levando o portão a NEGATIVA;
+  13 mutantes do texto das consultas ficam vermelhos; resposta parcial ou
+  duplicada tem `rol=invalido`; erro de SQL nunca vira positivo; o
+  `conferir-banco.cjs` de verdade (processo filho, HTTP local) e o lote do
+  `canais-de-backend.json` real fecham em APLICAR / NADA / PARAR. **Não prova**
+  a IKCOUS nem a Savy (só o run da consulta contra o ref de cada loja prova) e
+  não mede o `supabase_read_only_user` nem o Postgres 15 da Supabase.
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do

@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -996,6 +996,49 @@ const ROL_DA_8K = [
   "pedidos com soma dos itens diferente do subtotal",
   "vazia provada",
 ];
+/** O rol da 10a (a prova de objetos do lote da migration 20261203000000, cupons
+ * desligados não dão desconto — issue #645): as 21 linhas que
+ * scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql devolve,
+ * cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira
+ * `AUSENTE` na própria linha, nunca some uma linha). Como a 8k, NÃO serve de
+ * pré-checagem de ledger (o lote não tem backfill: é de apply normal): o portão a
+ * lê como `consulta` do lote e só a aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/cupons-desligados-portao-viva.cjs prova, num Postgres real, que este
+ * rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_10A = [
+  "controle: funcoes de public visiveis a este papel",
+  "funcao do gatilho: EXECUTE para PUBLIC",
+  "funcao do gatilho: EXECUTE para anon",
+  "funcao do gatilho: EXECUTE para authenticated",
+  "funcao do gatilho: SECURITY DEFINER",
+  "funcao do gatilho: corpo (sha256)",
+  "funcao do gatilho: linguagem e retorno",
+  "funcao do gatilho: search_path",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: condicao WHEN",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: existe em marketplace_orders",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: funcao executada",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: habilitado",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: momento e evento",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "indice marketplace_orders_chave_da_compra_unica: existe",
+  "validate_coupon_secure_v2: EXECUTE para PUBLIC",
+  "validate_coupon_secure_v2: EXECUTE para authenticated",
+  "validate_coupon_secure_v2: SECURITY DEFINER",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: search_path",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 10b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as
+ * 6 linhas que scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql
+ * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
+const ROL_DA_10B = [
+  "coluna marketplace_orders.coupon_id: existe",
+  "coluna store_config.enable_coupons: existe",
+  "controle: funcoes de public visiveis a este papel",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: ausente em marketplace_orders",
+  "validate_coupon_secure_v2: corpo e o baseline (sha256)",
+  "validate_coupon_secure_v2: sobrecargas",
+];
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1004,6 +1047,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
   "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,
+  "10a-conferir-cupons-desligados-aplicado": ROL_DA_10A,
+  "10b-antes-cupons-desligados-gatilho-e-corpo": ROL_DA_10B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1550,6 +1595,8 @@ module.exports = {
   ROL_DA_9A,
   ROL_DA_8E,
   ROL_DA_8K,
+  ROL_DA_10A,
+  ROL_DA_10B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,
