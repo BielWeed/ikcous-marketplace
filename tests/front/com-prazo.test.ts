@@ -55,4 +55,72 @@ describe("comPrazo", () => {
     await capturado;
     expect(aoEstourar).toHaveBeenCalledTimes(1);
   });
+
+  describe("aoChegarDepois (resultado que chega depois do estouro)", () => {
+    it("chama com o valor quando a promessa resolve DEPOIS do prazo, e o resultado do comPrazo continua sendo a rejeição", async () => {
+      const aoChegarDepois = vi.fn();
+      let resolver!: (v: string) => void;
+      const lenta = new Promise<string>((r) => {
+        resolver = r;
+      });
+      const capturado = comPrazo(lenta, 500, undefined, aoChegarDepois).catch(
+        (e) => e,
+      );
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await capturado).toBeInstanceOf(PrazoEsgotado);
+      expect(aoChegarDepois).not.toHaveBeenCalled();
+
+      resolver("tarde");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(aoChegarDepois).toHaveBeenCalledTimes(1);
+      expect(aoChegarDepois).toHaveBeenCalledWith("tarde");
+    });
+
+    it("NÃO chama quando a promessa resolve dentro do prazo", async () => {
+      const aoChegarDepois = vi.fn();
+      let resolver!: (v: string) => void;
+      const lenta = new Promise<string>((r) => {
+        resolver = r;
+      });
+      const resultado = comPrazo(lenta, 500, undefined, aoChegarDepois);
+      await vi.advanceTimersByTimeAsync(499);
+      resolver("a tempo");
+      await expect(resultado).resolves.toBe("a tempo");
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(aoChegarDepois).not.toHaveBeenCalled();
+    });
+
+    it("NÃO chama quando a promessa falha depois do prazo (não há valor para tratar)", async () => {
+      const aoChegarDepois = vi.fn();
+      let rejeitar!: (e: Error) => void;
+      const lenta = new Promise<string>((_, r) => {
+        rejeitar = r;
+      });
+      const capturado = comPrazo(lenta, 500, undefined, aoChegarDepois).catch(
+        (e) => e,
+      );
+      await vi.advanceTimersByTimeAsync(500);
+      await capturado;
+      rejeitar(new Error("tarde e ruim"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(aoChegarDepois).not.toHaveBeenCalled();
+    });
+
+    it("se aoChegarDepois lança, o erro é engolido (log) -- nunca vira rejeição sem dono", async () => {
+      const erroLog = vi.spyOn(console, "error").mockImplementation(() => {});
+      let resolver!: (v: string) => void;
+      const lenta = new Promise<string>((r) => {
+        resolver = r;
+      });
+      const capturado = comPrazo(lenta, 500, undefined, () => {
+        throw new Error("limpeza quebrou");
+      }).catch((e) => e);
+      await vi.advanceTimersByTimeAsync(500);
+      await capturado;
+      resolver("tarde");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(erroLog).toHaveBeenCalled();
+      erroLog.mockRestore();
+    });
+  });
 });

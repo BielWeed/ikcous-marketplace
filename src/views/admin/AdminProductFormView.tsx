@@ -33,6 +33,7 @@ import { useProducts } from "@/hooks/useProducts";
 // não puxa `useVendaPresencial.ts` (nem o cliente Supabase) para este chunk.
 import type { RespostaDoCodigo } from "@/hooks/useVendaPresencial";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
@@ -625,9 +626,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     try {
       // Mesmo prazo das fotos novas: o botão Publicar fica desligado enquanto
       // este envio roda, e um upload que nunca responde o prenderia.
+      // Se o upload terminar DEPOIS do prazo, a tela já deu o envio por falha:
+      // o objeto que ele gravou é apagado (não fica órfão no armazenamento).
       const urls = await comPrazo(
         uploadProductImages([file]),
         PRAZO_POR_FOTO_MS,
+        undefined,
+        (urlsTardias) => {
+          void descartarFotosDoProduto(urlsTardias ?? []);
+        },
       );
       if (urls && urls.length > 0) {
         const newUrl = urls[0];
@@ -1285,6 +1292,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               PRAZO_POR_FOTO_MS,
               () => {
                 estourou = true;
+              },
+              // O upload (que ninguém cancela) terminou depois de a tela dar a
+              // foto por falha: apaga o objeto que ELE gravou.
+              (urlTardia) => {
+                void descartarFotosDoProduto([urlTardia]);
               },
             );
             setFormData((prev) => ({
