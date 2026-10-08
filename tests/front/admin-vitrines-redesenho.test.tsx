@@ -954,12 +954,27 @@ describe("Concluir não perde o nome digitado", () => {
     const nome = await abrirKitsEDigitar("Presentes");
     await concluirComoNoNavegador(nome);
 
-    expect(updateConfig).toHaveBeenCalled();
+    // um toque em Concluir = a gravação do blur, e nada além disso
+    expect(updateConfig).toHaveBeenCalledTimes(1);
     expect(painel()).not.toBeNull();
     expect(campoDeNome()?.value).toBe("Presentes");
     expect(painel()?.querySelector('[role="alert"]')?.textContent).toContain(
       "nome",
     );
+  });
+
+  it("falha imediata: o toque que vem junto do blur usa o resultado dele; só o toque SEGUINTE grava de novo", async () => {
+    updateConfig.mockResolvedValue(false);
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    expect(updateConfig).toHaveBeenCalledTimes(2);
+    expect(painel()).not.toBeNull();
+    // e o botão voltou ao normal depois da falha
+    const botao = botaoComTexto("Concluir", painel() as HTMLElement);
+    expect(botao.hasAttribute("disabled")).toBe(false);
   });
 
   it("depois da falha, Concluir tenta de novo o MESMO nome e fecha quando grava", async () => {
@@ -995,9 +1010,16 @@ describe("Concluir não perde o nome digitado", () => {
     await concluirComoNoNavegador(nome);
 
     expect(updateConfig).not.toHaveBeenCalled();
-    expect(toastError).toHaveBeenCalled();
+    // um toque, um aviso (o do blur) — sem repetir o toast
+    expect(toastError).toHaveBeenCalledTimes(1);
     expect(painel()).not.toBeNull();
     expect(campoDeNome()?.value).toBe("Presentes");
+
+    // o toque seguinte tenta de novo (e avisa de novo, pois segue sem rede)
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    expect(toastError).toHaveBeenCalledTimes(2);
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(painel()).not.toBeNull();
 
     offline = false;
     await montar();
@@ -1019,7 +1041,7 @@ describe("Concluir não perde o nome digitado", () => {
     expect(painel()).not.toBeNull();
 
     // tocar de novo enquanto espera não dispara outra gravação
-    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    await clicar(botaoComTexto("Salvando…", painel() as HTMLElement));
     expect(updateConfig).toHaveBeenCalledTimes(1);
 
     await act(async () => {
@@ -1027,6 +1049,42 @@ describe("Concluir não perde o nome digitado", () => {
     });
     expect(painel()).toBeNull();
     expect(updateConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("enquanto espera, o botão fica desabilitado e diz 'Salvando…'; o X fecha mesmo com a gravação pendurada", async () => {
+    updateConfig.mockImplementationOnce(() => new Promise<boolean>(() => {}));
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+
+    const botao = botaoComTexto("Salvando…", painel() as HTMLElement);
+    expect(botao.hasAttribute("disabled")).toBe(true);
+    expect(painel()?.textContent).not.toContain("Concluir");
+
+    await clicar(porRotulo("Fechar", painel() as HTMLElement));
+    expect(painel()).toBeNull();
+  });
+
+  it("depois que a gravação lenta falha, o botão volta ao normal e o toque seguinte tenta de novo", async () => {
+    let confirmar: (salvou: boolean) => void = () => {};
+    updateConfig.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolver) => {
+          confirmar = resolver;
+        }),
+    );
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    await act(async () => {
+      confirmar(false);
+    });
+
+    const botao = botaoComTexto("Concluir", painel() as HTMLElement);
+    expect(botao.hasAttribute("disabled")).toBe(false);
+    expect(painel()).not.toBeNull();
+
+    await clicar(botao);
+    expect(updateConfig).toHaveBeenCalledTimes(2);
+    expect(painel()).toBeNull();
   });
 
   it("caminho feliz: grava uma vez e fecha", async () => {

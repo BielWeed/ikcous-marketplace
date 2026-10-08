@@ -79,7 +79,12 @@ export function FolhaEditarVitrine({
   const nomePendente = useRef<string | null>(null);
   // A gravação do nome em andamento (a do blur ou a de uma nova tentativa).
   const gravandoNome = useRef<Promise<boolean> | null>(null);
+  // Resultado da última gravação já terminada que nenhum "Concluir" usou ainda:
+  // o toque que vem junto da perda de foco usa ESTE resultado, em vez de gravar
+  // (e avisar) uma segunda vez. Só o toque seguinte tenta de novo.
+  const resultadoSemUso = useRef<boolean | null>(null);
   const [falhouNome, setFalhouNome] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const aberta = useRef(true);
   useEffect(() => {
     aberta.current = true;
@@ -98,6 +103,7 @@ export function FolhaEditarVitrine({
     void gravacao.then((salvou) => {
       if (gravandoNome.current !== gravacao) return; // já existe uma mais nova
       gravandoNome.current = null;
+      resultadoSemUso.current = salvou;
       if (salvou) nomePendente.current = null;
       if (aberta.current) setFalhouNome(!salvou);
     });
@@ -105,13 +111,22 @@ export function FolhaEditarVitrine({
   };
 
   const concluir = async () => {
-    // Em andamento (o blur do clique acabou de disparar): espera essa mesma,
-    // sem gravar de novo. Senão, se sobrou um nome por gravar, tenta outra vez.
+    // Em andamento (o blur do clique acabou de disparar): espera essa mesma.
+    // Já terminada e ainda não usada: vale o resultado dela. Senão, se sobrou
+    // um nome por gravar, é um toque seguinte: tenta outra vez.
     let salvou = true;
-    if (gravandoNome.current) {
-      salvou = await gravandoNome.current;
-    } else if (nomePendente.current !== null) {
-      salvou = await gravarNome(nomePendente.current);
+    setSalvando(true);
+    try {
+      if (gravandoNome.current) {
+        salvou = await gravandoNome.current;
+      } else if (resultadoSemUso.current !== null) {
+        salvou = resultadoSemUso.current;
+      } else if (nomePendente.current !== null) {
+        salvou = await gravarNome(nomePendente.current);
+      }
+      resultadoSemUso.current = null;
+    } finally {
+      if (aberta.current) setSalvando(false);
     }
     if (salvou && aberta.current) aoFechar();
   };
@@ -140,9 +155,10 @@ export function FolhaEditarVitrine({
           <button
             type="button"
             onClick={concluir}
-            className="h-12 flex-1 rounded-[14px] bg-admin-gold text-[15px] font-extrabold text-zinc-950 transition-colors hover:bg-admin-gold/90 active:scale-[0.99]"
+            disabled={salvando}
+            className="h-12 flex-1 rounded-[14px] bg-admin-gold text-[15px] font-extrabold text-zinc-950 transition-colors hover:bg-admin-gold/90 active:scale-[0.99] disabled:opacity-60"
           >
-            Concluir
+            {salvando ? "Salvando…" : "Concluir"}
           </button>
         </>
       }
