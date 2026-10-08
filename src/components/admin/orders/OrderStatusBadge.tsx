@@ -49,10 +49,12 @@ export const statusConfig: Record<
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    color: "text-zinc-500",
+    // zinc-400 (e nao 500): sobre o fundo escuro do painel o 500 dava ~3,6:1,
+    // abaixo do minimo AA de 4,5:1; o 400 da ~6,7:1.
+    color: "text-zinc-400",
     bgColor: "bg-zinc-500/10",
     borderColor: "border-zinc-500/20",
-    className: "text-zinc-500",
+    className: "text-zinc-400",
   },
 };
 
@@ -206,7 +208,8 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     },
     sem_cobranca: {
       label: "Sem cobrança online",
-      color: "text-zinc-500",
+      // Mesmo motivo do "Cancelado": zinc-500 ficava abaixo de 4,5:1.
+      color: "text-zinc-400",
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
