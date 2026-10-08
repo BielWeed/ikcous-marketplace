@@ -4,6 +4,7 @@ import {
   PaymentStatusBadge,
 } from "@/components/admin/orders/OrderStatusBadge";
 import { podeRegistrarPagamento } from "@/components/admin/orders/podeRegistrarPagamento";
+import { Skeleton } from "@/components/ui/skeleton";
 import { horarioRelativo } from "@/lib/horario-relativo";
 import { rotuloDaFormaDePagamento } from "@/lib/pedidos-csv";
 import { cn } from "@/lib/utils";
@@ -352,3 +353,58 @@ export const AdminOrderCard = memo(function AdminOrderCard({
     </motion.div>
   );
 });
+
+/**
+ * Esqueleto de carregamento com o MESMO desenho do card (faixa de estado,
+ * miniatura, valor e rodapé), para a lista não "pular" quando os pedidos
+ * chegam. Mesmas medidas de padding e miniatura de `AdminOrderCard`.
+ */
+export function AdminOrderCardSkeleton({
+  viewMode,
+}: {
+  readonly viewMode: "detailed" | "compact";
+}) {
+  const grande = viewMode === "detailed";
+  return (
+    <div
+      aria-hidden="true"
+      className={cn(
+        "relative flex animate-pulse flex-col overflow-hidden border border-white/10 bg-zinc-900/50",
+        grande ? "rounded-3xl" : "rounded-2xl",
+      )}
+    >
+      <span className="absolute inset-y-0 left-0 w-1 bg-white/10" />
+      <div
+        className={cn(
+          "flex flex-col",
+          grande ? "gap-5 p-6 pl-7" : "gap-3.5 p-4 pl-5",
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-28 rounded-full bg-white/5" />
+          <Skeleton className="h-3 w-20 bg-white/5" />
+        </div>
+        <div className="flex items-center gap-3.5">
+          <Skeleton
+            className={cn(
+              "shrink-0 rounded-2xl bg-white/5",
+              grande ? "size-16" : "size-14",
+            )}
+          />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-3/4 bg-white/5" />
+            <Skeleton className="h-3 w-1/2 bg-white/5" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="ml-auto h-6 w-20 bg-white/5" />
+            <Skeleton className="ml-auto h-3 w-16 bg-white/5" />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-white/10 pt-3.5">
+          <Skeleton className="h-6 w-24 rounded-full bg-white/5" />
+          <Skeleton className="h-10 w-44 rounded-xl bg-white/5" />
+        </div>
+      </div>
+    </div>
+  );
+}

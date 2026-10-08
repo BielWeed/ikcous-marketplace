@@ -9,7 +9,10 @@ import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
 import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
-import { AdminOrderCard } from "@/components/admin/orders/AdminOrderCard";
+import {
+  AdminOrderCard,
+  AdminOrderCardSkeleton,
+} from "@/components/admin/orders/AdminOrderCard";
 import { GuiaDoPagamentoQueNaoFechou } from "@/components/admin/orders/GuiaDoPagamentoQueNaoFechou";
 import { OrderDetail } from "@/components/admin/orders/OrderDetail";
 import {
@@ -27,7 +30,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { branding } from "@/config/branding";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
@@ -1969,63 +1971,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 viewMode === "detailed" ? (
                   <div className="grid grid-cols-1 gap-5 sm:[grid-template-columns:repeat(auto-fill,minmax(22rem,1fr))]">
                     {Array.from({ length: 6 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="flex h-[278px] animate-pulse flex-col justify-between space-y-6 rounded-[3rem] border border-white/5 bg-zinc-950/40 p-8 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-md"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <Skeleton className="size-10 rounded-xl bg-white/5" />
-                            <div className="space-y-2">
-                              <Skeleton className="h-3 w-16 bg-white/5" />
-                              <Skeleton className="h-2.5 w-12 bg-white/5" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-5 w-16 rounded-full bg-white/5" />
-                        </div>
-                        <div className="space-y-2">
-                          <Skeleton className="h-6 w-3/4 bg-white/5" />
-                          <Skeleton className="h-3 w-1/2 bg-white/5" />
-                        </div>
-                        <div className="flex items-end justify-between border-t border-white/5 pt-4">
-                          <div className="space-y-1">
-                            <Skeleton className="h-2.5 w-12 bg-white/5" />
-                            <Skeleton className="h-6 w-24 bg-white/5" />
-                          </div>
-                          <Skeleton className="size-12 rounded-2xl bg-white/5" />
-                        </div>
-                      </div>
+                      <AdminOrderCardSkeleton key={i} viewMode="detailed" />
                     ))}
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 gap-4 sm:[grid-template-columns:repeat(auto-fill,minmax(20rem,1fr))]">
                     {Array.from({ length: 10 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="flex h-[164px] animate-pulse flex-col justify-between rounded-[2rem] border border-white/5 bg-zinc-950/40 p-4 shadow-lg backdrop-blur-md sm:p-5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Skeleton className="size-8 rounded-lg bg-white/5" />
-                            <div className="space-y-1">
-                              <Skeleton className="h-2.5 w-12 bg-white/5" />
-                              <Skeleton className="h-2 w-8 bg-white/5" />
-                            </div>
-                          </div>
-                          <Skeleton className="h-4.5 w-12 rounded-full bg-white/5" />
-                        </div>
-                        <div className="space-y-1">
-                          <Skeleton className="h-4 w-3/4 bg-white/5" />
-                          <Skeleton className="h-2.5 w-1/2 bg-white/5" />
-                        </div>
-                        <div className="flex items-center justify-between border-t border-white/5 pt-3">
-                          <div className="space-y-1">
-                            <Skeleton className="h-2 w-8 bg-white/5" />
-                            <Skeleton className="h-4 w-16 bg-white/5" />
-                          </div>
-                          <Skeleton className="size-9 rounded-xl bg-white/5" />
-                        </div>
-                      </div>
+                      <AdminOrderCardSkeleton key={i} viewMode="compact" />
                     ))}
                   </div>
                 )
