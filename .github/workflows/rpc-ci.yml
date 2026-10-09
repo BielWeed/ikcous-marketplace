@@ -426,7 +426,7 @@ jobs:
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-portao-viva.cjs
       # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
-      # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (so leitura) e o estoque
+      # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
       # minimo e editavel so pelo admin. Cada prova clona o banco.
       - name: Prova viva do estoque baixo numa regua so (migrations 20261212 e 20261213)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
@@ -434,10 +434,10 @@ jobs:
       - name: Prova viva do lucro do estoque so com custo (migration 20261214)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/inventario-so-com-custo-viva.cjs
-      - name: Prova viva de caracterizacao da receita do mes (so leitura)
+      - name: Prova viva de caracterizacao da receita do mes (sem migration)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/receita-uma-regua-viva.cjs
-      - name: Prova viva do estoque minimo editavel so pelo admin (so leitura de grants)
+      - name: Prova viva do estoque minimo editavel so pelo admin (sem migration, transacao desfeita)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-minimo-editavel-viva.cjs
       - name: Prova os invariantes de dinheiro
