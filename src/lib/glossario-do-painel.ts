@@ -9,9 +9,11 @@
  *    arquivo os termos `proibido` em `src/views/admin/**` e
  *    `src/components/admin/**` e não deixa a contagem subir.
  *
- * `proibido` é o padrão que a guarda procura (sempre com "case" respeitado, de
- * propósito: "Reviews" é rótulo de tela, `reviews` é nome de variável). `null`
- * = termo só para consulta, genérico demais para varrer o código.
+ * `proibido` é o padrão que a guarda procura. Na maioria respeita a caixa, de
+ * propósito: "Reviews" é rótulo de tela, `reviews` é nome de variável; só
+ * Ticket médio, chargeback, Public Key e Access Token ignoram a caixa (não
+ * há identificador com esses nomes). `null` = termo só para consulta, genérico
+ * demais para varrer o código.
  *
  * Pura: sem hook, sem Supabase.
  */
@@ -47,7 +49,7 @@ export const GLOSSARIO_DO_PAINEL: readonly EntradaDoGlossario[] = [
     lojista: "Melhores clientes",
     proibido: /Campe[õo]es/,
   },
-  { tecnico: "Leais", lojista: "Fiéis", proibido: null },
+  { tecnico: "Leais", lojista: "Fiéis", proibido: /\bLeais\b/ },
   { tecnico: "Quase dormindo", lojista: "Sumindo", proibido: /Quase dormindo/ },
   {
     tecnico: "Não pode perder",

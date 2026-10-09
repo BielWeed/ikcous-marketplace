@@ -5,19 +5,39 @@
 //     ouros #FFBF00, #e3c25e, #e2c04a (use `admin-gold`);
 //   - texto menor que 11px: text-[6px] … text-[10.5px];
 //   - `fixed inset-0` numa tag sem role="dialog" (camada de tela cheia que o
-//     leitor de tela não anuncia como diálogo).
-// Linha de comentário não conta. A soma de cada arquivo não pode passar do
-// teto de regua-visual-do-painel.json; arquivo ausente do teto = teto 0
-// (arquivo novo nasce limpo). Quem consertar uma ocorrência baixa o teto
-// daquele arquivo; subir o teto é decisão do dono.
+//     leitor de tela não anuncia como diálogo). Não contam: o `<X.Overlay>` do
+//     Radix (o role="dialog" nasce no Content, e pô-lo no Overlay faria o
+//     leitor de tela anunciar dois diálogos) e o fundo decorativo com
+//     `pointer-events-none` (não é camada interativa).
+// Linha de comentário não conta (só a linha inteira; comentário no fim de uma
+// linha de código conta como código). A soma de cada arquivo tem que ser IGUAL
+// ao teto de regua-visual-do-painel.json: passou = falha; abaixo = falha com
+// "baixe o teto para N", senão a folga vira licença para voltar. Arquivo
+// ausente do teto = teto 0 (arquivo novo nasce limpo).
+//
+// Para baixar os tetos de uma vez:
+//   ATUALIZAR_TETOS=1 npx vitest run tests/front/regua-visual-do-painel.test.ts
+// Esse modo só GRAVA valor <= teto atual; se algum arquivo passou do teto ele
+// falha como sempre. Nunca sobe teto.
 /* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection, security/detect-unsafe-regex --
    varredura da própria árvore do repositório (caminhos vêm do disco, não de entrada de usuário); regex constantes, testadas abaixo */
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const RAIZ = join(__dirname, "..", "..");
 const PASTAS_VARRIDAS = ["src/views/admin", "src/components/admin"];
+const CAMINHO_DO_TETO = join(__dirname, "regua-visual-do-painel.json");
+
+type Contagem = Record<string, number>;
 
 const PADROES_SIMPLES = {
   "cor literal": /#09090b|#FFBF00|#e3c25e|#e2c04a/gi,
@@ -69,19 +89,30 @@ function tagQueContem(texto: string, indice: number): string {
 }
 
 const TEM_ROLE_DIALOG = /role=(?:\{\s*)?["']dialog["']/;
+/** `<DialogPrimitive.Overlay …>`: o Overlay do Radix. */
+const ABRE_OVERLAY_DO_RADIX = /^<\w+\.Overlay\b/;
+const FUNDO_DECORATIVO = /pointer-events-none/;
 
 function contarFixedSemDialog(texto: string): number {
   let total = 0;
   for (const achado of texto.matchAll(/fixed inset-0/g)) {
-    if (!TEM_ROLE_DIALOG.test(tagQueContem(texto, achado.index ?? 0))) total++;
+    const tag = tagQueContem(texto, achado.index ?? 0);
+    if (
+      TEM_ROLE_DIALOG.test(tag) ||
+      ABRE_OVERLAY_DO_RADIX.test(tag) ||
+      FUNDO_DECORATIVO.test(tag)
+    ) {
+      continue;
+    }
+    total++;
   }
   return total;
 }
 
 /** Contagem de cada regra para um texto de arquivo. */
-function contarRegua(textoBruto: string): Record<string, number> {
+function contarRegua(textoBruto: string): Contagem {
   const texto = semComentarios(textoBruto);
-  const contagem: Record<string, number> = {};
+  const contagem: Contagem = {};
   for (const [nome, padrao] of Object.entries(PADROES_SIMPLES)) {
     contagem[nome] = texto.match(padrao)?.length ?? 0;
   }
@@ -89,27 +120,74 @@ function contarRegua(textoBruto: string): Record<string, number> {
   return contagem;
 }
 
-const somar = (contagem: Record<string, number>) =>
+const somar = (contagem: Contagem) =>
   Object.values(contagem).reduce((a, b) => a + b, 0);
 
-/** Por arquivo (caminho relativo, com `/`): detalhe de cada regra, se > 0. */
-function medirRegua(): Record<string, Record<string, number>> {
-  const medido: Record<string, Record<string, number>> = {};
+const emOrdemDeCaminho = (c: Contagem): Contagem =>
+  Object.fromEntries(
+    Object.entries(c).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+  );
+
+/** Varredura: arquivos vistos e, dos que têm > 0, o detalhe de cada regra. */
+function medirRegua(): {
+  varridos: number;
+  detalhe: Record<string, Contagem>;
+  medido: Contagem;
+} {
+  const detalhe: Record<string, Contagem> = {};
+  const medido: Contagem = {};
+  let varridos = 0;
   for (const pasta of PASTAS_VARRIDAS) {
     for (const arquivo of arquivosDe(join(RAIZ, pasta))) {
+      varridos++;
       const contagem = contarRegua(readFileSync(arquivo, "utf8"));
-      if (somar(contagem) > 0) {
-        medido[relative(RAIZ, arquivo).split(sep).join("/")] = contagem;
+      const total = somar(contagem);
+      if (total > 0) {
+        const caminho = relative(RAIZ, arquivo).split(sep).join("/");
+        detalhe[caminho] = contagem;
+        medido[caminho] = total;
       }
     }
   }
-  return medido;
+  return { varridos, detalhe, medido: emOrdemDeCaminho(medido) };
 }
 
-function lerTeto(): Record<string, number> {
-  return JSON.parse(
-    readFileSync(join(__dirname, "regua-visual-do-painel.json"), "utf8"),
-  ) as Record<string, number>;
+function lerTeto(caminho = CAMINHO_DO_TETO): Contagem {
+  return JSON.parse(readFileSync(caminho, "utf8")) as Contagem;
+}
+
+/** Compara o medido com o teto: o que subiu e o que folgou. */
+function compararComTeto(medido: Contagem, teto: Contagem) {
+  const excedentes: string[] = [];
+  const folgas: string[] = [];
+  for (const arquivo of new Set([
+    ...Object.keys(medido),
+    ...Object.keys(teto),
+  ])) {
+    const atual = medido[arquivo] ?? 0;
+    const limite = teto[arquivo] ?? 0;
+    if (atual > limite) {
+      excedentes.push(
+        `${arquivo}: ${atual} ocorrências (teto ${limite}, +${atual - limite})`,
+      );
+    } else if (atual < limite) {
+      folgas.push(
+        `${arquivo}: ${atual} ocorrências e o teto é ${limite} — baixe o teto para ${atual}`,
+      );
+    }
+  }
+  return { excedentes: excedentes.sort(), folgas: folgas.sort() };
+}
+
+/** Regrava o JSON do teto com o medido; recusa (lança) se algo subiu. */
+function gravarTeto(caminho: string, medido: Contagem): void {
+  if (compararComTeto(medido, lerTeto(caminho)).excedentes.length > 0) {
+    throw new Error("teto não sobe: arquivo passou do teto");
+  }
+  writeFileSync(
+    caminho,
+    `${JSON.stringify(emOrdemDeCaminho(medido), null, 2)}\n`,
+  );
 }
 
 describe("contagem da régua visual", () => {
@@ -138,6 +216,26 @@ describe("contagem da régua visual", () => {
     expect(sujo["fixed inset-0 sem role=dialog"]).toBe(1);
   });
 
+  it("o Overlay do Radix (`<X.Overlay>`) não conta: o dialog nasce no Content", () => {
+    const c = contarRegua(
+      '<DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60" />',
+    );
+    expect(c["fixed inset-0 sem role=dialog"]).toBe(0);
+    // Um <div> comum que só se chama "overlay" continua contando.
+    const falso = contarRegua('<div className="overlay fixed inset-0 z-50" />');
+    expect(falso["fixed inset-0 sem role=dialog"]).toBe(1);
+  });
+
+  it("fundo decorativo com pointer-events-none não conta", () => {
+    const c = contarRegua(
+      '<div className="pointer-events-none fixed inset-0 z-[-1] overflow-hidden">',
+    );
+    expect(c["fixed inset-0 sem role=dialog"]).toBe(0);
+    // Sem pointer-events-none a camada pode capturar toque: conta.
+    const camada = contarRegua('<div className="fixed inset-0 z-[-1]">');
+    expect(camada["fixed inset-0 sem role=dialog"]).toBe(1);
+  });
+
   it("ignora linha de comentário", () => {
     const c = contarRegua(
       [
@@ -150,22 +248,100 @@ describe("contagem da régua visual", () => {
   });
 });
 
+describe("comparação com o teto", () => {
+  it("passou do teto = excedente; abaixo = folga com o número a gravar", () => {
+    const r = compararComTeto(
+      { "a.tsx": 3, "b.tsx": 1, "c.tsx": 2 },
+      { "a.tsx": 2, "b.tsx": 3 },
+    );
+    expect(r.excedentes).toEqual([
+      "a.tsx: 3 ocorrências (teto 2, +1)",
+      "c.tsx: 2 ocorrências (teto 0, +2)",
+    ]);
+    expect(r.folgas).toEqual([
+      "b.tsx: 1 ocorrências e o teto é 3 — baixe o teto para 1",
+    ]);
+  });
+
+  it("arquivo que zerou (some do medido) pede para baixar o teto a 0", () => {
+    const r = compararComTeto({}, { "a.tsx": 2 });
+    expect(r.folgas).toEqual([
+      "a.tsx: 0 ocorrências e o teto é 2 — baixe o teto para 0",
+    ]);
+  });
+
+  it("igual ao teto não reclama de nada", () => {
+    expect(compararComTeto({ "a.tsx": 2 }, { "a.tsx": 2 })).toEqual({
+      excedentes: [],
+      folgas: [],
+    });
+  });
+});
+
+describe("modo ATUALIZAR_TETOS", () => {
+  function comArquivoDeTeto(conteudo: Contagem, fn: (caminho: string) => void) {
+    const pasta = mkdtempSync(join(tmpdir(), "teto-regua-"));
+    const caminho = join(pasta, "teto.json");
+    try {
+      writeFileSync(caminho, JSON.stringify(conteudo));
+      fn(caminho);
+    } finally {
+      rmSync(pasta, { recursive: true, force: true });
+    }
+  }
+
+  it("grava o medido (mais baixo), em ordem de caminho, sem o arquivo zerado", () => {
+    comArquivoDeTeto({ "b.tsx": 5, "a.tsx": 2, "c.tsx": 1 }, (caminho) => {
+      gravarTeto(caminho, { "b.tsx": 3, "a.tsx": 2 });
+      expect(readFileSync(caminho, "utf8")).toBe(
+        `${JSON.stringify({ "a.tsx": 2, "b.tsx": 3 }, null, 2)}\n`,
+      );
+    });
+  });
+
+  it("nunca sobe: se algum arquivo passou do teto, recusa e não grava", () => {
+    comArquivoDeTeto({ "a.tsx": 2 }, (caminho) => {
+      expect(() => gravarTeto(caminho, { "a.tsx": 3 })).toThrow(/não sobe/);
+      expect(() => gravarTeto(caminho, { "a.tsx": 1, "novo.tsx": 1 })).toThrow(
+        /não sobe/,
+      );
+      expect(lerTeto(caminho)).toEqual({ "a.tsx": 2 });
+    });
+  });
+});
+
 describe("régua visual do painel (teto que só desce)", () => {
-  it("nenhum arquivo passa do teto", () => {
-    const teto = lerTeto();
-    const excedentes = Object.entries(medirRegua())
-      .filter(([arquivo, c]) => somar(c) > (teto[arquivo] ?? 0))
-      .map(([arquivo, c]) => {
-        const limite = teto[arquivo] ?? 0;
-        const detalhe = Object.entries(c)
-          .filter(([, n]) => n > 0)
-          .map(([nome, n]) => `${nome}: ${n}`)
-          .join("; ");
-        return `${arquivo}: ${somar(c)} ocorrências (teto ${limite}, +${somar(c) - limite}) [${detalhe}]`;
-      });
+  it("a varredura acha arquivos (controle positivo)", () => {
+    const { varridos, medido } = medirRegua();
+    expect(varridos).toBeGreaterThan(50);
+    expect(Object.keys(medido).length).toBeGreaterThan(0);
+  });
+
+  it("a contagem de cada arquivo é igual ao teto", () => {
+    const { medido, detalhe } = medirRegua();
+    if (process.env.ATUALIZAR_TETOS === "1") {
+      try {
+        gravarTeto(CAMINHO_DO_TETO, medido);
+      } catch {
+        // Algum arquivo passou do teto: não grava; a comparação abaixo falha.
+      }
+    }
+    const { excedentes, folgas } = compararComTeto(medido, lerTeto());
+    const comDetalhe = excedentes.map((linha) => {
+      const arquivo = linha.slice(0, linha.indexOf(":"));
+      const partes = Object.entries(detalhe[arquivo] ?? {})
+        .filter(([, n]) => n > 0)
+        .map(([nome, n]) => `${nome}: ${n}`)
+        .join("; ");
+      return `${linha} [${partes}]`;
+    });
     expect(
-      excedentes,
-      'Régua visual estourou. Use bg-admin-bg / admin-gold, texto de 11px para cima e role="dialog" nas camadas de tela cheia.',
+      comDetalhe,
+      'Régua visual estourou. Use bg-admin-bg / admin-gold e texto de 11px para cima. Camada `fixed inset-0` que é diálogo de verdade leva role="dialog" (no Radix o Content já traz; não ponha no Overlay); fundo decorativo leva pointer-events-none.',
+    ).toEqual([]);
+    expect(
+      folgas,
+      "Menos ocorrências que o teto: baixe o teto (ATUALIZAR_TETOS=1 npx vitest run tests/front/regua-visual-do-painel.test.ts).",
     ).toEqual([]);
   });
 

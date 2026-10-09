@@ -32,7 +32,7 @@ function comoTexto(valor: unknown): string {
  */
 export function mensagemDeErroDoPainel(
   erro: unknown,
-  acao: string = "concluir",
+  acao = "concluir",
 ): string {
   const sinal =
     typeof erro === "object" && erro !== null && !Array.isArray(erro)
