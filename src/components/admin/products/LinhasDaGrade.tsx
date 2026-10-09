@@ -107,7 +107,7 @@ export function LinhasDaGrade({
           htmlFor="grade-sku-base"
           className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
         >
-          SKU base (o sufixo por valor é automático)
+          Código interno base (o sufixo por valor é automático)
         </label>
         <LocalBufferedInput
           id="grade-sku-base"
@@ -116,7 +116,7 @@ export function LinhasDaGrade({
           value={skuBase}
           onFlush={onSkuBase}
           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-          placeholder="Ex: BLU — vazio nasce sem SKU"
+          placeholder="Ex: BLU — vazio nasce sem código"
         />
       </div>
 
@@ -169,7 +169,7 @@ export function LinhasDaGrade({
             className="block font-mono text-[10px] text-zinc-500"
             data-testid="sku-da-linha"
           >
-            {skusPrevistos.at(i) || "sem SKU"}
+            {skusPrevistos.at(i) || "sem código"}
           </span>
         </div>
       ))}

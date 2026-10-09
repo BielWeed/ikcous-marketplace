@@ -257,7 +257,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     ).toContain("Só as 6 novas");
     expect(
       document.querySelector('[data-testid="sku-da-linha"]')?.textContent,
-    ).toContain("sem SKU");
+    ).toContain("sem código");
 
     // SKU base → sufixo automático por valor, visível linha a linha.
     await digitarCampo("grade-sku-base", "blu");
@@ -291,7 +291,7 @@ describe("AdminProductFormView — modal Nova variante em grade (produto novo)",
     expect(valorDoCampo("grade-linha-preco-4")).toBe("99,90");
 
     await act(async () => {
-      clicarObrigatorio("Efetivar 6 variantes");
+      clicarObrigatorio("Salvar 6 variações");
     });
 
     expect(toastError).not.toHaveBeenCalled();
@@ -478,7 +478,7 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     });
     await digitarCampo("grade-sku-base", "blu");
     await act(async () => {
-      clicarObrigatorio("Efetivar 1 variante");
+      clicarObrigatorio("Salvar 1 variação");
     });
   }
 
@@ -560,15 +560,17 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     await digitarCampo("grade-sku-base", "blu");
 
     await act(async () => {
-      clicarObrigatorio("Efetivar 1 variante");
+      clicarObrigatorio("Salvar 1 variação");
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError.mock.calls[0][0]).toContain('O SKU "BLU-AMA-P"');
+    expect(toastError.mock.calls[0][0]).toContain(
+      'O código interno "BLU-AMA-P"',
+    );
     // Nada entrou na lista e o modal continua aberto no passo 2 para o
     // lojista corrigir o SKU base — a falha não vira "criado com sucesso".
     expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / P"]);
-    expect(botaoPorTexto(document.body, "Efetivar 1 variante")).toBeDefined();
+    expect(botaoPorTexto(document.body, "Salvar 1 variação")).toBeDefined();
   });
 
   it("colisão de SKU com OUTRO produto da loja também recusa (a UNIQUE é global)", async () => {
@@ -599,11 +601,13 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
     await digitarCampo("grade-sku-base", "blu");
 
     await act(async () => {
-      clicarObrigatorio("Efetivar 1 variante");
+      clicarObrigatorio("Salvar 1 variação");
     });
 
     expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError.mock.calls[0][0]).toContain('O SKU "BLU-AMA-P"');
+    expect(toastError.mock.calls[0][0]).toContain(
+      'O código interno "BLU-AMA-P"',
+    );
     expect(variantesNaTela()).toEqual(["Cor / Tamanho: Branca / PP"]);
   });
 
@@ -680,7 +684,7 @@ describe("AdminProductFormView — grade gravando pelo upsertVariants (produto e
       clicarObrigatorio("Gerar grade");
     });
     await act(async () => {
-      clicarObrigatorio("Efetivar 1 variante");
+      clicarObrigatorio("Salvar 1 variação");
     });
 
     expect(toastError).not.toHaveBeenCalled();

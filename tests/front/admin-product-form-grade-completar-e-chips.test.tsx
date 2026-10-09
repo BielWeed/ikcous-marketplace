@@ -113,12 +113,15 @@ function clicarPorRotulo(rotulo: string) {
 
 /** Chip por valor EXATO — includes("P") pegaria "PP" também. */
 function clicarChipObrigatorio(valor: string) {
-  const chip = [...document.body.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "")
-      .replace("já usado", "")
-      .trim()
-      .toLocaleLowerCase()
-      .startsWith(valor.toLocaleLowerCase()),
+  // Só os chips (`aria-pressed`): os cabeçalhos das seções recolhidas do
+  // formulário ("Peso e medidas"...) também são botões e começam com "P".
+  const chip = [...document.body.querySelectorAll("button[aria-pressed]")].find(
+    (b) =>
+      (b.textContent ?? "")
+        .replace("já usado", "")
+        .trim()
+        .toLocaleLowerCase()
+        .startsWith(valor.toLocaleLowerCase()),
   );
   if (!chip) throw new Error(`Chip "${valor}" não está na tela.`);
   (chip as HTMLButtonElement).click();
@@ -285,7 +288,7 @@ describe("AdminProductFormView — completar a grade e reaproveitar valores", ()
     ).toContain("Só as 1 novas — as 2 existentes não são tocadas");
 
     await act(async () => {
-      clicarObrigatorio("Efetivar 1 variante");
+      clicarObrigatorio("Salvar 1 variação");
     });
 
     expect(toastError).not.toHaveBeenCalled();

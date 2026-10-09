@@ -249,7 +249,7 @@ describe("AdminProductFormView — bordas da grade", () => {
 
     // Dois cliques no mesmo botão antes de a tela responder ao primeiro.
     await act(async () => {
-      const botao = botaoPorTexto(document.body, "Efetivar 2 variantes");
+      const botao = botaoPorTexto(document.body, "Salvar 2 variações");
       botao?.click();
       botao?.click();
     });
@@ -285,7 +285,7 @@ describe("AdminProductFormView — bordas da grade", () => {
     ]);
 
     await act(async () => {
-      clicarObrigatorio("Efetivar 4 variantes");
+      clicarObrigatorio("Salvar 4 variações");
     });
     expect(toastError).not.toHaveBeenCalled();
     expect(variantesNaTela()).toEqual([
@@ -339,7 +339,7 @@ describe("AdminProductFormView — bordas da grade", () => {
       clicarObrigatorio("Aplicar para todas");
     });
     await act(async () => {
-      clicarObrigatorio("Efetivar 2 variantes");
+      clicarObrigatorio("Salvar 2 variações");
     });
 
     expect(toastError).not.toHaveBeenCalled();
@@ -361,7 +361,7 @@ describe("AdminProductFormView — bordas da grade", () => {
     expect(valorDoCampo("grade-linha-preco-0")).toBe("");
 
     await act(async () => {
-      clicarObrigatorio("Efetivar 2 variantes");
+      clicarObrigatorio("Salvar 2 variações");
     });
 
     expect(toastError).not.toHaveBeenCalled();

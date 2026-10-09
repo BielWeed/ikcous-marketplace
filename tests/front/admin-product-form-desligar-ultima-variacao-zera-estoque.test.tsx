@@ -83,15 +83,13 @@ vi.mock("sonner", () => ({
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function botaoPorTexto(raiz: ParentNode, texto: string) {
-  return [...raiz.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(texto),
-  ) as HTMLButtonElement | undefined;
-}
-
-function clicarObrigatorio(texto: string) {
-  const botao = botaoPorTexto(document.body, texto);
-  if (!botao) throw new Error(`Botão "${texto}" não está na tela.`);
+/** O "Salvar" do MODAL da variação (o cabeçalho da tela também diz "Salvar"). */
+function clicarSalvarDoModalDaVariacao() {
+  const modal = document.getElementById("variant-status")?.closest(".fixed");
+  const botao = [...(modal?.querySelectorAll("button") ?? [])].find(
+    (b) => b.textContent?.trim() === "Salvar",
+  );
+  if (!botao) throw new Error('Botão "Salvar" do modal não está na tela.');
   botao.click();
 }
 
@@ -195,14 +193,14 @@ describe("AdminProductFormView — estoque ao desligar a última variação liga
     });
   }
 
-  /** Desliga a variação pelo "Status no Catálogo" do modal e salva. */
+  /** Desliga a variação pelo "Aparece na loja?" do modal e salva. */
   async function desligarPeloModal(valor: string) {
     await abrirVariacao(valor);
     await act(async () => {
       document.getElementById("variant-status")?.click();
     });
     await act(async () => {
-      clicarObrigatorio("Salvar Protocolo");
+      clicarSalvarDoModalDaVariacao();
     });
   }
 
@@ -237,7 +235,7 @@ describe("AdminProductFormView — estoque ao desligar a última variação liga
       await new Promise((r) => setTimeout(r, 300));
     });
     await act(async () => {
-      clicarObrigatorio("Salvar Protocolo");
+      clicarSalvarDoModalDaVariacao();
     });
     expect(valorDoCampo("product-stock")).toBe("8");
   });

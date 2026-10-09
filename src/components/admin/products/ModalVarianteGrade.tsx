@@ -345,10 +345,10 @@ export function ModalVarianteGrade({
       ...variantesExistentes.map((v) => v.sku ?? ""),
     ]);
     if (colisao) {
-      toast.error(`O SKU "${colisao}" já existe na loja`, {
+      toast.error(`O código interno "${colisao}" já existe na loja`, {
         description:
-          "SKU é único em TODA a loja, não só neste produto. Ajuste o SKU " +
-          "base para a grade nascer com códigos livres.",
+          "O código interno é único em TODA a loja, não só neste produto. " +
+          "Ajuste o código interno base para a grade nascer com códigos livres.",
       });
       return;
     }
@@ -598,8 +598,8 @@ export function ModalVarianteGrade({
                   onClick={efetivar}
                   className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
                 >
-                  Efetivar {linhas.length}{" "}
-                  {linhas.length === 1 ? "variante" : "variantes"}
+                  Salvar {linhas.length}{" "}
+                  {linhas.length === 1 ? "variação" : "variações"}
                 </button>
               )}
             </div>
