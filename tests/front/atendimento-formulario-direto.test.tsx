@@ -69,8 +69,9 @@ describe("Atendimento — formulário direto (direção B)", () => {
   });
 
   async function abrirTela() {
-    const { AdminWhatsAppConfigView } =
-      await import("@/views/admin/AdminWhatsAppConfigView");
+    const { AdminWhatsAppConfigView } = await import(
+      "@/views/admin/AdminWhatsAppConfigView"
+    );
     await act(async () => {
       raiz.render(<AdminWhatsAppConfigView active />);
     });
@@ -102,7 +103,7 @@ describe("Atendimento — formulário direto (direção B)", () => {
 
     // Tudo à vista de uma vez — nada escondido atrás de clique.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
-    // O horário é só leitura aqui (A1): o campo saiu, o editor é o de Minha loja.
+    // O horário é só leitura aqui (A1): o campo saiu, o editor é o de Sobre a Loja.
     expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),

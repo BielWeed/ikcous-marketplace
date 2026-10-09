@@ -260,10 +260,10 @@ interface AdminWhatsAppConfigViewProps {
   onSetDirty?: (dirty: boolean) => void;
   /**
    * Leva o lojista a outra tela do painel — usado pelo botão "Alterar em
-   * Minha loja" do bloco de horário (A1, 09/10/2026): o horário deixou de ser
-   * editado aqui, o editor único é o BusinessHoursSection de Sobre a Loja.
-   * Opcional: sem ele (AdminArea.tsx ainda não o repassa) o bloco continua
-   * mostrando o horário, só sem o botão.
+   * Sobre a Loja" do bloco de horário (A1, 09/10/2026): o horário deixou de
+   * ser editado aqui, o editor único é o BusinessHoursSection de Sobre a Loja.
+   * O AdminArea repassa `onNavigate` a esta rota. Opcional no tipo: sem ele o
+   * bloco continua mostrando o horário, só sem o botão.
    */
   onNavigate?: (view: View) => void;
   /**
@@ -937,7 +937,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
               />
               <p className="min-w-0 break-words text-[13px] font-bold leading-snug text-white">
                 {config?.businessHours?.trim() || (
-                  <span className="font-medium text-zinc-500">
+                  <span className="font-medium text-zinc-400">
                     Nenhum horário definido
                   </span>
                 )}
@@ -949,7 +949,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 onClick={() => onNavigate("admin-about-store")}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-admin-gold/20 bg-admin-bg px-4 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-95"
               >
-                Alterar em Minha loja
+                Alterar em Sobre a Loja
               </button>
             )}
           </div>

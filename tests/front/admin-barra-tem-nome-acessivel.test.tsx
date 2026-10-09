@@ -159,7 +159,9 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
       expect(botao, `aba ${rotulo}`).toBeTruthy();
       expect(botao!.tagName).toBe("BUTTON");
     }
-    expect(botaoDaAba(nav, "Início")!.getAttribute("aria-label")).toBe("Início");
+    expect(botaoDaAba(nav, "Início")!.getAttribute("aria-label")).toBe(
+      "Início",
+    );
   });
 
   it("o rótulo visível de cada aba não carrega a classe `hidden`", async () => {
@@ -228,6 +230,7 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
 // Os dois modos usam a mesma folga base de 6.25rem.
 describe("AdminLayout — folga de baixo comporta a barra com rótulo", () => {
   it("o --admin-tab-pb do PWA instalado usa 6.25rem, igual ao do navegador", () => {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo de um arquivo do próprio repositório, não entrada de usuário
     const fonte = readFileSync(
       resolve(__dirname, "../../src/components/layouts/AdminLayout.tsx"),
       "utf8",

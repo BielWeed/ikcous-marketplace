@@ -131,9 +131,9 @@ describe("EsqueletoDaLista", () => {
       raiz.render(<EsqueletoDaLista linhas={4} />);
     });
 
-    expect(hospedeiro.querySelectorAll("[data-linha-do-esqueleto]").length).toBe(
-      4,
-    );
+    expect(
+      hospedeiro.querySelectorAll("[data-linha-do-esqueleto]").length,
+    ).toBe(4);
   });
 });
 

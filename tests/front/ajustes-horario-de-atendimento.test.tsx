@@ -93,8 +93,9 @@ describe("Sobre a Loja — Horário de atendimento", () => {
   });
 
   async function abrirTela() {
-    const { AdminAboutStoreView } =
-      await import("@/views/admin/AdminAboutStoreView");
+    const { AdminAboutStoreView } = await import(
+      "@/views/admin/AdminAboutStoreView"
+    );
     await act(async () => {
       raiz.render(<AdminAboutStoreView onNavigate={vi.fn()} active={true} />);
     });

@@ -208,7 +208,9 @@ async function montarPainel(raiz: Root, hospedeiro: HTMLDivElement) {
     );
   });
 
-  const sino = hospedeiro.querySelector("button.size-7");
+  const sino = hospedeiro.querySelector(
+    'header button[aria-label="Notificações"]',
+  );
   expect(sino).toBeTruthy();
   return sino as HTMLButtonElement;
 }

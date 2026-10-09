@@ -11,7 +11,7 @@
 // O que este teste fixa:
 //   • salvar o WhatsApp manda `updateConfig` SEM a chave `businessHours`;
 //   • o bloco 2 mostra o horário como TEXTO (leitura) e oferece o botão
-//     "Alterar em Minha loja", que leva a "admin-about-store";
+//     "Alterar em Sobre a Loja", que leva a "admin-about-store";
 //   • o horário não conta como alteração não salva (onSetDirty).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -71,8 +71,9 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
     onNavigate?: (view: string) => void;
     onSetDirty?: (dirty: boolean) => void;
   }) {
-    const { AdminWhatsAppConfigView } =
-      await import("@/views/admin/AdminWhatsAppConfigView");
+    const { AdminWhatsAppConfigView } = await import(
+      "@/views/admin/AdminWhatsAppConfigView"
+    );
     await act(async () => {
       raiz.render(<AdminWhatsAppConfigView active {...(props as object)} />);
     });
@@ -126,7 +127,7 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
     });
   });
 
-  it("o bloco 2 mostra o horário como texto, sem campo, e leva a Minha loja", async () => {
+  it("o bloco 2 mostra o horário como texto, sem campo, e leva a Sobre a Loja", async () => {
     const onNavigate = vi.fn();
     await abrirTela({ onNavigate });
 
@@ -142,7 +143,7 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
     expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
     expect(bloco.querySelector("input, textarea")).toBeNull();
 
-    const alterar = botao("Alterar em Minha loja");
+    const alterar = botao("Alterar em Sobre a Loja");
     expect(alterar).toBeTruthy();
     // Régua visual: o botão novo usa token (admin-bg), nunca cor hex literal.
     expect(alterar!.className).not.toMatch(/#[0-9a-fA-F]{3,8}/);
@@ -152,14 +153,14 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
   });
 
-  it("sem horário salvo, o bloco diz que não há horário (e ainda leva a Minha loja)", async () => {
+  it("sem horário salvo, o bloco diz que não há horário (e ainda leva a Sobre a Loja)", async () => {
     mockConfig.businessHours = "";
     const onNavigate = vi.fn();
     await abrirTela({ onNavigate });
 
     expect(hospedeiro.textContent).toContain("Nenhum horário definido");
     await act(async () => {
-      botao("Alterar em Minha loja")!.dispatchEvent(
+      botao("Alterar em Sobre a Loja")!.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
     });

@@ -786,6 +786,7 @@ export function AdminArea({
                           component={AdminWhatsAppConfig}
                           props={{
                             active: currentView === "admin-whatsapp-config",
+                            onNavigate,
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
                           }}
