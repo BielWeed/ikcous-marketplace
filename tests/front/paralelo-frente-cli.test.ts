@@ -211,6 +211,36 @@ describe("frente.mjs — ciclo completo", () => {
     expect(existsSync(join(repo, "node_modules/pkg/index.js"))).toBe(true);
   }, 90_000);
 
+  it("nome com acento e espaço (português) passa em conferir, commitar e integrar", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(
+      wt(repo, "a"),
+      "src/a/configuração do pedido.ts",
+      "export const c = 1;\n",
+    );
+    expect(frente(wt(repo, "a"), "conferir").status).toBe(0);
+    // e a violação com acento é reportada com o nome LEGÍVEL, não com octais
+    escrever(wt(repo, "a"), "src/b/fora é.ts", "x\n");
+    const ruim = frente(wt(repo, "a"), "conferir");
+    expect(ruim.status).toBe(1);
+    expect(ruim.out).toContain("src/b/fora é.ts");
+    rmSync(join(wt(repo, "a"), "src/b/fora é.ts"));
+    const c = frente(
+      wt(repo, "a"),
+      "commitar",
+      "-m",
+      "feat(ui): arquivo com acento",
+    );
+    expect(c.status, c.out).toBe(0);
+    const int = frente(repo, "integrar", M);
+    expect(int.status, int.out).toBe(0);
+    expect(existsSync(join(repo, "src/a/configuração do pedido.ts"))).toBe(
+      true,
+    );
+  }, 60_000);
+
   it("não integra NADA se uma única frente estiver fora da faixa", () => {
     const repo = novoRepo();
     for (const n of ["a", "b"])

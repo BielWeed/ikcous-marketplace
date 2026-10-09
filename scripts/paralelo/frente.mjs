@@ -62,6 +62,23 @@ function falhar(msg, codigo = 1) {
   process.exit(codigo);
 }
 
+/**
+ * Lista de nomes de arquivo do git em modo `-z` (separador NUL, sem trim).
+ * SEM `-z` o git escapa nome com acento/espaço/aspas como `"src/configura\303\247\303\243o.ts"`
+ * (aspas e octais incluídos) — a conferência de faixa compararia o nome escapado e reprovaria
+ * arquivo legítimo, e `git add -- <nome escapado>` falharia. Os nomes deste repo são em português.
+ */
+function nomesZ(args, cwd) {
+  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
+  if (r.status !== 0)
+    return { ok: false, err: (r.stderr ?? "").trim(), nomes: [] };
+  return {
+    ok: true,
+    err: "",
+    nomes: (r.stdout ?? "").split("\0").filter(Boolean),
+  };
+}
+
 /** Raiz da árvore PRINCIPAL (a que dona o .git), a partir de qualquer worktree. */
 export function raizPrincipal(cwd) {
   const r = git(
@@ -189,12 +206,18 @@ const ehArtefatoDaFrente = (c) =>
 
 /** Arquivos alterados vs `base`: commitados + modificados + novos (não ignorados). */
 export function alteradosDesde(base, cwd) {
-  const tracked = git(["diff", "--name-only", "--no-renames", base], cwd);
-  const novos = git(["ls-files", "--others", "--exclude-standard"], cwd);
+  const tracked = nomesZ(
+    ["diff", "-z", "--name-only", "--no-renames", base],
+    cwd,
+  );
+  const novos = nomesZ(
+    ["ls-files", "-z", "--others", "--exclude-standard"],
+    cwd,
+  );
   if (!tracked.ok) falhar(`git diff falhou: ${tracked.err}`);
-  const lista = [...tracked.out.split("\n"), ...novos.out.split("\n")]
-    .filter(Boolean)
-    .filter((c) => !ehArtefatoDaFrente(c));
+  const lista = [...tracked.nomes, ...novos.nomes].filter(
+    (c) => !ehArtefatoDaFrente(c),
+  );
   return [...new Set(lista)];
 }
 
@@ -384,12 +407,10 @@ function cmdStatus([arg, ...resto]) {
     const base = git(["merge-base", "HEAD", branch], cwd).out;
     const aMais = git(["rev-list", "--count", `${base}..${branch}`], cwd).out;
     const sujo = existsSync(pasta) ? alteradosDesde("HEAD", pasta).length : "-";
-    const alterados = git(
-      ["diff", "--name-only", "--no-renames", base, branch],
+    const alterados = nomesZ(
+      ["diff", "-z", "--name-only", "--no-renames", base, branch],
       cwd,
-    )
-      .out.split("\n")
-      .filter(Boolean);
+    ).nomes;
     const viol = conferirAlterados(f, manifesto, alterados).length;
     linhas.push(
       `${f.nome.padEnd(28)} commits+${String(aMais).padEnd(3)} sujo:${String(sujo).padEnd(3)} fora-da-faixa:${viol}`,
@@ -436,12 +457,10 @@ function cmdIntegrar(args) {
       continue;
     }
     const base = git(["merge-base", "HEAD", branch], cwd).out;
-    const alterados = git(
-      ["diff", "--name-only", "--no-renames", base, branch],
+    const alterados = nomesZ(
+      ["diff", "-z", "--name-only", "--no-renames", base, branch],
       cwd,
-    )
-      .out.split("\n")
-      .filter(Boolean);
+    ).nomes;
     const viol = conferirAlterados(f, manifesto, alterados);
     if (viol.length) {
       reprovado = true;
