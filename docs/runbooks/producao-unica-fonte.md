@@ -211,6 +211,33 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         comparado sem espacos nem parenteses, e qualquer divergencia reprova (lado seguro). A ACL de
         `anon` na `validate_coupon_secure_v2` nao e conferida (a migration nao a toca).
 
+  10. **Lote de UMA migration, de apply normal: `20261204000000` (a venda do balcao se anula no
+      mesmo dia).** Sem `backfillLedger` e sem `nuncaAplicar`; vale nas duas lojas assinantes (IKCOUS
+      e Savy). A migration so CRIA a funcao `anular_venda_presencial(uuid, text)` (nenhum dado muda ao
+      aplicar) e depende das migrations 20261175, 20261177, 20261197 e 20261198. Duas consultas, so
+      leitura e de ROL FECHADO (so valem com `rol=ok`), sobre o catalogo:
+      - **`11a-conferir-anular-venda-presencial-aplicado`** (a consulta do lote, 14 linhas) prova a
+        funcao DEPOIS do apply: uma sobrecarga so, `SECURITY DEFINER`, `search_path=public`, plpgsql
+        que devolve jsonb, corpo com o sha256 da migration (LF ou CRLF), SEM `EXECUTE` para PUBLIC, anon
+        e service_role e COM para authenticated; e que as quatro dependencias existem.
+      - **`11b-antes-anular-venda-presencial-funcao-ausente`** (`ausenciaConfirmadaPor`, 8 linhas) prova
+        o ANTES, as mesmas condicoes do pre-voo da migration: funcao ausente, `is_admin_atual()` e
+        `pedido__mudar_status(...)` com o corpo que o pre-voo exige (md5), `devolver_estoque`,
+        `fin__dia` e `fin__hoje`, as tabelas e as colunas que a funcao le e escreve.
+      - **Caminho, uma loja por vez:** igual ao do item 9 (`11a` NEGATIVA → `11b` mais nova e POSITIVA →
+        apply de `20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql` → `11a` de novo, POSITIVA).
+        `11a` POSITIVA com a versao fora do ledger e PARAR (sem backfill). `11a` e `11b` NEGATIVAS: PARAR.
+      - **Ordem com o front:** o banco novo de CADA loja primeiro e o front desta release logo depois.
+        Com o banco novo e o front velho nada muda para ninguem; com o front novo e o banco velho a
+        tela mostra "A anulacao ainda nao esta liberada neste servidor".
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
+        rodar a `11a` e a `11b` DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/anular-venda-portao-viva.cjs` (Postgres 17 efemero, no
+        `rpc-ci.yml`) prova que as consultas DECIDEM certo, nao que a IKCOUS ou a Savy estao no estado
+        A ou B. O corpo de `is_admin_atual` e `pedido__mudar_status` so e conferido ANTES (11b);
+        depois do apply a 11a so exige que existam, para uma migration futura que as aperfeicoe nao
+        reprovar a prova desta.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

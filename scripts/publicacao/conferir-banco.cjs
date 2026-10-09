@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1028,6 +1028,7 @@ const ROL_DA_10A = [
   "validate_coupon_secure_v2: search_path",
   "validate_coupon_secure_v2: sobrecargas",
 ];
+
 /** O rol da 10b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as
  * 6 linhas que scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql
  * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
@@ -1039,6 +1040,43 @@ const ROL_DA_10B = [
   "validate_coupon_secure_v2: corpo e o baseline (sha256)",
   "validate_coupon_secure_v2: sobrecargas",
 ];
+/** O rol da 11a (a prova de objetos do lote da migration 20261204000000, a venda do
+ * balcão se anula no mesmo dia): as 14 linhas que
+ * scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente
+ * vira `AUSENTE` na própria linha). Como a 10a, NÃO serve de pré-checagem de ledger
+ * (o lote não tem backfill: é de apply normal). tests/banco/anular-venda-portao-viva.cjs
+ * prova, num Postgres real, que este rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_11A = [
+  "anular_venda_presencial: EXECUTE para PUBLIC",
+  "anular_venda_presencial: EXECUTE para anon",
+  "anular_venda_presencial: EXECUTE para authenticated",
+  "anular_venda_presencial: EXECUTE para service_role",
+  "anular_venda_presencial: SECURITY DEFINER",
+  "anular_venda_presencial: corpo (sha256)",
+  "anular_venda_presencial: linguagem e retorno",
+  "anular_venda_presencial: search_path",
+  "anular_venda_presencial: sobrecargas",
+  "controle: funcoes de public visiveis a este papel",
+  "dependencia devolver_estoque(uuid): existe",
+  "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin_atual(): existe",
+  "dependencia pedido__mudar_status(...): existe",
+];
+/** O rol da 11b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as 8
+ * linhas que scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql
+ * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
+const ROL_DA_11B = [
+  "anular_venda_presencial: ausente",
+  "colunas usadas: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "dependencia devolver_estoque(uuid): existe",
+  "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin_atual(): corpo e o esperado (md5)",
+  "dependencia pedido__mudar_status(...): corpo e o esperado (md5)",
+  "tabelas usadas: existem",
+];
+
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1049,6 +1087,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,
   "10a-conferir-cupons-desligados-aplicado": ROL_DA_10A,
   "10b-antes-cupons-desligados-gatilho-e-corpo": ROL_DA_10B,
+  "11a-conferir-anular-venda-presencial-aplicado": ROL_DA_11A,
+  "11b-antes-anular-venda-presencial-funcao-ausente": ROL_DA_11B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1597,6 +1637,8 @@ module.exports = {
   ROL_DA_8K,
   ROL_DA_10A,
   ROL_DA_10B,
+  ROL_DA_11A,
+  ROL_DA_11B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

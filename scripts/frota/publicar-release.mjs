@@ -400,6 +400,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "8k-subtotal-divergente-ou-vazia-provada",
   "10a-conferir-cupons-desligados-aplicado",
   "10b-antes-cupons-desligados-gatilho-e-corpo",
+  "11a-conferir-anular-venda-presencial-aplicado",
+  "11b-antes-anular-venda-presencial-funcao-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
