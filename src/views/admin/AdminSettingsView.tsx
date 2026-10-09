@@ -1057,8 +1057,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             {/*
               A porta "Avisar clientes" morou AQUI de 24/08 a 30/08/2026 e
               SAIU por decisão do Gabriel: o lugar dela é a tela de Clientes
-              (componente CustomerBanners), ao lado de "Canais de
-              Atendimento". O motivo que a trouxe para cá em 24/08 (zero
+              (hoje o `AtalhosDaAba` de Clientes). O motivo que a trouxe para cá em 24/08 (zero
               portas visíveis para `admin-push` no celular) já não existe: o
               sino parou de escolher destino. O Voltar de `admin-push`
               continua sensível à origem (pai-da-tela-do-admin).

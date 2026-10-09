@@ -5,10 +5,10 @@ import type { View } from "@/types";
  * (`view`). Extraída de `getParentView` (antes só uma tabela fixa) para
  * ganhar uma regra sensível à ORIGEM real da navegação.
  *
- * Existem quatro caminhos até "admin-push" (botão "Avisar clientes" da
- * barra lateral, menu do cliente em duas variações, banner do painel) e
- * todos caíam sempre em "admin-settings", porque a tabela antiga não sabia
- * de onde a pessoa tinha vindo.
+ * Havia quatro caminhos até "admin-push" (um botão "Avisar clientes" na
+ * barra lateral, que o painel simples removeu; o menu do cliente em duas
+ * variações; o cartão de Clientes) e todos caíam sempre em "admin-settings",
+ * porque a tabela antiga não sabia de onde a pessoa tinha vindo.
  *
  * O sino da barra superior leva a "admin-notifications", a tela onde o
  * lojista RECEBE avisos, e não à tela que ENVIA push para clientes. Ela
@@ -80,7 +80,7 @@ export function paiDaTelaDoAdmin(
   // tela tem DUAS portas (banner "Atendimento & Vendas" do painel principal
   // e Ajustes) e o Voltar fixo em "admin-settings" largava quem veio pelo
   // banner no lugar errado (achado do Gabriel com print, 30/08/2026). Sem
-  // origem do admin conhecida, cai no painel principal.
+  // origem do admin conhecida, cai em Ajustes (`admin-settings`).
   if (
     view === "admin-whatsapp-config" &&
     origem != null &&

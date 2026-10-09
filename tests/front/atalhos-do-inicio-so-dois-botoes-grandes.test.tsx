@@ -3,7 +3,7 @@
 // Pedido do Gabriel (Início, 27/09/2026): a fileira de ações rápidas
 // (Vender, Pedidos, Devoluções) saiu do Início — "Vender e Pedidos já estão
 // na barra de baixo; Devoluções tem que estar na tela de Pedidos, não ali"
-// (porta em AdminOrdersView.tsx via `BotaoDevolucoes`). Sobram só os dois
+// (porta em AdminOrdersView.tsx via `AtalhosDaAba`). Sobram só os dois
 // botões grandes (Relatórios e Financeiro). Mesmo casco de
 // admin-page-header.test.tsx: createRoot + act, sem mocks (componente puro).
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";

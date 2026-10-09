@@ -30,7 +30,7 @@ const BOTOES_GRANDES: readonly BotaoGrande[] = [
  * clique. A fileira de ações rápidas (Vender, Pedidos, Devoluções) saiu —
  * pedido do Gabriel (27/09/2026): Vender e Pedidos já estão na barra de
  * baixo, e Devoluções tem porta própria na tela de Pedidos
- * (`BotaoDevolucoes` em `AdminOrdersView.tsx`).
+ * (o `AtalhosDaAba` de Pedidos, com o contador de devoluções abertas).
  */
 export function AtalhosDoInicio({
   onNavigate,

@@ -89,3 +89,40 @@ describe("Início e Dashboard CRM usam o título padrão", () => {
     });
   }
 });
+
+// Painel simples (C10-C14, 09/10/2026): o título de cada tela vem de
+// `NOMES_DO_PAINEL`, o nome ÚNICO da tela (o mesmo do menu, do carregando, do
+// Voltar e da ajuda). Texto solto no `titulo` do AdminPageHeader é o que fazia
+// a mesma tela ter 2 a 4 nomes. Teste de fonte global: vale para toda tela
+// `Admin*View.tsx` que usa o cabeçalho padrão — tela nova já nasce obrigada.
+//
+// Exceção declarada: AdminWhatsAppConfigView ("Atendimento") fica com o título
+// próprio até virar apelido de Minha loja (onda 2, D11).
+const TELAS_COM_TITULO_PROPRIO = ["AdminWhatsAppConfigView.tsx"];
+
+describe("o título de toda tela do painel vem do nome único", () => {
+  const telas = Object.entries(FONTES).filter(
+    ([caminho, fonte]) =>
+      fonte.includes("<AdminPageHeader") &&
+      !TELAS_COM_TITULO_PROPRIO.some((t) => caminho.endsWith(`/${t}`)),
+  );
+
+  it("o glob achou as telas do painel (nada de prova vazia)", () => {
+    expect(telas.length).toBeGreaterThanOrEqual(18);
+  });
+
+  for (const [caminho, fonte] of telas) {
+    const nome = caminho.split("/").pop();
+    it(`${nome}: titulo={…NOMES_DO_PAINEL[…]} e nenhum título solto`, () => {
+      expect(
+        fonte,
+        "o titulo do AdminPageHeader tem de citar NOMES_DO_PAINEL[…]",
+      ).toMatch(
+        /<AdminPageHeader[\s\S]{0,400}?titulo=\{[^\n]*NOMES_DO_PAINEL\[/,
+      );
+      expect(fonte, "titulo com texto solto no AdminPageHeader").not.toMatch(
+        /<AdminPageHeader[\s\S]{0,400}?titulo="/,
+      );
+    });
+  }
+});
