@@ -1,0 +1,65 @@
+{
+  "plano": "painel-simples-ondas-gh-4",
+  "frentes": [
+    {
+      "nome": "ajustes-frete-e-pagamentos",
+      "descricao": "Serial por dentro: H5 (Frete recebe Transportadoras e Consultas de frete; Ajustes fica com a porta e o subtitulo) -> G7b (diagnostico de Ajustes sem latencia/ping/Supabase) -> H6 (status do PIX uma vez; chaves do Mercado Pago em Avancado)",
+      "posse": [
+        "src/views/admin/AdminSettingsView.tsx",
+        "src/views/admin/AdminShippingView.tsx",
+        "src/components/admin/shipping/FreteNacionalBloco.tsx",
+        "src/components/admin/settings/grupos-de-ajustes.ts",
+        "src/components/admin/settings/HistoricoCotacoesCard.tsx",
+        "src/components/admin/settings/TransportadorasCard.tsx",
+        "src/components/admin/settings/MercadoPagoSection.tsx",
+        "src/components/admin/settings/FormasDePagamentoCard.tsx",
+        "src/views/admin/StatusPagamentoPix.tsx",
+        "tests/front/frete-um-lugar-so.test.tsx",
+        "tests/front/diagnostico-de-conexao-em-palavras.test.tsx",
+        "tests/front/pagamentos-status-uma-vez.test.tsx",
+        "tests/front/admin-ajustes-salao-e-porao.test.tsx",
+        "tests/front/admin-settings-secoes-colapsaveis.test.tsx",
+        "tests/front/admin-settings-pix-acompanha-o-interruptor.test.tsx",
+        "tests/front/ajustes-disclosure-do-diagnostico.test.tsx",
+        "tests/front/ajustes-grupos-e-portas.test.tsx",
+        "tests/front/formas-de-pagamento-secao-admin.test.tsx",
+        "tests/front/formas-de-pagamento-cartao-pelo-app.test.tsx",
+        "tests/front/status-pagamento-pix-termometro.test.tsx",
+        "tests/front/admin-mercado-pago-liberacao-automatica.test.tsx",
+        "tests/front/mercado-pago-camadas.test.tsx",
+        "tests/front/mercado-pago-erro-honesto.test.tsx",
+        "tests/front/mercado-pago-guia-copia-prompt.test.tsx",
+        "tests/front/mercado-pago-secao-salva-e-testa.test.tsx",
+        "tests/front/admin-frete-nacional-botao-abre-tela.test.tsx",
+        "tests/front/admin-frete-retirada-na-loja.test.tsx",
+        "tests/front/admin-frete-v2-contrato.test.tsx",
+        "tests/front/admin-shipping-frete-por-provedor.test.tsx",
+        "tests/front/admin-shipping-frete-unificado.test.tsx",
+        "tests/front/admin-shipping-nao-inventa-cep-de-origem.test.tsx",
+        "tests/front/admin-shipping-national-view.test.tsx",
+        "tests/front/admin-shipping-tela-nao-promete-cobranca.test.tsx",
+        "tests/front/admin-shipping-trocar-de-aba-nao-apaga-o-que-foi-digitado.test.tsx",
+        "tests/front/admin-shipping-view-estrategia-nacional-na-faixa.test.tsx",
+        "tests/front/admin-visual-frete.test.tsx",
+        "tests/front/frete-nao-grava-cep.test.tsx",
+        "tests/front/admin-shipping-chaves-que-nao-carregam-dizem-e-deixam-tentar.test.tsx",
+        "tests/front/admin-shipping-erro-teste-credenciais-traduzido.test.tsx",
+        "tests/front/admin-shipping-historico-honesto.test.tsx",
+        "tests/front/admin-shipping-historico-mostra-o-motivo.test.tsx"
+      ]
+    },
+    {
+      "nome": "selo-e-erro-cru",
+      "descricao": "G7a (selo de conexao do cabecalho e o ponto de operacao em palavras: Online/Lenta/Sincronizado/Sem internet, sem 'Latencia: Nms', texto >= 11px) + G10 (guarda de fonte: nenhum toast do painel mostra error.message cru fora da excecao 22023)",
+      "posse": [
+        "src/components/layouts/AdminLayout.tsx",
+        "src/components/admin/PontoDeOperacao.tsx",
+        "tests/front/selo-de-conexao-em-palavras.test.tsx",
+        "tests/front/painel-sem-erro-cru.test.ts",
+        "tests/front/ponto-de-operacao.test.tsx",
+        "tests/front/admin-cabecalho-alvos-44.test.tsx",
+        "tests/front/admin-layout-porta-unica.test.tsx"
+      ]
+    }
+  ]
+}
