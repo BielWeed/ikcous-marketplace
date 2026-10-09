@@ -414,6 +414,12 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cupom-preso-viva.cjs",
     // 20261205000000 e 20261206000000: o portao da release (consultas 12a e 12b do lote) decide certo.
     "tests/banco/cupom-preso-portao-viva.cjs",
+    // Consulta 13a: o item dos dependentes da coluna do contador duplicado conta a coluna gerada que a cita.
+    "tests/banco/consulta-13a-contador-duplicado-viva.cjs",
+    // 20261207000000: a coluna duplicada de contagem de uso do cupom e apagada (recusas sem gravar, corrida, rollback).
+    "tests/banco/contador-duplicado-viva.cjs",
+    // 20261207000000: o portao da release (consultas 14a e 14b do lote) decide certo.
+    "tests/banco/contador-duplicado-portao-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
