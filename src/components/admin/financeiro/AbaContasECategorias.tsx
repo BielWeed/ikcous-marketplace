@@ -206,7 +206,7 @@ export function AbaContasECategorias({
 
       <CartaoSecao
         titulo="Categorias"
-        subtitulo="Cada categoria cai numa linha da DRE"
+        subtitulo="Cada categoria cai numa linha do resultado"
         acao={
           <BotaoNovo
             rotulo="Nova categoria"

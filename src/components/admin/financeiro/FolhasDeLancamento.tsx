@@ -300,7 +300,7 @@ export function BaixarLancamentoFolha({
     >
       <div className="flex flex-col gap-4">
         <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
             Valor
           </p>
           <Dinheiro
@@ -411,7 +411,8 @@ export function CancelarLancamentoDialogo({
           </AlertDialogTitle>
           <AlertDialogDescription className="text-zinc-400">
             “{alvo.descricao}” (<Dinheiro valor={alvo.valor} />) deixa de contar
-            no saldo e na DRE. O registro fica guardado, marcado como cancelado.
+            no saldo e no resultado. O registro fica guardado, marcado como
+            cancelado.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Campo id="fin-cancelar-motivo" rotulo="Motivo" erro={erroMotivo}>

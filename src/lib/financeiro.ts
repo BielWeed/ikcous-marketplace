@@ -578,7 +578,7 @@ export function rotuloDoGrupoDre(grupo: string): string {
     case "financeiro":
       return "Financeiro";
     case "fora_dre":
-      return "Fora da DRE";
+      return "Fora do resultado";
     default:
       return grupo;
   }
@@ -1355,7 +1355,7 @@ export function cascataDaDre(dre: DreFinanceira): LinhaDaCascata[] {
     linha("receita_liquida", "(=) Receita líquida", dre.receitaLiquida, {
       subtotal: true,
     }),
-    linha("cmv", "(−) CMV", negativo(dre.cmv)),
+    linha("cmv", "(−) Custo das mercadorias vendidas", negativo(dre.cmv)),
     linha("lucro_bruto", "(=) Lucro bruto", dre.lucroBruto, { subtotal: true }),
     linha(
       "custos_variaveis",
@@ -1365,7 +1365,7 @@ export function cascataDaDre(dre: DreFinanceira): LinhaDaCascata[] {
     ),
     linha(
       "margem_contribuicao",
-      "(=) Margem de contribuição",
+      "(=) Sobra depois dos custos da venda",
       dre.margemContribuicao,
       { subtotal: true },
     ),
@@ -1560,11 +1560,11 @@ export function validarLancamento(
       erros.contaDestinoId = "A conta de destino precisa ser outra.";
     }
   } else if (!form.categoriaId) {
-    erros.categoriaId = "Escolha a categoria (é ela que monta a DRE).";
+    erros.categoriaId = "Escolha a categoria (é ela que monta o resultado).";
   }
 
   if (!ehDataIso(form.dataCompetencia)) {
-    erros.dataCompetencia = "Informe a data de competência.";
+    erros.dataCompetencia = "Informe o mês de referência.";
   }
 
   if (situacao === "realizado") {

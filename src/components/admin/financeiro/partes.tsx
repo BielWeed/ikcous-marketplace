@@ -71,7 +71,7 @@ export function corDoValor(valor: number): string {
 // ---------------------------------------------------------------------------
 
 export const CLASSE_TITULO_SECAO =
-  "text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
 export function CartaoSecao({
   titulo,
@@ -137,7 +137,7 @@ export function BlocoKpi({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+        <span className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
           {rotulo}
         </span>
         {Icone ? (
@@ -358,7 +358,7 @@ export function Etiqueta({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
+        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider",
         tom === "neutro" && "border-white/10 bg-white/5 text-zinc-400",
         tom === "aviso" && "border-amber-500/30 bg-amber-500/10 text-amber-300",
         tom === "perigo" && "border-red-500/30 bg-red-500/10 text-red-300",
