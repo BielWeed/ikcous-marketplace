@@ -3345,9 +3345,10 @@ export function useOrders(
    * ler `data?.payment_status`/`data?.pagamento_recebido_em` da resposta
    * cobre os dois casos com o mesmo código.
    *
-   * `clearAnalyticsCache()` no fim é o que faz o número de "Receita Hoje"
-   * mudar depois deste clique — sem ele, `useAnalytics` continuaria
-   * devolvendo o resultado guardado em cache de módulo.
+   * `clearAnalyticsCache()` no fim é o que faz os números de venda do
+   * painel (Clientes, Relatórios, o topo de Pedidos) mudarem depois deste
+   * clique — sem ele, `useAnalytics` continuaria devolvendo o resultado
+   * guardado em cache de módulo.
    */
   const registrarPagamentoRecebido = useCallback(
     async (orderId: string, recebido: boolean) => {

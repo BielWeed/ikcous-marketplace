@@ -47,8 +47,9 @@ export function useAnularVendaDoBalcao(): {
     });
     if (error) throw error;
     const resultado = lerRespostaDaAnulacao(data);
-    // O número de "Receita Hoje" muda com a anulação (o Financeiro desconta):
-    // sem isto o painel serviria o resultado guardado em cache de módulo.
+    // Os números de venda do painel (Clientes, Relatórios, o topo de
+    // Pedidos) mudam com a anulação (o Financeiro desconta): sem isto o
+    // painel serviria o resultado guardado em cache de módulo.
     clearAnalyticsCache();
     return resultado;
   }, []);
