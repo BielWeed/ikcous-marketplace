@@ -51,6 +51,7 @@ on:
       - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
       - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
       - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -70,6 +71,7 @@ on:
       - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
       - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
       - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -318,6 +320,14 @@ jobs:
       - name: Prova viva do portao do cupom preso (consultas 12a e 12b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-portao-viva.cjs
+      # Consulta 13a (so leitura, 09/10/2026): a medicao que decide se `coupons.used_count`
+      # pode ser apagada. O item "dependentes" excluia TODO pg_attrdef e escondia uma coluna
+      # GERADA que cita used_count; agora so o default da PROPRIA coluna fica de fora. A prova
+      # roda a consulta num Postgres real (base, coluna gerada, visao, indice) e o mutante
+      # "voltar a excluir todo pg_attrdef" deixa a prova vermelha. CLONE proprio.
+      - name: Prova viva da consulta 13a (dependentes da coluna used_count)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-13a-contador-duplicado-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
