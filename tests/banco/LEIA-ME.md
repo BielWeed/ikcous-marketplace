@@ -112,6 +112,36 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   jobs — o job se confere então no painel; quem atravessa a RLS (BYPASSRLS) com zero jobs
   reprova como AUSENTE, e o papel que vê algum job é estrito. **Não prova** a IKCOUS nem a Savy, nem o código das edge
   functions de que a pista rápida depende.
+- **o contador duplicado do cupom morre (`contador-duplicado-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration 20261207000000 apaga `coupons.used_count` (política P4
+  do dono) SÓ com toda linha em 0 exato e nada dependendo dela. Tudo 0 aplica e o resto do
+  banco (colunas, dados, `usage_count`, corpo e ACL de toda função de `public`, políticas,
+  constraints, índices) fica IGUAL; valor 3, NULL, visão, função que cita a coluna, coluna
+  GERADA que a cita (a dependência mora no `pg_attrdef` da OUTRA coluna: só o default da
+  PRÓPRIA coluna é ignorado), forma diferente do baseline, RLS valendo para o papel e
+  `usage_count` ausente RECUSAM com o nome do motivo e SEM gravar nada; corrida com duas
+  conexões (a migration espera a trava, vê o 7 gravado e recusa), `lock_timeout` de 5 s,
+  atomicidade (falha depois do DROP desfaz tudo), rollback idêntico ao baseline (comparado em
+  `pg_attribute`/`pg_attrdef`); cada guarda tirada (mutante) deixa a prova vermelha, e sem o
+  item dos dependentes o `DROP COLUMN` sem `CASCADE` ainda recusa a coluna gerada.
+- **portão do contador duplicado (`contador-duplicado-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `14a-conferir-contador-duplicado-apagado` (DEPOIS do
+  apply, 7 linhas) e `14b-antes-contador-duplicado-coluna-presente-e-zerada` (ANTES, 11
+  linhas), a "prova de objetos" do lote 20261207000000. **Aqui o ANTES é o contrário do
+  precedente 12b:** a coluna PRESENTE e zerada, sem dependentes. 14b positiva em `pre`
+  (inclusive com o papel mínimo e com `search_path` vazio), 14a positiva depois do apply
+  real (LF e corpos em CRLF); um defeito por vez reprovando a SUA linha (valor 3, NULL, coluna
+  gerada, índice, visão, política, gatilho, função, forma, `usage_count`, o papel que sofre a
+  RLS, coluna já apagada dizendo AUSENTE); cada linha e cada cláusula ignorada (voltar a
+  excluir todo `pg_attrdef`, não excluir o default da própria coluna, o guarda AUSENTE da
+  contagem, NULL como 0, o hash CRLF) deixa a prova vermelha; o `conferir-banco.cjs` de
+  verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limite declarado:** a linha de
+  controle não tem negativo local (o catálogo é legível por todo papel). **Não prova** a
+  IKCOUS nem a Savy.
+- **consulta 13a (`consulta-13a-contador-duplicado-viva.cjs`)**: o item dos dependentes
+  ignorava todo `pg_attrdef` e escondia uma coluna gerada que cita a coluna; a prova roda a
+  consulta num Postgres real (base, coluna gerada, visão, índice) e o mutante que volta a
+  excluir todo `pg_attrdef` reproduz o defeito.
 
 ## Como rodar
 

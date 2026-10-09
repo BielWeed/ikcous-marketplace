@@ -5351,3 +5351,281 @@ Deno.test("12a/12b — o rpc-ci.yml roda a prova viva do portão do cupom preso 
       );
   }
 });
+
+// 14a/14b (09/10/2026) — a PROVA DE OBJETOS do lote da migration 20261207000000 (a
+// coluna duplicada de contagem de uso do cupom e apagada) em
+// scripts/frota/canais-de-backend.json. A 14a é a consulta do lote (DEPOIS do apply, 7
+// linhas); a 14b é a do ANTES (11 linhas) e confirma o CONTRÁRIO do precedente 12b: a
+// coluna PRESENTE e zerada, sem dependentes. As duas são de ROL FECHADO. Estes testes
+// medem o texto dos .sql contra as migrations DESTA árvore; a decisão de cada consulta
+// num Postgres real está em tests/banco/contador-duplicado-portao-viva.cjs (rpc-ci.yml).
+const NOME_14A = "14a-conferir-contador-duplicado-apagado";
+const NOME_14B = "14b-antes-contador-duplicado-coluna-presente-e-zerada";
+const NOME_13A = "13a-contador-duplicado-do-cupom-so-leitura";
+const MIGRACAO_207 = `${MIGRATIONS_DIR}/20261207000000_o_contador_duplicado_do_cupom_morre.sql`;
+
+const { ROL_DA_14A, ROL_DA_14B } = require(SCRIPT);
+// O que cada consulta pode ler (catálogo e CTEs; a 14b conta linhas de public.coupons,
+// só conta: nunca devolve um valor).
+const PERMITIDOS_14A = [
+  "pg_attribute",
+  "pg_attrdef",
+  "pg_proc",
+  "pg_namespace",
+  "tab",
+  "uso",
+  "validar",
+  "varredura",
+  "itens",
+];
+const PERMITIDOS_14B = [
+  "pg_attribute",
+  "pg_attrdef",
+  "pg_depend",
+  "pg_proc",
+  "pg_namespace",
+  "pg_policies",
+  "pg_trigger",
+  "pg_views",
+  "public.coupons",
+  "tab",
+  "col",
+  "uso",
+  "dep",
+  "fn",
+  "itens",
+];
+for (const [nome, nItens, rol] of [
+  [NOME_14A, 7, ROL_DA_14A],
+  [NOME_14B, 11, ROL_DA_14B],
+] as Array<[string, number, string[]]>) {
+  Deno.test(`${nome} — no menu, UM SELECT só leitura (catálogo${nome === NOME_14B ? " e uma CONTAGEM em public.coupons" : ""}), saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+    await t.step("está no menu do workflow", async () => {
+      const yaml = await Deno.readTextFile(WORKFLOW);
+      const i = yaml.indexOf("consulta:");
+      assert(i >= 0, "não achei a entrada `consulta`");
+      assert(
+        yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+        `falta a opção ${nome} no workflow`,
+      );
+    });
+    await t.step(
+      "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com as reprovadas primeiro",
+      () => {
+        assertEquals(contarStatements(sql), 1);
+        assert(/^\s*WITH\b/i.test(limpo));
+        assert(
+          !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+            semTexto,
+          ),
+          "palavra de escrita fora de comentário/string",
+        );
+        assert(
+          !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+            semTexto,
+          ),
+          "SQL dinâmico (ou leitura de arquivo)",
+        );
+        assert(
+          /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+            limpo,
+          ),
+          "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+        );
+      },
+    );
+    await t.step(
+      "só lê catálogo e as CTEs da própria consulta (a 14b, mais uma contagem em public.coupons); nenhuma coluna de cliente, dinheiro ou código de cupom",
+      () => {
+        const permitidos = new Set(
+          nome === NOME_14A ? PERMITIDOS_14A : PERMITIDOS_14B,
+        );
+        const alvos = [
+          ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+        ].map((m) => m[1].toLowerCase());
+        assert(alvos.length > 0);
+        for (const alvo of alvos)
+          assert(
+            permitidos.has(alvo),
+            `lê de "${alvo}", que não é catálogo nem CTE`,
+          );
+        assert(
+          !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|amount|subtotal|discount|gateway_payment_id|payment_status|paid_at|code|value|command|username|database)\b/i.test(
+            semTexto,
+          ),
+          "a consulta citaria dado pessoal, financeiro ou o código de um cupom",
+        );
+        if (nome === NOME_14A)
+          assert(
+            !/public\.coupons\s+\w*\s*(WHERE|\)|$)/i.test(semTexto) &&
+              !semTexto.includes("FROM public.coupons"),
+            "a 14a só lê catálogo: nenhuma linha de cupom",
+          );
+        else
+          assertEquals(
+            [...semTexto.matchAll(/FROM public\.coupons\b/g)].length,
+            1,
+            "a 14b lê public.coupons UMA vez, só para contar",
+          );
+      },
+    );
+    await t.step(
+      `o rol fechado do código tem ${nItens} itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)`,
+      () => {
+        assertEquals(rol.length, nItens);
+        assertEquals(new Set(rol).size, rol.length);
+        assertEquals(
+          Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+            ([n]) => n === nome,
+          )?.[1],
+          rol,
+        );
+        for (const item of rol)
+          assertStringIncludes(
+            limpo,
+            `'${item}'`,
+            `o item do rol "${item}" não existe no .sql`,
+          );
+        const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',/g)].map(
+          (m) => m[1],
+        );
+        assertEquals(
+          doSql.length,
+          nItens,
+          `o .sql monta ${nItens} linhas de resultado`,
+        );
+        for (const item of doSql)
+          assert(
+            rol.includes(item),
+            `o .sql monta "${item}" e o rol do código não o tem`,
+          );
+      },
+    );
+  });
+}
+
+Deno.test("13a/14b — os DEPENDENTES da coluna excluem SÓ o default da PRÓPRIA coluna (pg_attrdef com a mesma coluna), nunca todo pg_attrdef: a coluna gerada que cita a coluna conta", async () => {
+  for (const nome of [NOME_13A, NOME_14B]) {
+    const limpo = sqlSemComentarios(
+      await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`),
+    ).replace(/\s+/g, " ");
+    assert(
+      !/classid\s*<>\s*'pg_attrdef'/.test(limpo),
+      `${nome}: excluir todo pg_attrdef esconde a coluna gerada que cita used_count`,
+    );
+    for (const t of [
+      "d.classid = 'pg_attrdef'::regclass",
+      "ad.oid = d.objid",
+      "ad.adrelid = d.refobjid",
+      "ad.adnum = d.refobjsubid",
+    ])
+      assertStringIncludes(limpo, t, `${nome}: falta ${t}`);
+  }
+  // a mesma exclusão do pré-voo da migration (a 14b mede ANTES o que o pré-voo exige)
+  const mig = (await Deno.readTextFile(MIGRACAO_207))
+    .replace(/\r\n/g, "\n")
+    .replace(/\s+/g, " ");
+  for (const t of [
+    "d.classid = 'pg_attrdef'::regclass",
+    "ad.oid = d.objid",
+    "ad.adrelid = d.refobjid",
+    "ad.adnum = d.refobjsubid",
+  ])
+    assertStringIncludes(mig, t);
+  // a 14b conta NULL como diferente de 0 e diz AUSENTE (não "todas as linhas") sem a coluna
+  const sql14b = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_14B}.sql`),
+  ).replace(/\s+/g, " ");
+  assertStringIncludes(
+    sql14b,
+    "(to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb",
+  );
+  assertStringIncludes(sql14b, "CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'");
+});
+
+Deno.test("14a/14b — os hashes da 14a são os que a 10a e a 12a já travam e os dos corpos nas migrations desta árvore; a 14b não cita hash", async () => {
+  const sql14a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_14A}.sql`);
+  const sql14b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_14B}.sql`);
+  const sql10a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_10A}.sql`);
+  const sql12a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_12A}.sql`);
+  const hex64 = (sql: string) =>
+    [
+      ...new Set(
+        [...sqlSemComentarios(sql).matchAll(/'([0-9a-f]{64})'/g)].map(
+          (m) => m[1],
+        ),
+      ),
+    ].sort();
+  const h203 = await hashesDaMigration203();
+  const h205 = await hashesDoLote205();
+  assertEquals(
+    hex64(sql14a),
+    [h203.novoLF, h203.novoCRLF, h205.varredura.lf, h205.varredura.crlf].sort(),
+  );
+  const limpo = sqlSemComentarios(sql14a);
+  for (const lf of [h203.novoLF, h205.varredura.lf])
+    assertStringIncludes(limpo, `'${lf}',`, "o LF tem de ser o esperado");
+  // são literais que a 10a (validate) e a 12a (varredura) já travam
+  for (const x of [h203.novoLF, h203.novoCRLF])
+    assertStringIncludes(sqlSemComentarios(sql10a), `'${x}'`);
+  for (const x of [h205.varredura.lf, h205.varredura.crlf])
+    assertStringIncludes(sqlSemComentarios(sql12a), `'${x}'`);
+  assertEquals(hex64(sql14b), []);
+});
+
+Deno.test("14a/14b — o rpc-ci.yml roda as duas provas vivas do contador duplicado no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  for (const prova of [
+    "contador-duplicado-viva",
+    "contador-duplicado-portao-viva",
+    "consulta-13a-contador-duplicado-viva",
+  ]) {
+    const linhas = bloqueante.split("\n");
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(linhas[k - 2].startsWith("      - name: "));
+    assert(
+      bloqueante.indexOf(linhas.at(k) ?? "") > bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(prova));
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_13A}.sql`,
+      `scripts/publicacao/consultas/${NOME_14A}.sql`,
+      `scripts/publicacao/consultas/${NOME_14B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

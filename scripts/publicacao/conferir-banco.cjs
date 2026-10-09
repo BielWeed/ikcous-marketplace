@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1129,6 +1129,41 @@ const ROL_DA_12B = [
   "tabelas usadas: existem",
   "vaga_do_cupom_presa: ausente",
 ];
+/** O rol da 14a (a prova de objetos do lote da migration 20261207000000, o contador
+ * duplicado do cupom morre — apaga `coupons.used_count`): as 7 linhas que
+ * scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql devolve, cada
+ * uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha). Como a 10a, a 11a e a 12a, NÃO serve de pré-checagem de ledger (o lote
+ * não tem backfill: é de apply normal).
+ * tests/banco/contador-duplicado-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_14A = [
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.usage_count: tipo e default",
+  "coupons.used_count: coluna",
+  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 14b (a consulta do ANTES do mesmo lote, `ausenciaConfirmadaPor`): as 11
+ * linhas que scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql
+ * devolve — a condição em que o dono aprovou apagar (coluna PRESENTE e zerada, nada
+ * dependendo dela), lida ANTES de aplicar. Aqui o "antes" é o contrário da 10b/11b/12b:
+ * a coluna tem de EXISTIR. */
+const ROL_DA_14B = [
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.usage_count: coluna presente",
+  "coupons.used_count: coluna presente",
+  "coupons.used_count: dependentes (fora o default da propria coluna)",
+  "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
+  "funcoes de public que citam used_count",
+  "gatilhos que citam used_count",
+  "politicas de public que citam used_count",
+  "public.coupons: a seguranca por linha vale para este papel",
+  "visoes de public que citam used_count",
+];
 
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
@@ -1144,6 +1179,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "11b-antes-anular-venda-presencial-funcao-ausente": ROL_DA_11B,
   "12a-conferir-cupom-preso-aplicado": ROL_DA_12A,
   "12b-antes-cupom-preso-funcoes-ausentes": ROL_DA_12B,
+  "14a-conferir-contador-duplicado-apagado": ROL_DA_14A,
+  "14b-antes-contador-duplicado-coluna-presente-e-zerada": ROL_DA_14B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1696,6 +1733,8 @@ module.exports = {
   ROL_DA_11B,
   ROL_DA_12A,
   ROL_DA_12B,
+  ROL_DA_14A,
+  ROL_DA_14B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

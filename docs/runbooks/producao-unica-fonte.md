@@ -296,6 +296,51 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         A ou B; o `supabase_read_only_user`, o pg_cron real e o Postgres 15 da Supabase nao foram
         medidos ali (o stub local do cron nao tem `active`; a prova o acrescenta).
 
+  12. **Lote de UMA migration, de apply normal: `20261207000000` (a coluna duplicada de contagem de
+      uso do cupom, `coupons.used_count`, e apagada; politica P4 do dono).** Sem `backfillLedger` e sem
+      `nuncaAplicar`; vale nas duas lojas assinantes (IKCOUS e Savy). O dono aprovou apagar
+      CONDICIONADO a medir tudo zero (consulta `13a`, so leitura, ja medida em 09/10/2026: nenhum
+      valor diferente de zero, nenhum nulo, nenhum dependente). A coluna e uma copia morta de
+      `usage_count`, que e quem conta os usos; nenhuma RPC, gatilho, edge ou tela a escreve ou le.
+      Duas consultas, so leitura e de ROL FECHADO (so valem com `rol=ok`):
+      - **`14a-conferir-contador-duplicado-apagado`** (a consulta do lote, 7 linhas) prova DEPOIS do
+        apply: `used_count` AUSENTE de `public.coupons`; `usage_count` segue la, `integer DEFAULT 0`;
+        `validate_coupon_secure_v2` e `devolver_cupons_de_pedidos_mortos` com UMA sobrecarga e o corpo
+        que a `10a` e a `12a` ja travam (sha256, LF ou CRLF). Por isso o lote so fecha POSITIVO
+        depois que os lotes do item 9 (`20261203`) e do item 11 (`20261205`+`20261206`) estao no banco.
+      - **`14b-antes-contador-duplicado-coluna-presente-e-zerada`** (`ausenciaConfirmadaPor`, 11
+        linhas) prova o ANTES, as mesmas condicoes do pre-voo da migration. **Atencao: aqui o "antes"
+        e o CONTRARIO do item 11 (12b):** a coluna tem de estar PRESENTE (nao ausente), na forma do
+        baseline (integer, aceita NULL, DEFAULT 0), com ZERO linhas de valor diferente de 0 (NULL
+        conta), a seguranca por linha sem esconder cupom do papel que mede, ZERO dependentes da
+        coluna (visao, politica, gatilho, indice, constraint, coluna GERADA que a cita; so o DEFAULT
+        da propria coluna fica de fora) e nenhuma funcao, politica, gatilho ou visao de `public` que a
+        cite. O portao so exige que a consulta do antes seja POSITIVA (da mesma janela ou mais nova
+        que a do lote NEGATIVA); nao interpreta o que ela mede.
+      - **Caminho, uma loja por vez, e ordem com o front:** ledger sem a versao e sem evidencia →
+        `14a` (sai NEGATIVA: a coluna ainda existe) → `14b` MAIS NOVA que a `14a` e POSITIVA → UM
+        comando `aplicar-migrations.yml` com `20261207000000_o_contador_duplicado_do_cupom_morre.sql`
+        (o apply grava o ledger na mesma transacao) → o ensaio pede a `14a` DE NOVO, que tem de sair
+        POSITIVA. `14b` NEGATIVA (valor diferente de 0, NULL ou dependente): **PARAR, e o dono decide**
+        (nada e apagado: a migration refaz a mesma condicao dentro da transacao e recusa). `14a`
+        POSITIVA com a versao fora do ledger: PARAR (sem backfill). Banco novo com front velho nao
+        quebra (o front le `coupons` com `select *`); o front desta release so deixa de ter a coluna
+        nos tipos gerados.
+      - **O que o apply faz e nao faz:** APAGA UMA COLUNA; nenhuma linha de `coupons` muda e nenhum
+        `usage_count` e tocado. A migration trava a tabela (`SHARE ROW EXCLUSIVE`, leitura continua)
+        antes de conferir e usa `lock_timeout` de 5 s: se alguem segurar a tabela por mais que isso
+        ela FALHA sem gravar (erro 55P03) e basta repetir. Sem `CASCADE`. Desfazer:
+        `rollback-manual-20261207000000_o_contador_duplicado_do_cupom_morre.sql` recria a coluna
+        igual a do baseline com 0 em todas as linhas (e como so apagou com tudo 0, e o estado exato
+        de antes); executar por `psql -1 -f`, nunca pelo db-apply.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
+        rodar a `14a` e a `14b` DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/contador-duplicado-portao-viva.cjs` e
+        `tests/banco/contador-duplicado-viva.cjs` (Postgres 17 efemero, no `rpc-ci.yml`) provam que as
+        consultas DECIDEM certo e que a migration recusa/aplica como descrito, nao que a IKCOUS ou a
+        Savy estao no estado A ou B. Uma gravacao em `used_count` entre a `14b` e o apply nao e vista
+        pela `14b`: quem fecha essa janela e o pre-voo da migration.
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
