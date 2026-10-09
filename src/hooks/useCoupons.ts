@@ -7,11 +7,18 @@ import {
 } from "@/lib/cupomPreso";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
 import { supabase } from "@/lib/supabase";
-import type { Coupon } from "@/types";
+import type { ClienteDoCupom, Coupon } from "@/types";
 import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+
+/** Uma linha da busca de clientes do painel (sem CPF). */
+export interface ClienteEncontradoParaCupom {
+  readonly id: string;
+  readonly full_name: string | null;
+  readonly email: string | null;
+}
 
 /**
  * Em quantos minutos volta a vaga do cupom presa num pedido cancelado do
@@ -38,8 +45,33 @@ async function minutosDaVagaPresaDoCliente(
   }
 }
 
-export function useCoupons(autoFetch = false) {
+/**
+ * O banco desta loja já tem a coluna `coupons.alcance` (migration
+ * 20261208000000)? Lojas de teste recebem só o site, nunca a migration: site
+ * novo + banco antigo é combinação PERMANENTE lá. A sonda lê só a coluna e
+ * nenhuma linha (`limit(0)`): banco sem ela responde 42703.
+ *
+ * Só `true` quando a resposta veio limpa. Erro de rede, de permissão ou
+ * cliente que nem consegue perguntar também dão `false` — esconder a opção é
+ * de graça, oferecê-la num banco que a recusa quebra o salvar do cupom.
+ */
+async function bancoTemAlcanceDoCupom(): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("coupons").select("alcance").limit(0);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param autoFetch carrega a lista de cupons ao montar (telas do painel).
+ * @param sondarAlcance só o formulário do cupom precisa saber se o banco já
+ *   tem o "quem pode usar"; as outras telas não pagam a consulta extra.
+ */
+export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const { isAdmin } = useAuth();
+  const [alcanceSuportado, setAlcanceSuportado] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(
     () => cachedCouponsData || [],
   );
@@ -86,6 +118,17 @@ export function useCoupons(autoFetch = false) {
       fetchCoupons();
     }
   }, [fetchCoupons, autoFetch]);
+
+  useEffect(() => {
+    if (!sondarAlcance) return;
+    let vivo = true;
+    bancoTemAlcanceDoCupom().then((sim) => {
+      if (vivo) setAlcanceSuportado(sim);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [sondarAlcance]);
 
   const validateCoupon = useCallback(
     async (
@@ -168,6 +211,11 @@ export function useCoupons(autoFetch = false) {
             valid_until: coupon.validUntil,
             active: coupon.active ?? true,
             usage_count: 0,
+            // Frente B: só vai quando NÃO é o padrão — criar cupom secreto
+            // continua funcionando com o banco de antes da 20261208000000.
+            ...(coupon.alcance && coupon.alcance !== "codigo"
+              ? { alcance: coupon.alcance }
+              : {}),
           },
         ])
         .select()
@@ -231,6 +279,17 @@ export function useCoupons(autoFetch = false) {
     if ("validUntil" in updates)
       dbUpdates.valid_until = updates.validUntil ?? null;
     if ("active" in updates) dbUpdates.active = updates.active;
+    // Frente B: o alcance só vai quando MUDOU em relação ao que a tela tinha
+    // — salvar um cupom secreto continua funcionando com o banco de antes da
+    // 20261208000000 (sem a coluna). Voltar de "exclusivo/vitrine" para
+    // "codigo" é mudança e VAI. Cupom que não está na lista carregada tem
+    // anterior desconhecido: o pedido vai como veio (nunca engolir a troca).
+    if ("alcance" in updates && updates.alcance) {
+      const anterior = oldCoupons.find((c) => c.id === id);
+      const mudou =
+        !anterior || (anterior.alcance ?? "codigo") !== updates.alcance;
+      if (mudou) dbUpdates.alcance = updates.alcance;
+    }
 
     try {
       const { error } = await supabase
@@ -288,6 +347,57 @@ export function useCoupons(autoFetch = false) {
     }
   };
 
+  /** Contas que podem usar um cupom exclusivo (RPC do painel, sem CPF). */
+  const listarClientesDoCupom = useCallback(
+    async (couponId: string): Promise<ClienteDoCupom[]> => {
+      const { data, error } = await supabase.rpc("admin_cupom_clientes", {
+        p_coupon_id: couponId,
+      });
+      if (error) throw error;
+      return (data ?? []).map((l) => ({
+        id: l.user_id,
+        nome: l.nome,
+        email: l.email,
+      }));
+    },
+    [],
+  );
+
+  /** Troca a lista inteira (atômica no servidor; só administradora ATUAL). */
+  const definirClientesDoCupom = useCallback(
+    async (couponId: string, clientes: readonly string[]): Promise<void> => {
+      const { error } = await supabase.rpc("admin_cupom_definir_clientes", {
+        p_coupon_id: couponId,
+        p_clientes: [...clientes],
+      });
+      if (error) throw error;
+    },
+    [],
+  );
+
+  /** Busca de contas para a lista do exclusivo (mesma RPC da tela de
+   * Clientes e do balcão; a porta de admin é no servidor; sem CPF). */
+  const buscarClientesParaCupom = useCallback(
+    async (termo: string): Promise<ClienteEncontradoParaCupom[]> => {
+      const { data, error } = await supabase.rpc("get_admin_customers_paged", {
+        p_search: termo,
+        p_sort_field: "created_at",
+        p_sort_direction: "desc",
+        p_page: 0,
+        p_page_size: 8,
+      });
+      if (error) throw error;
+      const linhas = ((data as { data?: unknown[] } | null)?.data ??
+        []) as Array<Record<string, unknown>>;
+      return linhas.map((l) => ({
+        id: String(l.id),
+        full_name: typeof l.full_name === "string" ? l.full_name : null,
+        email: typeof l.email === "string" ? l.email : null,
+      }));
+    },
+    [],
+  );
+
   const getCouponStats = useCallback(async () => {
     if (!isAdmin) {
       toast.error("Permissão negada");
@@ -312,5 +422,10 @@ export function useCoupons(autoFetch = false) {
     updateCoupon,
     deleteCoupon,
     getCouponStats,
+    /** `true` só depois da sonda confirmar a coluna `alcance` no banco. */
+    alcanceSuportado,
+    listarClientesDoCupom,
+    definirClientesDoCupom,
+    buscarClientesParaCupom,
   };
 }
