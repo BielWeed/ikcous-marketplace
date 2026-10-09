@@ -513,6 +513,171 @@ describe("achados da 2ª revisão e do comentário do dono no PR", () => {
     );
   }, 60_000);
 
+  /** Âncora do worktree: gravada por `entrar` DENTRO do gitdir (fora da árvore de trabalho). */
+  const ancoraDe = (wtPath: string) =>
+    join(
+      git(wtPath, "rev-parse", "--path-format=absolute", "--absolute-git-dir")
+        .out,
+      "paralelo-ancora.json",
+    );
+
+  /**
+   * B2 (re-revisão do #782). Repo em que o manifesto foi ALARGADO num commit antigo e depois
+   * estreitado: a → [src/a/**, src/c/**] em C1, de volta a a → [src/a/**] em C2. O worktree da
+   * frente `a` nasce em C2. Um lane.json com `base` = C1 e o manifesto largo embutido passava em
+   * `verificarFaixa` (C1 é ancestral do HEAD e o blob de C1 bate com o embutido).
+   */
+  function repoComManifestoAlargadoNoPassado() {
+    const repo = novoRepo();
+    const largo = {
+      ...MANIFESTO,
+      frentes: MANIFESTO.frentes.map((f) =>
+        f.nome === "a" ? { ...f, posse: [...f.posse, "src/c/**"] } : f,
+      ),
+    };
+    escrever(repo, M, JSON.stringify(largo));
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "chore(tooling): alarga o manifesto");
+    const c1 = git(repo, "rev-parse", "HEAD").out;
+    escrever(repo, M, JSON.stringify(MANIFESTO));
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "chore(tooling): estreita o manifesto");
+    return { repo, c1, largo };
+  }
+
+  it("B2/E2c: trocar só o NOME da frente no lane.json não dá a faixa de outra frente", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    const lane = JSON.parse(readFileSync(faixaDe(A), "utf8"));
+    lane.frente = "b"; // o manifesto embutido segue idêntico ao commitado: só o nome muda
+    writeFileSync(faixaDe(A), JSON.stringify(lane));
+    escrever(A, "src/b/y.ts", "export const b = 99;\n"); // arquivo da frente b
+
+    const conf = frente(A, "conferir");
+    expect(conf.status, conf.out).toBe(1);
+    expect(conf.out).toMatch(/faixa não confiável: .*frente/);
+    expect(frente(A, "commitar", "-m", "feat(ui): b").status).toBe(1);
+    const hook = guarda(A, [], join(A, "src/b/y.ts"), "Write", "frente");
+    expect(hook.status).toBe(2);
+    expect(hook.out).toMatch(/faixa não confiável/);
+  }, 60_000);
+
+  it("B2/E2d: base trocada por um commit antigo com manifesto mais largo é recusada", () => {
+    const { repo, c1, largo } = repoComManifestoAlargadoNoPassado();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    const lane = JSON.parse(readFileSync(faixaDe(A), "utf8"));
+    expect(lane.base).not.toBe(c1);
+    // ainda não adulterado: a faixa estreita vale e src/c/ está fora dela
+    escrever(A, "src/c/z.ts", "export const z = 1;\n");
+    expect(frente(A, "conferir").status).toBe(1);
+
+    lane.base = c1;
+    lane.manifesto = largo; // idêntico ao blob de `origem` em C1, que é ancestral do HEAD
+    writeFileSync(faixaDe(A), JSON.stringify(lane));
+    // sem a correção: o hook deixava escrever e `commitar` COMMITAVA src/c/z.ts (fora da faixa real)
+    const hook = guarda(A, [], join(A, "src/c/z.ts"), "Write", "frente");
+    expect(hook.status, hook.out).toBe(2);
+    expect(hook.out).toMatch(/faixa não confiável/);
+    const commit = frente(A, "commitar", "-m", "feat(ui): c");
+    expect(commit.status, commit.out).toBe(1);
+    expect(commit.out).toMatch(/faixa não confiável: .*base/);
+    const conf = frente(A, "conferir");
+    expect(conf.status, conf.out).toBe(1);
+    expect(conf.out).toMatch(/faixa não confiável: .*base/);
+  }, 60_000);
+
+  it("B2: o nome da frente também fica amarrado ao ramo paralelo/<plano>/<frente> (defesa sem a âncora)", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    // mesmo que a âncora (no gitdir) fosse reescrita junto com o lane.json, o ramo ainda diz quem é
+    const lane = JSON.parse(readFileSync(faixaDe(A), "utf8"));
+    lane.frente = "b";
+    writeFileSync(faixaDe(A), JSON.stringify(lane));
+    const ancora = JSON.parse(readFileSync(ancoraDe(A), "utf8"));
+    ancora.frente = "b";
+    writeFileSync(ancoraDe(A), JSON.stringify(ancora));
+    const conf = frente(A, "conferir");
+    expect(conf.status, conf.out).toBe(1);
+    expect(conf.out).toMatch(/ramo/);
+  }, 60_000);
+
+  it("B2: entrar numa frente que não é a do ramo é recusado, e deletar o lane.json não permite refazer", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    const lane = readFileSync(faixaDe(A), "utf8");
+    rmSync(faixaDe(A)); // a frente apaga a faixa para tentar `entrar` como outra frente
+    const troca = frente(A, "entrar", M, "b");
+    expect(troca.status).toBe(1);
+    expect(troca.out).toMatch(/registrad/);
+    expect(existsSync(faixaDe(A))).toBe(false);
+    // a mesma frente tampouco refaz: a âncora persiste e a decisão volta ao orquestrador
+    expect(frente(A, "entrar", M, "a").status).toBe(1);
+    // restaurar o lane.json original devolve a faixa (a âncora e o arquivo concordam)
+    writeFileSync(faixaDe(A), lane);
+    escrever(A, "src/a/x.ts", "export const a = 3;\n");
+    expect(frente(A, "conferir").status).toBe(0);
+  }, 60_000);
+
+  it("B2 (compat): worktree registrado antes da âncora existir é recusado com mensagem clara", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    rmSync(ancoraDe(A)); // o que um worktree de uma versão anterior tem: lane.json, sem âncora
+    const conf = frente(A, "conferir");
+    expect(conf.status).toBe(1);
+    expect(conf.out).toMatch(/sem âncora/);
+    expect(conf.out).toMatch(/recri/); // diz o que fazer: recriar o worktree
+    expect(guarda(A, [], join(A, "src/a/x.ts"), "Write", "frente").status).toBe(
+      2,
+    );
+  }, 60_000);
+
+  it("B2: worktree NATIVO de subagente (ramo worktree-agent-<id>): o nome não vem do ramo, a âncora segura", () => {
+    const repo = novoRepo();
+    const A = join(repo, ".claude", "worktrees", "agent-x1");
+    expect(
+      git(repo, "worktree", "add", "-q", "-b", "worktree-agent-x1", A).status,
+    ).toBe(0);
+    const entra = frente(A, "entrar", M, "a");
+    expect(entra.status, entra.out).toBe(0);
+    escrever(A, "src/a/x.ts", "export const a = 5;\n");
+    expect(frente(A, "conferir").status).toBe(0);
+    // a âncora diz "a": trocar o nome no lane.json é recusado mesmo sem ramo paralelo/…
+    const lane = JSON.parse(readFileSync(faixaDe(A), "utf8"));
+    lane.frente = "b";
+    writeFileSync(faixaDe(A), JSON.stringify(lane));
+    const conf = frente(A, "conferir");
+    expect(conf.status, conf.out).toBe(1);
+    expect(conf.out).toMatch(/faixa não confiável: .*frente/);
+    // e a faixa não se refaz com outro nome nem depois de apagar o lane.json
+    rmSync(faixaDe(A));
+    expect(frente(A, "entrar", M, "b").status).toBe(1);
+  }, 60_000);
+
+  it("B2: o fluxo legítimo não muda (entrar, conferir, commitar, integrar) e a âncora mora fora da árvore", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    const ancora = JSON.parse(readFileSync(ancoraDe(A), "utf8"));
+    const lane = JSON.parse(readFileSync(faixaDe(A), "utf8"));
+    expect(ancora).toMatchObject({
+      plano: "t",
+      frente: "a",
+      base: lane.base,
+      origem: M,
+    });
+    expect(ancoraDe(A).startsWith(A)).toBe(false); // gitdir, não a árvore de trabalho
+    expect(git(A, "status", "--porcelain").out).toBe(""); // a âncora não sujou nada
+    escrever(A, "src/a/x.ts", "export const a = 4;\n");
+    expect(frente(A, "conferir").status).toBe(0);
+    expect(frente(A, "commitar", "-m", "feat(ui): a").status).toBe(0);
+    expect(frente(A, "conferir").status).toBe(0); // depois do commit a base não muda
+  }, 60_000);
+
   it("integrar roda num worktree de INTEGRAÇÃO (sem trocar de ramo na principal) e não no de uma frente", () => {
     const repo = novoRepo();
     for (const n of ["a", "b"])
