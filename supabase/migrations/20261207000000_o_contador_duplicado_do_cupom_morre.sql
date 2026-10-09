@@ -31,8 +31,11 @@
 --
 -- 4. O PRE-VOO (RECUSA, COM O NOME DO QUE DIVERGE, SEM GRAVAR NADA)
 --
---   (a) a tabela `public.coupons` existe e `usage_count` existe (sem o contador
---       verdadeiro, apagar o duplicado deixaria o cupom sem contador);
+--   (a) a tabela `public.coupons` existe e `usage_count` existe NA FORMA DO BASELINE
+--       (integer, aceita NULL, DEFAULT 0, nem gerada nem identidade): sem o contador
+--       verdadeiro, apagar o duplicado deixaria o cupom sem contador; e com ele em outra
+--       forma a consulta 14a (que cobra essa mesma forma depois do apply) sairia NEGATIVA
+--       e o portao da release PARARIA, com a coluna ja apagada. Melhor recusar antes;
 --   (b) `used_count` tem a forma do baseline (integer, aceita NULL, DEFAULT 0, nem
 --       gerada nem identidade): e o que o rollback recria, e e o que a medicao
 --       confirmou. Forma diferente e coluna que alguem mexeu: o dono decide;
@@ -139,6 +142,20 @@ BEGIN
        AND a.attname = 'usage_count' AND a.attnum > 0 AND NOT a.attisdropped
   ) THEN
     RAISE EXCEPTION 'PREFLIGHT_20261207: public.coupons.usage_count nao existe -- apagar used_count deixaria o cupom sem contador; nada foi apagado.';
+  END IF;
+
+  -- (a') a forma do baseline do contador que FICA: a mesma que a 14b mede antes e a 14a
+  --      cobra depois.
+  SELECT a.atttypid = 'integer'::regtype AND NOT a.attnotnull
+         AND a.attgenerated = '' AND a.attidentity = ''
+         AND pg_get_expr(ad.adbin, ad.adrelid) IS NOT DISTINCT FROM '0'
+    INTO v_forma_ok
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+   WHERE a.attrelid = 'public.coupons'::regclass
+     AND a.attname = 'usage_count' AND a.attnum > 0 AND NOT a.attisdropped;
+  IF NOT COALESCE(v_forma_ok, false) THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261207: public.coupons.usage_count nao tem a forma do baseline (integer, aceita NULL, DEFAULT 0, nem gerada nem identidade) -- e o contador que fica; nada foi apagado.';
   END IF;
 
   -- (b) a forma do baseline: e a que o rollback recria.

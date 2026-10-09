@@ -23,7 +23,11 @@
 --                        aplicada: o caminho e' a 14a, nao esta).
 --   * forma           -- integer, aceita NULL, DEFAULT 0, nem gerada nem identidade: a
 --                        forma que o rollback recria.
---   * usage_count     -- o contador verdadeiro existe.
+--   * usage_count     -- o contador verdadeiro existe e esta na forma do baseline (integer,
+--                        aceita NULL, DEFAULT 0, nem gerada nem identidade): a MESMA forma que
+--                        o pre-voo da migration exige e que a 14a cobra depois do apply. Sem
+--                        isso a loja passaria aqui, apagaria, e a 14a sairia NEGATIVA com a
+--                        coluna ja apagada.
 --   * seguranca por linha -- `row_security_active('public.coupons')` e' falso para este
 --                        papel: sem isso a contagem de baixo so veria as linhas que o
 --                        papel enxerga e "tudo zero" nao valeria nada.
@@ -59,8 +63,11 @@ WITH tab AS (
    WHERE a.attrelid = (SELECT oid FROM tab)
      AND a.attname = 'used_count' AND a.attnum > 0 AND NOT a.attisdropped
 ), uso AS (
-  SELECT a.attnum
+  SELECT a.atttypid = 'integer'::regtype AND NOT a.attnotnull
+         AND a.attgenerated = '' AND a.attidentity = ''
+         AND pg_get_expr(ad.adbin, ad.adrelid) IS NOT DISTINCT FROM '0' AS forma_ok
     FROM pg_attribute a
+    LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
    WHERE a.attrelid = (SELECT oid FROM tab)
      AND a.attname = 'usage_count' AND a.attnum > 0 AND NOT a.attisdropped
 ), dep AS (
@@ -93,8 +100,8 @@ WITH tab AS (
   SELECT 'coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)', 'sim',
          COALESCE((SELECT CASE WHEN c.forma_ok THEN 'sim' ELSE 'nao' END FROM col c), 'AUSENTE')
   UNION ALL
-  SELECT 'coupons.usage_count: coluna presente', 'PRESENTE',
-         CASE WHEN EXISTS (SELECT 1 FROM uso) THEN 'PRESENTE' ELSE 'AUSENTE' END
+  SELECT 'coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)', 'sim',
+         COALESCE((SELECT CASE WHEN u.forma_ok THEN 'sim' ELSE 'nao' END FROM uso u), 'AUSENTE')
   UNION ALL
   SELECT 'public.coupons: a seguranca por linha vale para este papel', 'nao',
          CASE WHEN (SELECT oid FROM tab) IS NULL THEN 'AUSENTE'

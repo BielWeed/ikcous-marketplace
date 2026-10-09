@@ -4,7 +4,7 @@
  * Prova VIVA das duas consultas do PORTAO DA RELEASE para a migration 20261207000000 (a
  * coluna duplicada de contagem de uso do cupom, `coupons.used_count`, e apagada), num
  * Postgres EFEMERO local -- nada de rede, nada de loja:
- *   14a-conferir-contador-duplicado-apagado.sql                       (DEPOIS do apply: 7 linhas)
+ *   14a-conferir-contador-duplicado-apagado.sql                       (DEPOIS do apply: 4 linhas)
  *   14b-antes-contador-duplicado-coluna-presente-e-zerada.sql         (ANTES do apply: 11 linhas)
  * Elas sao a "prova de objetos" do lote 20261207000000 em scripts/frota/canais-de-backend.json:
  * sem elas o portao (scripts/frota/publicar-release.mjs) bloqueia a release com esta migration
@@ -25,8 +25,8 @@
  * para o portao, com `rol=ok`; "reprova" quer dizer NEGATIVA (nunca POSITIVA).
  *
  * BASES: `pre` (a arvore SEM a 20261207000000, tres cupons com used_count = 0); `aplicado` (`pre` +
- * o ARQUIVO aplicado de verdade, LF); `crlf` (o texto da migration com CRLF; e os corpos das duas
- * funcoes travadas reescritos com CRLF, como num checkout Windows).
+ * o ARQUIVO aplicado de verdade, LF); `crlf` (o texto da migration com CRLF, como num checkout
+ * Windows).
  *
  * CASOS (cada um com a LINHA exata que reprova; o veredito real, com rol=ok e o ok_false esperado,
  * e' conferido em TODO caso):
@@ -34,18 +34,19 @@
  *  14b NEGATIVOS  valor 3; NULL; coluna GERADA que cita used_count (so a linha dos dependentes);
  *                 visao, politica e gatilho que a citam (dependentes + a linha do texto); indice
  *                 (dependentes); funcao que a cita (so a linha das funcoes); forma diferente do
- *                 baseline; usage_count ausente; o papel que SOFRE a RLS e nao ve a linha com valor 3
+ *                 baseline; usage_count ausente ou em outra forma (bigint, sem default, NOT NULL); o
+ *                 papel que SOFRE a RLS e nao ve a linha com valor 3
  *                 (reprova a linha da RLS: o "tudo zero" dele nao vale); coluna JA apagada (`aplicado`:
  *                 as linhas dizem AUSENTE, nunca "todas as linhas").
  *  14a POSITIVOS  em `aplicado` e `crlf` (IGUAIS ao `cheio`, a arvore inteira, linha a linha).
  *  14a NEGATIVOS  coluna ainda presente (`pre`, e depois do rollback); usage_count com outro tipo,
- *                 sem default ou ausente; corpo de validate_coupon_secure_v2 e de
- *                 devolver_cupons_de_pedidos_mortos com 1 byte a mais; sobrecarga extra de cada uma;
- *                 cada uma ausente.
+ *                 sem default, NOT NULL ou ausente; a tabela coupons ausente. A 14a NAO trava corpo
+ *                 de funcao (a migration nao toca funcao; a 10a e a 12a travam os delas): a prova
+ *                 confere que uma funcao de cupom alterada NAO a reprova.
  *  MUTANTES       cada linha da consulta ignorada e cada clausula composta desligada no texto do
  *                 .sql (a exclusao so do default da PROPRIA coluna: voltar a excluir todo pg_attrdef
  *                 esconde a coluna gerada; nao excluir nada reprova o positivo; o guarda AUSENTE da
- *                 contagem; o hash CRLF de cada funcao) deixa um caso PASSAR e esta prova ficaria
+ *                 contagem) deixa um caso PASSAR e esta prova ficaria
  *                 VERMELHA -- a saida vermelha de cada um e' impressa.
  *  FECHADO        resposta PARCIAL e linha duplicada tem rol=invalido: o portao NUNCA as trata como
  *                 positivas; o rol de uma consulta nao vale para a outra.
@@ -67,7 +68,7 @@
  *        node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-portao-viva.cjs
  */
 
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection, security/detect-non-literal-regexp --
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection --
  * Os caminhos vem do proprio repositorio (a pasta de consultas, as migrations e o
  * publicar-release.mjs), nunca de entrada de rede; as chaves de objeto vem de constantes e
  * mapas fechados deste arquivo (nomes das consultas, das linhas e dos bancos de teste). */
@@ -103,26 +104,23 @@ const SQL = {
   [B]: fs.readFileSync(path.join(CONSULTAS, `${B}.sql`), "utf8"),
 };
 const ROL = { [A]: CONF.ROL_DA_14A, [B]: CONF.ROL_DA_14B };
-const N_LINHAS = { [A]: 7, [B]: 11 };
+const N_LINHAS = { [A]: 4, [B]: 11 };
 const SIG_VAL = "public.validate_coupon_secure_v2(text,numeric)";
-const SIG_VAR = "public.devolver_cupons_de_pedidos_mortos()";
 
 // Os nomes das linhas (o rol fechado do codigo tem os mesmos).
 const CONTROLE = "controle: funcoes de public visiveis a este papel";
+const USAGE_FORMA = "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)";
 const LA = {
   controle: CONTROLE,
+  tabela: "public.coupons: tabela",
   coluna: "coupons.used_count: coluna",
-  usage: "coupons.usage_count: tipo e default",
-  valSobre: "validate_coupon_secure_v2: sobrecargas",
-  valHash: "validate_coupon_secure_v2: corpo (sha256)",
-  varSobre: "devolver_cupons_de_pedidos_mortos: sobrecargas",
-  varHash: "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  usage: USAGE_FORMA,
 };
 const LB = {
   controle: CONTROLE,
   presente: "coupons.used_count: coluna presente",
   forma: "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
-  usage: "coupons.usage_count: coluna presente",
+  usage: USAGE_FORMA,
   rls: "public.coupons: a seguranca por linha vale para este papel",
   linhas: "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
   dep: "coupons.used_count: dependentes (fora o default da propria coluna)",
@@ -599,10 +597,8 @@ async function main() {
   aplicarArquivo(aplicado, ARQ);
   const crlf = await clonar("crlf", pre);
   aplicarArquivo(crlf, ARQ, { crlf: true });
-  for (const sig of [SIG_VAL, SIG_VAR])
-    await reescreverCorpo(crlf, sig, (c) => c.replace(/\n/g, "\r\n"));
   const cheioAntes = await rodar(aplicado, A);
-  ok(`bases montadas: pre (arvore sem a 20261207, 3 cupons com used_count 0), aplicado (+ o ARQUIVO aplicado de verdade), crlf (texto e corpos com CRLF); o ARQUIVO aplica sem erro`);
+  ok(`bases montadas: pre (arvore sem a 20261207, 3 cupons com used_count 0), aplicado (+ o ARQUIVO aplicado de verdade), crlf (texto com CRLF); o ARQUIVO aplica sem erro`);
 
   // ----------------------------------------------------------- 14b POSITIVOS
   {
@@ -643,6 +639,9 @@ async function main() {
   await variante("funcao", `CREATE FUNCTION public.fn_prova() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`);
   await variante("forma", `ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint`);
   await variante("usage", `ALTER TABLE public.coupons DROP COLUMN usage_count`);
+  await variante("usageTipo", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`);
+  await variante("usageDefault", `ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT`);
+  await variante("usageNotNull", `ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL`);
   await variante("cego", `UPDATE public.coupons SET used_count = 3 WHERE code = 'CP1'`);
   const casos14b = [
     ["valor 3 em uma linha", nb.valor, [LB.linhas]],
@@ -655,6 +654,9 @@ async function main() {
     ["funcao que cita used_count no corpo", nb.funcao, [LB.fn]],
     ["forma diferente do baseline (bigint)", nb.forma, [LB.forma]],
     ["usage_count ausente", nb.usage, [LB.usage]],
+    ["usage_count bigint", nb.usageTipo, [LB.usage]],
+    ["usage_count sem default", nb.usageDefault, [LB.usage]],
+    ["usage_count NOT NULL", nb.usageNotNull, [LB.usage]],
   ];
   for (const [rotulo, db, esperadas] of casos14b)
     await negativo(B, `14b ${rotulo}`, db, esperadas);
@@ -675,7 +677,7 @@ async function main() {
     for (const item of [LB.presente, LB.forma, LB.linhas, LB.dep])
       assert.equal(linha(rows, item).vivo, "AUSENTE", item);
   }
-  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao (so a das funcoes), forma bigint, usage_count ausente; o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
+  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
 
   // ----------------------------------------------------------- 14a POSITIVOS
   {
@@ -686,7 +688,7 @@ async function main() {
     // IGUAL ao banco da arvore inteira (a mesma resposta linha a linha)
     const cheio = await rodar(aplicado, A);
     assert.deepEqual(cheio, cheioAntes);
-    ok("14a POSITIVA depois do apply real (LF), com os corpos das duas funcoes travadas em CRLF, com o papel minimo e com search_path vazio");
+    ok("14a POSITIVA depois do apply real (LF e CRLF), com o papel minimo e com search_path vazio");
   }
 
   // ----------------------------------------------------------- 14a NEGATIVOS
@@ -702,14 +704,11 @@ async function main() {
   await varianteA("usageTipo", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`);
   await varianteA("usageDefault", `ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT`);
   await varianteA("usageAusente", `ALTER TABLE public.coupons DROP COLUMN usage_count`);
-  await varianteA("valExtra", `CREATE FUNCTION public.validate_coupon_secure_v2(p_code text, p_subtotal numeric, p_x integer) RETURNS jsonb LANGUAGE sql AS $f$ SELECT '{}'::jsonb $f$`);
-  await varianteA("varExtra", `CREATE FUNCTION public.devolver_cupons_de_pedidos_mortos(p_x integer) RETURNS integer LANGUAGE sql AS $f$ SELECT 1 $f$`);
-  await varianteA("valAusente", `DROP FUNCTION public.validate_coupon_secure_v2(text, numeric)`);
-  await varianteA("varAusente", `DROP FUNCTION public.devolver_cupons_de_pedidos_mortos()`);
+  await varianteA("usageNotNull", `ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL`);
+  await varianteA("semTabela", `ALTER TABLE public.coupons RENAME TO coupons_x`);
+  // a 14a NAO trava corpo de funcao: uma funcao de cupom alterada nao a reprova
   const valByte = await clonar("valByte", aplicado);
   await reescreverCorpo(valByte, SIG_VAL, (c) => `${c} `);
-  const varByte = await clonar("varByte", aplicado);
-  await reescreverCorpo(varByte, SIG_VAR, (c) => `${c} `);
   const volta = await clonar("volta", aplicado);
   await usar(volta, (c) => c.query(fs.readFileSync(path.join(MIGRATIONS, ARQ_RB), "utf8")));
   const casos14a = [
@@ -718,23 +717,22 @@ async function main() {
     ["usage_count com outro tipo", na.usageTipo, [LA.usage]],
     ["usage_count sem default", na.usageDefault, [LA.usage]],
     ["usage_count ausente", na.usageAusente, [LA.usage]],
-    ["validate_coupon_secure_v2 com 1 byte a mais", valByte, [LA.valHash]],
-    ["devolver_cupons_de_pedidos_mortos com 1 byte a mais", varByte, [LA.varHash]],
-    ["validate_coupon_secure_v2 com sobrecarga extra", na.valExtra, [LA.valSobre]],
-    ["devolver_cupons_de_pedidos_mortos com sobrecarga extra", na.varExtra, [LA.varSobre]],
-    ["validate_coupon_secure_v2 ausente", na.valAusente, [LA.valSobre, LA.valHash]],
-    ["devolver_cupons_de_pedidos_mortos ausente", na.varAusente, [LA.varSobre, LA.varHash]],
+    ["usage_count NOT NULL", na.usageNotNull, [LA.usage]],
+    ["tabela coupons ausente", na.semTabela, [LA.tabela, LA.usage]],
   ];
   for (const [rotulo, db, esperadas] of casos14a)
     await negativo(A, `14a ${rotulo}`, db, esperadas);
-  ok("14a NEGATIVA, UMA linha certa por defeito: coluna ainda presente (antes do apply e depois do rollback), usage_count com outro tipo/sem default/ausente, corpo de cada funcao travada com 1 byte a mais, sobrecarga extra, funcao ausente");
+  await exigirPositiva(A, "14a com o corpo de validate_coupon_secure_v2 alterado (a 14a nao o trava)", await rodar(valByte, A));
+  ok("14a NEGATIVA, UMA linha certa por defeito: coluna ainda presente (antes do apply e depois do rollback), usage_count com outro tipo/sem default/NOT NULL/ausente, tabela ausente; e um corpo de funcao de cupom alterado NAO a reprova (quem o trava sao a 10a e a 12a)");
 
   // ----------------------------------------------------------- MUTANTES
   console.log("\n  --- MUTANTES do texto das consultas (cada um tem de deixar um caso PASSAR) ---");
   // 14b: cada linha ignorada
   await mutanteDaLinha("14b sem a linha 'coluna presente'", B, LB.presente, aplicado, [LB.presente, LB.forma, LB.linhas, LB.dep]);
   await mutanteDaLinha("14b sem a linha 'forma'", B, LB.forma, nb.forma, [LB.forma]);
-  await mutanteDaLinha("14b sem a linha 'usage_count'", B, LB.usage, nb.usage, [LB.usage]);
+  await mutanteDaLinha("14b sem a linha 'usage_count' (ausente)", B, LB.usage, nb.usage, [LB.usage]);
+  await mutanteDaLinha("14b sem a linha 'usage_count' (bigint)", B, LB.usage, nb.usageTipo, [LB.usage]);
+  await mutanteDaLinha("14b sem a linha 'usage_count' (NOT NULL)", B, LB.usage, nb.usageNotNull, [LB.usage]);
   await mutanteDaLinha("14b sem a linha da RLS", B, LB.rls, nb.cego, [LB.rls], { papel: P.cego });
   await mutanteDaLinha("14b sem a linha das linhas diferentes de 0", B, LB.linhas, nb.valor, [LB.linhas]);
   await mutanteDaLinha("14b sem a linha dos dependentes", B, LB.dep, nb.gerada, [LB.dep]);
@@ -772,28 +770,11 @@ async function main() {
     [LB.linhas],
   );
   // 14a: cada linha ignorada
+  await mutanteDaLinha("14a sem a linha da tabela", A, LA.tabela, na.semTabela, [LA.tabela, LA.usage]);
   await mutanteDaLinha("14a sem a linha da coluna", A, LA.coluna, pre, [LA.coluna]);
-  await mutanteDaLinha("14a sem a linha do usage_count", A, LA.usage, na.usageTipo, [LA.usage]);
-  await mutanteDaLinha("14a sem as sobrecargas de validate", A, LA.valSobre, na.valExtra, [LA.valSobre]);
-  await mutanteDaLinha("14a sem o corpo de validate", A, LA.valHash, valByte, [LA.valHash]);
-  await mutanteDaLinha("14a sem as sobrecargas da varredura", A, LA.varSobre, na.varExtra, [LA.varSobre]);
-  await mutanteDaLinha("14a sem o corpo da varredura", A, LA.varHash, varByte, [LA.varHash]);
-  // 14a: o hash CRLF de cada funcao
-  for (const [rotulo, hexLinha] of [
-    ["validate", "4b096e67be79665d70e86ff5e94953ecf5842cd64abca882abac0f6cbe328279"],
-    ["varredura", "c7e38a04defe6b286519f2325c6d4d8ec727f57c4b0edbb5bc5831d936fbe9b8"],
-  ]) {
-    const sql = SQL[A];
-    const re = new RegExp(`,\\s*'${hexLinha}'\\)`);
-    assert.ok(re.test(sql), `nao achei o hash CRLF de ${rotulo}`);
-    await mutantePositivoTemQueSerPego(
-      `14a sem o hash CRLF de ${rotulo} (o checkout Windows reprovaria)`,
-      A,
-      [[sql.match(re)[0], ")"]],
-      crlf,
-    );
-  }
-  ok("MUTANTES do texto das consultas: cada uma das linhas da 14b e da 14a ignorada (menos a de controle, sem negativo local), a exclusao do default da PROPRIA coluna (voltar a excluir todo pg_attrdef esconde a coluna gerada; nao excluir nada reprova o positivo), o guarda AUSENTE da contagem, NULL como 0 e o hash CRLF de cada funcao deixam um caso PASSAR e a prova ficaria VERMELHA");
+  await mutanteDaLinha("14a sem a linha do usage_count (bigint)", A, LA.usage, na.usageTipo, [LA.usage]);
+  await mutanteDaLinha("14a sem a linha do usage_count (NOT NULL)", A, LA.usage, na.usageNotNull, [LA.usage]);
+  ok("MUTANTES do texto das consultas: cada uma das linhas da 14b e da 14a ignorada (menos a de controle, sem negativo local), a exclusao do default da PROPRIA coluna (voltar a excluir todo pg_attrdef esconde a coluna gerada; nao excluir nada reprova o positivo), o guarda AUSENTE da contagem e NULL como 0 deixam um caso PASSAR e a prova ficaria VERMELHA");
 
   // ----------------------------------------------------------- ROL FECHADO
   {
@@ -901,7 +882,7 @@ async function main() {
       // E1: o veredito real do processo filho
       const e1 = await executar(aplicado, A);
       assert.equal(e1.codigo, 0, e1.saida);
-      assert.deepEqual(PORTAO.lerVeredicto(e1.saida, A), { ref: REF_SAVY, sha: SHA40, linhas: 7, okFalse: 0, naoBooleano: 0, rol: "ok" });
+      assert.deepEqual(PORTAO.lerVeredicto(e1.saida, A), { ref: REF_SAVY, sha: SHA40, linhas: 4, okFalse: 0, naoBooleano: 0, rol: "ok" });
       const e1b = await executar(pre, B);
       assert.deepEqual(PORTAO.lerVeredicto(e1b.saida, B), { ref: REF_SAVY, sha: SHA40, linhas: 11, okFalse: 0, naoBooleano: 0, rol: "ok" });
       // E2: banco inexistente -> HTTP 400, saida 1, NENHUM veredito, SEM_EVIDENCIA

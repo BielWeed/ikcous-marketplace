@@ -303,16 +303,18 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       valor diferente de zero, nenhum nulo, nenhum dependente). A coluna e uma copia morta de
       `usage_count`, que e quem conta os usos; nenhuma RPC, gatilho, edge ou tela a escreve ou le.
       Duas consultas, so leitura e de ROL FECHADO (so valem com `rol=ok`):
-      - **`14a-conferir-contador-duplicado-apagado`** (a consulta do lote, 7 linhas) prova DEPOIS do
-        apply: `used_count` AUSENTE de `public.coupons`; `usage_count` segue la, `integer DEFAULT 0`;
-        `validate_coupon_secure_v2` e `devolver_cupons_de_pedidos_mortos` com UMA sobrecarga e o corpo
-        que a `10a` e a `12a` ja travam (sha256, LF ou CRLF). Por isso o lote so fecha POSITIVO
-        depois que os lotes do item 9 (`20261203`) e do item 11 (`20261205`+`20261206`) estao no banco.
+      - **`14a-conferir-contador-duplicado-apagado`** (a consulta do lote, 4 linhas) prova DEPOIS do
+        apply: `public.coupons` presente; `used_count` AUSENTE; `usage_count` segue la na forma do
+        baseline (`integer`, aceita NULL, `DEFAULT 0`). Ela **nao** trava corpo de funcao: a migration
+        nao toca funcao nenhuma, e a `10a` e a `12a` ja travam o corpo de `validate_coupon_secure_v2`
+        e de `devolver_cupons_de_pedidos_mortos` nos lotes delas (travar o mesmo hash aqui deixaria
+        este lote vermelho a cada migration futura que mudasse essas funcoes).
       - **`14b-antes-contador-duplicado-coluna-presente-e-zerada`** (`ausenciaConfirmadaPor`, 11
         linhas) prova o ANTES, as mesmas condicoes do pre-voo da migration. **Atencao: aqui o "antes"
         e o CONTRARIO do item 11 (12b):** a coluna tem de estar PRESENTE (nao ausente), na forma do
-        baseline (integer, aceita NULL, DEFAULT 0), com ZERO linhas de valor diferente de 0 (NULL
-        conta), a seguranca por linha sem esconder cupom do papel que mede, ZERO dependentes da
+        baseline (integer, aceita NULL, DEFAULT 0), `usage_count` na MESMA forma (e o contador que
+        fica e o que a `14a` cobra depois: sem isso a loja passaria na `14b`, apagaria e a `14a` sairia
+        NEGATIVA), com ZERO linhas de valor diferente de 0 (NULL conta), a seguranca por linha sem esconder cupom do papel que mede, ZERO dependentes da
         coluna (visao, politica, gatilho, indice, constraint, coluna GERADA que a cita; so o DEFAULT
         da propria coluna fica de fora) e nenhuma funcao, politica, gatilho ou visao de `public` que a
         cite. O portao so exige que a consulta do antes seja POSITIVA (da mesma janela ou mais nova

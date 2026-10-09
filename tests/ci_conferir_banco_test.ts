@@ -5354,7 +5354,7 @@ Deno.test("12a/12b — o rpc-ci.yml roda a prova viva do portão do cupom preso 
 
 // 14a/14b (09/10/2026) — a PROVA DE OBJETOS do lote da migration 20261207000000 (a
 // coluna duplicada de contagem de uso do cupom e apagada) em
-// scripts/frota/canais-de-backend.json. A 14a é a consulta do lote (DEPOIS do apply, 7
+// scripts/frota/canais-de-backend.json. A 14a é a consulta do lote (DEPOIS do apply, 4
 // linhas); a 14b é a do ANTES (11 linhas) e confirma o CONTRÁRIO do precedente 12b: a
 // coluna PRESENTE e zerada, sem dependentes. As duas são de ROL FECHADO. Estes testes
 // medem o texto dos .sql contra as migrations DESTA árvore; a decisão de cada consulta
@@ -5374,8 +5374,6 @@ const PERMITIDOS_14A = [
   "pg_namespace",
   "tab",
   "uso",
-  "validar",
-  "varredura",
   "itens",
 ];
 const PERMITIDOS_14B = [
@@ -5396,7 +5394,7 @@ const PERMITIDOS_14B = [
   "itens",
 ];
 for (const [nome, nItens, rol] of [
-  [NOME_14A, 7, ROL_DA_14A],
+  [NOME_14A, 4, ROL_DA_14A],
   [NOME_14B, 11, ROL_DA_14B],
 ] as Array<[string, number, string[]]>) {
   Deno.test(`${nome} — no menu, UM SELECT só leitura (catálogo${nome === NOME_14B ? " e uma CONTAGEM em public.coupons" : ""}), saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
@@ -5547,34 +5545,44 @@ Deno.test("13a/14b — os DEPENDENTES da coluna excluem SÓ o default da PRÓPRI
   assertStringIncludes(sql14b, "CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'");
 });
 
-Deno.test("14a/14b — os hashes da 14a são os que a 10a e a 12a já travam e os dos corpos nas migrations desta árvore; a 14b não cita hash", async () => {
-  const sql14a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_14A}.sql`);
-  const sql14b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_14B}.sql`);
-  const sql10a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_10A}.sql`);
-  const sql12a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_12A}.sql`);
-  const hex64 = (sql: string) =>
-    [
-      ...new Set(
-        [...sqlSemComentarios(sql).matchAll(/'([0-9a-f]{64})'/g)].map(
-          (m) => m[1],
-        ),
-      ),
-    ].sort();
-  const h203 = await hashesDaMigration203();
-  const h205 = await hashesDoLote205();
-  assertEquals(
-    hex64(sql14a),
-    [h203.novoLF, h203.novoCRLF, h205.varredura.lf, h205.varredura.crlf].sort(),
+Deno.test("14a/14b — a 14a não trava hash nem corpo de função (quem trava são a 10a e a 12a); a forma do usage_count é a MESMA na 14a, na 14b e no pré-voo da migration", async () => {
+  const lerSql = async (nome: string) =>
+    sqlSemComentarios(
+      await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`),
+    ).replace(/\s+/g, " ");
+  const sql14a = await lerSql(NOME_14A);
+  const sql14b = await lerSql(NOME_14B);
+  assertEquals([...sql14a.matchAll(/'([0-9a-f]{64})'/g)], []);
+  assertEquals([...sql14b.matchAll(/'([0-9a-f]{64})'/g)], []);
+  for (const t of [
+    "sha256",
+    "prosrc",
+    "validate_coupon_secure_v2",
+    "devolver_cupons_de_pedidos_mortos",
+  ])
+    assert(!sql14a.includes(t), `a 14a acoplaria o lote a outra migration: ${t}`);
+  const mig = (await Deno.readTextFile(MIGRACAO_207))
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((l) => !/^\s*--/.test(l))
+    .join("\n")
+    .replace(/\s+/g, " ");
+  const forma = [
+    "a.atttypid = 'integer'::regtype AND NOT a.attnotnull AND a.attgenerated = '' AND a.attidentity = '' AND pg_get_expr(ad.adbin, ad.adrelid) IS NOT DISTINCT FROM '0'",
+  ];
+  const conta = (texto: string, t: string) => texto.split(t).length - 1;
+  for (const t of forma) {
+    // 14a: so o usage_count; 14b e migration: used_count E usage_count
+    assertEquals(conta(sql14a, t), 1, "14a: a forma do usage_count");
+    assertEquals(conta(sql14b, t), 2, "14b: a forma de used_count e de usage_count");
+    assertEquals(conta(mig, t), 2, "pre-voo: a forma de used_count e de usage_count");
+  }
+  for (const texto of [sql14a, sql14b, mig])
+    assertStringIncludes(texto, "a.attname = 'usage_count'");
+  assertStringIncludes(
+    mig,
+    "PREFLIGHT_20261207: public.coupons.usage_count nao tem a forma do baseline",
   );
-  const limpo = sqlSemComentarios(sql14a);
-  for (const lf of [h203.novoLF, h205.varredura.lf])
-    assertStringIncludes(limpo, `'${lf}',`, "o LF tem de ser o esperado");
-  // são literais que a 10a (validate) e a 12a (varredura) já travam
-  for (const x of [h203.novoLF, h203.novoCRLF])
-    assertStringIncludes(sqlSemComentarios(sql10a), `'${x}'`);
-  for (const x of [h205.varredura.lf, h205.varredura.crlf])
-    assertStringIncludes(sqlSemComentarios(sql12a), `'${x}'`);
-  assertEquals(hex64(sql14b), []);
 });
 
 Deno.test("14a/14b — o rpc-ci.yml roda as duas provas vivas do contador duplicado no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {

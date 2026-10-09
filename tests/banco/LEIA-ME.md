@@ -119,22 +119,22 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   constraints, índices) fica IGUAL; valor 3, NULL, visão, função que cita a coluna, coluna
   GERADA que a cita (a dependência mora no `pg_attrdef` da OUTRA coluna: só o default da
   PRÓPRIA coluna é ignorado), forma diferente do baseline, RLS valendo para o papel e
-  `usage_count` ausente RECUSAM com o nome do motivo e SEM gravar nada; corrida com duas
+  `usage_count` ausente ou em outra forma RECUSAM com o nome do motivo e SEM gravar nada; corrida com duas
   conexões (a migration espera a trava, vê o 7 gravado e recusa), `lock_timeout` de 5 s,
   atomicidade (falha depois do DROP desfaz tudo), rollback idêntico ao baseline (comparado em
   `pg_attribute`/`pg_attrdef`); cada guarda tirada (mutante) deixa a prova vermelha, e sem o
   item dos dependentes o `DROP COLUMN` sem `CASCADE` ainda recusa a coluna gerada.
 - **portão do contador duplicado (`contador-duplicado-portao-viva.cjs`, via
   `rodar-isolado.cjs`)**: as consultas `14a-conferir-contador-duplicado-apagado` (DEPOIS do
-  apply, 7 linhas) e `14b-antes-contador-duplicado-coluna-presente-e-zerada` (ANTES, 11
+  apply, 4 linhas) e `14b-antes-contador-duplicado-coluna-presente-e-zerada` (ANTES, 11
   linhas), a "prova de objetos" do lote 20261207000000. **Aqui o ANTES é o contrário do
   precedente 12b:** a coluna PRESENTE e zerada, sem dependentes. 14b positiva em `pre`
   (inclusive com o papel mínimo e com `search_path` vazio), 14a positiva depois do apply
-  real (LF e corpos em CRLF); um defeito por vez reprovando a SUA linha (valor 3, NULL, coluna
+  real (LF e CRLF); um defeito por vez reprovando a SUA linha (valor 3, NULL, coluna
   gerada, índice, visão, política, gatilho, função, forma, `usage_count`, o papel que sofre a
   RLS, coluna já apagada dizendo AUSENTE); cada linha e cada cláusula ignorada (voltar a
   excluir todo `pg_attrdef`, não excluir o default da própria coluna, o guarda AUSENTE da
-  contagem, NULL como 0, o hash CRLF) deixa a prova vermelha; o `conferir-banco.cjs` de
+  contagem, NULL como 0) deixa a prova vermelha; o `conferir-banco.cjs` de
   verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limite declarado:** a linha de
   controle não tem negativo local (o catálogo é legível por todo papel). **Não prova** a
   IKCOUS nem a Savy.

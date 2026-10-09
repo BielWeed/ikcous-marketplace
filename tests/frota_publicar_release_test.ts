@@ -3160,7 +3160,7 @@ Deno.test("lote 20261205+06 — SEM o lote no canais-de-backend.json o portão B
 // O LOTE 20261207000000 (a coluna duplicada de contagem de uso do cupom e apagada)
 // do canais-de-backend.json REAL — como o portão o enxerga nas duas lojas assinantes.
 // Lote de UMA migration, de apply normal (sem backfillLedger, sem nuncaAplicar). A
-// consulta do lote é a 14a (7 linhas); a do ANTES (campo ausenciaConfirmadaPor) é a 14b
+// consulta do lote é a 14a (4 linhas); a do ANTES (campo ausenciaConfirmadaPor) é a 14b
 // (11 linhas) e confirma o CONTRÁRIO do precedente: a coluna PRESENTE e zerada. O portão
 // só exige que ela seja POSITIVA e mais nova que a 14a negativa; não interpreta o que ela
 // mede (o mecanismo de decidirLote não muda).
@@ -3176,7 +3176,7 @@ function evidenciasDoLote207(a: Estado203, b: Estado203) {
   let id = 700;
   for (const [ref, projeto] of LOJAS_203) {
     for (const [consulta, st, linhas] of [
-      [A14, a, 7],
+      [A14, a, 4],
       [B14, b, 11],
     ] as Array<[string, Estado203, number]>) {
       if (!st) continue;
@@ -3242,7 +3242,7 @@ Deno.test("lote 20261207 — o canais-de-backend.json real o declara como lote d
   );
   assertEquals(ROL_FECHADO_POR_CONSULTA[A14], ROL_DA_14A);
   assertEquals(ROL_FECHADO_POR_CONSULTA[B14], ROL_DA_14B);
-  assertEquals(ROL_DA_14A.length, 7);
+  assertEquals(ROL_DA_14A.length, 4);
   assertEquals(ROL_DA_14B.length, 11);
 });
 
@@ -3341,7 +3341,7 @@ Deno.test("lote 20261207 — apply feito (ledger com a versão) e 14a POSITIVA: 
   assertEquals(chamadas.promover.length, 1);
 });
 
-Deno.test("lote 20261207 — ledger com a versão mas a 14a NEGATIVA (a coluna voltou ou um corpo divergiu): nunca libera", async () => {
+Deno.test("lote 20261207 — ledger com a versão mas a 14a NEGATIVA (a coluna voltou ou o contador mudou de forma): nunca libera", async () => {
   const { d, chamadas } = depsLote207([V207], NEG203);
   const r = await executar(d, true);
   assertEquals(r.codigo, 1, r.relatorio);

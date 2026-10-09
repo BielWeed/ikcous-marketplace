@@ -347,8 +347,8 @@ jobs:
       # papel de leitura. Aqui o ANTES e' o contrario do precedente 12b: 14b positiva com a coluna
       # PRESENTE e zerada; 14a positiva depois do apply real (LF e CRLF). Cada defeito (valor
       # diferente de 0, NULL, visao, indice, coluna GERADA que cita a coluna, funcao que a cita,
-      # forma diferente, RLS, usage_count ausente, corpo de funcao com 1 byte a mais, sobrecarga
-      # extra) reprova a SUA linha e leva o portao a NEGATIVA, nunca a POSITIVA; mutantes da
+      # forma diferente, RLS, usage_count ausente ou em outra forma) reprova a SUA linha e leva o
+      # portao a NEGATIVA, nunca a POSITIVA; mutantes da
       # consulta ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o
       # conferir-banco.cjs e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA
       # loja depende dela. CLONE proprio.

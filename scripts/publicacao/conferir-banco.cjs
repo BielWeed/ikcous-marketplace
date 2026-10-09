@@ -1130,7 +1130,7 @@ const ROL_DA_12B = [
   "vaga_do_cupom_presa: ausente",
 ];
 /** O rol da 14a (a prova de objetos do lote da migration 20261207000000, o contador
- * duplicado do cupom morre — apaga `coupons.used_count`): as 7 linhas que
+ * duplicado do cupom morre — apaga `coupons.used_count`): as 4 linhas que
  * scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql devolve, cada
  * uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
  * própria linha). Como a 10a, a 11a e a 12a, NÃO serve de pré-checagem de ledger (o lote
@@ -1139,12 +1139,9 @@ const ROL_DA_12B = [
  * EXATAMENTE o que a consulta devolve. */
 const ROL_DA_14A = [
   "controle: funcoes de public visiveis a este papel",
-  "coupons.usage_count: tipo e default",
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   "coupons.used_count: coluna",
-  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
-  "devolver_cupons_de_pedidos_mortos: sobrecargas",
-  "validate_coupon_secure_v2: corpo (sha256)",
-  "validate_coupon_secure_v2: sobrecargas",
+  "public.coupons: tabela",
 ];
 /** O rol da 14b (a consulta do ANTES do mesmo lote, `ausenciaConfirmadaPor`): as 11
  * linhas que scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql
@@ -1153,7 +1150,7 @@ const ROL_DA_14A = [
  * a coluna tem de EXISTIR. */
 const ROL_DA_14B = [
   "controle: funcoes de public visiveis a este papel",
-  "coupons.usage_count: coluna presente",
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   "coupons.used_count: coluna presente",
   "coupons.used_count: dependentes (fora o default da propria coluna)",
   "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
