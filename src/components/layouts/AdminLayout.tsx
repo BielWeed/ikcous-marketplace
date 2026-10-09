@@ -1,4 +1,7 @@
-import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
+import {
+  type EstadoDeOperacao,
+  EstadoDeOperacaoProvider,
+} from "@/components/admin/PontoDeOperacao";
 import { Button } from "@/components/ui/button";
 import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
@@ -53,7 +56,7 @@ import React from "react";
 function rotuloDoSelo(
   isOffline: boolean,
   showSyncFlash: boolean,
-  quality: string,
+  quality: EstadoDeOperacao["quality"],
 ): string {
   if (isOffline) return "Sem internet";
   if (showSyncFlash) return "Sincronizado";
@@ -63,7 +66,7 @@ function rotuloDoSelo(
 function tituloDoSelo(
   isOffline: boolean,
   showSyncFlash: boolean,
-  quality: string,
+  quality: EstadoDeOperacao["quality"],
 ): string {
   if (isOffline) return "Sem conexão com o servidor";
   if (showSyncFlash) return "Sincronização concluída!";
@@ -786,7 +789,10 @@ export function AdminLayout({
         <div className="space-y-8">
           <div className="flex select-none flex-col">
             <div className="flex items-center justify-between gap-2">
-              <h1 className="text-xl font-black leading-none tracking-tight text-white">
+              {/* min-w-0 + break-words: o selo (shrink-0) ficou maior; sem isso um
+                  nome de uma palavra só ("Distribuidora…") estoura a borda da
+                  coluna quando o selo diz "Sem internet" ou "Sincronizado". */}
+              <h1 className="min-w-0 break-words text-xl font-black leading-none tracking-tight text-white">
                 {nomeDaLoja(config)}{" "}
                 <span className="text-admin-gold">Admin</span>
               </h1>

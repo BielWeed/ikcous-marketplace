@@ -122,12 +122,13 @@ function argumentosDe(texto: string, abre: number): string {
   return texto.slice(abre, abre + 2500);
 }
 
-function liberadoPelaAllowlist(
+/** Índice da exceção que libera esta chamada, ou -1. */
+function excecaoQueLibera(
   arquivo: string,
   textoAntes: string,
   chamada: string,
-): boolean {
-  return EXCECOES.some(
+): number {
+  return EXCECOES.findIndex(
     (e) =>
       e.arquivo === arquivo &&
       chamada.includes(e.chamadaContem) &&
@@ -135,10 +136,17 @@ function liberadoPelaAllowlist(
   );
 }
 
-/** Toasts do arquivo que mostram texto cru de erro, fora da allowlist. */
-function acharErroCru(textoBruto: string, arquivo: string): Achado[] {
+type Analise = {
+  /** Toasts com texto cru de erro, fora da allowlist. */
+  achados: Achado[];
+  /** Quantas chamadas cada exceção liberou (mesma ordem de EXCECOES). */
+  usos: number[];
+};
+
+function analisar(textoBruto: string, arquivo: string): Analise {
   const texto = semComentarios(textoBruto);
   const achados: Achado[] = [];
+  const usos = EXCECOES.map(() => 0);
   for (const abertura of texto.matchAll(ABRE_TOAST)) {
     const inicio = abertura.index ?? 0;
     const abre = inicio + abertura[0].length - 1;
@@ -149,7 +157,9 @@ function acharErroCru(textoBruto: string, arquivo: string): Achado[] {
     const chamada = `${abertura[0]}${argumentos.slice(1)}`
       .replace(/\s+/g, " ")
       .trim();
-    if (liberadoPelaAllowlist(arquivo, texto.slice(0, inicio), chamada)) {
+    const liberada = excecaoQueLibera(arquivo, texto.slice(0, inicio), chamada);
+    if (liberada !== -1) {
+      usos[liberada]++;
       continue;
     }
     achados.push({
@@ -158,7 +168,33 @@ function acharErroCru(textoBruto: string, arquivo: string): Achado[] {
       chamada,
     });
   }
-  return achados;
+  return { achados, usos };
+}
+
+/** Toasts do arquivo que mostram texto cru de erro, fora da allowlist. */
+function acharErroCru(textoBruto: string, arquivo: string): Achado[] {
+  return analisar(textoBruto, arquivo).achados;
+}
+
+/**
+ * Cada exceção tem que liberar EXATAMENTE uma chamada na árvore: zero é
+ * exceção velha (o código mudou e ela ficou esquecida na lista); duas ou mais
+ * é um segundo toast cru escondido atrás da mesma exceção.
+ */
+function problemasDasExcecoes(usos: number[]): string[] {
+  const problemas: string[] = [];
+  EXCECOES.forEach((e, i) => {
+    if (usos[i] === 0) {
+      problemas.push(
+        `a exceção ${e.arquivo} (${e.chamadaContem}) não foi usada — remova da lista`,
+      );
+    } else if (usos[i] > 1) {
+      problemas.push(
+        `a exceção ${e.arquivo} (${e.chamadaContem}) foi usada ${usos[i]} vezes — só 1 chamada pode ser liberada por exceção`,
+      );
+    }
+  });
+  return problemas;
 }
 
 function arquivosDe(pasta: string): string[] {
@@ -171,24 +207,33 @@ function arquivosDe(pasta: string): string[] {
   return achados;
 }
 
-function varrer(raiz: string, pastas: string[]): Achado[] {
-  const achados: Achado[] = [];
+function varrer(raiz: string, pastas: string[]): Analise {
+  const total: Analise = { achados: [], usos: EXCECOES.map(() => 0) };
   for (const pasta of pastas) {
     for (const caminho of arquivosDe(join(raiz, pasta))) {
       const rel = relative(raiz, caminho).split(sep).join("/");
-      achados.push(...acharErroCru(readFileSync(caminho, "utf8"), rel));
+      const { achados, usos } = analisar(readFileSync(caminho, "utf8"), rel);
+      total.achados.push(...achados);
+      usos.forEach((n, i) => {
+        total.usos[i] += n;
+      });
     }
   }
-  return achados;
+  return total;
 }
 
 describe("painel sem erro cru — toast não mostra error.message", () => {
   it("nenhum toast de src/views/admin ou src/components/admin mostra texto cru de erro", () => {
-    const achados = varrer(RAIZ, PASTAS_VARRIDAS);
+    const { achados } = varrer(RAIZ, PASTAS_VARRIDAS);
     expect(
       achados.map((a) => `${a.arquivo}:${a.linha}  ${a.chamada}`),
       "Toast com texto cru de erro. Use mensagemDeErroDoPainel(erro, 'a ação') ou uma frase fixa em palavras de lojista (o cru fica no console). Só texto que o sistema escreveu para o lojista entra na allowlist, com motivo.",
     ).toEqual([]);
+  });
+
+  it("cada exceção da allowlist libera exatamente 1 chamada da árvore real", () => {
+    const { usos } = varrer(RAIZ, PASTAS_VARRIDAS);
+    expect(problemasDasExcecoes(usos)).toEqual([]);
   });
 
   describe("controle positivo — a guarda pega o que deve pegar", () => {
@@ -290,6 +335,27 @@ describe("painel sem erro cru — toast não mostra error.message", () => {
       ).toHaveLength(1);
     });
 
+    it("DUAS chamadas error.message perto do 22023: a exceção é usada 2 vezes e reprova", () => {
+      const duas = `${BLOCO_22023}
+        toast.error(error.message);`;
+      const { achados, usos } = analisar(
+        duas,
+        "src/views/admin/AdminOrdersView.tsx",
+      );
+      expect(achados).toEqual([]);
+      expect(usos[0]).toBe(2);
+      expect(problemasDasExcecoes([usos[0], 1])).toEqual([
+        expect.stringContaining("foi usada 2 vezes"),
+      ]);
+    });
+
+    it("exceção sem uso é denunciada como velha", () => {
+      expect(problemasDasExcecoes([1, 0])).toEqual([
+        expect.stringContaining("não foi usada — remova da lista"),
+      ]);
+      expect(problemasDasExcecoes([1, 1])).toEqual([]);
+    });
+
     it("em AdminOrdersView, outro toast cru ao lado do 22023 é pego", () => {
       const dois = `${BLOCO_22023}
         toast.error(e.message);`;
@@ -335,13 +401,13 @@ describe("painel sem erro cru — toast não mostra error.message", () => {
           join(pasta, "Limpa.tsx"),
           'toast.error("Não consegui salvar. Tente de novo.");\n',
         );
-        expect(varrer(raiz, ["src/views/admin"])).toEqual([]);
+        expect(varrer(raiz, ["src/views/admin"]).achados).toEqual([]);
 
         writeFileSync(
           join(pasta, "Suja.tsx"),
           "try {} catch (e) {\n  toast.error(e.message);\n}\n",
         );
-        const achados = varrer(raiz, ["src/views/admin"]);
+        const { achados } = varrer(raiz, ["src/views/admin"]);
         expect(achados).toHaveLength(1);
         expect(achados[0]).toMatchObject({
           arquivo: "src/views/admin/Suja.tsx",

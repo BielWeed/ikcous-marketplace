@@ -207,6 +207,52 @@ describe("AdminLayout — selo de conexão em palavras de lojista", () => {
     }
   });
 
+  it("sincronizado: ao voltar da queda mostra 'Sincronizado' nos dois selos e depois volta a 'Online'", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      // 1) monta sem internet
+      diagnostico.atual = { isOffline: true, quality: "offline", latency: 0 };
+      await montar();
+      for (const selo of selos()) {
+        expect(selo.textContent?.trim()).toBe("Sem internet");
+      }
+
+      // 2) a internet volta: o efeito do AdminLayout acende o flash por 4s
+      diagnostico.atual = {
+        isOffline: false,
+        quality: "excellent",
+        latency: 90,
+      };
+      await montar();
+      expect(selos()).toHaveLength(2);
+      for (const selo of selos()) {
+        expect(selo.textContent?.trim()).toBe("Sincronizado");
+        expect(selo.getAttribute("title")).toBe("Sincronização concluída!");
+      }
+
+      // 3) passado o flash, volta ao estado normal
+      await act(async () => {
+        vi.advanceTimersByTime(4100);
+      });
+      for (const selo of selos()) {
+        expect(selo.textContent?.trim()).toBe("Online");
+        expect(selo.getAttribute("title")).toBe("Conexão boa");
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("o nome da loja na barra lateral pode quebrar em vez de estourar a borda (selo é shrink-0)", async () => {
+    await montar();
+    const nome = hospedeiro.querySelector("aside h1") as HTMLElement;
+    const classes = nome.className.split(/\s+/);
+    expect(classes).toContain("min-w-0");
+    expect(classes).toContain("break-words");
+    const selo = selos()[0];
+    expect(selo.className.split(/\s+/)).toContain("shrink-0");
+  });
+
   it("a barra lateral não carrega mais o rótulo 'Navegação Unificada'", async () => {
     await montar();
     expect(hospedeiro.querySelector("aside")?.textContent).not.toContain(
