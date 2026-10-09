@@ -931,7 +931,9 @@ try {
       ring: getComputedStyle(document.activeElement).boxShadow,
       outline: getComputedStyle(document.activeElement).outlineStyle,
     }));
-    assert.equal(focus.id, "store-city");
+    // Cidade e UF saíram da marca (moram no Endereço da loja, em Minha loja):
+    // depois do nome vem a cor principal.
+    assert.equal(focus.id, "store-color-hex");
     assert(
       focus.ring !== "none" || focus.outline !== "none",
       "NO_KEYBOARD_FOCUS_INDICATOR",
@@ -1098,10 +1100,12 @@ try {
     const before = counts();
     await clickButton("Conferir configuração atual");
     await textPresent("Sua escolha / configuração atual:");
+    // A cidade não é campo da marca, mas a tela de conflito a compara.
+    await textPresent("Cidade do outro ator");
     assert.equal(counts().formSave, before.formSave);
     await clickButton("Revisar meu rascunho");
     await textPresent("Rascunho revisado.");
-    assert.equal(await value("store-city"), "Cidade do outro ator");
+    assert.equal(await page.$("#store-city"), null);
     assert.equal(await value("store-name"), "Meu rascunho conservado");
     assert.equal(counts().formSave, before.formSave);
     await clickButton("Salvar identidade");

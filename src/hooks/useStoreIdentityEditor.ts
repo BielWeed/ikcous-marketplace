@@ -42,6 +42,7 @@ type Phase =
   | "verifying"
   | "saving"
   | "checking"
+  | "syncing"
   | "pending"
   | "conflict";
 interface EditorState {
@@ -89,7 +90,7 @@ function appIconColor(draft: IdentityEditorDraft): string | null {
 
 export function useStoreIdentityEditor(active = true) {
   const auth = useAuth();
-  const { refresh } = useStore();
+  const { refresh, config } = useStore();
   let origin = "";
   try {
     origin = normalizeSupabaseOrigin(lerSupabaseUrl());
@@ -274,6 +275,32 @@ export function useStoreIdentityEditor(active = true) {
           ? `${before.phase === "pending" ? pendingMessage : conflictMessage} Não foi possível conferir agora.`
           : "Não foi possível carregar a identidade da loja.",
       });
+    }
+  }
+  // A cidade e a UF da loja são gravadas pelo Endereço (Minha loja), por fora
+  // deste editor — mas continuam no pacote de 8 chaves da `save_store_identity`,
+  // que compara a fotografia INTEIRA. Sem reler, o próximo "Salvar identidade"
+  // (a cor, por exemplo) levaria a cidade ANTIGA: reverteria o endereço ou
+  // cairia em conflito. Releitura silenciosa: rascunho limpo → fotografia nova;
+  // rascunho com edição → a edição fica e o resto adota a fotografia nova (a
+  // mesma conciliação do "Revisar meu rascunho", sem esperar o clique).
+  async function syncExternalLocation() {
+    const before = model.current;
+    if (before.phase !== "editing" || !before.draft) return;
+    const op = start("syncing");
+    if (!op) return;
+    try {
+      const current = await readAdminStoreIdentity(op.options);
+      if (!op.isCurrent()) return;
+      const draft = identityEditorDraftIsDirty(before.draft, op.origin)
+        ? reconcileIdentityEditorDraft(before.draft, current, op.origin)
+        : createIdentityEditorDraft(current, op.origin);
+      finish({ scope: before.scope, phase: "editing", draft });
+    } catch {
+      if (!op.isCurrent()) return;
+      // Não deu para reler: o rascunho fica como estava; se a cidade mudou de
+      // fato, o servidor recusa o salvamento e o fluxo de conflito resolve.
+      finish({ ...before, phase: "editing", message: undefined });
     }
   }
   useEffect(() => {
@@ -598,6 +625,33 @@ export function useStoreIdentityEditor(active = true) {
     rendered.scope === scope && allowed && origin
       ? rendered
       : { scope, phase: "idle" as const };
+  // Cidade/UF do config mudaram por fora (o Endereço gravou)? Reler uma vez por
+  // valor novo; se o rascunho já tem esses valores, não há o que reler.
+  const cidadeEUf = `${config.storeCity ?? ""}\u0000${config.storeState ?? ""}`;
+  const cidadeEUfConferida = useRef(cidadeEUf);
+  useEffect(() => {
+    if (cidadeEUfConferida.current === cidadeEUf) return;
+    if (!active || !allowed || !state.draft || state.phase !== "editing")
+      return;
+    cidadeEUfConferida.current = cidadeEUf;
+    const guardada = state.draft.expected.identity;
+    if (
+      (guardada.store_city ?? "") === (config.storeCity ?? "") &&
+      (guardada.store_state ?? "") === (config.storeState ?? "")
+    )
+      return;
+    void syncExternalLocation();
+    // `syncExternalLocation` lê o modelo mais novo por ref; só estes sinais a disparam.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    cidadeEUf,
+    active,
+    allowed,
+    state.phase,
+    state.draft,
+    config.storeCity,
+    config.storeState,
+  ]);
   const busy = busyPhases.includes(state.phase);
   const dirty =
     !!state.draft &&

@@ -13,14 +13,25 @@ export interface IdentitySettingsSectionProps {
   readonly active?: boolean;
   readonly onDirtyChange?: (dirty: boolean) => void;
 }
+// Cidade e UF NÃO são mais campos da marca: moram no Endereço da loja (Minha
+// loja, painel simples §4), que as grava junto com o CEP. O rascunho da marca
+// continua levando as duas no pacote de 8 chaves da `save_store_identity` (a
+// RPC recusa pacote incompleto) e a tela de conflito continua comparando as
+// duas — por isso `camposDoConflito` tem as seis, e `fields` só as que se
+// editam aqui.
+const camposEscondidos: readonly [keyof IdentityDraftFields, string, string][] =
+  [
+    ["storeCity", "Cidade", "store-city"],
+    ["storeState", "Estado (UF)", "store-state"],
+  ];
 const fields: readonly [keyof IdentityDraftFields, string, string][] = [
   ["storeName", "Nome da loja", "store-name"],
-  ["storeCity", "Cidade", "store-city"],
-  ["storeState", "Estado (UF)", "store-state"],
   ["primaryColor", "Cor principal", "store-color-hex"],
   ["secondaryColor", "Cor secundária", "store-secondary-color"],
   ["accentColor", "Cor de destaque", "store-accent-color"],
 ];
+const camposDoConflito: readonly [keyof IdentityDraftFields, string, string][] =
+  [fields[0], ...camposEscondidos, ...fields.slice(1)];
 const previews: readonly [IdentityAssetRole, string, string][] = [
   ["header", "Cabeçalho", "PNG, JPEG, WebP ou SVG"],
   ["loader", "Abertura", "PNG, JPEG, WebP ou SVG"],
@@ -120,8 +131,8 @@ export function IdentitySettingsSection({
   return (
     <div className="space-y-5 text-zinc-200">
       <p className="text-sm text-zinc-400">
-        Nome, localização, cores e imagens da sua loja. Confira o rascunho antes
-        de salvar.
+        Nome, cores e imagens da sua loja. A cidade e a UF vêm do endereço da
+        loja, no bloco abaixo. Confira o rascunho antes de salvar.
       </p>
       <fieldset
         disabled={editor.locked}
@@ -145,15 +156,7 @@ export function IdentitySettingsSection({
                 <Input
                   id={id}
                   value={value}
-                  maxLength={key === "storeState" ? 2 : undefined}
-                  onChange={(e) =>
-                    editor.setField(
-                      key,
-                      key === "storeState"
-                        ? e.target.value.toUpperCase()
-                        : e.target.value,
-                    )
-                  }
+                  onChange={(e) => editor.setField(key, e.target.value)}
                 />
                 {color && (
                   <span
@@ -380,7 +383,7 @@ export function IdentitySettingsSection({
             <>
               <p className="text-sm">Sua escolha / configuração atual:</p>
               <ul className="space-y-1 text-sm">
-                {fields.map(([key, label]) => {
+                {camposDoConflito.map(([key, label]) => {
                   const rawKey = new Map<keyof IdentityDraftFields, string>([
                     ["storeName", "store_name"],
                     ["storeCity", "store_city"],
