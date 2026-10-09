@@ -51,6 +51,9 @@ on:
       - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
       - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
       - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
+      - "scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql"
+      - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -70,6 +73,9 @@ on:
       - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
       - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
       - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
+      - "scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql"
+      - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -318,6 +324,37 @@ jobs:
       - name: Prova viva do portao do cupom preso (consultas 12a e 12b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-portao-viva.cjs
+      # Consulta 13a (so leitura, 09/10/2026): a medicao que decide se `coupons.used_count`
+      # pode ser apagada. O item "dependentes" excluia TODO pg_attrdef e escondia uma coluna
+      # GERADA que cita used_count; agora so o default da PROPRIA coluna fica de fora. A prova
+      # roda a consulta num Postgres real (base, coluna gerada, visao, indice) e o mutante
+      # "voltar a excluir todo pg_attrdef" deixa a prova vermelha. CLONE proprio.
+      - name: Prova viva da consulta 13a (dependentes da coluna do contador duplicado)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-13a-contador-duplicado-viva.cjs
+      # O contador duplicado do cupom morre (migration 20261207000000, 09/10/2026): apaga a
+      # coluna duplicada de contagem de uso de `coupons` SO com toda linha em 0 exato e nada
+      # dependendo dela. Prova viva: tudo 0 aplica e o resto do banco (colunas, dados,
+      # usage_count, corpo de toda funcao, politicas, ACL) fica IGUAL; valor, NULL, visao,
+      # funcao, coluna GERADA, forma diferente, RLS e usage_count ausente RECUSAM sem gravar
+      # nada; corrida com 2 conexoes e lock_timeout; atomicidade; rollback identico ao
+      # baseline; cada guarda tirada (mutante) deixa a prova vermelha. CLONE proprio.
+      - name: Prova viva do contador duplicado do cupom (migration 20261207000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-viva.cjs
+      # Portao da release para a migration 20261207000000: as consultas 14a (DEPOIS) e 14b
+      # (ANTES) do lote em scripts/frota/canais-de-backend.json, executadas num Postgres real como
+      # papel de leitura. Aqui o ANTES e' o contrario do precedente 12b: 14b positiva com a coluna
+      # PRESENTE e zerada; 14a positiva depois do apply real (LF e CRLF). Cada defeito (valor
+      # diferente de 0, NULL, visao, indice, coluna GERADA que cita a coluna, funcao que a cita,
+      # forma diferente, RLS, usage_count ausente ou em outra forma) reprova a SUA linha e leva o
+      # portao a NEGATIVA, nunca a POSITIVA; mutantes da
+      # consulta ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o
+      # conferir-banco.cjs e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA
+      # loja depende dela. CLONE proprio.
+      - name: Prova viva do portao do contador duplicado do cupom (consultas 14a e 14b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-portao-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

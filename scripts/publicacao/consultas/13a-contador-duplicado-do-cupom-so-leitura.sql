@@ -1,6 +1,8 @@
 -- 13a - O contador duplicado do cupom (`coupons.used_count`): SO LEITURA, mede antes de decidir apagar.
 -- Pergunta: a coluna so tem zeros e nada do banco depende dela? Uma linha por fato (item, valor).
 -- `to_jsonb(c)` em vez do nome da coluna: nao quebra numa loja onde ela ja nao exista.
+-- Item 8 (dependentes): so o DEFAULT da PROPRIA used_count fica de fora (o pg_attrdef cuja coluna e a mesma);
+-- o pg_attrdef de OUTRA coluna (expressao de coluna GERADA que cita used_count) conta como dependente.
 -- Quem le: `rls_visivel_ao_papel` = 'true' significa que a seguranca por linha pode esconder cupons deste papel;
 -- nesse caso `cupons_total` pode estar menor que o real e o resultado NAO vale (conferir no SQL Editor).
 SELECT item, valor FROM (
@@ -18,7 +20,8 @@ SELECT item, valor FROM (
   UNION ALL SELECT 8, 'dependentes_da_coluna_fora_o_default', (SELECT count(*) FROM pg_depend d
       JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
       WHERE d.refobjid = 'public.coupons'::regclass AND a.attname = 'used_count'
-        AND d.classid <> 'pg_attrdef'::regclass)::text
+        AND NOT (d.classid = 'pg_attrdef'::regclass AND EXISTS (SELECT 1 FROM pg_attrdef ad
+          WHERE ad.oid = d.objid AND ad.adrelid = d.refobjid AND ad.adnum = d.refobjsubid)))::text
   UNION ALL SELECT 9, 'funcoes_que_citam', coalesce((SELECT string_agg(p.proname, ',' ORDER BY p.proname)
       FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace
       WHERE s.nspname = 'public' AND p.prokind = 'f' AND p.prosrc ILIKE '%used\_count%'), '(nenhuma)')
