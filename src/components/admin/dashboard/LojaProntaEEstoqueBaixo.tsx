@@ -5,7 +5,7 @@ import {
   type ConfigDosSeisPassos,
   contagemDosPassos,
   entradaDosSeisPassos,
-  estadoDaEntregaNoInicio,
+  estadoDaEntrega,
   proximoPasso,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -128,7 +128,7 @@ export function LojaProntaEEstoqueBaixo({
       produtos,
       configCarregando,
       produtosCarregando,
-      entrega: estadoDaEntregaNoInicio(config, configCarregando),
+      entrega: estadoDaEntrega(config, configCarregando),
     }),
   );
   const { feitos, total } = contagemDosPassos(passos);

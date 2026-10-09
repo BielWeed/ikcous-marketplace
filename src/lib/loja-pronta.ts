@@ -30,7 +30,7 @@ function cepCompleto(cep: string | null | undefined): boolean {
  * taxa 0 é "grátis na cidade"), que é exatamente o que a faixa do Frete diz em
  * "Na sua cidade". Enquanto a config carrega, "não sei".
  */
-export function estadoDaEntregaNoInicio(
+export function estadoDaEntrega(
   config: { readonly originCep?: string | null },
   configCarregando: boolean,
 ): EstadoDoItem {
@@ -80,9 +80,12 @@ export interface FatosDosSeisPassos {
   readonly configCarregando: boolean;
   readonly produtosCarregando: boolean;
   /**
-   * "Como você entrega" chega como FATO pronto: a régua (sem CEP, local,
-   * nacional com ou sem transportadora) é `status-da-entrega`, do Frete — esta
-   * lista não a reimplementa.
+   * "Como você entrega" chega como FATO pronto. Por decisão, o passo é só a
+   * parte barata da entrega — o CEP completo da loja —, calculada por
+   * `estadoDaEntrega` (acima). Quem chama (Início, Ajustes) DEVE usá-la em vez
+   * de calcular a própria régua, para as duas telas nunca divergirem. O
+   * detalhe de transportadora (credenciais, provedores ligados) fica no texto
+   * de `statusDaEntrega`, na tela do Frete, e não neste passo.
    */
   readonly entrega: EstadoDoItem;
 }
@@ -130,9 +133,17 @@ export function entradaDosSeisPassos(
       whatsapp: daConfig(lojaTemWhatsapp(config.whatsappNumber)),
       recebe,
       entrega: fatos.entrega,
-      // `.some(isActive)`, nunca `produtos.length` (o cofre guarda produto
-      // desativado também). Mesma ressalva da lista de 3 sobre o truncamento
-      // do StoreContext em 200 itens.
+      // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
+      // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
+      // filtra `deleted_at`).
+      //
+      // Limitação conhecida (achado do laudo de 08/09/2026, fora desta frente):
+      // `produtos` vem de `useStore().products`, que o `StoreContext` busca
+      // truncado em, no máximo, 200 itens (ordenados por data_cadastro DESC),
+      // sem sinal de truncamento hoje. Numa loja com 200+ produtos em que os 200
+      // mais recentes estejam todos inativos e exista um ativo mais antigo fora
+      // da janela, este item mostraria falso "pendente". O conserto correto
+      // depende do StoreContext expor esse sinal — reservado por outra frente.
       produto: fatos.produtosCarregando
         ? "carregando"
         : produtos.some((produto) => produto.isActive)

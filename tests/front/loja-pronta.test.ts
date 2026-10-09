@@ -9,7 +9,7 @@ import {
   type ChaveDosSeisPassos,
   contagemDosPassos,
   entradaDosSeisPassos,
-  estadoDaEntregaNoInicio,
+  estadoDaEntrega,
   proximoPasso,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
@@ -279,7 +279,7 @@ describe("contagemDosPassos e proximoPasso", () => {
 // na cidade já funciona — não há interruptor dela, só a taxa, e a taxa 0 é
 // "grátis na cidade". As transportadoras do "fora da cidade" dependem de
 // credenciais (chamada de rede) e o Início não as pergunta.
-describe("estadoDaEntregaNoInicio", () => {
+describe("estadoDaEntrega", () => {
   it.each([
     { cep: "01310100", estado: "feito" },
     { cep: "01310-100", estado: "feito" },
@@ -291,17 +291,21 @@ describe("estadoDaEntregaNoInicio", () => {
     { cep: "1234-5678", estado: "pendente" },
     { cep: "abcdefgh", estado: "pendente" },
   ])("CEP $cep: $estado", ({ cep, estado }) => {
-    expect(estadoDaEntregaNoInicio({ originCep: cep }, false)).toBe(estado);
+    expect(estadoDaEntrega({ originCep: cep }, false)).toBe(estado);
   });
 
   it("config carregando: carregando, mesmo com CEP (a config ainda não chegou)", () => {
-    expect(estadoDaEntregaNoInicio({ originCep: "01310-100" }, true)).toBe(
+    expect(estadoDaEntrega({ originCep: "01310-100" }, true)).toBe(
       "carregando",
     );
-    expect(estadoDaEntregaNoInicio({}, true)).toBe("carregando");
+    expect(estadoDaEntrega({}, true)).toBe("carregando");
   });
 
-  it("concorda com a primeira linha da faixa do Frete ('Na sua cidade'): feito = tom positivo", () => {
+  // Só os casos em que as duas réguas já concordam: CEP completo, vazio e
+  // ausente. Divergência conhecida, fora desta frente: `statusDaEntrega` testa
+  // `!originCep` (CEP parcial como "1234" conta como preenchido lá), e o
+  // passo exige os oito dígitos.
+  it("CEP completo, vazio e ausente: concorda com a primeira linha da faixa do Frete ('Na sua cidade')", () => {
     for (const originCep of ["01310-100", "", undefined]) {
       const [naSuaCidade] = statusDaEntrega({
         config: { originCep } as Parameters<
@@ -310,14 +314,14 @@ describe("estadoDaEntregaNoInicio", () => {
         credsErro: false,
         nomesLigados: [],
       });
-      expect(estadoDaEntregaNoInicio({ originCep }, false)).toBe(
+      expect(estadoDaEntrega({ originCep }, false)).toBe(
         naSuaCidade.tom === "positivo" ? "feito" : "pendente",
       );
     }
   });
 
   it("alimenta o passo 'Como você entrega' dos seis", () => {
-    const entrega = estadoDaEntregaNoInicio({ originCep: "" }, false);
+    const entrega = estadoDaEntrega({ originCep: "" }, false);
     expect(passoDosSeis("entrega", {}, { entrega }).estado).toBe("pendente");
   });
 });
