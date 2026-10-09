@@ -110,17 +110,33 @@ export function mensagemDaFalhaDaAnulacao(erro: unknown): string {
   return doBanco ?? FRASE_GENERICA;
 }
 
+/** Começo da frase quando outro aparelho pode já ter devolvido o dinheiro. */
+export const SE_O_DINHEIRO_NAO_VOLTOU =
+  "Se o dinheiro ainda não voltou ao cliente,";
+
 /**
  * O que o lojista faz com o dinheiro depois de anular. O app não devolve
- * nada: o estorno é manual, fora dele.
+ * nada: o estorno é manual, fora dele. Com `talvezJaDevolvido` (a venda já
+ * estava anulada: outro aparelho pode ter devolvido) a instrução vira
+ * condicional, para o segundo aparelho não mandar devolver duas vezes.
  */
 export function orientacaoDeDevolucao(
   forma: string | null | undefined,
   total: number,
+  talvezJaDevolvido = false,
 ): string {
   if (!(total > 0))
     return "A venda não tinha valor: não há dinheiro a devolver.";
   const valor = formatCurrency(total);
+  if (talvezJaDevolvido) {
+    const antes = SE_O_DINHEIRO_NAO_VOLTOU;
+    if (forma === "cash") return `${antes} devolva ${valor} em dinheiro.`;
+    if (forma === "pix") return `${antes} devolva ${valor} por PIX.`;
+    if (forma === "card") {
+      return `${antes} faça o estorno de ${valor} na maquininha.`;
+    }
+    return `${antes} devolva ${valor}.`;
+  }
   if (forma === "cash") return `Devolva ${valor} em dinheiro ao cliente.`;
   if (forma === "pix") return `Devolva ${valor} ao cliente por PIX.`;
   if (forma === "card") {

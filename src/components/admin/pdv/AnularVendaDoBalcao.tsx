@@ -81,7 +81,7 @@ export function AnularVendaDoBalcao({
         {resultado.jaAnulada ? (
           <span>
             Esta venda já estava anulada. Nada foi mexido de novo. O app não
-            devolve o dinheiro. {orientacaoDeDevolucao(forma, total)}
+            devolve o dinheiro. {orientacaoDeDevolucao(forma, total, true)}
           </span>
         ) : (
           <span>

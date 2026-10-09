@@ -286,6 +286,51 @@ describe("ficha do pedido — Anular venda do balcão", () => {
     expect(texto).toMatch(/R\$\s*80,00/);
   });
 
+  // R1 da revisão: a guarda por ID (`anuladoId === order.id`) é a única coisa
+  // que impede isto. O reset ao trocar de pedido não protege: ele roda na
+  // TROCA, e a resposta de A chega DEPOIS dela, gravando `anuladoId = A`
+  // com B já na tela. Sem a comparação por id (`anuladoId !== null`), B (do
+  // site) ganharia a peça com "Anular venda", que o servidor recusaria.
+  it("R1: A em voo, troco para B do site, A responde — B NÃO ganha o botão 'Anular venda' nem o aviso de A", async () => {
+    let responder: (v: unknown) => void = () => {};
+    // Só a anulação fica pendurada; os outros cartões da ficha também chamam
+    // rpc (ao trocar para B) e não podem sequestrar o `responder`.
+    rpcMock.mockImplementation((nome: string) =>
+      nome === "anular_venda_presencial"
+        ? new Promise((resolve) => {
+            responder = resolve;
+          })
+        : Promise.resolve({ data: null, error: null }),
+    );
+    await renderizar(pedido());
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")?.click();
+    });
+    await act(async () => digitarMotivo("engano"));
+    await act(async () => {
+      botao(hospedeiro, "Confirmar anulação")?.click();
+    });
+    expect(hospedeiro.textContent).toContain("Anulando");
+
+    await renderizar(pedidoBDoSite());
+    expect(hospedeiro.textContent).not.toContain("Anulando");
+    // com A ainda em voo, B (do site) também não ganha a peça
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+
+    await act(async () => {
+      responder({
+        data: { order_id: "ped-balcao-1", ja_anulada: false },
+        error: null,
+      });
+    });
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("Anular venda");
+    expect(texto).not.toContain("Venda anulada");
+    expect(texto).not.toContain("Devolva");
+    expect(texto).toMatch(/R\$\s*80,00/);
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+  });
+
   it("B1: pergunta aberta e motivo digitado em A NÃO vazam para B (outra venda do balcão do mesmo dia): B começa fechada e nunca é anulada com o motivo de A", async () => {
     await renderizar(pedido());
     await act(async () => {

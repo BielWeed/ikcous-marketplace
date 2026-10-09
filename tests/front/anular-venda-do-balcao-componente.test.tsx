@@ -216,7 +216,23 @@ describe("AnularVendaDoBalcao", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Esta venda já estava anulada");
     expect(texto).toContain("O app não devolve o dinheiro");
+    // R2: outro aparelho pode já ter devolvido; a ordem é condicional.
+    expect(texto).toMatch(
+      /Se o dinheiro ainda não voltou ao cliente, devolva R\$\s79,80 por PIX\./,
+    );
+    expect(texto).not.toMatch(/(^|\. )Devolva R\$/);
+  });
+
+  it("R2: na anulação nova (não repetida) a instrução continua direta, sem 'se'", async () => {
+    await montar(async () => ({ orderId: "p1", jaAnulada: false }), {
+      forma: "pix",
+    });
+    await abrir();
+    await act(async () => digitarMotivo("engano"));
+    await confirmar();
+    const texto = hospedeiro.textContent ?? "";
     expect(texto).toMatch(/Devolva R\$\s79,80 ao cliente por PIX\./);
+    expect(texto).not.toContain("Se o dinheiro ainda não voltou");
   });
 
   it("(b) ao abrir a pergunta o foco vai para o campo do motivo", async () => {

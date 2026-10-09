@@ -205,6 +205,25 @@ describe("orientacaoDeDevolucao — o app não devolve o dinheiro, e a tela diz 
     );
   });
 
+  it("venda que talvez já tenha sido devolvida por outro aparelho: a instrução é CONDICIONAL, com valor e forma", () => {
+    const antes = "Se o dinheiro ainda não voltou ao cliente,";
+    expect(orientacaoDeDevolucao("cash", 79.8, true)).toMatch(
+      new RegExp(`^${antes} devolva R\\$\\s79,80 em dinheiro\\.$`),
+    );
+    expect(orientacaoDeDevolucao("pix", 79.8, true)).toMatch(
+      new RegExp(`^${antes} devolva R\\$\\s79,80 por PIX\\.$`),
+    );
+    expect(orientacaoDeDevolucao("card", 79.8, true)).toMatch(
+      new RegExp(`^${antes} faça o estorno de R\\$\\s79,80 na maquininha\\.$`),
+    );
+    expect(orientacaoDeDevolucao("outra", 10, true)).toMatch(
+      new RegExp(`^${antes} devolva R\\$\\s10,00\\.$`),
+    );
+    expect(orientacaoDeDevolucao("cash", 0, true)).toBe(
+      "A venda não tinha valor: não há dinheiro a devolver.",
+    );
+  });
+
   it("forma desconhecida cai na instrução geral; venda de valor zero não manda devolver nada", () => {
     expect(orientacaoDeDevolucao("outra", 10)).toMatch(/^Devolva R\$\s10,00/);
     expect(orientacaoDeDevolucao("cash", 0)).toBe(
