@@ -1072,6 +1072,7 @@ const ROL_DA_11B = [
   "controle: funcoes de public visiveis a este papel",
   "dependencia devolver_estoque(uuid): existe",
   "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin(): existe",
   "dependencia is_admin_atual(): corpo e o esperado (md5)",
   "dependencia pedido__mudar_status(...): corpo e o esperado (md5)",
   "tabelas usadas: existem",

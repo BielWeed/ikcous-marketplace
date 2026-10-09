@@ -67,18 +67,20 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   nem estorno do app; o estoque volta UMA vez (inclusive com duas conexões reais),
   o Financeiro e o caixa fecham em zero, repetir o toque devolve `ja_anulada`;
   ordem global das travas, pré-voo, rollback (aplicar, desfazer, aplicar: idêntico)
-  e 20 mutantes (cada guarda tirada deixa a prova vermelha).
+  e 22 mutantes (cada guarda tirada deixa a prova vermelha). O motivo exige ao menos uma
+  letra ou número (espaço de largura zero, BOM e só emoji são recusados) e o
+  pagamento desfeito e refeito no mesmo dia tem frase própria.
 - **portão da anulação do balcão (`anular-venda-portao-viva.cjs`, via
   `rodar-isolado.cjs`)**: as consultas `11a-conferir-anular-venda-presencial-aplicado`
   (DEPOIS do apply, 14 linhas) e `11b-antes-anular-venda-presencial-funcao-ausente`
-  (ANTES, 8 linhas), a "prova de objetos" do lote 20261204000000 em
+  (ANTES, 9 linhas), a "prova de objetos" do lote 20261204000000 em
   `scripts/frota/canais-de-backend.json`, no mesmo molde da prova dos cupons:
   11b positiva na base SEM a migration, 11a positiva depois do apply real (LF e
   CRLF, igual à árvore inteira), um defeito por vez (SECURITY INVOKER, sem
   `search_path`, `EXECUTE` para PUBLIC/anon/service_role, authenticated revogado,
   corpo com 1 byte a mais, sobrecarga extra, função ou dependência ausente, corpo
   de dependência diferente do pré-voo, tabela ou coluna ausente) reprovando a SUA
-  linha; 22 mutantes do texto das consultas ficam vermelhos; resposta parcial ou
+  linha; 23 mutantes do texto das consultas ficam vermelhos; resposta parcial ou
   duplicada tem `rol=invalido`; erro de SQL nunca vira positivo; o
   `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR.
   **Não prova** a IKCOUS nem a Savy (só o run da consulta contra o ref de cada loja).

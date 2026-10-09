@@ -5,7 +5,7 @@
  * 20261204000000 (a venda do balcão se anula no mesmo dia), num Postgres
  * EFÊMERO local — nada de rede, nada de loja:
  *   11a-conferir-anular-venda-presencial-aplicado.sql        (DEPOIS do apply: 14 linhas)
- *   11b-antes-anular-venda-presencial-funcao-ausente.sql     (ANTES do apply: 8 linhas)
+ *   11b-antes-anular-venda-presencial-funcao-ausente.sql     (ANTES do apply: 9 linhas)
  * Elas são a "prova de objetos" do lote 20261204000000 em
  * scripts/frota/canais-de-backend.json: sem elas o portão
  * (scripts/frota/publicar-release.mjs) bloqueia a release com essa migration
@@ -99,7 +99,7 @@ const SQL = {
   [B]: fs.readFileSync(path.join(CONSULTAS, `${B}.sql`), "utf8"),
 };
 const ROL = { [A]: CONF.ROL_DA_11A, [B]: CONF.ROL_DA_11B };
-const N_LINHAS = { [A]: 14, [B]: 8 };
+const N_LINHAS = { [A]: 14, [B]: 9 };
 
 const SIG_F = "public.anular_venda_presencial(uuid,text)";
 const SIG_ADMIN = "public.is_admin_atual()";
@@ -164,6 +164,7 @@ const DA_FUNCAO = [
 const LB = {
   controle: L.controle,
   ausente: `${F}: ausente`,
+  dIsAdmin: "dependencia is_admin(): existe",
   mAdmin: "dependencia is_admin_atual(): corpo e o esperado (md5)",
   mMudar: "dependencia pedido__mudar_status(...): corpo e o esperado (md5)",
   dEstoque: "dependencia devolver_estoque(uuid): existe",
@@ -716,7 +717,7 @@ async function main() {
     assert.equal(linha(rows, LB.mMudar).vivo, MD5_MUDAR);
     assert.equal(linha(rows, LB.ausente).vivo, "0");
     ok(
-      "11b POSITIVA (8 linhas, rol=ok, portão POSITIVA) na base SEM a migration: função ausente, md5 das duas dependências, tabelas e colunas presentes",
+      "11b POSITIVA (9 linhas, rol=ok, portão POSITIVA) na base SEM a migration: função ausente, is_admin(), md5 das duas dependências, tabelas e colunas presentes",
     );
   }
   {
@@ -1026,6 +1027,16 @@ async function main() {
   db.b4admin = await renomearPre("b4admin", SIG_ADMIN, "pv_is_admin_atual");
   await negativo(B, "B4 is_admin_atual ausente", db.b4admin, [LB.mAdmin]);
   assert.equal(linha(await rodar(db.b4admin, B), LB.mAdmin).vivo, "AUSENTE");
+  db.b4isadmin = await renomearPre(
+    "b4isadmin",
+    "public.is_admin()",
+    "pv_is_admin",
+  );
+  await negativo(B, "B4 is_admin ausente", db.b4isadmin, [LB.dIsAdmin]);
+  assert.equal(
+    linha(await rodar(db.b4isadmin, B), LB.dIsAdmin).vivo,
+    "AUSENTE",
+  );
   db.b4mudar = await renomearPre("b4mudar", SIG_MUDAR, "pv_mudar_status");
   await negativo(B, "B4 pedido__mudar_status ausente", db.b4mudar, [LB.mMudar]);
   db.b4estoque = await renomearPre(
@@ -1265,6 +1276,18 @@ async function main() {
     [LB.mMudar],
   );
   await m(
+    "B: is_admin() ignorado",
+    B,
+    [
+      [
+        "CASE WHEN to_regprocedure('public.is_admin()') IS NOT NULL THEN 'EXISTE' ELSE 'AUSENTE' END",
+        "'EXISTE'",
+      ],
+    ],
+    db.b4isadmin,
+    [LB.dIsAdmin],
+  );
+  await m(
     "B: devolver_estoque ignorado",
     B,
     [
@@ -1308,7 +1331,7 @@ async function main() {
     [LB.colunas],
   );
   ok(
-    "22 MUTANTES do texto das consultas (11a: hash do corpo [2], SECURITY DEFINER, search_path [2], linguagem, ACL de PUBLIC / anon / service_role / authenticated, sobrecarga, 4 dependências; 11b: função ausente, md5 das duas dependências, devolver_estoque, fin__hoje, tabelas, colunas) deixam o negativo correspondente PASSAR menos reprovado — a prova ficaria VERMELHA",
+    "23 MUTANTES do texto das consultas (11a: hash do corpo [2], SECURITY DEFINER, search_path [2], linguagem, ACL de PUBLIC / anon / service_role / authenticated, sobrecarga, 4 dependências; 11b: função ausente, is_admin(), md5 das duas dependências, devolver_estoque, fin__hoje, tabelas, colunas) deixam o negativo correspondente PASSAR menos reprovado — a prova ficaria VERMELHA",
   );
 
   // ----------------------------------------------------------- ROL FECHADO
@@ -1459,7 +1482,7 @@ async function main() {
       assert.deepEqual(PORTAO.lerVeredicto(e1b.saida, B), {
         ref: REF_SAVY,
         sha: SHA40,
-        linhas: 8,
+        linhas: 9,
         okFalse: 0,
         naoBooleano: 0,
         rol: "ok",

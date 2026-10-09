@@ -26,7 +26,9 @@
 --       funcionário rebaixado com token velho para aqui, no padrão de
 --       registrar_venda_presencial na 20261199000000) e sessão (auth.uid());
 --   (2) motivo obrigatório (22023): vazio depois de tirar espaços, tabs e
---       quebras de linha é recusado; teto de 500 caracteres. Antes da trava;
+--       quebras de linha, ou sem nenhuma letra/número (caractere invisível,
+--       como o espaço de largura zero, não é motivo), é recusado; teto de 500
+--       caracteres. Antes da trava;
 --   (3) ORDEM GLOBAL DE TRAVAS (20261198000000): primeiro as linhas de
 --       `order_refunds` do pedido (por id), depois o PEDIDO (FOR UPDATE).
 --       Toda checagem de estado vem DEPOIS, sobre a linha travada;
@@ -47,7 +49,8 @@
 --       ZERA `pagamento_recebido_em` ao desfazer e carimba de novo ao
 --       refazer, então uma venda de segunda "desfeita e refeita" na quarta
 --       pareceria do dia. A marca de verdade é a linha 'desfeito' em
---       `marketplace_order_payment_history`: com ela, recusa;
+--       `marketplace_order_payment_history`: com ela, recusa — com frase
+--       própria ("foi desfeito e refeito hoje"), porque a do dia seria falsa;
 --   (8) sem devolução viva (`devolucoes` fora de recusada/cancelada/
 --       reprovada) e sem linha de `order_refunds` solicitada/em processamento/
 --       concluída: quem cuida do dinheiro delas é a devolução e o ledger;
@@ -211,7 +214,7 @@ BEGIN
   SELECT md5(replace(prosrc, E'\r', '')) INTO v_hash
     FROM pg_proc
    WHERE oid = to_regprocedure('public.anular_venda_presencial(uuid, text)');
-  IF v_hash IS NOT NULL AND v_hash <> 'b7407906f0f422f55afd5cdd490ebeed' THEN
+  IF v_hash IS NOT NULL AND v_hash <> 'a00427599b6d7682cc50b97fe8263ca7' THEN
     RAISE EXCEPTION 'PREFLIGHT_20261204: public.anular_venda_presencial ja existe com outro corpo (hash %) -- revise antes de aplicar.', v_hash;
   END IF;
 END
@@ -247,7 +250,10 @@ BEGIN
     -- (2) Sem motivo escrito, dinheiro que volta some sem rastro. Espaço, tab
     -- e quebra de linha não contam como texto.
     v_motivo := NULLIF(btrim(COALESCE(p_motivo, ''), E' \t\r\n\f\x0b\u00a0'), '');
-    IF v_motivo IS NULL THEN
+    -- Letra ou número de verdade: caractere invisível (espaço de largura zero
+    -- U+200B, U+FEFF, U+2800...) passaria no btrim e viraria "motivo". [[:alnum:]]
+    -- falha FECHADO: o que não for reconhecido como letra/número é recusado.
+    IF v_motivo IS NULL OR v_motivo !~ '[[:alnum:]]' THEN
         RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='Informe o motivo para anular a venda.';
     END IF;
     IF char_length(v_motivo) > 500 THEN
@@ -305,12 +311,16 @@ BEGIN
     -- (7) Mesmo dia da loja (a régua do Financeiro: fin__dia/fin__hoje,
     -- America/Sao_Paulo — não é o dia UTC nem o fuso da sessão). Pagamento
     -- desfeito e refeito não vale: pagamento_recebido_em foi re-carimbado.
-    IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()
-       OR EXISTS (
-            SELECT 1 FROM public.marketplace_order_payment_history h
-             WHERE h.order_id = p_order_id AND h.acao = 'desfeito'
-          ) THEN
+    IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje() THEN
         RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='Só dá para anular no mesmo dia da venda. Para outro dia, registre uma devolução.';
+    END IF;
+    -- Mesmo dia, mas o recebimento foi desfeito e refeito: a recusa é a mesma (mais
+    -- seguro), com a frase certa — a do dia seria falsa aqui.
+    IF EXISTS (
+        SELECT 1 FROM public.marketplace_order_payment_history h
+         WHERE h.order_id = p_order_id AND h.acao = 'desfeito'
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui. Registre uma devolução.';
     END IF;
 
     -- (8) Dinheiro que já está sendo tratado por outro caminho: a devolução

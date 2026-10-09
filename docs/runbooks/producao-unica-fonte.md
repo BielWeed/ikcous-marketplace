@@ -220,8 +220,8 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         funcao DEPOIS do apply: uma sobrecarga so, `SECURITY DEFINER`, `search_path=public`, plpgsql
         que devolve jsonb, corpo com o sha256 da migration (LF ou CRLF), SEM `EXECUTE` para PUBLIC, anon
         e service_role e COM para authenticated; e que as quatro dependencias existem.
-      - **`11b-antes-anular-venda-presencial-funcao-ausente`** (`ausenciaConfirmadaPor`, 8 linhas) prova
-        o ANTES, as mesmas condicoes do pre-voo da migration: funcao ausente, `is_admin_atual()` e
+      - **`11b-antes-anular-venda-presencial-funcao-ausente`** (`ausenciaConfirmadaPor`, 9 linhas) prova
+        o ANTES, as mesmas condicoes do pre-voo da migration: funcao ausente, `is_admin()` (existe), `is_admin_atual()` e
         `pedido__mudar_status(...)` com o corpo que o pre-voo exige (md5), `devolver_estoque`,
         `fin__dia` e `fin__hoje`, as tabelas e as colunas que a funcao le e escreve.
       - **Caminho, uma loja por vez:** igual ao do item 9 (`11a` NEGATIVA → `11b` mais nova e POSITIVA →

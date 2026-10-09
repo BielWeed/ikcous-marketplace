@@ -750,6 +750,34 @@ async function mesmoDia(c) {
     const antes = await foto(c, id);
     const a = await anular(c, "admin", id);
     assert.equal(a.ok, false, "pagamento desfeito e refeito foi anulado");
+    assert.equal(a.code, "22023");
+    // MESMO dia, recebimento desfeito e refeito: a frase do dia seria falsa.
+    assert.match(
+      a.message,
+      /^O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui\. Registre uma devolução\.$/,
+    );
+    assert.doesNotMatch(a.message, /mesmo dia da venda/);
+    assert.equal(await foto(c, id), antes);
+  });
+  // Desfeito E de outro dia: vale a frase do dia (é a primeira checagem).
+  await emTx(c, async () => {
+    const id = await vender(c);
+    for (const v of [false, true]) {
+      const r = await como(
+        c,
+        "admin",
+        "SELECT public.registrar_pagamento_recebido($1, $2::boolean) AS r",
+        [id, v],
+      );
+      assert.ok(r.ok, r.message);
+    }
+    await c.query(
+      "UPDATE public.marketplace_orders SET pagamento_recebido_em = now() - interval '2 days' WHERE id = $1",
+      [id],
+    );
+    const antes = await foto(c, id);
+    const a = await anular(c, "admin", id);
+    assert.equal(a.ok, false);
     assert.match(a.message, /^Só dá para anular no mesmo dia da venda\./);
     assert.equal(await foto(c, id), antes);
   });
@@ -845,6 +873,16 @@ async function motivo(c) {
     ["tab e quebras", "\t\n\r\n \t"],
     ["NBSP", String.fromCharCode(160).repeat(2)],
     ["501 caracteres", "x".repeat(501)],
+    // Invisíveis passam no btrim: só a exigência de letra/número os barra.
+    ["espaço de largura zero (U+200B)", String.fromCharCode(0x200b).repeat(3)],
+    ["BOM / ZWNBSP (U+FEFF)", String.fromCharCode(0xfeff)],
+    [
+      "espaço de largura zero entre espaços",
+      ` ${String.fromCharCode(0x200b)} `,
+    ],
+    ["braille em branco (U+2800)", String.fromCharCode(0x2800)],
+    ["só pontuação", "?!... --"],
+    ["só emoji (nenhuma letra ou número)", "😀".repeat(5)],
   ];
   for (const [rotulo, m] of invalidos) {
     await emTx(c, async () => {
@@ -861,6 +899,27 @@ async function motivo(c) {
     const a = await anular(c, "admin", id, "y".repeat(500));
     assert.ok(a.ok, `500 caracteres devia passar: ${a.message}`);
   });
+  // [[:alnum:]] no locale do banco de teste: letra acentuada SEM nenhuma letra
+  // ASCII, dígitos e maiúsculas acentuadas contam; 500 acentuadas e uma letra
+  // com 249 emojis (≈ 250 caracteres que o laço de bytes contaria errado) passam.
+  const aceitos = [
+    ["só letras acentuadas", "çãéíõú"],
+    ["maiúsculas acentuadas", "ÇÃO"],
+    ["só dígitos", "123"],
+    ["500 letras acentuadas", "é".repeat(500)],
+    ["uma letra e 249 emojis", `a${"😀".repeat(249)}`],
+    [
+      "invisível no meio de texto",
+      `erro${String.fromCharCode(0x200b)}no caixa`,
+    ],
+  ];
+  for (const [rotulo, m] of aceitos) {
+    await emTx(c, async () => {
+      const id = await vender(c);
+      const a = await anular(c, "admin", id, m);
+      assert.ok(a.ok, `${rotulo}: devia passar: ${a.message}`);
+    });
+  }
   // Aparado e INTACTO: letras nas pontas (inclusive a 'v') não podem ser comidas pelo trim.
   await emTx(c, async () => {
     const id = await vender(c);
@@ -1491,10 +1550,8 @@ prova(
     await mutar(
       c,
       "sem a regra do mesmo dia",
-      `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()
-       OR EXISTS (`,
-      `IF false
-       OR EXISTS (`,
+      "IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje() THEN",
+      "IF false THEN",
       [mesmoDia],
     );
     await mutar(
@@ -1514,11 +1571,18 @@ prova(
     await mutar(
       c,
       "sem a marca de pagamento desfeito e refeito",
-      `       OR EXISTS (
-            SELECT 1 FROM public.marketplace_order_payment_history h
-             WHERE h.order_id = p_order_id AND h.acao = 'desfeito'
-          ) THEN`,
-      " THEN",
+      `    IF EXISTS (
+        SELECT 1 FROM public.marketplace_order_payment_history h
+         WHERE h.order_id = p_order_id AND h.acao = 'desfeito'
+    ) THEN`,
+      "    IF false THEN",
+      [mesmoDia],
+    );
+    await mutar(
+      c,
+      "ramo do desfeito com a frase do dia (que seria falsa no mesmo dia)",
+      "O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui. Registre uma devolução.",
+      "Só dá para anular no mesmo dia da venda. Para outro dia, registre uma devolução.",
       [mesmoDia],
     );
     await mutar(
@@ -1547,8 +1611,15 @@ prova(
     await mutar(
       c,
       "motivo vazio aceito",
-      "IF v_motivo IS NULL THEN",
+      "IF v_motivo IS NULL OR v_motivo !~ '[[:alnum:]]' THEN",
       "IF false THEN",
+      [motivo],
+    );
+    await mutar(
+      c,
+      "motivo invisível aceito (sem exigir letra ou número)",
+      "IF v_motivo IS NULL OR v_motivo !~ '[[:alnum:]]' THEN",
+      "IF v_motivo IS NULL THEN",
       [motivo],
     );
     await mutar(

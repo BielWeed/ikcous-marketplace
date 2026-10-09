@@ -73,10 +73,10 @@ WITH fn AS (
          COALESCE((SELECT f.lanname || ' ' || f.retorno FROM fn f), 'AUSENTE')
   UNION ALL
   SELECT 'anular_venda_presencial: corpo (sha256)',
-         'f7d50fc4e53536209d265b9b8acb7bc5df327b131523a015bb7a29549b577701',
-         COALESCE((SELECT CASE WHEN f.h IN ('f7d50fc4e53536209d265b9b8acb7bc5df327b131523a015bb7a29549b577701',
-                                            'c6a471f446010427d0f43fd8a3976b8005c3d8da054b59876bf68679f3182cdc')
-                               THEN 'f7d50fc4e53536209d265b9b8acb7bc5df327b131523a015bb7a29549b577701'
+         '247818e6f406e6f308d9bc18d1d5c4a065ee6459a0d285f0ff305b21340ff318',
+         COALESCE((SELECT CASE WHEN f.h IN ('247818e6f406e6f308d9bc18d1d5c4a065ee6459a0d285f0ff305b21340ff318',
+                                            'b9bf56b37db60f5fd08a78d8f0393b382275d49b2dd158a77892e760c54287d9')
+                               THEN '247818e6f406e6f308d9bc18d1d5c4a065ee6459a0d285f0ff305b21340ff318'
                                ELSE f.h END
                      FROM fn f), 'AUSENTE')
   UNION ALL

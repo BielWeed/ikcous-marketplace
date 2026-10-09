@@ -257,6 +257,51 @@ Deno.test("204: o rollback so derruba a funcao, com guarda de hash, sem CASCADE 
   assert(r.indexOf("RAISE EXCEPTION") < r.indexOf("DROP FUNCTION"));
 });
 
+Deno.test("204: motivo sem letra nem número (caractere invisível) é recusado, ANTES da trava, com a mesma frase do motivo vazio", () => {
+  const c = semComentarios(corpo);
+  assertStringIncludes(
+    c,
+    "IF v_motivo IS NULL OR v_motivo !~ '[[:alnum:]]' THEN\n        RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='Informe o motivo para anular a venda.';",
+  );
+  assert(
+    c.indexOf("[[:alnum:]]") < c.indexOf("FROM public.order_refunds r"),
+    "a checagem do motivo tem de vir antes da trava",
+  );
+});
+
+Deno.test("204: o ramo do pagamento desfeito e refeito tem frase PRÓPRIA (a do dia seria falsa no mesmo dia) e vem depois da checagem do dia", () => {
+  const c = semComentarios(corpo);
+  const frase =
+    "O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui. Registre uma devolução.";
+  const dia = c.indexOf("Só dá para anular no mesmo dia da venda.");
+  const desfeito = c.indexOf(frase);
+  assert(dia > 0 && desfeito > dia);
+  // cada frase sai de UM só ramo
+  assertEquals(
+    c.split("Só dá para anular no mesmo dia da venda.").length - 1,
+    1,
+  );
+  assertEquals(c.split("foi desfeito e refeito hoje").length - 1, 1);
+  const ramo = c.slice(
+    c.indexOf(
+      "    IF EXISTS (\n        SELECT 1 FROM public.marketplace_order_payment_history h",
+    ),
+  );
+  assert(
+    ramo.startsWith(
+      `    IF EXISTS (\n        SELECT 1 FROM public.marketplace_order_payment_history h\n         WHERE h.order_id = p_order_id AND h.acao = 'desfeito'\n    ) THEN\n        RAISE EXCEPTION USING ERRCODE='22023', MESSAGE='${frase}`,
+    ),
+  );
+});
+
+Deno.test("204: o pré-voo exige is_admin() (a primeira porta da função)", () => {
+  const pre = migration.slice(
+    migration.indexOf("DO $preflight_20261204$"),
+    migration.indexOf("$preflight_20261204$;"),
+  );
+  assertStringIncludes(pre, "'public.is_admin()',");
+});
+
 Deno.test("204: a mensagem de dia passado e a frase que a tela reconhece", () => {
   assertStringIncludes(
     corpo,

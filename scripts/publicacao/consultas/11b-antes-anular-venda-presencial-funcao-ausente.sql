@@ -7,12 +7,13 @@
 -- SO LEITURA, um unico SELECT, so catalogo: nenhuma linha de pedido, venda ou cliente.
 --
 -- Saida: item | esperado | vivo | ok, com as linhas ok = false primeiro. Rol FECHADO de
--- 8 linhas, as mesmas em qualquer estado do banco.
+-- 9 linhas, as mesmas em qualquer estado do banco.
 --
 -- O QUE CADA LINHA PROVA (as mesmas condicoes do `DO $preflight_20261204$` da migration)
 --   * funcao ausente   -- zero sobrecargas de `anular_venda_presencial` (se ja existe, a
 --                         migration so reaplica quando o corpo e' o dela; aqui a ausencia
 --                         e' a premissa de "ainda nao aplicada").
+--   * is_admin()       -- existe (a primeira porta da funcao; o pre-voo exige).
 --   * is_admin_atual() -- corpo (md5 do prosrc sem CR) igual ao da 20261197000000.
 --   * pedido__mudar_status -- corpo (md5 sem CR) igual ao da 20261198000000.
 --   * devolver_estoque, fin__dia, fin__hoje -- existem.
@@ -48,6 +49,9 @@ WITH tabelas AS (
   SELECT 'anular_venda_presencial: ausente', '0',
          (SELECT count(*)::text FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
            WHERE n.nspname = 'public' AND p.proname = 'anular_venda_presencial')
+  UNION ALL
+  SELECT 'dependencia is_admin(): existe', 'EXISTE',
+         CASE WHEN to_regprocedure('public.is_admin()') IS NOT NULL THEN 'EXISTE' ELSE 'AUSENTE' END
   UNION ALL
   SELECT 'dependencia is_admin_atual(): corpo e o esperado (md5)',
          '519842163e48cc377ac1337ffb9db936',

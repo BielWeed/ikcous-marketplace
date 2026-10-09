@@ -4809,7 +4809,7 @@ Deno.test("10a/10b — o rpc-ci.yml roda a prova viva do portão dos cupons desl
 // 11a/11b (08/10/2026) — a PROVA DE OBJETOS do lote da migration 20261204000000
 // (a venda do balcão se anula no mesmo dia) em scripts/frota/canais-de-backend.json.
 // A 11a é a consulta do lote (DEPOIS do apply, 14 linhas); a 11b é a de ausência
-// (ANTES, 8 linhas). As duas são de ROL FECHADO. Estes testes medem o texto dos
+// (ANTES, 9 linhas). As duas são de ROL FECHADO. Estes testes medem o texto dos
 // .sql contra a migration DESTA árvore; a decisão de cada consulta num Postgres real
 // está em tests/banco/anular-venda-portao-viva.cjs (rodado no rpc-ci.yml).
 const NOME_11A = "11a-conferir-anular-venda-presencial-aplicado";
@@ -4840,7 +4840,7 @@ async function hashesDaMigration204() {
 const { ROL_DA_11A, ROL_DA_11B } = require(SCRIPT);
 for (const [nome, nItens, rol] of [
   [NOME_11A, 14, ROL_DA_11A],
-  [NOME_11B, 8, ROL_DA_11B],
+  [NOME_11B, 9, ROL_DA_11B],
 ] as Array<[string, number, string[]]>) {
   Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo, saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
     const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);

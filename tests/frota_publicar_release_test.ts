@@ -2707,7 +2707,7 @@ function evidenciasDoLote204(a: Estado203, b: Estado203) {
   for (const [ref, projeto] of LOJAS_203) {
     for (const [consulta, st, linhas] of [
       [A11, a, 14],
-      [B11, b, 8],
+      [B11, b, 9],
     ] as Array<[string, Estado203, number]>) {
       if (!st) continue;
       id += 1;
