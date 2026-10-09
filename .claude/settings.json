@@ -15,8 +15,15 @@
       "Bash(git show:*)",
       "Bash(git stash list)",
       "Bash(git status:*)",
+      "Bash(git worktree list)",
       "Bash(ls:*)",
       "Bash(node --version)",
+      "Bash(node scripts/paralelo/frente.mjs commitar:*)",
+      "Bash(node scripts/paralelo/frente.mjs conferir:*)",
+      "Bash(node scripts/paralelo/frente.mjs criar:*)",
+      "Bash(node scripts/paralelo/frente.mjs entrar:*)",
+      "Bash(node scripts/paralelo/frente.mjs status:*)",
+      "Bash(node scripts/paralelo/frente.mjs validar:*)",
       "Bash(npm --version)",
       "Bash(npm ls:*)",
       "Bash(npm run biome:check)",
@@ -127,6 +134,22 @@
       "Read(./.env.vercel.*)",
       "Read(./.gh_token)",
       "Read(./vapid_keys.json)"
+    ]
+  },
+  "worktree": {
+    "baseRef": "head"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/scripts/paralelo/guarda-de-faixa.mjs\""
+          }
+        ]
+      }
     ]
   }
 }

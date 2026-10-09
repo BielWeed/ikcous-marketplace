@@ -20,6 +20,10 @@ planejador dedicado, revisor de banco/segurança e corretor de build de diff mí
 do ECC (dezenas de agentes, memória, "instintos") ficou de fora — o próprio ECC avisa que
 esse volume consome a janela de contexto.
 
+> **Escrita paralela (09/10/2026):** este ciclo é serial por tarefa. Para vários fluxos de
+> trabalho ao mesmo tempo, sem conflito, use `/paralelizar` —
+> [`ARQUITETURA-PARALELA.md`](ARQUITETURA-PARALELA.md).
+
 ## O ciclo
 
 ```text
