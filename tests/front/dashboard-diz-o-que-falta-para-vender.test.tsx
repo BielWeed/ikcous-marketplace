@@ -73,6 +73,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -103,6 +104,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -128,6 +130,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -166,6 +169,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -195,6 +199,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -223,6 +228,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -251,6 +257,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -276,6 +283,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep=""
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -301,6 +309,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep={undefined}
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -323,6 +332,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -346,6 +356,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -369,6 +380,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={false}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -395,6 +407,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={false}
         chaveOk={false}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -407,6 +420,64 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     expect(pixPendente).toBeTruthy();
     await clicar(pixPendente!);
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+  });
+
+  // ── Conserto (painel simples, A5): "Como você recebe" ──
+  // Loja que só recebe na entrega está pronta: não pode ficar cobrando
+  // "Configurar pagamento PIX" nem deixar de dizer que a loja está pronta.
+  it("loja só com pagamento na entrega (sem PIX): NÃO mostra 'Configurar pagamento PIX' e o item está feito", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 0 }}
+        originCep="38500-000"
+        ligado={false}
+        chaveOk={false}
+        formasNaEntrega={["cash"]}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        onNavigate={vi.fn()}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    expect(hospedeiro.textContent).not.toContain("Configurar pagamento PIX");
+    expect(botaoComTexto(/pix/i)).toBeFalsy();
+    const textoRecebe = hospedeiro.querySelectorAll("ul > li")[0]!.textContent;
+    expect(textoRecebe).toMatch(/pagamento na entrega configurado/i);
+    expect(hospedeiro.textContent).toContain("está pronta para vender.");
+  });
+
+  it("loja sem PIX e sem nenhuma forma na entrega: continua pendente, leva para admin-settings", async () => {
+    const { LojaProntaEEstoqueBaixo } = await import(
+      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+    );
+    const onNavigate = vi.fn();
+
+    await montar(
+      <LojaProntaEEstoqueBaixo
+        stats={{ inventoryAlerts: 0 }}
+        originCep="38500-000"
+        ligado={false}
+        chaveOk={false}
+        formasNaEntrega={[]}
+        produtos={[{ isActive: true }]}
+        configCarregando={false}
+        produtosCarregando={false}
+        onNavigate={onNavigate}
+        onTentarDeNovo={vi.fn()}
+      />,
+    );
+
+    const pendente = botaoComTexto("Configurar pagamento PIX");
+    expect(pendente).toBeTruthy();
+    await clicar(pendente!);
+    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(hospedeiro.textContent).not.toContain("está pronta para vender.");
   });
 
   // ── Aceite 5: produto ativo — tem de ser isActive, não products.length ──
@@ -422,6 +493,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: false }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -447,6 +519,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: false }, { isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -478,6 +551,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep={undefined}
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[]}
         configCarregando={true}
         produtosCarregando={true}
@@ -517,6 +591,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={false}
         produtosCarregando={false}
@@ -543,6 +618,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep=""
         ligado={false}
         chaveOk={false}
+        formasNaEntrega={[]}
         produtos={[]}
         configCarregando={false}
         produtosCarregando={false}
@@ -577,6 +653,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep="38500-000"
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[{ isActive: true }]}
         configCarregando={true}
         produtosCarregando={false}
@@ -613,6 +690,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep={undefined}
         ligado={true}
         chaveOk={true}
+        formasNaEntrega={[]}
         produtos={[]}
         configCarregando={true}
         produtosCarregando={true}
@@ -644,6 +722,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
         originCep=""
         ligado={false}
         chaveOk={false}
+        formasNaEntrega={[]}
         produtos={[]}
         configCarregando={false}
         produtosCarregando={false}

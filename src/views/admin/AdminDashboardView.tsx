@@ -62,6 +62,9 @@ function SecaoLojaProntaEEstoqueBaixo({
       originCep={config.originCep}
       ligado={pagamentoOnlineLigado()}
       chaveOk={pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined)}
+      // `?? []`: config vinda do banco pode não ter a coluna; "não sei" aqui
+      // vira "nenhuma forma", nunca um erro que derruba o cartão.
+      formasNaEntrega={config.formasPagamentoEntrega ?? []}
       produtos={products}
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}
