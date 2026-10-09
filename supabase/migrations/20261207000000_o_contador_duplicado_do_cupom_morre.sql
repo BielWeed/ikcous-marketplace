@@ -52,10 +52,14 @@
 --       DEFAULT da propria `used_count` (o pg_attrdef cuja coluna e a mesma da
 --       dependencia). Qualquer outro pg_attrdef, como a expressao de uma coluna
 --       gerada, CONTA e recusa;
---   (e) NENHUM corpo de funcao em `public` cita `used_count` (qualquer tipo de
---       rotina): o corpo de uma funcao plpgsql nao deixa dependencia em pg_depend,
---       so a leitura do texto o ve. (Politica, gatilho e visao que citam a coluna
---       deixam dependencia, e o item (d) as recusa);
+--   (e) NENHUM corpo de funcao, em QUALQUER schema que nao seja do sistema (fora
+--       pg_catalog, information_schema e pg_toast), cita `used_count` (qualquer tipo
+--       de rotina): o corpo de uma funcao plpgsql nao deixa dependencia em pg_depend,
+--       so a leitura do texto o ve, e uma funcao fora de `public` (um schema interno
+--       da loja, um schema do Supabase) quebraria do mesmo jeito. Recusa conservadora:
+--       se algum schema da plataforma tiver o texto, a medicao (14b) mostra e nada se
+--       perde. (Politica, gatilho e visao que citam a coluna deixam dependencia, e o
+--       item (d) as recusa);
 --   (f) TODA linha tem `used_count IS DISTINCT FROM 0` falso: um valor diferente de
 --       zero e um NULL RECUSAM (NULL nao vale 0: o rollback devolveria 0 onde era
 --       NULL, e o dono nunca decidiu sobre isso).
@@ -220,12 +224,13 @@ BEGIN
   -- (e) ninguem cita o nome no TEXTO de uma funcao: o corpo de uma funcao plpgsql nao
   --     deixa dependencia em pg_depend, entao so a leitura do texto a ve. (Politica,
   --     gatilho e visao que citam a coluna JA deixam dependencia: o item (d) as pega.)
-  SELECT count(*), string_agg(p.proname::text, ', ' ORDER BY p.proname)
+  SELECT count(*), string_agg(s.nspname || '.' || p.proname::text, ', ' ORDER BY s.nspname, p.proname)
     INTO v_n, v_lista
     FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace
-   WHERE s.nspname = 'public' AND strpos(lower(p.prosrc), 'used_count') > 0;
+   WHERE s.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+     AND strpos(lower(p.prosrc), 'used_count') > 0;
   IF v_n > 0 THEN
-    RAISE EXCEPTION 'PREFLIGHT_20261207: % funcao(oes) de public citam used_count (%) -- nada foi apagado; reescreva-as antes.', v_n, v_lista;
+    RAISE EXCEPTION 'PREFLIGHT_20261207: % funcao(oes) citam used_count (%) -- nada foi apagado; reescreva-as antes.', v_n, v_lista;
   END IF;
 
   -- (f) toda linha com used_count igual a 0 exato; NULL tambem recusa.

@@ -1157,7 +1157,7 @@ const ROL_DA_14B = [
   "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
   "coupons.used_count: permissao propria por coluna (attacl)",
-  "funcoes de public que citam used_count",
+  "funcoes de qualquer schema que citam used_count",
   "gatilhos que citam used_count",
   "politicas de public que citam used_count",
   "public.coupons: a seguranca por linha vale para este papel",

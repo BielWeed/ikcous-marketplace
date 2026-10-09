@@ -43,8 +43,12 @@
 --                        EXCETO o DEFAULT da PROPRIA used_count: o pg_attrdef cuja coluna
 --                        (adnum) e' a mesma da dependencia. Qualquer outro pg_attrdef
 --                        (a expressao de uma coluna gerada de OUTRA coluna) CONTA.
---   * texto           -- nenhuma funcao de `public` (corpo, qualquer tipo de rotina),
---                        politica, gatilho nem visao de `public` cita `used_count`.
+--   * funcoes         -- nenhuma funcao (corpo, qualquer tipo de rotina) de QUALQUER schema
+--                        que nao seja do sistema (fora pg_catalog, information_schema e
+--                        pg_toast) cita `used_count`; a linha lista `schema.nome`. Se um schema
+--                        da plataforma tiver o texto, aparece aqui e nada se perde (recusa
+--                        conservadora, a mesma do pre-voo).
+--   * texto           -- nenhuma politica, gatilho nem visao de `public` cita `used_count`.
 --
 -- LIMITES: nao le valor de cupom, so conta. Evidencia LOCAL nao prova a IKCOUS nem a
 -- Savy: so o run desta consulta contra o ref de cada loja. A resposta vale como
@@ -94,9 +98,10 @@ WITH tab AS (
        )
      )
 ), fn AS (
-  SELECT coalesce(string_agg(p.proname::text, ',' ORDER BY p.proname), '(nenhuma)') AS nomes
+  SELECT coalesce(string_agg(s.nspname || '.' || p.proname::text, ',' ORDER BY s.nspname, p.proname), '(nenhuma)') AS nomes
     FROM pg_proc p JOIN pg_namespace s ON s.oid = p.pronamespace
-   WHERE s.nspname = 'public' AND strpos(lower(p.prosrc), 'used_count') > 0
+   WHERE s.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+     AND strpos(lower(p.prosrc), 'used_count') > 0
 ), itens(item, esperado, vivo) AS (
   SELECT 'controle: funcoes de public visiveis a este papel', '>0',
          CASE WHEN (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -135,7 +140,7 @@ WITH tab AS (
          CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'
               ELSE (SELECT n::text FROM dep) END
   UNION ALL
-  SELECT 'funcoes de public que citam used_count', '(nenhuma)',
+  SELECT 'funcoes de qualquer schema que citam used_count', '(nenhuma)',
          (SELECT nomes FROM fn)
   UNION ALL
   SELECT 'politicas de public que citam used_count', '0',

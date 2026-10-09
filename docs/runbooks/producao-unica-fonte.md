@@ -317,8 +317,10 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         NEGATIVA), com ZERO linhas de valor diferente de 0 (NULL conta), a seguranca por linha sem esconder cupom do papel que mede, ZERO dependentes da
         coluna (visao, politica, gatilho, indice, constraint, coluna GERADA que a cita; so o DEFAULT
         da propria coluna fica de fora), a coluna SEM permissao propria por coluna e SEM comentario
-        (o `DROP COLUMN` apaga os dois e o rollback so recria a coluna: por isso a recusa) e nenhuma funcao, politica, gatilho ou visao de `public` que a
-        cite. O portao so exige que a consulta do antes seja POSITIVA (da mesma janela ou mais nova
+        (o `DROP COLUMN` apaga os dois e o rollback so recria a coluna: por isso a recusa) e nenhuma funcao de QUALQUER schema que nao seja do sistema (fora
+        `pg_catalog`, `information_schema` e `pg_toast`; recusa conservadora: se um schema da
+        plataforma tiver o texto, a medicao mostra e nada se perde), politica, gatilho ou visao de
+        `public` que a cite. O portao so exige que a consulta do antes seja POSITIVA (da mesma janela ou mais nova
         que a do lote NEGATIVA); nao interpreta o que ela mede.
       - **Caminho, uma loja por vez, e ordem com o front:** ledger sem a versao e sem evidencia →
         `14a` (sai NEGATIVA: a coluna ainda existe) → `14b` MAIS NOVA que a `14a` e POSITIVA → UM

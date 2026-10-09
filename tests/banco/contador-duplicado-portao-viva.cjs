@@ -126,7 +126,7 @@ const LB = {
   cmt: "coupons.used_count: comentario proprio",
   linhas: "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
   dep: "coupons.used_count: dependentes (fora o default da propria coluna)",
-  fn: "funcoes de public que citam used_count",
+  fn: "funcoes de qualquer schema que citam used_count",
   pol: "politicas de public que citam used_count",
   gat: "gatilhos que citam used_count",
   vis: "visoes de public que citam used_count",
@@ -485,6 +485,8 @@ const EXCLUSAO_14B = `     AND NOT (
             AND ad.adnum = d.refobjsubid
        )
      )`;
+// o filtro de schema da linha das funcoes, na 14b
+const FILTRO_FN_14B = `   WHERE s.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')\n     AND strpos(`;
 const GUARDA_AUSENTE_LINHAS = `CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'
               ELSE (SELECT count(*)::text FROM public.coupons c
                      WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb) END`;
@@ -639,6 +641,10 @@ async function main() {
   ]);
   await variante("indice", `CREATE INDEX ix_prova ON public.coupons (used_count)`);
   await variante("funcao", `CREATE FUNCTION public.fn_prova() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`);
+  await variante("funcaoFora", [
+    `CREATE SCHEMA priv_cdp`,
+    `CREATE FUNCTION priv_cdp.f() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`,
+  ]);
   await variante("forma", `ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint`);
   await variante("usage", `ALTER TABLE public.coupons DROP COLUMN usage_count`);
   await variante("usageTipo", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`);
@@ -656,6 +662,7 @@ async function main() {
     ["gatilho com UPDATE OF used_count", nb.gatilho, [LB.dep, LB.gat]],
     ["indice sobre a coluna", nb.indice, [LB.dep]],
     ["funcao que cita used_count no corpo", nb.funcao, [LB.fn]],
+    ["funcao FORA de public (schema interno) que cita used_count", nb.funcaoFora, [LB.fn]],
     ["forma diferente do baseline (bigint)", nb.forma, [LB.forma]],
     ["usage_count ausente", nb.usage, [LB.usage]],
     ["usage_count bigint", nb.usageTipo, [LB.usage]],
@@ -666,7 +673,8 @@ async function main() {
   ];
   for (const [rotulo, db, esperadas] of casos14b)
     await negativo(B, `14b ${rotulo}`, db, esperadas);
-  assert.equal(linha(await rodar(nb.funcao, B), LB.fn).vivo, "fn_prova");
+  assert.equal(linha(await rodar(nb.funcao, B), LB.fn).vivo, "public.fn_prova");
+  assert.equal(linha(await rodar(nb.funcaoFora, B), LB.fn).vivo, "priv_cdp.f");
   // o papel que SOFRE a RLS nao ve o cupom com valor 3: a contagem dele diz "0" e e' mentira
   {
     const rows = await rodar(nb.cego, B, { papel: P.cego });
@@ -683,7 +691,7 @@ async function main() {
     for (const item of [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep])
       assert.equal(linha(rows, item).vivo, "AUSENTE", item);
   }
-  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL), permissao propria por coluna e comentario da coluna (o DROP os apaga e o rollback nao os recria); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
+  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao em public ou em OUTRO schema (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL), permissao propria por coluna e comentario da coluna (o DROP os apaga e o rollback nao os recria); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
 
   // ----------------------------------------------------------- 14a POSITIVOS
   {
@@ -745,6 +753,13 @@ async function main() {
   await mutanteDaLinha("14b sem a linha das linhas diferentes de 0", B, LB.linhas, nb.valor, [LB.linhas]);
   await mutanteDaLinha("14b sem a linha dos dependentes", B, LB.dep, nb.gerada, [LB.dep]);
   await mutanteDaLinha("14b sem a linha das funcoes", B, LB.fn, nb.funcao, [LB.fn]);
+  await mutanteTemQueSerPego(
+    "14b varre so public (a funcao de outro schema passa)",
+    B,
+    [[FILTRO_FN_14B, `   WHERE s.nspname = 'public'\n     AND strpos(`]],
+    nb.funcaoFora,
+    [LB.fn],
+  );
   await mutanteDaLinha("14b sem a linha das politicas", B, LB.pol, nb.politica, [LB.dep, LB.pol]);
   await mutanteDaLinha("14b sem a linha dos gatilhos", B, LB.gat, nb.gatilho, [LB.dep, LB.gat]);
   await mutanteDaLinha("14b sem a linha das visoes", B, LB.vis, nb.visao, [LB.dep, LB.vis]);

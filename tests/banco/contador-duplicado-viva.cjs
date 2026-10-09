@@ -26,7 +26,7 @@
  *   e igual a de antes, a coluna continua la com os mesmos valores)
  *   valor     used_count = 3 em uma linha;  nulo   used_count NULL em uma linha;
  *   visao     visao que cita a coluna (por nome e por select *);  funcao  funcao plpgsql
- *   que cita used_count no corpo;  gerada  coluna GERADA que cita used_count (a dependencia
+ *   que cita used_count no corpo (em public e em OUTRO schema);  gerada  coluna GERADA que cita used_count (a dependencia
  *   mora no pg_attrdef da OUTRA coluna: so o default da PROPRIA coluna e' ignorado);
  *   forma     tipo, default ou NOT NULL diferentes do baseline;  rls  seguranca por linha
  *   valendo para o papel que aplica (a contagem so veria as linhas visiveis a ele);
@@ -302,6 +302,8 @@ const T = {
   retorno: "    RETURN; -- ja apagada: reaplicacao, nada a conferir nem a fazer\n",
   drop: "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count;",
   nullComo0: "WHERE used_count IS DISTINCT FROM 0'",
+  // o filtro da (e): todo schema que nao seja do sistema
+  filtroFn: `   WHERE s.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')\n     AND strpos(`,
   // o bloco que exclui SO o default da propria coluna (item d)
   exclusao: `     AND NOT (
        d.classid = 'pg_attrdef'::regclass
@@ -321,7 +323,7 @@ const MSG = {
   forma: "PREFLIGHT_20261207: public.coupons.used_count nao tem a forma",
   rls: "PREFLIGHT_20261207: a seguranca por linha vale",
   dep: "PREFLIGHT_20261207: % objeto(s) dependem",
-  fn: "PREFLIGHT_20261207: % funcao(oes) de public citam",
+  fn: "PREFLIGHT_20261207: % funcao(oes) citam",
   val: "PREFLIGHT_20261207: used_count tem % linha(s)",
   pos: "POSVOO_20261207: public.coupons.used_count ainda existe",
   rb: "ROLLBACK_20261207: public.coupons.used_count existe mas nao tem a forma",
@@ -443,8 +445,23 @@ async function casoFuncao(sql = MIG) {
   );
   const antes = await fotografia(db);
   const r = await aplicar(db, sql);
-  recusou(r, /funcao\(oes\) de public citam used_count \(fn_prova_cd\)/, "funcao");
+  recusou(r, /funcao\(oes\) citam used_count \(public\.fn_prova_cd\)/, "funcao");
   await nadaGravado(db, antes, "funcao");
+}
+/** O mesmo item (e) com a funcao FORA de public (um schema interno): a varredura so de public a
+ * deixava passar e a coluna era apagada com a funcao quebrada. */
+async function casoFuncaoFora(sql = MIG) {
+  const db = await clonar("funcaofora");
+  await semear(db);
+  await usar(db, async (c) => {
+    await c.query(`CREATE SCHEMA priv_cd`);
+    await c.query(`CREATE FUNCTION priv_cd.f() RETURNS bigint LANGUAGE plpgsql AS $f$
+      BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`);
+  });
+  const antes = await fotografia(db);
+  const r = await aplicar(db, sql);
+  recusou(r, /funcao\(oes\) citam used_count \(priv_cd\.f\)/, "funcao fora de public");
+  await nadaGravado(db, antes, "funcao fora de public");
 }
 async function preparaGerada() {
   const db = await clonar("gerada");
@@ -823,6 +840,8 @@ async function main() {
   ok("recusa com visao que cita a coluna (por nome e por select *): mensagem nomeia a visao, NADA gravado");
   await casoFuncao();
   ok("recusa com funcao plpgsql que cita used_count no corpo: mensagem nomeia a funcao, NADA gravado");
+  await casoFuncaoFora();
+  ok("recusa com funcao plpgsql FORA de public (schema priv_cd) que cita used_count: a varredura e de TODOS os schemas que nao sao do sistema; mensagem nomeia schema.funcao, NADA gravado");
   await casoGerada();
   ok("recusa com coluna GERADA que cita used_count (o pg_attrdef de OUTRA coluna conta): NADA gravado");
   await casoForma();
@@ -881,6 +900,11 @@ async function main() {
     trocar(MIG, T.exclusao, "     ;"),
   );
   await mutante("sem (e) funcoes", casoFuncao, semRaise(MIG, MSG.fn));
+  await mutante(
+    "(e) varre so public (funcao fora de public passa)",
+    casoFuncaoFora,
+    trocar(MIG, T.filtroFn, `   WHERE s.nspname = 'public'\n     AND strpos(`),
+  );
   await mutante("sem (f) valores", casoValor, semRaise(MIG, MSG.val));
   await mutante(
     "(f) com COALESCE (NULL vira 0)",

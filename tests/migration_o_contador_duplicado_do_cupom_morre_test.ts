@@ -109,6 +109,15 @@ Deno.test("207: o FOR SHARE vem DEPOIS da trava e ANTES da contagem (envelope RE
     assertStringIncludes(migration, frase);
 });
 
+Deno.test("207: (e) varre as funcoes de TODOS os schemas (so ficam de fora pg_catalog, information_schema e pg_toast), nunca so public", () => {
+  const c = semComentarios(migration).replace(/\s+/g, " ");
+  assertStringIncludes(
+    c,
+    "WHERE s.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') AND strpos(lower(p.prosrc), 'used_count') > 0",
+  );
+  assert(!/s\.nspname\s*=\s*'public'/.test(c), "o filtro so de public deixa passar funcao de outro schema");
+});
+
 Deno.test("207: so apaga a coluna used_count -- sem CASCADE, sem outro DROP, sem escrita em dado", () => {
   const c = codigo(migration);
   assertEquals(c.match(/\bDROP\b/gi).length, 1);
@@ -137,7 +146,7 @@ Deno.test("207: o pre-voo recusa por cada condicao, com o NOME do motivo e dizen
     "PREFLIGHT_20261207: public.coupons.used_count tem comentario proprio (pg_description)",
     "PREFLIGHT_20261207: a seguranca por linha vale para este papel",
     "PREFLIGHT_20261207: % objeto(s) dependem de public.coupons.used_count",
-    "PREFLIGHT_20261207: % funcao(oes) de public citam used_count",
+    "PREFLIGHT_20261207: % funcao(oes) citam used_count",
     "PREFLIGHT_20261207: used_count tem % linha(s) diferente(s) de 0 (NULL conta)",
   ])
     assertEquals(pre.split(`RAISE EXCEPTION '${frase}`).length - 1, 1, frase);
