@@ -7,6 +7,7 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
+import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import {
   METODOS_LOCAIS,
@@ -128,11 +129,27 @@ export function PoliticaDeDevolucaoSection({
   onDirtyMudou?: (sujo: boolean) => void;
 }>) {
   const { categories } = useCategories();
+  const { config } = useStore();
   const [salva, setSalva] = useState<PoliticaDevolucao | null>(null);
   const [form, setForm] = useState<FormDaPolitica | null>(null);
   const [erroDeLeitura, setErroDeLeitura] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // "Mesmo endereço da loja": só apresentação. Marcada = `endereco_devolucao`
+  // vazio, que já era "usa o endereço da loja"; o payload da RPC não muda.
+  // Desmarcar com o campo vazio também grava vazio (como antes).
+  const [mesmoEndereco, setMesmoEndereco] = useState(true);
+  // O endereço que estava no campo quando a caixa foi marcada: desmarcar de
+  // novo o devolve, em vez de apagar o que a loja tinha digitado.
+  const enderecoAntesDaCaixaRef = useRef("");
   const ativoRef = useRef(true);
+
+  const aplicar = useCallback((p: PoliticaDevolucao) => {
+    const novo = formDe(p);
+    setSalva(p);
+    setForm(novo);
+    setMesmoEndereco(novo.endereco_devolucao === "");
+    enderecoAntesDaCaixaRef.current = novo.endereco_devolucao;
+  }, []);
 
   const carregar = useCallback(async () => {
     setErroDeLeitura(false);
@@ -152,12 +169,11 @@ export function PoliticaDeDevolucaoSection({
         setErroDeLeitura(true);
         return;
       }
-      setSalva(lida);
-      setForm(formDe(lida));
+      aplicar(lida);
     } catch {
       if (ativoRef.current) setErroDeLeitura(true);
     }
-  }, []);
+  }, [aplicar]);
 
   useEffect(() => {
     ativoRef.current = true;
@@ -245,6 +261,17 @@ export function PoliticaDeDevolucaoSection({
     );
   }
 
+  function marcarMesmoEndereco(marcada: boolean) {
+    if (!form) return;
+    setMesmoEndereco(marcada);
+    if (marcada) {
+      enderecoAntesDaCaixaRef.current = form.endereco_devolucao;
+      mudar("endereco_devolucao", "");
+    } else {
+      mudar("endereco_devolucao", enderecoAntesDaCaixaRef.current);
+    }
+  }
+
   async function salvar() {
     if (!form || salvando) return;
     if (temErro) {
@@ -292,8 +319,7 @@ export function PoliticaDeDevolucaoSection({
         await carregar();
         return;
       }
-      setSalva(gravada);
-      setForm(formDe(gravada));
+      aplicar(gravada);
       toast.success("Política de trocas e devoluções salva.");
     } catch (e) {
       toast.error(mensagemDoErro(e, "Não foi possível salvar a política."));
@@ -438,17 +464,32 @@ export function PoliticaDeDevolucaoSection({
           </p>
         )}
         <div>
-          <label htmlFor="politica-endereco" className={ROTULO}>
-            Endereço para devolução
+          <p className={ROTULO}>Endereço para devolução</p>
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs font-bold text-zinc-200">
+            <input
+              type="checkbox"
+              checked={mesmoEndereco}
+              onChange={(e) => marcarMesmoEndereco(e.target.checked)}
+              className="size-5 shrink-0 accent-admin-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
+            />
+            Mesmo endereço da loja
           </label>
-          <LocalBufferedInput
-            id="politica-endereco"
-            value={form.endereco_devolucao}
-            maxLength={300}
-            placeholder="Vazio = o endereço da loja"
-            onFlush={(v) => mudar("endereco_devolucao", v)}
-            className={CAMPO}
-          />
+          {mesmoEndereco ? (
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              {config.storeAddress?.trim() ||
+                "A loja ainda não tem endereço. Cadastre em Minha loja."}
+            </p>
+          ) : (
+            <LocalBufferedInput
+              id="politica-endereco"
+              aria-label="Endereço para devolução"
+              value={form.endereco_devolucao}
+              maxLength={300}
+              placeholder="Rua, número, bairro e cidade"
+              onFlush={(v) => mudar("endereco_devolucao", v)}
+              className={CAMPO}
+            />
+          )}
         </div>
       </div>
 
