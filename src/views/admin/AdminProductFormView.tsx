@@ -65,6 +65,7 @@ import {
   Loader2,
   Package,
   Plus,
+  Power,
   Scissors,
   ShieldCheck,
   Smartphone,
@@ -1568,6 +1569,27 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       imageUrl: v.imageUrl || "",
     });
     setShowVariantForm(true);
+  }, []);
+
+  // Desligar/religar na própria linha: a variação segue existindo (SKU,
+  // estoque e cadastro guardados) mas some da loja enquanto estiver desligada.
+  // O aviso só vem ao DESLIGAR, e diz o que acontece com quem compra. A lista
+  // passa por `formComVariacoes`: desligar a última ligada zera o estoque do
+  // produto (ver `estoque-das-variacoes.ts`). Nada vai para `deletedVariantIds`.
+  const handleToggleVariantActive = useCallback((v: ProductVariant) => {
+    setFormData((prev) =>
+      formComVariacoes(
+        prev,
+        prev.variants.map((x) =>
+          x.id === v.id ? { ...x, active: !x.active } : x,
+        ),
+      ),
+    );
+    if (v.active) {
+      toast.info(
+        `${v.name}: ${v.value} desligada. Ela deixa de aparecer na loja depois que você salvar o produto e volta quando você religar.`,
+      );
+    }
   }, []);
 
   const confirmDeleteVariant = () => {
@@ -3349,6 +3371,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   variant={v}
                   onEdit={handleEditVariant}
                   onDelete={handleDeleteVariant}
+                  onToggleActive={handleToggleVariantActive}
                 />
               ))
             )}
@@ -4404,12 +4427,14 @@ interface VariantItemProps {
   readonly variant: ProductVariant;
   readonly onEdit: (v: ProductVariant) => void;
   readonly onDelete: (id: string) => void;
+  readonly onToggleActive: (v: ProductVariant) => void;
 }
 
 const VariantItem = React.memo(function VariantItem({
   variant,
   onEdit,
   onDelete,
+  onToggleActive,
 }: VariantItemProps) {
   return (
     <div className="group flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-900 p-4 transition-all hover:border-emerald-500/30">
@@ -4460,6 +4485,24 @@ const VariantItem = React.memo(function VariantItem({
           className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
         >
           <Edit2 className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleActive(variant)}
+          aria-label={`${variant.active ? "Desligar" : "Religar"} variação ${variant.value}`}
+          title={
+            variant.active
+              ? "Desligar: deixa de aparecer na loja, volta quando religar"
+              : "Religar: volta a aparecer na loja"
+          }
+          className={cn(
+            "flex size-8 items-center justify-center rounded-lg transition-all hover:bg-white/5",
+            variant.active
+              ? "text-emerald-500 hover:text-emerald-400"
+              : "text-zinc-600 hover:text-white",
+          )}
+        >
+          <Power className="size-3.5" />
         </button>
         <button
           type="button"
