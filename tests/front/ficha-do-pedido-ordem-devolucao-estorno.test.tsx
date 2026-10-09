@@ -89,7 +89,6 @@ vi.mock("@/hooks/useDevolucoesAdmin", () => ({
     erro: false,
     recarregar: vi.fn(),
   }),
-  pedirParaAbrirDevolucao: vi.fn(),
 }));
 
 // @ts-expect-error flag interna do React, sem tipo público.

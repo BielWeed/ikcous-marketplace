@@ -656,6 +656,7 @@ export function AdminArea({
                           props={{
                             onNavigate: onNavigate,
                             active: currentView === "admin-devolucoes",
+                            selectedDevolucaoId: selectedProductId,
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
                           }}

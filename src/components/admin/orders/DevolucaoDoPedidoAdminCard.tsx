@@ -4,10 +4,7 @@ import {
   SeloDoStatus,
   SeloDoTipo,
 } from "@/components/admin/devolucoes/SelosDaDevolucao";
-import {
-  pedirParaAbrirDevolucao,
-  useDevolucoesDoPedidoAdmin,
-} from "@/hooks/useDevolucoesAdmin";
+import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesAdmin";
 import {
   ehStatusAberto,
   formatarDia,
@@ -29,7 +26,7 @@ export function DevolucaoDoPedidoAdminCard({
 }: Readonly<{
   orderId: string;
   /** Navega para `admin-devolucoes` (sem ele, o card só informa). */
-  onAbrirDevolucoes?: () => void;
+  onAbrirDevolucoes?: (id: string) => void;
 }>) {
   const { devolucoes, erro, recarregar } = useDevolucoesDoPedidoAdmin(
     orderId,
@@ -57,8 +54,7 @@ export function DevolucaoDoPedidoAdminCard({
 
   function abrir(id: string) {
     if (!onAbrirDevolucoes) return;
-    pedirParaAbrirDevolucao(id);
-    onAbrirDevolucoes();
+    onAbrirDevolucoes(id);
   }
 
   return (

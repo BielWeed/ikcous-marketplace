@@ -998,6 +998,29 @@ const AppContent = () => {
         return;
       }
 
+      // Devoluções é lista + ficha na MESMA tela: trocar só a ficha (`?id=`)
+      // não é navegação de página. Sem View Transition — o callback dela roda
+      // depois de a tela já ter registrado o Voltar da ficha nova e o
+      // `setBackOverride(null)` do caminho abaixo o apagaria — e sem zerar o
+      // override. Só esta tela: nas demais que trocam apenas o id (produto →
+      // produto, com a foto do card indo para a foto principal) o caminho
+      // abaixo continua valendo.
+      if (!isDifferentView && targetView === "admin-devolucoes") {
+        latestTargetViewRef.current = { view: targetView, id };
+        setSelectedProductId(id || null);
+        const path = id ? `/${targetView}?id=${id}` : `/${targetView}`;
+        const currentPathAndSearch =
+          globalThis.location.pathname + globalThis.location.search;
+        if (currentPathAndSearch !== path) {
+          globalThis.history.pushState(
+            { view: targetView, id, from: currView },
+            "",
+            path,
+          );
+        }
+        return;
+      }
+
       const fromView = currView;
       const dir = getNavigationDirection(currView, targetView);
       navigationDirectionRef.current = dir;
@@ -1113,6 +1136,7 @@ const AppContent = () => {
             "admin-coupon-form",
             "admin-user-detail",
             "admin-orders",
+            "admin-devolucoes",
             "admin-push",
           ].includes(targetView) &&
           id
@@ -2131,6 +2155,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentViewRef.current) &&
                   selectedProductIdRef.current
@@ -2169,6 +2194,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentView) && selectedProductId
                 ? `/${currentView}?id=${selectedProductId}`

@@ -95,7 +95,8 @@ export function IdentitySettingsSection({
         id={`identity-upload-${encodeURIComponent(label)}`}
         type="file"
         accept={
-          target.kind === "asset" && target.roles.includes("og")
+          target.kind === "app-icons" ||
+          (target.kind === "asset" && target.roles.includes("og"))
             ? "image/png"
             : "image/png,image/jpeg,image/webp,image/svg+xml,image/vnd.microsoft.icon,.ico"
         }
@@ -207,14 +208,24 @@ export function IdentitySettingsSection({
               )}
               {uploadControl(
                 `Trocar ${label.toLowerCase()}`,
-                {
-                  kind: "asset",
-                  roles:
-                    role === "header" && alsoOpening
-                      ? ["header", "loader"]
-                      : [role],
-                },
-                hint,
+                role === "icon_512"
+                  ? { kind: "app-icons" }
+                  : {
+                      kind: "asset",
+                      roles:
+                        role === "header" && alsoOpening
+                          ? ["header", "loader"]
+                          : [role],
+                    },
+                role === "icon_512"
+                  ? `${hint}. Atualiza também os ícones Apple, 192 e com máscara, preservando as escolhas individuais deste rascunho`
+                  : hint,
+              )}
+              {role === "icon_512" && (
+                <p className="text-xs text-zinc-400">
+                  No Android, o ícone mostra a logo da loja sobre a cor
+                  principal.
+                </p>
               )}
             </section>
           );
