@@ -107,9 +107,10 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   cláusula composta ignorada (mutante) deixa a prova vermelha; resposta parcial ou
   duplicada tem `rol=invalido`; erro de SQL e papel sem acesso ao schema `cron` nunca viram
   positivo; o `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR (as duas, em
-  ordem) / NADA / PARAR. **Limite declarado:** a linha do job só é estrita quando o papel
-  vê algum job; sem isso (RLS do pg_cron) ela diz `NAO VERIFICAVEL` e é `ok` — o job se
-  confere então no painel. **Não prova** a IKCOUS nem a Savy, nem o código das edge
+  ordem) / NADA / PARAR. **Limite declarado:** a linha do job só vira `NAO VERIFICAVEL` (e
+  `ok`) quando a RLS do pg_cron vale para o papel (`row_security_active`) E ele vê zero
+  jobs — o job se confere então no painel; quem atravessa a RLS (BYPASSRLS) com zero jobs
+  reprova como AUSENTE, e o papel que vê algum job é estrito. **Não prova** a IKCOUS nem a Savy, nem o código das edge
   functions de que a pista rápida depende.
 
 ## Como rodar

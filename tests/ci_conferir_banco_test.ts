@@ -5174,6 +5174,7 @@ for (const [nome, nItens, rol] of [
           "varredura",
           "vis",
           "agendado",
+          "rls",
           "itens",
         ]);
         const alvos = [

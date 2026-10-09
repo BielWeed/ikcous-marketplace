@@ -43,14 +43,18 @@
 --                    minutos e ATIVO (a varredura so devolve a vaga se roda).
 --
 -- VISIBILIDADE DO JOB (importante): `cron.job` tem RLS no pg_cron ("so quem criou o job
--- ve o job"), e o papel so-leitura do portao pode ver ZERO jobs mesmo com o job rodando
--- (a mesma ressalva da 8g-cron-reconciliar). Quando este papel nao ve NENHUM job, a linha
--- do agendamento NAO conclui nada: diz `NAO VERIFICAVEL` nas duas colunas, com o motivo,
--- e fica ok = true so para nao travar o portao por uma coisa que o papel nao enxerga;
--- nesse caso o job se confere no painel do Supabase (Database -> Cron) ou pela 8g.
--- Quando o papel ve algum job, a linha e' estrita: job ausente, inativo ou com outro
--- horario reprova. Se o papel nao tem sequer USAGE no schema cron, a consulta ERRA
--- (SQLSTATE 42501) e o portao fica SEM EVIDENCIA, nunca positivo.
+-- ve o job"), e um papel que SOFRE essa RLS pode ver ZERO jobs mesmo com o job rodando
+-- (a mesma ressalva da 8g-cron-reconciliar). Quem decide se o papel e' cego e'
+-- row_security_active('cron.job') (o mesmo recurso da 8k): `true` = a RLS vale para
+-- ele. A linha do agendamento so NAO conclui nada quando as DUAS coisas valem: a RLS e'
+-- ativa para o papel E ele ve zero jobs; ai diz `NAO VERIFICAVEL` nas duas colunas, com o
+-- motivo, e fica ok = true so para nao travar o portao por uma coisa que o papel nao
+-- enxerga (o job se confere no painel do Supabase, Database -> Cron, ou pela 8g). Um papel
+-- que ATRAVESSA a RLS (BYPASSRLS, como o supabase_read_only_user) tem `false` e a linha
+-- e' ESTRITA mesmo com zero jobs: o zero e' a verdade, e job ausente reprova. Tambem e'
+-- estrita quando o papel ve algum job: ausente, inativo ou com outro horario reprova.
+-- Se o papel nao tem sequer USAGE no schema cron, a consulta ERRA (SQLSTATE 42501) e o
+-- portao fica SEM EVIDENCIA, nunca positivo.
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'), a mesma conta dos
 -- rollbacks-manuais. Cada hash aparece aqui uma vez em LF e uma em CRLF;
@@ -84,6 +88,8 @@ WITH f AS (
     JOIN pg_language l ON l.oid = p.prolang
 ), vis AS (
   SELECT count(*) AS n FROM cron.job
+), rls AS (
+  SELECT row_security_active('cron.job') AS ativa
 ), agendado AS (
   SELECT j.schedule, j.active
     FROM cron.job j
@@ -202,10 +208,10 @@ WITH f AS (
   -- o agendamento
   UNION ALL
   SELECT 'job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo',
-         CASE WHEN (SELECT n FROM vis) = 0
+         CASE WHEN (SELECT n FROM vis) = 0 AND (SELECT ativa FROM rls)
               THEN 'NAO VERIFICAVEL: este papel nao ve nenhum job do cron'
               ELSE 'ativo */15 * * * *' END,
-         CASE WHEN (SELECT n FROM vis) = 0
+         CASE WHEN (SELECT n FROM vis) = 0 AND (SELECT ativa FROM rls)
               THEN 'NAO VERIFICAVEL: este papel nao ve nenhum job do cron'
               WHEN NOT EXISTS (SELECT 1 FROM agendado) THEN 'AUSENTE'
               ELSE (SELECT string_agg(CASE WHEN g.active THEN 'ativo ' ELSE 'inativo ' END || g.schedule,

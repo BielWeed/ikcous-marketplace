@@ -1084,7 +1084,8 @@ const ROL_DA_11B = [
  * UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
  * própria linha). Como a 10a e a 11a, NÃO serve de pré-checagem de ledger (o lote não
  * tem backfill: é de apply normal). A linha do job do cron diz `NAO VERIFICAVEL` (e
- * fica ok) quando o papel não vê job nenhum: ver o cabeçalho da consulta.
+ * fica ok) só quando a RLS do cron.job vale para o papel (row_security_active) e ele
+ * não vê job nenhum: ver o cabeçalho da consulta.
  * tests/banco/cupom-preso-portao-viva.cjs prova, num Postgres real, que este rol é
  * EXATAMENTE o que a consulta devolve. */
 const ROL_DA_12A = [

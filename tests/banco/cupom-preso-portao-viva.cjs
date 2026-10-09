@@ -38,8 +38,10 @@
  *             `cheio`) e em `crlf`; as duas com o papel mínimo e com search_path
  *             trocado e objetos-isca de mesmo nome em outro schema; o dono da
  *             varredura OUTRO papel mas com EXECUTE no auxiliar (positivo: a linha
- *             mede o privilégio, não a igualdade de donos); o papel que não vê job
- *             nenhum (RLS do pg_cron): a linha do job diz NAO VERIFICAVEL e é ok.
+ *             mede o privilégio, não a igualdade de donos); o papel que sofre a RLS
+ *             do pg_cron (row_security_active) e vê zero jobs: a linha do job diz
+ *             NAO VERIFICAVEL e é ok; quem ATRAVESSA a RLS (BYPASSRLS) com zero jobs,
+ *             ou a tabela sem RLS com zero jobs, REPROVA como AUSENTE.
  *  12a        auxiliar/RPC/varredura ausentes (cada um e ANTES do apply); sobrecarga
  *             extra de cada uma; só OUTRA assinatura; SECURITY INVOKER, sem
  *             search_path, search_path com pg_temp, linguagem sql, corpo com 1 byte a
@@ -71,7 +73,8 @@
  * LIMITES DECLARADOS: (1) o Postgres é o 17 LOCAL; o papel de leitura real da loja
  * (supabase_read_only_user), o Postgres 15/17 da Supabase, o pg_cron real e a ACL real
  * das lojas não foram medidos aqui. (2) A linha do job só é estrita quando o papel vê
- * algum job; um papel cego (RLS do pg_cron) recebe NAO VERIFICAVEL e `ok`, e esta prova
+ * algum job OU atravessa a RLS (row_security_active = false); um papel cego (a RLS do
+ * pg_cron vale para ele e ele vê zero jobs) recebe NAO VERIFICAVEL e `ok`, e esta prova
  * afirma isso de propósito (um job inativo passa despercebido a um papel cego). (3) A
  * consulta não lê o comando do job: um job com o nome certo e outro comando não é
  * detectado.
@@ -1400,6 +1403,69 @@ async function main() {
       "12a reprova a linha do job quando ele está ausente, inativo ou fora de */15 (o vivo diz qual) — e, LIMITAÇÃO DECLARADA, o papel cego (RLS) recebe NAO VERIFICAVEL e ok mesmo com o job inativo: nesse caso o job se confere no painel",
     );
   }
+  // R1 (revisão Opus): quem ATRAVESSA a RLS (BYPASSRLS, como o supabase_read_only_user) e
+  // vê ZERO jobs NÃO é cego: o zero é a verdade. A linha só vira NAO VERIFICAVEL quando a
+  // RLS está ATIVA para o papel (row_security_active('cron.job')) e ele vê zero jobs.
+  const rlsLigadaSemJobs = (rotulo, de) =>
+    novo(
+      rotulo,
+      "ALTER TABLE cron.job ENABLE ROW LEVEL SECURITY; DELETE FROM cron.job",
+      "(SELECT relrowsecurity FROM pg_class WHERE oid = 'cron.job'::regclass) AND NOT EXISTS (SELECT 1 FROM cron.job)",
+      de,
+    );
+  db.semJobs = await rlsLigadaSemJobs("semjobs", aplicado);
+  db.semJobsB = await rlsLigadaSemJobs("semjobsb", pre);
+  db.semRlsSemJobs = await novo(
+    "semrlsjobs",
+    "DELETE FROM cron.job",
+    "NOT EXISTS (SELECT 1 FROM cron.job) AND NOT (SELECT relrowsecurity FROM pg_class WHERE oid = 'cron.job'::regclass)",
+    aplicado,
+  );
+  {
+    // a medição do revisor, refeita: BYPASSRLS => 'f'; RLS ativa => 't'
+    const ativa = async (papel) =>
+      usar(db.semJobs, async (c) => {
+        await c.query(`SET ROLE ${papel}`);
+        return (await c.query("SELECT row_security_active('cron.job') AS a"))
+          .rows[0].a;
+      });
+    assert.equal(await ativa(P.ro), false, "BYPASSRLS atravessa a RLS");
+    assert.equal(await ativa(P.cego), true, "o papel cego sofre a RLS");
+    // (1) atravessa a RLS + zero jobs => ESTRITA: reprova (AUSENTE)
+    const r1 = await negativo(A, "R1 BYPASSRLS + zero jobs (12a)", db.semJobs, [
+      L.job,
+    ]);
+    assert.equal(linha(r1, L.job).vivo, "AUSENTE");
+    const r1b = await negativo(
+      B,
+      "R1 BYPASSRLS + zero jobs (12b)",
+      db.semJobsB,
+      [LB.job],
+    );
+    assert.equal(linha(r1b, LB.job).vivo, "AUSENTE");
+    // (2) RLS ativa + zero jobs visíveis => NAO VERIFICAVEL, ok (indistinguível de job existente)
+    const r2 = await rodar(db.semJobs, A, { papel: P.cego });
+    await exigirPositiva(A, "R1 papel cego + zero jobs (12a)", r2);
+    assert.equal(linha(r2, L.job).vivo, NAO_VERIFICAVEL);
+    const r2b = await rodar(db.semJobsB, B, { papel: P.cego });
+    await exigirPositiva(B, "R1 papel cego + zero jobs (12b)", r2b);
+    assert.equal(linha(r2b, LB.job).vivo, NAO_VERIFICAVEL);
+    // (3) tabela SEM RLS + zero jobs, mesmo para o papel sem BYPASSRLS => ESTRITA: reprova
+    for (const papel of [P.cego, P.ro]) {
+      const r3 = await negativo(
+        A,
+        `R1 sem RLS + zero jobs (${papel === P.cego ? "sem BYPASSRLS" : "BYPASSRLS"})`,
+        db.semRlsSemJobs,
+        [L.job],
+        { papel },
+      );
+      assert.equal(linha(r3, L.job).vivo, "AUSENTE");
+    }
+    // (4) o papel que VÊ o job ativo segue ok (os positivos acima: cheio/aplicado/crlf/papel mínimo)
+    ok(
+      "R1: a linha do job só vira NAO VERIFICAVEL quando a RLS do cron.job está ATIVA para o papel (row_security_active) E ele vê zero jobs; o papel que atravessa a RLS (BYPASSRLS) com zero jobs REPROVA como AUSENTE (12a e 12b), a tabela sem RLS com zero jobs também (com e sem BYPASSRLS), o papel cego com zero jobs recebe NAO VERIFICAVEL e ok, e o que vê o job ativo segue ok",
+    );
+  }
   // papel sem USAGE no schema cron: a consulta ERRA (nunca positivo)
   {
     const r = await tentar(aplicado, A, { papel: P.semcron });
@@ -1727,12 +1793,43 @@ async function main() {
     db.n11hor,
     [L.job],
   );
+  const SEM_RLS = " AND (SELECT ativa FROM rls)";
+  await m(
+    "A: job: row_security_active ignorado (zero jobs visíveis vira NAO VERIFICAVEL para quem atravessa a RLS)",
+    A,
+    [
+      [SEM_RLS, ""],
+      [SEM_RLS, ""],
+    ],
+    db.semJobs,
+    [L.job],
+  );
+  await m(
+    "A: job: row_security_active ignorado (tabela sem RLS)",
+    A,
+    [
+      [SEM_RLS, ""],
+      [SEM_RLS, ""],
+    ],
+    db.semRlsSemJobs,
+    [L.job],
+  );
+  await m(
+    "B: job: row_security_active ignorado (zero jobs visíveis vira NAO VERIFICAVEL para quem atravessa a RLS)",
+    B,
+    [
+      [SEM_RLS, ""],
+      [SEM_RLS, ""],
+    ],
+    db.semJobsB,
+    [LB.job],
+  );
   await mutantePositivoTemQueSerPego(
     "A: job: a guarda do papel cego (sempre estrito)",
     A,
     [
       [
-        "WHEN (SELECT n FROM vis) = 0\n              THEN 'NAO VERIFICAVEL: este papel nao ve nenhum job do cron'\n              WHEN NOT EXISTS",
+        "WHEN (SELECT n FROM vis) = 0 AND (SELECT ativa FROM rls)\n              THEN 'NAO VERIFICAVEL: este papel nao ve nenhum job do cron'\n              WHEN NOT EXISTS",
         "WHEN false\n              THEN 'NAO VERIFICAVEL: este papel nao ve nenhum job do cron'\n              WHEN NOT EXISTS",
       ],
     ],
