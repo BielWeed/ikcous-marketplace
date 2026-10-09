@@ -396,8 +396,15 @@ jobs:
       # foto, o envelope REPEATABLE READ de producao (a migration espera o pedido em andamento sem
       # parar o checkout, recusa em 4 s sem gravar, sem 40P01 com dois pedidos cruzados), ida e
       # volta (aplicar, rollback, reaplicar 2x, catalogo exato) e cada guarda tirada (mutante)
-      # deixa a prova vermelha. Os blocos seguintes da mesma feature entram neste arquivo. CLONE proprio.
-      - name: Prova viva do cupom do PIX anulado (migration 20261209000000, bloco da foto)
+      # deixa a prova vermelha. CLONE proprio.
+      # BLOCO DA VAGA (migration 20261210000000): a varredura do cupom, o auxiliar (que passa de 9 a
+      # 13 parametros) e a RPC do checkout leem a foto; o cupom do PIX anulado volta no prazo do PIX
+      # (nunca em '-infinity') SE E SOMENTE SE a foto prova que nunca houve cartao. A prova cobre a
+      # tabela de 33 casos (cada condicao violada sozinha), o pagamento fantasma (divergente, uso do
+      # cupom intacto), 2 conexoes reais (varredura x confirmar_pagamento, x liberar, 2 varreduras),
+      # o envelope REPEATABLE READ (sem 40P01), a atomicidade (falha depois do DROP), ida e volta
+      # byte a byte, a ordem de desfazer 1210 -> 1209 -> 1206 -> 1205 e um mutante por guarda.
+      - name: Prova viva do cupom do PIX anulado (migrations 20261209000000 e 20261210000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-viva.cjs
       - name: Prova os invariantes de dinheiro

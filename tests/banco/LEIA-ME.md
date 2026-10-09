@@ -198,7 +198,25 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   volta (aplicar, rollback, reaplicar 2x; o catalogo volta exato); pre-voo, pos-voo e rollback
   que recusam nomeando o problema; mutante por guarda. **Limite declarado:** Postgres 17 local,
   nao o 15/17 da Supabase; o envelope e simulado em texto, nao pelo `aplicar-migrations.yml`.
-  Os blocos seguintes da mesma feature (a vaga do cupom, o portao) entram no mesmo arquivo.
+  **Bloco da vaga (20261210000000)**: a varredura do cupom, o auxiliar `cupom__vaga_volta_em`
+  (de 9 para 13 parametros: os 9 de sempre mais os 4 da foto) e a RPC do checkout
+  `vaga_do_cupom_presa` passam a ler a foto. O cupom de um pedido cancelado com o PIX gerado volta
+  no prazo do PIX (`expires_at`, ~45 min no maximo depois da criacao; nunca `-infinity`, para o
+  admin que reativa o pedido nao achar o cupom ja devolvido) SE E SOMENTE SE a foto prova que
+  nunca houve cartao (id de PIX na vaga, zero tentativas, metodo `pix`, `aguardando`) e agora o
+  pedido esta cancelado, `aguardando`, com a vaga vazia e exatamente uma tentativa. A prova
+  cobre: a tabela de 33 casos (cada condicao violada sozinha: o auxiliar, a varredura e a RPC
+  concordam caso a caso); o pagamento fantasma (`confirmar_pagamento` do PIX velho da
+  `divergente` e o uso do cupom nao muda); duas conexoes reais (varredura x
+  `confirmar_pagamento` nas duas ordens, x `liberar`, duas varreduras, varredura no meio da
+  aplicacao); o envelope `REPEATABLE READ` (a M2 nao pede trava de tabela: nunca 40P01); a
+  atomicidade (falha no meio, depois do `DROP`, devolve tudo); ida e volta byte a byte (o
+  rollback devolve os corpos da 1206 e da 1205 por sha256); pre-voo que recusa sem gravar (1 byte
+  a mais em cada corpo travado); a ordem de desfazer 1210, 1209, 1206, 1205; mutante por guarda.
+  **Limites declarados:** o `SET LOCAL lock_timeout` e cinto (sem trava de tabela nao ha espera
+  que ele limite); a varredura nao e executada dentro da migration (so pela prova); o caso de uma
+  instancia da varredura em voo no instante exato do COMMIT nao e provavel de forma
+  deterministica. O portao (consultas 16a/16b, 12a) e uma peca a parte.
 
 ## Como rodar
 
