@@ -12,10 +12,12 @@ const h = vi.hoisted(() => ({
   read: vi.fn(),
   save: vi.fn(),
   prepare: vi.fn(),
+  prepareIcons: vi.fn(),
   upload: vi.fn(),
   refresh: vi.fn(),
   update: vi.fn(),
   dirty: vi.fn(),
+  validaCor: vi.fn(),
   origin: "https://abcdefghijklmnopqrst.supabase.co",
   auth: {
     user: { id: "admin-a" },
@@ -50,6 +52,14 @@ vi.mock("@/contexts/StoreContext", async () => {
     },
   };
 });
+// Repassa à regra real; só o teste da "nenhuma cor válida" a força a recusar.
+const { validaCorDaLoja: validaCorReal } = await vi.importActual<
+  typeof import("@/config/cor-da-loja")
+>("@/config/cor-da-loja");
+vi.mock("@/config/cor-da-loja", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/config/cor-da-loja")>()),
+  validaCorDaLoja: (valor: string) => h.validaCor(valor),
+}));
 vi.mock("@/lib/env-valores", () => ({
   lerSupabaseUrl: () => h.origin,
   lerChaveSupabase: () => "sb_publishable_synthetic",
@@ -60,6 +70,7 @@ vi.mock("@/lib/adminStoreIdentity", () => ({
 }));
 vi.mock("@/lib/prepareIdentityImage", () => ({
   prepareIdentityImage: h.prepare,
+  prepareIdentityAppIcons: h.prepareIcons,
 }));
 vi.mock("@/lib/uploadIdentityImage", () => ({ uploadIdentityImage: h.upload }));
 vi.mock("@/lib/supabase", () => ({ supabase: {} }));
@@ -196,7 +207,10 @@ beforeEach(() => {
   h.read.mockReset();
   h.save.mockReset();
   h.prepare.mockReset();
+  h.prepareIcons.mockReset();
   h.upload.mockReset();
+  h.validaCor.mockReset();
+  h.validaCor.mockImplementation(validaCorReal);
   h.refresh.mockResolvedValue(undefined);
   h.origin = "https://abcdefghijklmnopqrst.supabase.co";
   h.auth = {
@@ -232,6 +246,134 @@ afterEach(() => {
 });
 
 describe("editor de identidade sobre fotografia RPC", () => {
+  function preparedIcons() {
+    const large = {
+      blob: new Blob(["large"]),
+      asset: asset("new-512.png", 512, 512),
+    };
+    return {
+      icon_512: large,
+      maskable_512: {
+        blob: new Blob(["maskable"]),
+        asset: asset("new-maskable.png", 512, 512),
+      },
+      icon_192: {
+        blob: new Blob(["small"]),
+        asset: asset("new-192.png", 192, 192),
+      },
+      apple_touch: {
+        blob: new Blob(["apple"]),
+        asset: asset("new-180.png", 180, 180),
+      },
+    };
+  }
+
+  it("upload principal salva todos os tamanhos e preserva ícone avançado", async () => {
+    const icons = preparedIcons();
+    h.prepareIcons.mockResolvedValue(icons);
+    h.prepare.mockResolvedValueOnce({
+      blob: new Blob(["custom"]),
+      asset: asset("custom.png", 192, 192),
+    });
+    await render();
+    await select("Trocar Ícone 192");
+    await select("Trocar ícone do aplicativo");
+    expect(h.prepareIcons).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.objectContaining({
+        primaryColor: "#abcdef",
+        logoUrl: `${h.origin}/storage/v1/object/public/branding/${snapshot().identity.branding_assets.header.path}`,
+      }),
+    );
+    expect(host.textContent).toContain(
+      "No Android, o ícone mostra a logo da loja sobre a cor principal.",
+    );
+    // O envio avulso do "Ícone 192" já passa onProgress: a asserção olha só as
+    // 4 chamadas do envio principal (as últimas), uma por papel, na ordem.
+    expect(h.upload).toHaveBeenCalledTimes(5);
+    const principal = h.upload.mock.calls.slice(-4);
+    expect(principal.map(([image]) => image.asset.path)).toEqual(
+      [
+        icons.icon_512,
+        icons.icon_192,
+        icons.apple_touch,
+        icons.maskable_512,
+      ].map(({ asset }) => asset.path),
+    );
+    for (const [, options] of principal)
+      expect(options).toEqual(
+        expect.objectContaining({ onProgress: expect.any(Function) }),
+      );
+    await click("Salvar identidade");
+    const saved = h.save.mock.calls[0][0].desired.branding_assets;
+    expect(saved.icon_512).toEqual(icons.icon_512.asset);
+    expect(saved.maskable_512).toEqual(icons.maskable_512.asset);
+    expect(saved.apple_touch).toEqual(icons.apple_touch.asset);
+    expect(saved.icon_192.path).toContain("custom.png");
+    expect(saved.favicon).toEqual(snapshot().identity.branding_assets.favicon);
+  });
+
+  it("falha parcial no upload principal mantém todos os ícones anteriores", async () => {
+    h.prepareIcons.mockResolvedValue(preparedIcons());
+    h.upload
+      .mockImplementationOnce(async (image) => ({
+        asset: image.asset,
+        url: `${h.origin}/storage/v1/object/public/branding/${image.asset.path}`,
+      }))
+      .mockRejectedValueOnce(new Error("upload failed"));
+    await render();
+    await select("Trocar ícone do aplicativo");
+    expect(host.textContent).toContain("Não foi possível conferir esta imagem");
+    expect(h.upload).toHaveBeenCalledTimes(2);
+    await type("store-name", "Nome alterado");
+    await click("Salvar identidade");
+    expect(h.save.mock.calls[0][0].desired.branding_assets).toEqual(
+      snapshot().identity.branding_assets,
+    );
+  });
+
+  it.each([
+    ["formato inválido", "#0"],
+    ["preto", "#000000"],
+  ])(
+    "cor principal do rascunho com %s: o maskable usa a cor salva",
+    async (_motivo, digitada) => {
+      h.prepareIcons.mockResolvedValue(preparedIcons());
+      await render();
+      await type("store-color-hex", digitada);
+      expect(input("store-color-hex").value).toBe(digitada);
+      await select("Trocar ícone do aplicativo");
+      expect(h.prepareIcons).toHaveBeenCalledExactlyOnceWith(
+        expect.any(File),
+        expect.objectContaining({ primaryColor: "#abcdef" }),
+      );
+      expect(h.upload).toHaveBeenCalledTimes(4);
+    },
+  );
+
+  it("cor principal válida do rascunho, normalizada, é a do maskable", async () => {
+    h.prepareIcons.mockResolvedValue(preparedIcons());
+    await render();
+    await type("store-color-hex", "#12AB34");
+    await select("Trocar ícone do aplicativo");
+    expect(h.prepareIcons).toHaveBeenCalledExactlyOnceWith(
+      expect.any(File),
+      expect.objectContaining({ primaryColor: "#12ab34" }),
+    );
+  });
+
+  it("sem nenhuma cor válida (rascunho e salva) recusa o envio do ícone do aplicativo", async () => {
+    await render();
+    h.validaCor.mockReturnValue({ ok: false, motivo: "formato" });
+    await select("Trocar ícone do aplicativo");
+    expect(h.prepareIcons).not.toHaveBeenCalled();
+    expect(h.upload).not.toHaveBeenCalled();
+    expect(host.textContent).toContain(
+      "Defina a cor principal antes de enviar o ícone",
+    );
+    expect(input("store-name").closest("fieldset")?.disabled).toBe(false);
+  });
+
   it("carrega somente RPC e preserva nome/cor digitados ao publicar config externa", async () => {
     await render();
     await type("store-name", "Meu rascunho");
