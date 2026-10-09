@@ -513,6 +513,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   // Número sem DDD+telefone (menos de 10 dígitos) não abre conversa: o botão
   // "Contato Direto" fica desabilitado em vez de abrir um link quebrado.
   const linkWhatsapp = linkWhatsappDoCliente(profile?.whatsapp);
+  // Botão desabilitado sem explicação confunde: diz o porquê (só quando o
+  // motivo é o cadastro; offline já tem o seu aviso na barra do painel).
+  let avisoDoWhatsapp: string | undefined;
+  if (!profile?.whatsapp) avisoDoWhatsapp = "Cliente sem WhatsApp cadastrado";
+  else if (!linkWhatsapp)
+    avisoDoWhatsapp = "Número sem DDD — corrija o cadastro";
 
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -664,6 +670,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <Button
                   className="h-10 w-full gap-2 rounded-xl border-none bg-gradient-to-br from-green-500 to-green-600 text-[11px] font-black uppercase tracking-widest text-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.2)] transition-all duration-300 hover:from-green-400 hover:to-green-500 hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] disabled:pointer-events-none disabled:opacity-40"
                   disabled={!linkWhatsapp || isOffline}
+                  title={avisoDoWhatsapp}
                   onClick={() => {
                     if (!linkWhatsapp || isOffline) return;
                     globalThis.open(linkWhatsapp, "_blank");

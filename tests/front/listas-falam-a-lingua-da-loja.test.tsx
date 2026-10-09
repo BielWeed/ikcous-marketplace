@@ -311,10 +311,29 @@ describe("telas de lista na língua da loja", () => {
 
     const botao = botaoContatoDireto();
     expect(botao.disabled).toBe(true);
+    // Desabilitado sem explicação confunde: o botão diz por quê.
+    expect(botao.getAttribute("title")).toBe(
+      "Número sem DDD — corrija o cadastro",
+    );
     await act(async () => {
       botao.click();
     });
     expect(abrir).not.toHaveBeenCalled();
+  });
+
+  it("Ficha: cliente sem WhatsApp cadastrado tem o botão desabilitado e diz isso", async () => {
+    h.whatsapp = null;
+    await abrirFicha();
+
+    const botao = botaoContatoDireto();
+    expect(botao.disabled).toBe(true);
+    expect(botao.getAttribute("title")).toBe("Cliente sem WhatsApp cadastrado");
+  });
+
+  it("Ficha: com número válido o botão não carrega aviso de número sem DDD", async () => {
+    await abrirFicha();
+
+    expect(botaoContatoDireto().hasAttribute("title")).toBe(false);
   });
 
   // ---- Perguntas -----------------------------------------------------------
@@ -331,10 +350,27 @@ describe("telas de lista na língua da loja", () => {
   it("Perguntas: três cartões medidos, sem 'Conversão Comercial'", async () => {
     await abrirPerguntas();
 
+    // Os cartões moram no carrossel de KPIs, cujo cabeçalho é o título
+    // "Resumo das perguntas"; cada cartão tem exatamente um <h3> (o valor).
+    // O <h3> do estado vazio ("Fila de Perguntas Limpa") fica fora do
+    // carrossel e por isso não entra na conta.
+    const titulo = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Resumo das perguntas",
+    );
+    const carrossel = titulo?.closest("div.w-full");
+    expect(carrossel).toBeTruthy();
+    const cartoes = [...(carrossel?.querySelectorAll("h3") ?? [])];
+    expect(cartoes).toHaveLength(3);
+    const rotulos = cartoes.map(
+      (h3) => h3.previousElementSibling?.textContent?.trim() ?? "",
+    );
+    expect(rotulos).toEqual([
+      "Dúvidas Pendentes",
+      "Taxa de Resposta",
+      "Total de Perguntas",
+    ]);
+
     const tela = textoDaTela();
-    expect(tela).toContain("Dúvidas Pendentes");
-    expect(tela).toContain("Taxa de Resposta");
-    expect(tela).toContain("Total de Perguntas");
     expect(tela).not.toContain("Conversão Comercial");
     expect(tela).not.toContain("Respostas Ajudam a Vender");
   });

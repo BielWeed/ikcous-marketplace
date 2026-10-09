@@ -417,7 +417,11 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     const tela = hospedeiro.textContent ?? "";
     expect(tela).toContain("Dinheiro parado em estoque");
     expect(tela).toContain("Lucro se vender tudo");
-    expect(tela).toContain("Margem %");
+    // O KPI do topo é markup ((Preço−Custo)÷Custo): "Margem" é só a do
+    // produto, calculada sobre o preço. Os dois não podem ter o mesmo nome.
+    expect(tela).toContain("Lucro sobre o custo %");
+    expect(tela).not.toContain("Margem %");
+    expect(tela).not.toContain("Retorno sobre o custo");
     expect(tela).not.toContain("Capital Alocado");
     expect(tela).not.toContain("Lucro Potencial");
     expect(tela).not.toContain("Rendimento %");

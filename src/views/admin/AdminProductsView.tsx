@@ -372,7 +372,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             : "—",
         icon: DollarSign,
         accent: "text-blue-500",
-        subValue: "Margem %",
+        subValue: "Lucro sobre o custo %",
       },
       {
         id: "produtos-cadastrados",
@@ -1102,13 +1102,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <div className="flex items-center gap-1.5">
                           <TrendingUp className="size-3.5 text-blue-400" />
                           <p className="text-[11px] font-black uppercase tracking-wider text-white">
-                            Retorno sobre o custo (Margem %)
+                            Lucro sobre o custo %
                           </p>
                         </div>
                         <p className="text-[10px] font-medium leading-relaxed text-zinc-500">
-                          Retorno sobre o Investimento para cada unidade
-                          adquirida do produto. Mede a eficiência do capital
-                          alocado na compra frente ao ganho.
+                          Quanto você lucra para cada R$ 100 que pagou pelo
+                          produto. É diferente da Margem de Lucro, que é
+                          calculada sobre o preço de venda.
                         </p>
                         <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[9px] text-zinc-500">
                           <div className="flex items-center justify-between">
@@ -1124,7 +1124,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                               Exemplo:
                             </span>
                             <span className="font-medium text-zinc-400">
-                              Custo R$10 / Venda R$15 ➜ ROI = 50.0%
+                              Custo R$10 / Venda R$15 ➜ Lucro sobre o custo =
+                              50,0%
                             </span>
                           </div>
                         </div>
