@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1163,6 +1163,53 @@ const ROL_DA_14B = [
   "public.coupons: a seguranca por linha vale para este papel",
   "visoes de public que citam used_count",
 ];
+/** O rol da 15a (a prova de objetos do lote da migration 20261208000000, o checkout mostra os cupons
+ * da cliente): as 37 linhas que scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha, nunca some uma linha). Como a 10a, a 11a, a 12a e a 14a, NÃO serve de pré-checagem de
+ * ledger (o lote não tem backfill: é de apply normal): o portão a lê como `consulta` do lote e só a
+ * aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/cupons-do-checkout-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_15A = [
+  "admin_cupom_clientes: EXECUTE",
+  "admin_cupom_clientes: corpo (sha256)",
+  "admin_cupom_clientes: forma",
+  "admin_cupom_clientes: sobrecargas",
+  "admin_cupom_definir_clientes: EXECUTE",
+  "admin_cupom_definir_clientes: corpo (sha256)",
+  "admin_cupom_definir_clientes: forma",
+  "admin_cupom_definir_clientes: sobrecargas",
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.alcance: CHECK coupons_alcance_check",
+  "coupons.alcance: coluna (tipo, NOT NULL, default)",
+  "cupom_clientes: colunas",
+  "cupom_clientes: politicas (nome, comando, papeis)",
+  "cupom_clientes: privilegios de PUBLIC",
+  "cupom_clientes: privilegios de anon",
+  "cupom_clientes: privilegios de authenticated",
+  "cupom_clientes: regra da politica de leitura",
+  "cupom_clientes: seguranca por linha (RLS) ligada",
+  "cupons_do_checkout: EXECUTE",
+  "cupons_do_checkout: corpo (sha256)",
+  "cupons_do_checkout: forma",
+  "cupons_do_checkout: sobrecargas",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: condicao WHEN",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: existe em marketplace_orders",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: funcao executada",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: habilitado",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: momento e evento",
+  "gatilhos de cupom no pedido: ordem de disparo",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "pedido_com_cupom_so_nasce_para_a_lista: EXECUTE",
+  "pedido_com_cupom_so_nasce_para_a_lista: corpo (sha256)",
+  "pedido_com_cupom_so_nasce_para_a_lista: forma",
+  "pedido_com_cupom_so_nasce_para_a_lista: sobrecargas",
+  "validate_coupon_secure_v2: EXECUTE",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: forma",
+  "validate_coupon_secure_v2: sobrecargas",
+];
 /** O rol da 15b (a consulta de AUSÊNCIA do lote da migration 20261208000000,
  * `ausenciaConfirmadaPor`): as 15 linhas que
  * scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql devolve — o que o
@@ -1206,6 +1253,7 @@ const ROL_FECHADO_POR_CONSULTA = {
   "12b-antes-cupom-preso-funcoes-ausentes": ROL_DA_12B,
   "14a-conferir-contador-duplicado-apagado": ROL_DA_14A,
   "14b-antes-contador-duplicado-coluna-presente-e-zerada": ROL_DA_14B,
+  "15a-conferir-cupons-do-checkout-aplicado": ROL_DA_15A,
   "15b-antes-cupons-do-checkout-pecas-ausentes": ROL_DA_15B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
@@ -1761,6 +1809,7 @@ module.exports = {
   ROL_DA_12B,
   ROL_DA_14A,
   ROL_DA_14B,
+  ROL_DA_15A,
   ROL_DA_15B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,

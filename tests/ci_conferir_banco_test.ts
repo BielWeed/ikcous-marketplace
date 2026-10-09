@@ -5694,9 +5694,39 @@ Deno.test("14a/14b — o rpc-ci.yml roda as duas provas vivas do contador duplic
 // Estes testes medem o texto dos .sql contra a migration DESTA árvore; a decisão de cada
 // consulta num Postgres real está em tests/banco/cupons-do-checkout-portao-viva.cjs
 // (rodado no rpc-ci.yml).
+const NOME_15A = "15a-conferir-cupons-do-checkout-aplicado";
 const NOME_15B = "15b-antes-cupons-do-checkout-pecas-ausentes";
 
 /** O que cada consulta de 15 pode ler: catálogo e as CTEs da própria consulta. Nenhuma tabela de dados. */
+const PERMITIDOS_15A = [
+  "pg_attribute",
+  "pg_attrdef",
+  "pg_constraint",
+  "pg_class",
+  "pg_policies",
+  "pg_trigger",
+  "pg_proc",
+  "pg_namespace",
+  "pg_language",
+  "pg_index",
+  "unnest",
+  "aclexplode",
+  // CTEs desta consulta
+  "tab",
+  "alc",
+  "ck",
+  "ccol",
+  "crel",
+  "pol",
+  "regra",
+  "priv",
+  "alvo",
+  "fn",
+  "gat",
+  "gat_x",
+  "idx",
+  "itens",
+];
 const PERMITIDOS_15B = [
   "pg_proc",
   "pg_namespace",
@@ -5716,8 +5746,9 @@ const PERMITIDOS_15B = [
   "itens",
 ];
 
-const { ROL_DA_15B } = require(SCRIPT);
+const { ROL_DA_15A, ROL_DA_15B } = require(SCRIPT);
 for (const [nome, nItens, rol, permitidos] of [
+  [NOME_15A, 37, ROL_DA_15A, PERMITIDOS_15A],
   [NOME_15B, 15, ROL_DA_15B, PERMITIDOS_15B],
 ] as Array<[string, number, string[], string[]]>) {
   Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo, saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
@@ -5933,4 +5964,342 @@ Deno.test("15b — espelha o PRÉ-VOO da migration 20261208000000: as mesmas 16 
     "TABLE cupom_clientes",
     "TRIGGER tr_pedido_com_cupom_so_nasce_para_a_lista",
   ]);
+});
+
+/** Os corpos (prosrc) que a 20261208000000 define, recalculados do ARQUIVO da migration: o sha256 de cada um, em LF e em CRLF. */
+async function corposDaMigration208() {
+  const { createHash } = require("node:crypto");
+  const sha = (s: string) =>
+    createHash("sha256").update(s, "utf8").digest("hex");
+  const crlf = (s: string) => s.replace(/\n/g, "\r\n");
+  const lf = (await Deno.readTextFile(MIGRACAO_208)).replace(/\r\n/g, "\n");
+  /** O texto entre `AS $tag$` e `$tag$;` da função cuja assinatura (texto puro) abre o CREATE OR REPLACE. */
+  const corpo = (assinatura: string, tag: string) => {
+    const ini = lf.indexOf(`CREATE OR REPLACE FUNCTION ${assinatura}`);
+    assert(ini >= 0, `não achei ${assinatura} na migration 20261208000000`);
+    const abre = lf.indexOf(`AS $${tag}$`, ini);
+    assert(abre > ini, `não achei o corpo de ${assinatura}`);
+    const comeco = abre + `AS $${tag}$`.length;
+    const fim = lf.indexOf(`$${tag}$;`, comeco);
+    assert(fim > comeco, `não achei o fim do corpo de ${assinatura}`);
+    return lf.slice(comeco, fim);
+  };
+  const corpos: Record<string, string> = {
+    validate_coupon_secure_v2: corpo(
+      "public.validate_coupon_secure_v2(p_code text, p_subtotal numeric)",
+      "",
+    ),
+    cupons_do_checkout: corpo(
+      "public.cupons_do_checkout(p_subtotal numeric)",
+      "lista",
+    ),
+    admin_cupom_clientes: corpo(
+      "public.admin_cupom_clientes(p_coupon_id uuid)",
+      "ler",
+    ),
+    admin_cupom_definir_clientes: corpo(
+      "public.admin_cupom_definir_clientes(",
+      "definir",
+    ),
+    pedido_com_cupom_so_nasce_para_a_lista: corpo(
+      "public.pedido_com_cupom_so_nasce_para_a_lista()",
+      "gatilho",
+    ),
+  };
+  return {
+    lf,
+    hashes: Object.fromEntries(
+      Object.entries(corpos).map(([nome, c]) => [
+        nome,
+        { lf: sha(c), crlf: sha(crlf(c)) },
+      ]),
+    ) as Record<string, { lf: string; crlf: string }>,
+  };
+}
+
+Deno.test("15a — os hashes (sha256 do prosrc, LF e CRLF) das 5 funções são EXATAMENTE os que o arquivo da migration 20261208000000 desta árvore define; o `esperado` é o LF; a validação NÃO aceita o corpo da 203", async () => {
+  const { hashes } = await corposDaMigration208();
+  const h203 = await hashesDaMigration203();
+  const limpo = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_15A}.sql`),
+  );
+  const hex = [...limpo.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
+  const todos = Object.values(hashes).flatMap((x) => [x.lf, x.crlf]);
+  assertEquals(todos.length, 10);
+  assertEquals(new Set(todos).size, 10, "os dez hashes são distintos");
+  assertEquals([...new Set(hex)].sort(), [...todos].sort());
+  // cada função: o `esperado` é o LF e a linha aceita só os dois dela
+  for (const [nome, x] of Object.entries(hashes)) {
+    const i = limpo.indexOf(`'${nome}: corpo (sha256)'`);
+    assert(i >= 0, `falta a linha do corpo de ${nome}`);
+    const linha = limpo.slice(i, limpo.indexOf("UNION ALL", i));
+    assertEquals(
+      [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+      [x.lf, x.lf, x.crlf, x.lf],
+      `${nome}: esperado LF, aceitos LF e CRLF, resultado LF`,
+    );
+  }
+  // a validação aceita SÓ o corpo da 208: o da 203 (e o do baseline antigo) reprovam aqui
+  for (const proibido of [
+    h203.novoLF,
+    h203.novoCRLF,
+    h203.baseLF,
+    h203.baseCRLF,
+  ])
+    assert(!limpo.includes(proibido), `a 15a aceitaria ${proibido}`);
+  // e são os mesmos dois literais do pós-voo da migration
+  const { lf } = await corposDaMigration208();
+  const pos = lf.match(
+    /IF v_hash IS NULL OR v_hash NOT IN \(([^)]*)\) THEN\s+RAISE EXCEPTION 'POSVOO_20261208: validate_coupon_secure_v2/,
+  );
+  assert(pos, "não achei a lista de hashes do pós-voo da migration");
+  assertEquals(
+    [...pos[1].matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+    [
+      hashes.validate_coupon_secure_v2.lf,
+      hashes.validate_coupon_secure_v2.crlf,
+    ],
+  );
+});
+
+Deno.test("15a — o que a consulta ESPERA bate com o que a migration 20261208000000 faz (forma, permissões, política, CHECK, gatilho): cada esperado nasce do arquivo, não de memória", async () => {
+  const sql = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_15A}.sql`),
+  );
+  const { lf } = await corposDaMigration208();
+  const mig = lf
+    .split("\n")
+    .filter((l) => !/^\s*--/.test(l))
+    .join("\n");
+  /** O cabeçalho (entre o nome e o `AS $`) da função cuja assinatura (texto puro) abre o CREATE OR REPLACE. */
+  const cabecalho = (assinatura: string) => {
+    const ini = mig.indexOf(`CREATE OR REPLACE FUNCTION ${assinatura}`);
+    assert(ini >= 0, `não achei o cabeçalho de ${assinatura}`);
+    const fim = mig.indexOf("AS $", ini);
+    assert(fim > ini, `não achei o fim do cabeçalho de ${assinatura}`);
+    return mig.slice(ini, fim).replace(/\s+/g, " ");
+  };
+  // forma: linguagem, volatilidade, SECURITY DEFINER, search_path (do CABEÇALHO da função na migration)
+  const formas: Array<[string, string, string[], string]> = [
+    [
+      "cupons_do_checkout: forma",
+      "public.cupons_do_checkout(",
+      [
+        "LANGUAGE sql",
+        "STABLE",
+        "SECURITY DEFINER",
+        "SET search_path = public",
+        "RETURNS TABLE",
+      ],
+      "sql STABLE SECURITY DEFINER search_path=public -> record",
+    ],
+    [
+      "admin_cupom_clientes: forma",
+      "public.admin_cupom_clientes(",
+      [
+        "LANGUAGE plpgsql",
+        "STABLE",
+        "SECURITY DEFINER",
+        "SET search_path = public",
+        "RETURNS TABLE",
+      ],
+      "plpgsql STABLE SECURITY DEFINER search_path=public -> record",
+    ],
+    [
+      "admin_cupom_definir_clientes: forma",
+      "public.admin_cupom_definir_clientes(",
+      [
+        "LANGUAGE plpgsql",
+        "SECURITY DEFINER",
+        "SET search_path = public",
+        "RETURNS integer",
+      ],
+      "plpgsql VOLATILE SECURITY DEFINER search_path=public -> integer",
+    ],
+    [
+      "pedido_com_cupom_so_nasce_para_a_lista: forma",
+      "public.pedido_com_cupom_so_nasce_para_a_lista()",
+      [
+        "LANGUAGE plpgsql",
+        "SECURITY DEFINER",
+        "SET search_path = public",
+        "RETURNS trigger",
+      ],
+      "plpgsql VOLATILE SECURITY DEFINER search_path=public -> trigger",
+    ],
+    [
+      "validate_coupon_secure_v2: forma",
+      "public.validate_coupon_secure_v2(p_code text, p_subtotal numeric)",
+      [
+        "LANGUAGE plpgsql",
+        "SECURITY DEFINER",
+        "SET search_path TO 'public'",
+        "RETURNS jsonb",
+      ],
+      "plpgsql VOLATILE SECURITY DEFINER search_path=public -> jsonb",
+    ],
+  ];
+  for (const [item, assinatura, trechos, esperado] of formas) {
+    const cab = cabecalho(assinatura);
+    for (const t of trechos) assertStringIncludes(cab, t, `${item}: ${t}`);
+    // sem STABLE no cabeçalho = VOLATILE (e vice-versa): a consulta e a migration dizem o mesmo
+    assertEquals(
+      cab.includes("STABLE"),
+      esperado.includes(" STABLE "),
+      `${item}: volatilidade`,
+    );
+    assertStringIncludes(sql, `'${item}', '${esperado}'`);
+  }
+  // permissões: o GRANT/REVOKE da migration é a fonte do `esperado` de EXECUTE
+  assertStringIncludes(
+    mig,
+    "GRANT EXECUTE ON FUNCTION public.cupons_do_checkout(numeric) TO anon, authenticated, service_role;",
+  );
+  assertStringIncludes(
+    sql,
+    "'cupons_do_checkout: EXECUTE', 'PUBLIC=nao anon=sim authenticated=sim'",
+  );
+  for (const [f, esperado] of [
+    [
+      "admin_cupom_definir_clientes(uuid, uuid[])",
+      "admin_cupom_definir_clientes: EXECUTE",
+    ],
+    ["admin_cupom_clientes(uuid)", "admin_cupom_clientes: EXECUTE"],
+  ]) {
+    assertStringIncludes(
+      mig,
+      `REVOKE ALL ON FUNCTION public.${f} FROM PUBLIC, anon, authenticated;`,
+    );
+    assertStringIncludes(
+      mig,
+      `GRANT EXECUTE ON FUNCTION public.${f} TO authenticated, service_role;`,
+    );
+    assertStringIncludes(
+      sql,
+      `'${esperado}', 'PUBLIC=nao anon=nao authenticated=sim'`,
+    );
+  }
+  assertStringIncludes(
+    mig,
+    "REVOKE ALL ON FUNCTION public.pedido_com_cupom_so_nasce_para_a_lista() FROM PUBLIC, anon, authenticated;",
+  );
+  assert(
+    !/GRANT EXECUTE ON FUNCTION public\.pedido_com_cupom_so_nasce_para_a_lista/.test(
+      mig,
+    ),
+    "a função do gatilho não recebe EXECUTE de ninguém",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido_com_cupom_so_nasce_para_a_lista: EXECUTE', 'PUBLIC=nao anon=nao authenticated=nao'",
+  );
+  assertStringIncludes(
+    sql,
+    "'validate_coupon_secure_v2: EXECUTE', 'PUBLIC=nao authenticated=sim'",
+  );
+  // a tabela: colunas, RLS, política e privilégios
+  assertStringIncludes(
+    mig,
+    "ALTER TABLE public.cupom_clientes ENABLE ROW LEVEL SECURITY;",
+  );
+  assertStringIncludes(
+    mig,
+    "REVOKE ALL ON TABLE public.cupom_clientes FROM PUBLIC, anon, authenticated;",
+  );
+  assertStringIncludes(
+    mig,
+    "GRANT SELECT ON TABLE public.cupom_clientes TO authenticated;",
+  );
+  assertStringIncludes(
+    sql,
+    "'cupom_clientes: privilegios de authenticated', 'SELECT'",
+  );
+  assertStringIncludes(sql, "'cupom_clientes: privilegios de anon', 'nenhum'");
+  assertStringIncludes(
+    sql,
+    "'cupom_clientes: privilegios de PUBLIC', 'nenhum'",
+  );
+  assert(
+    /CREATE POLICY cupom_clientes_admin_select_policy\s+ON public\.cupom_clientes FOR SELECT\s+TO authenticated\s+USING \(\(SELECT public\.rls_admin_atual\(\)\)\);/.test(
+      mig,
+    ),
+    "a política da migration é SELECT, para authenticated, com (SELECT public.rls_admin_atual())",
+  );
+  assertStringIncludes(
+    sql,
+    "'cupom_clientes_admin_select_policy SELECT {authenticated} PERMISSIVE'",
+  );
+  assertStringIncludes(
+    sql,
+    "p.policyname = 'cupom_clientes_admin_select_policy'",
+  );
+  assertStringIncludes(sql, "'(SELECT rls_admin_atual())'");
+  assertStringIncludes(
+    mig,
+    "coupon_id uuid NOT NULL REFERENCES public.coupons (id) ON DELETE CASCADE",
+  );
+  assertStringIncludes(
+    sql,
+    "'coupon_id:uuid:true,user_id:uuid:true,criado_em:timestamp with time zone:true'",
+  );
+  assertStringIncludes(
+    mig,
+    "'coupon_id:uuid:true,user_id:uuid:true,criado_em:timestamp with time zone:true'",
+  );
+  // o CHECK e o default da coluna
+  assertStringIncludes(
+    mig,
+    "CHECK (alcance IN ('codigo', 'vitrine', 'exclusivo'))",
+  );
+  assertStringIncludes(
+    sql,
+    "'checkalcance=anyarray[''codigo'',''vitrine'',''exclusivo'']'",
+  );
+  assertStringIncludes(
+    mig,
+    "ADD COLUMN IF NOT EXISTS alcance text NOT NULL DEFAULT 'codigo'",
+  );
+  assertStringIncludes(sql, "'text NOT NULL DEFAULT ''codigo''::text'");
+  assertStringIncludes(mig, "'text|true|''codigo''::text'");
+  // o gatilho: tempo, evento, WHEN, função e a ORDEM (o mesmo texto do pós-voo)
+  assertStringIncludes(mig, "BEFORE INSERT ON public.marketplace_orders");
+  assertStringIncludes(mig, "WHEN (NEW.coupon_id IS NOT NULL)");
+  assertStringIncludes(
+    mig,
+    "EXECUTE FUNCTION public.pedido_com_cupom_so_nasce_para_a_lista();",
+  );
+  assertStringIncludes(
+    mig,
+    "'tr_pedido_com_cupom_exige_a_chave_ligada < tr_pedido_com_cupom_so_nasce_para_a_lista'",
+  );
+  assertStringIncludes(
+    sql,
+    "'tr_pedido_com_cupom_exige_a_chave_ligada < tr_pedido_com_cupom_so_nasce_para_a_lista'",
+  );
+  assertStringIncludes(mig, 'ORDER BY tgname COLLATE "C"');
+  assertStringIncludes(sql, 'ORDER BY t.tgname COLLATE "C"');
+  // o índice que o atalho de retentativa copia: o mesmo predicado do pré-voo
+  assertStringIncludes(mig, "'idempotency_keyisnotnull'");
+  assertStringIncludes(sql, "'idempotency_keyisnotnull'");
+});
+
+Deno.test("15a/15b — o rol de cada uma é de rol FECHADO no portão e as duas moram no menu; a 15a é a consulta do lote e a 15b a de ausência (nomes iguais aos do canais-de-backend.json quando o lote entrar)", async () => {
+  const { CONSULTAS_DE_ROL_FECHADO } = await import(
+    new URL("../scripts/frota/publicar-release.mjs", import.meta.url).href
+  );
+  const { ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+  for (const nome of [NOME_15A, NOME_15B]) {
+    assert(
+      CONSULTAS_DE_ROL_FECHADO.has(nome),
+      `${nome} fora de CONSULTAS_DE_ROL_FECHADO`,
+    );
+    assert(
+      Object.keys(ROL_FECHADO_POR_CONSULTA).includes(nome),
+      `${nome} sem rol em ROL_FECHADO_POR_CONSULTA`,
+    );
+  }
+  assertEquals(
+    [...CONSULTAS_DE_ROL_FECHADO].sort(),
+    Object.keys(ROL_FECHADO_POR_CONSULTA).sort(),
+  );
 });
