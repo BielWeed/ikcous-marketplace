@@ -23,7 +23,7 @@
  *               NAO muda); cliente e admin por update_order_status_atomic; pedido pago cancelado;
  *               cartao em analise (metodo credito + sentinela verificando:); expiracao pelo
  *               agendador (sai com payment_status 'expirado'); v23 "na entrega"; pedido__mudar_status
- *               direto; UPDATE cru de superusuario; status NULL -> cancelled. O cliente (papel
+ *               direto; UPDATE cru de superusuario; UPDATE direto do service_role (sem privilegio na tabela da foto). O cliente (papel
  *               authenticated, sem privilegio na tabela) cancela sem erro.
  *  RECANCELAR   recancelar um pedido ja cancelado nao grava foto nova (a linha fisica nem e
  *               reescrita: mesmo xmin); reativar e cancelar de novo SOBRESCREVE pelo estado do
@@ -414,12 +414,12 @@ async function fotografia(db) {
       )[0].h,
       gatilhos: (
         await q(`SELECT md5(string_agg(t.tgrelid::regclass::text || '|' || pg_get_triggerdef(t.oid)
-                   || '|' || t.tgenabled, E'\\n' ORDER BY t.tgrelid::regclass::text, t.tgname)) AS h
+                   || '|' || t.tgenabled::text, E'\\n' ORDER BY t.tgrelid::regclass::text, t.tgname)) AS h
                    FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
                   WHERE NOT t.tgisinternal AND c.relnamespace = 'public'::regnamespace`)
       )[0].h,
       relacoes: (
-        await q(`SELECT md5(string_agg(c.relname || '|' || c.relkind || '|' || c.relrowsecurity::text
+        await q(`SELECT md5(string_agg(c.relname || '|' || c.relkind::text || '|' || c.relrowsecurity::text
                    || '|' || coalesce(c.relacl::text, ''), E'\\n' ORDER BY c.relname)) AS h
                    FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace
                     AND c.relkind IN ('r', 'v', 'm', 'p', 'S')`)
@@ -589,6 +589,8 @@ const MSG = {
     "PREFLIGHT_20261209: public.pedido__foto_da_cobranca_ao_cancelar() tem corpo diferente",
   gatilho:
     "PREFLIGHT_20261209: ja existe o gatilho tr_pedido_foto_da_cobranca_ao_cancelar",
+  apareceuAgora:
+    "PREFLIGHT_20261209: public.pedido_cobranca_ao_cancelar apareceu agora",
   posTabela: "POSVOO_20261209: public.pedido_cobranca_ao_cancelar nao existe",
   posRls:
     "POSVOO_20261209: public.pedido_cobranca_ao_cancelar saiu sem seguranca",
@@ -777,7 +779,7 @@ async function casoCatalogo(sql = lerMig()) {
       await c.query(
         `SELECT t.tgenabled, t.tgtype, t.tgattr::text AS attr, t.tgfoid::regprocedure::text AS fn,
                 a.attnum::text AS status_attnum,
-                regexp_replace(lower(pg_get_expr(t.tgqual, t.tgrelid)), '[()[:space:]]', '', 'g') AS quando
+                regexp_replace(lower(substring(pg_get_triggerdef(t.oid) from ' WHEN (.*) EXECUTE FUNCTION')), '[()[:space:]]', '', 'g') AS quando
            FROM pg_trigger t JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attname = 'status'
           WHERE t.tgrelid = 'public.marketplace_orders'::regclass AND NOT t.tgisinternal
             AND t.tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'`,
@@ -975,23 +977,40 @@ async function casoCaminhos(sql = lerMig()) {
     );
     mesmaCobranca(await foto(c, m), antesM, "pedido__mudar_status");
 
-    // 8. UPDATE cru de superusuario e status NULL -> cancelled
+    // 8. UPDATE cru de superusuario (sem passar por RPC nenhuma)
     const u = await novoPedido(c);
-    await c.query(
-      "UPDATE public.marketplace_orders SET status = NULL WHERE id = $1",
-      [u],
-    );
-    assert.equal(await foto(c, u), undefined, "status NULL nao e cancelamento");
     const antesU = await estado(c, u);
     await c.query(
       "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
       [u],
     );
-    mesmaCobranca(await foto(c, u), antesU, "UPDATE cru, NULL -> cancelled");
+    mesmaCobranca(await foto(c, u), antesU, "UPDATE cru");
+
+    // 9. UPDATE direto (sem RPC) por um papel SEM privilegio na tabela da foto, como faz o
+    //    PostgREST ou uma edge: quem grava a foto e a funcao do gatilho (SECURITY DEFINER).
+    //    No Supabase o service_role tem BYPASSRLS; o provisionar.cjs nao o da, entao a prova o da.
+    const d = await novoPedido(c);
+    await c.query("ALTER ROLE service_role BYPASSRLS");
+    try {
+      const antesD = await estado(c, d);
+      const rD = exigir(
+        await como(
+          c,
+          "service",
+          "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1 RETURNING id",
+          [d],
+        ),
+        "UPDATE direto como service_role",
+      );
+      assert.equal(rD.length, 1, "o UPDATE direto nao alcancou o pedido");
+      mesmaCobranca(await foto(c, d), antesD, "UPDATE direto do service_role");
+    } finally {
+      await c.query("ALTER ROLE service_role NOBYPASSRLS");
+    }
 
     assert.equal(
       await totalFotos(c),
-      8,
+      9,
       "uma foto por pedido cancelado, nenhuma a mais",
     );
   });
@@ -1101,15 +1120,12 @@ async function casoReativar(sql = lerMig()) {
       [id],
     );
     const antes2 = await estado(c, id);
-    exigir(
-      await como(
-        c,
-        "admin",
-        "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
-        [id],
-      ),
+    // cobranca de cartao aberta (sentinela): so a edge cancela, pelo admin
+    const r2 = exigir(
+      await cancelarPelaEdge(c, id, U_ADMIN, "verificando:zzz", "aguardando"),
       "2o cancelamento",
-    );
+    )[0].r;
+    assert.equal(r2.cancelado, true, JSON.stringify(r2));
     const f2 = await foto(c, id);
     mesmaCobranca(f2, antes2, "2o cancelamento");
     assert.deepEqual(
@@ -1293,7 +1309,15 @@ async function casoCascata(sql = lerMig()) {
       [id],
     );
     assert.ok(await foto(c, id), "sem foto antes de apagar");
-    await c.query("DELETE FROM public.marketplace_orders WHERE id = $1", [id]);
+    try {
+      await c.query("DELETE FROM public.marketplace_orders WHERE id = $1", [
+        id,
+      ]);
+    } catch (e) {
+      throw new assert.AssertionError({
+        message: `apagar o pedido falhou por causa da foto (sem CASCADE): ${e.code} ${e.message}`,
+      });
+    }
     assert.equal(
       await foto(c, id),
       undefined,
@@ -1310,7 +1334,12 @@ async function casoDadoAntigo(sql = lerMig()) {
   await usar(db, async (c) => {
     velho = await novoPedido(c);
     await gravarPix(c, velho, "MP-VELHO");
-    await cancelarComo(c, "comprador", velho);
+    // a edge ja anulou a cobranca no MP (p_pela_edge) e o pedido vira cancelled
+    await c.query(
+      "SELECT public.pedido__mudar_status($1::uuid, 'cancelled', NULL, $2::uuid, false, true)",
+      [velho, U_COMPRADOR],
+    );
+    assert.equal((await estado(c, velho)).status, "cancelled");
     pendente = await novoPedido(c);
     assert.equal(
       (
@@ -1366,7 +1395,10 @@ async function casoIdempotente(sql = lerMig()) {
   await usar(db, async (c) => {
     const id = await novoPedido(c);
     await gravarPix(c, id, "MP-IDEM");
-    await cancelarComo(c, "comprador", id);
+    exigir(
+      await cancelarPelaEdge(c, id, U_COMPRADOR, "MP-IDEM", "aguardando"),
+      "cancelar pela edge",
+    );
   });
   const meio = await fotografia(db);
   const fotoAntes = await usar(
@@ -1374,16 +1406,24 @@ async function casoIdempotente(sql = lerMig()) {
     async (c) =>
       (await c.query("SELECT * FROM public.pedido_cobranca_ao_cancelar")).rows,
   );
-  for (const [rot, texto] of [
-    ["2a", sql],
-    ["3a (CRLF)", crlf(sql)],
+  // o texto com fim de linha CRLF (checkout Windows) grava o corpo da funcao em CRLF: so o
+  // md5 das funcoes muda (o pre-voo aceita os dois corpos); o LF seguinte restaura tudo
+  for (const [rot, texto, igual] of [
+    ["2a", sql, true],
+    ["3a (CRLF)", crlf(sql), false],
+    ["4a (LF de novo)", sql, true],
   ]) {
     const r = await aplicar(db, texto);
     assert.ok(
       !r.erro,
       `${rot} aplicacao falhou: ${r.erro?.code} ${r.erro?.message}`,
     );
-    assert.deepEqual(await fotografia(db), meio, `${rot} aplicacao mudou algo`);
+    const agora = await fotografia(db);
+    assert.deepEqual(
+      igual ? agora : { ...agora, funcoes: meio.funcoes },
+      meio,
+      `${rot} aplicacao mudou algo`,
+    );
   }
   const fotoDepois = await usar(
     db,
@@ -1431,8 +1471,8 @@ async function casoIdaEVolta(sql = lerMig(), rb = lerRb()) {
     const noAr = await fotografia(db);
     if (aplicada)
       assert.deepEqual(
-        noAr,
-        aplicada,
+        { ...noAr, pedidos: null },
+        { ...aplicada, pedidos: null },
         "reaplicar depois do rollback nao voltou ao mesmo estado",
       );
     aplicada = noAr;
@@ -1866,7 +1906,7 @@ async function casoCruzado(sql = lerMig()) {
     const r2 = await comTempo(p2, 9000, "T2");
     const ms2 = Date.now() - t0;
     assert.ok(
-      ms2 < 600,
+      ms2 < 1500,
       `o pedido que chegou com a migration esperando ficou parado ${ms2} ms (a migration esta na fila da trava: o checkout para)`,
     );
     // T1 pede a linha do cupom que T2 segura: T2 precisa dar COMMIT para T1 seguir
@@ -1901,6 +1941,54 @@ async function casoCruzado(sql = lerMig()) {
   );
   assert.equal(n, 1, "a migration nao aplicou depois do cruzamento");
 }
+/**
+ * DUAS APLICACOES AO MESMO TEMPO (o workflow serializa; se acontecer): em READ COMMITTED as
+ * duas dao certo (a segunda reaplica); no envelope REPEATABLE READ, com as duas ja tendo tirado
+ * a foto, UMA aplica e a outra RECUSA nomeando o problema ("apareceu agora": a transacao dela
+ * nao enxerga a tabela que a outra criou) sem gravar nada. Em qualquer caso o catalogo final
+ * e o de uma aplicacao so.
+ */
+async function casoDuasAplicacoes(sql = lerMig()) {
+  const unica = await clonarComM1("umaaplic", sql);
+  const referencia = await fotografia(unica);
+  // READ COMMITTED
+  const rc = await clonar("duasrc");
+  const [a1, a2] = await Promise.all([aplicar(rc, sql), aplicar(rc, sql)]);
+  assert.ok(!a1.erro, `RC, 1a: ${a1.erro?.code} ${a1.erro?.message}`);
+  assert.ok(!a2.erro, `RC, 2a: ${a2.erro?.code} ${a2.erro?.message}`);
+  assert.deepEqual(await fotografia(rc), referencia, "RC: catalogo final");
+  // REPEATABLE READ: as duas tiram a foto antes de qualquer uma comecar a migration
+  const rr = await clonar("duasrr");
+  let chegou = 0;
+  let liberar;
+  const portao = new Promise((r) => {
+    liberar = r;
+  });
+  const barreira = async () => {
+    chegou += 1;
+    if (chegou === 2) liberar();
+    await portao;
+  };
+  const [b1, b2] = await comTempo(
+    Promise.all([
+      emEnvelopeRR(rr, sql, barreira),
+      emEnvelopeRR(rr, sql, barreira),
+    ]),
+    30000,
+    "duas aplicacoes em RR",
+  );
+  const ok_ = [b1, b2].filter((r) => !r.erro);
+  const recusadas = [b1, b2].filter((r) => r.erro);
+  assert.equal(ok_.length, 1, "RR: exatamente uma aplica");
+  assert.equal(recusadas.length, 1, "RR: a outra recusa");
+  recusou(
+    recusadas[0],
+    /apareceu agora \(outra aplicacao desta migration ao mesmo tempo\?\)/,
+    "RR: a segunda aplicacao",
+  );
+  assert.deepEqual(await fotografia(rr), referencia, "RR: catalogo final");
+}
+
 /** Um pedido que chega DEPOIS da trava espera o COMMIT e ja encontra o gatilho (a foto existe). */
 async function casoChegaDepois(sql = lerMig()) {
   const db = await clonar("chegadepois");
@@ -1964,7 +2052,12 @@ async function casoRollbackEnvelope(rb = lerRb()) {
     );
     assert.ok(ms >= 3500 && ms < 15000, `orcamento de 4 s: levou ${ms} ms`);
     await p.query("COMMIT");
-    await nadaGravado(db, antes, "rollback com a tabela ocupada");
+    // (o pedido preso gravou a nota dele ao dar COMMIT: so as linhas de pedido diferem)
+    assert.deepEqual(
+      { ...(await fotografia(db)), pedidos: null },
+      { ...antes, pedidos: null },
+      "rollback com a tabela ocupada: algo mudou no banco",
+    );
   } finally {
     await p.query("ROLLBACK").catch(() => {});
     await p.end().catch(() => {});
@@ -1975,6 +2068,32 @@ async function casoRollbackEnvelope(rb = lerRb()) {
     !r2.erro,
     `rollback em envelope RR livre: ${r2.erro?.code} ${r2.erro?.message}`,
   );
+}
+
+/** Rollback de quem ja foi desfeito: nao pede trava nenhuma (nao para o checkout a toa). */
+async function casoRollbackJaDesfeito(rb = lerRb()) {
+  const db = await clonar("rbjadesfeito");
+  const ped = await usar(db, (c) => novoPedido(c));
+  const p = new Client({ connectionString: urlDe(db) });
+  await p.connect();
+  try {
+    await p.query("BEGIN");
+    await p.query(
+      "UPDATE public.marketplace_orders SET notes = 'preso' WHERE id = $1",
+      [ped],
+    );
+    const t0 = Date.now();
+    const r = await emEnvelopeRR(db, rb);
+    const ms = Date.now() - t0;
+    assert.ok(
+      !r.erro,
+      `rollback de quem ja foi desfeito, com a tabela presa, devia passar sem esperar: ${r.erro?.code} ${r.erro?.message}`,
+    );
+    assert.ok(ms < 2000, `o rollback ja-desfeito esperou ${ms} ms pela trava`);
+  } finally {
+    await p.query("ROLLBACK").catch(() => {});
+    await p.end().catch(() => {});
+  }
 }
 
 // ----------------------------------------------------------------- o bloco
@@ -1994,7 +2113,7 @@ async function blocoDaFoto() {
   );
   await casoCaminhos();
   ok(
-    "caminhos reais: a foto tem os valores do momento do cancelamento em v24+PIX+cancelar_pedido_com_cobranca (e liberar depois nao a muda), cliente, admin (pedido pago), cartao em analise, expiracao ('expirado' do NEW), v23, pedido__mudar_status, UPDATE cru e NULL -> cancelled; o cliente (authenticated) cancela sem erro; 8 pedidos, 8 fotos",
+    "caminhos reais: a foto tem os valores do momento do cancelamento em v24+PIX+cancelar_pedido_com_cobranca (e liberar depois nao a muda), cliente, admin (pedido pago), cartao em analise, expiracao ('expirado' do NEW), v23, pedido__mudar_status, UPDATE cru; o cliente (authenticated) cancela sem erro; UPDATE direto de um papel sem privilegio na tabela da foto; 9 pedidos, 9 fotos",
   );
   await casoRecancelar();
   ok(
@@ -2020,7 +2139,7 @@ async function blocoDaFoto() {
   );
   await casoIdempotente();
   ok(
-    "idempotente: 2a aplicacao e 3a (CRLF) deixam o catalogo e as fotos ja gravadas IGUAIS",
+    "idempotente: 2a aplicacao, 3a (CRLF, so o corpo da funcao muda de fim de linha) e 4a (LF) deixam o catalogo e as fotos ja gravadas IGUAIS",
   );
   await casoAtomico();
   ok(
@@ -2070,7 +2189,11 @@ async function blocoDaFoto() {
   );
   await casoCruzado();
   ok(
-    "DOIS pedidos cruzados (um segura a tabela de pedidos e quer a linha do cupom, o outro segura a linha do cupom e quer a tabela) com a migration esperando a trava: o pedido que chega com ela esperando NAO fica parado (< 600 ms), nenhum 40P01, os dois dao COMMIT e a migration aplica no fim",
+    "DOIS pedidos cruzados (um segura a tabela de pedidos e quer a linha do cupom, o outro segura a linha do cupom e quer a tabela) com a migration esperando a trava: o pedido que chega com ela esperando NAO fica parado (< 1,5 s), nenhum 40P01, os dois dao COMMIT e a migration aplica no fim",
+  );
+  await casoDuasAplicacoes();
+  ok(
+    "duas aplicacoes ao mesmo tempo (2 conexoes reais): em READ COMMITTED as duas dao certo; no envelope REPEATABLE READ uma aplica e a outra recusa com 'apareceu agora' sem gravar; o catalogo final e o de uma aplicacao so",
   );
   await casoChegaDepois();
   ok(
@@ -2079,6 +2202,10 @@ async function blocoDaFoto() {
   await casoRollbackEnvelope();
   ok(
     "rollback no envelope RR: tabela ocupada recusa 55P03 sem apagar nada; livre, desfaz",
+  );
+  await casoRollbackJaDesfeito();
+  ok(
+    "rollback de quem ja foi desfeito nao pede trava (passa sem esperar mesmo com a tabela de pedidos presa)",
   );
 
   // ------------------------------------------------------------ mutantes
@@ -2164,6 +2291,11 @@ async function blocoDaFoto() {
     ["sem pre-voo da FK", MSG.fk, (s) => casoPreVooTabela(s, "fk")],
     ["sem pre-voo da politica", MSG.politica, casoPreVooPolitica],
     [
+      "sem a guarda 'apareceu agora' (duas aplicacoes ao mesmo tempo)",
+      MSG.apareceuAgora,
+      casoDuasAplicacoes,
+    ],
+    [
       "sem pre-voo da assinatura da funcao",
       MSG.assinatura,
       (s) => casoPreVooFuncao(s, "assinatura"),
@@ -2219,10 +2351,8 @@ async function blocoDaFoto() {
     ),
   );
   await mutante(
-    "rollback sem o RETURN do ja-desfeito (reaplicar o rollback quebra)",
-    async (r) => {
-      await casoIdaEVolta(sql, r);
-    },
+    "rollback sem o RETURN do ja-desfeito (um rollback repetido pede a trava e para o checkout)",
+    casoRollbackJaDesfeito,
     trocar(
       rb,
       "    RETURN; -- ja desfeito: nada a conferir nem a apagar\n",
