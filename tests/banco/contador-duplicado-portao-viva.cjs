@@ -109,7 +109,8 @@ const SIG_VAL = "public.validate_coupon_secure_v2(text,numeric)";
 
 // Os nomes das linhas (o rol fechado do codigo tem os mesmos).
 const CONTROLE = "controle: funcoes de public visiveis a este papel";
-const USAGE_FORMA = "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)";
+const USAGE_FORMA =
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)";
 const LA = {
   controle: CONTROLE,
   tabela: "public.coupons: tabela",
@@ -119,7 +120,8 @@ const LA = {
 const LB = {
   controle: CONTROLE,
   presente: "coupons.used_count: coluna presente",
-  forma: "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  forma:
+    "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   usage: USAGE_FORMA,
   rls: "public.coupons: a seguranca por linha vale para este papel",
   acl: "coupons.used_count: permissao propria por coluna (attacl)",
@@ -398,7 +400,10 @@ async function negativo(consulta, rotulo, db, esperadas, opcoes = {}) {
 function aplicarTrocas(rotulo, consulta, trocas) {
   let sql = SQL[consulta];
   for (const [de, para] of trocas) {
-    assert.ok(sql.includes(de), `${rotulo}: o trecho a mutar nao existe: ${de}`);
+    assert.ok(
+      sql.includes(de),
+      `${rotulo}: o trecho a mutar nao existe: ${de}`,
+    );
     const novo = sql.replace(de, () => para);
     assert.notEqual(novo, sql);
     sql = novo;
@@ -412,7 +417,14 @@ function imprimeVermelho(rotulo, e) {
   );
 }
 /** Um MUTANTE do texto do .sql tem de ser PEGO: com ele, o negativo `db` deixa de reprovar o que devia. */
-async function mutanteTemQueSerPego(rotulo, consulta, trocas, db, esperadas, opcoes = {}) {
+async function mutanteTemQueSerPego(
+  rotulo,
+  consulta,
+  trocas,
+  db,
+  esperadas,
+  opcoes = {},
+) {
   const sql = aplicarTrocas(rotulo, consulta, trocas);
   const rows = await rodar(db, consulta, { ...opcoes, sql });
   let pego = false;
@@ -429,7 +441,13 @@ async function mutanteTemQueSerPego(rotulo, consulta, trocas, db, esperadas, opc
     `${rotulo}: o mutante nao afrouxou nada`,
   );
 }
-async function mutantePositivoTemQueSerPego(rotulo, consulta, trocas, db, opcoes = {}) {
+async function mutantePositivoTemQueSerPego(
+  rotulo,
+  consulta,
+  trocas,
+  db,
+  opcoes = {},
+) {
   const sql = aplicarTrocas(rotulo, consulta, trocas);
   const rows = await rodar(db, consulta, { ...opcoes, sql });
   let pego = false;
@@ -442,7 +460,14 @@ async function mutantePositivoTemQueSerPego(rotulo, consulta, trocas, db, opcoes
   assert.ok(pego, `${rotulo}: o MUTANTE do caso positivo passou despercebido`);
 }
 /** Mutante cuja diferenca nao esta no conjunto de linhas reprovadas, e sim no que uma linha DIZ. */
-async function mutanteComChecagem(rotulo, consulta, trocas, db, checagem, opcoes = {}) {
+async function mutanteComChecagem(
+  rotulo,
+  consulta,
+  trocas,
+  db,
+  checagem,
+  opcoes = {},
+) {
   const sql = aplicarTrocas(rotulo, consulta, trocas);
   const rows = await rodar(db, consulta, { ...opcoes, sql });
   let pego = false;
@@ -458,7 +483,11 @@ function textoDaLinha(consulta, item) {
   const sql = SQL[consulta];
   const ini = sql.indexOf(`SELECT '${item}',`);
   assert.ok(ini >= 0, `a linha "${item}" nao existe na ${consulta}`);
-  assert.equal(sql.indexOf(`SELECT '${item}',`, ini + 1), -1, `a linha "${item}" aparece mais de uma vez`);
+  assert.equal(
+    sql.indexOf(`SELECT '${item}',`, ini + 1),
+    -1,
+    `a linha "${item}" aparece mais de uma vez`,
+  );
   const resto = sql.slice(ini);
   const fim = resto.search(/\n {2}(?:UNION ALL|-- )|\n\)\nSELECT item/);
   assert.ok(fim > 0, `nao achei o fim da linha "${item}"`);
@@ -508,13 +537,19 @@ function subirApi() {
           await c.query(`SET ROLE ${estado.papel}`);
           await c.query("SET default_transaction_read_only = on");
           const r = await c.query(query);
-          res.writeHead(201, { "content-type": "application/json", connection: "close" });
+          res.writeHead(201, {
+            "content-type": "application/json",
+            connection: "close",
+          });
           res.end(JSON.stringify(r.rows ?? []));
         } finally {
           await c.end().catch(() => {});
         }
       } catch (erro) {
-        res.writeHead(400, { "content-type": "application/json", connection: "close" });
+        res.writeHead(400, {
+          "content-type": "application/json",
+          connection: "close",
+        });
         res.end(JSON.stringify({ message: String(erro.message) }));
       }
     });
@@ -537,7 +572,9 @@ function rodarScript(env) {
       {
         env: {
           PATH: process.env.PATH,
-          ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+          ...(process.env.SystemRoot
+            ? { SystemRoot: process.env.SystemRoot }
+            : {}),
           GITHUB_STEP_SUMMARY: "",
           ...env,
         },
@@ -552,7 +589,8 @@ function rodarScript(env) {
 
 async function main() {
   PORTAO = await import(
-    pathToFileURL(path.join(REPO, "scripts", "frota", "publicar-release.mjs")).href
+    pathToFileURL(path.join(REPO, "scripts", "frota", "publicar-release.mjs"))
+      .href
   );
   for (const c of [A, B]) {
     assert.ok(
@@ -585,8 +623,14 @@ async function main() {
   const pre = `cdp_${SUF}_pre`;
   await montarBase(pre, (nome) => nome !== ARQ);
   await usar(pre, async (c) => {
-    const eu = await c.query("SELECT rolsuper FROM pg_roles WHERE rolname = current_user");
-    assert.equal(eu.rows[0].rolsuper, true, "precondicao: a conexao da prova e superusuario");
+    const eu = await c.query(
+      "SELECT rolsuper FROM pg_roles WHERE rolname = current_user",
+    );
+    assert.equal(
+      eu.rows[0].rolsuper,
+      true,
+      "precondicao: a conexao da prova e superusuario",
+    );
     const col = await c.query(
       `SELECT count(*)::int AS n FROM pg_attribute WHERE attrelid = 'public.coupons'::regclass
         AND attname = 'used_count' AND NOT attisdropped`,
@@ -602,7 +646,9 @@ async function main() {
   const crlf = await clonar("crlf", pre);
   aplicarArquivo(crlf, ARQ, { crlf: true });
   const cheioAntes = await rodar(aplicado, A);
-  ok(`bases montadas: pre (arvore sem a 20261207, 3 cupons com used_count 0), aplicado (+ o ARQUIVO aplicado de verdade), crlf (texto com CRLF); o ARQUIVO aplica sem erro`);
+  ok(
+    "bases montadas: pre (arvore sem a 20261207, 3 cupons com used_count 0), aplicado (+ o ARQUIVO aplicado de verdade), crlf (texto com CRLF); o ARQUIVO aplica sem erro",
+  );
 
   // ----------------------------------------------------------- 14b POSITIVOS
   {
@@ -611,13 +657,19 @@ async function main() {
     assert.equal(linha(rows, LB.linhas).vivo, "0");
     assert.equal(linha(rows, LB.dep).vivo, "0");
     assert.equal(linha(rows, LB.fn).vivo, "(nenhuma)");
-    await exigirPositiva(B, "14b papel minimo", await rodar(pre, B, { papel: P.minimo }));
+    await exigirPositiva(
+      B,
+      "14b papel minimo",
+      await rodar(pre, B, { papel: P.minimo }),
+    );
     await exigirPositiva(
       B,
       "14b search_path vazio",
       await rodar(pre, B, { antes: ["SET search_path = ''"] }),
     );
-    ok("14b POSITIVA em `pre` (coluna presente, forma do baseline, 0 linhas diferentes de 0, 0 dependentes, nada cita o nome, RLS nao vale), com o papel minimo (so SELECT em coupons) e com search_path vazio");
+    ok(
+      "14b POSITIVA em `pre` (coluna presente, forma do baseline, 0 linhas diferentes de 0, 0 dependentes, nada cita o nome, RLS nao vale), com o papel minimo (so SELECT em coupons) e com search_path vazio",
+    );
   }
 
   // ----------------------------------------------------------- 14b NEGATIVOS
@@ -630,45 +682,99 @@ async function main() {
     nb[rotulo] = db;
     return db;
   };
-  await variante("valor", `UPDATE public.coupons SET used_count = 3 WHERE code = 'CP2'`);
-  await variante("nulo", `UPDATE public.coupons SET used_count = NULL WHERE code = 'CP3'`);
-  await variante("gerada", `ALTER TABLE public.coupons ADD COLUMN x integer GENERATED ALWAYS AS (used_count + 1) STORED`);
-  await variante("visao", `CREATE VIEW public.vw_prova AS SELECT code, used_count FROM public.coupons`);
-  await variante("politica", `CREATE POLICY pol_prova ON public.coupons FOR SELECT TO authenticated USING (used_count < 100)`);
+  await variante(
+    "valor",
+    `UPDATE public.coupons SET used_count = 3 WHERE code = 'CP2'`,
+  );
+  await variante(
+    "nulo",
+    `UPDATE public.coupons SET used_count = NULL WHERE code = 'CP3'`,
+  );
+  await variante(
+    "gerada",
+    "ALTER TABLE public.coupons ADD COLUMN x integer GENERATED ALWAYS AS (used_count + 1) STORED",
+  );
+  await variante(
+    "visao",
+    "CREATE VIEW public.vw_prova AS SELECT code, used_count FROM public.coupons",
+  );
+  await variante(
+    "politica",
+    "CREATE POLICY pol_prova ON public.coupons FOR SELECT TO authenticated USING (used_count < 100)",
+  );
   await variante("gatilho", [
-    `CREATE FUNCTION public.fn_trg_prova() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NEW; END $f$`,
-    `CREATE TRIGGER trg_prova BEFORE UPDATE OF used_count ON public.coupons FOR EACH ROW EXECUTE FUNCTION public.fn_trg_prova()`,
+    "CREATE FUNCTION public.fn_trg_prova() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NEW; END $f$",
+    "CREATE TRIGGER trg_prova BEFORE UPDATE OF used_count ON public.coupons FOR EACH ROW EXECUTE FUNCTION public.fn_trg_prova()",
   ]);
-  await variante("indice", `CREATE INDEX ix_prova ON public.coupons (used_count)`);
-  await variante("funcao", `CREATE FUNCTION public.fn_prova() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`);
+  await variante(
+    "indice",
+    "CREATE INDEX ix_prova ON public.coupons (used_count)",
+  );
+  await variante(
+    "funcao",
+    "CREATE FUNCTION public.fn_prova() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$",
+  );
   await variante("funcaoFora", [
-    `CREATE SCHEMA priv_cdp`,
-    `CREATE FUNCTION priv_cdp.f() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`,
+    "CREATE SCHEMA priv_cdp",
+    "CREATE FUNCTION priv_cdp.f() RETURNS bigint LANGUAGE plpgsql AS $f$ BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$",
   ]);
-  await variante("forma", `ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint`);
-  await variante("usage", `ALTER TABLE public.coupons DROP COLUMN usage_count`);
-  await variante("usageTipo", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`);
-  await variante("usageDefault", `ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT`);
-  await variante("usageNotNull", `ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL`);
-  await variante("acl", `GRANT SELECT (used_count) ON public.coupons TO authenticated`);
-  await variante("comentario", `COMMENT ON COLUMN public.coupons.used_count IS 'contador antigo'`);
-  await variante("cego", `UPDATE public.coupons SET used_count = 3 WHERE code = 'CP1'`);
+  await variante(
+    "forma",
+    "ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint",
+  );
+  await variante("usage", "ALTER TABLE public.coupons DROP COLUMN usage_count");
+  await variante(
+    "usageTipo",
+    "ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint",
+  );
+  await variante(
+    "usageDefault",
+    "ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT",
+  );
+  await variante(
+    "usageNotNull",
+    "ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL",
+  );
+  await variante(
+    "acl",
+    "GRANT SELECT (used_count) ON public.coupons TO authenticated",
+  );
+  await variante(
+    "comentario",
+    `COMMENT ON COLUMN public.coupons.used_count IS 'contador antigo'`,
+  );
+  await variante(
+    "cego",
+    `UPDATE public.coupons SET used_count = 3 WHERE code = 'CP1'`,
+  );
   const casos14b = [
     ["valor 3 em uma linha", nb.valor, [LB.linhas]],
     ["NULL em uma linha (NULL nao vale 0)", nb.nulo, [LB.linhas]],
-    ["coluna GERADA que cita used_count (o pg_attrdef de OUTRA coluna conta)", nb.gerada, [LB.dep]],
+    [
+      "coluna GERADA que cita used_count (o pg_attrdef de OUTRA coluna conta)",
+      nb.gerada,
+      [LB.dep],
+    ],
     ["visao que cita a coluna", nb.visao, [LB.dep, LB.vis]],
     ["politica que cita a coluna", nb.politica, [LB.dep, LB.pol]],
     ["gatilho com UPDATE OF used_count", nb.gatilho, [LB.dep, LB.gat]],
     ["indice sobre a coluna", nb.indice, [LB.dep]],
     ["funcao que cita used_count no corpo", nb.funcao, [LB.fn]],
-    ["funcao FORA de public (schema interno) que cita used_count", nb.funcaoFora, [LB.fn]],
+    [
+      "funcao FORA de public (schema interno) que cita used_count",
+      nb.funcaoFora,
+      [LB.fn],
+    ],
     ["forma diferente do baseline (bigint)", nb.forma, [LB.forma]],
     ["usage_count ausente", nb.usage, [LB.usage]],
     ["usage_count bigint", nb.usageTipo, [LB.usage]],
     ["usage_count sem default", nb.usageDefault, [LB.usage]],
     ["usage_count NOT NULL", nb.usageNotNull, [LB.usage]],
-    ["permissao propria por coluna (o DROP a apagaria e o rollback nao a recria)", nb.acl, [LB.acl]],
+    [
+      "permissao propria por coluna (o DROP a apagaria e o rollback nao a recria)",
+      nb.acl,
+      [LB.acl],
+    ],
     ["comentario da coluna (idem)", nb.comentario, [LB.cmt]],
   ];
   for (const [rotulo, db, esperadas] of casos14b)
@@ -679,30 +785,65 @@ async function main() {
   {
     const rows = await rodar(nb.cego, B, { papel: P.cego });
     await exigirReprovadas(B, "14b papel cego (RLS)", rows, [LB.rls]);
-    assert.equal(linha(rows, LB.linhas).vivo, "0", "o papel cego conta 0 linhas (a RLS esconde o 3)");
+    assert.equal(
+      linha(rows, LB.linhas).vivo,
+      "0",
+      "o papel cego conta 0 linhas (a RLS esconde o 3)",
+    );
     assert.equal(linha(rows, LB.linhas).ok, true);
     // o mesmo banco, medido por quem atravessa a RLS, enxerga o 3
-    await exigirReprovadas(B, "14b papel que atravessa a RLS", await rodar(nb.cego, B), [LB.linhas]);
+    await exigirReprovadas(
+      B,
+      "14b papel que atravessa a RLS",
+      await rodar(nb.cego, B),
+      [LB.linhas],
+    );
   }
   // a coluna JA apagada: as linhas dizem AUSENTE, nunca "todas as linhas"
   {
     const rows = await rodar(aplicado, B);
-    await exigirReprovadas(B, "14b com a coluna ja apagada", rows, [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep]);
-    for (const item of [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep])
+    await exigirReprovadas(B, "14b com a coluna ja apagada", rows, [
+      LB.presente,
+      LB.forma,
+      LB.acl,
+      LB.cmt,
+      LB.linhas,
+      LB.dep,
+    ]);
+    for (const item of [
+      LB.presente,
+      LB.forma,
+      LB.acl,
+      LB.cmt,
+      LB.linhas,
+      LB.dep,
+    ])
       assert.equal(linha(rows, item).vivo, "AUSENTE", item);
   }
-  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao em public ou em OUTRO schema (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL), permissao propria por coluna e comentario da coluna (o DROP os apaga e o rollback nao os recria); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
+  ok(
+    "14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao em public ou em OUTRO schema (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL), permissao propria por coluna e comentario da coluna (o DROP os apaga e o rollback nao os recria); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'",
+  );
 
   // ----------------------------------------------------------- 14a POSITIVOS
   {
     await exigirPositiva(A, "14a em aplicado", cheioAntes);
     await exigirPositiva(A, "14a em crlf", await rodar(crlf, A));
-    await exigirPositiva(A, "14a papel minimo", await rodar(aplicado, A, { papel: P.minimo }));
-    await exigirPositiva(A, "14a search_path vazio", await rodar(aplicado, A, { antes: ["SET search_path = ''"] }));
+    await exigirPositiva(
+      A,
+      "14a papel minimo",
+      await rodar(aplicado, A, { papel: P.minimo }),
+    );
+    await exigirPositiva(
+      A,
+      "14a search_path vazio",
+      await rodar(aplicado, A, { antes: ["SET search_path = ''"] }),
+    );
     // IGUAL ao banco da arvore inteira (a mesma resposta linha a linha)
     const cheio = await rodar(aplicado, A);
     assert.deepEqual(cheio, cheioAntes);
-    ok("14a POSITIVA depois do apply real (LF e CRLF), com o papel minimo e com search_path vazio");
+    ok(
+      "14a POSITIVA depois do apply real (LF e CRLF), com o papel minimo e com search_path vazio",
+    );
   }
 
   // ----------------------------------------------------------- 14a NEGATIVOS
@@ -715,16 +856,33 @@ async function main() {
     na[rotulo] = db;
     return db;
   };
-  await varianteA("usageTipo", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`);
-  await varianteA("usageDefault", `ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT`);
-  await varianteA("usageAusente", `ALTER TABLE public.coupons DROP COLUMN usage_count`);
-  await varianteA("usageNotNull", `ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL`);
-  await varianteA("semTabela", `ALTER TABLE public.coupons RENAME TO coupons_x`);
+  await varianteA(
+    "usageTipo",
+    "ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint",
+  );
+  await varianteA(
+    "usageDefault",
+    "ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT",
+  );
+  await varianteA(
+    "usageAusente",
+    "ALTER TABLE public.coupons DROP COLUMN usage_count",
+  );
+  await varianteA(
+    "usageNotNull",
+    "ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL",
+  );
+  await varianteA(
+    "semTabela",
+    "ALTER TABLE public.coupons RENAME TO coupons_x",
+  );
   // a 14a NAO trava corpo de funcao: uma funcao de cupom alterada nao a reprova
   const valByte = await clonar("valByte", aplicado);
   await reescreverCorpo(valByte, SIG_VAL, (c) => `${c} `);
   const volta = await clonar("volta", aplicado);
-  await usar(volta, (c) => c.query(fs.readFileSync(path.join(MIGRATIONS, ARQ_RB), "utf8")));
+  await usar(volta, (c) =>
+    c.query(fs.readFileSync(path.join(MIGRATIONS, ARQ_RB), "utf8")),
+  );
   const casos14a = [
     ["coluna ainda presente (loja ANTES do apply)", pre, [LA.coluna]],
     ["coluna de volta depois do rollback", volta, [LA.coluna]],
@@ -736,23 +894,85 @@ async function main() {
   ];
   for (const [rotulo, db, esperadas] of casos14a)
     await negativo(A, `14a ${rotulo}`, db, esperadas);
-  await exigirPositiva(A, "14a com o corpo de validate_coupon_secure_v2 alterado (a 14a nao o trava)", await rodar(valByte, A));
-  ok("14a NEGATIVA, UMA linha certa por defeito: coluna ainda presente (antes do apply e depois do rollback), usage_count com outro tipo/sem default/NOT NULL/ausente, tabela ausente; e um corpo de funcao de cupom alterado NAO a reprova (quem o trava sao a 10a e a 12a)");
+  await exigirPositiva(
+    A,
+    "14a com o corpo de validate_coupon_secure_v2 alterado (a 14a nao o trava)",
+    await rodar(valByte, A),
+  );
+  ok(
+    "14a NEGATIVA, UMA linha certa por defeito: coluna ainda presente (antes do apply e depois do rollback), usage_count com outro tipo/sem default/NOT NULL/ausente, tabela ausente; e um corpo de funcao de cupom alterado NAO a reprova (quem o trava sao a 10a e a 12a)",
+  );
 
   // ----------------------------------------------------------- MUTANTES
-  console.log("\n  --- MUTANTES do texto das consultas (cada um tem de deixar um caso PASSAR) ---");
+  console.log(
+    "\n  --- MUTANTES do texto das consultas (cada um tem de deixar um caso PASSAR) ---",
+  );
   // 14b: cada linha ignorada
-  await mutanteDaLinha("14b sem a linha 'coluna presente'", B, LB.presente, aplicado, [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep]);
-  await mutanteDaLinha("14b sem a linha 'forma'", B, LB.forma, nb.forma, [LB.forma]);
-  await mutanteDaLinha("14b sem a linha 'usage_count' (ausente)", B, LB.usage, nb.usage, [LB.usage]);
-  await mutanteDaLinha("14b sem a linha 'usage_count' (bigint)", B, LB.usage, nb.usageTipo, [LB.usage]);
-  await mutanteDaLinha("14b sem a linha 'usage_count' (NOT NULL)", B, LB.usage, nb.usageNotNull, [LB.usage]);
-  await mutanteDaLinha("14b sem a linha da permissao por coluna", B, LB.acl, nb.acl, [LB.acl]);
-  await mutanteDaLinha("14b sem a linha do comentario", B, LB.cmt, nb.comentario, [LB.cmt]);
-  await mutanteDaLinha("14b sem a linha da RLS", B, LB.rls, nb.cego, [LB.rls], { papel: P.cego });
-  await mutanteDaLinha("14b sem a linha das linhas diferentes de 0", B, LB.linhas, nb.valor, [LB.linhas]);
-  await mutanteDaLinha("14b sem a linha dos dependentes", B, LB.dep, nb.gerada, [LB.dep]);
-  await mutanteDaLinha("14b sem a linha das funcoes", B, LB.fn, nb.funcao, [LB.fn]);
+  await mutanteDaLinha(
+    "14b sem a linha 'coluna presente'",
+    B,
+    LB.presente,
+    aplicado,
+    [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep],
+  );
+  await mutanteDaLinha("14b sem a linha 'forma'", B, LB.forma, nb.forma, [
+    LB.forma,
+  ]);
+  await mutanteDaLinha(
+    "14b sem a linha 'usage_count' (ausente)",
+    B,
+    LB.usage,
+    nb.usage,
+    [LB.usage],
+  );
+  await mutanteDaLinha(
+    "14b sem a linha 'usage_count' (bigint)",
+    B,
+    LB.usage,
+    nb.usageTipo,
+    [LB.usage],
+  );
+  await mutanteDaLinha(
+    "14b sem a linha 'usage_count' (NOT NULL)",
+    B,
+    LB.usage,
+    nb.usageNotNull,
+    [LB.usage],
+  );
+  await mutanteDaLinha(
+    "14b sem a linha da permissao por coluna",
+    B,
+    LB.acl,
+    nb.acl,
+    [LB.acl],
+  );
+  await mutanteDaLinha(
+    "14b sem a linha do comentario",
+    B,
+    LB.cmt,
+    nb.comentario,
+    [LB.cmt],
+  );
+  await mutanteDaLinha("14b sem a linha da RLS", B, LB.rls, nb.cego, [LB.rls], {
+    papel: P.cego,
+  });
+  await mutanteDaLinha(
+    "14b sem a linha das linhas diferentes de 0",
+    B,
+    LB.linhas,
+    nb.valor,
+    [LB.linhas],
+  );
+  await mutanteDaLinha(
+    "14b sem a linha dos dependentes",
+    B,
+    LB.dep,
+    nb.gerada,
+    [LB.dep],
+  );
+  await mutanteDaLinha("14b sem a linha das funcoes", B, LB.fn, nb.funcao, [
+    LB.fn,
+  ]);
   await mutanteTemQueSerPego(
     "14b varre so public (a funcao de outro schema passa)",
     B,
@@ -760,9 +980,21 @@ async function main() {
     nb.funcaoFora,
     [LB.fn],
   );
-  await mutanteDaLinha("14b sem a linha das politicas", B, LB.pol, nb.politica, [LB.dep, LB.pol]);
-  await mutanteDaLinha("14b sem a linha dos gatilhos", B, LB.gat, nb.gatilho, [LB.dep, LB.gat]);
-  await mutanteDaLinha("14b sem a linha das visoes", B, LB.vis, nb.visao, [LB.dep, LB.vis]);
+  await mutanteDaLinha(
+    "14b sem a linha das politicas",
+    B,
+    LB.pol,
+    nb.politica,
+    [LB.dep, LB.pol],
+  );
+  await mutanteDaLinha("14b sem a linha dos gatilhos", B, LB.gat, nb.gatilho, [
+    LB.dep,
+    LB.gat,
+  ]);
+  await mutanteDaLinha("14b sem a linha das visoes", B, LB.vis, nb.visao, [
+    LB.dep,
+    LB.vis,
+  ]);
   // 14b: as clausulas
   await mutanteTemQueSerPego(
     "14b volta a excluir TODO pg_attrdef (esconde a coluna gerada)",
@@ -780,24 +1012,61 @@ async function main() {
   await mutanteComChecagem(
     "14b sem o guarda AUSENTE da contagem (to_jsonb sem a chave conta TODA linha)",
     B,
-    [[GUARDA_AUSENTE_LINHAS, `(SELECT count(*)::text FROM public.coupons c
-                     WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb)`]],
+    [
+      [
+        GUARDA_AUSENTE_LINHAS,
+        `(SELECT count(*)::text FROM public.coupons c
+                     WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb)`,
+      ],
+    ],
     aplicado,
-    (rows) => assert.equal(linha(rows, LB.linhas).vivo, "AUSENTE", "a contagem sem o guarda diz o numero de cupons, nao AUSENTE"),
+    (rows) =>
+      assert.equal(
+        linha(rows, LB.linhas).vivo,
+        "AUSENTE",
+        "a contagem sem o guarda diz o numero de cupons, nao AUSENTE",
+      ),
   );
   await mutanteTemQueSerPego(
     "14b conta NULL como 0 (COALESCE)",
     B,
-    [[`WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb) END`, `WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb AND (to_jsonb(c) -> 'used_count') <> 'null'::jsonb) END`]],
+    [
+      [
+        `WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb) END`,
+        `WHERE (to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb AND (to_jsonb(c) -> 'used_count') <> 'null'::jsonb) END`,
+      ],
+    ],
     nb.nulo,
     [LB.linhas],
   );
   // 14a: cada linha ignorada
-  await mutanteDaLinha("14a sem a linha da tabela", A, LA.tabela, na.semTabela, [LA.tabela, LA.usage]);
-  await mutanteDaLinha("14a sem a linha da coluna", A, LA.coluna, pre, [LA.coluna]);
-  await mutanteDaLinha("14a sem a linha do usage_count (bigint)", A, LA.usage, na.usageTipo, [LA.usage]);
-  await mutanteDaLinha("14a sem a linha do usage_count (NOT NULL)", A, LA.usage, na.usageNotNull, [LA.usage]);
-  ok("MUTANTES do texto das consultas: cada uma das linhas da 14b e da 14a ignorada (menos a de controle, sem negativo local), a exclusao do default da PROPRIA coluna (voltar a excluir todo pg_attrdef esconde a coluna gerada; nao excluir nada reprova o positivo), o guarda AUSENTE da contagem e NULL como 0 deixam um caso PASSAR e a prova ficaria VERMELHA");
+  await mutanteDaLinha(
+    "14a sem a linha da tabela",
+    A,
+    LA.tabela,
+    na.semTabela,
+    [LA.tabela, LA.usage],
+  );
+  await mutanteDaLinha("14a sem a linha da coluna", A, LA.coluna, pre, [
+    LA.coluna,
+  ]);
+  await mutanteDaLinha(
+    "14a sem a linha do usage_count (bigint)",
+    A,
+    LA.usage,
+    na.usageTipo,
+    [LA.usage],
+  );
+  await mutanteDaLinha(
+    "14a sem a linha do usage_count (NOT NULL)",
+    A,
+    LA.usage,
+    na.usageNotNull,
+    [LA.usage],
+  );
+  ok(
+    "MUTANTES do texto das consultas: cada uma das linhas da 14b e da 14a ignorada (menos a de controle, sem negativo local), a exclusao do default da PROPRIA coluna (voltar a excluir todo pg_attrdef esconde a coluna gerada; nao excluir nada reprova o positivo), o guarda AUSENTE da contagem e NULL como 0 deixam um caso PASSAR e a prova ficaria VERMELHA",
+  );
 
   // ----------------------------------------------------------- ROL FECHADO
   {
@@ -809,32 +1078,45 @@ async function main() {
     assert.ok(soOk.length > 0 && soOk.length < rowsPre.length);
     const v = veredito(A, soOk);
     assert.ok(v.endsWith("rol=invalido"), v);
-    assert.equal((await portaoComLog(A, v)).estado, "SEM_EVIDENCIA", "resposta PARCIAL com tudo ok=true nunca e positiva");
+    assert.equal(
+      (await portaoComLog(A, v)).estado,
+      "SEM_EVIDENCIA",
+      "resposta PARCIAL com tudo ok=true nunca e positiva",
+    );
     const dup = [...rows, rows[0]];
     assert.ok(veredito(A, dup).endsWith("rol=invalido"));
-    assert.equal((await portaoComLog(A, veredito(A, dup))).estado, "SEM_EVIDENCIA");
+    assert.equal(
+      (await portaoComLog(A, veredito(A, dup))).estado,
+      "SEM_EVIDENCIA",
+    );
     const rowsB = await rodar(pre, B);
     assert.ok(veredito(A, rowsB).endsWith("rol=invalido"));
     assert.ok(veredito(B, rows).endsWith("rol=invalido"));
-    ok("rol FECHADO: a resposta PARCIAL (so as linhas ok=true), com linha duplicada ou com o rol da OUTRA consulta tem rol=invalido e o portao a trata como SEM_EVIDENCIA, nunca POSITIVA");
+    ok(
+      "rol FECHADO: a resposta PARCIAL (so as linhas ok=true), com linha duplicada ou com o rol da OUTRA consulta tem rol=invalido e o portao a trata como SEM_EVIDENCIA, nunca POSITIVA",
+    );
   }
-
-  // ----------------------------------------------------------- ERRO DE SQL
-  {
-    for (const consulta of [A, B]) {
-      const quebrado = SQL[consulta].replace(
-        "SELECT item, esperado, vivo, COALESCE",
-        "SELEC item, esperado, vivo, COALESCE",
-      );
-      assert.notEqual(quebrado, SQL[consulta]);
-      const r = await tentar(aplicado, consulta, { sql: quebrado });
-      assert.ok(r.erro && r.erro.code === "42601", String(r.erro));
-      assert.equal(r.rows, undefined);
-      assert.equal((await portaoComLog(consulta, null, "success")).estado, "SEM_EVIDENCIA");
-      assert.equal((await portaoComLog(consulta, null, "failure")).estado, "SEM_EVIDENCIA");
-    }
-    ok("erro de SQL (42601) na 14a e na 14b: falha ALTA, nenhuma linha, e o portao fica SEM_EVIDENCIA mesmo com o run verde -- erro nunca vira positivo");
+  for (const consulta of [A, B]) {
+    const quebrado = SQL[consulta].replace(
+      "SELECT item, esperado, vivo, COALESCE",
+      "SELEC item, esperado, vivo, COALESCE",
+    );
+    assert.notEqual(quebrado, SQL[consulta]);
+    const r = await tentar(aplicado, consulta, { sql: quebrado });
+    assert.ok(r.erro && r.erro.code === "42601", String(r.erro));
+    assert.equal(r.rows, undefined);
+    assert.equal(
+      (await portaoComLog(consulta, null, "success")).estado,
+      "SEM_EVIDENCIA",
+    );
+    assert.equal(
+      (await portaoComLog(consulta, null, "failure")).estado,
+      "SEM_EVIDENCIA",
+    );
   }
+  ok(
+    "erro de SQL (42601) na 14a e na 14b: falha ALTA, nenhuma linha, e o portao fica SEM_EVIDENCIA mesmo com o run verde -- erro nunca vira positivo",
+  );
 
   // ----------------------------------------------------------- PONTA A PONTA
   {
@@ -886,8 +1168,17 @@ async function main() {
     assert.ok(lote, "o canais-de-backend.json real nao declara o lote da 14a");
     assert.deepEqual(lote.versoes, [V]);
     assert.equal(lote.ausenciaConfirmadaPor, B);
-    for (const campo of ["backfillLedger", "nuncaAplicar", "soNosRefs", "conferenciasAntesDoApply"])
-      assert.equal(lote[campo], undefined, `o lote nao devia declarar ${campo}`);
+    for (const campo of [
+      "backfillLedger",
+      "nuncaAplicar",
+      "soNosRefs",
+      "conferenciasAntesDoApply",
+    ])
+      assert.equal(
+        lote[campo],
+        undefined,
+        `o lote nao devia declarar ${campo}`,
+      );
     const decidir = async (dbAlvo, { faltam, exigeProva }) => {
       const sa = await executar(dbAlvo, A);
       assert.equal(sa.codigo, 0, sa.saida);
@@ -898,16 +1189,36 @@ async function main() {
       return {
         prova,
         diag: diag.get(B),
-        decisao: PORTAO.decidirLote({ lote: { ...lote, versoes: [V] }, faltam, exigeProva, prova, diagnostico: diag }),
+        decisao: PORTAO.decidirLote({
+          lote: { ...lote, versoes: [V] },
+          faltam,
+          exigeProva,
+          prova,
+          diagnostico: diag,
+        }),
       };
     };
     try {
       // E1: o veredito real do processo filho
       const e1 = await executar(aplicado, A);
       assert.equal(e1.codigo, 0, e1.saida);
-      assert.deepEqual(PORTAO.lerVeredicto(e1.saida, A), { ref: REF_SAVY, sha: SHA40, linhas: 4, okFalse: 0, naoBooleano: 0, rol: "ok" });
+      assert.deepEqual(PORTAO.lerVeredicto(e1.saida, A), {
+        ref: REF_SAVY,
+        sha: SHA40,
+        linhas: 4,
+        okFalse: 0,
+        naoBooleano: 0,
+        rol: "ok",
+      });
       const e1b = await executar(pre, B);
-      assert.deepEqual(PORTAO.lerVeredicto(e1b.saida, B), { ref: REF_SAVY, sha: SHA40, linhas: 13, okFalse: 0, naoBooleano: 0, rol: "ok" });
+      assert.deepEqual(PORTAO.lerVeredicto(e1b.saida, B), {
+        ref: REF_SAVY,
+        sha: SHA40,
+        linhas: 13,
+        okFalse: 0,
+        naoBooleano: 0,
+        rol: "ok",
+      });
       // E2: banco inexistente -> HTTP 400, saida 1, NENHUM veredito, SEM_EVIDENCIA
       const e2 = await executar("cdp_banco_que_nao_existe", A);
       assert.equal(e2.codigo, 1, e2.saida);
@@ -949,8 +1260,14 @@ async function main() {
       const sb7 = await rodarScript(env(B));
       assert.equal(sb7.codigo, 0, sb7.saida);
       const diag7 = await evidencia(B, sb7.saida);
-      assert.equal(diag7.estado, "NEGATIVA", "o papel cego nunca autoriza o apply");
-      ok("ponta a ponta (conferir-banco.cjs de verdade, HTTP local, papel de leitura, canais-de-backend.json REAL): ANTES do apply 14a NEGATIVA + 14b POSITIVA -> APLICAR [20261207000000]; depois do apply 14a POSITIVA -> NADA; coluna apagada sem a versao no ledger -> PARAR (sem backfill); 14b NEGATIVA (valor 3 ou coluna gerada) -> PARAR sem versoes; coluna de volta com o ledger completo -> PARAR; papel que sofre a RLS nunca autoriza o apply; banco inexistente -> saida 1, sem veredito, SEM_EVIDENCIA");
+      assert.equal(
+        diag7.estado,
+        "NEGATIVA",
+        "o papel cego nunca autoriza o apply",
+      );
+      ok(
+        "ponta a ponta (conferir-banco.cjs de verdade, HTTP local, papel de leitura, canais-de-backend.json REAL): ANTES do apply 14a NEGATIVA + 14b POSITIVA -> APLICAR [20261207000000]; depois do apply 14a POSITIVA -> NADA; coluna apagada sem a versao no ledger -> PARAR (sem backfill); 14b NEGATIVA (valor 3 ou coluna gerada) -> PARAR sem versoes; coluna de volta com o ledger completo -> PARAR; papel que sofre a RLS nunca autoriza o apply; banco inexistente -> saida 1, sem veredito, SEM_EVIDENCIA",
+      );
     } finally {
       await api.parar();
     }

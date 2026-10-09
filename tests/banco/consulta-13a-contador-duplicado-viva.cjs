@@ -96,7 +96,9 @@ async function main() {
       assert.equal(m.dependentes_da_coluna_fora_o_default, "0");
       assert.equal(m.used_count_diferente_de_zero, "0");
     });
-    ok("BASE: so a coluna e o default dela: 0 dependentes (o default da propria used_count nao conta)");
+    ok(
+      "BASE: so a coluna e o default dela: 0 dependentes (o default da propria used_count nao conta)",
+    );
 
     await comTransacao(c, async () => {
       await c.query(
@@ -119,7 +121,9 @@ async function main() {
       assert.ok(Number(m.dependentes_da_coluna_fora_o_default) >= 1);
       assert.equal(m.visoes_que_citam, "1");
     });
-    ok("VISAO: visao que cita a coluna -> dependentes >= 1 e visoes_que_citam = 1");
+    ok(
+      "VISAO: visao que cita a coluna -> dependentes >= 1 e visoes_que_citam = 1",
+    );
 
     await comTransacao(c, async () => {
       await c.query("CREATE INDEX ix_prova_13a ON public.coupons (used_count)");
@@ -152,7 +156,9 @@ async function main() {
         assert.AssertionError,
       );
     });
-    ok("MUTANTE: voltar a excluir todo pg_attrdef esconde a coluna gerada (a prova GERADA ficaria VERMELHA)");
+    ok(
+      "MUTANTE: voltar a excluir todo pg_attrdef esconde a coluna gerada (a prova GERADA ficaria VERMELHA)",
+    );
   } finally {
     await c.end().catch(() => {});
   }

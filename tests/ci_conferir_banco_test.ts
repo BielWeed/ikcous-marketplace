@@ -5544,7 +5544,10 @@ Deno.test("13a/14b — os DEPENDENTES da coluna excluem SÓ o default da PRÓPRI
     sql14b,
     "(to_jsonb(c) -> 'used_count') IS DISTINCT FROM '0'::jsonb",
   );
-  assertStringIncludes(sql14b, "CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'");
+  assertStringIncludes(
+    sql14b,
+    "CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'",
+  );
 });
 
 Deno.test("14a/14b — a 14a não trava hash nem corpo de função (quem trava são a 10a e a 12a); a forma do usage_count é a MESMA na 14a, na 14b e no pré-voo da migration", async () => {
@@ -5562,7 +5565,10 @@ Deno.test("14a/14b — a 14a não trava hash nem corpo de função (quem trava s
     "validate_coupon_secure_v2",
     "devolver_cupons_de_pedidos_mortos",
   ])
-    assert(!sql14a.includes(t), `a 14a acoplaria o lote a outra migration: ${t}`);
+    assert(
+      !sql14a.includes(t),
+      `a 14a acoplaria o lote a outra migration: ${t}`,
+    );
   const mig = (await Deno.readTextFile(MIGRACAO_207))
     .replace(/\r\n/g, "\n")
     .split("\n")
@@ -5576,8 +5582,16 @@ Deno.test("14a/14b — a 14a não trava hash nem corpo de função (quem trava s
   for (const t of forma) {
     // 14a: so o usage_count; 14b e migration: used_count E usage_count
     assertEquals(conta(sql14a, t), 1, "14a: a forma do usage_count");
-    assertEquals(conta(sql14b, t), 2, "14b: a forma de used_count e de usage_count");
-    assertEquals(conta(mig, t), 2, "pre-voo: a forma de used_count e de usage_count");
+    assertEquals(
+      conta(sql14b, t),
+      2,
+      "14b: a forma de used_count e de usage_count",
+    );
+    assertEquals(
+      conta(mig, t),
+      2,
+      "pre-voo: a forma de used_count e de usage_count",
+    );
   }
   for (const texto of [sql14a, sql14b, mig])
     assertStringIncludes(texto, "a.attname = 'usage_count'");

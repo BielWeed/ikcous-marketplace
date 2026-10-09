@@ -61,8 +61,14 @@ Deno.test("207: nome da versao: e a mais nova da pasta, o rollback e o irmao, e 
   const nomes = [...Deno.readDirSync(PASTA)]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("rollback-"));
-  assertEquals(nomes.filter((n) => n.startsWith("20261207000000")), [NOME]);
-  assertEquals(nomes.filter((n) => n > NOME), []);
+  assertEquals(
+    nomes.filter((n) => n.startsWith("20261207000000")),
+    [NOME],
+  );
+  assertEquals(
+    nomes.filter((n) => n > NOME),
+    [],
+  );
   assert(
     [...Deno.readDirSync(PASTA)].some(
       (e) => e.name === `rollback-manual-${NOME}`,
@@ -80,8 +86,14 @@ Deno.test("207: a ordem e trava de tempo -> trava da tabela -> pre-voo -> UM DRO
     "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count",
     "DO $posvoo_20261207$",
   ].map((t) => c.indexOf(t));
-  assert(ordem.every((i) => i >= 0), JSON.stringify(ordem));
-  assertEquals([...ordem].sort((a, b) => a - b), ordem);
+  assert(
+    ordem.every((i) => i >= 0),
+    JSON.stringify(ordem),
+  );
+  assertEquals(
+    [...ordem].sort((a, b) => a - b),
+    ordem,
+  );
   // a trava vem antes de QUALQUER leitura de used_count/usage_count dentro do pre-voo
   const pre = c.slice(c.indexOf("DO $preflight_20261207$"));
   const iLock = pre.indexOf("LOCK TABLE");
@@ -103,9 +115,17 @@ Deno.test("207: o FOR SHARE vem DEPOIS da trava e ANTES da contagem (envelope RE
   const iLock = pre.indexOf("LOCK TABLE");
   const iShare = pre.indexOf("PERFORM 1 FROM public.coupons FOR SHARE;");
   const iConta = pre.indexOf("used_count IS DISTINCT FROM 0");
-  assert(iLock > 0 && iShare > iLock && iConta > iShare, `${iLock} ${iShare} ${iConta}`);
+  assert(
+    iLock > 0 && iShare > iLock && iConta > iShare,
+    `${iLock} ${iShare} ${iConta}`,
+  );
   // e a verdade esta escrita no cabecalho: a trava vale do LOCK em diante; o resto e risco residual aceito
-  for (const frase of ["40001", "REPEATABLE READ", "RISCO RESIDUAL ACEITO", "INSERT"])
+  for (const frase of [
+    "40001",
+    "REPEATABLE READ",
+    "RISCO RESIDUAL ACEITO",
+    "INSERT",
+  ])
     assertStringIncludes(migration, frase);
 });
 
@@ -115,14 +135,20 @@ Deno.test("207: (e) varre as funcoes de TODOS os schemas (so ficam de fora pg_ca
     c,
     "WHERE s.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast') AND strpos(lower(p.prosrc), 'used_count') > 0",
   );
-  assert(!/s\.nspname\s*=\s*'public'/.test(c), "o filtro so de public deixa passar funcao de outro schema");
+  assert(
+    !/s\.nspname\s*=\s*'public'/.test(c),
+    "o filtro so de public deixa passar funcao de outro schema",
+  );
 });
 
 Deno.test("207: so apaga a coluna used_count -- sem CASCADE, sem outro DROP, sem escrita em dado", () => {
   const c = codigo(migration);
   assertEquals(c.match(/\bDROP\b/gi).length, 1);
   assertEquals(c.match(/\bALTER\b/gi).length, 1);
-  assert(!/CASCADE/i.test(c), "CASCADE levaria o dependente que o pre-voo nao viu");
+  assert(
+    !/CASCADE/i.test(c),
+    "CASCADE levaria o dependente que o pre-voo nao viu",
+  );
   assert(
     !/\b(DELETE|TRUNCATE|UPDATE|INSERT|GRANT|REVOKE|CREATE)\b/i.test(c),
     "a migration so le e apaga a coluna",
@@ -155,7 +181,9 @@ Deno.test("207: o pre-voo recusa por cada condicao, com o NOME do motivo e dizen
     2,
   );
   // toda recusa de dado diz "nada foi apagado" (menos a de tabela ausente, que nao tem o que apagar)
-  const raises = [...pre.matchAll(/RAISE EXCEPTION '([^']*)'/g)].map((m) => m[1]);
+  const raises = [...pre.matchAll(/RAISE EXCEPTION '([^']*)'/g)].map(
+    (m) => m[1],
+  );
   for (const r of raises.filter((x) => !x.includes("falta a tabela")))
     assertStringIncludes(r, "nada foi apagado");
 });
@@ -213,12 +241,16 @@ Deno.test("207: a forma do baseline que o pre-voo e o rollback aceitam e a que o
 Deno.test("207: o rollback so recria a coluna (sem DROP, sem dado), confere a forma depois e tem a trava de tempo", () => {
   const c = semComentarios(rollback);
   const k = codigo(rollback);
-  assert(!/\bDROP\b|\bDELETE\b|\bUPDATE\b|\bINSERT\b|\bTRUNCATE\b|CASCADE/i.test(k));
+  assert(
+    !/\bDROP\b|\bDELETE\b|\bUPDATE\b|\bINSERT\b|\bTRUNCATE\b|CASCADE/i.test(k),
+  );
   assertEquals(k.match(/\bALTER\b/gi).length, 1);
   assert(c.indexOf("SET LOCAL lock_timeout") < c.indexOf("ALTER TABLE"));
   assert(c.indexOf("ALTER TABLE") < c.indexOf("RAISE EXCEPTION"));
   assertEquals(
-    rollback.split("RAISE EXCEPTION 'ROLLBACK_20261207: public.coupons.used_count existe mas nao tem a forma").length - 1,
+    rollback.split(
+      "RAISE EXCEPTION 'ROLLBACK_20261207: public.coupons.used_count existe mas nao tem a forma",
+    ).length - 1,
     1,
   );
   for (const t of [
@@ -238,7 +270,8 @@ Deno.test("207: ninguem na arvore de producao cita used_count alem de comentario
     for await (const e of Deno.readDir(dir)) {
       const caminho = `${dir}/${e.name}`;
       if (e.isDirectory) {
-        if (["node_modules", ".git", "dist", "coverage"].includes(e.name)) continue;
+        if (["node_modules", ".git", "dist", "coverage"].includes(e.name))
+          continue;
         await varrer(caminho);
       } else if (/\.(ts|tsx|js|jsx|cjs|mjs|json|yml|yaml|sql)$/.test(e.name)) {
         // as migrations, as consultas de medicao (13a/14a/14b) e o rol delas em conferir-banco.cjs citam por obrigacao

@@ -282,16 +282,17 @@ async function nadaGravado(db, antes, rotulo) {
 // ---------------------------------------------------------------------------
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function trocar(sql, de, para) {
-  assert.ok(sql.includes(de), `o trecho a mutar nao existe: ${de.slice(0, 80)}`);
+  assert.ok(
+    sql.includes(de),
+    `o trecho a mutar nao existe: ${de.slice(0, 80)}`,
+  );
   const novo = sql.replace(de, () => para);
   assert.notEqual(novo, sql);
   return novo;
 }
 /** Troca por `NULL;` o RAISE EXCEPTION cuja mensagem comeca em `inicio`. */
 function semRaise(sql, inicio) {
-  const re = new RegExp(
-    `RAISE EXCEPTION '${escRe(inicio)}[^']*'(?:, [^;]*)?;`,
-  );
+  const re = new RegExp(`RAISE EXCEPTION '${escRe(inicio)}[^']*'(?:, [^;]*)?;`);
   assert.ok(re.test(sql), `nao achei o RAISE "${inicio}"`);
   return sql.replace(re, "NULL;");
 }
@@ -299,7 +300,8 @@ const T = {
   lock: "  LOCK TABLE public.coupons IN SHARE ROW EXCLUSIVE MODE;\n",
   lockTimeout: "SET LOCAL lock_timeout = '5s';\n",
   forShare: "  PERFORM 1 FROM public.coupons FOR SHARE;\n",
-  retorno: "    RETURN; -- ja apagada: reaplicacao, nada a conferir nem a fazer\n",
+  retorno:
+    "    RETURN; -- ja apagada: reaplicacao, nada a conferir nem a fazer\n",
   drop: "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count;",
   nullComo0: "WHERE used_count IS DISTINCT FROM 0'",
   // o filtro da (e): todo schema que nao seja do sistema
@@ -337,11 +339,14 @@ async function mutante(rotulo, caso, sqlMutado) {
   } catch (e) {
     assert.ok(
       e instanceof assert.AssertionError,
-      `${rotulo}: o mutante falhou por erro que nao e de asserção: ${e && e.stack}`,
+      `${rotulo}: o mutante falhou por erro que nao e de asserção: ${e?.stack}`,
     );
     pego = e;
   }
-  assert.ok(pego, `${rotulo}: o MUTANTE passou despercebido (a prova ficaria VERDE)`);
+  assert.ok(
+    pego,
+    `${rotulo}: o MUTANTE passou despercebido (a prova ficaria VERDE)`,
+  );
   console.log(
     `     mutante "${rotulo}" -> VERMELHO: ${String(pego.message).split("\n")[0].slice(0, 200)}`,
   );
@@ -376,7 +381,7 @@ async function casoZero(sql = MIG) {
     await c.query(
       `INSERT INTO public.coupons (code, type, value) VALUES ('CJ4', 'fixed', 1)`,
     );
-    const r = await c.query(`SELECT * FROM public.coupons ORDER BY code`);
+    const r = await c.query("SELECT * FROM public.coupons ORDER BY code");
     assert.equal(r.rowCount, 4);
     assert.ok(!("used_count" in r.rows[0]));
   });
@@ -386,7 +391,10 @@ async function casoIdempotente(sql = MIG) {
   const { db } = await casoZero(sql);
   const meio = await fotografia(db);
   const r2 = await aplicar(db, sql);
-  assert.ok(!r2.erro, `a 2a aplicacao (coluna ja ausente) falhou: ${r2.erro?.message}`);
+  assert.ok(
+    !r2.erro,
+    `a 2a aplicacao (coluna ja ausente) falhou: ${r2.erro?.message}`,
+  );
   assert.deepEqual(await fotografia(db), meio, "a 2a aplicacao mudou algo");
 }
 async function casoValor(sql = MIG) {
@@ -413,18 +421,22 @@ async function casoNulo(sql = MIG) {
   );
   const antes = await fotografia(db);
   const r = await aplicar(db, sql);
-  recusou(r, /used_count tem 1 linha\(s\) diferente\(s\) de 0 \(NULL conta\)/, "NULL");
+  recusou(
+    r,
+    /used_count tem 1 linha\(s\) diferente\(s\) de 0 \(NULL conta\)/,
+    "NULL",
+  );
   await nadaGravado(db, antes, "NULL");
 }
 async function casoVisao(sql = MIG) {
   for (const [rotulo, ddl] of [
     [
       "visao por nome",
-      `CREATE VIEW public.vw_prova_cd AS SELECT code, used_count FROM public.coupons`,
+      "CREATE VIEW public.vw_prova_cd AS SELECT code, used_count FROM public.coupons",
     ],
     [
       "visao select *",
-      `CREATE VIEW public.vw_prova_cd AS SELECT * FROM public.coupons`,
+      "CREATE VIEW public.vw_prova_cd AS SELECT * FROM public.coupons",
     ],
   ]) {
     const db = await clonar("visao");
@@ -432,7 +444,11 @@ async function casoVisao(sql = MIG) {
     await usar(db, (c) => c.query(ddl));
     const antes = await fotografia(db);
     const r = await aplicar(db, sql);
-    recusou(r, /objeto\(s\) dependem de public\.coupons\.used_count \(.*vw_prova_cd/, rotulo);
+    recusou(
+      r,
+      /objeto\(s\) dependem de public\.coupons\.used_count \(.*vw_prova_cd/,
+      rotulo,
+    );
     await nadaGravado(db, antes, rotulo);
   }
 }
@@ -445,7 +461,11 @@ async function casoFuncao(sql = MIG) {
   );
   const antes = await fotografia(db);
   const r = await aplicar(db, sql);
-  recusou(r, /funcao\(oes\) citam used_count \(public\.fn_prova_cd\)/, "funcao");
+  recusou(
+    r,
+    /funcao\(oes\) citam used_count \(public\.fn_prova_cd\)/,
+    "funcao",
+  );
   await nadaGravado(db, antes, "funcao");
 }
 /** O mesmo item (e) com a funcao FORA de public (um schema interno): a varredura so de public a
@@ -454,13 +474,17 @@ async function casoFuncaoFora(sql = MIG) {
   const db = await clonar("funcaofora");
   await semear(db);
   await usar(db, async (c) => {
-    await c.query(`CREATE SCHEMA priv_cd`);
+    await c.query("CREATE SCHEMA priv_cd");
     await c.query(`CREATE FUNCTION priv_cd.f() RETURNS bigint LANGUAGE plpgsql AS $f$
       BEGIN RETURN (SELECT max(used_count) FROM public.coupons); END $f$`);
   });
   const antes = await fotografia(db);
   const r = await aplicar(db, sql);
-  recusou(r, /funcao\(oes\) citam used_count \(priv_cd\.f\)/, "funcao fora de public");
+  recusou(
+    r,
+    /funcao\(oes\) citam used_count \(priv_cd\.f\)/,
+    "funcao fora de public",
+  );
   await nadaGravado(db, antes, "funcao fora de public");
 }
 async function preparaGerada() {
@@ -468,7 +492,7 @@ async function preparaGerada() {
   await semear(db);
   await usar(db, (c) =>
     c.query(
-      `ALTER TABLE public.coupons ADD COLUMN x integer GENERATED ALWAYS AS (used_count + 1) STORED`,
+      "ALTER TABLE public.coupons ADD COLUMN x integer GENERATED ALWAYS AS (used_count + 1) STORED",
     ),
   );
   return db;
@@ -477,7 +501,11 @@ async function casoGerada(sql = MIG) {
   const db = await preparaGerada();
   const antes = await fotografia(db);
   const r = await aplicar(db, sql);
-  recusou(r, /objeto\(s\) dependem de public\.coupons\.used_count/, "coluna gerada");
+  recusou(
+    r,
+    /objeto\(s\) dependem de public\.coupons\.used_count/,
+    "coluna gerada",
+  );
   await nadaGravado(db, antes, "coluna gerada");
 }
 /** A camada FINAL: seja qual for a causa, com coluna gerada nada pode ser gravado. */
@@ -485,14 +513,26 @@ async function casoGeradaRedeFinal(sql = MIG) {
   const db = await preparaGerada();
   const antes = await fotografia(db);
   const r = await aplicar(db, sql);
-  assert.ok(r.erro, "com coluna gerada, aplicar tem de falhar (por qualquer motivo)");
+  assert.ok(
+    r.erro,
+    "com coluna gerada, aplicar tem de falhar (por qualquer motivo)",
+  );
   await nadaGravado(db, antes, "rede final (coluna gerada)");
 }
 async function casoForma(sql = MIG) {
   for (const [rotulo, ddl] of [
-    ["tipo bigint", `ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint`],
-    ["default 5", `ALTER TABLE public.coupons ALTER COLUMN used_count SET DEFAULT 5`],
-    ["NOT NULL", `ALTER TABLE public.coupons ALTER COLUMN used_count SET NOT NULL`],
+    [
+      "tipo bigint",
+      "ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint",
+    ],
+    [
+      "default 5",
+      "ALTER TABLE public.coupons ALTER COLUMN used_count SET DEFAULT 5",
+    ],
+    [
+      "NOT NULL",
+      "ALTER TABLE public.coupons ALTER COLUMN used_count SET NOT NULL",
+    ],
   ]) {
     const db = await clonar("forma");
     await semear(db);
@@ -507,19 +547,25 @@ async function casoRls(sql = MIG) {
   const db = await clonar("rls");
   await semear(db);
   await usar(db, async (c) => {
-    await c.query(`UPDATE public.coupons SET used_count = 3 WHERE code = 'CJ1'`);
+    await c.query(
+      `UPDATE public.coupons SET used_count = 3 WHERE code = 'CJ1'`,
+    );
     await c.query(`DO $r$ BEGIN
       IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${P.dono}') THEN
         CREATE ROLE ${P.dono} NOLOGIN;
       END IF; END $r$`);
     await c.query(`ALTER TABLE public.coupons OWNER TO ${P.dono}`);
-    await c.query(`ALTER TABLE public.coupons FORCE ROW LEVEL SECURITY`);
+    await c.query("ALTER TABLE public.coupons FORCE ROW LEVEL SECURITY");
     await c.query(`GRANT USAGE ON SCHEMA public TO ${P.dono}`);
     // controle: este papel, dono da tabela com FORCE e sem politica, NAO ve nenhuma linha
     await c.query(`SET ROLE ${P.dono}`);
-    const v = await c.query(`SELECT count(*)::int AS n FROM public.coupons`);
-    assert.equal(v.rows[0].n, 0, "controle: o papel dono (FORCE RLS) tem de ver 0 linhas");
-    await c.query(`RESET ROLE`);
+    const v = await c.query("SELECT count(*)::int AS n FROM public.coupons");
+    assert.equal(
+      v.rows[0].n,
+      0,
+      "controle: o papel dono (FORCE RLS) tem de ver 0 linhas",
+    );
+    await c.query("RESET ROLE");
   });
   const antes = await fotografia(db);
   const r = await aplicar(db, sql, { papel: P.dono });
@@ -529,9 +575,15 @@ async function casoRls(sql = MIG) {
 async function casoUsage(sql = MIG) {
   const db = await clonar("usage");
   await semear(db);
-  await usar(db, (c) => c.query(`ALTER TABLE public.coupons DROP COLUMN usage_count`));
+  await usar(db, (c) =>
+    c.query("ALTER TABLE public.coupons DROP COLUMN usage_count"),
+  );
   const r = await aplicar(db, sql);
-  recusou(r, /PREFLIGHT_20261207: public\.coupons\.usage_count nao existe/, "usage_count ausente");
+  recusou(
+    r,
+    /PREFLIGHT_20261207: public\.coupons\.usage_count nao existe/,
+    "usage_count ausente",
+  );
   await usar(db, async (c) => {
     const e = await c.query(
       `SELECT count(*)::int AS n FROM pg_attribute WHERE attrelid = 'public.coupons'::regclass
@@ -542,9 +594,18 @@ async function casoUsage(sql = MIG) {
 }
 async function casoUsageForma(sql = MIG) {
   for (const [rotulo, ddl] of [
-    ["usage_count bigint", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`],
-    ["usage_count sem default", `ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT`],
-    ["usage_count NOT NULL", `ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL`],
+    [
+      "usage_count bigint",
+      "ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint",
+    ],
+    [
+      "usage_count sem default",
+      "ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT",
+    ],
+    [
+      "usage_count NOT NULL",
+      "ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL",
+    ],
   ]) {
     const db = await clonar("usageforma");
     await semear(db);
@@ -561,7 +622,7 @@ async function casoAclComentario(sql = MIG) {
   for (const [rotulo, ddl, trecho] of [
     [
       "permissao propria por coluna",
-      `GRANT SELECT (used_count) ON public.coupons TO authenticated`,
+      "GRANT SELECT (used_count) ON public.coupons TO authenticated",
       /used_count tem permissao propria por coluna \(attacl\)/,
     ],
     [
@@ -575,7 +636,8 @@ async function casoAclComentario(sql = MIG) {
     await usar(db, (c) => c.query(ddl));
     const antes = await fotografia(db);
     assert.ok(
-      antes.usedShape.acl !== null || antes.comentarios.some((c) => c.objsubid > 0),
+      antes.usedShape.acl !== null ||
+        antes.comentarios.some((c) => c.objsubid > 0),
       `${rotulo}: o preparo nao deixou ACL nem comentario`,
     );
     const r = await aplicar(db, sql);
@@ -588,10 +650,16 @@ async function casoPosvoo(sql = MIG) {
   await semear(db);
   const antes = await fotografia(db);
   // sem o DROP, quem pega e o pos-voo
-  const r = await aplicar(db, trocar(sql, T.drop, "-- (DROP removido pelo caso)"));
+  const r = await aplicar(
+    db,
+    trocar(sql, T.drop, "-- (DROP removido pelo caso)"),
+  );
   assert.ok(r.erro, "sem o DROP o pos-voo tem de reclamar");
   assert.equal(r.erro.code, "P0001", r.erro.message);
-  assert.match(r.erro.message, /POSVOO_20261207: public\.coupons\.used_count ainda existe/);
+  assert.match(
+    r.erro.message,
+    /POSVOO_20261207: public\.coupons\.used_count ainda existe/,
+  );
   await nadaGravado(db, antes, "pos-voo");
 }
 async function casoAtomico(sql = MIG) {
@@ -624,17 +692,22 @@ async function casoCrlf(sql = MIG) {
 async function esperarBloqueio(db, ms) {
   const fim = Date.now() + ms;
   for (;;) {
-    const bloqueada = await usar(db, async (c) =>
-      (
-        await c.query(
-          `SELECT count(*)::int AS n FROM pg_stat_activity
+    const bloqueada = await usar(
+      db,
+      async (c) =>
+        (
+          await c.query(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
             WHERE datname = current_database() AND wait_event_type = 'Lock'
               AND pid <> pg_backend_pid()`,
-        )
-      ).rows[0].n,
+          )
+        ).rows[0].n,
     );
     if (bloqueada > 0) return;
-    if (Date.now() > fim) throw new assert.AssertionError({ message: "a migration nao chegou a esperar a trava" });
+    if (Date.now() > fim)
+      throw new assert.AssertionError({
+        message: "a migration nao chegou a esperar a trava",
+      });
     await new Promise((r) => setTimeout(r, 40));
   }
 }
@@ -647,7 +720,9 @@ async function casoCorrida(sql = MIG) {
   await b.connect();
   try {
     await a.query("BEGIN");
-    await a.query(`UPDATE public.coupons SET used_count = 7 WHERE code = 'CJ1'`);
+    await a.query(
+      `UPDATE public.coupons SET used_count = 7 WHERE code = 'CJ1'`,
+    );
     const emB = b.query(sql).then(
       () => ({ ok: true }),
       (erro) => ({ erro }),
@@ -662,8 +737,16 @@ async function casoCorrida(sql = MIG) {
     await b.end().catch(() => {});
   }
   const depois = await fotografia(db);
-  assert.equal(depois.usedExiste, true, "corrida: a coluna foi apagada com o 7");
-  assert.equal(depois.usedValores.find((l) => l.code === "CJ1").v, "7", "o 7 continua la");
+  assert.equal(
+    depois.usedExiste,
+    true,
+    "corrida: a coluna foi apagada com o 7",
+  );
+  assert.equal(
+    depois.usedValores.find((l) => l.code === "CJ1").v,
+    "7",
+    "o 7 continua la",
+  );
 }
 /** O que o LOCK da tabela protege e o FOR SHARE nao: uma LINHA NOVA. Um INSERT com used_count
  * = 7 em transacao aberta nao aparece na contagem (nao commitou) nem no FOR SHARE (nao existe
@@ -688,15 +771,27 @@ async function casoCorridaInsert(sql = MIG) {
     await esperarBloqueio(db, 4000);
     await a.query("COMMIT");
     const r = await emB;
-    recusou(r, /used_count tem 1 linha\(s\) diferente\(s\) de 0/, "corrida com INSERT");
+    recusou(
+      r,
+      /used_count tem 1 linha\(s\) diferente\(s\) de 0/,
+      "corrida com INSERT",
+    );
   } finally {
     await a.query("ROLLBACK").catch(() => {});
     await a.end().catch(() => {});
     await b.end().catch(() => {});
   }
   const depois = await fotografia(db);
-  assert.equal(depois.usedExiste, true, "corrida com INSERT: a coluna foi apagada com o 7");
-  assert.equal(depois.usedValores.find((l) => l.code === "CJ9").v, "7", "o 7 do INSERT continua la");
+  assert.equal(
+    depois.usedExiste,
+    true,
+    "corrida com INSERT: a coluna foi apagada com o 7",
+  );
+  assert.equal(
+    depois.usedValores.find((l) => l.code === "CJ9").v,
+    "7",
+    "o 7 do INSERT continua la",
+  );
 }
 async function casoTimeout(sql = MIG) {
   const db = await clonar("timeout");
@@ -706,12 +801,18 @@ async function casoTimeout(sql = MIG) {
   await a.connect();
   try {
     await a.query("BEGIN");
-    await a.query(`UPDATE public.coupons SET usage_limit = 9 WHERE code = 'CJ2'`);
+    await a.query(
+      `UPDATE public.coupons SET usage_limit = 9 WHERE code = 'CJ2'`,
+    );
     const t0 = Date.now();
     const r = await aplicar(db, sql);
     const ms = Date.now() - t0;
     assert.ok(r.erro, "com a tabela presa a migration tem de falhar");
-    assert.equal(r.erro.code, "55P03", `esperava lock_timeout: ${r.erro.code} ${r.erro.message}`);
+    assert.equal(
+      r.erro.code,
+      "55P03",
+      `esperava lock_timeout: ${r.erro.code} ${r.erro.message}`,
+    );
     assert.ok(ms >= 4500 && ms < 20000, `lock_timeout de 5 s: levou ${ms} ms`);
   } finally {
     await a.query("ROLLBACK").catch(() => {});
@@ -746,22 +847,39 @@ async function casoRepeatableRead(sql = MIG) {
   const feliz = await clonar("rrok");
   await semear(feliz);
   const r1 = await emEnvelopeRR(feliz, sql);
-  assert.ok(!r1.erro, `no envelope REPEATABLE READ sem concorrente falhou: ${r1.erro?.message}`);
-  assert.equal((await fotografia(feliz)).usedExiste, false, "RR sem concorrente: a coluna tem de sumir");
+  assert.ok(
+    !r1.erro,
+    `no envelope REPEATABLE READ sem concorrente falhou: ${r1.erro?.message}`,
+  );
+  assert.equal(
+    (await fotografia(feliz)).usedExiste,
+    false,
+    "RR sem concorrente: a coluna tem de sumir",
+  );
   // (2) UPDATE gravado depois da foto e antes da trava: a foto velha diz "tudo 0"
   const db = await clonar("rr");
   await semear(db);
   const r = await emEnvelopeRR(db, sql, () =>
-    usar(db, (c) => c.query(`UPDATE public.coupons SET used_count = 7 WHERE code = 'CJ1'`)),
+    usar(db, (c) =>
+      c.query(`UPDATE public.coupons SET used_count = 7 WHERE code = 'CJ1'`),
+    ),
   );
   assert.ok(
     r.erro,
     "RR: devia RECUSAR e aplicou (a coluna foi apagada com o 7 gravado depois da foto)",
   );
-  assert.equal(r.erro.code, "40001", `RR: esperava 40001 (could not serialize): ${r.erro.code} ${r.erro.message}`);
+  assert.equal(
+    r.erro.code,
+    "40001",
+    `RR: esperava 40001 (could not serialize): ${r.erro.code} ${r.erro.message}`,
+  );
   const depois = await fotografia(db);
   assert.equal(depois.usedExiste, true, "RR: a coluna foi apagada");
-  assert.equal(depois.usedValores.find((l) => l.code === "CJ1").v, "7", "RR: o 7 continua la");
+  assert.equal(
+    depois.usedValores.find((l) => l.code === "CJ1").v,
+    "7",
+    "RR: o 7 continua la",
+  );
 }
 
 /** Rollback: devolve a coluna IDENTICA a do baseline. */
@@ -777,8 +895,16 @@ async function casoRollback(rb = RB) {
   assert.ok(!r2.erro, `o rollback falhou: ${r2.erro?.message}`);
   const volta = await fotografia(db);
   assert.equal(volta.usedExiste, true);
-  assert.deepEqual(volta.usedShape, baseline.usedShape, "a coluna recriada difere da do baseline (pg_attribute/pg_attrdef)");
-  assert.deepEqual(volta.usedValores, baseline.usedValores, "valores de used_count");
+  assert.deepEqual(
+    volta.usedShape,
+    baseline.usedShape,
+    "a coluna recriada difere da do baseline (pg_attribute/pg_attrdef)",
+  );
+  assert.deepEqual(
+    volta.usedValores,
+    baseline.usedValores,
+    "valores de used_count",
+  );
   assert.ok(volta.usedValores.every((l) => l.v === "0"));
   assert.deepEqual(volta.outrasColunas, baseline.outrasColunas);
   assert.deepEqual(volta.dados, baseline.dados);
@@ -798,10 +924,16 @@ async function casoRollback(rb = RB) {
 async function casoRollbackRecusa(rb = RB) {
   const db = await clonar("rbrecusa");
   await semear(db);
-  await usar(db, (c) => c.query(`ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint`));
+  await usar(db, (c) =>
+    c.query("ALTER TABLE public.coupons ALTER COLUMN used_count TYPE bigint"),
+  );
   const antes = await fotografia(db);
   const r = await aplicar(db, rb);
-  recusou(r, /ROLLBACK_20261207: public\.coupons\.used_count existe mas nao tem a forma/, "rollback com forma errada");
+  recusou(
+    r,
+    /ROLLBACK_20261207: public\.coupons\.used_count existe mas nao tem a forma/,
+    "rollback com forma errada",
+  );
   assert.deepEqual(await fotografia(db), antes);
 }
 
@@ -815,80 +947,171 @@ async function main() {
           AND attname = 'used_count' AND NOT attisdropped`,
       )
     ).rows[0].n,
-    cupons: (await c.query(`SELECT count(*)::int AS n FROM public.coupons`)).rows[0].n,
-    eu: (await c.query(`SELECT rolsuper FROM pg_roles WHERE rolname = current_user`)).rows[0].rolsuper,
+    cupons: (await c.query("SELECT count(*)::int AS n FROM public.coupons"))
+      .rows[0].n,
+    eu: (
+      await c.query(
+        "SELECT rolsuper FROM pg_roles WHERE rolname = current_user",
+      )
+    ).rows[0].rolsuper,
   }));
-  assert.equal(sonda.coluna, 1, "precondicao: o estado pre TEM a coluna used_count");
-  assert.equal(sonda.cupons, 0, "precondicao: o banco migrado comeca sem cupom");
-  assert.equal(sonda.eu, true, "precondicao: a conexao da prova e superusuario");
-  ok("estado PRE montado (arvore sem a 20261207): coluna used_count presente, sem cupom, conexao superusuario");
+  assert.equal(
+    sonda.coluna,
+    1,
+    "precondicao: o estado pre TEM a coluna used_count",
+  );
+  assert.equal(
+    sonda.cupons,
+    0,
+    "precondicao: o banco migrado comeca sem cupom",
+  );
+  assert.equal(
+    sonda.eu,
+    true,
+    "precondicao: a conexao da prova e superusuario",
+  );
+  ok(
+    "estado PRE montado (arvore sem a 20261207): coluna used_count presente, sem cupom, conexao superusuario",
+  );
 
   // ----------------------------------------------------------- positivos
   await casoIdempotente();
-  ok("zero: tudo 0 -> a coluna some; colunas, dados, usage_count (CJ1=5,CJ2=0,CJ3=2), corpo e ACL de TODA funcao de public, politicas, constraints, indices e ACL de coupons IGUAIS; insert e select * seguem; 2a aplicacao e no-op");
+  ok(
+    "zero: tudo 0 -> a coluna some; colunas, dados, usage_count (CJ1=5,CJ2=0,CJ3=2), corpo e ACL de TODA funcao de public, politicas, constraints, indices e ACL de coupons IGUAIS; insert e select * seguem; 2a aplicacao e no-op",
+  );
   await casoCrlf();
   ok("o texto com fim de linha CRLF (checkout Windows) aplica");
   await casoAtomico();
-  ok("atomico: falha DEPOIS do DROP na mesma consulta desfaz tudo; BEGIN ... ROLLBACK nao deixa rastro; o envelope BEGIN ... COMMIT do db-apply aplica");
+  ok(
+    "atomico: falha DEPOIS do DROP na mesma consulta desfaz tudo; BEGIN ... ROLLBACK nao deixa rastro; o envelope BEGIN ... COMMIT do db-apply aplica",
+  );
 
   // ----------------------------------------------------------- recusas
   await casoValor();
-  ok("recusa com used_count = 3: mensagem nomeia a linha, NADA gravado (coluna e valor 3 intactos)");
+  ok(
+    "recusa com used_count = 3: mensagem nomeia a linha, NADA gravado (coluna e valor 3 intactos)",
+  );
   await casoNulo();
   ok("recusa com used_count NULL (NULL nao vale 0): NADA gravado");
   await casoVisao();
-  ok("recusa com visao que cita a coluna (por nome e por select *): mensagem nomeia a visao, NADA gravado");
+  ok(
+    "recusa com visao que cita a coluna (por nome e por select *): mensagem nomeia a visao, NADA gravado",
+  );
   await casoFuncao();
-  ok("recusa com funcao plpgsql que cita used_count no corpo: mensagem nomeia a funcao, NADA gravado");
+  ok(
+    "recusa com funcao plpgsql que cita used_count no corpo: mensagem nomeia a funcao, NADA gravado",
+  );
   await casoFuncaoFora();
-  ok("recusa com funcao plpgsql FORA de public (schema priv_cd) que cita used_count: a varredura e de TODOS os schemas que nao sao do sistema; mensagem nomeia schema.funcao, NADA gravado");
+  ok(
+    "recusa com funcao plpgsql FORA de public (schema priv_cd) que cita used_count: a varredura e de TODOS os schemas que nao sao do sistema; mensagem nomeia schema.funcao, NADA gravado",
+  );
   await casoGerada();
-  ok("recusa com coluna GERADA que cita used_count (o pg_attrdef de OUTRA coluna conta): NADA gravado");
+  ok(
+    "recusa com coluna GERADA que cita used_count (o pg_attrdef de OUTRA coluna conta): NADA gravado",
+  );
   await casoForma();
-  ok("recusa com forma diferente do baseline (bigint, default 5, NOT NULL): NADA gravado");
+  ok(
+    "recusa com forma diferente do baseline (bigint, default 5, NOT NULL): NADA gravado",
+  );
   await casoRls();
-  ok("recusa com a seguranca por linha valendo para o papel (dono com FORCE RLS que ve 0 linhas, e 1 linha tem used_count = 3): NADA gravado");
+  ok(
+    "recusa com a seguranca por linha valendo para o papel (dono com FORCE RLS que ve 0 linhas, e 1 linha tem used_count = 3): NADA gravado",
+  );
   await casoUsage();
   ok("recusa com usage_count ausente: a coluna duplicada NAO e apagada");
 
   await casoUsageForma();
-  ok("recusa com usage_count em outra forma (bigint, sem default, NOT NULL): o contador que fica tem de ser o do baseline, e a coluna duplicada NAO e apagada");
+  ok(
+    "recusa com usage_count em outra forma (bigint, sem default, NOT NULL): o contador que fica tem de ser o do baseline, e a coluna duplicada NAO e apagada",
+  );
 
   await casoAclComentario();
-  ok("recusa com permissao propria por coluna (attacl) ou comentario na used_count: o DROP os apagaria e o rollback nao os recria; NADA gravado");
+  ok(
+    "recusa com permissao propria por coluna (attacl) ou comentario na used_count: o DROP os apagaria e o rollback nao os recria; NADA gravado",
+  );
 
   // ----------------------------------------------------------- concorrencia
   await casoCorrida();
-  ok("corrida: gravacao de used_count = 7 em transacao aberta; a migration ESPERA a trava, ve o 7 depois do COMMIT e RECUSA; o 7 continua la");
+  ok(
+    "corrida: gravacao de used_count = 7 em transacao aberta; a migration ESPERA a trava, ve o 7 depois do COMMIT e RECUSA; o 7 continua la",
+  );
   await casoCorridaInsert();
-  ok("corrida com INSERT: linha nova com used_count = 7 em transacao aberta (o FOR SHARE nao a alcanca); a migration ESPERA a trava da tabela, ve o 7 depois do COMMIT e RECUSA; o 7 continua la");
+  ok(
+    "corrida com INSERT: linha nova com used_count = 7 em transacao aberta (o FOR SHARE nao a alcanca); a migration ESPERA a trava da tabela, ve o 7 depois do COMMIT e RECUSA; o 7 continua la",
+  );
   await casoTimeout();
-  ok("timeout: tabela presa por outra transacao -> falha com lock_timeout (55P03) em ~5 s, NADA gravado");
+  ok(
+    "timeout: tabela presa por outra transacao -> falha com lock_timeout (55P03) em ~5 s, NADA gravado",
+  );
 
   await casoRepeatableRead();
-  ok("envelope REPEATABLE READ (como o aplicar-migrations.yml): sem concorrente aplica; com UPDATE used_count = 7 gravado DEPOIS da foto e ANTES da trava a migration RECUSA (40001) e a coluna e o 7 continuam la");
+  ok(
+    "envelope REPEATABLE READ (como o aplicar-migrations.yml): sem concorrente aplica; com UPDATE used_count = 7 gravado DEPOIS da foto e ANTES da trava a migration RECUSA (40001) e a coluna e o 7 continuam la",
+  );
 
   // ----------------------------------------------------------- rollback
   await casoRollback();
-  ok("rollback: recria a coluna IDENTICA a do baseline (pg_attribute/pg_attrdef), todas as linhas 0, o resto do banco igual; repetido e no-op; a migration volta a aplicar (ciclo completo)");
+  ok(
+    "rollback: recria a coluna IDENTICA a do baseline (pg_attribute/pg_attrdef), todas as linhas 0, o resto do banco igual; repetido e no-op; a migration volta a aplicar (ciclo completo)",
+  );
   await casoRollbackRecusa();
-  ok("rollback recusa (ROLLBACK_20261207) quando a coluna ja existe com outra forma, sem mudar nada");
+  ok(
+    "rollback recusa (ROLLBACK_20261207) quando a coluna ja existe com outra forma, sem mudar nada",
+  );
 
   // ----------------------------------------------------------- mutantes
-  console.log("\n  --- MUTANTES (cada guarda retirada tem de deixar a prova VERMELHA) ---");
+  console.log(
+    "\n  --- MUTANTES (cada guarda retirada tem de deixar a prova VERMELHA) ---",
+  );
   // O FOR SHARE tambem segura quem faz UPDATE, entao sem o LOCK a corrida de UPDATE ainda e
   // recusada (verificado: o mutante daquele caso passava). O LOCK e' o que segura o INSERT.
-  await mutante("sem LOCK da tabela (corrida com INSERT)", casoCorridaInsert, trocar(MIG, T.lock, ""));
-  await mutante("sem lock_timeout", casoTimeout, trocar(MIG, T.lockTimeout, ""));
-  await mutante("sem o FOR SHARE (envelope REPEATABLE READ)", casoRepeatableRead, trocar(MIG, T.forShare, ""));
+  await mutante(
+    "sem LOCK da tabela (corrida com INSERT)",
+    casoCorridaInsert,
+    trocar(MIG, T.lock, ""),
+  );
+  await mutante(
+    "sem lock_timeout",
+    casoTimeout,
+    trocar(MIG, T.lockTimeout, ""),
+  );
+  await mutante(
+    "sem o FOR SHARE (envelope REPEATABLE READ)",
+    casoRepeatableRead,
+    trocar(MIG, T.forShare, ""),
+  );
   await mutante("sem (a) usage_count", casoUsage, semRaise(MIG, MSG.usage));
-  await mutante("sem (a') forma do usage_count", casoUsageForma, semRaise(MIG, MSG.usageForma));
-  await mutante("sem (b') permissao propria por coluna", casoAclComentario, semRaise(MIG, MSG.acl));
-  await mutante("sem (b') comentario da coluna", casoAclComentario, semRaise(MIG, MSG.cmt));
-  await mutante("sem (b) forma do baseline", casoForma, semRaise(MIG, MSG.forma));
+  await mutante(
+    "sem (a') forma do usage_count",
+    casoUsageForma,
+    semRaise(MIG, MSG.usageForma),
+  );
+  await mutante(
+    "sem (b') permissao propria por coluna",
+    casoAclComentario,
+    semRaise(MIG, MSG.acl),
+  );
+  await mutante(
+    "sem (b') comentario da coluna",
+    casoAclComentario,
+    semRaise(MIG, MSG.cmt),
+  );
+  await mutante(
+    "sem (b) forma do baseline",
+    casoForma,
+    semRaise(MIG, MSG.forma),
+  );
   await mutante("sem (c) RLS", casoRls, semRaise(MIG, MSG.rls));
-  await mutante("sem (d) dependentes (visao)", casoVisao, semRaise(MIG, MSG.dep));
-  await mutante("sem (d) dependentes (coluna gerada)", casoGerada, semRaise(MIG, MSG.dep));
+  await mutante(
+    "sem (d) dependentes (visao)",
+    casoVisao,
+    semRaise(MIG, MSG.dep),
+  );
+  await mutante(
+    "sem (d) dependentes (coluna gerada)",
+    casoGerada,
+    semRaise(MIG, MSG.dep),
+  );
   await mutante(
     "(d) volta a ignorar TODO pg_attrdef (coluna gerada)",
     casoGerada,
@@ -911,18 +1134,32 @@ async function main() {
     casoNulo,
     trocar(MIG, T.nullComo0, "WHERE COALESCE(used_count, 0) <> 0'"),
   );
-  await mutante("sem o RETURN da coluna ja ausente", casoIdempotente, trocar(MIG, T.retorno, ""));
+  await mutante(
+    "sem o RETURN da coluna ja ausente",
+    casoIdempotente,
+    trocar(MIG, T.retorno, ""),
+  );
   await mutante("sem o pos-voo", casoPosvoo, semRaise(MIG, MSG.pos));
-  await mutante("rollback sem a conferencia de forma", casoRollbackRecusa, semRaise(RB, MSG.rb));
+  await mutante(
+    "rollback sem a conferencia de forma",
+    casoRollbackRecusa,
+    semRaise(RB, MSG.rb),
+  );
   // a camada final: o DROP sem CASCADE
   {
     const semD = semRaise(MIG, MSG.dep);
     await casoGeradaRedeFinal(semD); // verde: sem (d), o DROP sem CASCADE ainda recusa
-    ok("camada final: SEM o item (d), o DROP COLUMN sem CASCADE ainda recusa a coluna gerada (Postgres 2BP01) e NADA e gravado");
+    ok(
+      "camada final: SEM o item (d), o DROP COLUMN sem CASCADE ainda recusa a coluna gerada (Postgres 2BP01) e NADA e gravado",
+    );
     await mutante(
       "sem (d) E com CASCADE (coluna gerada some junto)",
       casoGeradaRedeFinal,
-      trocar(semD, T.drop, "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count CASCADE;"),
+      trocar(
+        semD,
+        T.drop,
+        "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count CASCADE;",
+      ),
     );
   }
 
