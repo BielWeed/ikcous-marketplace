@@ -1,3 +1,4 @@
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,12 +39,14 @@ const previews: readonly [IdentityAssetRole, string, string][] = [
   ["icon_512", "Ícone do aplicativo", "PNG, 512 × 512"],
   ["og", "Compartilhamento", "PNG, 1200 × 630"],
 ];
+// Nomes de gente (glossário do painel, "Ícones do app (avançado)"); os papéis
+// (`favicon`, `apple_touch`…) são os da RPC e não mudam.
 const advanced: readonly [IdentityAssetRole, string, string][] = [
-  ["favicon", "Favicon", "PNG, SVG ou ICO"],
-  ["apple_touch", "Ícone Apple", "PNG, 180 × 180"],
-  ["icon_192", "Ícone 192", "PNG, 192 × 192"],
-  ["icon_512", "Ícone 512", "PNG, 512 × 512"],
-  ["maskable_512", "Ícone com máscara", "PNG, 512 × 512"],
+  ["favicon", "Ícone da aba do navegador", "PNG, SVG ou ICO"],
+  ["apple_touch", "Ícone do iPhone", "PNG, 180 × 180"],
+  ["icon_192", "Ícone pequeno (192 × 192)", "PNG, 192 × 192"],
+  ["icon_512", "Ícone grande (512 × 512)", "PNG, 512 × 512"],
+  ["maskable_512", "Ícone do Android (recortado)", "PNG, 512 × 512"],
   ["og", "Arte de compartilhamento", "PNG, 1200 × 630"],
 ];
 function url(origin: string, asset: IdentityAsset) {
@@ -98,7 +101,7 @@ export function IdentitySettingsSection({
     <div className="space-y-1.5">
       <Label
         htmlFor={`identity-upload-${encodeURIComponent(label)}`}
-        className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+        className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
       >
         {label}
       </Label>
@@ -148,7 +151,7 @@ export function IdentitySettingsSection({
             <div key={key} className="space-y-1.5">
               <Label
                 htmlFor={id}
-                className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
               >
                 {label}
               </Label>
@@ -185,7 +188,7 @@ export function IdentitySettingsSection({
               aria-label={`Prévia: ${label}`}
               className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl"
             >
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 {label}
               </h3>
               <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl bg-zinc-900/80 p-3">
@@ -221,7 +224,7 @@ export function IdentitySettingsSection({
                           : [role],
                     },
                 role === "icon_512"
-                  ? `${hint}. Atualiza também os ícones Apple, 192 e com máscara, preservando as escolhas individuais deste rascunho`
+                  ? `${hint}. Atualiza também o ícone do iPhone, o pequeno e o do Android, preservando as escolhas individuais deste rascunho`
                   : hint,
               )}
               {role === "icon_512" && (
@@ -238,112 +241,113 @@ export function IdentitySettingsSection({
         Estas prévias mostram as escolhas da identidade; o aplicativo instalado
         pode apresentá-las em outros tamanhos.
       </p>
-      <details className="group rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
-        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition-colors group-open:text-admin-gold">
-          Mais imagens da loja (favicon, ícones, compartilhamento)
-        </summary>
-        <div className="mt-4 space-y-5">
-          {advanced.map(([role, label, hint]) => (
-            <div key={role}>
-              {uploadControl(
-                `Trocar ${label}`,
-                { kind: "asset", roles: [role] },
-                hint,
-              )}
-            </div>
-          ))}
-          <section
-            aria-label="Fontes guardadas"
-            className="space-y-3 border-t border-white/10 pt-4"
-          >
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Fontes guardadas ({draft.assets.originals.length}/8)
-            </h3>
-            <p className="text-xs text-zinc-400">
-              Retirar uma referência mantém o arquivo guardado, mas ele sai
-              desta lista. Mantenha ao menos uma fonte.
-            </p>
-            {draft.assets.originals.map((asset, index) => (
-              <div
-                key={`${asset.path}-${index}`}
-                className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/40 p-3"
-              >
-                <a
-                  href={url(editor.origin, asset)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 text-sm underline transition-colors hover:text-admin-gold"
-                >
-                  <img
-                    src={url(editor.origin, asset)}
-                    alt=""
-                    className="size-12 object-contain"
-                  />
-                  Abrir fonte {index + 1}
-                </a>
+      {/* Recolhida, mas montada: fechar só aplica `hidden` (SecaoRecolhivel),
+          então upload em curso e escolhas do rascunho não se perdem. */}
+      <div className="rounded-2xl border border-white/5 bg-zinc-950/40 px-4 pb-4 shadow-xl">
+        <SecaoRecolhivel titulo="Ícones do app (avançado)">
+          <div className="space-y-5">
+            {advanced.map(([role, label, hint]) => (
+              <div key={role}>
                 {uploadControl(
-                  `Substituir fonte ${index + 1}`,
-                  { kind: "source-replace", index },
-                  "PNG, JPEG, WebP, SVG ou ICO",
+                  `Trocar ${label}`,
+                  { kind: "asset", roles: [role] },
+                  hint,
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={
-                    editor.locked || draft.assets.originals.length === 1
-                  }
-                  onClick={() => editor.removeSource(index)}
-                >
-                  Retirar referência {index + 1}
-                </Button>
               </div>
             ))}
-            {draft.assets.originals.length === 8 && (
-              <p className="text-sm text-amber-300">
-                Limite de oito fontes. Substitua ou retire uma referência para
-                guardar outra.
+            <section
+              aria-label="Fontes guardadas"
+              className="space-y-3 border-t border-white/10 pt-4"
+            >
+              <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                Fontes guardadas ({draft.assets.originals.length}/8)
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Retirar uma referência mantém o arquivo guardado, mas ele sai
+                desta lista. Mantenha ao menos uma fonte.
               </p>
-            )}
-            {uploadControl(
-              "Adicionar fonte",
-              { kind: "source-add" },
-              "PNG, JPEG, WebP, SVG ou ICO",
-            )}
-            <p className="text-xs text-zinc-400">
-              Guardar também como fonte, usando uma imagem já conferida:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {previews.map(([role, label]) => {
-                // role is selected only from our closed preview list.
-                // eslint-disable-next-line security/detect-object-injection
-                const asset = draft.assets[role];
-                return (
+              {draft.assets.originals.map((asset, index) => (
+                <div
+                  key={`${asset.path}-${index}`}
+                  className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/40 p-3"
+                >
+                  <a
+                    href={url(editor.origin, asset)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-3 text-sm underline transition-colors hover:text-admin-gold"
+                  >
+                    <img
+                      src={url(editor.origin, asset)}
+                      alt=""
+                      className="size-12 object-contain"
+                    />
+                    Abrir fonte {index + 1}
+                  </a>
+                  {uploadControl(
+                    `Substituir fonte ${index + 1}`,
+                    { kind: "source-replace", index },
+                    "PNG, JPEG, WebP, SVG ou ICO",
+                  )}
                   <Button
-                    key={role}
                     type="button"
                     variant="outline"
                     disabled={
-                      editor.locked ||
-                      draft.assets.originals.length === 8 ||
-                      draft.assets.originals.some(
-                        (source) => source.path === asset.path,
-                      )
+                      editor.locked || draft.assets.originals.length === 1
                     }
-                    onClick={() =>
-                      editor.keepSource({
-                        asset,
-                        url: url(editor.origin, asset),
-                      })
-                    }
+                    onClick={() => editor.removeSource(index)}
                   >
-                    Guardar {label.toLowerCase()} como fonte
+                    Retirar referência {index + 1}
                   </Button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-      </details>
+                </div>
+              ))}
+              {draft.assets.originals.length === 8 && (
+                <p className="text-sm text-amber-300">
+                  Limite de oito fontes. Substitua ou retire uma referência para
+                  guardar outra.
+                </p>
+              )}
+              {uploadControl(
+                "Adicionar fonte",
+                { kind: "source-add" },
+                "PNG, JPEG, WebP, SVG ou ICO",
+              )}
+              <p className="text-xs text-zinc-400">
+                Guardar também como fonte, usando uma imagem já conferida:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {previews.map(([role, label]) => {
+                  // role is selected only from our closed preview list.
+                  // eslint-disable-next-line security/detect-object-injection
+                  const asset = draft.assets[role];
+                  return (
+                    <Button
+                      key={role}
+                      type="button"
+                      variant="outline"
+                      disabled={
+                        editor.locked ||
+                        draft.assets.originals.length === 8 ||
+                        draft.assets.originals.some(
+                          (source) => source.path === asset.path,
+                        )
+                      }
+                      onClick={() =>
+                        editor.keepSource({
+                          asset,
+                          url: url(editor.origin, asset),
+                        })
+                      }
+                    >
+                      Guardar {label.toLowerCase()} como fonte
+                    </Button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        </SecaoRecolhivel>
+      </div>
       {["preparing", "uploading", "verifying"].includes(editor.phase) && (
         <div role="status" className="space-y-2 text-sm">
           <p>
