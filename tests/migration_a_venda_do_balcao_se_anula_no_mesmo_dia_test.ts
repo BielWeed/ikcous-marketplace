@@ -72,8 +72,7 @@ function ultimaDefinicao(assinatura) {
     .filter((n) => n.endsWith(".sql") && !n.startsWith("rollback-"))
     .sort();
   let ultimo = null;
-  for (const n of arquivos)
-    if (ler(n).includes(assinatura)) ultimo = n;
+  for (const n of arquivos) if (ler(n).includes(assinatura)) ultimo = n;
   assert(ultimo, `nenhuma migration define ${assinatura}`);
   return { nome: ultimo, texto: ler(ultimo) };
 }
@@ -87,7 +86,10 @@ Deno.test("204: o md5 do preflight e o do corpo desta migration (sem CR)", () =>
   const h = md5(corpo.replace(/\r/g, ""));
   assertStringIncludes(migration, `v_hash <> '${h}'`);
   // e nao aceita outro hash para "ja existe": so este.
-  assertEquals([...migration.matchAll(/v_hash <> '([0-9a-f]{32})'/g)].length, 1);
+  assertEquals(
+    [...migration.matchAll(/v_hash <> '([0-9a-f]{32})'/g)].length,
+    1,
+  );
 });
 
 Deno.test("204: os hashes do rollback sao o sha256 real do corpo (LF e CRLF) e so eles", () => {
@@ -135,7 +137,10 @@ Deno.test("204: a funcao e SECURITY DEFINER com search_path fixo, e o EXECUTE e 
   assertEquals(grants.length, 1);
   assert(!/\b(anon|PUBLIC|service_role)\b/.test(grants[0]));
   // o REVOKE vem antes do GRANT (na ordem inversa o GRANT seria desfeito)
-  assert(m.indexOf("REVOKE ALL ON FUNCTION") < m.indexOf("GRANT EXECUTE ON FUNCTION"));
+  assert(
+    m.indexOf("REVOKE ALL ON FUNCTION") <
+      m.indexOf("GRANT EXECUTE ON FUNCTION"),
+  );
 });
 
 Deno.test("204: as guardas vem NESTA ordem — admin, admin de agora, sessao, motivo, trava do ledger, trava do pedido, canal, ja anulada, estado, dia, devolucao, ledger, so ENTAO escreve", () => {
@@ -165,14 +170,27 @@ Deno.test("204: as guardas vem NESTA ordem — admin, admin de agora, sessao, mo
     ant = i;
   }
   // Nenhuma ESCRITA antes da ultima guarda (o que vem antes do PERFORM so le).
-  const antesDeEscrever = c.slice(0, c.indexOf("PERFORM public.pedido__mudar_status("));
-  assert(!/\b(UPDATE|DELETE|INSERT)\b/.test(antesDeEscrever.replace(/\bFOR UPDATE\b/g, "")));
+  const antesDeEscrever = c.slice(
+    0,
+    c.indexOf("PERFORM public.pedido__mudar_status("),
+  );
+  assert(
+    !/\b(UPDATE|DELETE|INSERT)\b/.test(
+      antesDeEscrever.replace(/\bFOR UPDATE\b/g, ""),
+    ),
+  );
 });
 
 Deno.test("204: o motivo tira espaco, tab, quebra de linha e NBSP; recusa vazio e acima de 500", () => {
   const c = semComentarios(corpo);
-  assertStringIncludes(c, "btrim(COALESCE(p_motivo, ''), E' \\t\\r\\n\\f\\x0b\\u00a0')");
-  assertStringIncludes(c, "ERRCODE='22023', MESSAGE='Informe o motivo para anular a venda.'");
+  assertStringIncludes(
+    c,
+    "btrim(COALESCE(p_motivo, ''), E' \\t\\r\\n\\f\\x0b\\u00a0')",
+  );
+  assertStringIncludes(
+    c,
+    "ERRCODE='22023', MESSAGE='Informe o motivo para anular a venda.'",
+  );
   assertStringIncludes(c, "char_length(v_motivo) > 500");
 });
 
@@ -184,29 +202,54 @@ Deno.test("204: o cancelamento e o do app (pedido__mudar_status) com o ator da s
     ),
   );
   // a unica escrita direta no pedido marca o estorno, nunca zera o pagamento recebido nem mexe no total
-  const updates = [...c.matchAll(/UPDATE public\.marketplace_orders[\s\S]*?WHERE id = p_order_id;/g)].map((m) => m[0]);
+  const updates = [
+    ...c.matchAll(
+      /UPDATE public\.marketplace_orders[\s\S]*?WHERE id = p_order_id;/g,
+    ),
+  ].map((m) => m[0]);
   assertEquals(updates.length, 1);
-  assert(!/pagamento_recebido_em\s*=|valor_estornado\s*=|\btotal\s*=/.test(updates[0]));
-  assertStringIncludes(updates[0], "estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())");
+  assert(
+    !/pagamento_recebido_em\s*=|valor_estornado\s*=|\btotal\s*=/.test(
+      updates[0],
+    ),
+  );
+  assertStringIncludes(
+    updates[0],
+    "estorno_manual_registrado_em = COALESCE(estorno_manual_registrado_em, now())",
+  );
 });
 
 Deno.test("204: aditiva — fora do corpo da funcao a migration nao escreve dado, nao apaga nada e nao mexe em tabela", () => {
   const m = semComentarios(foraDoCorpo);
   assert(
-    !/\bDROP\s+(TABLE|COLUMN|TRIGGER|FUNCTION|VIEW|INDEX|POLICY|SCHEMA)\b/i.test(m),
+    !/\bDROP\s+(TABLE|COLUMN|TRIGGER|FUNCTION|VIEW|INDEX|POLICY|SCHEMA)\b/i.test(
+      m,
+    ),
     "migration tem DROP",
   );
-  assert(!/\bALTER\s+(TABLE|POLICY)\b/i.test(m), "migration altera tabela/politica");
+  assert(
+    !/\bALTER\s+(TABLE|POLICY)\b/i.test(m),
+    "migration altera tabela/politica",
+  );
   assert(!/\bDELETE\b|\bTRUNCATE\b/i.test(m), "migration apaga dado");
   // INSERT/UPDATE so existem dentro do corpo da funcao (o preflight so le)
-  assert(!/\bINSERT\s+INTO\b|\bUPDATE\s+public\b/i.test(m), "migration escreve dado fora da funcao");
+  assert(
+    !/\bINSERT\s+INTO\b|\bUPDATE\s+public\b/i.test(m),
+    "migration escreve dado fora da funcao",
+  );
   // o preflight roda ANTES de a funcao ser criada
-  assert(migration.indexOf("$preflight_20261204$") < migration.indexOf(CABECALHO));
+  assert(
+    migration.indexOf("$preflight_20261204$") < migration.indexOf(CABECALHO),
+  );
 });
 
 Deno.test("204: o rollback so derruba a funcao, com guarda de hash, sem CASCADE e sem tocar grant nem dado", () => {
   const r = semComentarios(rollback);
-  assert(/DROP FUNCTION IF EXISTS public\.anular_venda_presencial\(uuid, text\);/.test(r));
+  assert(
+    /DROP FUNCTION IF EXISTS public\.anular_venda_presencial\(uuid, text\);/.test(
+      r,
+    ),
+  );
   assertEquals([...r.matchAll(/\bDROP\b/gi)].length, 1);
   assert(!/CASCADE/i.test(r), "rollback com CASCADE");
   assert(!/\bGRANT\b|\bREVOKE\b|\bUPDATE\b|\bDELETE\b|\bINSERT\b/i.test(r));

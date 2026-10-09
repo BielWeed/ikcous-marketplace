@@ -4955,26 +4955,37 @@ Deno.test("11a/11b — os hashes são EXATAMENTE os que o arquivo da migration 2
   const hexDe = (sql: string, tam: number) =>
     [
       ...new Set(
-        [...sqlSemComentarios(sql).matchAll(new RegExp(`'([0-9a-f]{${tam}})'`, "g"))].map(
-          (m) => m[1],
-        ),
+        [
+          ...sqlSemComentarios(sql).matchAll(
+            tam === 64 ? /'([0-9a-f]{64})'/g : /'([0-9a-f]{32})'/g,
+          ),
+        ].map((m) => m[1]),
       ),
     ].sort();
-  await t.step("11a: só os 2 sha256 do corpo final (LF e CRLF), o LF como esperado", () => {
-    assertEquals(hexDe(sql11a, 64), [h.shaLF, h.shaCRLF].sort());
-    assert(
-      sqlSemComentarios(sql11a).includes(`'${h.shaLF}',`),
-      "o LF tem de ser o esperado",
-    );
-  });
-  await t.step("o rollback-manual aceita exatamente os mesmos dois sha256", async () => {
-    const rb = await Deno.readTextFile(ROLLBACK_204);
-    const lit = [...rb.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
-    assertEquals(lit, [h.shaLF, h.shaCRLF]);
-  });
-  await t.step("o pré-voo da migration reconhece o md5 do próprio corpo", () => {
-    assertStringIncludes(h.pre, `v_hash <> '${h.md5}'`);
-  });
+  await t.step(
+    "11a: só os 2 sha256 do corpo final (LF e CRLF), o LF como esperado",
+    () => {
+      assertEquals(hexDe(sql11a, 64), [h.shaLF, h.shaCRLF].sort());
+      assert(
+        sqlSemComentarios(sql11a).includes(`'${h.shaLF}',`),
+        "o LF tem de ser o esperado",
+      );
+    },
+  );
+  await t.step(
+    "o rollback-manual aceita exatamente os mesmos dois sha256",
+    async () => {
+      const rb = await Deno.readTextFile(ROLLBACK_204);
+      const lit = [...rb.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
+      assertEquals(lit, [h.shaLF, h.shaCRLF]);
+    },
+  );
+  await t.step(
+    "o pré-voo da migration reconhece o md5 do próprio corpo",
+    () => {
+      assertStringIncludes(h.pre, `v_hash <> '${h.md5}'`);
+    },
+  );
   await t.step(
     "11b: os 2 md5 das dependências (is_admin_atual e pedido__mudar_status) são os MESMOS do pré-voo da migration",
     () => {
@@ -4993,14 +5004,22 @@ Deno.test("11a/11b — o rpc-ci.yml roda a prova viva do portão de anular a ven
   const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
   assert(!/^\s*continue-on-error:/m.test(bloqueante));
   for (const prova of ["anular-venda-viva", "anular-venda-portao-viva"]) {
-    const passo = bloqueante.match(
-      new RegExp(
-        `- name: [^\\n]*\\n\\s+if: \\$\\{\\{ !cancelled\\(\\) && steps\\.aplica\\.outcome == 'success' \\}\\}\\n\\s+run: node tests/banco/rodar-isolado\\.cjs tests/banco/${prova}\\.cjs\\n`,
-      ),
+    // Sem RegExp montada com variavel: acha a linha do comando e confere as duas
+    // anteriores (o if e o nome do passo).
+    const linhas = bloqueante.split("\n");
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
     );
-    assert(passo, `o passo de ${prova} não está no job bloqueante com o if certo`);
-    assert(bloqueante.indexOf(passo[0]) > bloqueante.indexOf("id: aplica"));
-    assert(!new RegExp(prova).test(yaml.slice(inicioInformacional)));
+    assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(linhas[k - 2].startsWith("      - name: "));
+    assert(
+      bloqueante.indexOf(linhas.at(k) ?? "") > bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(prova));
   }
   for (const gatilho of ["pull_request:", "push:"]) {
     const ini = yaml.indexOf(`\n  ${gatilho}`);

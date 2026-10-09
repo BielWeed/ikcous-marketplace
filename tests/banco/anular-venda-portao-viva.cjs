@@ -300,17 +300,6 @@ async function reescreverCorpo(db, assinatura, transformar) {
     );
   });
 }
-const corpoDe = (db, sig) =>
-  usar(
-    db,
-    async (c) =>
-      (
-        await c.query(
-          "SELECT prosrc FROM pg_proc WHERE oid = to_regprocedure($1)",
-          [sig],
-        )
-      ).rows[0].prosrc,
-  );
 
 // ---------------------------------------------------------------------------
 // Rodar a consulta

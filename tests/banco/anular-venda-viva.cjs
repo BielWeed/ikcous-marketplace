@@ -238,7 +238,7 @@ async function vender(c, o = {}) {
   const r = await como(
     c,
     "admin",
-    `SELECT public.registrar_venda_presencial($1::jsonb, $2, $3::uuid, NULL, NULL, $4::numeric, $5, $6::uuid) AS r`,
+    "SELECT public.registrar_venda_presencial($1::jsonb, $2, $3::uuid, NULL, NULL, $4::numeric, $5, $6::uuid) AS r",
     [
       JSON.stringify(itens),
       o.pagamento || "cash",
@@ -1436,7 +1436,7 @@ prova(
       "sem a trava FOR UPDATE do pedido",
       `     WHERE o.id = p_order_id
        FOR UPDATE;`,
-      `     WHERE o.id = p_order_id;`,
+      "     WHERE o.id = p_order_id;",
       [duasAnulacoes],
     );
     await mutar(
@@ -1484,8 +1484,8 @@ prova(
     await mutar(
       c,
       "sem recusar estorno já carimbado",
-      `       OR v_pedido.estorno_manual_registrado_em IS NOT NULL THEN`,
-      `       OR false THEN`,
+      "       OR v_pedido.estorno_manual_registrado_em IS NOT NULL THEN",
+      "       OR false THEN",
       [escopo],
     );
     await mutar(
@@ -1500,15 +1500,15 @@ prova(
     await mutar(
       c,
       "dia pelo UTC em vez do fuso da loja",
-      `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()`,
+      "IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()",
       `IF (v_pedido.pagamento_recebido_em AT TIME ZONE 'UTC')::date IS DISTINCT FROM (now() AT TIME ZONE 'UTC')::date`,
       [mesmoDia],
     );
     await mutar(
       c,
       "dia pelo fuso da SESSÃO",
-      `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()`,
-      `IF v_pedido.pagamento_recebido_em::date IS DISTINCT FROM now()::date`,
+      "IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()",
+      "IF v_pedido.pagamento_recebido_em::date IS DISTINCT FROM now()::date",
       [mesmoDia],
     );
     await mutar(
@@ -1518,7 +1518,7 @@ prova(
             SELECT 1 FROM public.marketplace_order_payment_history h
              WHERE h.order_id = p_order_id AND h.acao = 'desfeito'
           ) THEN`,
-      ` THEN`,
+      " THEN",
       [mesmoDia],
     );
     await mutar(
@@ -1547,14 +1547,14 @@ prova(
     await mutar(
       c,
       "motivo vazio aceito",
-      `IF v_motivo IS NULL THEN`,
+      "IF v_motivo IS NULL THEN",
       "IF false THEN",
       [motivo],
     );
     await mutar(
       c,
       "teto de 500 caracteres solto",
-      `IF char_length(v_motivo) > 500 THEN`,
+      "IF char_length(v_motivo) > 500 THEN",
       "IF false THEN",
       [motivo],
     );
