@@ -5,9 +5,11 @@ import {
 } from "@/components/admin/AdminKpiCarousel";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { AlternadorDeTelas } from "@/components/admin/primitivos/AlternadorDeTelas";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -84,6 +86,7 @@ function formatRate(
 
 export const AdminReviewsView = memo(function AdminReviewsView({
   active = true,
+  onNavigate,
   onSetDirty,
 }: AdminReviewsViewProps) {
   const {
@@ -543,7 +546,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   {/* Onda 3 da reforma visual (03/09): o título vivia com
                       fórmula própria (text-lg, duas cores) — agora é o
                       AdminPageHeader, igual ao de Pedidos/Produtos/Clientes. */}
-                  <AdminPageHeader titulo="Avaliações">
+                  <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-reviews"]}>
                     <button
                       type="button"
                       onClick={() => setShowHelpModal(true)}
@@ -671,6 +674,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Perguntas e Avaliações dividem uma porta só (Clientes): o alternador
+          leva de uma à outra, logo abaixo do cabeçalho. */}
+      <div className="mx-auto mt-4 max-w-7xl px-4">
+        <AlternadorDeTelas atual="admin-reviews" onNavigate={onNavigate} />
       </div>
 
       {/* KPI Dashboard Section */}

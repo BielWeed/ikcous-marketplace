@@ -7,7 +7,6 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
-import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
 import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
 import {
   AdminOrderCard,
@@ -21,6 +20,7 @@ import {
   paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import {
@@ -1517,7 +1518,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Pedidos"
+          titulo={NOMES_DO_PAINEL["admin-orders"]}
           acoes={
             // Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
             // a pílula amarela virou botão com ícone de alerta no canto
@@ -1575,7 +1576,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Support Section */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <SupportBanners onNavigate={onNavigate} />
+          <AtalhosDaAba aba="pedidos" onNavigate={onNavigate} />
         </div>
 
         {active && (

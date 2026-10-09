@@ -110,6 +110,46 @@ describe("AtalhosDaAba", () => {
     expect(botoes().map((b) => b.textContent?.trim())).toEqual(["Devoluções"]);
   });
 
+  it("Produtos tem a porta Cupons e nenhuma para Entrega e frete (a do Frete mora em Ajustes)", () => {
+    const onNavigate = vi.fn();
+    renderizar(<AtalhosDaAba aba="produtos" onNavigate={onNavigate} />);
+    expect(botoes().map((b) => b.textContent?.trim())).toEqual(["Cupons"]);
+    act(() => {
+      botaoPeloNome("Cupons").click();
+    });
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenLastCalledWith("admin-coupons");
+    expect(onNavigate).not.toHaveBeenCalledWith("admin-shipping");
+  });
+
+  it("Pedidos tem a porta Devoluções e nenhuma para Perguntas ou Avaliações", () => {
+    const onNavigate = vi.fn();
+    renderizar(<AtalhosDaAba aba="pedidos" onNavigate={onNavigate} />);
+    const nomes = botoes().map((b) => b.textContent?.trim());
+    expect(nomes).toEqual(["Devoluções"]);
+    expect(nomes).not.toContain("Perguntas");
+    expect(nomes).not.toContain("Avaliações");
+    expect(nomes).not.toContain(NOME_DO_PAR_PERGUNTAS_E_AVALIACOES);
+    for (const b of botoes()) {
+      act(() => {
+        b.click();
+      });
+    }
+    expect(onNavigate.mock.calls).toEqual([["admin-devolucoes"]]);
+  });
+
+  it("Clientes não tem porta para Minha loja (Canais de Atendimento saiu)", () => {
+    const onNavigate = vi.fn();
+    renderizar(<AtalhosDaAba aba="clientes" onNavigate={onNavigate} />);
+    for (const b of botoes()) {
+      act(() => {
+        b.click();
+      });
+    }
+    expect(onNavigate.mock.calls).toEqual([["admin-qa"], ["admin-push"]]);
+    expect(onNavigate).not.toHaveBeenCalledWith("admin-whatsapp-config");
+  });
+
   it("o contador opcional entra no nome acessível, e o número visual é aria-hidden", () => {
     renderizar(
       <AtalhosDaAba

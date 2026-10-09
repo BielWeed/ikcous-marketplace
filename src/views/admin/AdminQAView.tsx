@@ -2,6 +2,8 @@ import { LazyImage } from "@/components/LazyImage";
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
+import { AlternadorDeTelas } from "@/components/admin/primitivos/AlternadorDeTelas";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useQuestions } from "@/hooks/useQuestions";
@@ -86,6 +88,7 @@ let cachedQAStats: {
 
 export const AdminQAView = memo(function AdminQAView({
   active = true,
+  onNavigate,
   onSetDirty,
 }: AdminQAViewProps) {
   const {
@@ -1040,7 +1043,7 @@ export const AdminQAView = memo(function AdminQAView({
                   {/* Onda 3 da reforma visual (03/09): título com fórmula
                       própria (text-lg, duas cores) saiu; entrou o
                       AdminPageHeader, igual ao de Pedidos/Produtos/Clientes. */}
-                  <AdminPageHeader titulo="Perguntas">
+                  <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-qa"]}>
                     <button
                       type="button"
                       onClick={() => setShowHelpModal(true)}
@@ -1159,6 +1162,12 @@ export const AdminQAView = memo(function AdminQAView({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Perguntas e Avaliações dividem uma porta só (Clientes): o alternador
+          leva de uma à outra, logo abaixo do cabeçalho. */}
+      <div className="mx-auto mt-4 max-w-7xl px-4">
+        <AlternadorDeTelas atual="admin-qa" onNavigate={onNavigate} />
       </div>
 
       {/* KPI Dashboard Section */}
