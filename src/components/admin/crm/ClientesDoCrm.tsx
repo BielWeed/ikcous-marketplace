@@ -606,7 +606,7 @@ export function ClientesDoCrm({
             ) : null}
           </span>
         }
-        descricao="Quem compra e quem ainda não comprou, com WhatsApp e ficha prontos para um toque."
+        descricao="Quem já comprou (app e balcão), quem pediu e não pagou e quem criou conta sem comprar — com WhatsApp e ficha a um toque."
       >
         <div className="space-y-3">
           {/* Linha própria (não vai no `acao` do cabeçalho): o cabeçalho do
