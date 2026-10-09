@@ -3,8 +3,10 @@
 // Desenho SALÃO+PORÃO do lote E (13/09/2026, escolhido pelo Gabriel): a
 // tela de Ajustes ganha DUAS camadas. O SALÃO responde "como está?" sem
 // clique — o painel de 4 indicadores espelho (Conexão, Pagamento, Frete,
-// Atendimento) — e organiza o resto em grupos (Sua loja / Entrega /
-// Ferramentas) com títulos na linguagem de gente. O PORÃO (consulta rara)
+// Atendimento) — e organiza o resto em grupos (desde 09/10/2026, os seis do
+// painel simples: Minha loja / Aparência do app / Entrega e frete /
+// Pagamentos / Regras de troca e devolução / Ferramentas) com títulos na
+// linguagem de gente. O PORÃO (consulta rara)
 // fica no pé da tela.
 //
 // O que este teste fixa:
@@ -465,21 +467,22 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     });
   }
 
-  it("os grupos aparecem na ordem do desenho: Como está sua loja, Sua loja, Entrega, Ferramentas", async () => {
+  it("os grupos aparecem na ordem do desenho: Como está sua loja e os seis grupos de Ajustes", async () => {
     await renderizar();
     const titulos = [...hospedeiro.querySelectorAll("h2")].map(
       (h) => h.textContent,
     );
     expect(titulos).toEqual([
       "Como está sua loja",
-      "Sua loja",
-      "Entrega",
+      "Minha loja",
+      "Aparência do app",
+      "Entrega e frete",
       // Peça 20 (pedido do dono, 14/09): o Mercado Pago vira grupo próprio,
-      // ao lado de Entrega e antes do PORÃO (Ferramentas).
+      // ao lado de Entrega e frete e antes do PORÃO (Ferramentas).
       "Pagamentos",
       // Devoluções (plano 2026-09-26): a política de trocas da loja mora
-      // num grupo próprio, antes do PORÃO.
-      "Pós-venda",
+      // num grupo próprio ("Pós-venda" até 09/10/2026), antes do PORÃO.
+      "Regras de troca e devolução",
       "Ferramentas",
     ]);
   });
@@ -495,6 +498,7 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // contagem abaixo).
     for (const novo of [
       "Entrega e frete",
+      "Transportadoras",
       "Formas de pagamento",
       "Mercado Pago",
       "Minha loja está no ar?",
@@ -520,10 +524,11 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
     // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
-    // de AdminAboutStoreView): sobram Entrega e frete, Formas de pagamento
+    // de AdminAboutStoreView): sobram Transportadoras, Formas de pagamento
     // (25/09/2026, migration 20261174000000), Mercado Pago, Minha loja está
     // no ar? e Consultas de frete — e, desde o plano 2026-09-26, Trocas e
-    // devoluções (grupo Pós-venda).
+    // devoluções (grupo Regras de troca e devolução). O acordeão de
+    // Entrega e frete virou "Transportadoras" em 09/10/2026.
     expect(cabecalhos.length).toBe(6);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
@@ -536,11 +541,11 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(hospedeiro.querySelector("table")).toBeNull();
   });
 
-  it("linha de estado no cabeçalho: Entrega e frete diz 'Ativo: <provedor>' sem abrir", async () => {
+  it("linha de estado no cabeçalho: Transportadoras diz 'Ativo: <provedor>' sem abrir", async () => {
     estadoDeFrete.ligados = ["melhor_envio"];
     estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     await renderizar();
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
+    const cabecalho = cabecalhoDaSecao("Transportadoras")!;
     expect(cabecalho).toBeTruthy();
     expect(cabecalho.textContent).toContain("Ativo: Melhor Envio");
   });
@@ -553,12 +558,12 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
   // continua somando transportadoras + pagamentos (inalterado, sem teste
   // dedicado aqui: cobertos pelos vizinhos de cada seção).
 
-  it("atalhos de vitrine continuam portas role=button com onNavigate (20/09: +Sobre a Loja)", async () => {
+  it("as portas continuam role=button com onNavigate (20/09: +Sobre a Loja; 09/10: Minha loja e +Entrega e frete)", async () => {
     const onNavigate = vi.fn();
     await renderizar(undefined, onNavigate);
 
     const portas = [...hospedeiro.querySelectorAll('[role="button"]')];
-    expect(portas.length).toBe(3);
+    expect(portas.length).toBe(4);
     await act(async () => {
       for (const porta of portas) {
         porta.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -568,5 +573,6 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(destinos).toContain("admin-banners");
     expect(destinos).toContain("admin-carousels");
     expect(destinos).toContain("admin-about-store");
+    expect(destinos).toContain("admin-shipping");
   });
 });

@@ -5,7 +5,8 @@
 // existe em AdminAboutStoreView ("Sobre a Loja") — mesmos componentes
 // (IdentitySettingsSection, BusinessHoursSection), mesmo contrato de
 // salvamento. Este arquivo fixa os dois lados do contrato:
-//   1. Ajustes NÃO edita mais identidade/horário — só leva para lá.
+//   1. Ajustes NÃO edita mais identidade/horário — só leva para lá (a porta
+//      "Minha loja"; "Sobre a Loja" até 09/10/2026).
 //   2. Sobre a Loja continua montando os dois editores de verdade.
 // O comportamento DETALHADO de cada editor (salvar, recusar preto, horário
 // nulo, etc.) já está coberto em admin-settings-identidade-da-loja.test.tsx,
@@ -136,7 +137,7 @@ describe("Identidade e horário: edição só em Sobre a Loja", () => {
     vi.restoreAllMocks();
   });
 
-  it("Ajustes > Sua loja não mostra os acordeões duplicados e continua levando a Sobre a Loja", async () => {
+  it("Ajustes > Minha loja não mostra os acordeões duplicados e continua levando a Minha loja", async () => {
     const onNavigate = vi.fn();
     const { AdminSettingsView } = await import(
       "@/views/admin/AdminSettingsView"
@@ -155,9 +156,9 @@ describe("Identidade e horário: edição só em Sobre a Loja", () => {
 
     // O atalho para a edição de verdade continua de pé.
     const porta = [...hospedeiro.querySelectorAll('[role="button"]')].find(
-      (el) => el.textContent?.includes("Sobre a Loja"),
+      (el) => el.querySelector("h3")?.textContent === "Minha loja",
     );
-    expect(porta, "porta 'Sobre a Loja' ausente").toBeDefined();
+    expect(porta, "porta 'Minha loja' ausente").toBeDefined();
     await act(async () => {
       porta!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

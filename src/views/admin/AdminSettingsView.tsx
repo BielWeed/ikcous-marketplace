@@ -34,8 +34,14 @@ import {
   buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
+import {
+  type ChaveDoGrupoDeAjustes,
+  GRUPOS_DE_AJUSTES,
+  type PortaDoGrupoDeAjustes,
+} from "@/components/admin/settings/grupos-de-ajustes";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
+import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { pagamentoOnlineLigado } from "@/lib/flags";
@@ -430,24 +436,110 @@ function SecaoColapsavel({
   );
 }
 
+// Ícone de cada porta (o nome e a rota vêm de GRUPOS_DE_AJUSTES). Map + `.get`
+// pelo mesmo motivo do PALETA_DO_INDICADOR abaixo: índice de variável acorda o
+// object-injection do eslint. Guarda o ELEMENTO pronto, não o componente: um
+// componente tirado do Map no render dispara react-hooks/static-components.
+const CLASSE_DO_ICONE_DA_PORTA = "relative size-[18px]";
+const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
+  [
+    "admin-about-store",
+    <Store key="s" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+  ],
+  [
+    "admin-banners",
+    <Palette key="p" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+  ],
+  [
+    "admin-carousels",
+    <Layers key="l" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+  ],
+  [
+    "admin-shipping",
+    <Truck key="t" className={CLASSE_DO_ICONE_DA_PORTA} strokeWidth={2.25} />,
+  ],
+]);
+
+const GRUPO_POR_CHAVE = new Map(GRUPOS_DE_AJUSTES.map((g) => [g.chave, g]));
+
 /**
- * Rótulo de grupo da tela de Ajustes (desenho SALÃO+PORÃO, 13/09/2026):
- * um título leve que agrupa seções vizinhas ("Sua loja", "Entrega",
- * "Ferramentas"). MESMO estilo do rótulo que já existia na tela — só
- * ganhou componente para não virar cópia em quatro lugares.
+ * Cartão-porta de um grupo: leva a outra tela do painel. Continua
+ * role="button" com onNavigate (o guard `ajustes-grupos-e-portas` clica em
+ * TODAS elas); o nome vem de NOMES_DO_PAINEL, a linha de apoio da constante.
+ */
+function PortaDeAjustes({
+  porta,
+  onNavigate,
+}: {
+  readonly porta: PortaDoGrupoDeAjustes;
+  readonly onNavigate: (view: View) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onNavigate(porta.tela)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onNavigate(porta.tela);
+        }
+      }}
+      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
+    >
+      <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">
+        <span
+          aria-hidden="true"
+          className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+        />
+        {ICONE_DA_PORTA.get(porta.tela)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
+          {NOMES_DO_PAINEL[porta.tela]}
+        </h3>
+        <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+          {porta.descricao}
+        </p>
+      </div>
+      <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-admin-gold" />
+    </div>
+  );
+}
+
+/**
+ * Grupo da tela de Ajustes (desenho SALÃO+PORÃO, 13/09/2026; seis grupos
+ * fixos desde o painel simples, 09/10/2026). O título e as portas vêm de
+ * GRUPOS_DE_AJUSTES pela `chave` — a ajuda lê a mesma constante. Os
+ * acordeões do grupo entram como `children`, depois das portas.
  */
 function GrupoDeAjustes({
-  titulo,
+  chave,
+  onNavigate,
   children,
 }: {
-  readonly titulo: string;
-  readonly children: React.ReactNode;
+  readonly chave: ChaveDoGrupoDeAjustes;
+  readonly onNavigate: (view: View) => void;
+  readonly children?: React.ReactNode;
 }) {
+  const grupo = GRUPO_POR_CHAVE.get(chave);
+  if (!grupo) return null;
   return (
     <section className="space-y-3">
       <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-        {titulo}
+        {grupo.titulo}
       </h2>
+      {grupo.portas.length > 0 && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {grupo.portas.map((porta) => (
+            <PortaDeAjustes
+              key={porta.tela}
+              porta={porta}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </div>
+      )}
       {children}
     </section>
   );
@@ -742,7 +834,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       {/* Elite Header */}
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-          <AdminPageHeader titulo="Ajustes">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]}>
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
@@ -827,124 +919,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             </section>
 
             {/* ── SALÃO, camada 2: grupos com o que o lojista edita ── */}
-            <GrupoDeAjustes titulo="Sua loja">
-              {/* Atalhos de vitrine — versão compacta dos cartões; a porta
-                  continua role="button" com onNavigate (o guard
-                  porta-de-avisar-clientes clica em TODAS elas). */}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onNavigate("admin-banners")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onNavigate("admin-banners");
-                    }
-                  }}
-                  className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
-                >
-                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    />
-                    <Palette
-                      className="relative size-[18px]"
-                      strokeWidth={2.25}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
-                      Banners Promocionais
-                    </h3>
-                    <p className="mt-0.5 truncate text-[10px] text-zinc-500">
-                      Artes, links e agendamentos
-                    </p>
-                  </div>
-                  <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-admin-gold" />
-                </div>
+            {/* Minha loja: porta única para a edição de marca, endereço,
+                horário e descrição (pedido do dono, 20/09/2026). "Nome, logo
+                e cores" e "Atendimento" — os dois acordeões que moravam
+                aqui — SAÍRAM em 22/09/2026: eram duplicados de
+                AdminAboutStoreView, que já monta os MESMOS componentes
+                (IdentitySettingsSection, BusinessHoursSection) com o mesmo
+                contrato de salvamento. A edição existe só lá; o atalho para
+                lá é o cartão deste grupo. */}
+            <GrupoDeAjustes chave="minha-loja" onNavigate={onNavigate} />
 
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onNavigate("admin-carousels")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onNavigate("admin-carousels");
-                    }
-                  }}
-                  className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-amber-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
-                >
-                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    />
-                    <Layers
-                      className="relative size-[18px]"
-                      strokeWidth={2.25}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
-                      Vitrines (Carrosséis)
-                    </h3>
-                    <p className="mt-0.5 truncate text-[10px] text-zinc-500">
-                      Títulos, ordem e ativação
-                    </p>
-                  </div>
-                  <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
-                </div>
+            {/* Aparência do app: Banners e Vitrines — só portas. */}
+            <GrupoDeAjustes chave="aparencia" onNavigate={onNavigate} />
 
-                {/* Sobre a Loja (pedido do dono, 20/09/2026): a página
-                    pública "Sobre a Loja" ganhou tela de configuração —
-                    marca, endereço do mapa, horário e descrição. Porta
-                    única: o Voltar do navegador volta para cá. */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onNavigate("admin-about-store")}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onNavigate("admin-about-store");
-                    }
-                  }}
-                  className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-amber-500/30 hover:bg-zinc-900/30 active:scale-[0.98]"
-                >
-                  <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-amber-500/[0.32] to-amber-500/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    />
-                    <Store
-                      className="relative size-[18px]"
-                      strokeWidth={2.25}
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
-                      Sobre a Loja
-                    </h3>
-                    <p className="mt-0.5 truncate text-[10px] text-zinc-500">
-                      Marca, endereço, horário e descrição
-                    </p>
-                  </div>
-                  <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-amber-500" />
-                </div>
-              </div>
-              {/* "Nome, logo e cores" e "Atendimento" — os dois acordeões que
-                  moravam aqui — SAÍRAM em 22/09/2026 (pedido do dono): eram
-                  duplicados de AdminAboutStoreView, que já monta os MESMOS
-                  componentes (IdentitySettingsSection, BusinessHoursSection)
-                  com o mesmo contrato de salvamento. A edição passou a
-                  existir só na tela "Sobre a Loja"; o atalho para lá é o
-                  cartão logo acima. */}
-            </GrupoDeAjustes>
-
-            <GrupoDeAjustes titulo="Entrega">
+            <GrupoDeAjustes chave="entrega" onNavigate={onNavigate}>
               {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
                   glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
                   sentido o token da transportadora morar no meio das regras
@@ -958,7 +946,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   tela de Frete continua sem tocar em nada disso.
                   COLAPSADA e nascida FECHADA: ajuste raro, feito uma vez. */}
               <SecaoColapsavel
-                titulo="Entrega e frete"
+                titulo="Transportadoras"
                 subtitulo={`Ativo: ${nomeDoFrete}`}
                 icone={Truck}
                 comPendencia={transportadorasPendentes}
@@ -982,7 +970,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 ele grava volta por `onPixAlternado` para o painel acima —
                 era a mesma tela contando dois estados do dinheiro. Nascida
                 FECHADA como as demais: ajuste feito uma vez. */}
-            <GrupoDeAjustes titulo="Pagamentos">
+            <GrupoDeAjustes chave="pagamentos" onNavigate={onNavigate}>
               {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
                   brief) — a lojista decide primeiro O QUE aceita na
@@ -1048,11 +1036,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </SecaoColapsavel>
             </GrupoDeAjustes>
 
-            {/* ── Pós-venda (plano 2026-09-26, seção "Devoluções"; P3 do
+            {/* ── Regras de troca e devolução (antes "Pós-venda"; plano 2026-09-26, seção "Devoluções"; P3 do
                 AGENTS.md): a política de trocas e devoluções de CADA loja —
                 prazos (com os mínimos da lei), formas de devolver e o texto
                 que o cliente lê. Nascida FECHADA como as demais. */}
-            <GrupoDeAjustes titulo="Pós-venda">
+            <GrupoDeAjustes chave="devolucao" onNavigate={onNavigate}>
               <SecaoColapsavel
                 titulo="Trocas e devoluções"
                 subtitulo="Prazos, formas de devolver e a política da loja"
@@ -1077,7 +1065,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             */}
 
             {/* ── PORÃO: consulta rara e técnica, no pé da tela ── */}
-            <GrupoDeAjustes titulo="Ferramentas">
+            <GrupoDeAjustes chave="ferramentas" onNavigate={onNavigate}>
               {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de
                   trabalho; a tela abre mostrando o que o lojista edita). */}
@@ -1118,8 +1106,9 @@ export const AdminSettingsView = memo(function AdminSettingsView({
           <p className="text-xs leading-relaxed text-zinc-400">
             Esta tela responde primeiro COMO ESTÁ a sua loja — conexão,
             pagamento por PIX, frete e horário de atendimento ficam à vista no
-            painel do topo. O resto fica em três grupos: Sua loja, Entrega e
-            Ferramentas. Cada seção abre com um clique.
+            painel do topo. O resto fica nestes grupos:{" "}
+            {GRUPOS_DE_AJUSTES.map((g) => g.titulo).join(", ")}. Cada seção abre
+            com um clique.
           </p>
 
           <div className="space-y-3">
@@ -1143,89 +1132,16 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             </div>
           </div>
 
-          <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              Sua loja
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Palette className="size-3.5" strokeWidth={2.25} />
-                  </span>
-                  Banners e Vitrines
-                </div>
-                <p className="text-xs text-zinc-400">
-                  Atalhos da vitrine: artes e agendamentos dos banners; títulos,
-                  ordem e ativação dos carrosséis.
-                </p>
-              </div>
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Store className="size-3.5" strokeWidth={2.25} />
-                  </span>
-                  Sobre a Loja
-                </div>
-                <p className="text-xs text-zinc-400">
-                  Nome, logo, cores, endereço, horário de atendimento e a
-                  descrição da loja — tudo editado numa única tela.
-                </p>
-              </div>
+          {GRUPOS_DE_AJUSTES.map((grupo) => (
+            <div key={grupo.chave} className="space-y-3">
+              <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                {grupo.titulo}
+              </h4>
+              <p className="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 text-xs text-zinc-400">
+                {grupo.ajuda}
+              </p>
             </div>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              Entrega
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Truck className="size-3.5" strokeWidth={2.25} />
-                  </span>
-                  Entrega e frete
-                </div>
-                <p className="text-xs text-zinc-400">
-                  Escolha da transportadora, cotação automática e o token da
-                  integração — ajuste raro, feito uma vez.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              Ferramentas
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Activity className="size-3.5" strokeWidth={2.25} />
-                  </span>
-                  Minha loja está no ar?
-                </div>
-                <p className="text-xs text-zinc-400">
-                  Termômetro do pagamento por PIX com o diagnóstico completo, e
-                  a medição de latência com o banco de dados do Supabase.
-                </p>
-              </div>
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <History className="size-3.5" strokeWidth={2.25} />
-                  </span>
-                  Consultas de frete
-                </div>
-                <p className="text-xs text-zinc-400">
-                  Histórico das cotações já feitas à transportadora ativa —
-                  registro técnico de diagnóstico.
-                </p>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       </AdminHelpModal>
     </div>
