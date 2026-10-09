@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 //
 // Achado 10 da auditoria de 20/08/2026: o crachá de "Pedidos" na navegação
-// (AdminLayout) e o cartão "Ações Pendentes" (AdminOrdersView) contam a
-// mesma coisa de dois jeitos diferentes — o crachá só `status = 'pending'`,
-// o cartão `status IN ('pending','new','processing')` (é a definição de
-// `today_pending` na RPC `get_admin_analytics_v2`). Um pedido em "Em
-// Separação" ainda precisa ser embalado e enviado, então a conta ampla é a
-// correta; é o crachá que estava contando de menos.
+// (AdminLayout) contava só `status = 'pending'`; um pedido em "Em Separação"
+// ainda precisa ser embalado e enviado, então a conta certa é a ampla
+// (`status IN ('pending','new','processing')`).
 //
-// Este teste prova o crachá: ele tem que aplicar o MESMO filtro amplo, não
-// só `pending`. Simula a diferença no builder do Supabase — `.eq(status,
-// "pending")` "devolveria" 6 (a conta velha), `.in(status, [...])`
-// "devolveria" 7 (a conta certa, igual ao cartão) — para que o teste caia
-// se a implementação voltar a usar `.eq`.
+// Onda F do painel simples (F2): a conta ampla ainda mentia num ponto — um
+// PIX gerado e ainda não pago espera a CLIENTE, não o lojista, e o
+// "Pedidos para preparar" do Início (`painel_inicio`) já o tirava. Agora o
+// crachá aplica a MESMA regra (`src/lib/pedidos-para-preparar.ts`): a lista
+// de status E o `.or` do pagamento. O builder do Supabase simula as três
+// contas — `.eq(status,"pending")` "devolveria" 6 (a conta velha),
+// `.in(status,[...])` sozinho 7 (conta o PIX aguardando), `.in` + o `.or`
+// da regra 5 — para o teste cair se a implementação perder qualquer pedaço.
 //
 // `@/lib/supabase` é mocado pelo mesmo motivo dos vizinhos deste diretório:
 // AdminLayout.tsx importa `supabase` no topo, e sem o mock a leitura de
@@ -21,13 +21,21 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Conta que o crachá aplicava ANTES da correção (só "pending").
+import {
+  FILTRO_POSTGREST_PARA_PREPARAR,
+  STATUS_PARA_PREPARAR,
+} from "@/lib/pedidos-para-preparar";
+
+// Conta que o crachá aplicava ANTES do achado 10 (só "pending").
 const CONTAGEM_ANTIGA_SO_PENDING = 6;
-// Conta que a RPC `get_admin_analytics_v2` já devolve para "Ações
-// Pendentes" hoje (pending + new + processing) — é o alvo do crachá.
-const CONTAGEM_AMPLA_IGUAL_AO_CARTAO = 7;
+// Conta ampla SEM olhar o pagamento — inclui 2 PIX aguardando a cliente.
+const CONTAGEM_COM_PIX_AGUARDANDO = 7;
+// Conta da regra única "para preparar" (a mesma do Início).
+const CONTAGEM_PARA_PREPARAR = 5;
 
 let contagemDevolvidaPeloBanco = CONTAGEM_ANTIGA_SO_PENDING;
+let argumentosDoIn: unknown[] | null = null;
+let argumentoDoOr: string | null = null;
 
 function criarOrdersCountBuilder() {
   const builder: any = {};
@@ -37,10 +45,20 @@ function criarOrdersCountBuilder() {
     contagemDevolvidaPeloBanco = CONTAGEM_ANTIGA_SO_PENDING;
     return builder;
   });
-  builder.in = vi.fn((_coluna: string, _valores: readonly string[]) => {
-    // Simula o banco: filtrar pela lista ampla devolve a mesma conta do
-    // cartão "Ações Pendentes".
-    contagemDevolvidaPeloBanco = CONTAGEM_AMPLA_IGUAL_AO_CARTAO;
+  builder.in = vi.fn((coluna: string, valores: readonly string[]) => {
+    // Simula o banco: a lista ampla sem filtro de pagamento ainda conta o
+    // PIX que espera a cliente.
+    argumentosDoIn = [coluna, [...valores]];
+    contagemDevolvidaPeloBanco = CONTAGEM_COM_PIX_AGUARDANDO;
+    return builder;
+  });
+  builder.or = vi.fn((filtro: string) => {
+    // Grava o argumento e só tira os PIX aguardando se o filtro for o da
+    // regra única — um `.or` escrito à mão que divergir não ganha o 5.
+    argumentoDoOr = filtro;
+    if (filtro === FILTRO_POSTGREST_PARA_PREPARAR) {
+      contagemDevolvidaPeloBanco = CONTAGEM_PARA_PREPARAR;
+    }
     return builder;
   });
   // O query builder do Supabase É thenable por desenho — é isso que faz
@@ -118,12 +136,14 @@ async function esperarAte(
   });
 }
 
-describe("AdminLayout — crachá de Pedidos usa a mesma conta ampla do cartão", () => {
+describe("AdminLayout — crachá de Pedidos conta os pedidos para preparar", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
   beforeEach(() => {
     contagemDevolvidaPeloBanco = CONTAGEM_ANTIGA_SO_PENDING;
+    argumentosDoIn = null;
+    argumentoDoOr = null;
     vi.stubGlobal(
       "BroadcastChannel",
       class {
@@ -158,10 +178,8 @@ describe("AdminLayout — crachá de Pedidos usa a mesma conta ampla do cartão"
     vi.unstubAllGlobals();
   });
 
-  it("mostra 7 (pending+new+processing), não 6 (só pending)", async () => {
-    const { AdminLayout } = await import(
-      "@/components/layouts/AdminLayout"
-    );
+  async function montarEAcharPedidos() {
+    const { AdminLayout } = await import("@/components/layouts/AdminLayout");
 
     await act(async () => {
       raiz.render(
@@ -171,20 +189,55 @@ describe("AdminLayout — crachá de Pedidos usa a mesma conta ampla do cartão"
       );
     });
 
-    const botaoPedidos = Array.from(
-      hospedeiro.querySelectorAll("button"),
-    ).find((b) => b.textContent?.includes("Pedidos"));
+    const botaoPedidos = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Pedidos"),
+    );
     expect(botaoPedidos).toBeTruthy();
+    return botaoPedidos!;
+  }
 
-    await esperarAte(
-      () => botaoPedidos!.textContent?.includes(String(CONTAGEM_AMPLA_IGUAL_AO_CARTAO)) ?? false,
-    );
+  it("filtra pela lista ampla de status (pending+new+processing), não só pending", async () => {
+    const botaoPedidos = await montarEAcharPedidos();
 
-    expect(botaoPedidos!.textContent).toContain(
-      String(CONTAGEM_AMPLA_IGUAL_AO_CARTAO),
-    );
-    expect(botaoPedidos!.textContent).not.toContain(
+    await esperarAte(() => argumentosDoIn !== null);
+
+    expect(argumentosDoIn).toEqual(["status", [...STATUS_PARA_PREPARAR]]);
+    expect(botaoPedidos.textContent).not.toContain(
       `Pedidos${CONTAGEM_ANTIGA_SO_PENDING}`,
     );
+  });
+
+  it("PIX aguardando não conta: mostra 5 (para preparar), não 7", async () => {
+    const botaoPedidos = await montarEAcharPedidos();
+
+    await esperarAte(
+      () =>
+        botaoPedidos.textContent?.includes(String(CONTAGEM_PARA_PREPARAR)) ??
+        false,
+    );
+
+    expect(argumentoDoOr).toBe(FILTRO_POSTGREST_PARA_PREPARAR);
+    expect(botaoPedidos.textContent).toContain(
+      `Pedidos${CONTAGEM_PARA_PREPARAR}`,
+    );
+    expect(botaoPedidos.textContent).not.toContain(
+      `Pedidos${CONTAGEM_COM_PIX_AGUARDANDO}`,
+    );
+  });
+
+  it("o nome acessível da aba diz 'para preparar'", async () => {
+    await montarEAcharPedidos();
+
+    await esperarAte(
+      () =>
+        hospedeiro.querySelector(
+          `[aria-label="Pedidos, ${CONTAGEM_PARA_PREPARAR} para preparar"]`,
+        ) !== null,
+    );
+    expect(
+      hospedeiro.querySelector(
+        '[aria-label^="Pedidos, "][aria-label$="pendentes"]',
+      ),
+    ).toBeNull();
   });
 });

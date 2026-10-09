@@ -19,6 +19,10 @@ import {
 } from "@/hooks/useViewTransition";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
+import {
+  FILTRO_POSTGREST_PARA_PREPARAR,
+  STATUS_PARA_PREPARAR,
+} from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -74,25 +78,18 @@ function tituloDoSelo(
 }
 
 /**
- * Pedidos que ainda exigem ação do lojista — espelha o predicado de
- * `today_pending` na RPC `get_admin_analytics_v2` (o cartão "Ações
- * Pendentes" da tela de Pedidos). Um pedido em "Em Separação" ainda
- * precisa ser embalado e enviado, então conta igual a um pedido novo.
+ * Pedidos que ainda exigem ação do lojista — alias de `STATUS_PARA_PREPARAR`
+ * (`src/lib/pedidos-para-preparar.ts`), mesmo nome e valor de antes para
+ * quem já importava daqui.
  *
- * Achado 10 da auditoria de 20/08/2026: o crachá desta barra e o cartão
- * contavam coisas diferentes ("pending" contra "pending"+"new"+"processing")
- * e discordavam na tela. Exportada para o mesmo texto ser usado nos dois
- * lados em vez de duas listas soltas voltarem a divergir.
- *
- * `"new"` é um valor histórico da coluna `status` no banco — o enum
- * `OrderStatus` do front nunca o modelou — mantido aqui só para bater com
- * o que a RPC de fato soma.
+ * Achado 10 da auditoria de 20/08/2026: o crachá desta barra e o cartão de
+ * Pedidos contavam coisas diferentes e discordavam na tela. Onda F do painel
+ * simples (F2): a lista de status sozinha ainda contava o PIX/cartão que
+ * espera a CLIENTE pagar; o crachá agora aplica a regra inteira de
+ * `painel_inicio` (status + `FILTRO_POSTGREST_PARA_PREPARAR`) — o mesmo
+ * número do "Pedidos para preparar" do Início.
  */
-export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = [
-  "pending",
-  "new",
-  "processing",
-] as const;
+export const STATUS_PEDIDOS_COM_ACAO_PENDENTE = STATUS_PARA_PREPARAR;
 
 /**
  * Retentativa automática quando a rodada de contagens FALHA — sem ela, a
@@ -208,11 +205,13 @@ export function AdminLayout({
       // aviso de falha da rodada anterior.
       let falhouAlgumaConsulta = false;
       try {
-        // Fetch pending orders count
+        // Pedidos para preparar — a regra de `painel_inicio`: status aberto
+        // e pagamento que não espera a cliente (onda F, F2).
         const { count: ordersCount, error: ordersErr } = await supabase
           .from("marketplace_orders")
           .select("*", { count: "exact", head: true })
-          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE);
+          .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE)
+          .or(FILTRO_POSTGREST_PARA_PREPARAR);
 
         if (ordersErr) {
           falhouAlgumaConsulta = true;
@@ -1243,12 +1242,12 @@ export function AdminLayout({
                   <button
                     key={idx}
                     // Nome acessível da aba; o selo de pedidos entra nele
-                    // ("Pedidos, 3 pendentes") e o selo visual é aria-hidden.
-                    // Texto neutro: o selo conta pending+new+processing (inclui
-                    // PIX ainda não pago), diferente do "Para preparar" do Início.
+                    // ("Pedidos, 3 para preparar") e o selo visual é
+                    // aria-hidden. O selo conta a mesma regra do "Pedidos para
+                    // preparar" do Início (sem PIX/cartão ainda não pago).
                     aria-label={
                       item.view === "admin-orders" && pendingOrdersCount > 0
-                        ? `${item.label}, ${pendingOrdersCount} ${pendingOrdersCount === 1 ? "pendente" : "pendentes"}`
+                        ? `${item.label}, ${pendingOrdersCount} para preparar`
                         : item.label
                     }
                     onClick={() => {

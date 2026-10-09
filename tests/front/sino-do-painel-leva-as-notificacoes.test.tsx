@@ -36,6 +36,7 @@ function criarContagemBuilder(contagem: number) {
   const builder: any = {};
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão de dashboard-escuta-a-tabela-certa e admin-layout-cracha-pedidos-pendentes.
   builder.then = (resolve: any, reject?: any) =>
