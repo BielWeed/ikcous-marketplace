@@ -30,14 +30,19 @@ import type { View } from "@/types";
  *   3. `view === "admin-notifications"` com uma `origem` válida (mesma
  *      regra) — devolve a origem; sem ela, "admin-dashboard".
  *   4. `view === "admin-whatsapp-config"` com uma `origem` válida (mesma
- *      regra) — devolve a origem; sem ela, "admin-dashboard". A tela é
- *      alcançada pelo banner "Atendimento & Vendas" do painel principal E
- *      por Ajustes; voltar sempre para "admin-settings" largava quem veio
- *      pelo banner no lugar errado (achado do Gabriel com print, 30/08).
+ *      regra) — devolve a origem; sem ela, "admin-settings". A tela é
+ *      alcançada por mais de um caminho; voltar sempre para um pai fixo
+ *      largava quem veio por outro no lugar errado (achado do Gabriel com
+ *      print, 30/08).
  *   5. a tabela fixa (com os casos "admin-push", "admin-notifications" e
  *      "admin-whatsapp-config" movidos para as regras acima). "admin-banners"
  *      e "admin-carousels" continuam caindo em "admin-settings": hoje só são
- *      alcançadas por Configurações.
+ *      alcançadas por Ajustes.
+ *
+ * Painel simples (09/10/2026): cada tela tem UMA porta e o Voltar leva à
+ * aba dessa porta. "admin-push" sem origem, "admin-qa" e "admin-reviews"
+ * voltam para Clientes; "admin-shipping" e "admin-whatsapp-config" sem
+ * origem voltam para Ajustes.
  */
 export function paiDaTelaDoAdmin(
   view: View,
@@ -90,22 +95,27 @@ export function paiDaTelaDoAdmin(
       return "admin-coupons";
     case "admin-product-form":
     case "admin-coupons":
-    case "admin-shipping":
       return "admin-products";
     // Sub-view de "Fora da cidade" (botão "Estratégias do frete nacional
     // →" em FreteNacionalBloco, dentro de admin-shipping) — o Voltar
     // volta para a tela de Frete, nunca para admin-products (nova-tela.md:45).
     case "admin-shipping-national":
       return "admin-shipping";
+    // Painel simples: Perguntas, Avaliações e Avisar clientes têm UMA porta
+    // só, em Clientes — o Voltar leva para a aba da porta.
     case "admin-user-detail":
-      return "admin-customers";
     case "admin-push":
+    case "admin-qa":
+    case "admin-reviews":
+      return "admin-customers";
+    // Frete mora em Ajustes (a porta de Produtos para ele saiu).
+    case "admin-shipping":
     case "admin-banners":
     case "admin-carousels":
     case "admin-about-store":
       return "admin-settings";
     case "admin-whatsapp-config":
-      return "admin-dashboard";
+      return "admin-settings";
     case "admin-notifications":
       return "admin-dashboard";
     // "Vender" é sub-view do painel principal, não da aba Pedidos (plano
@@ -119,8 +129,6 @@ export function paiDaTelaDoAdmin(
     case "admin-financeiro":
       return "admin-dashboard";
     // Devolução nasce de um pedido entregue: mora ao lado dos pedidos.
-    case "admin-reviews":
-    case "admin-qa":
     case "admin-devolucoes":
       return "admin-orders";
     default:

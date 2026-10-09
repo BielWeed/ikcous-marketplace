@@ -1,5 +1,6 @@
 import { AdminLayout } from "@/components/layouts/AdminLayout";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -179,6 +180,13 @@ function TabWrapper({ active, children, index, activeIndex }: TabWrapperProps) {
   );
 }
 
+function nomeDaTelaDoPainel(view: string | undefined): string {
+  if (view !== undefined && Object.hasOwn(NOMES_DO_PAINEL, view)) {
+    return NOMES_DO_PAINEL[view as TelaDoPainel];
+  }
+  return "Painel";
+}
+
 export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
   const isReady = useDeferredRender(150);
   const isDashboard = view === "admin-dashboard" || view === "admin";
@@ -187,29 +195,9 @@ export function AdminViewLoadingFallback({ view }: { readonly view?: string }) {
     return <div className="size-full bg-[#09090b]" />;
   }
 
-  let title = "Painel";
-  if (view === "admin-dashboard" || view === "admin") title = "Início";
-  else if (view === "admin-crm") title = "Dashboard CRM";
-  else if (view === "admin-financeiro") title = "Financeiro";
-  else if (view === "admin-devolucoes") title = "Devoluções";
-  else if (view === "admin-products") title = "Produtos";
-  else if (view === "admin-orders") title = "Pedidos";
-  // Mesma palavra do botão da barra, não "PDV".
-  else if (view === "admin-pdv") title = "Vender";
-  else if (view === "admin-customers") title = "Clientes";
-  else if (view === "admin-settings") title = "Ajustes";
-  else if (view === "admin-coupons") title = "Cupons";
-  else if (view === "admin-coupon-form") title = "Campanha";
-  else if (view === "admin-banners") title = "Banners";
-  else if (view === "admin-carousels") title = "Vitrines";
-  else if (view === "admin-shipping") title = "Frete";
-  else if (view === "admin-shipping-national") title = "Frete nacional";
-  else if (view === "admin-reviews") title = "Avaliações";
-  else if (view === "admin-qa") title = "Suporte Q&A";
-  else if (view === "admin-push") title = "Avisar clientes";
-  else if (view === "admin-notifications") title = "Notificações";
-  else if (view === "admin-product-form") title = "Produto";
-  else if (view === "admin-user-detail") title = "Detalhes";
+  // Nome único do painel: o mesmo do menu e do título da tela carregada.
+  // Tela desconhecida (ou ainda sem `view`) cai no nome genérico.
+  const title = nomeDaTelaDoPainel(view);
 
   if (isDashboard) {
     return (

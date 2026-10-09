@@ -18,13 +18,16 @@ import { describe, expect, it } from "vitest";
  * comportamento sensível à origem — hoje "admin-push" e
  * "admin-notifications" — devolve a origem em vez da tabela fixa, desde que
  * a origem seja uma tela do admin diferente da própria tela. Sem origem do
- * admin, "admin-push" cai em "admin-settings" e "admin-notifications" em
+ * admin, "admin-push" cai em "admin-customers" e "admin-notifications" em
  * "admin-dashboard" (decisão do Gabriel, 30/08/2026: o botão da tela de
  * notificações dizia "Perfil" e levava ao Perfil). As outras entradas da
- * tabela ("admin-banners", "admin-carousels", "admin-whatsapp-config")
- * continuam batendo sempre em "admin-settings": elas só são alcançadas por
- * Configurações, então mudar isso não resolve bug nenhum e está fora do
- * escopo desta correção.
+ * tabela ("admin-banners", "admin-carousels") continuam batendo sempre em
+ * "admin-settings": elas só são alcançadas por Ajustes.
+ *
+ * Painel simples (09/10/2026): cada tela tem UMA porta, e o Voltar leva à
+ * aba dessa porta. Sem origem, "admin-push" volta para Clientes e
+ * "admin-whatsapp-config" para Ajustes; Perguntas e Avaliações moram em
+ * Clientes; Frete mora em Ajustes.
  */
 describe("paiDaTelaDoAdmin", () => {
   it("admin-push com origem admin-customers volta para admin-customers", () => {
@@ -45,19 +48,19 @@ describe("paiDaTelaDoAdmin", () => {
     );
   });
 
-  it("admin-push com origem null cai no fallback admin-settings", () => {
-    expect(paiDaTelaDoAdmin("admin-push", null, false)).toBe("admin-settings");
+  it("admin-push com origem null cai no fallback admin-customers (a porta é Clientes)", () => {
+    expect(paiDaTelaDoAdmin("admin-push", null, false)).toBe("admin-customers");
   });
 
-  it("admin-push com origem admin-push nunca volta para si mesma — cai em admin-settings", () => {
+  it("admin-push com origem admin-push nunca volta para si mesma — cai em admin-customers", () => {
     expect(paiDaTelaDoAdmin("admin-push", "admin-push", false)).toBe(
-      "admin-settings",
+      "admin-customers",
     );
   });
 
-  it('admin-push com origem de FORA do admin ("home") cai em admin-settings', () => {
+  it('admin-push com origem de FORA do admin ("home") cai em admin-customers', () => {
     expect(paiDaTelaDoAdmin("admin-push", "home", false)).toBe(
-      "admin-settings",
+      "admin-customers",
     );
   });
 
@@ -94,22 +97,22 @@ describe("paiDaTelaDoAdmin", () => {
     ).toBe("admin-settings");
   });
 
-  it("admin-whatsapp-config com origem null cai no fallback admin-dashboard", () => {
+  it("admin-whatsapp-config com origem null cai no fallback admin-settings", () => {
     expect(paiDaTelaDoAdmin("admin-whatsapp-config", null, false)).toBe(
-      "admin-dashboard",
+      "admin-settings",
     );
   });
 
-  it("admin-whatsapp-config com origem de FORA do admin (home) cai em admin-dashboard", () => {
+  it("admin-whatsapp-config com origem de FORA do admin (home) cai em admin-settings", () => {
     expect(paiDaTelaDoAdmin("admin-whatsapp-config", "home", false)).toBe(
-      "admin-dashboard",
+      "admin-settings",
     );
   });
 
-  it("admin-whatsapp-config com origem ela mesma nunca volta para si mesma — cai em admin-dashboard", () => {
+  it("admin-whatsapp-config com origem ela mesma nunca volta para si mesma — cai em admin-settings", () => {
     expect(
       paiDaTelaDoAdmin("admin-whatsapp-config", "admin-whatsapp-config", false),
-    ).toBe("admin-dashboard");
+    ).toBe("admin-settings");
   });
 
   it("a tabela antiga continua de pé para as demais views", () => {
@@ -122,7 +125,7 @@ describe("paiDaTelaDoAdmin", () => {
     expect(paiDaTelaDoAdmin("admin-user-detail", null, false)).toBe(
       "admin-customers",
     );
-    expect(paiDaTelaDoAdmin("admin-qa", null, false)).toBe("admin-orders");
+    expect(paiDaTelaDoAdmin("admin-qa", null, false)).toBe("admin-customers");
     expect(paiDaTelaDoAdmin("home" as never, null, false)).toBe("profile");
   });
 
@@ -152,6 +155,27 @@ describe("paiDaTelaDoAdmin", () => {
     );
     expect(paiDaTelaDoAdmin("admin-devolucoes", "admin-dashboard", false)).toBe(
       "admin-orders",
+    );
+  });
+
+  // Painel simples: Perguntas e Avaliações moram em Clientes; Frete mora em
+  // Ajustes (a porta de Produtos para o Frete saiu).
+  it("admin-qa e admin-reviews voltam para Clientes, com ou sem origem", () => {
+    expect(paiDaTelaDoAdmin("admin-qa", null, false)).toBe("admin-customers");
+    expect(paiDaTelaDoAdmin("admin-reviews", null, false)).toBe(
+      "admin-customers",
+    );
+    expect(paiDaTelaDoAdmin("admin-reviews", "admin-orders", false)).toBe(
+      "admin-customers",
+    );
+  });
+
+  it("admin-shipping volta para Ajustes, com ou sem origem", () => {
+    expect(paiDaTelaDoAdmin("admin-shipping", null, false)).toBe(
+      "admin-settings",
+    );
+    expect(paiDaTelaDoAdmin("admin-shipping", "admin-products", false)).toBe(
+      "admin-settings",
     );
   });
 
