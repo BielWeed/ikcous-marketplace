@@ -41,6 +41,14 @@ export interface RascunhoDoCheckout {
   notas: string;
   /** Código do cupom aplicado — o desconto é revalidado no restore. */
   cupom: string | null;
+  /**
+   * De QUEM era o cupom (id da conta; `null` = convidado). Frente B,
+   * 28/09/2026: com cupom exclusivo, o código de uma conta não pode aparecer
+   * na tela de outra conta que abra o checkout na mesma aba — o restore só
+   * devolve o cupom para a MESMA conta. Opcional: rascunho antigo, sem o
+   * campo, conta como convidado.
+   */
+  contaDoCupom?: string | null;
 }
 
 // 🔴 CPF NUNCA ENTRA AQUI (checkout compacto + CPF, 23/09/2026). Regra da
@@ -67,6 +75,7 @@ export function rascunhoVazio(): RascunhoDoCheckout {
     complemento: "",
     notas: "",
     cupom: null,
+    contaDoCupom: null,
   };
 }
 
@@ -93,6 +102,10 @@ function higienizar(cru: unknown): RascunhoDoCheckout | null {
     complemento: eString(d.complemento),
     notas: eString(d.notas),
     cupom: typeof cupom === "string" && cupom !== "" ? cupom : null,
+    contaDoCupom:
+      typeof d.contaDoCupom === "string" && d.contaDoCupom !== ""
+        ? d.contaDoCupom
+        : null,
   };
 }
 
