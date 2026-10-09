@@ -21,13 +21,21 @@ const onSetBackOverride = vi.fn();
 
 let mockUser: { id: string } | null = null;
 let mockAuthLoading = false;
-let respostaDaValidacao: () => Promise<{
+type RespostaDaValidacao = {
   valid: boolean;
   discount: number;
   message?: string;
-}> = async () => ({ valid: true, discount: 15 });
-const validateCoupon = vi.fn((_codigo: string, _subtotal: number) =>
-  respostaDaValidacao(),
+  networkError?: boolean;
+};
+let respostaDaValidacao: (
+  codigo: string,
+  subtotal: number,
+) => Promise<RespostaDaValidacao> = async () => ({
+  valid: true,
+  discount: 15,
+});
+const validateCoupon = vi.fn((codigo: string, subtotal: number) =>
+  respostaDaValidacao(codigo, subtotal),
 );
 
 vi.mock("@/contexts/StoreContext", () => ({
@@ -330,10 +338,12 @@ const rascunhoGravado = () =>
 /** Redesenha o MESMO componente (a conta/autenticação dos dublês já mudou). */
 async function redesenhar(
   CheckoutView: Awaited<ReturnType<typeof renderizar>>,
+  props: Props = {},
 ) {
   await act(async () => {
     raiz.render(
       <CheckoutView
+        {...props}
         onNavigate={onNavigate}
         onSetBackOverride={onSetBackOverride}
       />,
@@ -502,4 +512,158 @@ describe("CheckoutView — o cupom nunca passa de uma conta para outra (tarefa 1
       expect(validateCoupon).not.toHaveBeenCalled();
     });
   }
+});
+
+describe("CheckoutView — o desconto vale para o subtotal de agora, sem validar à toa (tarefa 20)", () => {
+  /** 10% do subtotal: o desconto muda quando o carrinho muda. */
+  const dezPorCento = async (_codigo: string, subtotal: number) => ({
+    valid: true,
+    discount: subtotal / 10,
+  });
+
+  it("um toque em 'Aplicar' valida UMA vez e mostra a economia", async () => {
+    await renderizar();
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+    expect(validateCoupon).toHaveBeenCalledWith("VIP15", 100);
+  });
+
+  it("subtotal que vai e volta (100 → 150 → 100) revalida e volta ao desconto de 100", async () => {
+    // O atalho do par já conferido guardava só o par do toque: na volta para
+    // 100 a tela ficava com o desconto de 150.
+    respostaDaValidacao = dezPorCento;
+    const CheckoutView = await renderizar({ subtotal: 100 });
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a010,00");
+    await redesenhar(CheckoutView, { subtotal: 150 });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
+    await redesenhar(CheckoutView, { subtotal: 100 });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a010,00");
+    expect(validateCoupon).toHaveBeenLastCalledWith("VIP15", 100);
+  });
+
+  it("o subtotal muda enquanto a validação do toque está em voo: vale o desconto do subtotal de agora", async () => {
+    let soltar: (v: RespostaDaValidacao) => void = () => {};
+    respostaDaValidacao = (codigo, subtotal) =>
+      subtotal === 100
+        ? new Promise((r) => {
+            soltar = r;
+          })
+        : dezPorCento(codigo, subtotal);
+    const CheckoutView = await renderizar({ subtotal: 100 });
+    await aplicarPeloCampo("VIP15");
+    await redesenhar(CheckoutView, { subtotal: 150 });
+    await act(async () => {
+      soltar({ valid: true, discount: 10 });
+    });
+    await esvaziarFila();
+    // A resposta de 100 chegou, mas a tela está em 150: confere de novo.
+    expect(validateCoupon).toHaveBeenLastCalledWith("VIP15", 150);
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
+    expect(hospedeiro.textContent).not.toContain(
+      "Você economiza R$\u00a010,00",
+    );
+  });
+
+  it("subtotal que passa a não bater o mínimo tira o cupom e mostra o motivo", async () => {
+    respostaDaValidacao = async (_codigo, subtotal) =>
+      subtotal >= 100
+        ? { valid: true, discount: 15 }
+        : { valid: false, discount: 0, message: "Compra mínima de R$ 100,00." };
+    const CheckoutView = await renderizar({ subtotal: 100 });
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    await redesenhar(CheckoutView, { subtotal: 60 });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+    expect(hospedeiro.textContent).toContain("Compra mínima de R$ 100,00.");
+  });
+
+  it("falha de rede na revalidação mantém o cupom como está", async () => {
+    const CheckoutView = await renderizar({ subtotal: 100 });
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    respostaDaValidacao = async () => ({
+      valid: false,
+      discount: 0,
+      networkError: true,
+    });
+    await redesenhar(CheckoutView, { subtotal: 150 });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
+  });
+
+  it("remover e aplicar de novo o mesmo cupom valida uma vez a cada toque", async () => {
+    await renderizar();
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      (
+        hospedeiro.querySelector(
+          'button[aria-label="Remover cupom"]',
+        ) as HTMLButtonElement
+      ).click();
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(validateCoupon).toHaveBeenCalledTimes(2);
+  });
+
+  it("cupom restaurado do rascunho é conferido uma vez só", async () => {
+    mockUser = { id: "conta-ana" };
+    semearRascunhoComCupom("VIP15", "conta-ana");
+    await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+  });
+
+  it("convidado aplica, entra na conta: o cupom fica e é revalidado para a conta nova", async () => {
+    // O funil manda o convidado entrar na conta no meio do checkout — o cupom
+    // dele volta a ser conferido, agora para quem entrou.
+    mockUser = null;
+    const CheckoutView = await renderizar();
+    await aplicarPeloCampo("GERAL10");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("GERAL10 aplicado");
+    validateCoupon.mockClear();
+
+    mockUser = { id: "conta-ana" };
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+    expect(validateCoupon).toHaveBeenCalledWith("GERAL10", 100);
+    expect(hospedeiro.textContent).toContain("GERAL10 aplicado");
+  });
+
+  it("convidado entra na conta e o cupom não vale para ela: sai com o motivo", async () => {
+    mockUser = null;
+    const CheckoutView = await renderizar();
+    await aplicarPeloCampo("GERAL10");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("GERAL10 aplicado");
+
+    respostaDaValidacao = async () => ({
+      valid: false,
+      discount: 0,
+      message: "Cupom inválido ou expirado.",
+    });
+    mockUser = { id: "conta-ana" };
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("GERAL10 aplicado");
+    expect(hospedeiro.textContent).toContain("Cupom inválido ou expirado.");
+  });
 });

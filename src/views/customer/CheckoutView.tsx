@@ -1074,6 +1074,7 @@ export function CheckoutView({
     contaAnteriorRef.current = agora;
     if (antes === undefined || antes === null || antes === agora) return;
     cupomPendenteDoRascunhoRef.current = null;
+    cupomConferidoRef.current = null;
     setAppliedCoupon(null);
     setCouponError("");
     // O código da conta que saiu não fica esperando no armazenamento da aba.
@@ -1902,6 +1903,15 @@ export function CheckoutView({
   // só desenha.
   const [aplicandoCupom, setAplicandoCupom] = useState<string | null>(null);
   const aplicacaoDoCupomEmVooRef = useRef<object | null>(null);
+  // O par (código, subtotal, conta) que o toque em "Aplicar" — ou a última
+  // revalidação — ACABOU de conferir: o efeito de revalidação não repete a
+  // mesma consulta (antes cada toque validava duas vezes). Qualquer mudança
+  // no trio, ou tirar o cupom, volta a conferir.
+  const cupomConferidoRef = useRef<{
+    code: string;
+    subtotal: number;
+    conta: string | null;
+  } | null>(null);
   // A conta de AGORA (id; null = convidado ou autenticação ainda sem usuário),
   // espelhada em ref para a resposta que chega tarde saber se a conta mudou.
   const contaDoCheckout = user?.id ?? null;
@@ -2100,22 +2110,40 @@ export function CheckoutView({
   const codigoDoCupom = appliedCoupon?.code ?? null;
   useEffect(() => {
     if (!codigoDoCupom) return;
-    let vivo = true;
     // A conta que PEDIU esta conferência: resposta que chega com outra conta
     // na tela é descartada, e o dono carimbado é quem de fato validou.
     const contaQueConferiu = contaRef.current;
+    const conferido = cupomConferidoRef.current;
+    if (
+      conferido &&
+      conferido.code === codigoDoCupom &&
+      conferido.subtotal === subtotal &&
+      conferido.conta === contaQueConferiu
+    ) {
+      return;
+    }
+    let vivo = true;
     (async () => {
       try {
         const resultado = await validateCoupon(codigoDoCupom, subtotal);
         if (!vivo || contaRef.current !== contaQueConferiu) return;
         if (resultado.networkError) return;
         if (resultado.valid) {
+          // O par que ACABOU de ser validado vira a referência: subtotal que
+          // vai e volta (100 → 150 → 100) revalida de novo em vez de manter o
+          // desconto de 150.
+          cupomConferidoRef.current = {
+            code: codigoDoCupom,
+            subtotal,
+            conta: contaQueConferiu,
+          };
           setAppliedCoupon({
             code: codigoDoCupom,
             discount: resultado.discount,
             conta: contaQueConferiu,
           });
         } else {
+          cupomConferidoRef.current = null;
           setAppliedCoupon(null);
           setCouponError(resultado.message || "Cupom inválido");
         }
@@ -2126,7 +2154,9 @@ export function CheckoutView({
     return () => {
       vivo = false;
     };
-  }, [codigoDoCupom, subtotal, validateCoupon, isOffline]);
+  }, [codigoDoCupom, subtotal, validateCoupon, isOffline, contaDoCheckout]);
+  // `contaDoCheckout` nos deps: convidado que entra na conta com o cupom na
+  // tela revalida para a conta nova.
   // `isOffline` nos deps é a pílula da re-revisão do PR #374 (ressalva 2):
   // em falha de REDE a revalidação mantém o cupom com desconto 0 e não
   // havia retry — com a conexão de volta o efeito roda de novo e o desconto
@@ -3037,6 +3067,7 @@ export function CheckoutView({
     : null;
 
   const handleRemoveCoupon = () => {
+    cupomConferidoRef.current = null;
     setAppliedCoupon(null);
     setCouponError("");
   };
@@ -3096,6 +3127,7 @@ export function CheckoutView({
       if (contaRef.current !== contaQuePediu) return;
 
       if (result.valid) {
+        cupomConferidoRef.current = { code, subtotal, conta: contaQuePediu };
         setAppliedCoupon({
           code,
           discount: result.discount,
