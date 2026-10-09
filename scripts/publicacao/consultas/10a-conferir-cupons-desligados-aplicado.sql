@@ -42,6 +42,13 @@
 --                     EXECUTE para authenticated (o checkout chama). A ACL de anon
 --                     NAO e' conferida: a migration nao a toca e o baseline deixa
 --                     anon como estiver.
+--                     SUCESSORA ACEITA: a 20261208000000 (o checkout mostra os cupons da
+--                     cliente) redefine a validacao PARTINDO do corpo da 20261203000000
+--                     (acrescenta so o bloco do exclusivo, o corte `<=` e a frase do
+--                     minimo) e o pre-voo dela exige este corpo. Por isso o corpo da 208
+--                     (LF ou CRLF) tambem satisfaz esta linha: a loja que ja a aplicou
+--                     continua com a 203 de pe, e a 10a nao vira NEGATIVA por causa dela.
+--                     A linha mostra o `esperado` da 203; o conferir-banco.cjs nao muda.
 --   * indice       -- `marketplace_orders_chave_da_compra_unica` existe e e' UNICO,
 --                     valido, sobre (idempotency_key) apenas e parcial
 --                     `WHERE idempotency_key IS NOT NULL`: o curto-circuito do
@@ -51,8 +58,9 @@
 --
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'), a mesma conta do
 -- pre-voo e do pos-voo da migration. Cada hash final aparece abaixo uma vez em LF e
--- uma em CRLF; tests/ci_conferir_banco_test.ts recalcula os quatro a partir do
--- arquivo da migration desta arvore, e tests/banco/cupons-desligados-portao-viva.cjs
+-- uma em CRLF; tests/ci_conferir_banco_test.ts recalcula os quatro (e os dois da
+-- 20261208000000, a validacao sucessora) a partir dos arquivos de migration desta
+-- arvore, e tests/banco/cupons-desligados-portao-viva.cjs
 -- roda esta consulta num Postgres real (positivo depois do apply, e um negativo por
 -- item, cada um reprovando na linha certa).
 --
@@ -179,7 +187,9 @@ WITH tab AS (
   SELECT 'validate_coupon_secure_v2: corpo (sha256)',
          '489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3',
          COALESCE((SELECT CASE WHEN v.h IN ('489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3',
-                                            '4b096e67be79665d70e86ff5e94953ecf5842cd64abca882abac0f6cbe328279')
+                                            '4b096e67be79665d70e86ff5e94953ecf5842cd64abca882abac0f6cbe328279',
+                                            'c33e930ca389b3568bd256f9363ace8fd3935f0ac73851441e0684a374b11037',
+                                            'fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a')
                                THEN '489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3'
                                ELSE v.h END
                      FROM va v), 'AUSENTE')

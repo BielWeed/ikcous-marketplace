@@ -274,6 +274,14 @@ const POSTERIORES_A_97 = [
     nome: "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql",
     noAr: `SELECT to_regprocedure('public.anular_venda_presencial(uuid,text)') IS NOT NULL AS sim`,
   },
+  // 20261208000000: o checkout mostra os cupons da cliente. As funcoes do painel
+  // (admin_cupom_clientes, admin_cupom_definir_clientes) e a politica de cupom_clientes
+  // usam is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
+    noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {
@@ -1539,7 +1547,9 @@ PROVAS.push({
     //     fora da recomendada (98, 99, 200, 202) também passa.
     await cliente.query("BEGIN");
     try {
-      for (const i of [4, 3, 2, 1, 0]) {
+      // Do FIM da lista para o começo (a 208, a 204, a 98, a 99, a 200, a 202): quem
+      // entra no fim de POSTERIORES_A_97 entra aqui sozinho.
+      for (let i = POSTERIORES_A_97.length - 1; i >= 0; i -= 1) {
         if (await noAr(i)) await desfazer(i);
       }
       await cliente.query(rollback);

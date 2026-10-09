@@ -1,5 +1,6 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
+import { QuemPodeUsarOCupom } from "@/components/admin/coupons/QuemPodeUsarOCupom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,13 +8,13 @@ import { Switch } from "@/components/ui/switch";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { cn, formatCurrency } from "@/lib/utils";
-import type { Coupon, View } from "@/types";
+import type { ClienteDoCupom, Coupon, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import {
   dataEscolhidaParaValidade,
   validadeParaDataDoInput,
 } from "@/utils/validade-do-cupom";
-import { AlertTriangle, Calendar, Ticket } from "lucide-react";
+import { AlertTriangle, Calendar, Shuffle, Ticket } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,12 +24,26 @@ interface AdminCouponFormViewProps {
   onSetDirty?: (dirty: boolean) => void;
 }
 
+/** O banco recusou por falta de permissão (42501): administradora rebaixada. */
+function semPermissaoDeAdmin(erro: unknown): boolean {
+  return (erro as { code?: string } | null)?.code === "42501";
+}
+
 export const AdminCouponFormView = memo(function AdminCouponFormView({
   couponId,
   onNavigate,
   onSetDirty,
 }: AdminCouponFormViewProps) {
-  const { coupons, loading, addCoupon, updateCoupon } = useCoupons(true);
+  const {
+    coupons,
+    loading,
+    addCoupon,
+    updateCoupon,
+    alcanceSuportado,
+    listarClientesDoCupom,
+    definirClientesDoCupom,
+    buscarClientesParaCupom,
+  } = useCoupons(true, true);
   const isOffline = useOnlineStatus();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,6 +54,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     active: true,
     usageLimit: 0,
     minPurchase: 0,
+    alcance: "codigo",
   });
 
   const [initialData, setInitialData] = useState<Partial<Coupon>>({
@@ -48,6 +64,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     active: true,
     usageLimit: 0,
     minPurchase: 0,
+    alcance: "codigo",
   });
 
   // Laudo 0109 (A4): a decisão editar×criar MORAVA na lista carregada
@@ -56,6 +73,19 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
   // "destravar" nascia um SEGUNDO cupom com o antigo vivo. O couponId
   // existe na rota e é ELE quem decide.
   const isEditing = Boolean(couponId);
+
+  // Frente B (28/09/2026): as contas de um cupom exclusivo. Carregadas do
+  // servidor ao editar; gravadas DEPOIS do cupom (falha fechada: exclusivo
+  // sem lista vale para ninguém).
+  const [clientes, setClientes] = useState<ClienteDoCupom[]>([]);
+  const [clientesIniciais, setClientesIniciais] = useState<string[]>([]);
+  // Estado EXPLÍCITO da lista gravada (revisão, B2): enquanto ela não
+  // carregou, `[]` NÃO é "ninguém" — editar e salvar ficam travados, senão o
+  // salvar trocaria a lista real por uma vazia/parcial sem aviso.
+  const [listaDoExclusivo, setListaDoExclusivo] = useState<
+    "nao_se_aplica" | "carregando" | "ok" | "falhou"
+  >("nao_se_aplica");
+  const [tentativaDaLista, setTentativaDaLista] = useState(0);
   const editingCoupon = couponId
     ? coupons.find((c) => c.id === couponId)
     : null;
@@ -80,6 +110,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       usageLimit: editing.usageLimit || 0,
       validUntil: editing.validUntil,
       active: editing.active,
+      alcance: editing.alcance ?? "codigo",
     };
     const mesclado = {
       code: formData.code !== "" ? formData.code : carregado.code,
@@ -98,6 +129,8 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
           ? formData.validUntil
           : carregado.validUntil,
       active: formData.active !== true ? formData.active : carregado.active,
+      alcance:
+        formData.alcance !== "codigo" ? formData.alcance : carregado.alcance,
     };
     setFormData(mesclado);
     // `initialData` recebe o MESCLADO: "sujo" tem que significar mudança do
@@ -107,6 +140,64 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
     // `formData` entra de propósito: a mesclagem precisa do que o lojista
     // já digitou nesta tela antes da carga chegar.
   }, [couponId, coupons, formData]);
+
+  // Lista do exclusivo: depende só de VALORES (id e alcance gravado) — um
+  // array novo de `coupons` (o fetch do hook chegando) não cancela a carga.
+  const alcanceGravado = editingCoupon?.alcance;
+  useEffect(() => {
+    if (!couponId || !alcanceSuportado || alcanceGravado !== "exclusivo") {
+      // O alcance deixou de ser exclusivo (inclusive o otimista revertido de
+      // um salvar que falhou) ou o banco desta loja nem tem o "quem pode
+      // usar": a lista não se aplica e nada fica travado (revisão, 2ª
+      // rodada, R2-b).
+      setListaDoExclusivo("nao_se_aplica");
+      return;
+    }
+    let vivo = true;
+    setListaDoExclusivo("carregando");
+    listarClientesDoCupom(couponId)
+      .then((lista) => {
+        if (!vivo) return;
+        setClientes(lista);
+        setClientesIniciais(lista.map((c) => c.id).sort());
+        setListaDoExclusivo("ok");
+      })
+      .catch((erro) => {
+        if (!vivo) return;
+        setListaDoExclusivo("falhou");
+        // Administradora rebaixada: o banco recusa a lista (42501). Dizer o
+        // motivo real — "tente de novo" não resolveria.
+        toast.error(
+          semPermissaoDeAdmin(erro)
+            ? "Sua conta não tem mais permissão de administrador para ver os clientes deste cupom."
+            : "Não foi possível carregar os clientes deste cupom.",
+        );
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [
+    couponId,
+    alcanceGravado,
+    alcanceSuportado,
+    listarClientesDoCupom,
+    tentativaDaLista,
+  ]);
+  const listaTravada =
+    listaDoExclusivo === "carregando" || listaDoExclusivo === "falhou";
+
+  const idsDosClientes = clientes.map((c) => c.id).sort();
+  const clientesMudaram =
+    idsDosClientes.join(",") !== clientesIniciais.join(",");
+
+  // Código difícil de adivinhar para cupom exclusivo/secreto (sem 0/O/1/I).
+  function gerarCodigo(): void {
+    const letras = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const bytes = new Uint32Array(8);
+    crypto.getRandomValues(bytes);
+    const codigo = Array.from(bytes, (b) => letras[b % letras.length]).join("");
+    setFormData((prev) => ({ ...prev, code: codigo }));
+  }
 
   // Track form dirty state to prevent accidental discards
   useEffect(() => {
@@ -118,10 +209,12 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       formData.active !== initialData.active ||
       Number(formData.usageLimit) !== Number(initialData.usageLimit) ||
       Number(formData.minPurchase) !== Number(initialData.minPurchase) ||
-      formData.validUntil !== initialData.validUntil;
+      formData.validUntil !== initialData.validUntil ||
+      formData.alcance !== initialData.alcance ||
+      clientesMudaram;
 
     onSetDirty(isDirty);
-  }, [formData, initialData, onSetDirty]);
+  }, [formData, initialData, onSetDirty, clientesMudaram]);
 
   const handleSubmit = async () => {
     if (isOffline) {
@@ -165,12 +258,35 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
       return;
     }
 
-    const dataToSubmit = {
-      ...formData,
+    const alcance = formData.alcance ?? "codigo";
+    if (listaTravada) {
+      toast.error(
+        listaDoExclusivo === "carregando"
+          ? "Aguarde: a lista de clientes deste cupom ainda está carregando."
+          : "A lista de clientes deste cupom não carregou. Tente carregar de novo antes de salvar.",
+      );
+      return;
+    }
+    if (alcanceSuportado && alcance === "exclusivo" && clientes.length === 0) {
+      toast.error("Escolha pelo menos um cliente para o cupom exclusivo.");
+      return;
+    }
+
+    const { alcance: _alcance, ...semAlcance } = formData;
+    // O alcance só vai quando MUDOU (ou é cupom novo que não é secreto) —
+    // salvar continua funcionando com o banco de antes da migration
+    // 20261208000000 para quem não mexe nele. Banco sem a coluna: o bloco
+    // nem aparece, nada de alcance e nada de lista.
+    const alcanceMudou =
+      alcanceSuportado && alcance !== (initialData.alcance ?? "codigo");
+    const dataToSubmit: Partial<Coupon> = {
+      ...semAlcance,
       code: cleanCode,
+      ...(alcanceMudou ? { alcance } : {}),
     };
 
     setIsSubmitting(true);
+    let idSalvo: string | null = null;
     try {
       if (couponId) {
         // Laudo 0109 (A4): cupom da rota que o fetch não trouxe (falha de
@@ -186,11 +302,44 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
           return;
         }
         await updateCoupon(editingCoupon.id, dataToSubmit);
+        idSalvo = editingCoupon.id;
       } else {
-        await addCoupon(
+        const criado = await addCoupon(
           dataToSubmit as Required<Omit<Coupon, "id" | "usageCount">>,
         );
+        idSalvo = criado?.id ?? null;
       }
+
+      // 2º passo (frente B): a lista do exclusivo. Falha aqui NUNCA abre o
+      // cupom — exclusivo sem lista vale para ninguém — mas a tela avisa.
+      if (
+        idSalvo &&
+        alcanceSuportado &&
+        alcance === "exclusivo" &&
+        (clientesMudaram || alcanceMudou || !couponId)
+      ) {
+        try {
+          await definirClientesDoCupom(idSalvo, idsDosClientes);
+        } catch (erro) {
+          console.error("Erro ao gravar os clientes do cupom:", erro);
+          toast.error("O cupom foi salvo, mas a lista de clientes não.", {
+            description: semPermissaoDeAdmin(erro)
+              ? "Ninguém consegue usar este cupom até a lista ser salva. Sua conta não tem mais permissão de administrador: entre de novo e abra o cupom para salvar a lista."
+              : "Ninguém consegue usar este cupom até a lista ser salva. Abra o cupom e salve de novo.",
+            duration: 10000,
+          });
+        }
+      } else if (
+        idSalvo &&
+        alcanceMudou &&
+        initialData.alcance === "exclusivo" &&
+        clientesIniciais.length > 0
+      ) {
+        // Deixou de ser exclusivo: a lista antiga some (não volta sozinha se
+        // um dia ele virar exclusivo de novo). Sem efeito no desconto.
+        await definirClientesDoCupom(idSalvo, []).catch(() => {});
+      }
+
       if (onSetDirty) onSetDirty(false); // Reset dirty state before navigating
       onNavigate("admin-coupons");
     } catch (error) {
@@ -319,12 +468,23 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
             {/* Promo Code & Status switch */}
             <div className="flex gap-3">
               <div className="flex-1 space-y-1.5">
-                <Label
-                  htmlFor="coupon-code"
-                  className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
-                >
-                  Código do Cupom
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label
+                    htmlFor="coupon-code"
+                    className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                  >
+                    Código do Cupom
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={gerarCodigo}
+                    disabled={isOffline || isSubmitting}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:bg-white/5 disabled:opacity-50"
+                  >
+                    <Shuffle aria-hidden="true" className="size-3" />
+                    Gerar
+                  </button>
+                </div>
                 <LocalBufferedInput
                   id="coupon-code"
                   name="code"
@@ -497,6 +657,28 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                 />
               </div>
             </div>
+
+            {/* Quem pode usar (frente B). Banco sem a coluna: escondido. */}
+            {alcanceSuportado && (
+              <div className="sm:col-span-2">
+                <QuemPodeUsarOCupom
+                  alcance={formData.alcance ?? "codigo"}
+                  onAlcance={(alcance) =>
+                    setFormData((prev) => ({ ...prev, alcance }))
+                  }
+                  clientes={clientes}
+                  onClientes={setClientes}
+                  carregandoClientes={listaDoExclusivo === "carregando"}
+                  falhaAoCarregar={listaDoExclusivo === "falhou"}
+                  onCarregarDeNovo={() => setTentativaDaLista((n) => n + 1)}
+                  buscarClientes={buscarClientesParaCupom}
+                  semLimiteNemValidade={
+                    !formData.validUntil && !Number(formData.usageLimit)
+                  }
+                  desabilitado={isOffline || isSubmitting}
+                />
+              </div>
+            )}
 
             {/* Validity date */}
             <div className="space-y-1.5">

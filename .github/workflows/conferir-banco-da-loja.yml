@@ -33,7 +33,7 @@
 # cliente explícita, 06/10/2026; ref fixo gnjsrucsmjkajijrakzr) usa o de NOME
 # `SUPABASE_ACCESS_TOKEN_SAVY` — o mesmo que publicar-functions.yml já usa para
 # a Savy. Nunca o legado, e sem fallback entre eles: cada alvo enxerga SÓ o seu
-# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a e 14b rodam por aqui contra
+# segredo. Nenhuma credencial nova. As consultas 8a..8k, 9a, 10a, 10b, 11a, 11b, 12a, 12b, 13a, 14a, 14b, 15a e 15b rodam por aqui contra
 # qualquer um dos quatro alvos; o job `ledger` continua só para as faixas 72..83
 # e NUNCA roda para `ikcous-publicada` nem para `savy`, EXCETO a faixa 92-202 (backfill
 # do registro das migrations 92..202 sem a 201, só com a pré-checagem da 8e).
@@ -116,6 +116,8 @@ on:
           - 13a-contador-duplicado-do-cupom-so-leitura
           - 14a-conferir-contador-duplicado-apagado
           - 14b-antes-contador-duplicado-coluna-presente-e-zerada
+          - 15a-conferir-cupons-do-checkout-aplicado
+          - 15b-antes-cupons-do-checkout-pecas-ausentes
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:

@@ -21,7 +21,8 @@
  * portão, com `rol=ok`; "reprova" quer dizer NEGATIVA (nunca POSITIVA).
  *
  * BASES (montadas aqui, pelos mesmos scripts do rpc-ci.yml):
- *   cheio     a árvore inteira de migrations (com a 20261203000000);
+ *   cheio     a árvore de migrations ATÉ a 20261203000000 (sem a 20261208000000);
+ *   cheio08   a árvore inteira (com a 20261208000000, que reescreve a validate);
  *   pre       a árvore SEM a 20261203000000 (o estado de uma loja antes do apply);
  *   aplicado  `pre` + o ARQUIVO da migration aplicado de verdade (LF);
  *   crlf      `pre` + o arquivo da migration com fim de linha CRLF (checkout Windows);
@@ -101,6 +102,10 @@ const A = "10a-conferir-cupons-desligados-aplicado";
 const B = "10b-antes-cupons-desligados-gatilho-e-corpo";
 const VERSAO = "20261203000000";
 const ARQUIVO = "20261203000000_cupons_desligados_nao_dao_desconto.sql";
+// A 20261208000000 reescreve a validate_coupon_secure_v2 (cupons por alcance). Esta
+// prova e sobre a 20261203: `cheio` e `pre` ficam SEM a 08 (a 08 recusa um corpo vivo
+// que nao seja o da 203; sem a 203 ela nem aplica). A 08 tem bases proprias abaixo.
+const ARQ08 = "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SHA40 = "d".repeat(40);
 const SQL = {
@@ -121,6 +126,8 @@ const HASH = {
   vBaseCRLF: "b325866f6648a0f97d13d894c823a89e1ff2a6682d49db3d25816cef358eaddc",
   gLF: "35cd7a320dd1fe3673a4f0a0e3cd43dfb5bd608ff5f1636e5f94e5709b4a86e2",
   gCRLF: "9060af97c05c2e80e0354f8ae8244ca3716d3ab225b2f3dbf3198d4cffe959fe",
+  v08LF: "c33e930ca389b3568bd256f9363ace8fd3935f0ac73851441e0684a374b11037",
+  v08CRLF: "fdfacc20cc3bc2a691ad8961c525e5cb77071b7d5e9e590a7470e45690a2df3a",
 };
 const HASH_DE = (sig) =>
   `(SELECT encode(sha256(convert_to(prosrc, 'UTF8')), 'hex') FROM pg_proc WHERE oid = to_regprocedure('${sig}'))`;
@@ -242,13 +249,13 @@ async function montarBase(nome, filtro) {
   }
 }
 /** Aplica, num banco já existente, SÓ o arquivo da migration (com o fim de linha pedido). */
-function aplicarMigration(db, { crlf = false } = {}) {
+function aplicarMigration(db, { crlf = false, arquivo = ARQUIVO } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pv-ap-"));
   try {
-    let texto = fs.readFileSync(path.join(MIGRATIONS, ARQUIVO), "utf8");
+    let texto = fs.readFileSync(path.join(MIGRATIONS, arquivo), "utf8");
     texto = texto.replace(/\r\n/g, "\n");
     if (crlf) texto = texto.replace(/\n/g, "\r\n");
-    fs.writeFileSync(path.join(dir, ARQUIVO), texto);
+    fs.writeFileSync(path.join(dir, arquivo), texto);
     rodarScriptNode([path.join(__dirname, "aplicar-migrations.cjs"), dir], {
       ...process.env,
       DATABASE_URL: urlDe(db),
@@ -636,9 +643,13 @@ async function main() {
   }
 
   // ----------------------------------------------------------- as bases
-  const cheio = await clonar("cheio");
+  // `cheio` = a arvore inteira ATE a 203 (sem a 08); `cheio08` = a arvore inteira.
+  const t203 = `pv_${SUF}_t203`.slice(0, 60);
+  await montarBase(t203, (f) => f !== ARQ08);
+  const cheio = await clonar("cheio", t203);
+  const cheio08 = await clonar("cheio08");
   const pre = `pv_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQUIVO);
+  await montarBase(pre, (f) => f !== ARQUIVO && f !== ARQ08);
   {
     const sonda = await usar(pre, async (c) => ({
       gatilho: (
@@ -667,7 +678,7 @@ async function main() {
     `${HASH_DE(SIG_V)} = '${HASH.vBaseCRLF}'`,
   );
   ok(
-    "bases montadas: cheio (árvore inteira), pre (sem a 20261203000000: sem gatilho, sem a função, corpo do baseline), aplicado (pre + o ARQUIVO aplicado, LF), crlf (idem, arquivo em CRLF) e pre com o baseline da validate em CRLF",
+    "bases montadas: cheio (árvore até a 20261203000000), cheio08 (árvore inteira, com a 20261208000000), pre (sem a 20261203000000 e sem a 20261208000000: sem gatilho, sem a função, corpo do baseline), aplicado (pre + o ARQUIVO aplicado, LF), crlf (idem, arquivo em CRLF) e pre com o baseline da validate em CRLF",
   );
 
   // ----------------------------------------------------------- POSITIVOS
@@ -698,6 +709,36 @@ async function main() {
     });
     ok(
       "10a POSITIVA (21 linhas, rol=ok, portão POSITIVA) na árvore inteira, no ARQUIVO aplicado sobre a base pré (resposta IDÊNTICA linha a linha) e no arquivo aplicado em CRLF (os dois corpos gravados em CRLF, hashes CRLF aceitos)",
+    );
+  }
+  {
+    // A 20261208000000 reescreve a validate: a 10a TEM de aceitar o corpo novo (LF e
+    // CRLF) sem afrouxar nada (os negativos abaixo seguem sobre a base da 203).
+    const rows08 = await rodar(cheio08, A);
+    await exigirPositiva(A, "10a em cheio08", rows08);
+    assert.equal(linha(rows08, L.vHash).vivo, HASH.vNovoLF);
+    assert.equal(
+      await usar(
+        cheio08,
+        async (c) => (await c.query(`SELECT ${HASH_DE(SIG_V)} AS h`)).rows[0].h,
+      ),
+      HASH.v08LF,
+      "guarda: o corpo vivo da validate na árvore inteira é o da 08 (LF)",
+    );
+    const crlf08 = await clonar("crlf08", cheio);
+    aplicarMigration(crlf08, { crlf: true, arquivo: ARQ08 });
+    const rowsCrlf08 = await rodar(crlf08, A);
+    await exigirPositiva(A, "10a em crlf08", rowsCrlf08);
+    assert.equal(
+      await usar(
+        crlf08,
+        async (c) => (await c.query(`SELECT ${HASH_DE(SIG_V)} AS h`)).rows[0].h,
+      ),
+      HASH.v08CRLF,
+      "guarda: o corpo da validate ficou em CRLF depois da 08",
+    );
+    ok(
+      "10a POSITIVA também com a 20261208000000 aplicada (árvore inteira, corpo LF; e a 08 aplicada em CRLF sobre a base da 203, corpo CRLF): os dois hashes novos são aceitos",
     );
   }
   {

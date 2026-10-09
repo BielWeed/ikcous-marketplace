@@ -68,6 +68,15 @@ const SQL_ROLLBACK = fs.readFileSync(
   path.join(PASTA, `rollback-manual-${NOME}`),
   "utf8",
 );
+// A 20261208000000 reescreve a validate por cima da 203. As provas (a) a (d) rodam
+// com ela no ar (a 203 segue valendo por baixo); as do rollback e da reaplicacao da
+// 203 (e em diante) precisam do estado da 203, entao a 08 e desfeita ANTES, pelo
+// rollback dela (que devolve o corpo da 203 byte a byte; provado na viva dela).
+const NOME_08 = "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql";
+const SQL_ROLLBACK_08 = fs.readFileSync(
+  path.join(PASTA, `rollback-manual-${NOME_08}`),
+  "utf8",
+);
 const BASELINE = fs.readFileSync(
   path.join(PASTA, "20260806000000_baseline_do_schema_vivo.sql"),
   "utf8",
@@ -525,6 +534,29 @@ PROVAS.push({
   nome: "(d) idempotência: o retry de um pedido com cupom criado ANTES de desligar devolve o mesmo pedido; recusa não consome a chave",
   corpo: async (c) => {
     await numaTransacao(c, () => casoIdempotencia(c));
+  },
+});
+
+PROVAS.push({
+  nome: "(d2) a 20261208000000, se estiver no ar, é desfeita pelo rollback dela e a validação volta ao corpo da 203 (base das provas seguintes)",
+  corpo: async (c) => {
+    const noAr = async () =>
+      (
+        await c.query(
+          "SELECT to_regprocedure('public.cupons_do_checkout(numeric)') IS NOT NULL AS e",
+        )
+      ).rows[0].e;
+    if (await noAr()) {
+      await c.query(SQL_ROLLBACK_08);
+      assert.equal(await noAr(), false, "o rollback da 08 tirou a função nova");
+    }
+    assert.ok(
+      [
+        "489c0cd19b3529ef2d9cf341096ee9b0048e5787ff0a2d0a918df4db580e82f3",
+        "4b096e67be79665d70e86ff5e94953ecf5842cd64abca882abac0f6cbe328279",
+      ].includes(sha256(await prosrcDe(c, OID_VALIDATE))),
+      "a validação voltou ao corpo da 20261203 (LF ou CRLF)",
+    );
   },
 });
 
