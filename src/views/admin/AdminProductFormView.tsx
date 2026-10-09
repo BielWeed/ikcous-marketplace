@@ -291,6 +291,8 @@ interface ProductFormFields {
   costPrice: string;
   originalPrice: string;
   stock: string;
+  /** Texto do campo "Avisar quando o estoque chegar a". Vazio = padrão (5). */
+  estoqueMinimo: string;
   category: string;
   images: string[];
   freeShipping: boolean;
@@ -307,6 +309,33 @@ interface ProductFormFields {
   lengthCm: string;
 }
 
+// 2147483647 é o maior número que a coluna (inteiro de 32 bits) guarda.
+const ESTOQUE_MINIMO_MAXIMO = 2147483647;
+const MENSAGEM_ESTOQUE_MINIMO_INVALIDO = `Use um número inteiro de 0 a ${ESTOQUE_MINIMO_MAXIMO}.`;
+
+/**
+ * Lê o campo "Avisar quando o estoque chegar a". Vazio vira `null` (volta ao
+ * padrão do projeto, 5); só dígitos viram o número, zero incluído (zero é
+ * escolha da lojista). Qualquer outra coisa — negativo, decimal, texto ou
+ * acima do que a coluna guarda — vira erro do campo, nunca NaN nem estouro
+ * indo para o banco.
+ */
+function lerEstoqueMinimo(texto: string): {
+  valor: number | null;
+  erro: string;
+} {
+  const limpo = texto.trim();
+  if (limpo === "") return { valor: null, erro: "" };
+  if (!/^\d+$/.test(limpo)) {
+    return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_INVALIDO };
+  }
+  const numero = Math.max(0, Math.trunc(Number(limpo)));
+  if (!Number.isSafeInteger(numero) || numero > ESTOQUE_MINIMO_MAXIMO) {
+    return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_INVALIDO };
+  }
+  return { valor: numero, erro: "" };
+}
+
 function isProductFormDirty(
   a: ProductFormFields,
   b: ProductFormFields,
@@ -317,6 +346,7 @@ function isProductFormDirty(
   if (a.costPrice !== b.costPrice) return true;
   if (a.originalPrice !== b.originalPrice) return true;
   if (a.stock !== b.stock) return true;
+  if (a.estoqueMinimo !== b.estoqueMinimo) return true;
   if (a.category !== b.category) return true;
   if (a.freeShipping !== b.freeShipping) return true;
   if (a.isBestseller !== b.isBestseller) return true;
@@ -400,6 +430,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     costPrice: "",
     originalPrice: "",
     stock: "",
+    estoqueMinimo: "",
     category: "",
     images: [] as string[],
     freeShipping: false,
@@ -423,6 +454,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     costPrice: "",
     originalPrice: "",
     stock: "",
+    estoqueMinimo: "",
     category: "",
     images: [] as string[],
     freeShipping: false,
@@ -755,6 +787,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             costPrice: product.costPrice?.toString() || "",
             originalPrice: product.originalPrice?.toString() || "",
             stock: product.stock.toString(),
+            // Zero é escolha da lojista: só `null`/ausente vira campo vazio.
+            estoqueMinimo:
+              product.estoqueMinimo == null
+                ? ""
+                : String(product.estoqueMinimo),
             category: product.category,
             images: product.images,
             freeShipping: product.freeShipping,
@@ -797,6 +834,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             costPrice: parsed.costPrice || "",
             originalPrice: parsed.originalPrice || "",
             stock: parsed.stock || "",
+            estoqueMinimo: parsed.estoqueMinimo || "",
             category: parsed.category || "",
             images: parsed.images || [],
             freeShipping: !!parsed.freeShipping,
@@ -833,6 +871,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   costPrice: "",
                   originalPrice: "",
                   stock: "",
+                  estoqueMinimo: "",
                   category: "",
                   images: [] as string[],
                   freeShipping: false,
@@ -881,6 +920,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             costPrice: parsed.costPrice ?? initialData.costPrice,
             originalPrice: parsed.originalPrice ?? initialData.originalPrice,
             stock: parsed.stock ?? initialData.stock,
+            estoqueMinimo: parsed.estoqueMinimo ?? initialData.estoqueMinimo,
             category: parsed.category ?? initialData.category,
             images: parsed.images ?? initialData.images,
             freeShipping:
@@ -1711,6 +1751,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (originalPriceError) return "product-original-price";
     if (skuError) return "product-sku";
     if (codigoBarrasError) return "product-codigo-barras";
+    if (estoqueMinimoError) return "product-estoque-minimo";
     return null;
   };
 
@@ -1889,6 +1930,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           ? Math.max(0, pOriginal)
           : null,
       stock: Math.max(0, pStock),
+      // Vazio = `null` (volta ao padrão, 5); número inteiro >= 0 vai como está.
+      // Texto inválido já bloqueou o salvar acima, então aqui nunca é NaN.
+      estoqueMinimo: lerEstoqueMinimo(formData.estoqueMinimo).valor,
       category: formData.category,
       images: formData.images,
       freeShipping: formData.freeShipping,
@@ -2064,6 +2108,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   // que o campo continuar com o mesmo valor que a gerou.
   const codigoBarrasError = codigoBarrasErroLocal || codigoBarrasErroRede;
 
+  // "Avisar quando o estoque chegar a": derivado do texto, sem estado próprio —
+  // o erro some no instante em que o texto volta a ser válido.
+  const estoqueMinimoError = lerEstoqueMinimo(formData.estoqueMinimo).erro;
+
   const isValid =
     formData.name &&
     formData.description &&
@@ -2077,6 +2125,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     !priceError &&
     (!costError || costError.startsWith("Aviso")) &&
     !originalPriceError &&
+    !estoqueMinimoError &&
     !stockError;
 
   // UMA conta para o botão e para o aviso (se fossem duas, divergiriam: um
@@ -2098,6 +2147,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               priceError ||
               (costError && !costError.startsWith("Aviso")) ||
               originalPriceError ||
+              estoqueMinimoError ||
               stockError
             ),
             !!productId,
@@ -4321,13 +4371,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </div>
         </SecaoRecolhivel>
 
-        {/* Avançado (H1): código interno e código de barras — raros no dia a
-            dia, mas nada se apaga. MONTADA e FECHADA; erro de formato ou de
-            duplicidade em qualquer um dos dois a abre sozinha. */}
+        {/* Avançado (H1): código interno, código de barras e aviso de estoque
+            — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
+            em qualquer um dos três (formato, duplicidade ou número inválido)
+            a abre sozinha. */}
         <SecaoRecolhivel
           titulo="Avançado"
-          resumo="Código interno e código de barras"
-          temErro={!!skuError || !!codigoBarrasError}
+          resumo="Código interno, código de barras e aviso de estoque"
+          temErro={!!skuError || !!codigoBarrasError || !!estoqueMinimoError}
         >
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
             <div className="space-y-1.5 md:space-y-3">
@@ -4416,6 +4467,37 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               {!codigoBarrasError && codigoBarrasAvisoRede && (
                 <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
                   {codigoBarrasAvisoRede}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-estoque-minimo"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Avisar quando o estoque chegar a
+              </label>
+              <LocalBufferedInput
+                id="product-estoque-minimo"
+                name="product-estoque-minimo"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="numeric"
+                value={formData.estoqueMinimo}
+                onFlush={(val) =>
+                  setFormData((prev) => ({ ...prev, estoqueMinimo: val }))
+                }
+                placeholder="Ex: 5"
+                className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+              />
+              <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
+                Vazio usa o padrão (5). Com variações, vale para a soma.
+              </span>
+              {estoqueMinimoError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {estoqueMinimoError}
                 </span>
               )}
             </div>
