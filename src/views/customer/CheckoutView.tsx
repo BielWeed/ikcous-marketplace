@@ -3076,6 +3076,8 @@ export function CheckoutView({
     : null;
 
   const handleRemoveCoupon = () => {
+    // Quem remove o cupom escolhe: o do rascunho que esperava a conta não volta depois.
+    cupomPendenteDoRascunhoRef.current = null;
     cupomConferidoRef.current = null;
     setAppliedCoupon(null);
     setCouponError("");
@@ -3123,6 +3125,8 @@ export function CheckoutView({
   const handleApplyCoupon = async (code: string) => {
     // Toque duplo (ou toque em outro cartão) com uma validação em voo: nada.
     if (aplicacaoDoCupomEmVooRef.current) return;
+    // Quem aplica um cupom escolhe: o do rascunho que esperava a conta não o troca depois.
+    cupomPendenteDoRascunhoRef.current = null;
     const minhaAplicacao = {};
     aplicacaoDoCupomEmVooRef.current = minhaAplicacao;
     setCouponError("");

@@ -422,6 +422,7 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/contador-duplicado-portao-viva.cjs",
     // 20261208000000: o checkout mostra os cupons da cliente (lista, exclusivo, gatilho com o atalho de retentativa, painel do admin atual, ida e volta).
     "tests/banco/cupons-do-checkout-viva.cjs",
+    "tests/banco/cupons-do-checkout-portao-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(
