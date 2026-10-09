@@ -325,9 +325,19 @@ jobs:
       # GERADA que cita used_count; agora so o default da PROPRIA coluna fica de fora. A prova
       # roda a consulta num Postgres real (base, coluna gerada, visao, indice) e o mutante
       # "voltar a excluir todo pg_attrdef" deixa a prova vermelha. CLONE proprio.
-      - name: Prova viva da consulta 13a (dependentes da coluna used_count)
+      - name: Prova viva da consulta 13a (dependentes da coluna do contador duplicado)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-13a-contador-duplicado-viva.cjs
+      # O contador duplicado do cupom morre (migration 20261207000000, 09/10/2026): apaga a
+      # coluna duplicada de contagem de uso de `coupons` SO com toda linha em 0 exato e nada
+      # dependendo dela. Prova viva: tudo 0 aplica e o resto do banco (colunas, dados,
+      # usage_count, corpo de toda funcao, politicas, ACL) fica IGUAL; valor, NULL, visao,
+      # funcao, coluna GERADA, forma diferente, RLS e usage_count ausente RECUSAM sem gravar
+      # nada; corrida com 2 conexoes e lock_timeout; atomicidade; rollback identico ao
+      # baseline; cada guarda tirada (mutante) deixa a prova vermelha. CLONE proprio.
+      - name: Prova viva do contador duplicado do cupom (migration 20261207000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
