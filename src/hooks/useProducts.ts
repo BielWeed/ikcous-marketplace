@@ -9,6 +9,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
+import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -699,7 +700,14 @@ export function useProducts({ autoFetch = true } = {}) {
 
           // Apply Stock
           if (filters?.stock === "low") {
-            query = query.lte("estoque", 5);
+            // PostgREST não compara coluna com coluna: aqui só cabe o limiar
+            // padrão, sem o `estoque_minimo` do produto. Hoje NENHUM chamador
+            // passa `stock: "low"` (ramo morto nos dois lados): a RPC admin
+            // `get_admin_products_paged` também usa `p.estoque <= 5` fixo, sem
+            // `estoque_minimo` nem variantes. Se um filtro "Estoque baixo" for
+            // exposto, a RPC deve usar `estoque_efetivo <= COALESCE(estoque_minimo, 5)`
+            // (Onda I).
+            query = query.lte("estoque", LIMIAR_PADRAO_DE_ESTOQUE);
           }
 
           // Apply Category
