@@ -97,7 +97,7 @@ export function statusDaEntrega({
         ? {
             rotulo: "Fora da cidade",
             valor: "Conexão a confirmar",
-            detalhe: "confira a transportadora em Ajustes",
+            detalhe: "confira o painel Transportadoras, logo abaixo",
             tom: "neutro",
           }
         : nomesLigados.length > 0

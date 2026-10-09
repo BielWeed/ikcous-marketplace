@@ -89,6 +89,8 @@ async function abrirExpansor(texto: string) {
     ...document.body.querySelectorAll("button[aria-expanded]"),
   ].find((b) => b.textContent?.includes(texto));
   if (!cabecalho) throw new Error(`Expansor "${texto}" não está na tela.`);
+  // "Abrir", não "alternar": com pendência a camada já nasce aberta.
+  if (cabecalho.getAttribute("aria-expanded") === "true") return;
   await act(async () => {
     (cabecalho as HTMLButtonElement).click();
   });
