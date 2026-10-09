@@ -33,6 +33,13 @@ vi.mock("@/hooks/useCategories", () => ({
     ],
   }),
 }));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { storeAddress: "Rua das Flores, 100 — Centro" },
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
 vi.mock("sonner", () => ({ toast }));
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -164,12 +171,23 @@ describe("PoliticaDeDevolucaoSection", () => {
           prazo_vicio_dias: 90,
           categorias_sem_troca: ["Moda íntima"],
           metodos_locais: ["entrega_na_loja", "coleta"],
+          endereco_devolucao: "",
         }),
       }),
     );
     expect(toast.success).toHaveBeenCalled();
     expect(botao("Política salva")).toBeTruthy();
     expect(onDirtyMudou).toHaveBeenLastCalledWith(false);
+  });
+
+  it("endereço vazio: a caixa 'Mesmo endereço da loja' no lugar do campo", async () => {
+    await montar();
+    const caixa = Array.from(
+      hospedeiro.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    ).find((c) => c.labels?.[0]?.textContent?.includes("Mesmo endereço"));
+    expect(caixa?.checked).toBe(true);
+    expect(hospedeiro.querySelector("#politica-endereco")).toBeNull();
+    expect(hospedeiro.textContent).toContain("Rua das Flores, 100 — Centro");
   });
 
   it("recusa do servidor aparece como veio", async () => {

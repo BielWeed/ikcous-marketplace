@@ -5,6 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { CartaoDaDevolucao } from "@/components/admin/devolucoes/CartaoDaDevolucao";
 import { DetalheDaDevolucao } from "@/components/admin/devolucoes/DetalheDaDevolucao";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
 import {
   STATUS_EM_ORDEM,
@@ -150,7 +151,7 @@ export function AdminDevolucoesView({
     <div className="pb-admin h-auto bg-[#09090b] text-white lg:pb-12">
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Devoluções"
+          titulo={NOMES_DO_PAINEL["admin-devolucoes"]}
           acoes={
             <button
               type="button"
