@@ -12,6 +12,7 @@
 // Dublês no molde de checkout-view-selos-contraste-aa.test.tsx. As provas que
 // dirigem o campo "Tem um código de cupom?" valem antes e depois da seção de
 // cartões (o campo continua na tela); as dos cartões ficam no fim.
+import type { CupomDisponivel } from "@/lib/cupons-do-checkout";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,17 +39,36 @@ const validateCoupon = vi.fn((codigo: string, subtotal: number) =>
   respostaDaValidacao(codigo, subtotal),
 );
 
+const mockConfig = {
+  shippingCoverage: "local",
+  originCep: "38500-000",
+  localCepRange: "01310-100",
+  enableCoupons: true as boolean | undefined,
+  whatsappNumber: "34999998888",
+};
+
 vi.mock("@/contexts/StoreContext", () => ({
-  useStore: () => ({
-    config: {
-      shippingCoverage: "local",
-      originCep: "38500-000",
-      localCepRange: "01310-100",
-      enableCoupons: true,
-      whatsappNumber: "34999998888",
-    },
-    isLoaded: true,
-  }),
+  useStore: () => ({ config: mockConfig, isLoaded: true }),
+}));
+
+// A lista que o servidor devolveria: quem decide QUAIS cupons aparecem é o
+// banco; aqui o dublê só entrega e anota com que argumentos foi chamado.
+let mockCupons: CupomDisponivel[] = [];
+const tentarDeNovo = vi.fn();
+const chamadasDoHook: Array<{
+  subtotal: number;
+  userId: string | null;
+  ligado: boolean;
+}> = [];
+vi.mock("@/hooks/useCuponsDoCheckout", () => ({
+  useCuponsDoCheckout: (args: {
+    subtotal: number;
+    userId: string | null;
+    ligado: boolean;
+  }) => {
+    chamadasDoHook.push(args);
+    return { cupons: mockCupons, situacao: "pronto", tentarDeNovo };
+  },
 }));
 
 vi.mock("@/hooks/useAddresses", () => ({
@@ -187,6 +207,10 @@ async function aplicarPeloCampo(codigo: string) {
 
 beforeEach(() => {
   validateCoupon.mockClear();
+  tentarDeNovo.mockClear();
+  chamadasDoHook.length = 0;
+  mockCupons = [];
+  mockConfig.enableCoupons = true;
   respostaDaValidacao = async () => ({ valid: true, discount: 15 });
   mockUser = null;
   mockAuthLoading = false;
@@ -665,5 +689,151 @@ describe("CheckoutView — o desconto vale para o subtotal de agora, sem validar
     await esvaziarFila();
     expect(hospedeiro.textContent).not.toContain("GERAL10 aplicado");
     expect(hospedeiro.textContent).toContain("Cupom inválido ou expirado.");
+  });
+});
+
+describe("CheckoutView — a seção 'Cupons' com os cartões (tarefa 22)", () => {
+  const vip15: CupomDisponivel = {
+    codigo: "VIP15",
+    tipo: "fixed",
+    valor: 15,
+    minimo: 0,
+    validoAte: null,
+    exclusivo: true,
+    aplica: true,
+    falta: 0,
+    desconto: 15,
+  };
+  const botaoAplicarVip = () =>
+    hospedeiro.querySelector(
+      'button[aria-label="Aplicar o cupom VIP15"]',
+    ) as HTMLButtonElement | null;
+
+  it("a seção chama-se 'Cupons', mostra o cartão da cliente e mantém o campo de digitar", async () => {
+    mockCupons = [vip15];
+    await renderizar();
+    expect(hospedeiro.textContent).not.toContain("Vantagem Exclusiva");
+    expect(hospedeiro.querySelector("#titulo-cupons")?.textContent).toBe(
+      "Cupons",
+    );
+    expect(hospedeiro.textContent).toContain("Exclusivo para você");
+    expect(botaoAplicarVip()).not.toBeNull();
+    expect(hospedeiro.querySelector("#coupon-code-input")).not.toBeNull();
+  });
+
+  it("um toque em 'Aplicar' no cartão valida UMA vez e mostra a economia", async () => {
+    mockCupons = [vip15];
+    await renderizar();
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(hospedeiro.textContent).toContain("Você economiza R$\u00a015,00");
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+    expect(validateCoupon).toHaveBeenCalledWith("VIP15", 100);
+  });
+
+  it("toque duplo no cartão com a validação em voo não valida de novo e mostra 'Aplicando…'", async () => {
+    let soltar: (v: RespostaDaValidacao) => void = () => {};
+    respostaDaValidacao = () =>
+      new Promise((r) => {
+        soltar = r;
+      });
+    mockCupons = [vip15];
+    await renderizar();
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    expect(botaoAplicarVip()!.textContent).toBe("Aplicando…");
+    expect(botaoAplicarVip()!.disabled).toBe(true);
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      soltar({ valid: true, discount: 15 });
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(validateCoupon).toHaveBeenCalledTimes(1);
+  });
+
+  it("cartão recusado pelo servidor mostra o motivo e manda a lista buscar de novo", async () => {
+    // O cupom da lista pode ter esgotado ou vencido desde a última busca.
+    respostaDaValidacao = async () => ({
+      valid: false,
+      discount: 0,
+      message: "Cupom atingiu o limite de uso.",
+    });
+    mockCupons = [vip15];
+    await renderizar();
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("Cupom atingiu o limite de uso.");
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+    expect(tentarDeNovo).toHaveBeenCalledTimes(1);
+  });
+
+  it("cupom que ainda não bate o mínimo aparece sem botão de aplicar e diz quanto falta", async () => {
+    mockCupons = [
+      {
+        ...vip15,
+        codigo: "GRANDE50",
+        exclusivo: false,
+        aplica: false,
+        minimo: 130,
+        falta: 30,
+        desconto: 0,
+      },
+    ];
+    await renderizar();
+    expect(hospedeiro.textContent).toContain(
+      "Faltam R$\u00a030,00 em produtos para usar",
+    );
+    expect(
+      hospedeiro.querySelector('button[aria-label="Aplicar o cupom GRANDE50"]'),
+    ).toBeNull();
+  });
+
+  it("o cupom aplicado não se repete na lista de cartões", async () => {
+    mockCupons = [vip15, { ...vip15, codigo: "OUTRO5", valor: 5, desconto: 5 }];
+    await renderizar();
+    await act(async () => {
+      botaoAplicarVip()!.click();
+    });
+    await esvaziarFila();
+    expect(botaoAplicarVip()).toBeNull();
+    expect(
+      hospedeiro.querySelector('button[aria-label="Aplicar o cupom OUTRO5"]'),
+    ).not.toBeNull();
+  });
+
+  it("a lista é buscada para o subtotal e a conta de agora, com os cupons ligados", async () => {
+    mockUser = { id: "conta-ana" };
+    await renderizar();
+    expect(chamadasDoHook.at(-1)).toEqual({
+      subtotal: 100,
+      userId: "conta-ana",
+      ligado: true,
+    });
+  });
+
+  it("cupons desligados pela loja: sem seção, sem busca da lista, com o aviso do desconto retirado", async () => {
+    mockConfig.enableCoupons = false;
+    mockCupons = [vip15];
+    semearRascunhoComCupom("VIP15", null);
+    await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.querySelector("#titulo-cupons")).toBeNull();
+    expect(hospedeiro.querySelector("#coupon-code-input")).toBeNull();
+    expect(chamadasDoHook.length).toBeGreaterThan(0);
+    expect(chamadasDoHook.every((c) => c.ligado === false)).toBe(true);
+    expect(hospedeiro.textContent).toContain(
+      "A loja desativou os cupons de desconto.",
+    );
+    expect(validateCoupon).not.toHaveBeenCalled();
   });
 });

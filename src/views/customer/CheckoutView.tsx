@@ -1,3 +1,4 @@
+import { CuponsDoCheckout } from "@/components/checkout/CuponsDoCheckout";
 import type { CartaoEmCurso } from "@/components/checkout/PagamentoComCartao";
 import {
   type CategoriaErroPagamento,
@@ -17,7 +18,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { AddressForm } from "@/components/ui/custom/AddressForm";
 import { AddressList } from "@/components/ui/custom/AddressList";
-import { CouponInput } from "@/components/ui/custom/CouponInput";
 import { HEADER_CENTER_SLOT_ID } from "@/components/ui/custom/Header";
 import { SaidaDaRecusa } from "@/components/ui/custom/SaidaDaRecusa";
 import {
@@ -32,6 +32,7 @@ import { formatarCep, useBuscaCep } from "@/hooks/useBuscaCep";
 import { useCart } from "@/hooks/useCart";
 import { useConfigDoCartao } from "@/hooks/useConfigDoCartao";
 import { useCoupons } from "@/hooks/useCoupons";
+import { useCuponsDoCheckout } from "@/hooks/useCuponsDoCheckout";
 import { useDeferredRender } from "@/hooks/useDeferredRender";
 import { useEconomiaDoFreteExibida } from "@/hooks/useEconomiaDoFreteExibida";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -119,7 +120,6 @@ import {
   Phone,
   Plus,
   Sparkles,
-  Tag,
   User,
 } from "lucide-react";
 import {
@@ -2181,6 +2181,15 @@ export function CheckoutView({
     }
   }, [cuponsDesligados, cupomGuardado]);
 
+  // A lista de cupons que a cliente pode usar (vitrine da loja + os exclusivos
+  // DELA). Com os cupons desligados pela loja nem busca. Declarado antes do
+  // primeiro return da tela (regra dos hooks).
+  const cuponsDoCheckout = useCuponsDoCheckout({
+    subtotal,
+    userId: user?.id ?? null,
+    ligado: !cuponsDesligados,
+  });
+
   // GRAVAÇÃO DO RASCUNHO (laudo ofensiva 3108, N7): cada mudança de campo,
   // de notas ou de cupom repõe o rascunho da sessão. Os espelhos em ref
   // existem porque a assinatura do `form.watch` fecha sobre valores do
@@ -3135,6 +3144,8 @@ export function CheckoutView({
         });
       } else {
         setCouponError(result.message || "Cupom inválido");
+        // O cupom da lista pode ter esgotado ou vencido desde a última busca.
+        cuponsDoCheckout.tentarDeNovo();
       }
     } catch (error) {
       console.error("Error applying coupon:", error);
@@ -5452,27 +5463,20 @@ export function CheckoutView({
           </div>
         )}
 
-        {/* Coupon */}
+        {/* Cupons: os cartões que a cliente pode usar (vitrine + exclusivos
+            dela) e o campo de digitar. Some com a chave de cupons desligada;
+            o aviso do desconto retirado fica acima, fora desta seção. */}
         {config.enableCoupons && (
-          <div className="overflow-hidden rounded-2xl border border-zinc-100/80 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-zinc-100/50 bg-zinc-50/40 px-4 py-3">
-              <div className="flex size-8 items-center justify-center rounded-xl bg-white text-zinc-900 shadow-sm">
-                <Tag className="size-4" />
-              </div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
-                Vantagem Exclusiva
-              </span>
-            </div>
-            <div className="p-4">
-              <CouponInput
-                onApply={handleApplyCoupon}
-                onRemove={handleRemoveCoupon}
-                appliedCoupon={appliedCoupon}
-                error={couponError}
-                aplicando={aplicandoCupom !== null}
-              />
-            </div>
-          </div>
+          <CuponsDoCheckout
+            cupons={cuponsDoCheckout.cupons}
+            situacao={cuponsDoCheckout.situacao}
+            onTentarDeNovo={cuponsDoCheckout.tentarDeNovo}
+            appliedCoupon={appliedCoupon}
+            couponError={couponError}
+            aplicando={aplicandoCupom}
+            onApply={handleApplyCoupon}
+            onRemove={handleRemoveCoupon}
+          />
         )}
 
         {/* Payment Method */}
