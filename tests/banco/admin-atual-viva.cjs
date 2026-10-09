@@ -52,6 +52,7 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const { desfazerSucessorasDa99 } = require("./sucessoras-da-99.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -290,6 +291,9 @@ async function desfazerPosterioresNaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
+  // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
+  await desfazerSucessorasDa99(cliente);
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,
@@ -1335,6 +1339,9 @@ PROVAS.push({
     };
     const desfazer = async (i) => {
       const nome = POSTERIORES_A_97[i].nome;
+      // Índice 2 = a 99: as sucessoras dela (tests/banco/sucessoras-da-99.cjs)
+      // saem antes, senão o rollback da 99 recusa.
+      if (i === 2) await desfazerSucessorasDa99(cliente);
       await cliente.query(
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
         fs.readFileSync(

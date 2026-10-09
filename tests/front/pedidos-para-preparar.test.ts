@@ -20,15 +20,16 @@ import {
 // prende as duas pontas: o comportamento numa amostra e a igualdade das
 // listas com o SQL que o Início roda.
 
+// A definição VIVA de `painel_inicio`: a 20261212000000 (onda I) copia o corpo
+// inteiro da 20261199000000 e troca só o `estoque_baixo` — o trecho do
+// `pedidos_para_preparar` é o mesmo, byte a byte.
 const MIGRATION_DO_INICIO =
-  "20261199000000_portas_do_painel_exigem_admin_atual.sql";
+  "20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql";
 
-// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, montado de import.meta.url
+// O caminho sai da constante (nunca um segundo literal): as duas não divergem.
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho fixo do próprio repositório, montado de import.meta.url e da constante acima
 const sqlDoInicio = readFileSync(
-  new URL(
-    "../../supabase/migrations/20261199000000_portas_do_painel_exigem_admin_atual.sql",
-    import.meta.url,
-  ),
+  new URL(`../../supabase/migrations/${MIGRATION_DO_INICIO}`, import.meta.url),
   "utf8",
 );
 
@@ -190,9 +191,10 @@ describe("guarda contra deriva: as listas são as do SQL do Início", () => {
     );
   });
 
-  it("nenhuma migration mais nova redefine `pedidos_para_preparar`", () => {
-    // Se uma migration posterior reescrever `painel_inicio`, este espelho
-    // passa a vigiar o arquivo errado: falha aqui e aponta qual ler.
+  it("nenhuma migration mais nova redefine `painel_inicio` nem `pedidos_para_preparar`", () => {
+    // Se uma migration posterior reescrever `painel_inicio` (inteira, como a
+    // 20261212000000 fez com a 20261199000000), este espelho passa a vigiar o
+    // arquivo errado: falha aqui e aponta qual ler.
     const versaoDoInicio = MIGRATION_DO_INICIO.slice(0, 14);
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- pasta fixa de migrations do repositório, montada de import.meta.url
     const maisNovas = readdirSync(
@@ -200,13 +202,55 @@ describe("guarda contra deriva: as listas são as do SQL do Início", () => {
     )
       .filter((nome) => /^\d{14}_.*\.sql$/.test(nome))
       .filter((nome) => nome.slice(0, 14) > versaoDoInicio)
-      .filter((nome) =>
+      .filter((nome) => {
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- arquivo listado da pasta fixa de migrations do repositório
-        readFileSync(
+        const sql = readFileSync(
           new URL(`../../supabase/migrations/${nome}`, import.meta.url),
           "utf8",
-        ).includes("pedidos_para_preparar"),
-      );
+        );
+        return (
+          sql.includes("pedidos_para_preparar") ||
+          /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.painel_inicio\(/i.test(
+            sql,
+          )
+        );
+      });
     expect(maisNovas).toEqual([]);
+  });
+
+  it("o arquivo lido é o que define `painel_inicio` (e não só o cita)", () => {
+    expect(sqlDoInicio).toMatch(
+      /\nCREATE OR REPLACE FUNCTION public\.painel_inicio\(\)/,
+    );
+  });
+
+  it("o texto lido é EXATAMENTE o da migration mais nova que define `painel_inicio`, e é a da constante", () => {
+    // A constante e o arquivo lido não podem divergir: o caminho é montado da
+    // constante, e aqui o conteúdo é comparado com o da definição mais nova
+    // achada por varredura (não pela constante).
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- pasta fixa de migrations do repositório, montada de import.meta.url
+    const definem = readdirSync(
+      new URL("../../supabase/migrations/", import.meta.url),
+    )
+      .filter((nome) => /^\d{14}_.*\.sql$/.test(nome))
+      .filter((nome) =>
+        /\nCREATE OR REPLACE FUNCTION public\.painel_inicio\(/.test(
+          // eslint-disable-next-line security/detect-non-literal-fs-filename -- arquivo listado da pasta fixa de migrations do repositório
+          readFileSync(
+            new URL(`../../supabase/migrations/${nome}`, import.meta.url),
+            "utf8",
+          ),
+        ),
+      )
+      .sort();
+    const maisNova = definem.at(-1) ?? "";
+    expect(maisNova).toBe(MIGRATION_DO_INICIO);
+    expect(sqlDoInicio).toBe(
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- arquivo listado da pasta fixa de migrations do repositório
+      readFileSync(
+        new URL(`../../supabase/migrations/${maisNova}`, import.meta.url),
+        "utf8",
+      ),
+    );
   });
 });
