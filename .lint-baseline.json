@@ -164,14 +164,21 @@
     "451 / teto 453 — baixou -2 — abaixe o teto'. A queda NÃO veio do lote 60-66: o",
     "CI da base já media 451 (o #767 também mediu 451 local). O lote 60-66 entra com",
     "0 warning novo líquido (catraca local 451). Biome ficou 15/1. Baixado SÓ DEPOIS",
-    "do CI, como as quedas anteriores."
+    "do CI, como as quedas anteriores.",
+    "",
+    "09/10/2026 — warnings de eslint de 451 para 410 e erros do Biome de 15 para 14.",
+    "Medido no CI, run 37948243220 (PR #785, painel simples ondas C-E, 0879be1c, job",
+    "'Catraca de lint'): 'eslint warnings 410 / teto 451 / baixou -41' e 'biome errors",
+    "14 / teto 15 / baixou -1'. A queda VEIO do PR: a tela Atendimento (a",
+    "AdminWhatsAppConfigView, com dezenas de warnings) foi apagada e o código que a",
+    "substitui nasce limpo. Baixado SÓ DEPOIS do CI, como as quedas anteriores."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 451
+    "warnings": 410
   },
   "biome": {
-    "errors": 15,
+    "errors": 14,
     "warnings": 1
   }
 }
