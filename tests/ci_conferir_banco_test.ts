@@ -2000,7 +2000,9 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
   const assinaturas9091 = new Map<string, string>(
     trio9091.map((x) => [x[1], x[2]]),
   );
-  const final = pares(sql8e);
+  // Só o CTE `final` (o corpo da 99/da última de 92..202); o `sucessoras` tem 3
+  // colunas e é lido à parte, no step dele.
+  const final = pares(fatia(sql8e, "final(fn, h) AS (VALUES", "\n), "));
 
   /** Corpo da ÚLTIMA definição da função nas migrations 92..202. */
   function corpoFinal(fn: string): string {
@@ -2049,6 +2051,164 @@ Deno.test("8a/8e — os md5 embutidos batem com o que as migrations 92..202 dest
           `${fn}: o corpo na árvore mudou — recalcule 8e`,
         );
       }
+    },
+  );
+
+  // A 8e é pré-checagem do backfill do ledger 92-202 e tem de dar positiva numa
+  // loja ainda no corpo da 99 E numa que já recebeu a sucessora. As sucessoras
+  // aceitas são as migrations DEPOIS da 202 que redefinem uma das 61 — lidas da
+  // árvore, nunca de memória: a próxima que redefinir uma delas quebra aqui.
+  const lerSucessoras8e = () =>
+    [
+      ...fatia(sql8e, "sucessoras(fn, h, versao) AS (VALUES", "\n), ").matchAll(
+        /\('([a-z_0-9]+)', '([0-9a-f]{32})', '(\d{14})'\)/g,
+      ),
+    ].map((x) => ({ fn: x[1], h: x[2], versao: x[3] }));
+  const md5 = (s: string) =>
+    createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
+  /** Corpo da ÚLTIMA definição de `fn` num texto (fora de linha de comentário). */
+  function corpoNoTexto(texto: string, fn: string): string | null {
+    let ultima = -1;
+    for (const r of texto.matchAll(
+      // eslint-disable-next-line security/detect-unsafe-regex -- o grupo opcional roda no máximo uma vez e a entrada é SQL do próprio repositório
+      /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+public\.([a-z_0-9]+)\s*\(/gi,
+    )) {
+      const linha = texto.slice(texto.lastIndexOf("\n", r.index) + 1, r.index);
+      if (r[1].toLowerCase() === fn && !linha.includes("--")) ultima = r.index;
+    }
+    if (ultima < 0) return null;
+    const resto = texto.slice(ultima);
+    const abre = /\bAS\s+(\$[a-z_0-9]*\$)/i.exec(resto);
+    assert(abre, `${fn}: não achei o corpo`);
+    const ini = abre.index + abre[0].length;
+    const fim = resto.indexOf(abre[1], ini);
+    assert(fim > ini, `${fn}: não achei o fechamento do corpo`);
+    return resto.slice(ini, fim);
+  }
+
+  await t.step(
+    "8e — as sucessoras aceitas são EXATAMENTE as migrations depois da 202 que redefinem uma das 61, com o md5 do corpo da última delas",
+    async () => {
+      const sucessoras8e = lerSucessoras8e();
+      const depoisDa202: string[] = [];
+      for await (const e of Deno.readDir(MIGRATIONS_DIR))
+        if (
+          e.isFile &&
+          /^\d{14}_.*\.sql$/.test(e.name) &&
+          e.name.slice(0, 14) > "20261202000000"
+        )
+          depoisDa202.push(e.name);
+      depoisDa202.sort();
+      const esperadas = new Map<string, { h: string; versao: string }>();
+      for (const n of depoisDa202) {
+        const texto = await Deno.readTextFile(`${MIGRATIONS_DIR}/${n}`);
+        for (const fn of final.keys()) {
+          const corpo = corpoNoTexto(texto, fn);
+          if (corpo !== null)
+            esperadas.set(fn, { h: md5(corpo), versao: n.slice(0, 14) });
+        }
+      }
+      const porFn = (a: { fn: string }, b: { fn: string }) =>
+        a.fn < b.fn ? -1 : 1;
+      assertEquals(
+        [...sucessoras8e].sort(porFn),
+        [...esperadas].map(([fn, v]) => ({ fn, ...v })).sort(porFn),
+        "o CTE `sucessoras` da 8e tem de ser o estado FINAL da árvore para as funções que migrations depois da 202 redefinem",
+      );
+      // O pino do que foi medido em 09/10/2026 (20261212 e 20261214).
+      assertEquals([...sucessoras8e].sort(porFn), [
+        {
+          fn: "get_admin_analytics_v2",
+          h: "0a5f8c75bbeeda3777a6a7326a0e281c",
+          versao: "20261214000000",
+        },
+        {
+          fn: "painel_inicio",
+          h: "f11d22d076c59ab54d1beb280954dd15",
+          versao: "20261212000000",
+        },
+      ]);
+      for (const s of sucessoras8e)
+        assert(final.has(s.fn), `${s.fn}: sucessora de função fora das 61`);
+    },
+  );
+
+  await t.step(
+    "8e — cada sucessora: o `final` é o corpo da 20261199, o preflight da sucessora cita (99, desta), e o rollback-manual dela exige o desta e devolve o corpo da 99",
+    async () => {
+      const sucessoras8e = lerSucessoras8e();
+      assert(sucessoras8e.length > 0, "a 8e perdeu o CTE `sucessoras`");
+      const m99 =
+        textos["20261199000000_portas_do_painel_exigem_admin_atual.sql"];
+      assert(m99, "a 20261199 sumiu de 92..202");
+      const todos: string[] = [];
+      for await (const e of Deno.readDir(MIGRATIONS_DIR))
+        if (e.isFile) todos.push(e.name);
+      for (const s of sucessoras8e) {
+        const h99 = final.get(s.fn);
+        // a última de 92..202 que define a função é a 99, e o `final` é dela
+        const corpo99 = corpoNoTexto(m99, s.fn);
+        assert(corpo99 !== null, `${s.fn}: a 20261199 não a define`);
+        assertEquals(md5(corpo99), h99, `${s.fn}: o final não é o da 99`);
+        assertEquals(
+          md5(corpoFinal(s.fn)),
+          h99,
+          `${s.fn}: a última de 92..202 não é a 99`,
+        );
+        assert(h99 !== s.h, `${s.fn}: a sucessora não muda o corpo`);
+        const arq = todos.filter(
+          (n) => n.startsWith(`${s.versao}_`) && n.endsWith(".sql"),
+        );
+        assertEquals(arq.length, 1, `${s.versao}: esperava 1 migration`);
+        const mig = await Deno.readTextFile(`${MIGRATIONS_DIR}/${arq[0]}`);
+        assertStringIncludes(
+          mig,
+          `', '${h99}', '${s.h}')`,
+          `${arq[0]}: o preflight não cita (99, desta) para ${s.fn}`,
+        );
+        const rb = await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/rollback-manual-${arq[0]}`,
+        );
+        assertStringIncludes(
+          rb,
+          `', '${s.h}')`,
+          `rollback-manual-${arq[0]}: o preflight não exige o corpo desta`,
+        );
+        const corpoRb = corpoNoTexto(rb, s.fn);
+        assert(
+          corpoRb !== null,
+          `rollback-manual-${arq[0]}: não redefine ${s.fn}`,
+        );
+        assertEquals(
+          md5(corpoRb),
+          h99,
+          `rollback-manual-${arq[0]}: não devolve o corpo da 99 de ${s.fn}`,
+        );
+      }
+    },
+  );
+
+  await t.step(
+    "8e — a linha `corpo final` aceita o da 99 OU o da sucessora DA PRÓPRIA função, e mostra o esperado no vivo; o resto segue exato",
+    () => {
+      const sucessoras8e = lerSucessoras8e();
+      const limpo = sqlSemComentarios(sql8e).replace(/\s+/g, " ");
+      assertStringIncludes(
+        limpo,
+        "SELECT 'corpo final ' || f.fn, f.h, CASE WHEN c.h IS NULL THEN 'AUSENTE' WHEN c.h = f.h OR c.h IN (SELECT s.h FROM sucessoras s WHERE s.fn = f.fn) THEN f.h ELSE c.h END FROM final f LEFT JOIN corpos c ON c.proname = f.fn",
+      );
+      // a sobrecarga múltipla continua um valor só, com vírgula (nunca casa)
+      assertStringIncludes(
+        limpo,
+        "string_agg(md5(replace(p.prosrc, E'\\r', '')), ',' ORDER BY md5(replace(p.prosrc, E'\\r', ''))) AS h",
+      );
+      // nenhuma função aparece duas vezes no `sucessoras` (cada uma por si)
+      assertEquals(
+        new Set(sucessoras8e.map((s) => s.fn)).size,
+        sucessoras8e.length,
+      );
+      assertStringIncludes(sql8e, "tests/ci_conferir_banco_test.ts");
+      assertStringIncludes(sql8e, "OS DOIS ESTADOS");
     },
   );
 

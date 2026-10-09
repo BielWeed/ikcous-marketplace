@@ -430,6 +430,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     // 20261212000000 a 20261214000000: estoque baixo numa regua so e o valor do estoque so com custo.
     "tests/banco/estoque-baixo-uma-regra-viva.cjs",
     "tests/banco/inventario-so-com-custo-viva.cjs",
+    // 8e (rol 92-202): aceita o corpo da 20261199 OU o da sucessora (20261212, 20261214), cada funcao por si.
+    "tests/banco/portao-8e-aceita-sucessoras-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
     "tests/banco/receita-uma-regua-viva.cjs",
     "tests/banco/estoque-minimo-editavel-viva.cjs",

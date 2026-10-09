@@ -434,6 +434,9 @@ jobs:
       - name: Prova viva do lucro do estoque so com custo (migration 20261214)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/inventario-so-com-custo-viva.cjs
+      - name: Prova viva do portao da 8e com as sucessoras da 99 (migrations 20261212 e 20261214)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portao-8e-aceita-sucessoras-viva.cjs
       - name: Prova viva de caracterizacao da receita do mes (sem migration)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/receita-uma-regua-viva.cjs

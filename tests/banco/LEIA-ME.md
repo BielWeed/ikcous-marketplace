@@ -246,6 +246,10 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
 - **valor do estoque só com custo (`inventario-so-com-custo-viva.cjs`)**: a migration `20261214000000`
   (`totalValue` só soma produto com custo; `totalCost`, alertas e chaves do JSON iguais), com controle pelo
   corpo antigo (390 contra 90).
+- **portão da 8e com as sucessoras da 99 (`portao-8e-aceita-sucessoras-viva.cjs`, via `rodar-isolado.cjs`)**:
+  a 8e (rol da faixa 92-202) dá positiva na árvore inteira, no estado da `20261199000000` (via
+  `sucessoras-da-99.cjs`) e nos estados mistos (só a 12 / só a 14); corpo estranho, AUSENTE, sobrecarga e o
+  corpo da sucessora da outra função reprovam só a linha da função; mutantes do texto da consulta pegos.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
