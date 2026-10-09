@@ -128,6 +128,31 @@ describe("AtalhosDaAba", () => {
     expect(botaoPeloNome("Avisar clientes")).toBeTruthy();
   });
 
+  it("na porta fundida, o contador soma Perguntas e Avaliações (ausente conta 0)", () => {
+    renderizar(
+      <AtalhosDaAba
+        aba="clientes"
+        onNavigate={vi.fn()}
+        contadores={{
+          "admin-qa": { valor: 2, legenda: "novas" },
+          "admin-reviews": { valor: 3 },
+        }}
+      />,
+    );
+    const porta = botaoPeloNome("Perguntas e avaliações, 5 novas");
+    expect(porta.querySelector("[aria-hidden='true']")?.textContent).toBe("5");
+
+    // só Avaliações com contador: a porta fundida não pode perdê-lo
+    renderizar(
+      <AtalhosDaAba
+        aba="clientes"
+        onNavigate={vi.fn()}
+        contadores={{ "admin-reviews": { valor: 4 } }}
+      />,
+    );
+    expect(botaoPeloNome("Perguntas e avaliações, 4")).toBeTruthy();
+  });
+
   it("contador sem legenda entra só com o número", () => {
     renderizar(
       <AtalhosDaAba
@@ -142,7 +167,9 @@ describe("AtalhosDaAba", () => {
 
 describe("AlternadorDeTelas", () => {
   it("marca a tela atual com aria-current='page' e só ela", () => {
-    renderizar(<AlternadorDeTelas atual="admin-reviews" onNavigate={vi.fn()} />);
+    renderizar(
+      <AlternadorDeTelas atual="admin-reviews" onNavigate={vi.fn()} />,
+    );
     expect(botoes().map((b) => b.textContent?.trim())).toEqual([
       "Perguntas",
       "Avaliações",

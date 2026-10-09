@@ -10,7 +10,6 @@
 //      o Vender (botão redondo) e as Notificações (sino).
 //   3. Os valores seguem a tabela do §3.
 import { describe, expect, it } from "vitest";
-import { TELAS_DE_ENTRADA } from "../../src/config/rotas";
 import {
   ABAS_DO_PAINEL,
   APELIDOS,
@@ -18,9 +17,16 @@ import {
   NOME_DO_PAR_PERGUNTAS_E_AVALIACOES,
   PORTAS_DO_PAINEL,
 } from "../../src/config/nomes-do-painel";
+import { TELAS_DE_ENTRADA } from "../../src/config/rotas";
 
 const telasDoPainel = TELAS_DE_ENTRADA.filter(
   (t) => (t === "admin" || t.startsWith("admin-")) && t !== "admin-login",
+);
+
+// Leitura por Map: as chaves vêm de listas de strings, não de uniões tipadas.
+const nomes = new Map<string, string>(Object.entries(NOMES_DO_PAINEL));
+const portasPorAba = new Map<string, readonly string[]>(
+  Object.entries(PORTAS_DO_PAINEL),
 );
 
 const RAIZES_DAS_ABAS = [
@@ -41,7 +47,7 @@ describe("NOMES_DO_PAINEL", () => {
   it("toda tela admin-* (menos admin-login) tem nome não vazio", () => {
     expect(telasDoPainel).toHaveLength(24);
     for (const tela of telasDoPainel) {
-      const nome = (NOMES_DO_PAINEL as Record<string, string>)[tela];
+      const nome = nomes.get(tela) ?? "";
       expect(nome, tela).toBeTypeOf("string");
       expect(nome.trim(), tela).not.toBe("");
     }
@@ -99,10 +105,7 @@ describe("APELIDOS", () => {
   it("cada apelido aponta para uma tela real do painel, com o mesmo nome dela", () => {
     for (const [apelido, { vira }] of Object.entries(APELIDOS)) {
       expect(telasDoPainel, apelido).toContain(vira);
-      expect(
-        (NOMES_DO_PAINEL as Record<string, string>)[apelido],
-        apelido,
-      ).toBe(NOMES_DO_PAINEL[vira]);
+      expect(nomes.get(apelido), apelido).toBe(nomes.get(vira));
     }
   });
 
@@ -110,6 +113,13 @@ describe("APELIDOS", () => {
     expect(APELIDOS["admin-whatsapp-config"]).toEqual({
       vira: "admin-about-store",
       secao: "contato",
+    });
+  });
+
+  it("o Frete nacional abre Entrega e frete já no painel nacional", () => {
+    expect(APELIDOS["admin-shipping-national"]).toEqual({
+      vira: "admin-shipping",
+      secao: "nacional",
     });
   });
 });
@@ -137,14 +147,14 @@ describe("PORTAS_DO_PAINEL", () => {
     expect(esperadas).toHaveLength(11);
     for (const tela of esperadas) {
       const abas = ABAS_DO_PAINEL.filter((aba) =>
-        (PORTAS_DO_PAINEL[aba] as readonly string[]).includes(tela),
+        portasPorAba.get(aba)?.includes(tela),
       );
       expect(abas, tela).toHaveLength(1);
     }
   });
 
   it("nada além das sub-views com porta entra em alguma aba", () => {
-    const todas = ABAS_DO_PAINEL.flatMap((aba) => [...PORTAS_DO_PAINEL[aba]]);
+    const todas = Object.values(PORTAS_DO_PAINEL).flat();
     expect(new Set(todas).size).toBe(todas.length);
     for (const proibida of [
       ...RAIZES_DAS_ABAS,

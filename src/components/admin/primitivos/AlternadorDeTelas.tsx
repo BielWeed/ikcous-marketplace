@@ -27,6 +27,8 @@ export function AlternadorDeTelas({
     >
       {telas.map((tela) => {
         const ativa = tela === atual;
+        // eslint-disable-next-line security/detect-object-injection -- chave tipada, não entrada do usuário
+        const nome = NOMES_DO_PAINEL[tela];
         return (
           <button
             key={tela}
@@ -42,7 +44,7 @@ export function AlternadorDeTelas({
                 : "text-zinc-300 hover:bg-white/[0.07]",
             )}
           >
-            {NOMES_DO_PAINEL[tela]}
+            {nome}
           </button>
         );
       })}

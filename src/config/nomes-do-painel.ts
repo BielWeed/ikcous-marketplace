@@ -94,10 +94,7 @@ export const NOME_DO_PAR_PERGUNTAS_E_AVALIACOES = "Perguntas e avaliações";
 export const APELIDOS = {
   admin: { vira: "admin-dashboard" },
   "admin-whatsapp-config": { vira: "admin-about-store", secao: "contato" },
-  "admin-shipping-national": { vira: "admin-shipping" },
+  "admin-shipping-national": { vira: "admin-shipping", secao: "nacional" },
 } as const satisfies Partial<
-  Record<
-    TelaDoPainel,
-    { readonly vira: TelaDoPainel; readonly secao?: string }
-  >
+  Record<TelaDoPainel, { readonly vira: TelaDoPainel; readonly secao?: string }>
 >;
