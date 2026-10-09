@@ -160,7 +160,7 @@ export function AlertasCancelados({
     pedidosEsperandoRetorno.length > 0 &&
       `produto a voltar (${pedidosEsperandoRetorno.length})`,
     pedidosParaDevolverAgora.length > 0 &&
-      `estorno devido (${pedidosParaDevolverAgora.length})`,
+      `devolver ao cliente (${pedidosParaDevolverAgora.length})`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -201,7 +201,7 @@ export function AlertasCancelados({
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
           <AlertTriangle className="size-4" />
         </div>
-        <p className="text-[10px] font-bold uppercase leading-relaxed tracking-widest text-amber-500">
+        <p className="text-[11px] font-bold uppercase leading-relaxed tracking-widest text-amber-500">
           Não foi possível confirmar a lista completa de pedidos cancelados
           agora. Os painéis de mercadoria e estorno abaixo podem estar
           incompletos.
@@ -232,7 +232,7 @@ export function AlertasCancelados({
         {badge > 0 ? (
           <span
             data-testid="alertas-cancelados-badge"
-            className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+            className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[11px] font-black leading-none text-black"
           >
             {badge}
           </span>
@@ -243,7 +243,7 @@ export function AlertasCancelados({
           incompleto && (
             <span
               data-testid="alertas-cancelados-badge"
-              className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[9px] font-black leading-none text-black"
+              className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full border border-black/20 bg-amber-500 px-1 text-[11px] font-black leading-none text-black"
             >
               !
             </span>
@@ -269,17 +269,18 @@ export function AlertasCancelados({
             <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                  <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
                     {foraDaJanela}{" "}
                     {foraDaJanela === 1
                       ? "cancelamento anterior à janela"
                       : "cancelamentos anteriores à janela"}{" "}
                     de {JANELA_PEDIDOS_CANCELADOS_DIAS} dias
                   </h3>
-                  <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
+                  <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
                     A varredura enxuta olha só os cancelamentos recentes. Os
-                    pedidos de fora continuam existindo — com estorno devido e
-                    mercadoria a voltar — e não estão nas listas abaixo.
+                    pedidos de fora continuam existindo — com dinheiro a
+                    devolver ao cliente e mercadoria a voltar — e não estão nas
+                    listas abaixo.
                   </p>
                 </div>
                 <Button
@@ -290,7 +291,7 @@ export function AlertasCancelados({
                     // recarregando por trás, não o dropdown aberto sobre ela.
                     setAberto(false);
                   }}
-                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[11px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
                 >
                   Buscar também os antigos
                 </Button>
@@ -311,14 +312,14 @@ export function AlertasCancelados({
                     <AlertTriangle className="size-5" />
                   </div>
                   <div>
-                    <h3 className="text-[10px] font-black uppercase tracking-widest text-amber-500">
+                    <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
                       {avisoPagoAposCancelado}
                     </h3>
-                    <p className="mt-1.5 text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
+                    <p className="mt-1.5 text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-400">
                       O dinheiro entrou e o pedido está cancelado. Veja abaixo,
-                      em Estorno devido, quais já podem ser devolvidos no painel
-                      do Mercado Pago — os que ainda esperam a mercadoria voltar
-                      aparecem em Produtos que ainda não voltaram.
+                      em Devolver ao cliente, quais já podem ser devolvidos no
+                      painel do Mercado Pago — os que ainda esperam a mercadoria
+                      voltar aparecem em Produtos que ainda não voltaram.
                     </p>
                   </div>
                 </div>
@@ -330,7 +331,7 @@ export function AlertasCancelados({
                     // cobrindo exatamente a lista para onde a página vai.
                     setAberto(false);
                   }}
-                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[10px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
+                  className="h-11 shrink-0 rounded-xl border-amber-500/30 bg-amber-500/10 px-5 text-[11px] font-black uppercase tracking-widest text-amber-500 transition-all hover:bg-amber-500 hover:text-black"
                 >
                   Ver pedidos
                 </Button>
@@ -340,16 +341,16 @@ export function AlertasCancelados({
 
           {/* Produtos que ainda não voltaram — lista DERIVADA de
               `pedidosCancelados`, nunca gravada, e trata só de MERCADORIA:
-              nenhuma palavra sobre dinheiro devido (a lojista que lia
-              "Estorno devido" sobre pedido nunca cobrado concluía que devia
-              R$ 100 a quem nunca pagou nada). Some sozinha assim que
+              nenhuma palavra sobre dinheiro devido (a lojista que lia o
+              título de dinheiro a devolver sobre pedido nunca cobrado concluía
+              que devia R$ 100 a quem nunca pagou nada). Some sozinha assim que
               `confirmarRetornoDoProduto` resolve o pedido. */}
           {pedidosEsperandoRetorno.length > 0 && (
             <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
+              <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
                 Produtos que ainda não voltaram
               </h3>
-              <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
+              <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
                 O pedido já saiu para entrega e foi cancelado. Confirme aqui só
                 quando a mercadoria voltar de verdade à sua mão — é isso que
                 devolve o item ao estoque. Isto não fala de dinheiro: aparece
@@ -358,24 +359,34 @@ export function AlertasCancelados({
               </p>
 
               <div className="mt-5">
-                <h4 className="text-[9px] font-black uppercase tracking-widest text-amber-500">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
                   Esperando o produto voltar ({pedidosEsperandoRetorno.length})
                 </h4>
                 <ul className="mt-3 space-y-2">
                   {pedidosEsperandoRetorno.map((pedido) => (
+                    // Painel simples (onda 3): abaixo de `sm` o botão desce
+                    // para a linha de baixo — lado a lado, no celular de
+                    // 360px, ele deixava ~15px para o número e o cliente, e a
+                    // lojista não via de qual pedido era cada botão. Só o
+                    // NOME encurta; o valor nunca some.
                     <li
                       key={pedido.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3"
+                      className="flex flex-col gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
-                        <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
+                        <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
                           #{pedido.id.slice(-6).toUpperCase()}
                         </span>
-                        <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                          {pedido.customer?.name || "Cliente"} · R${" "}
-                          {(pedido.total || 0).toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                          })}
+                        <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
+                          <span className="min-w-0 truncate">
+                            {pedido.customer?.name || "Cliente"} ·
+                          </span>{" "}
+                          <span className="shrink-0">
+                            R${" "}
+                            {(pedido.total || 0).toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
                         </span>
                       </div>
                       <Button
@@ -383,7 +394,7 @@ export function AlertasCancelados({
                         variant="outline"
                         onClick={() => onConfirmarRetorno(pedido.id)}
                         disabled={confirmandoRetornoId === pedido.id}
-                        className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[9px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
+                        className="h-9 shrink-0 rounded-xl border-emerald-500/30 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-black disabled:opacity-50"
                       >
                         {confirmandoRetornoId === pedido.id
                           ? "Confirmando..."
@@ -396,7 +407,8 @@ export function AlertasCancelados({
             </div>
           )}
 
-          {/* Estorno devido — lista DERIVADA de `pedidosCancelados`, nunca
+          {/* Devolver ao cliente (era "Estorno devido") — lista DERIVADA de
+              `pedidosCancelados`, nunca
               gravada, e trata só de DINHEIRO: só existe pedido aqui quando
               `baldeDeEstorno` confirma que o pagamento ENTROU. Some sozinha
               assim que `payment_status` vira 'estornado' (webhook do Mercado
@@ -405,8 +417,8 @@ export function AlertasCancelados({
               pergunta diferente (BLOQUEIA 2 da revisão de 26/08/2026). */}
           {pedidosParaDevolverAgora.length > 0 && (
             <div className="admin-glass relative overflow-hidden rounded-[2rem] border-white/5 p-6">
-              <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">
-                Estorno devido
+              <h3 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
+                Devolver ao cliente
               </h3>
               {/* L3e (lacunas de pagamento, 02/10/2026): a frase antiga
                   ("esta tela não devolve dinheiro nenhum") deixou de ser
@@ -417,7 +429,7 @@ export function AlertasCancelados({
                   DOIS casos porque se apoia no aviso por pedido, que vem das
                   linhas reais (`estornosEmCurso`), não numa regra adivinhada
                   aqui. */}
-              <p className="mt-1.5 max-w-2xl text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
+              <p className="mt-1.5 max-w-2xl text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500">
                 Os pedidos marcados com “{TERMO_EM_ANDAMENTO}” têm dinheiro
                 voltando ao cliente pelo Mercado Pago — o app pede isso sozinho
                 quando um pedido já pago é cancelado antes de sair para entrega.
@@ -431,7 +443,7 @@ export function AlertasCancelados({
               </p>
 
               <div className="mt-5">
-                <h4 className="text-[9px] font-black uppercase tracking-widest text-rose-500">
+                <h4 className="text-[11px] font-black uppercase tracking-widest text-rose-500">
                   Devolver agora ({pedidosParaDevolverAgora.length})
                 </h4>
                 <ul className="mt-3 space-y-2">
@@ -459,17 +471,24 @@ export function AlertasCancelados({
                         data-testid={`devolver-agora-item-${pedido.id}`}
                         className="rounded-xl border border-white/5 bg-black/20 px-4 py-3"
                       >
-                        <span className="block truncate text-[10px] font-black uppercase tracking-widest text-white">
+                        <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
                           #{pedido.id.slice(-6).toUpperCase()}
                         </span>
-                        <span className="block truncate text-[9px] font-bold uppercase text-zinc-500">
-                          {/* Achado 1 (rodada 2): o valor que FALTA devolver,
+                        {/* Achado 1 (rodada 2): o valor que FALTA devolver,
                             não o total do pedido — descontado o que uma
                             devolução deste pedido já devolveu por fora, e
                             (L3e') o que o Mercado Pago já está devolvendo ou
-                            acabou de devolver. */}
-                          {pedido.customer?.name || "Cliente"} ·{" "}
-                          <span data-testid="devolver-agora-valor">
+                            acabou de devolver. Painel simples (onda 3): só o
+                            NOME encurta com reticência; o valor nunca some
+                            (no celular de 360px, nome longo escondia o R$). */}
+                        <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
+                          <span className="min-w-0 truncate">
+                            {pedido.customer?.name || "Cliente"} ·
+                          </span>{" "}
+                          <span
+                            data-testid="devolver-agora-valor"
+                            className="shrink-0"
+                          >
                             R$ {reais(valor)}
                           </span>
                         </span>
@@ -497,7 +516,7 @@ export function AlertasCancelados({
                           {conferido && conferido.pedidoPeloApp > 0 && (
                             <span
                               data-testid="estorno-em-curso"
-                              className="mt-1 block text-[9px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
                             >
                               {TERMO_EM_ANDAMENTO}: o app já pediu ao Mercado
                               Pago a devolução de R${" "}
@@ -508,7 +527,7 @@ export function AlertasCancelados({
                           {conferido && conferido.sistema > 0 && (
                             <span
                               data-testid="estorno-em-curso-sistema"
-                              className="mt-1 block text-[9px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
                             >
                               {TERMO_EM_ANDAMENTO}: o Mercado Pago tem uma
                               devolução ou disputa em andamento de R${" "}
@@ -519,7 +538,7 @@ export function AlertasCancelados({
                           {conferido && conferido.semConfirmacao > 0 && (
                             <span
                               data-testid="estorno-sem-confirmacao"
-                              className="mt-1 block text-[9px] font-black uppercase leading-relaxed tracking-widest text-amber-500"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-amber-500"
                             >
                               {TERMO_EM_ANDAMENTO} sem confirmação: não consegui
                               confirmar esta devolução de R${" "}
@@ -531,7 +550,7 @@ export function AlertasCancelados({
                           {concluidoForaDaLista > 0 && (
                             <span
                               data-testid="estorno-concluido-recente"
-                              className="mt-1 block text-[9px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-emerald-400"
                             >
                               Já devolvido pelo Mercado Pago: R${" "}
                               {reais(concluidoForaDaLista)} (já descontado do
@@ -541,7 +560,7 @@ export function AlertasCancelados({
                           {ledger.tipo === "conferindo" && (
                             <span
                               data-testid="estorno-conferindo"
-                              className="mt-1 block text-[9px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500"
+                              className="mt-1 block text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-500"
                             >
                               Conferindo se o Mercado Pago já está devolvendo…
                             </span>
@@ -549,7 +568,7 @@ export function AlertasCancelados({
                           {ledger.tipo === "nao_conferido" && (
                             <span
                               data-testid="estorno-nao-conferido"
-                              className="mt-1 block text-[9px] font-black uppercase leading-relaxed tracking-widest text-amber-500"
+                              className="mt-1 block text-[11px] font-black uppercase leading-relaxed tracking-widest text-amber-500"
                             >
                               Não deu para conferir se o Mercado Pago já está
                               devolvendo este pedido. Abra o pedido antes de
@@ -576,7 +595,7 @@ export function AlertasCancelados({
                             if (conferindoEstornoId === pedido.id) return;
                             onRegistrarEstorno(pedido);
                           }}
-                          className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[8.5px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                          className="mt-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                         >
                           {conferindoEstornoId === pedido.id
                             ? "Conferindo…"
