@@ -372,6 +372,13 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
       expect(subtituloDoGrupo("Pagamentos")).toBe("Falta: Como você recebe");
     });
 
+    it("PIX ligado sem chave e nada na entrega → 'Falta: Como você recebe' (PIX quebrado não é jeito de receber)", async () => {
+      mockChave.chavePublicaMercadoPago.mockReturnValue(null);
+      mockConfig.formasPagamentoEntrega = [];
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Falta: Como você recebe");
+    });
+
     it("PIX ligado com a chave ausente NÃO conta como PIX: o subtítulo avisa", async () => {
       mockChave.chavePublicaMercadoPago.mockReturnValue(null);
       await renderizar();
@@ -417,6 +424,21 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
       expect(subtituloDoGrupo("Entrega e frete")).toBe(
         "R$ 10 por entrega · Só na sua cidade",
       );
+    });
+
+    it("leitura das transportadoras falhou (data nula + erro), com CEP e cobertura nacional → SEM subtítulo, não chuta", async () => {
+      preencherMarcaEEndereco();
+      invokeFrete.mockImplementation((_nome: string, opcoes: any) => {
+        if (opcoes?.body?.action === "ler_configuracao_frete") {
+          return Promise.resolve({
+            data: null,
+            error: { message: "falha de rede de mentira" },
+          });
+        }
+        return Promise.resolve({ data: { success: true }, error: null });
+      });
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBeNull();
     });
 
     it("SuperFrete ligada sem e-mail válido não conta como transportadora ligada", async () => {

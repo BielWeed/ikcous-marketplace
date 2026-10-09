@@ -606,7 +606,7 @@ function IndicadorDoPainel({
       >
         <Icone className="size-[18px]" strokeWidth={2.25} />
       </span>
-      <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">
+      <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-400">
         <span
           className={cn(
             "size-1.5 shrink-0 rounded-full",
@@ -703,7 +703,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   }, [active]);
 
   // ── Estado do PIX: MESMAS fontes do StatusPagamentoPix, avaliadas UMA
-  // vez aqui no hub e compartilhadas pelo painel e pelo termômetro. O
+  // vez aqui no hub e compartilhadas pelo subtítulo de Pagamentos e pelo
+  // termômetro de "Minha loja está no ar?". O
   // contrato de pix-configurado-no-build exige este import cru DENTRO deste
   // arquivo (mesma regra do AdminDashboardView) — não extrair para
   // componente/arquivo novo sem atualizar aquele teste.
@@ -712,7 +713,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // no BOOT da página. O interruptor "Receber PIX no app" (MercadoPagoSection,
   // logo abaixo) escreve `store_config.pagamento_online` pela edge e devolve
   // o estado GRAVADO — sem este eco, a mesma tela mostrava dois estados do
-  // dinheiro (tile "Pagamento", subtítulo "PIX: …" e termômetro presos no
+  // dinheiro (subtítulo de Pagamentos, "PIX: …" e termômetro presos no
   // valor velho) até um recarregamento completo, enquanto a própria seção
   // dizia "a vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
   // propósito: a ficha global (configuracaoDaLoja) não se reescreve em
@@ -763,10 +764,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   }, []);
   // Revisão Opus (achado 5): a leitura acima só rodava UMA vez, ao montar
   // — salvar provedores dentro da seção (aberta logo abaixo) não
-  // atualizava o "Ativo: X" deste indicador até um recarregamento
-  // completo da página. `TransportadorasSection` agora avisa a cada
-  // leitura confirmada (montagem e após salvar); o indicador do topo
-  // segue essa MESMA verdade em vez de só a da primeira leitura.
+  // atualizava o "Ativo: X" nem o subtítulo de Entrega e frete até um
+  // recarregamento completo da página. `TransportadorasSection` agora avisa
+  // a cada leitura confirmada (montagem e após salvar); o "Ativo: X" e o
+  // subtítulo do grupo seguem essa MESMA verdade em vez de só a da primeira
+  // leitura.
   const onLigadosDaSecaoMudou = useCallback(
     (
       ligados: readonly ProvedorFrete[],
@@ -927,7 +929,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 prompt pronto para o agente de IA do app do MP, salvar e
                 testar conexão ali mesmo. Desde a mp-4 o interruptor
                 "Receber PIX no app" mora aqui dentro, e desde a mp-9 o que
-                ele grava volta por `onPixAlternado` para o painel acima —
+                ele grava volta por `onPixAlternado` para o subtítulo deste
+                grupo e para o termômetro de Ferramentas —
                 era a mesma tela contando dois estados do dinheiro. Nascida
                 FECHADA como as demais: ajuste feito uma vez. */}
             <GrupoDeAjustes

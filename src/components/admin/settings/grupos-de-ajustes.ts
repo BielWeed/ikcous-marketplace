@@ -115,8 +115,9 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
 //   pagamentos  → o passo "recebe": o que está ativo, ou "Falta: Como você recebe"
 //   aparencia, devolucao, ferramentas → sem passo próprio: sem subtítulo
 //
-// Passo ainda `carregando` (a leitura das transportadoras não chegou) não
-// chuta: o grupo fica sem subtítulo até a resposta vir.
+// Passo `carregando` não chuta: o grupo fica SEM subtítulo. Na entrega isso
+// vale enquanto a leitura das transportadoras não chegou — e, se ela falhar,
+// continua sem subtítulo até a seção de Transportadoras reler.
 
 /** Os três níveis do PIX pelo app em Ajustes (o mesmo do termômetro). */
 export type NivelDoPixEmAjustes = "ok" | "alerta" | "off";
@@ -132,7 +133,8 @@ export interface EntradaDosSubtitulos {
    * Nomes das transportadoras com cotação REAL ligada (chave salva e, quando
    * o provedor exige, e-mail de contato válido) — o que Ajustes já leu para o
    * acordeão de Transportadoras. `null` = a leitura ainda não chegou (ou
-   * falhou): a entrega nacional fica "a confirmar", sem afirmar nada.
+   * falhou): com cobertura nacional a entrega fica SEM subtítulo (nada de
+   * "a confirmar"), até a seção de Transportadoras reler.
    */
   readonly nomesLigados: readonly string[] | null;
 }
