@@ -1,10 +1,12 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import {
   type ConfigDoProvedor,
   NOME_DO_PROVEDOR,
   PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
   type ProvedorFrete,
+  TransportadorasSection,
   buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
@@ -124,10 +126,13 @@ interface AdminShippingViewProps {
  * cidade, o preço é só o da cotação real da transportadora.
  *
  * DIVISÃO DE TERRITÓRIO (herdada, segue valendo): Provedor, serviços e
- * credenciais são da seção de Transportadoras em Ajustes — daqui eles são
- * apenas LEITURA. Salvar aqui NÃO envia `shippingProvider`/
- * `enabledShippingMethods` (exceto a retirada, que é exceção única e
- * herdada — ver o `handleSave`).
+ * credenciais são da seção de Transportadoras (`TransportadorasSection`), que
+ * desde o painel simples (H5, 09/10/2026) mora NESTA tela, no painel
+ * "Transportadoras" — e continua gravando só pela edge, com os botões dela.
+ * Salvar no cabeçalho NÃO envia `shippingProvider`/`enabledShippingMethods`
+ * (exceto a retirada, que é exceção única e herdada — ver o `handleSave`).
+ * As Consultas de frete (o histórico das cotações) também vieram de Ajustes:
+ * painel próprio sob "Avançado".
  */
 export const AdminShippingView = memo(function AdminShippingView({
   onNavigate,
@@ -147,8 +152,10 @@ export const AdminShippingView = memo(function AdminShippingView({
   const [painelAberto, setPainelAberto] = useState({
     local: false,
     nacional: painelInicial === "nacional",
+    transportadoras: false,
     estrategiasLocais: false,
     etiquetas: false,
+    consultas: false,
   });
   // `switch` explícito (não `{ ...prev, [chave]: ... }`): indexação
   // dinâmica por variável dispara `security/detect-object-injection` do
@@ -160,14 +167,42 @@ export const AdminShippingView = memo(function AdminShippingView({
           return { ...prev, local: !prev.local };
         case "nacional":
           return { ...prev, nacional: !prev.nacional };
+        case "transportadoras":
+          return { ...prev, transportadoras: !prev.transportadoras };
         case "estrategiasLocais":
           return { ...prev, estrategiasLocais: !prev.estrategiasLocais };
         case "etiquetas":
           return { ...prev, etiquetas: !prev.etiquetas };
+        case "consultas":
+          return { ...prev, consultas: !prev.consultas };
         default:
           return prev;
       }
     });
+  }, []);
+
+  // Transportadoras (H5, painel simples): a seção MONTA na primeira abertura
+  // e NÃO DESMONTA mais. Montar já na entrada da tela faria uma segunda
+  // leitura de `ler_configuracao_frete` (a seção lê a dela ao montar) antes
+  // de a lojista pedir; desmontar ao fechar jogaria fora o token digitado e
+  // não salvo. Fechado, o painel só esconde (`hidden`).
+  const [transportadorasMontada, setTransportadorasMontada] = useState(false);
+  const alternarTransportadoras = useCallback(() => {
+    setTransportadorasMontada(true);
+    alternarPainel("transportadoras");
+  }, [alternarPainel]);
+  // Os atalhos de "Fora da cidade" ("Conectar transportadora", "Abrir
+  // Transportadoras", "Preencher em Transportadoras") abrem o painel e rolam
+  // até ele — antes mandavam para Ajustes, onde a seção morava.
+  const abrirTransportadoras = useCallback(() => {
+    setTransportadorasMontada(true);
+    setPainelAberto((prev) => ({ ...prev, transportadoras: true }));
+    // `setTimeout(0)`: mesmo motivo de `abrirEIrParaEstrategiaNacional`.
+    setTimeout(() => {
+      document
+        .getElementById("painel-frete-transportadoras")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   }, []);
 
   // ── Formulário LOCAL (herdado, intacto) ───────────────────────────────
@@ -228,6 +263,26 @@ export const AdminShippingView = memo(function AdminShippingView({
     setLigadosSalvos(new Set(resultado.config.ligados));
     setProvedoresSalvos(resultado.config.provedores);
   }, []);
+
+  // A seção de Transportadoras avisa a cada leitura confirmada dela (ao
+  // montar e depois de cada salvar): a faixa e "Fora da cidade" passam a
+  // contar o que acabou de ser salvo, sem recarregar a tela.
+  const onLigadosDasTransportadorasMudou = useCallback(
+    (
+      ligados: readonly ProvedorFrete[],
+      provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
+    ) => {
+      setCredsErro(false);
+      setLigadosSalvos(new Set(ligados));
+      setProvedoresSalvos(provedores);
+    },
+    [],
+  );
+  // Token digitado e não salvo numa transportadora: entra na guarda de
+  // navegação da tela (onSetDirty), mas não no botão Salvar do cabeçalho —
+  // a chave tem o Salvar do próprio cartão.
+  const [transportadorasPendentes, setTransportadorasPendentes] =
+    useState(false);
 
   // ── Sincronização LOCAL (achado 3 da auditoria, intacta) ──────────────
   const jaSincronizouRef = useRef(false);
@@ -372,10 +427,11 @@ export const AdminShippingView = memo(function AdminShippingView({
   }, [isFormDirtyNacional]);
 
   // Um sinal só sai para o pai (gate de navegação do App) — ele nunca soube
-  // que existiam duas metades.
+  // que existiam duas metades. O token não salvo das Transportadoras soma
+  // aqui também (H5): sair da tela não descarta a chave digitada em silêncio.
   useEffect(() => {
-    onSetDirty?.(isFormDirty);
-  }, [isFormDirty, onSetDirty]);
+    onSetDirty?.(isFormDirty || transportadorasPendentes);
+  }, [isFormDirty, transportadorasPendentes, onSetDirty]);
 
   // ── Estratégia nacional: escolher e validar (T4, herdado) ──────────────
   const escolherEstrategiaNacional = useCallback(
@@ -513,7 +569,9 @@ export const AdminShippingView = memo(function AdminShippingView({
       // nacional preso em `true` para sempre.
       setFormDataNacional(nacionalAjustado);
       setFalhaAoSalvar(false);
-      onSetDirty?.(false);
+      // As regras salvaram; um token de transportadora ainda não salvo
+      // continua segurando a guarda.
+      onSetDirty?.(transportadorasPendentes);
       haptic.success();
       toast.success("Regras de frete salvas!");
     } catch (err) {
@@ -704,11 +762,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                     }
                     provedores={provedoresNacional}
                     erroNaLeitura={credsErro}
-                    onAbrirAjustes={
-                      onNavigate
-                        ? () => onNavigate("admin-settings")
-                        : undefined
-                    }
+                    onAbrirTransportadoras={abrirTransportadoras}
                     onTentarDeNovo={fetchCreds}
                     desabilitado={isOffline}
                     resumoDaEstrategiaNacional={
@@ -729,15 +783,13 @@ export const AdminShippingView = memo(function AdminShippingView({
                         Nenhuma transportadora ligada ainda — a estratégia só
                         vale quando há cotação de transportadora.
                       </span>
-                      {onNavigate && (
-                        <button
-                          type="button"
-                          onClick={() => onNavigate("admin-settings")}
-                          className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
-                        >
-                          Conectar transportadora
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={abrirTransportadoras}
+                        className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                      >
+                        Conectar transportadora
+                      </button>
                     </p>
                   )}
 
@@ -781,6 +833,26 @@ export const AdminShippingView = memo(function AdminShippingView({
                 </div>
               </PainelRecolhivel>
 
+              {/* Transportadoras (H5, painel simples): a chave de acesso, o
+                  teste, os serviços e quem está ligado — moravam em Ajustes.
+                  A seção grava tudo pela edge (`save_credentials` /
+                  `save_active_providers`), com os botões dela; o Salvar do
+                  cabeçalho continua sem tocar em nada disso. */}
+              <PainelRecolhivel
+                id="painel-frete-transportadoras"
+                titulo="Transportadoras"
+                resumo="chave de acesso, teste e quem está ligado"
+                aberta={painelAberto.transportadoras}
+                onToggle={alternarTransportadoras}
+              >
+                {transportadorasMontada && (
+                  <TransportadorasSection
+                    onDirtyMudou={setTransportadorasPendentes}
+                    onLigadosMudou={onLigadosDasTransportadorasMudou}
+                  />
+                )}
+              </PainelRecolhivel>
+
               <PainelRecolhivel
                 id="painel-frete-estrategias-locais"
                 titulo="Estratégias do frete local"
@@ -810,29 +882,49 @@ export const AdminShippingView = memo(function AdminShippingView({
                 />
               </PainelRecolhivel>
 
-              <PainelRecolhivel
-                id="painel-frete-etiquetas"
-                titulo="Etiquetas de envio"
-                resumo="agora ficam no próprio pedido"
-                aberta={painelAberto.etiquetas}
-                onToggle={() => alternarPainel("etiquetas")}
-              >
-                <p className="text-[11px] leading-snug text-zinc-500">
-                  Etiquetas de envio agora ficam no próprio pedido: abra{" "}
-                  {onNavigate ? (
-                    <button
-                      type="button"
-                      onClick={() => onNavigate("admin-orders")}
-                      className="font-semibold text-admin-gold underline decoration-admin-gold/40 underline-offset-2 transition-colors hover:text-admin-gold/80"
-                    >
-                      Pedidos
-                    </button>
-                  ) : (
-                    "Pedidos"
-                  )}
-                  , toque no pedido e use "Etiqueta de envio".
-                </p>
-              </PainelRecolhivel>
+              {/* Avançado: consulta rara, no pé da tela. */}
+              <div className="space-y-7 pt-2">
+                <h2 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  Avançado
+                </h2>
+
+                <PainelRecolhivel
+                  id="painel-frete-etiquetas"
+                  titulo="Etiquetas de envio"
+                  resumo="agora ficam no próprio pedido"
+                  aberta={painelAberto.etiquetas}
+                  onToggle={() => alternarPainel("etiquetas")}
+                >
+                  <p className="text-[11px] leading-snug text-zinc-500">
+                    Etiquetas de envio agora ficam no próprio pedido: abra{" "}
+                    {onNavigate ? (
+                      <button
+                        type="button"
+                        onClick={() => onNavigate("admin-orders")}
+                        className="font-semibold text-admin-gold underline decoration-admin-gold/40 underline-offset-2 transition-colors hover:text-admin-gold/80"
+                      >
+                        Pedidos
+                      </button>
+                    ) : (
+                      "Pedidos"
+                    )}
+                    , toque no pedido e use "Etiqueta de envio".
+                  </p>
+                </PainelRecolhivel>
+
+                {/* Consultas de frete (H5): o histórico das cotações, que
+                    morava em Ajustes. Só monta com o painel ABERTO — cada
+                    abertura busca o histórico fresco, como era lá. */}
+                <PainelRecolhivel
+                  id="painel-frete-consultas"
+                  titulo="Consultas de frete"
+                  resumo="as últimas cotações feitas para os clientes"
+                  aberta={painelAberto.consultas}
+                  onToggle={() => alternarPainel("consultas")}
+                >
+                  {painelAberto.consultas && <HistoricoCotacoesSection />}
+                </PainelRecolhivel>
+              </div>
             </div>
 
             <p className="mt-10 flex items-start gap-2 text-[11px] leading-snug text-zinc-600">
@@ -882,13 +974,15 @@ export const AdminShippingView = memo(function AdminShippingView({
             </div>
             <p className="text-xs leading-relaxed text-zinc-400">
               A chave de acesso das transportadoras (Melhor Envio, Frenet,
-              SuperFrete), o teste de conexão, os serviços habilitados e o
-              histórico de cotações ficam em{" "}
+              SuperFrete), o teste de conexão, os serviços habilitados e quem
+              está ligado ficam no painel{" "}
+              <span className="font-bold text-zinc-200">Transportadoras</span>,
+              nesta mesma tela. O botão "Abrir Transportadoras" da seção Fora da
+              cidade abre o painel. O histórico das cotações fica em{" "}
               <span className="font-bold text-zinc-200">
-                Ajustes &gt; Transportadoras
+                Avançado &gt; Consultas de frete
               </span>
-              . O botão "Abrir Ajustes" da seção Fora da cidade leva direto para
-              lá.
+              .
             </p>
           </div>
           <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">

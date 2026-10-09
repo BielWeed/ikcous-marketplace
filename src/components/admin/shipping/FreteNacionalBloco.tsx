@@ -4,12 +4,7 @@ import {
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
-import {
-  AlertCircle,
-  ChevronRight,
-  ExternalLink,
-  RefreshCw,
-} from "lucide-react";
+import { AlertCircle, ChevronRight, RefreshCw } from "lucide-react";
 import { memo } from "react";
 
 /**
@@ -20,9 +15,10 @@ import { memo } from "react";
  * Frenet ao mesmo tempo — o estado passa a ser POR PROVEDOR (F10, tarefa
  * P: "nunca 'conectado' só por ter chave").
  *
- * Esta tela continua só de LEITURA: quem grava chave, testa e liga/desliga
- * é a seção "Transportadoras" em Ajustes. Aqui o estado chega PRONTO da
- * view, lido pela MESMA edge (`ler_configuracao_frete`).
+ * Este bloco continua só de LEITURA: quem grava chave, testa e liga/desliga
+ * é a seção "Transportadoras" — desde o painel simples (H5) um painel da
+ * MESMA tela de Frete, logo abaixo. Aqui o estado chega PRONTO da view, lido
+ * pela MESMA edge (`ler_configuracao_frete`).
  */
 // "incompleta" (revisão Opus, achado 2 — regressão 1.5.5): tem chave, mas
 // falta o que a transportadora exige para cotar de verdade (hoje só a
@@ -53,7 +49,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   onAbrirMinhaLoja,
   provedores,
   erroNaLeitura,
-  onAbrirAjustes,
+  onAbrirTransportadoras,
   onTentarDeNovo,
   desabilitado,
   resumoDaEstrategiaNacional,
@@ -73,7 +69,8 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   /** A leitura da configuração de frete falhou — a tela não sabe e não
    * finge saber (estados honestos são a lei deste repo). */
   readonly erroNaLeitura?: boolean;
-  readonly onAbrirAjustes?: () => void;
+  /** Abre o painel "Transportadoras" da tela de Frete (e rola até ele). */
+  readonly onAbrirTransportadoras?: () => void;
   readonly onTentarDeNovo?: () => void;
   readonly desabilitado?: boolean;
   /** Texto curto do estado SALVO da estratégia nacional (T4, 23/09/2026) —
@@ -81,7 +78,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
    * lado do botão que abre a tela nova. */
   readonly resumoDaEstrategiaNacional?: string;
   /** Abre `admin-shipping-national` — ausente quando a view não recebeu
-   * `onNavigate` (mesmo padrão de `onAbrirAjustes`). */
+   * `onNavigate` (mesmo padrão de `onAbrirTransportadoras`). */
   readonly onAbrirEstrategiasNacionais?: () => void;
   /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
    * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
@@ -159,10 +156,10 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           )
         }
       >
-        {!erroNaLeitura && !algumLigado && onAbrirAjustes && (
+        {!erroNaLeitura && !algumLigado && onAbrirTransportadoras && (
           <button
             type="button"
-            onClick={onAbrirAjustes}
+            onClick={onAbrirTransportadoras}
             className="flex shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
           >
             Conectar transportadora
@@ -216,15 +213,16 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
               >
                 <AlertCircle className="size-3.5 shrink-0" />
                 <span>
-                  {p.nome} incompleta — falta o e-mail de contato em Ajustes.
+                  {p.nome} incompleta — falta o e-mail de contato em
+                  Transportadoras.
                 </span>
-                {onAbrirAjustes && (
+                {onAbrirTransportadoras && (
                   <button
                     type="button"
-                    onClick={onAbrirAjustes}
+                    onClick={onAbrirTransportadoras}
                     className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
                   >
-                    Preencher em Ajustes
+                    Preencher em Transportadoras
                   </button>
                 )}
               </p>
@@ -235,8 +233,8 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
       {!algumLigado && !erroNaLeitura && (
         <p className="-mt-2 pb-4 text-[12.5px] leading-snug text-zinc-500">
           Para vender para todo o Brasil, conecte e ligue ao menos uma
-          transportadora em Ajustes. Quem compra de fora não consegue fechar o
-          pedido até lá.
+          transportadora no painel Transportadoras, logo abaixo. Quem compra de
+          fora não consegue fechar o pedido até lá.
         </p>
       )}
 
@@ -292,16 +290,16 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
 
       <Linha
         nome="Transportadoras e serviços"
-        dica="A chave de acesso, o teste de conexão, os serviços habilitados e quem está ligado ficam em Ajustes."
+        dica="A chave de acesso, o teste de conexão, os serviços habilitados e quem está ligado ficam no painel Transportadoras, nesta mesma tela."
       >
-        {onAbrirAjustes && (
+        {onAbrirTransportadoras && (
           <button
             type="button"
-            onClick={onAbrirAjustes}
+            onClick={onAbrirTransportadoras}
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
-            <ExternalLink className="size-3.5 text-admin-accent" />
-            Abrir Ajustes
+            Abrir Transportadoras
+            <ChevronRight className="size-3.5 text-admin-accent" />
           </button>
         )}
       </Linha>

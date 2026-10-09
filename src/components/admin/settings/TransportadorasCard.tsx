@@ -141,7 +141,9 @@ async function chamarEdgeDeFrete(
  * Lê a configuração de frete inteira pela edge (`ler_configuracao_frete`) —
  * usada por esta seção e, para mostrar os provedores LIGADOS do modo multi
  * sem depender do espelho `shipping_provider` (EMENDA R2, R2-5), por
- * `HistoricoCotacoesCard.tsx` e `AdminSettingsView.tsx`.
+ * `HistoricoCotacoesCard.tsx`, pela tela de Frete (`AdminShippingView.tsx`,
+ * onde esta seção mora desde o painel simples, H5) e pelo subtítulo de
+ * "Entrega e frete" em `AdminSettingsView.tsx`.
  */
 export async function buscarConfiguracaoDeFrete(): Promise<
   { ok: true; config: ConfiguracaoDeFrete } | { ok: false }
@@ -399,18 +401,19 @@ function rascunhoVazio(): RascunhoDoProvedor {
 }
 
 interface TransportadorasSectionProps {
-  /** Avisa o pai (Ajustes) quando há alteração não salva — a seção não
-   * pode fechar com trabalho pendente (mesma trava de sempre). */
+  /** Avisa o pai (a tela de Frete, desde o painel simples — H5) quando há
+   * alteração não salva: entra na guarda de navegação da tela, para o token
+   * digitado não sumir em silêncio. */
   readonly onDirtyMudou?: (dirty: boolean) => void;
-  /** Revisão Opus (achado 5, rodada 2): o subtítulo "Ativo: X" da seção em
-   * Ajustes só lia os provedores ligados UMA VEZ, ao montar — salvar aqui
-   * não atualizava aquele texto até a página recarregar. Avisa o pai a
-   * cada leitura (montagem e depois de cada `carregar()` bem-sucedido)
-   * para o subtítulo nunca ficar contando uma história velha. Carrega
-   * também o `Map` de provedores (não só a lista de ligados): o pai
-   * precisa de `contato_email`/`tem_chave` para saber se um provedor
-   * ligado está de fato COMPLETO (achado 2 da rodada 2 — "incompleta"
-   * tem de valer aqui também, não só na tela de Frete). */
+  /** Revisão Opus (achado 5, rodada 2): quem hospeda a seção só lia os
+   * provedores ligados UMA VEZ, ao montar — salvar aqui não atualizava o
+   * estado mostrado ao lado até a página recarregar. Avisa o pai a cada
+   * leitura (montagem e depois de cada `carregar()` bem-sucedido) para a
+   * faixa e "Fora da cidade" da tela de Frete nunca contarem uma história
+   * velha. Carrega também o `Map` de provedores (não só a lista de
+   * ligados): o pai precisa de `contato_email`/`tem_chave` para saber se um
+   * provedor ligado está de fato COMPLETO (achado 2 da rodada 2 —
+   * "incompleta" tem de valer em todo lugar). */
   readonly onLigadosMudou?: (
     ligados: readonly ProvedorFrete[],
     provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,

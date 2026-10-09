@@ -7,7 +7,6 @@ import {
   ChevronDown,
   CreditCard,
   HelpCircle,
-  History,
   Layers,
   Palette,
   RefreshCw,
@@ -16,19 +15,17 @@ import {
   Truck,
   Wifi,
 } from "lucide-react";
-import { Suspense, lazy, memo, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, memo, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
-import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { PoliticaDeDevolucaoSection } from "@/components/admin/settings/PoliticaDeDevolucaoSection";
 import {
   type ConfigDoProvedor,
   NOME_DO_PROVEDOR,
   PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
   type ProvedorFrete,
-  TransportadorasSection,
   buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
@@ -325,7 +322,7 @@ const ConnectionDiagnosticsSection = memo(
  * volta enxuta a cada visita, e expandir é um clique.
  *
  * `subtitulo` (desenho SALÃO+PORÃO, 13/09/2026): a linha de estado sob o
- * título ("Entrega e frete — Ativo: Melhor Envio"). Mora DENTRO do <button>
+ * título ("Formas de pagamento — 3 na entrega"). Mora DENTRO do <button>
  * de propósito: fora dele a linha vira área morta que não abre a seção, e
  * o estado deixa de fazer parte do nome acessível do controle. Textos vêm
  * truncados (nome de loja longuíssimo não quebra o cabeçalho).
@@ -648,11 +645,6 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
-  // A seção de Transportadoras reporta se tem alteração não salva; enquanto
-  // houver, ela não pode ser recolhida (fechar desmonta o conteúdo e
-  // descartaria o token digitado — trava explicada no SecaoColapsavel).
-  const [transportadorasPendentes, setTransportadorasPendentes] =
-    useState(false);
 
   // Peça 20: mesma trava das demais — chave digitada e não salva não pode
   // sumir num clique no cabeçalho da seção.
@@ -677,18 +669,17 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // — mesmo contrato da tela de Frete (AdminShippingView). Identidade e
   // horário saíram desta soma em 22/09/2026: os acordeões duplicados desta
   // tela foram removidos — a edição (e a pendência dela) mora só em
-  // AdminAboutStoreView agora.
+  // AdminAboutStoreView agora. As Transportadoras saíram em 09/10/2026 (H5):
+  // a pendência do token é somada pela tela de Frete, onde a seção mora.
   useEffect(() => {
     if (active !== false)
       onSetDirty?.(
-        transportadorasPendentes ||
-          pagamentosPendente ||
+        pagamentosPendente ||
           formasPagamentoPendente ||
           politicaDevolucaoPendente,
       );
   }, [
     active,
-    transportadorasPendentes,
     pagamentosPendente,
     formasPagamentoPendente,
     politicaDevolucaoPendente,
@@ -744,7 +735,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // que a seção de Transportadoras usa (`ler_configuracao_frete`) — nunca
   // do espelho `config.shippingProvider`, que no modo multi não decide mais
   // nada (R1-3/R2-1). `null` = ainda não sabemos (leitura em curso ou
-  // falhou); o painel não afirma "sem cotação automática" nesse meio-tempo.
+  // falhou); o subtítulo de "Entrega e frete" não chuta nesse meio-tempo.
   const [ligadosDeFrete, setLigadosDeFrete] = useState<
     readonly ProvedorFrete[] | null
   >(null);
@@ -756,43 +747,24 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const [provedoresDeFrete, setProvedoresDeFrete] = useState<
     ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
   >(() => new Map());
+  // A leitura roda CADA VEZ que a aba Ajustes fica ativa (H5, painel
+  // simples): as Transportadoras moram na tela de Frete agora, e Ajustes é
+  // aba mantida montada — salvar a transportadora lá e voltar aqui não pode
+  // deixar o subtítulo de "Entrega e frete" contando a leitura velha. Só a
+  // leitura da vez em curso escreve (`vivo`): uma resposta atrasada de uma
+  // ida anterior não sobrescreve a nova.
   useEffect(() => {
+    if (active === false) return;
+    let vivo = true;
     buscarConfiguracaoDeFrete().then((resultado) => {
+      if (!vivo) return;
       setLigadosDeFrete(resultado.ok ? resultado.config.ligados : null);
       if (resultado.ok) setProvedoresDeFrete(resultado.config.provedores);
     });
-  }, []);
-  // Revisão Opus (achado 5): a leitura acima só rodava UMA vez, ao montar
-  // — salvar provedores dentro da seção (aberta logo abaixo) não
-  // atualizava o "Ativo: X" nem o subtítulo de Entrega e frete até um
-  // recarregamento completo da página. `TransportadorasSection` agora avisa
-  // a cada leitura confirmada (montagem e após salvar); o "Ativo: X" e o
-  // subtítulo do grupo seguem essa MESMA verdade em vez de só a da primeira
-  // leitura.
-  const onLigadosDaSecaoMudou = useCallback(
-    (
-      ligados: readonly ProvedorFrete[],
-      provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
-    ) => {
-      setLigadosDeFrete(ligados);
-      setProvedoresDeFrete(provedores);
-    },
-    [],
-  );
-  const nomeDoFrete =
-    ligadosDeFrete === null
-      ? "A confirmar"
-      : ligadosDeFrete.length === 0
-        ? "Sem cotação automática"
-        : ligadosDeFrete
-            .map((p) => {
-              const nome = NOME_DO_PROVEDOR.get(p) ?? p;
-              const incompleta =
-                PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
-                !emailDeContatoValido(provedoresDeFrete.get(p)?.contato_email);
-              return incompleta ? `${nome} incompleta` : nome;
-            })
-            .join(" + ");
+    return () => {
+      vivo = false;
+    };
+  }, [active]);
 
   // Transportadoras com cotação REAL ligada, só com o que esta tela JÁ leu
   // (nenhuma chamada nova): ligada, com chave salva e — quando o provedor
@@ -890,39 +862,16 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               subtitulos={subtitulos}
             />
 
+            {/* Entrega e frete: só a PORTA para a tela de Frete e o
+                subtítulo do grupo (H5, painel simples, 09/10/2026). As
+                Transportadoras e as Consultas de frete, que moravam aqui em
+                acordeões, foram para a tela de Frete — o frete mora num lugar
+                só. */}
             <GrupoDeAjustes
               chave="entrega"
               onNavigate={onNavigate}
               subtitulos={subtitulos}
-            >
-              {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
-                  glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
-                  sentido o token da transportadora morar no meio das regras
-                  de frete). RELEASE 1.5.7 v2 (revisão Opus, comentário
-                  corrigido): a seção já não é dona de `shippingProvider`
-                  nem `enabledShippingMethods` — esses campos só existem
-                  como espelho legado que a edge escreve por conta própria
-                  (R1-3/R2-1). Ela é dona só das CREDENCIAIS de cada
-                  provedor e de quem está LIGADO na loja, tudo pela edge
-                  (`save_credentials`/`save_active_providers`) — salvar a
-                  tela de Frete continua sem tocar em nada disso.
-                  COLAPSADA e nascida FECHADA: ajuste raro, feito uma vez. */}
-              <SecaoColapsavel
-                titulo="Transportadoras"
-                subtitulo={`Ativo: ${nomeDoFrete}`}
-                icone={Truck}
-                comPendencia={transportadorasPendentes}
-              >
-                <TransportadorasSection
-                  onDirtyMudou={setTransportadorasPendentes}
-                  onLigadosMudou={onLigadosDaSecaoMudou}
-                />
-              </SecaoColapsavel>
-
-              {/* Lugar reservado (desenho SALÃO+PORÃO): o liga/desliga de
-                  retirada na loja (`enabled_shipping_methods`) entra aqui —
-                  peça do Claude. NÃO criar stub. */}
-            </GrupoDeAjustes>
+            />
 
             {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
@@ -1065,18 +1014,6 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
                   <ConnectionDiagnosticsSection />
                 </div>
-              </SecaoColapsavel>
-
-              {/* Histórico de cotações de frete — veio da tela de Frete na
-                  frente glm-visual-admin-0209: registro técnico de
-                  diagnóstico, consulta rara. Busca fresca a cada abertura
-                  (a seção só monta quando expandida). */}
-              <SecaoColapsavel
-                titulo="Consultas de frete"
-                subtitulo={`Ativo: ${nomeDoFrete}`}
-                icone={History}
-              >
-                <HistoricoCotacoesSection />
               </SecaoColapsavel>
             </GrupoDeAjustes>
           </>

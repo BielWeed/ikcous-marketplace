@@ -485,9 +485,18 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
     expect(marcado).toMatch(/Sempre grátis/);
   });
 
-  it("sem transportadora ligada: aviso BEM VISÍVEL de loja-só-cidade + caminho para Ajustes", async () => {
+  // H5 (painel simples): as Transportadoras moram nesta tela, no painel
+  // próprio — o caminho que levava a Ajustes agora abre o painel.
+  function painelDasTransportadoras(): HTMLButtonElement {
+    return hospedeiro.querySelector(
+      "#painel-frete-transportadoras > button[aria-expanded]",
+    ) as HTMLButtonElement;
+  }
+
+  it("sem transportadora ligada: aviso BEM VISÍVEL de loja-só-cidade + caminho para o painel Transportadoras", async () => {
     estadoDoBanco.ligados = [];
     estadoDoBanco.provedores = {};
+    Element.prototype.scrollIntoView = vi.fn();
     await abrirTela();
 
     expect(texto()).toMatch(/Nenhuma transportadora ligada/i);
@@ -495,24 +504,34 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
 
     const cta = botaoComTexto(/conectar transportadora/i);
     expect(cta).toBeDefined();
+    expect(painelDasTransportadoras().getAttribute("aria-expanded")).toBe(
+      "false",
+    );
     await act(async () => {
       (cta as HTMLElement).click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(painelDasTransportadoras().getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
-  it("com transportadora ligada: o aviso de sem-conexão NÃO aparece, e o atalho de Ajustes segue existindo", async () => {
+  it("com transportadora ligada: o aviso de sem-conexão NÃO aparece, e o atalho para as Transportadoras segue existindo", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
     await abrirTela();
 
     expect(texto()).not.toMatch(/Nenhuma transportadora ligada/i);
     expect(texto()).toMatch(/Melhor Envio ligado/);
 
-    const botaoAjustes = botaoComTexto(/abrir ajustes/i);
-    expect(botaoAjustes).toBeDefined();
+    const botaoTransportadoras = botaoComTexto(/abrir transportadoras/i);
+    expect(botaoTransportadoras).toBeDefined();
     await act(async () => {
-      (botaoAjustes as HTMLElement).click();
+      (botaoTransportadoras as HTMLElement).click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(painelDasTransportadoras().getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it("CEP da loja vazio no config: a faixa diz que a entrega está PARADA (não inventa funcionamento)", async () => {

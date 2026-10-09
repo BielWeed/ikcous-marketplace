@@ -200,8 +200,9 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       expect(texto).toMatch(/SuperFrete: incompleta/);
       expect(texto).not.toMatch(/SuperFrete ligado/);
       expect(texto).not.toMatch(/SuperFrete: chave salva/);
+      // H5: o e-mail se preenche no painel Transportadoras desta tela.
       expect(texto).toMatch(
-        /SuperFrete incompleta — falta o e-mail de contato em Ajustes\./,
+        /SuperFrete incompleta — falta o e-mail de contato em Transportadoras\./,
       );
     });
 
@@ -262,7 +263,8 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
       expect(texto).not.toMatch(/incompleta/i);
     });
 
-    it("o CTA 'Preencher em Ajustes' leva para Ajustes", async () => {
+    it("o CTA 'Preencher em Transportadoras' abre o painel Transportadoras (H5)", async () => {
+      Element.prototype.scrollIntoView = vi.fn();
       invoke.mockResolvedValue({
         data: respostaConfig(["superfrete"], {
           superfrete: { tem_chave: true, contato_email: null },
@@ -289,17 +291,21 @@ describe("AdminShippingView — estado de frete POR PROVEDOR (1.5.7 v2)", () => 
         await esperarMicrotarefas();
       });
       const cta = [...hospedeiro.querySelectorAll("button")].find((b) =>
-        /preencher em ajustes/i.test(b.textContent ?? ""),
+        /preencher em transportadoras/i.test(b.textContent ?? ""),
       );
       expect(cta).toBeDefined();
       await act(async () => {
         cta?.click();
       });
-      expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+      const painel = hospedeiro.querySelector(
+        "#painel-frete-transportadoras > button[aria-expanded]",
+      );
+      expect(painel?.getAttribute("aria-expanded")).toBe("true");
+      expect(onNavigate).not.toHaveBeenCalled();
     });
   });
 
-  it("nenhum provedor ligado: aviso bem visível e CTA para Ajustes", async () => {
+  it("nenhum provedor ligado: aviso bem visível e CTA para conectar", async () => {
     invoke.mockResolvedValue({
       data: respostaConfig([], {}),
       error: null,

@@ -50,8 +50,8 @@ const {
   mockOnline: { useOnlineStatus: vi.fn(() => false) },
   // RELEASE 1.5.7 v2 (revisão Opus, verificação integrada da hub 22/09):
   // este arquivo era da era de UM provedor (`config.shippingProvider`,
-  // StoreContext síncrono). Desde a migração multi-provedor, o indicador
-  // de Frete e o subtítulo "Ativo: X" de Ajustes leem
+  // StoreContext síncrono). Desde a migração multi-provedor, o subtítulo de
+  // "Entrega e frete" em Ajustes lê
   // `ler_configuracao_frete` pela edge — `estadoDeFrete` é a fonte única
   // que este mock devolve para essa ação. `ligados: []` = equivalente ao
   // antigo `shippingProvider: undefined` (nenhuma transportadora).
@@ -511,12 +511,20 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     expect(hospedeiro.textContent).not.toContain("PIX ativo");
   });
 
-  it("nenhum provedor ligado na edge diz 'Sem cotação automática' (mesmo fallback do resto da tela)", async () => {
+  // O "Ativo: <provedor>" dos acordeões de Transportadoras e Consultas de
+  // frete saiu com eles (H5, painel simples: moram na tela de Frete). O que
+  // ele contava — nenhum ligado, id desconhecido, SuperFrete conhecida — o
+  // subtítulo de "Entrega e frete" conta, pela mesma leitura da edge.
+  it("nenhum provedor ligado na edge: o subtítulo diz 'Sem transportadora' (nenhum 'Ativo:' sobra)", async () => {
     // A prova viva do guard porta-de-avisar-clientes: config parcial chega
     // — ANTES a fonte era `config.shippingProvider` ausente; agora é a
     // edge devolvendo `ligados: []` (o padrão do `beforeEach`).
+    preencherMarcaEEndereco();
     await renderizar();
-    expect(hospedeiro.textContent).toContain("Sem cotação automática");
+    expect(subtituloDoGrupo("Entrega e frete")).toBe(
+      "R$ 10 por entrega · Sem transportadora",
+    );
+    expect(hospedeiro.textContent).not.toContain("Ativo:");
   });
 
   it("provedor ligado fora dos 3 conhecidos também cai no ramo seguro", async () => {
@@ -524,16 +532,20 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     // edge manda um id desconhecido em `ligados` — `buscarConfiguracaoDeFrete`
     // filtra para a união fechada de ProvedorFrete, e o desconhecido some
     // (mesmo efeito prático do fallback antigo).
+    preencherMarcaEEndereco();
     estadoDeFrete.ligados = ["correio_galatico"];
     await renderizar();
-    expect(hospedeiro.textContent).toContain("Sem cotação automática");
+    expect(subtituloDoGrupo("Entrega e frete")).toBe(
+      "R$ 10 por entrega · Sem transportadora",
+    );
   });
 
-  it("SuperFrete (1.5.4) é provedor conhecido: o indicador diz o nome, não o ramo seguro", async () => {
+  it("SuperFrete (1.5.4) é provedor conhecido: o subtítulo diz o nome, não o ramo seguro", async () => {
+    preencherMarcaEEndereco();
     estadoDeFrete.ligados = ["superfrete"];
     // E-mail de contato válido: sem ele a SuperFrete vira "incompleta"
-    // (achado 2) — este teste quer só provar "nome conhecido", a garantia
-    // de incompleta tem teste dedicado logo abaixo.
+    // (achado 2) e não conta como ligada — prova dedicada em "SuperFrete
+    // ligada sem e-mail válido não conta como transportadora ligada", acima.
     estadoDeFrete.provedores = {
       superfrete: {
         tem_chave: true,
@@ -541,22 +553,9 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
       },
     };
     await renderizar();
-    expect(hospedeiro.textContent).toContain("SuperFrete");
-    expect(hospedeiro.textContent).not.toContain("Sem cotação automática");
-    expect(hospedeiro.textContent).not.toContain("incompleta");
-  });
-
-  // ── Achado 2 (revisão Opus, ANOTADO do revisor): uma SuperFrete ligada
-  // mas INCOMPLETA (sem e-mail de contato válido) não pode aparecer como
-  // se estivesse cotando de verdade neste painel — a mesma verdade que a
-  // tela de Frete já conta (FreteNacionalBloco.tsx). ─────────────────────
-  it("SuperFrete ligada mas SEM e-mail de contato válido: o indicador diz 'incompleta', não só o nome", async () => {
-    estadoDeFrete.ligados = ["superfrete"];
-    estadoDeFrete.provedores = {
-      superfrete: { tem_chave: true, contato_email: null },
-    };
-    await renderizar();
-    expect(hospedeiro.textContent).toContain("SuperFrete incompleta");
+    expect(subtituloDoGrupo("Entrega e frete")).toBe(
+      "R$ 10 por entrega · SuperFrete ligado",
+    );
   });
 
   it("durante a carga (isLoaded=false) nenhum grupo existe — subtítulo nenhum chuta estado", async () => {
@@ -692,13 +691,13 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // "Nome, logo e cores" e "Atendimento" (acordeões) SAÍRAM em 22/09/2026:
     // eram duplicados de AdminAboutStoreView, que monta a edição de verdade.
     // Desde 09/10/2026 nem o rótulo do indicador "Atendimento" resta aqui.
+    // "Transportadoras" e "Consultas de frete" saíram em 09/10/2026 (H5):
+    // moram na tela de Frete (frete-um-lugar-so.test.tsx).
     for (const novo of [
       "Entrega e frete",
-      "Transportadoras",
       "Formas de pagamento",
       "Mercado Pago",
       "Minha loja está no ar?",
-      "Consultas de frete",
     ]) {
       expect(texto).toContain(novo);
     }
@@ -720,12 +719,12 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
       ...hospedeiro.querySelectorAll("button[aria-expanded]"),
     ];
     // "Nome, logo e cores" e "Atendimento" SAÍRAM em 22/09/2026 (duplicados
-    // de AdminAboutStoreView): sobram Transportadoras, Formas de pagamento
-    // (25/09/2026, migration 20261174000000), Mercado Pago, Minha loja está
-    // no ar? e Consultas de frete — e, desde o plano 2026-09-26, Trocas e
-    // devoluções (grupo Regras de troca e devolução). O acordeão de
-    // Entrega e frete virou "Transportadoras" em 09/10/2026.
-    expect(cabecalhos.length).toBe(6);
+    // de AdminAboutStoreView): sobram Formas de pagamento (25/09/2026,
+    // migration 20261174000000), Mercado Pago e Minha loja está no ar? — e,
+    // desde o plano 2026-09-26, Trocas e devoluções (grupo Regras de troca e
+    // devolução). Transportadoras e Consultas de frete foram para a tela de
+    // Frete em 09/10/2026 (H5).
+    expect(cabecalhos.length).toBe(4);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
@@ -737,13 +736,20 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     expect(hospedeiro.querySelector("table")).toBeNull();
   });
 
-  it("linha de estado no cabeçalho: Transportadoras diz 'Ativo: <provedor>' sem abrir", async () => {
+  it("o estado do frete é o subtítulo do grupo, sem acordeão de Transportadoras (H5)", async () => {
+    reiniciarConfig();
+    preencherMarcaEEndereco();
     estadoDeFrete.ligados = ["melhor_envio"];
     estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     await renderizar();
-    const cabecalho = cabecalhoDaSecao("Transportadoras")!;
-    expect(cabecalho).toBeTruthy();
-    expect(cabecalho.textContent).toContain("Ativo: Melhor Envio");
+    expect(cabecalhoDaSecao("Transportadoras")).toBeUndefined();
+    const entrega = [...hospedeiro.querySelectorAll("section")].find(
+      (s) => s.querySelector(":scope > h2")?.textContent === "Entrega e frete",
+    );
+    expect(entrega?.querySelector(":scope > p")?.textContent).toBe(
+      "R$ 10 por entrega · Melhor Envio ligado",
+    );
+    reiniciarConfig();
   });
 
   // As pendências de horário e identidade SAÍRAM da soma de onSetDirty
@@ -751,8 +757,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
   // moram só em AdminAboutStoreView agora, e a pendência deles é somada
   // por ELA (provado em admin-sobre-a-loja-salva-sem-apagar.test.tsx e em
   // admin-settings-identidade-da-loja.test.tsx). onSetDirty desta tela
-  // continua somando transportadoras + pagamentos (inalterado, sem teste
-  // dedicado aqui: cobertos pelos vizinhos de cada seção).
+  // continua somando pagamentos e devoluções (sem teste dedicado aqui:
+  // cobertos pelos vizinhos de cada seção); a pendência das transportadoras
+  // é somada pela tela de Frete desde H5 (frete-um-lugar-so.test.tsx).
 
   it("as portas continuam role=button com onNavigate (20/09: +Sobre a Loja; 09/10: Minha loja e +Entrega e frete)", async () => {
     const onNavigate = vi.fn();

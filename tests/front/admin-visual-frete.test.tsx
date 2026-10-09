@@ -7,9 +7,12 @@
 //   Tela de FRETE (AdminShippingView) ── dona das REGRAS:
 //     presets de frete grátis, cobertura, entrega local. (O CEP de origem
 //     saiu daqui: é o CEP de Minha loja, a tela de Frete só o LÊ.)
-//   Ajustes > TRANSPORTADORAS (TransportadorasSection) ── dona da API:
+//   TRANSPORTADORAS (TransportadorasSection) ── dona da API:
 //     `shippingProvider`, `enabledShippingMethods`, credenciais, teste.
-//   Ajustes > HISTÓRICO (HistoricoCotacoesSection) ── dona do diagnóstico.
+//   CONSULTAS DE FRETE (HistoricoCotacoesSection) ── dona do diagnóstico.
+//   (As duas moraram em Ajustes de 02/09 a 09/10/2026; desde o painel
+//   simples, H5, são painéis da própria tela de Frete — com os botões delas,
+//   nunca pelo Salvar do cabeçalho.)
 //
 // Este arquivo prende a divisão em si, porque a regressão mais barata de
 // escrever é a sutil: uma tela "ajudando" a outra e gravando campo alheio.
@@ -188,7 +191,12 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     expect(payload).not.toHaveProperty("shippingFee");
   });
 
-  it("a tela de Frete não tem mais token nem histórico, e o atalho leva a Ajustes", async () => {
+  it("token e histórico só montam com o painel aberto, e o atalho abre o painel Transportadoras", async () => {
+    // H5 (painel simples): Transportadoras e Consultas de frete voltaram para
+    // esta tela, cada uma no seu painel recolhível — fechados, nada deles
+    // está no DOM. A divisão de território continua: o Salvar desta tela não
+    // grava campo das Transportadoras (teste acima).
+    Element.prototype.scrollIntoView = vi.fn();
     const onNavigate = vi.fn();
     const { AdminShippingView } = await import(
       "@/views/admin/AdminShippingView"
@@ -209,21 +217,33 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
       await esperarMicrotarefas();
     });
 
-    // As chaves mudaram de casa: nada de campo de senha nesta tela.
+    // Painéis fechados: nada de campo de senha nem tabela de cotações.
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
-    // O histórico também: nada de tabela de cotações.
     expect(hospedeiro.querySelector("table")).toBeNull();
 
     // O bloco de frete nacional sempre oferece o caminho curto para lá.
-    const botaoAjustes = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      /abrir ajustes/i.test(b.textContent || ""),
+    const botaoTransportadoras = [
+      ...hospedeiro.querySelectorAll("button"),
+    ].find((b) =>
+      /abrir transportadoras/i.test(b.textContent || ""),
     ) as HTMLButtonElement;
-    expect(botaoAjustes).toBeDefined();
+    expect(botaoTransportadoras).toBeDefined();
 
     await act(async () => {
-      botaoAjustes.click();
+      botaoTransportadoras.click();
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    await act(async () => {
+      await esperarMicrotarefas();
+    });
+    expect(
+      hospedeiro
+        .querySelector("#painel-frete-transportadoras > button[aria-expanded]")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(hospedeiro.querySelectorAll('input[type="password"]')).toHaveLength(
+      3,
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): os dois testes que
