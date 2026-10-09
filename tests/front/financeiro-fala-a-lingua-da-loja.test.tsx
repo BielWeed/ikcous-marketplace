@@ -241,6 +241,28 @@ describe("Financeiro fala a língua da loja", () => {
     ).not.toBeNull();
     expect(jargaoEm(texto)).toEqual([]);
     expect(texto).not.toMatch(/compet[êe]ncia/i);
+
+    // O rótulo do KPI é longo (~288px a 11px em maiúsculas; o cartão tem
+    // ~134px no celular): quebra em até duas linhas em vez de cortar em
+    // "SOBRA DEPOIS D…". jsdom não mede largura, então trava a classe — e
+    // todos os rótulos reservam as duas linhas, para os valores alinharem.
+    const rotulos = [
+      ...hospedeiro.querySelectorAll<HTMLElement>("[data-rotulo-do-kpi]"),
+    ];
+    expect(rotulos.map((r) => normalizar(r.textContent))).toEqual([
+      "Receita líquida",
+      "Lucro bruto",
+      "Sobra depois dos custos da venda",
+      "Lucro líquido",
+    ]);
+    for (const rotulo of rotulos) {
+      expect(rotulo.classList.contains("truncate"), rotulo.textContent).toBe(
+        false,
+      );
+      expect(rotulo.classList.contains("line-clamp-2")).toBe(true);
+      expect(rotulo.classList.contains("break-words")).toBe(true);
+      expect(rotulo.classList.contains("min-h-[2.5em]")).toBe(true);
+    }
   });
 
   it("o lançamento pede o Mês de referência e o salvar segue com data_competencia", async () => {
@@ -263,6 +285,15 @@ describe("Financeiro fala a língua da loja", () => {
     expect(normalizar(rotulo?.textContent)).toBe("Mês de referência");
     const texto = normalizar(folha.textContent);
     expect(texto).toContain("Mês de referência é o mês a que o valor pertence");
+    // O campo é de data (pede um dia): a ajuda diz que qualquer dia do mês
+    // serve e que, nos filtros por dia, vale a data escolhida.
+    expect(
+      (document.getElementById("fin-lanc-competencia") as HTMLInputElement)
+        .type,
+    ).toBe("date");
+    expect(texto).toContain(
+      "Qualquer dia do mês serve; nos filtros por dia, vale a data escolhida.",
+    );
     expect(jargaoEm(texto)).toEqual([]);
     expect(texto).not.toMatch(/compet[êe]ncia/i);
 

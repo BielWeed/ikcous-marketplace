@@ -136,8 +136,14 @@ export function BlocoKpi({
         className,
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+      {/* Rótulo longo ("Sobra depois dos custos da venda") quebra em até duas
+          linhas em vez de cortar; a altura de duas linhas vale para todos,
+          para os valores dos cartões lado a lado ficarem na mesma altura. */}
+      <div className="flex items-start justify-between gap-2">
+        <span
+          data-rotulo-do-kpi=""
+          className="line-clamp-2 min-h-[2.5em] min-w-0 break-words text-[11px] font-black uppercase leading-tight tracking-[0.2em] text-zinc-500"
+        >
           {rotulo}
         </span>
         {Icone ? (

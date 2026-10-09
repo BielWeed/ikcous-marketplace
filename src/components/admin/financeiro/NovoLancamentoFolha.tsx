@@ -389,6 +389,7 @@ export function NovoLancamentoFolha({
         <p className="-mt-2 text-[11px] text-zinc-500">
           Mês de referência é o mês a que o valor pertence (o resultado conta
           por ele); pode ser diferente do dia em que o dinheiro se mexe.
+          Qualquer dia do mês serve; nos filtros por dia, vale a data escolhida.
         </p>
 
         {previsto ? (
