@@ -20,6 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
+  PAGAMENTOS_A_CONFERIR_EM_ABERTO,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
 
@@ -34,11 +35,21 @@ let cadeias: string[][] = [];
 let contagensFalham = false;
 /** Quando verdadeiro, a construção da consulta lança (dublê incompleto). */
 let construcaoLanca = false;
+/**
+ * Pedidos em aberto com pagamento recusado/estornado (S3 da revisão): saem
+ * de "Para preparar" e de todo contador — o aviso sob os cartões os mostra.
+ * `null` faz SÓ esta contagem devolver erro.
+ */
+let abertosAConferir: number | null = 0;
+
+const CADEIA_DO_AVISO = `in:payment_status:${PAGAMENTOS_A_CONFERIR_EM_ABERTO.join(",")}`;
+const ehDoAviso = (cadeia: string[]) => cadeia.includes(CADEIA_DO_AVISO);
 
 function respostaDaCadeia(cadeia: string[]) {
   const texto = cadeia.join(" ");
   const statusAbertos = `in:status:${STATUS_PARA_PREPARAR.join(",")}`;
   if (texto.includes(statusAbertos)) {
+    if (ehDoAviso(cadeia)) return abertosAConferir;
     if (texto.includes(`or:${FILTRO_POSTGREST_PARA_PREPARAR}`)) {
       return PARA_PREPARAR;
     }
@@ -77,7 +88,7 @@ function criarBuilder(tabela: string) {
   // biome-ignore lint/suspicious/noThenProperty: dublê do query builder thenable do Supabase — mesmo padrão de admin-layout-cracha-pedidos-pendentes.
   builder.then = (resolve: unknown, reject?: unknown) =>
     Promise.resolve(
-      contagensFalham
+      contagensFalham || (ehDoAviso(cadeia) && abertosAConferir === null)
         ? { count: null, error: { message: "caiu" } }
         : { count: respostaDaCadeia(cadeia), error: null },
     ).then(resolve as never, reject as never);
@@ -205,6 +216,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     eventoDeTempoReal = null;
     contagensFalham = false;
     construcaoLanca = false;
+    abertosAConferir = 0;
     mockAnalyticsStats = statsFake();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -317,6 +329,12 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
         c.some((passo) => /^(in|eq):status:/.test(passo)),
     ).length;
 
+  /**
+   * Uma rodada = 3 contagens dos cartões + 1 do aviso de pagamento
+   * recusado/estornado em pedido aberto (S3 da revisão).
+   */
+  const CONTAGENS_POR_RODADA = 4;
+
   /** Deixa passar o carregamento da lista (`loadAllData`, ~320 ms). */
   async function deixarALista() {
     await act(async () => {
@@ -324,7 +342,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     });
   }
 
-  it("uma ativação faz exatamente 3 contagens — o carregamento da lista não repete", async () => {
+  it("uma ativação faz exatamente uma rodada (3 cartões + aviso) — o carregamento da lista não repete", async () => {
     await montar();
     await esperarAte(
       () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
@@ -333,7 +351,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
 
     // A lista carregou (loadAllData rodou) e as contagens não vieram junto.
     expect(loadOrdersEspiao).toHaveBeenCalled();
-    expect(contagensFeitas()).toBe(3);
+    expect(contagensFeitas()).toBe(CONTAGENS_POR_RODADA);
   });
 
   it("trocar o filtro de status recarrega a lista, mas não as contagens do topo", async () => {
@@ -370,8 +388,10 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     await act(async () => {
       eventoDeTempoReal!({ eventType: "DELETE", new: {}, old: { id: "p1" } });
     });
-    await esperarAte(() => contagensFeitas() === contagensAntes + 3);
-    expect(contagensFeitas()).toBe(contagensAntes + 3);
+    await esperarAte(
+      () => contagensFeitas() === contagensAntes + CONTAGENS_POR_RODADA,
+    );
+    expect(contagensFeitas()).toBe(contagensAntes + CONTAGENS_POR_RODADA);
   });
 
   it("rajada de 10 eventos de tempo real em menos de 1 s vira UMA recarga das contagens", async () => {
@@ -401,13 +421,13 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
       await act(async () => {
         vi.advanceTimersByTime(100);
       });
-      expect(contagensFeitas()).toBe(contagensAntes + 3);
+      expect(contagensFeitas()).toBe(contagensAntes + CONTAGENS_POR_RODADA);
 
       // Nada mais fica agendado: a rajada inteira custou uma recarga.
       await act(async () => {
         vi.advanceTimersByTime(3000);
       });
-      expect(contagensFeitas()).toBe(contagensAntes + 3);
+      expect(contagensFeitas()).toBe(contagensAntes + CONTAGENS_POR_RODADA);
     } finally {
       vi.useRealTimers();
     }
@@ -439,6 +459,116 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
       // "unmount de raiz já desmontada".
       raiz = createRoot(hospedeiro);
     }
+  });
+
+  // ── S3: pedido aberto com pagamento recusado/estornado ──
+  // Ele sai de "Para preparar" (a regra do Início) e de todo contador; sem
+  // este aviso sumiria da tela. Só leitura: não entra em cartão nenhum.
+  const AVISO_PLURAL =
+    "2 pedidos em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.";
+  const AVISO_SINGULAR =
+    "1 pedido em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.";
+  const textoDoAviso = () =>
+    hospedeiro
+      .querySelector('[data-aviso="pagamento-a-conferir"]')
+      ?.textContent?.replace(/\s+/g, " ")
+      .trim() ?? null;
+
+  /** Espera a primeira rodada assentar (os 3 cartões com número). */
+  async function montarEAssentar() {
+    await montar();
+    await esperarAte(
+      () =>
+        valorDoCartao("Para preparar") === String(PARA_PREPARAR) &&
+        valorDoCartao("Em trânsito") === String(EM_TRANSITO),
+    );
+  }
+
+  it("com 2 pedidos abertos de pagamento recusado/estornado, o aviso aparece no plural", async () => {
+    abertosAConferir = 2;
+    await montarEAssentar();
+    await esperarAte(() => textoDoAviso() !== null);
+
+    expect(textoDoAviso()).toBe(AVISO_PLURAL);
+    // A consulta é a das duas listas da lib, só cabeçalho.
+    const doAviso = cadeias.filter(ehDoAviso);
+    expect(doAviso.length).toBeGreaterThan(0);
+    for (const cadeia of doAviso) {
+      expect(cadeia).toEqual([
+        "from:marketplace_orders",
+        "select:exact:true",
+        `in:status:${STATUS_PARA_PREPARAR.join(",")}`,
+        CADEIA_DO_AVISO,
+      ]);
+    }
+  });
+
+  it("com 1, o aviso fala no singular", async () => {
+    abertosAConferir = 1;
+    await montarEAssentar();
+    await esperarAte(() => textoDoAviso() !== null);
+
+    expect(textoDoAviso()).toBe(AVISO_SINGULAR);
+  });
+
+  it("o aviso não muda os 4 cartões", async () => {
+    abertosAConferir = 2;
+    await montarEAssentar();
+    await esperarAte(() => textoDoAviso() !== null);
+
+    expect(valorDoCartao("Para preparar")).toBe(String(PARA_PREPARAR));
+    expect(valorDoCartao("Aguardando pagamento")).toBe(
+      String(AGUARDANDO_PAGAMENTO),
+    );
+    expect(valorDoCartao("Em trânsito")).toBe(String(EM_TRANSITO));
+    expect(valorDoCartao("Finalizados")).toBe(String(FINALIZADOS));
+  });
+
+  it("com 0 o aviso não existe", async () => {
+    abertosAConferir = 0;
+    await montarEAssentar();
+    await deixarALista();
+
+    expect(textoDoAviso()).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("recusado ou estornado");
+  });
+
+  it("consulta do aviso que falha (null) esconde o aviso — nunca mostra '0'", async () => {
+    abertosAConferir = null;
+    await montarEAssentar();
+    await deixarALista();
+
+    expect(textoDoAviso()).toBeNull();
+    expect(hospedeiro.textContent).not.toContain("recusado ou estornado");
+    // Os cartões seguem com os números deles.
+    expect(valorDoCartao("Para preparar")).toBe(String(PARA_PREPARAR));
+  });
+
+  it("o aviso segue a coalescência: rajada de tempo real recarrega ele uma vez só", async () => {
+    abertosAConferir = 1;
+    await montarEAssentar();
+    await deixarALista();
+    const avisosAntes = cadeias.filter(ehDoAviso).length;
+    abertosAConferir = 2;
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        for (let i = 0; i < 10; i++) {
+          eventoDeTempoReal!({
+            eventType: "DELETE",
+            new: {},
+            old: { id: `p${i}` },
+          });
+          vi.advanceTimersByTime(90);
+        }
+        vi.advanceTimersByTime(3000);
+      });
+      expect(cadeias.filter(ehDoAviso).length).toBe(avisosAntes + 1);
+    } finally {
+      vi.useRealTimers();
+    }
+    await esperarAte(() => textoDoAviso() === AVISO_PLURAL);
   });
 
   it("consulta que devolve erro mostra '—', nunca '0'", async () => {
@@ -479,11 +609,12 @@ describe("useNumerosDosPedidos — rodada velha não grava número velho", () =>
       "@/hooks/useNumerosDosPedidos"
     );
 
-    // Rodada 1 fica presa até liberarmos; rodada 2 responde na hora.
+    // Rodada 1 fica presa até liberarmos; rodada 2 responde na hora. Cada
+    // rodada monta 4 consultas (3 cartões + o aviso).
     const liberacoes: Array<() => void> = [];
     let rodada = 0;
     (supabase.from as ReturnType<typeof vi.fn>).mockImplementation(() => {
-      const minhaRodada = Math.floor(rodada++ / 3) + 1;
+      const minhaRodada = Math.floor(rodada++ / 4) + 1;
       const builder: Record<string, unknown> = {};
       builder.select = () => builder;
       builder.in = () => builder;

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
+  PAGAMENTOS_A_CONFERIR_EM_ABERTO,
   STATUS_PARA_PREPARAR,
 } from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
@@ -17,14 +18,18 @@ import { supabase } from "@/lib/supabase";
  * - `aguardandoPagamento`: status aberto com PIX/cartão ainda não pago
  *   (`payment_status = 'aguardando'`) — quem espera ali é a cliente.
  * - `aCaminho`: `status = 'shipping'`.
+ * - `abertosComPagamentoAConferir`: status aberto com pagamento recusado ou
+ *   estornado (`PAGAMENTOS_A_CONFERIR_EM_ABERTO`). Não é cartão nem entra em
+ *   contador nenhum: alimenta só o aviso sob os cartões (revisão, S3).
  *
- * `null` é "não sei" (consulta com erro ou que lançou) e a tela mostra "—";
- * nunca vira `0`, que afirmaria "nenhum pedido".
+ * `null` é "não sei" (consulta com erro ou que lançou) e a tela mostra "—"
+ * (ou esconde o aviso); nunca vira `0`, que afirmaria "nenhum pedido".
  */
 export interface NumerosDosPedidos {
   paraPreparar: number | null;
   aguardandoPagamento: number | null;
   aCaminho: number | null;
+  abertosComPagamentoAConferir: number | null;
   /** Recarrega já. */
   recarregar: () => Promise<void>;
   /**
@@ -49,6 +54,7 @@ const NADA_CONTADO: Contagens = {
   paraPreparar: null,
   aguardandoPagamento: null,
   aCaminho: null,
+  abertosComPagamentoAConferir: null,
 };
 
 /**
@@ -97,7 +103,12 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
 
   const recarregar = useCallback(async () => {
     const rodada = ++rodadaAtual.current;
-    const [paraPreparar, aguardandoPagamento, aCaminho] = await Promise.all([
+    const [
+      paraPreparar,
+      aguardandoPagamento,
+      aCaminho,
+      abertosComPagamentoAConferir,
+    ] = await Promise.all([
       contar(() =>
         contagemDePedidos()
           .in("status", STATUS_PARA_PREPARAR)
@@ -109,9 +120,19 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
           .eq("payment_status", "aguardando"),
       ),
       contar(() => contagemDePedidos().eq("status", "shipping")),
+      contar(() =>
+        contagemDePedidos()
+          .in("status", STATUS_PARA_PREPARAR)
+          .in("payment_status", PAGAMENTOS_A_CONFERIR_EM_ABERTO),
+      ),
     ]);
     if (!montado.current || rodada !== rodadaAtual.current) return;
-    setContagens({ paraPreparar, aguardandoPagamento, aCaminho });
+    setContagens({
+      paraPreparar,
+      aguardandoPagamento,
+      aCaminho,
+      abertosComPagamentoAConferir,
+    });
   }, []);
 
   const pedirRecarga = useCallback(() => {

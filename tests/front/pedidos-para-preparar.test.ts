@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   FILTRO_POSTGREST_PARA_PREPARAR,
+  PAGAMENTOS_A_CONFERIR_EM_ABERTO,
   PAGAMENTOS_QUE_NAO_PREPARAM,
   STATUS_PARA_PREPARAR,
   estaAguardandoPagamento,
@@ -120,6 +121,35 @@ describe("estaAguardandoPagamento — o PIX/cartão que espera a cliente", () =>
         paymentStatus: "aguardando",
       }),
     ).toBe(false);
+  });
+});
+
+describe("PAGAMENTOS_A_CONFERIR_EM_ABERTO — o aviso do topo de Pedidos", () => {
+  // Revisão da onda F (S3): pedido ABERTO com pagamento recusado ou
+  // estornado sai de "Para preparar" (regra do Início, que não muda) e de
+  // todo contador. O topo de Pedidos avisa deles, só leitura.
+  it("é exatamente recusado e estornado", () => {
+    expect([...PAGAMENTOS_A_CONFERIR_EM_ABERTO]).toEqual([
+      "recusado",
+      "estornado",
+    ]);
+  });
+
+  it("é parte da lista que não prepara — o aviso nunca conta um pedido que já está em 'Para preparar'", () => {
+    for (const pagamento of PAGAMENTOS_A_CONFERIR_EM_ABERTO) {
+      expect(PAGAMENTOS_QUE_NAO_PREPARAM).toContain(pagamento);
+      for (const status of STATUS_PARA_PREPARAR) {
+        expect(estaParaPreparar({ status, paymentStatus: pagamento })).toBe(
+          false,
+        );
+      }
+    }
+  });
+
+  it("não inclui quem espera a cliente nem quem expirou (esses têm cartão/filtro próprio)", () => {
+    const lista: readonly string[] = PAGAMENTOS_A_CONFERIR_EM_ABERTO;
+    expect(lista).not.toContain("aguardando");
+    expect(lista).not.toContain("expirado");
   });
 });
 

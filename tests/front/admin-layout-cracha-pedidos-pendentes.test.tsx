@@ -217,6 +217,10 @@ describe("AdminLayout — crachá de Pedidos conta os pedidos para preparar", ()
     );
 
     expect(argumentoDoOr).toBe(FILTRO_POSTGREST_PARA_PREPARAR);
+    // O aviso de pagamento recusado/estornado do topo de Pedidos (revisão,
+    // S3) NÃO entra no selo: o último `.in` é o de status, nenhum
+    // `.in("payment_status", ...)` encadeado depois.
+    expect(argumentosDoIn).toEqual(["status", [...STATUS_PARA_PREPARAR]]);
     expect(botaoPedidos.textContent).toContain(
       `Pedidos${CONTAGEM_PARA_PREPARAR}`,
     );

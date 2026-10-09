@@ -35,6 +35,19 @@ export const PAGAMENTOS_QUE_NAO_PREPARAM = [
 ] as const;
 
 /**
+ * Pedido ABERTO (status em `STATUS_PARA_PREPARAR`) com um destes pagamentos
+ * não está para preparar nem esperando a cliente — ex.: PIX recusado depois
+ * que o lojista já avançou para "Em Separação", ou contestação no cartão de
+ * um pedido pago ainda aberto. Sai de todo contador (a regra do Início não
+ * muda) e o topo de Pedidos mostra um aviso só de leitura com a contagem
+ * (revisão da onda F, S3). Subconjunto de `PAGAMENTOS_QUE_NAO_PREPARAM`.
+ */
+export const PAGAMENTOS_A_CONFERIR_EM_ABERTO = [
+  "recusado",
+  "estornado",
+] as const satisfies readonly (typeof PAGAMENTOS_QUE_NAO_PREPARAM)[number][];
+
+/**
  * O mesmo predicado de pagamento para o `.or(...)` do PostgREST. O
  * `COALESCE(payment_status,'')` do SQL vira as duas pontas: `is.null` cobre
  * o nulo e `not.in` cobre o resto (inclusive `''`, que não está na lista).

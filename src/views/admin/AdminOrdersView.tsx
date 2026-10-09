@@ -20,6 +20,7 @@ import {
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
+import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -313,8 +314,18 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     paraPreparar,
     aguardandoPagamento,
     aCaminho,
+    abertosComPagamentoAConferir,
     pedirRecarga: pedirRecargaDosNumeros,
   } = useNumerosDosPedidos(active ?? false);
+  // Revisão da onda F (S3): pedido aberto com pagamento recusado/estornado
+  // saiu de todo contador; este aviso (só leitura) o mantém à vista. `null`
+  // (consulta falhou) e 0 escondem o aviso — nunca "0 pedidos".
+  const avisoPagamentoAConferir =
+    abertosComPagamentoAConferir === null || abertosComPagamentoAConferir <= 0
+      ? null
+      : `${abertosComPagamentoAConferir} ${
+          abertosComPagamentoAConferir === 1 ? "pedido" : "pedidos"
+        } em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.`;
   const { abertas: devolucoesAbertas } = useDevolucoesAbertas(active);
 
   const [searchQuery, setSearchQuery] = useLocalStorage<string>(
@@ -1589,6 +1600,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 title="Métricas de Pedidos"
               />
             </LocalErrorBoundary>
+            {avisoPagamentoAConferir && (
+              <div role="status" data-aviso="pagamento-a-conferir">
+                <SeloDeStatus tom="atencao" className="rounded-xl text-left">
+                  {avisoPagamentoAConferir}
+                </SeloDeStatus>
+              </div>
+            )}
           </div>
         )}
 
