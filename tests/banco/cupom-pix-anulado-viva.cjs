@@ -2590,16 +2590,23 @@ async function veredictoAux(c, id) {
 
 /** Os passos que montam o historico de um pedido, em ordem. */
 const G = "MP-PIX-A";
+/** O id de cobranca de UM pedido: o indice de gateway_payment_id e unico entre os pedidos. */
+const gwDe = (g, id) => (g === null ? null : `${g}-${id.slice(0, 8)}`);
 const P = {
   pix:
     (g = G) =>
     (c, id) =>
-      gravarPix(c, id, g),
+      gravarPix(c, id, gwDe(g, id)),
+  gateway: (g, extra) => (c, id) =>
+    c.query(
+      `UPDATE public.marketplace_orders SET gateway_payment_id = $2, ${extra} WHERE id = $1`,
+      [id, gwDe(g, id)],
+    ),
   cancelarEdge:
     (g = G, ator = U_COMPRADOR) =>
     async (c, id) => {
       const r = exigir(
-        await cancelarPelaEdge(c, id, ator, g, "aguardando"),
+        await cancelarPelaEdge(c, id, ator, gwDe(g, id), "aguardando"),
         "cancelar pela edge",
       )[0].r;
       assert.equal(r.cancelado, true, JSON.stringify(r));
@@ -2611,7 +2618,7 @@ const P = {
     async (c, id) => {
       const r = await c.query(
         "SELECT public.liberar_cobranca_do_pedido($1::uuid, $2::text) AS ok",
-        [id, g],
+        [id, gwDe(g, id)],
       );
       assert.equal(
         r.rows[0].ok,
@@ -2622,7 +2629,7 @@ const P = {
   confirmar: (g, esperado) => async (c, id) => {
     const r = await c.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
-      [id, g],
+      [id, gwDe(g, id)],
     );
     assert.equal(r.rows[0].r, esperado, `confirmar_pagamento(${g})`);
   },
@@ -3015,7 +3022,7 @@ const CASOS_PIX = [
     "C32",
     "cartao autorizado (id real do MP, metodo credito) e anulado: 24 h",
     [
-      P.pedido("gateway_payment_id = 'MP-CARD-1', metodo_online = 'credito'"),
+      P.gateway("MP-CARD-1", "metodo_online = 'credito'"),
       P.cancelarEdge("MP-CARD-1"),
       P.liberar("MP-CARD-1"),
     ],
@@ -3029,8 +3036,9 @@ const CASOS_PIX = [
     "C33",
     "cartao em analise (verificando:) cancelado pelo admin e liberado: 24 h",
     [
-      P.pedido(
-        "gateway_payment_id = 'verificando:abc123', metodo_online = 'credito', updated_at = now() - interval '10 minutes'",
+      P.gateway(
+        "verificando:abc123",
+        "metodo_online = 'credito', updated_at = now() - interval '10 minutes'",
       ),
       P.pedido("updated_at = now() - interval '10 minutes'"),
       P.cancelarEdge("verificando:abc123", U_ADMIN),
@@ -3248,7 +3256,7 @@ async function casoVagaFantasma(sql = lerMig2()) {
     assert.equal(await usosDo(c, cup.id), 0);
     assert.equal((await estadoCompleto(c, id)).coupon_usage_returned, true);
     const fotoAntes = await foto(c, id);
-    for (const idPagamento of [G, "MP-OUTRO", null]) {
+    for (const idPagamento of [gwDe(G, id), "MP-OUTRO", null]) {
       const r = await c.query(
         "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
         [id, idPagamento],
@@ -3312,7 +3320,7 @@ async function casoVagaFantasma(sql = lerMig2()) {
     assert.equal(await usosDo(c, a.cup.id), 1);
     const tarde = await c.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
-      [a.id, G],
+      [a.id, gwDe(G, a.id)],
     );
     assert.equal(tarde.rows[0].r, "pago_apos_expirar");
     assert.equal(
@@ -3338,7 +3346,7 @@ async function casoVagaFantasma(sql = lerMig2()) {
     );
     const r3 = await c.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
-      [b.id, G],
+      [b.id, gwDe(G, b.id)],
     );
     assert.equal(r3.rows[0].r, "divergente");
     assert.equal(await varrer(c), 0);
@@ -3371,7 +3379,7 @@ async function casoVagaConcorrenciaConfirmar(sql = lerMig2()) {
     await B.query("BEGIN");
     const pend = B.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
-      [x.id, G],
+      [x.id, gwDe(G, x.id)],
     ).then(
       (r) => ({ r: r.rows[0].r }),
       (erro) => ({ erro }),
@@ -3397,7 +3405,7 @@ async function casoVagaConcorrenciaConfirmar(sql = lerMig2()) {
     await B.query("BEGIN");
     const rb = await B.query(
       "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
-      [y.id, G],
+      [y.id, gwDe(G, y.id)],
     );
     assert.equal(rb.rows[0].r, "divergente");
     await A.query("BEGIN");
@@ -3461,7 +3469,7 @@ async function casoVagaConcorrenciaLiberar(sql = lerMig2()) {
     await B.query("BEGIN");
     const lib = await B.query(
       "SELECT public.liberar_cobranca_do_pedido($1::uuid, $2::text) AS ok",
-      [w.id, G],
+      [w.id, gwDe(G, w.id)],
     );
     assert.equal(lib.rows[0].ok, true);
     await A.query("BEGIN");
@@ -4134,11 +4142,41 @@ const VARIANTES_PREVOO = [
     id: "fotofn",
     base: "pre2",
     trecho:
-      /pedido__foto_da_cobranca_ao_cancelar\(\) ausente ou com corpo diferente/,
+      /pedido__foto_da_cobranca_ao_cancelar\(\) tem corpo diferente do da 20261209000000/,
     preparo: (c) =>
       c.query(
         "CREATE OR REPLACE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $f$ BEGIN RETURN NEW; END $f$",
       ),
+  },
+  {
+    id: "fotofnsem",
+    base: "pre2",
+    trecho: /pedido__foto_da_cobranca_ao_cancelar\(\) nao existe/,
+    preparo: (c) =>
+      c.query(
+        "DROP FUNCTION public.pedido__foto_da_cobranca_ao_cancelar() CASCADE",
+      ),
+  },
+  {
+    id: "pk",
+    base: "pre2",
+    trecho: /pedido_cobranca_ao_cancelar nao tem a chave primaria em order_id/,
+    preparo: (c) =>
+      c.query(
+        "ALTER TABLE public.pedido_cobranca_ao_cancelar DROP CONSTRAINT pedido_cobranca_ao_cancelar_pkey",
+      ),
+  },
+  {
+    id: "auxsozinha",
+    base: "pre2",
+    trecho:
+      /a unica cupom__vaga_volta_em que existe nao tem 9 nem 13 parametros/,
+    preparo: async (c) => {
+      await c.query(
+        "DROP FUNCTION public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamptz, boolean, timestamptz, text, integer)",
+      );
+      await c.query(ddlAlheia.auxOutra);
+    },
   },
   {
     id: "gatilho",
@@ -4498,7 +4536,13 @@ const MSG2 = {
   preForma:
     "PREFLIGHT_20261210: public.pedido_cobranca_ao_cancelar tem outra forma",
   preFotoFn:
-    "PREFLIGHT_20261210: public.pedido__foto_da_cobranca_ao_cancelar() ausente",
+    "PREFLIGHT_20261210: public.pedido__foto_da_cobranca_ao_cancelar() tem corpo diferente",
+  preFotoFnSem:
+    "PREFLIGHT_20261210: public.pedido__foto_da_cobranca_ao_cancelar() nao existe",
+  prePk:
+    "PREFLIGHT_20261210: public.pedido_cobranca_ao_cancelar nao tem a chave primaria",
+  preAuxNenhuma:
+    "PREFLIGHT_20261210: a unica cupom__vaga_volta_em que existe nao tem 9 nem 13",
   preGatilho:
     "PREFLIGHT_20261210: o gatilho tr_pedido_foto_da_cobranca_ao_cancelar ausente",
   preColuna: "PREFLIGHT_20261210: falta a coluna public.marketplace_orders",
@@ -4822,6 +4866,17 @@ async function blocoDaVaga() {
     ["sem pre-voo da foto (tabela ausente)", MSG2.preFoto, ["foto"]],
     ["sem pre-voo da forma da tabela da foto", MSG2.preForma, ["forma"]],
     ["sem pre-voo da funcao do gatilho da foto", MSG2.preFotoFn, ["fotofn"]],
+    [
+      "sem pre-voo da existencia da funcao do gatilho",
+      MSG2.preFotoFnSem,
+      ["fotofnsem"],
+    ],
+    ["sem pre-voo da chave primaria da foto", MSG2.prePk, ["pk"]],
+    [
+      "sem pre-voo do auxiliar que nao tem 9 nem 13 parametros",
+      MSG2.preAuxNenhuma,
+      ["auxsozinha"],
+    ],
     ["sem pre-voo do gatilho da foto", MSG2.preGatilho, ["gatilho"]],
     ["sem pre-voo das colunas", MSG2.preColuna, ["coluna"]],
     [
