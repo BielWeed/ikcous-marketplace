@@ -52,6 +52,12 @@
  *        (7c) duas varreduras em conexões reais: uma devolução só; (7d-g)
  *        reaplicar, pré-voo, pós-voo e rollback; (8) mutantes.
  *
+ * MIGRATIONS 20261209000000 e 20261210000000 (a foto da cobrança e a vaga do PIX anulado):
+ * trocam o auxiliar (13 parâmetros), a RPC e a varredura DEPOIS destas. A prova viva delas é
+ * tests/banco/cupom-pix-anulado-viva.cjs; aqui a prova "(1-M3)" desfaz a 20261210 e depois a
+ * 20261209 (a ordem inversa recusa) e confere byte a byte que o banco volta ao estado da
+ * 20261206/20261205 antes de qualquer outra prova deste arquivo, que falam desse estado.
+ *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-viva.cjs
  */
 
@@ -83,6 +89,14 @@ const NOME_M2 =
 const NOME_970 = "20260970000000_cancelamento_respeita_o_envio.sql";
 const lerM2 = () => ler(NOME_M2);
 const lerRollbackM2 = () => ler(`rollback-manual-${NOME_M2}`);
+// 20261209000000 (a foto da cobrança) e 20261210000000 (a vaga do PIX anulado) vêm DEPOIS
+// da 20261206000000 e trocam as mesmas funções: o banco que chega aqui (CI) já as tem.
+const NOME_FOTO = "20261209000000_a_foto_da_cobranca_no_cancelamento.sql";
+const NOME_M3 =
+  "20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql";
+const lerM3 = () => ler(NOME_M3);
+const lerRollbackM3 = () => ler(`rollback-manual-${NOME_M3}`);
+const lerRollbackFoto = () => ler(`rollback-manual-${NOME_FOTO}`);
 
 const CAB_AUX = "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(";
 const CAB_VARREDURA =
@@ -110,6 +124,19 @@ const SHA_VARREDURA_970 = () =>
   shas(corpoDe(ler(NOME_970), CAB_VARREDURA, TAG_VARREDURA));
 const SHA_VARREDURA_V2 = () =>
   shas(corpoDe(lerM2(), CAB_VARREDURA, TAG_VARREDURA));
+const CAB_RPC = "CREATE OR REPLACE FUNCTION public.vaga_do_cupom_presa(";
+const SHA_RPC_V1 = () => shas(corpoDe(lerM1(), CAB_RPC, TAG_FN));
+const SHA_AUX_V3 = () => shas(corpoDe(lerM3(), CAB_AUX, TAG_FN));
+const SHA_RPC_V3 = () => shas(corpoDe(lerM3(), CAB_RPC, TAG_FN));
+const SHA_VARREDURA_V3 = () =>
+  shas(corpoDe(lerM3(), CAB_VARREDURA, TAG_VARREDURA));
+
+/** O texto do COMMENT ON FUNCTION que a regex literal `re` acha (grupo 1) dentro de um arquivo. */
+function comentarioNoArquivo(texto, re) {
+  const m = re.exec(texto.replace(/\r\n/g, "\n"));
+  assert.ok(m, `COMMENT não achado: ${re}`);
+  return m[1];
+}
 
 /** O comentário da varredura como a 20260901000000 o deixou (e o rollback da M2 o restaura). */
 const COMENTARIO_VARREDURA_970 =
@@ -138,6 +165,9 @@ async function estadoDe(c, assinatura) {
 
 const FN_AUX =
   "public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamp with time zone, boolean, timestamp with time zone, text, integer)";
+/** O auxiliar com os 4 parâmetros da foto (20261210000000); a 20261206000000 tem os 9 de FN_AUX. */
+const FN_AUX13 =
+  "public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamp with time zone, boolean, timestamp with time zone, text, integer, text, integer, text, text)";
 const FN_RPC = "public.vaga_do_cupom_presa(text)";
 const FN_VARREDURA = "public.devolver_cupons_de_pedidos_mortos()";
 
@@ -1076,6 +1106,195 @@ async function estadoDoPar(c) {
   };
 }
 const commitar = (c, sql) => emTx(c, () => c.query(sql), { commit: true });
+
+// A árvore de HOJE tem mais duas migrations por cima da 20261206: a 20261209 (a foto da
+// cobrança) e a 20261210 (a vaga do PIX anulado), que trocam o auxiliar (13 parâmetros), a
+// RPC e a varredura. Antes do bloco que espera o estado da 20261206, esta prova desfaz a
+// 20261210 e depois a 20261209 (a ordem inversa recusa) e CONFERE byte a byte que o banco
+// voltou ao que a 20261206 e a 20261205 deixam: corpo, comentário e ACL das três funções,
+// o auxiliar de 9 parâmetros de volta e o de 13 sumido, nenhuma outra função tocada, nenhum
+// pedido tocado. Não afrouxa nada: as provas de dinheiro abaixo rodam nesse estado de antes.
+const FORA_DO_TRIO = [
+  "cupom__vaga_volta_em",
+  "devolver_cupons_de_pedidos_mortos",
+  "vaga_do_cupom_presa",
+  "pedido__foto_da_cobranca_ao_cancelar",
+];
+const estadoDoTrio = async (c) => ({
+  rpc: await estadoDe(c, FN_RPC),
+  varredura: await estadoDe(c, FN_VARREDURA),
+});
+const existeTabelaDaFoto = async (c) =>
+  (
+    await c.query(
+      "SELECT to_regclass('public.pedido_cobranca_ao_cancelar') AS t",
+    )
+  ).rows[0].t !== null;
+const gatilhosDaFoto = async (c) =>
+  Number(
+    (
+      await c.query(
+        `SELECT count(*) AS n FROM pg_trigger t
+          WHERE t.tgrelid = 'public.marketplace_orders'::regclass AND NOT t.tgisinternal
+            AND t.tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'`,
+      )
+    ).rows[0].n,
+  );
+
+prova(
+  "(1-M3) rollback da 20261210 e depois o da 20261209 devolvem o auxiliar de 9 parâmetros, a RPC e a varredura byte a byte (e a ordem inversa recusa); nenhum pedido tocado",
+  async (c) => {
+    // o ponto de partida É o estado da 20261210 (se a árvore não a tem, esta prova falha aqui)
+    const aux13 = await estadoDe(c, FN_AUX13);
+    assert.ok(
+      aux13,
+      "o auxiliar de 13 parâmetros não existe (20261210 não aplicada)",
+    );
+    assert.ok(
+      SHA_AUX_V3().includes(aux13.sha),
+      "o banco ainda não está no estado da 20261210 (auxiliar)",
+    );
+    const v3 = await estadoDoTrio(c);
+    assert.ok(
+      SHA_RPC_V3().includes(v3.rpc.sha),
+      "o banco ainda não está no estado da 20261210 (RPC)",
+    );
+    assert.ok(
+      SHA_VARREDURA_V3().includes(v3.varredura.sha),
+      "o banco ainda não está no estado da 20261210 (varredura)",
+    );
+    assert.equal(
+      await existeFuncao(c, FN_AUX),
+      false,
+      "o auxiliar de 9 parâmetros ainda existe ao lado do de 13",
+    );
+    assert.equal(await existeTabelaDaFoto(c), true, "falta a tabela da foto");
+
+    const fora = await impressao(c, FORA_DO_TRIO);
+    // um pedido cancelado: a foto dele existe e o rollback não toca o pedido (o id de cobrança
+    // "MP-QR-1" é de outras provas deste arquivo e o índice dele é único: não o gravo aqui)
+    const id = await emTx(
+      c,
+      async () =>
+        (await montar(c, { kind: "v24-cancelado", offsetSec: 600 })).id,
+      { commit: true },
+    );
+    const pedidoAntes = await pedido(c, id);
+    const fotos = (
+      await c.query(
+        "SELECT * FROM public.pedido_cobranca_ao_cancelar WHERE order_id = $1",
+        [id],
+      )
+    ).rows;
+    assert.equal(fotos.length, 1, "o cancelamento não gravou a foto");
+    assert.equal(fotos[0].tentativas, 0);
+
+    // ordem inversa: a 20261209 RECUSA enquanto a 20261210 vive, sem apagar nada
+    const inversa = await emTx(c, () => tentarSql(c, lerRollbackFoto()));
+    assert.equal(inversa.ok, false, "o rollback da 20261209 não recusou");
+    assert.match(
+      inversa.message,
+      /ROLLBACK_20261209.*desfaca a 20261210000000 antes/,
+    );
+    assert.equal(await existeTabelaDaFoto(c), true, "a recusa apagou a tabela");
+    assert.deepEqual(await estadoDoTrio(c), v3, "a recusa mexeu numa função");
+
+    // 1º: a 20261210
+    await commitar(c, lerRollbackM3());
+    assert.equal(
+      await existeFuncao(c, FN_AUX13),
+      false,
+      "o auxiliar de 13 parâmetros ainda existe depois do rollback",
+    );
+    const aux9 = await estadoDe(c, FN_AUX);
+    assert.ok(aux9, "o auxiliar de 9 parâmetros não voltou");
+    assert.ok(
+      SHA_AUX_V2().includes(aux9.sha),
+      "o auxiliar não voltou ao corpo da 20261206",
+    );
+    assert.equal(
+      aux9.comentario,
+      comentarioNoArquivo(
+        lerM2(),
+        /COMMENT ON FUNCTION public\.cupom__vaga_volta_em\([^)]*\) IS\s+'([^']*)';/,
+      ),
+    );
+    assert.equal(aux9.acl, aux13.acl, "ACL do auxiliar mudou");
+    const v2 = await estadoDoTrio(c);
+    assert.ok(
+      SHA_RPC_V1().includes(v2.rpc.sha),
+      "a RPC não voltou ao corpo da 20261205",
+    );
+    assert.ok(
+      SHA_VARREDURA_V2().includes(v2.varredura.sha),
+      "a varredura não voltou ao corpo da 20261206",
+    );
+    assert.equal(
+      v2.rpc.comentario,
+      comentarioNoArquivo(
+        lerM1(),
+        /COMMENT ON FUNCTION public\.vaga_do_cupom_presa\(text\) IS\s+'([^']*)';/,
+      ),
+    );
+    assert.equal(
+      v2.varredura.comentario,
+      comentarioNoArquivo(
+        lerM2(),
+        /COMMENT ON FUNCTION public\.devolver_cupons_de_pedidos_mortos\(\) IS\s+'([^']*)';/,
+      ),
+    );
+    assert.equal(v2.rpc.acl, v3.rpc.acl, "ACL da RPC mudou");
+    assert.equal(v2.varredura.acl, v3.varredura.acl, "ACL da varredura mudou");
+    assert.deepEqual(
+      await impressao(c, FORA_DO_TRIO),
+      fora,
+      "o rollback da 20261210 mexeu em outra função",
+    );
+    assert.deepEqual(
+      await pedido(c, id),
+      pedidoAntes,
+      "o rollback da 20261210 mexeu num pedido",
+    );
+    assert.equal(
+      (
+        await c.query(
+          "SELECT count(*) AS n FROM public.pedido_cobranca_ao_cancelar WHERE order_id = $1",
+          [id],
+        )
+      ).rows[0].n,
+      "1",
+      "o rollback da 20261210 mexeu na foto",
+    );
+    // idempotente: o segundo rollback da 20261210 não muda nada
+    await commitar(c, lerRollbackM3());
+    assert.deepEqual(await estadoDoTrio(c), v2);
+    assert.deepEqual(await estadoDe(c, FN_AUX), aux9);
+
+    // 2º: a 20261209 (agora ninguém cita a tabela): some a tabela, o gatilho e a função dele
+    await commitar(c, lerRollbackFoto());
+    assert.equal(await existeTabelaDaFoto(c), false, "a tabela da foto ficou");
+    assert.equal(await gatilhosDaFoto(c), 0, "o gatilho da foto ficou");
+    assert.equal(
+      await existeFuncao(c, "public.pedido__foto_da_cobranca_ao_cancelar()"),
+      false,
+      "a função do gatilho da foto ficou",
+    );
+    assert.deepEqual(
+      await impressao(c, FORA_DO_TRIO),
+      fora,
+      "o rollback da 20261209 mexeu em outra função",
+    );
+    assert.deepEqual(await estadoDoTrio(c), v2);
+    assert.deepEqual(
+      await pedido(c, id),
+      pedidoAntes,
+      "o rollback da 20261209 mexeu num pedido",
+    );
+    // idempotente
+    await commitar(c, lerRollbackFoto());
+    assert.equal(await existeTabelaDaFoto(c), false);
+  },
+);
 
 prova(
   "(1-M2) rollback da 20261206 restaura o auxiliar e a varredura byte a byte (e reaplicar volta ao da 20261206); deixa o banco no estado da 20261205",

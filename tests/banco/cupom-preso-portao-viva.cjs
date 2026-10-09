@@ -117,6 +117,12 @@ const ARQ1 = "20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql";
 const ARQ2 =
   "20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql";
 const ARQ970 = "20260970000000_cancelamento_respeita_o_envio.sql";
+// 20261209000000 (a foto da cobranca) e 20261210000000 (a vaga do PIX anulado) vem DEPOIS e trocam
+// as mesmas funcoes (o pre-voo da 20261210 exige a 20261205 e a 20261206): uma base "sem as duas"
+// que as mantivesse nao aplicaria, e uma que tivesse so a foto nao seria o estado de antes.
+const ARQ_FOTO = "20261209000000_a_foto_da_cobranca_no_cancelamento.sql";
+const ARQ_M3 =
+  "20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql";
 const REF_SAVY = "gnjsrucsmjkajijrakzr";
 const SHA40 = "d".repeat(40);
 const SQL = {
@@ -806,7 +812,10 @@ async function main() {
   const cheio = await clonar("cheio");
   await prepararCron(cheio);
   const pre = `pc_${SUF}_pre`.slice(0, 60);
-  await montarBase(pre, (f) => f !== ARQ1 && f !== ARQ2);
+  await montarBase(
+    pre,
+    (f) => f !== ARQ1 && f !== ARQ2 && f !== ARQ_FOTO && f !== ARQ_M3,
+  );
   await prepararCron(pre);
   {
     const sonda = await usar(pre, async (c) => ({
