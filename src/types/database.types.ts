@@ -3635,6 +3635,7 @@ export type Database = {
         Returns: Json;
       };
       upsert_store_config: { Args: { config_json: Json }; Returns: Json };
+      vaga_do_cupom_presa: { Args: { p_code: string }; Returns: Json };
       validate_coupon_secure: {
         Args: { p_code: string; p_subtotal: number };
         Returns: {
