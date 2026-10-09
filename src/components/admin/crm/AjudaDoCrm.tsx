@@ -33,29 +33,31 @@ export function AjudaDoCrm({
         </p>
 
         <div className="space-y-3">
-          <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+          <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
             As abas
           </h4>
           <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
             <li>
               <strong className="text-white">Visão geral:</strong> receita,
-              pedidos, ticket médio, clientes, recompra, LTV (quanto um cliente
-              já gastou, em média), receita em risco e taxa de devolução — e,
-              abaixo, o histórico completo da loja.
+              pedidos, valor médio por venda, clientes, recompra, total já
+              comprado por cliente (quanto um cliente já gastou, em média),
+              receita em risco e taxa de devolução — e, abaixo, o histórico
+              completo da loja.
             </li>
             <li>
               <strong className="text-white">Clientes:</strong> a lista mostra
-              todo mundo — quem já comprou, agrupado por segmentos RFM
-              (recência, frequência e valor) no modelo usado pelo Shopify —
-              Campeões, Leais, Em risco, Hibernando e outros —, quem fez pedido
-              e não pagou ("Pediu e não pagou") e quem se cadastrou e ainda não
-              comprou ("Cadastrado, nunca comprou"). Toque num segmento para
-              filtrar a lista; o botão de WhatsApp abre a conversa com um texto
-              pronto para aquele grupo.
+              todo mundo — quem já comprou, separado em grupos (pela última
+              compra, pela frequência e pelo quanto gastou) — Melhores clientes,
+              Fiéis, Podem não voltar, Parados há muito tempo e outros —, quem
+              fez pedido e não pagou ("Pediu e não pagou") e quem se cadastrou e
+              ainda não comprou ("Cadastrado, nunca comprou"). Toque num grupo
+              para filtrar a lista; o botão de WhatsApp abre a conversa com um
+              texto pronto para aquele grupo.
             </li>
             <li>
               <strong className="text-white">Canais:</strong> app × loja física
-              (receita, pedidos e ticket) e o mix de formas de pagamento.
+              (receita, pedidos e valor médio por venda) e o mix de formas de
+              pagamento.
             </li>
             <li>
               <strong className="text-white">Funil e pedidos:</strong> de
@@ -66,7 +68,7 @@ export function AjudaDoCrm({
         </div>
 
         <div className="space-y-3">
-          <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+          <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
             Histórico completo (Visão geral)
           </h4>
           <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
@@ -79,8 +81,8 @@ export function AjudaDoCrm({
               <strong className="text-white">
                 Inteligência Estratégica por Categoria:
               </strong>{" "}
-              Divisão proporcional de faturamento, volume de vendas e ticket
-              médio por categoria de produto.
+              Divisão proporcional de faturamento, volume de vendas e valor
+              médio por venda por categoria de produto.
             </li>
             <li>
               <strong className="text-white">Produtos Mais Lucrativos:</strong>{" "}

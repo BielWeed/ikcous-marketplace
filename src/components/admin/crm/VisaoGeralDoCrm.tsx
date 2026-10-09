@@ -118,7 +118,7 @@ export function VisaoGeralDoCrm({
             }
           />
           <TileDeKpi
-            rotulo="Ticket médio"
+            rotulo="Valor médio por venda"
             icone={Receipt}
             corDoIcone="text-sky-400"
             carregando={esqueleto}
@@ -168,7 +168,7 @@ export function VisaoGeralDoCrm({
             }
           />
           <TileDeKpi
-            rotulo="LTV médio"
+            rotulo="Total já comprado por cliente (média)"
             icone={Crown}
             carregando={esqueleto}
             valor={formatarMoeda(k?.ltvMedio)}
@@ -232,7 +232,7 @@ export function VisaoGeralDoCrm({
               // o reset global de `<button>` (`border: none`) zerar
               // `border-style`, essa borda também some. Fix local (só aqui,
               // sem tocar em `ui/button.tsx`, que é usado fora do CRM).
-              className="ml-auto h-8 border-solid border-red-500/20 text-[10px] text-red-400 hover:bg-red-500/10"
+              className="ml-auto h-8 border-solid border-red-500/20 text-[11px] text-red-400 hover:bg-red-500/10"
               onClick={() => carregar(true)}
             >
               Tentar

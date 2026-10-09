@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
 
 /** Anel de foco dourado: aparece no teclado, não no toque. */
 export const FOCO_DO_CRM =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/70 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg";
 
 /** Superfície de cartão que se destaca do fundo do painel. */
 export const SUPERFICIE_DO_CRM =

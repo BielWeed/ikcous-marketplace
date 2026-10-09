@@ -357,12 +357,12 @@ describe("Dashboard CRM", () => {
     await act(async () => verCliente[0].click());
     expect(onNavigate).toHaveBeenLastCalledWith("admin-user-detail", "u-1");
 
-    // Toque no segmento "Em risco" filtra a lista no banco.
+    // Toque no segmento "Podem não voltar" (slug em_risco) filtra a lista no banco.
     const antes = chamadasDe("crm_clientes").length;
     const segmento = Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) =>
         b.getAttribute("aria-pressed") !== null &&
-        texto(b).includes("Em risco"),
+        texto(b).includes("Podem não voltar"),
     ) as HTMLButtonElement;
     await act(async () => segmento.click());
     await esperarAte(() => chamadasDe("crm_clientes").length > antes);
@@ -506,7 +506,7 @@ describe("Dashboard CRM", () => {
     expect(retry.className).toContain("border-solid");
   });
 
-  it("Clientes: 'Mostrando: Em risco · N' usa o total filtrado pela busca, não o bruto do segmento", async () => {
+  it("Clientes: 'Mostrando: Podem não voltar · N' usa o total filtrado pela busca, não o bruto do segmento", async () => {
     // esperarAte mede o próprio timeout com Date.now(), que este describe
     // deixa CONGELADO (vi.useFakeTimers({ toFake: ["Date"] })) — sem
     // timeout de teste próprio e mais curto, uma condição que nunca fica
@@ -518,16 +518,16 @@ describe("Dashboard CRM", () => {
     await act(async () => abaClientes.click());
     await esperarAte(() => texto(hospedeiro).includes("Ana Souza"));
 
-    // Segmento "Em risco" tem 2 clientes no total (VISAO.segmentos) — sem
+    // Segmento "Podem não voltar" tem 2 clientes no total (VISAO.segmentos) — sem
     // busca, o texto usa esse bruto normalmente.
     const segmento = Array.from(hospedeiro.querySelectorAll("button")).find(
       (b) =>
         b.getAttribute("aria-pressed") !== null &&
-        texto(b).includes("Em risco"),
+        texto(b).includes("Podem não voltar"),
     ) as HTMLButtonElement;
     await act(async () => segmento.click());
     await esperarAte(() =>
-      texto(hospedeiro).includes("Mostrando: Em risco · 2"),
+      texto(hospedeiro).includes("Mostrando: Podem não voltar · 2"),
     );
 
     // Busca por "Bruno": só 1 dos 2 clientes do segmento bate — a RPC
@@ -550,8 +550,8 @@ describe("Dashboard CRM", () => {
     });
 
     await esperarAte(() =>
-      texto(hospedeiro).includes("Mostrando: Em risco · 1"),
+      texto(hospedeiro).includes("Mostrando: Podem não voltar · 1"),
     );
-    expect(texto(hospedeiro)).not.toContain("Mostrando: Em risco · 2");
+    expect(texto(hospedeiro)).not.toContain("Mostrando: Podem não voltar · 2");
   }, 8000);
 });

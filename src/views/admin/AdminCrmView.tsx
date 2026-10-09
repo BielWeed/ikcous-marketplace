@@ -160,7 +160,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
       // de rolagem e quebraria o `sticky` da barra de abas/período (o
       // acoplamento overflow-x/overflow-y do CSS vira `overflow-y: auto`
       // computado); `clip` não tem esse acoplamento.
-      className="pb-admin h-auto overflow-x-clip bg-[#09090b] text-white selection:bg-emerald-500/30 lg:pb-12"
+      className="pb-admin h-auto overflow-x-clip bg-admin-bg text-white selection:bg-emerald-500/30 lg:pb-12"
     >
       <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-6 sm:gap-4 sm:px-6">
         <AdminPageHeader
@@ -181,7 +181,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
                 )}
                 aria-hidden="true"
               />
-              <span className="hidden text-[10px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
+              <span className="hidden text-[11px] font-black uppercase tracking-widest text-zinc-400 sm:inline">
                 Sincronizar
               </span>
             </button>
@@ -204,7 +204,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           sticky andar junto com a tela inteira. Os dois controles vivem num
           trilho segmentado (`SUPERFICIE_DO_CRM`, a mesma superfície dos
           cartões de KPI, com p-1) — sem uma superfície tão visível quanto a
-          deles, abas e período viravam "palavras soltas" sobre o #09090b.
+          deles, abas e período viravam "palavras soltas" sobre o fundo escuro do painel.
           Até 1023px o trilho é uma GRADE de colunas iguais (nada de
           `overflow-x-auto`): as 4 abas e os 6 períodos cabem inteiros sem
           rolar nem cortar texto (print do Gabriel, 27/09, no celular). A
@@ -215,7 +215,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
           o trilho de período estourava a tela em 1100px). Com `flex-wrap` o
           período desce para a 2ª linha só nessa faixa estreita; em 1280/1440
           continua tudo numa linha só, idêntico a antes. */}
-      <div className="sticky top-0 z-30 mt-2 border-b border-white/5 bg-[#09090b]/95 backdrop-blur-md">
+      <div className="sticky top-0 z-30 mt-2 border-b border-white/5 bg-admin-bg/95 backdrop-blur-md">
         <div className="flex flex-col gap-1.5 py-1.5 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-2 lg:px-6 lg:py-2">
           <div
             role="tablist"
@@ -325,7 +325,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
             <button
               type="button"
               onClick={atualizarVisao}
-              className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[10px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10"
+              className="flex min-h-11 shrink-0 items-center rounded-xl border border-solid border-red-500/20 px-3 text-[11px] font-black uppercase tracking-wider transition-colors hover:bg-red-500/10"
             >
               Tentar de novo
             </button>
