@@ -119,7 +119,7 @@ Ele recusa tudo se houver arquivo fora da faixa, comita só o que é seu e **dei
   cadastro, pedido ou upload pela tela.
 - **Nunca `supabase db push`.** Migration nova chega à loja pelo workflow `aplicar-migrations.yml`.
 - **Migration não leva `BEGIN`/`COMMIT`** (o `ROLLBACK` da prova vira no-op e grava).
-- O mapa de risco é **derivado dos caminhos do diff** pelo orquestrador (`integrar` imprime as frentes que
+- O mapa de risco é **derivado dos caminhos E do conteúdo do diff** pelo orquestrador (`integrar` imprime as frentes que
   exigem `revisor-risco`); a sua etiqueta é opinião e não rebaixa nada.
 - **Se a sua frente toca o mapa de risco** (migration, RLS, `SECURITY DEFINER`, `supabase/functions/`,
   auth/OTP, checkout/pagamento, service worker, `vercel.json`) diga isso EM DESTAQUE no relatório:

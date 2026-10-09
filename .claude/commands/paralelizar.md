@@ -142,9 +142,9 @@ node scripts/paralelo/frente.mjs integrar <manifesto> <frente>=<branch> … --so
 ```
 
 (`--so-conferir` não mescla nada; reprova se qualquer frente tocou arquivo fora da faixa **e imprime o
-MAPA DE RISCO derivado dos caminhos do diff** — migration, edge function, checkout/pagamento, OTP/auth,
+MAPA DE RISCO derivado dos caminhos E do conteúdo do diff** — migration, edge function, checkout/pagamento, OTP/auth,
 service worker, `vercel.json`, devolução. Frente listada ali EXIGE `revisor-risco`: a etiqueta que o
-planejador ou a frente deram ao próprio trabalho não rebaixa isso. Frente
+planejador ou a frente deram ao próprio trabalho não rebaixa isso. É heurística (caminho + palavras no diff: `fin_*`, `SECURITY DEFINER`, `export` de função/tipo alterado ou removido…): ela só ACRESCENTA frentes ao revisor-risco, nunca dispensa uma — e não vê o que não tem essas marcas, então decisão de risco duvidosa continua escalando para revisão cara (AGENTS.md: "na dúvida, revisão cara"). Frente
 rodada pelo worktree nativo tem branch `worktree-agent-<id>`, por isso o mapa `frente=branch`.)
 
 Depois, **numa única mensagem**, revisão em contexto limpo — quem escreveu não revisa:

@@ -237,7 +237,7 @@ O Gabriel pediu uma revisão na sessão local (reproduzida no Windows) e eu pedi
 | **B1 — a faxina apagava o `node_modules` da principal** (junction + `git worktree remove --force`, medido no Windows; há relatos públicos do mesmo acidente) | **Eliminado na raiz: não existe mais link nenhum.** Medido: `vitest`, `eslint`, `biome`, `npm run` e `tsc -b --force` passam num worktree sem `node_modules`, porque o Node resolve subindo diretórios até o da principal. As ferramentas criam ali só cache, num diretório real. `frente.md` proíbe `npm install/ci`. Teste: nenhum `node_modules` no worktree **e** `require.resolve` ainda acha o pacote. |
 | **A2 — a frente forjava a própria faixa** (manifesto escrito na própria posse + `entrar` auto-aprovado ⇒ editava `scripts/paralelo/` ⇒ código dela rodava sem confirmação) | `entrar` só aceita manifesto de `docs/superpowers/lanes/` **commitado no HEAD** (a fonte é o blob do git) e **recusa se já existe `lane.json`**. Hook, `conferir` e `commitar` exigem que o manifesto embutido seja idêntico ao commitado na `base` (`integridade.mjs`). Hook também resolve symlink. |
 | **A3 — `integrar`/`limpar` só na árvore principal** (obrigava a trocar de ramo lá) | Rodam também num **worktree de integração** limpo, nunca no de uma frente. O manifesto resolve primeiro pelo worktree atual (arquivo velho na principal não vence). |
-| **M5 — risco dependia da palavra da frente** | `integrar`/`status` derivam o **mapa de risco dos caminhos do diff** e imprimem as frentes que EXIGEM `revisor-risco`; o commit dos PEDIDOS em arquivo de risco também passa por ele. `AGENTS.md` ganhou a exceção na linha que ainda dizia "escrita serial". |
+| **M5 — risco dependia da palavra da frente** | `integrar`/`status` derivam o **mapa de risco dos caminhos E do conteúdo do diff** (`fin_*`, `SECURITY DEFINER`, gate de admin, RLS/gatilho, `export` de função/tipo alterado ou removido — achado P1 do Codex: `useFinanceiro.ts` chama as RPCs de dinheiro e não tem palavra-chave no nome; testes e docs ficam fora da leitura de conteúdo) e imprimem as frentes que EXIGEM `revisor-risco`; o commit dos PEDIDOS em arquivo de risco também passa por ele. `AGENTS.md` ganhou a exceção na linha que ainda dizia "escrita serial". |
 | TOCTOU no `integrar` (2ª revisão) | O SHA conferido é o SHA mesclado: commit feito na frente *depois* da conferência não entra. |
 | Rollback em `supabase/migrations/` (2ª revisão, bloqueio funcional) | A convenção atual da skill `nova-migration` agora é aceita; antes a frente de banco não commitava o próprio rollback. |
 | `commitar` após `git rm`; `liberados` de não-compartilhado; `Skill` no agente; `git commit -- <novo>` impossível; hook que não carrega abre para a frente | Corrigidos, cada um com teste (mutação conferida). |
@@ -260,7 +260,7 @@ O Gabriel pediu uma revisão na sessão local (reproduzida no Windows) e eu pedi
   qualquer merge) mais a revisão.
 - **Contra um agente HOSTIL com `Bash` livre nada em processo é garantia absoluta** (ele escreve no disco do
   mesmo jeito que o integrador). A defesa real é o conjunto: nada auto-integra, o diff é conferido contra o
-  manifesto canônico, e o risco sai dos caminhos.
+  manifesto canônico, e o risco sai dos caminhos e do conteúdo do diff (heurística: só acrescenta revisão, nunca dispensa).
 
 **Não verificado (nenhuma das duas revisões nem eu conseguimos):** o teste de ponta a ponta **não rodou no
 Windows** — a causa do B1 (junction) deixou de existir, então não há o que testar lá além de "nenhum link é

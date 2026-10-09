@@ -452,6 +452,66 @@ export function riscoDoCaminho(caminho) {
   return achado ? achado[1] : null;
 }
 
+/**
+ * Risco SEMÂNTICO, lido do CONTEÚDO do diff. O nome do arquivo não basta: `useFinanceiro.ts` chama as
+ * RPCs `fin_*` (dinheiro) e um `export` mudado num hook é uma assinatura consumida por outro módulo —
+ * os dois entram no mapa de risco do AGENTS.md sem ter palavra-chave no caminho.
+ *
+ * Só olha linhas adicionadas/removidas de arquivo que NÃO é teste nem documentação (teste e doc citam
+ * essas palavras o tempo todo e inundariam a lista de falso alarme). `-export …` (assinatura removida ou
+ * alterada) conta; `+export …` sozinho (símbolo novo) não quebra consumidor nenhum.
+ */
+export const RISCO_CONTEUDO = Object.freeze([
+  [/SECURITY\s+DEFINER/i, "SECURITY DEFINER"],
+  [/\bfin_[a-z_]+/i, "RPC/tabela fin_* (dinheiro)"],
+  [
+    /\b(confirmar_pagamento|liberar_cobranca_do_pedido|registrar_pagamento_recebido|order_refunds|devolucao_itens|devolucoes|payment_status|gateway_payment_id|config_pagamento_cartao|marketplace_orders)\b/,
+    "dinheiro / pedido",
+  ],
+  [/service_role|SERVICE_ROLE/, "service role"],
+  [/\bis_admin(_atual)?\s*\(/, "gate de admin"],
+  [
+    // eslint-disable-next-line security/detect-unsafe-regex -- aplicada a UMA linha de diff por vez; alternâncias de literais e `\s+` simples, sem repetição aninhada.
+    /\b(CREATE\s+(OR\s+REPLACE\s+)?(TRIGGER|POLICY)|ENABLE\s+ROW\s+LEVEL|DISABLE\s+ROW\s+LEVEL)/i,
+    "RLS / gatilho",
+  ],
+]);
+/** `-export function|class|type|interface|enum|default …`: assinatura removida ou alterada. */
+const EXPORT_ASSINATURA =
+  // eslint-disable-next-line security/detect-unsafe-regex -- aplicada a UMA linha de diff por vez; âncora `^` e alternância de literais, sem repetição aninhada.
+  /^-\s*export\s+(async\s+)?(function\*?|class|abstract\s+class|type|interface|enum|default)\b/;
+/** `-export const f = (…) =>` / `= async (` / `= function` / `= x =>`: função exportada. Valor literal não. */
+const EXPORT_CONST_FUNCAO =
+  // eslint-disable-next-line security/detect-unsafe-regex -- aplicada a UMA linha de diff por vez; âncora `^` e `[^=]+` seguido de `=` literal: tempo linear (medido: 1 ms em 200 mil caracteres).
+  /^-\s*export\s+(const|let)\s+[\w$]+\s*(:[^=]+)?=\s*(async\s*)?(\(|function\b|[\w$]+\s*=>)/;
+
+/** Arquivo de teste ou documentação: fora da leitura de conteúdo. */
+const ehTesteOuDoc = (n) =>
+  /(^|\/)tests?\//i.test(n) ||
+  /(_test|\.test|\.spec)\.[cm]?[jt]sx?$/i.test(n) ||
+  /\.(md|mdx|txt)$/i.test(n);
+
+/**
+ * Motivos de risco no CONTEÚDO do diff (`-U0`) de UM arquivo. `[]` = nada encontrado.
+ * `textoDoDiff` é a saída de `git diff -U0` desse arquivo.
+ */
+export function riscoDoConteudo(caminho, textoDoDiff) {
+  if (ehTesteOuDoc(normalizar(caminho))) return [];
+  const motivos = new Set();
+  for (const linha of String(textoDoDiff).split("\n")) {
+    // só linhas de mudança; ignora os cabeçalhos `+++`/`---` do diff
+    if (!/^[+-]/.test(linha) || /^(\+\+\+|---)/.test(linha)) continue;
+    for (const [re, motivo] of RISCO_CONTEUDO)
+      if (re.test(linha)) motivos.add(motivo);
+    if (EXPORT_ASSINATURA.test(linha) || EXPORT_CONST_FUNCAO.test(linha)) {
+      motivos.add(
+        "export alterado/removido (assinatura consumida por outro módulo)",
+      );
+    }
+  }
+  return [...motivos];
+}
+
 /** Maior prefixo de 8 dígitos entre nomes de migration reais. */
 export function maiorPrefixoDeMigration(nomesDeArquivo) {
   let maior = null;

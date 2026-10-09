@@ -41,6 +41,7 @@ import {
   conferirAlterados,
   maiorPrefixoDeMigration,
   riscoDoCaminho,
+  riscoDoConteudo,
   validarManifesto,
 } from "./faixas.mjs";
 import {
@@ -215,11 +216,26 @@ const ehArtefatoDaFrente = (c) =>
   c.startsWith("node_modules/") ||
   c === ".claude/lane.json";
 
-/** Arquivos do mapa de risco entre os alterados, DERIVADOS DOS CAMINHOS (ver faixas.mjs). */
-function riscosDe(arquivos) {
-  return arquivos
-    .map((c) => [c, riscoDoCaminho(c)])
-    .filter(([, motivo]) => motivo !== null);
+/**
+ * Arquivos do mapa de risco entre os alterados de `base` até `ref`, por DUAS leituras que a frente e
+ * o planejador não controlam: o CAMINHO (migration, edge function, checkout…) e o CONTEÚDO do diff
+ * (`fin_*`, SECURITY DEFINER, `export` alterado…). Devolve `[[arquivo, "motivo; motivo"]]`.
+ */
+function riscosDoDiff(base, ref, arquivos, cwd) {
+  const achados = [];
+  for (const arq of arquivos) {
+    const motivos = [];
+    const doCaminho = riscoDoCaminho(arq);
+    if (doCaminho) motivos.push(doCaminho);
+    const diff = spawnSync(
+      "git",
+      ["diff", "-U0", "--no-renames", base, ref, "--", arq],
+      { cwd, encoding: "utf8" },
+    );
+    if (diff.status === 0) motivos.push(...riscoDoConteudo(arq, diff.stdout));
+    if (motivos.length) achados.push([arq, [...new Set(motivos)].join("; ")]);
+  }
+  return achados;
 }
 
 /** Arquivos alterados vs `base`: commitados + modificados + novos (não ignorados). */
@@ -492,7 +508,7 @@ function cmdStatus([arg, ...resto]) {
       continue;
     }
     const viol = conferirAlterados(f, manifesto, dif.nomes).length;
-    const risco = riscosDe(dif.nomes);
+    const risco = riscosDoDiff(base, branch, dif.nomes, cwd);
     linhas.push(
       `${f.nome.padEnd(28)} commits+${String(aMais).padEnd(3)} sujo:${String(sujo).padEnd(3)} fora-da-faixa:${viol}${risco.length ? `  RISCO:${risco.length}` : ""}`,
     );
@@ -586,7 +602,7 @@ function cmdIntegrar(args) {
       branch,
       sha,
       arquivos: alterados.length,
-      riscos: riscosDe(alterados),
+      riscos: riscosDoDiff(base, sha, alterados, cwd),
     });
   }
   if (reprovado) falhar("nada foi integrado — corrija as frentes acima");

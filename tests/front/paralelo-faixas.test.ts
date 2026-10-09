@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as faixas from "../../scripts/paralelo/faixas.mjs";
 
 const {
+  riscoDoConteudo,
   riscoDoCaminho,
   arquivoPermitido,
   casa,
@@ -372,5 +373,70 @@ describe("achados da 2ª revisão (faixas)", () => {
       /devolução/,
     );
     expect(riscoDoCaminho("src/views/admin/AdminBannersView.tsx")).toBeNull();
+  });
+
+  it("risco semântico vem do CONTEÚDO do diff (o nome do arquivo não tem palavra-chave) — achado do Codex P1", () => {
+    const diff = (...l: string[]) =>
+      ["--- a/x", "+++ b/x", "@@ -1 +1 @@", ...l].join("\n");
+    // useFinanceiro.ts chama as RPCs de dinheiro
+    expect(
+      riscoDoConteudo(
+        "src/hooks/useFinanceiro.ts",
+        diff('+  supabase.rpc("fin_saldo_do_caixa")'),
+      ),
+    ).toContain("RPC/tabela fin_* (dinheiro)");
+    expect(
+      riscoDoConteudo("src/x.ts", diff("+select confirmar_pagamento(1)")),
+    ).toContain("dinheiro / pedido");
+    expect(
+      riscoDoConteudo(
+        "src/x.ts",
+        diff("+create function f() security definer"),
+      ),
+    ).toContain("SECURITY DEFINER");
+    expect(
+      riscoDoConteudo("src/x.ts", diff("-  if (is_admin_atual()) {")),
+    ).toContain("gate de admin");
+    // assinatura exportada REMOVIDA ou ALTERADA (outro módulo pode consumir); símbolo novo não
+    for (const l of [
+      "-export function useOrders(id: string) {",
+      "-export const useOrders = (id: string) => {",
+      "-export const useOrders = async (id) => {",
+      "-export type Pedido = {",
+      "-export interface Pedido {",
+      "-export default function Tela() {",
+    ]) {
+      expect(
+        riscoDoConteudo("src/hooks/useOrders.ts", diff(l)).join(),
+        l,
+      ).toMatch(/export alterado\/removido/);
+    }
+    expect(
+      riscoDoConteudo(
+        "src/hooks/useOrders.ts",
+        diff("+export function novoSimbolo() {"),
+      ),
+    ).toEqual([]);
+    expect(
+      riscoDoConteudo(
+        "src/x.ts",
+        diff("-export const LIMITE = 10;", "+export const LIMITE = 20;"),
+      ),
+    ).toEqual([]);
+    // teste e documentação citam essas palavras o tempo todo: ficam fora
+    expect(
+      riscoDoConteudo("tests/front/fin.test.ts", diff('+rpc("fin_saldo")')),
+    ).toEqual([]);
+    expect(
+      riscoDoConteudo(
+        "supabase/functions/x/index_test.ts",
+        diff('+rpc("fin_saldo")'),
+      ),
+    ).toEqual([]);
+    expect(riscoDoConteudo("docs/x.md", diff("+fin_saldo"))).toEqual([]);
+    // cabeçalhos do diff (`+++`/`---`) não contam como mudança
+    expect(
+      riscoDoConteudo("src/x.ts", "--- a/fin_x.ts\n+++ b/fin_x.ts"),
+    ).toEqual([]);
   });
 });

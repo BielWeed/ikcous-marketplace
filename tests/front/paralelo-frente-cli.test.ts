@@ -649,4 +649,34 @@ exit 0
     }
     expect(existsSync(join(repo, ".worktrees"))).toBe(false);
   }, 60_000);
+
+  it("risco semântico no conteúdo do diff entra no mapa mesmo sem palavra-chave no caminho (Codex P1)", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    // `useFinanceiro.ts` não casa nenhum padrão de caminho, mas chama as RPCs de dinheiro
+    escrever(
+      wt(repo, "a"),
+      "src/a/useFinanceiro.ts",
+      'export const x = () => supabase.rpc("fin_saldo");\n',
+    );
+    // a frente b só muda o VALOR de um export literal e acrescenta um símbolo novo: rotina
+    escrever(
+      wt(repo, "b"),
+      "src/b/y.ts",
+      "export const b = 11;\nexport function novo() {}\n",
+    );
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(ui): a").status).toBe(
+      0,
+    );
+    expect(frente(wt(repo, "b"), "commitar", "-m", "feat(ui): b").status).toBe(
+      0,
+    );
+    const r = frente(repo, "integrar", M, "--so-conferir");
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(
+      /useFinanceiro\.ts {2}\(RPC\/tabela fin_\* \(dinheiro\)\)/,
+    );
+    expect(r.out).not.toMatch(/y\.ts {2}\(/);
+  }, 60_000);
 });
