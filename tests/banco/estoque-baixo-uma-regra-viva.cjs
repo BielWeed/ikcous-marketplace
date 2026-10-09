@@ -4,7 +4,8 @@
  * do catálogo do Postgres efêmero; nunca de entrada de rede nem de terceiro. */
 
 /**
- * PROVA VIVA da migration 20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql
+ * PROVA VIVA das migrations 20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql
+ * e 20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql
  * contra o Postgres EFÊMERO com as migrations aplicadas do zero (rpc-ci).
  *
  * A REGRA (ÚNICA): produto ativo e não apagado está com estoque baixo quando
@@ -19,9 +20,12 @@
  *       inativa 50 (baixo: soma 4); H inativo com 0 (não); I apagado (não).
  *       `painel_inicio()->'pendencias'->>'estoque_baixo'` =
  *       `get_admin_analytics_v2(90)->>'inventoryAlerts'` = a conta do front
- *       (cópia de `precisaDeReposicao` e da régua de `mapProductFromDB`) = +4.
+ *       (cópia de `precisaDeReposicao` e da régua de `mapProductFromDB`) =
+ *       `get_admin_products_paged('', 'all', 'active', 'low', 0, 100)->>
+ *       'total_count'` = +4; e o filtro 'low' devolve exatamente A, B, D e G.
  *   (2) CONTROLE: com o corpo antigo (o rollback-manual aplicado dentro de
- *       transação desfeita) o Início dá outro número (+3: D, F, G) — é a
+ *       transação desfeita) o Início dá outro número (+3: D, F, G) e o filtro
+ *       'low' devolve outros produtos (A, B, E, F: `p.estoque <= 5` cru) — é a
  *       migration, e não outra coisa, que alinha.
  *   (3) a porta: cliente comum recusado com 42501; o corpo vivo é o que o
  *       preflight declara.
@@ -31,6 +35,11 @@
  *   (6) rollback-manual: volta ao md5 da 20261199000000; `prosecdef`,
  *       `proconfig`, `proacl`, volatilidade e dono iguais antes/depois; o
  *       segundo rollback recusa sem escrever; reaplicar volta ao corpo desta.
+ *   (7) 20261213000000: `p_stock = 'all'` e a busca (com e sem acento)
+ *       devolvem exatamente o mesmo que o corpo da baseline; reaplicar 2x não
+ *       muda a impressão digital; corpo divergente recusa sem escrever; o
+ *       rollback volta ao md5 da baseline com SECURITY DEFINER, search_path,
+ *       ACL e dono iguais, e o segundo rollback recusa.
  *
  * Toda prova que mexe em corpo de função roda numa transação DESFEITA no fim.
  *
@@ -55,8 +64,12 @@ const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");
 const NOME_99 = "20261199000000_portas_do_painel_exigem_admin_atual.sql";
 const NOME_12 =
   "20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql";
+const NOME_13 =
+  "20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql";
 const M12 = ler(NOME_12);
 const RB12 = ler(`rollback-manual-${NOME_12}`);
+const M13 = ler(NOME_13);
+const RB13 = ler(`rollback-manual-${NOME_13}`);
 
 // Os hashes (md5 de prosrc sem \r) de antes e de depois, lidos do PREFLIGHT
 // da própria migration — a prova de texto amarra cada um ao md5 real do corpo.
@@ -73,6 +86,9 @@ const PAINEL = "public.painel_inicio()";
 const H12 = hashesDoPreflight(M12, PAINEL);
 // O corpo que a 20261199000000 deixa (o "desta" dela) é o vigente da 12.
 const H99 = hashesDoPreflight(ler(NOME_99), PAINEL);
+const FILTRO =
+  "public.get_admin_products_paged(text,text,text,text,integer,integer)";
+const H13 = hashesDoPreflight(M13, FILTRO);
 
 const U_ADMIN = "e5bb0000-0000-4000-8000-000000000001";
 const U_CLIENTE = "e5bb0000-0000-4000-8000-000000000002";
@@ -158,14 +174,41 @@ async function logar(c, uid) {
   await c.query("SELECT set_config('app.rpc.user_id', $1, false)", [uid]);
 }
 
-/** Os dois números do painel, como o admin os lê. */
+/** Os três números do painel, como o admin os lê. */
 async function painel(c) {
   await logar(c, U_ADMIN);
   const r = await c.query(
     `SELECT (public.painel_inicio() -> 'pendencias' ->> 'estoque_baixo')::int AS inicio,
-            (public.get_admin_analytics_v2(90) ->> 'inventoryAlerts')::int AS analytics`,
+            (public.get_admin_analytics_v2(90) ->> 'inventoryAlerts')::int AS analytics,
+            (public.get_admin_products_paged('', 'all', 'active', 'low', 0, 100) ->> 'total_count')::int AS filtro`,
   );
   return r.rows[0];
+}
+
+/**
+ * A página do catálogo do admin (o JSON inteiro), como o admin a lê — com os
+ * itens em ordem de id (empate de `data_cadastro` não vira diferença).
+ */
+async function pagina(c, busca, status, estoque) {
+  await logar(c, U_ADMIN);
+  const r = await c.query(
+    "SELECT public.get_admin_products_paged($1, 'all', $2, $3, 0, 100) AS r",
+    [busca, status, estoque],
+  );
+  const { data, total_count } = r.rows[0].r;
+  return {
+    total_count,
+    data: [...data].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+  };
+}
+
+/** Os ids da semente que o filtro 'low' devolve (a busca isola a semente). */
+async function baixosDoFiltro(c) {
+  const r = await pagina(c, "Estoque baixo", "active", "low");
+  return r.data
+    .map((p) => p.id)
+    .filter((id) => Object.values(P).includes(id))
+    .sort();
 }
 
 /** Os produtos como a tela os recebe (com as variações), e a conta do front. */
@@ -317,13 +360,26 @@ PROVAS.push({
     const delta = {
       inicio: depois.inicio - fx.antes.inicio,
       analytics: depois.analytics - fx.antes.analytics,
+      filtro: depois.filtro - fx.antes.filtro,
       front: frontDepois.total - fx.frontAntes.total,
     };
     console.log(`    deltas: ${JSON.stringify(delta)}`);
     assert.deepEqual(
       delta,
-      { inicio: ESPERADO, analytics: ESPERADO, front: ESPERADO },
-      "os três números não são a mesma régua",
+      {
+        inicio: ESPERADO,
+        analytics: ESPERADO,
+        filtro: ESPERADO,
+        front: ESPERADO,
+      },
+      "os quatro números não são a mesma régua",
+    );
+    assert.deepEqual(
+      await baixosDoFiltro(c),
+      PRODUTOS.filter((p) => p.baixo)
+        .map((p) => p.id)
+        .sort(),
+      "o filtro 'low' não devolveu A, B, D e G",
     );
     for (const p of PRODUTOS) {
       assert.equal(
@@ -336,12 +392,14 @@ PROVAS.push({
 });
 
 PROVAS.push({
-  nome: "(2) CONTROLE: com o corpo antigo (rollback-manual na transação) o Início dá outro número (+3: D, F, G) e o analytics não muda",
+  nome: "(2) CONTROLE: com os corpos antigos (rollback-manual na transação) o Início dá outro número (+3: D, F, G), o filtro 'low' devolve A, B, E, F e o analytics não muda",
   corpo: async (c) => {
     await c.query("BEGIN");
     try {
       await c.query(RB12);
+      await c.query(RB13);
       assert.equal((await catalogo(c, PAINEL)).hash, H12.vigente);
+      assert.equal((await catalogo(c, FILTRO)).hash, H13.vigente);
       const antigo = await painel(c);
       const delta = antigo.inicio - fx.antes.inicio;
       console.log(`    corpo antigo: delta do Início = ${delta}`);
@@ -352,10 +410,18 @@ PROVAS.push({
       );
       assert.equal(delta, 3, "a régua antiga conta D, F e G");
       assert.equal(antigo.analytics - fx.antes.analytics, ESPERADO);
+      // O filtro antigo (`p.estoque <= 5` sobre a coluna crua) conta 4 também
+      // — mas OUTROS quatro: o controle do filtro é por produto.
+      assert.deepEqual(
+        await baixosDoFiltro(c),
+        [P.A, P.B, P.E, P.F].sort(),
+        "CONTROLE FALHOU: o filtro antigo devolve os mesmos produtos",
+      );
     } finally {
       await c.query("ROLLBACK");
     }
     assert.equal((await catalogo(c, PAINEL)).hash, H12.desta);
+    assert.equal((await catalogo(c, FILTRO)).hash, H13.desta);
   },
 });
 
@@ -441,6 +507,95 @@ PROVAS.push({
       );
       await c.query(M12);
       assert.equal((await catalogo(c, PAINEL)).hash, H12.desta);
+    } finally {
+      await c.query("ROLLBACK");
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(7) 20261213: 'all' e a busca (com e sem acento) iguais ao corpo da baseline; reaplicar 2x igual; corpo divergente recusa sem escrever; rollback volta ao md5 da baseline com SECURITY DEFINER, search_path, ACL e dono iguais; 2o rollback recusa",
+  corpo: async (c) => {
+    const com = await catalogo(c, FILTRO);
+    assert.equal(com.hash, H13.desta);
+    // O que não é 'low' não muda: as mesmas páginas, byte a byte, com o corpo
+    // desta e com o da baseline (na mesma transação, então o mesmo dado).
+    const consultas = [
+      ["", "all", "all"],
+      ["", "active", "all"],
+      ["variacao", "all", "all"],
+      ["Variação", "all", "all"],
+      ["ESTOQUE BAIXO", "inactive", "all"],
+    ];
+    const novas = [];
+    for (const [busca, status, estoque] of consultas)
+      novas.push(await pagina(c, busca, status, estoque));
+    assert.ok(
+      novas[2].data.some((p) => p.id === P.A) &&
+        novas[3].data.some((p) => p.id === P.A),
+      "a busca (com e sem acento) não achou 'A sem variação'",
+    );
+    assert.ok(novas[4].data.some((p) => p.id === P.H));
+    await c.query("BEGIN");
+    try {
+      await c.query(RB13);
+      const sem = await catalogo(c, FILTRO);
+      assert.equal(sem.hash, H13.vigente, "não voltou ao corpo da baseline");
+      for (const k of ["prosecdef", "proconfig", "proacl", "volatil", "dono"]) {
+        assert.equal(sem[k], com[k], `${k} mudou no rollback`);
+      }
+      for (const [i, [busca, status, estoque]] of consultas.entries()) {
+        assert.deepEqual(
+          await pagina(c, busca, status, estoque),
+          novas[i],
+          `'${busca}'/${status}/${estoque} mudou entre a baseline e a 20261213`,
+        );
+      }
+      const semDigital = await digital(c);
+      await c.query("SAVEPOINT segundo");
+      await assert.rejects(c.query(RB13), /B1_BASELINE_DIVERGENT/);
+      await c.query("ROLLBACK TO SAVEPOINT segundo");
+      assert.deepEqual(
+        await digital(c),
+        semDigital,
+        "o 2o rollback escreveu algo",
+      );
+      await c.query(M13);
+      assert.equal((await catalogo(c, FILTRO)).hash, H13.desta);
+    } finally {
+      await c.query("ROLLBACK");
+    }
+    // Reaplicar por cima de si mesma (2x): a impressão digital não muda.
+    const antes = await digital(c);
+    await c.query("BEGIN");
+    try {
+      await c.query(M13);
+      await c.query(M13);
+      assert.deepEqual(await digital(c), antes, "reaplicar mudou alguma coisa");
+    } finally {
+      await c.query("ROLLBACK");
+    }
+    // Corpo vivo divergente: recusa sem escrever.
+    await c.query("BEGIN");
+    try {
+      const divergente = com.def.replace(
+        "-- Authorization check",
+        "-- Authorization check (divergente)",
+      );
+      assert.notEqual(divergente, com.def);
+      await c.query(divergente);
+      const antesDaRecusa = await digital(c);
+      await c.query("SAVEPOINT aplicar");
+      await assert.rejects(
+        c.query(M13),
+        /B1_BASELINE_DIVERGENT: corpo vivo de public\.get_admin_products_paged/,
+      );
+      await c.query("ROLLBACK TO SAVEPOINT aplicar");
+      assert.deepEqual(
+        await digital(c),
+        antesDaRecusa,
+        "a recusa escreveu algo",
+      );
     } finally {
       await c.query("ROLLBACK");
     }
