@@ -56,6 +56,8 @@ on:
       - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
       - "scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql"
       - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
+      - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
+      - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -80,6 +82,8 @@ on:
       - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
       - "scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql"
       - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
+      - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
+      - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -407,6 +411,20 @@ jobs:
       - name: Prova viva do cupom do PIX anulado (migrations 20261209000000 e 20261210000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-viva.cjs
+      # Portao da release para as migrations 20261209000000 e 20261210000000: as consultas 16a
+      # (DEPOIS, 32 linhas) e 16b (ANTES, 14 linhas) do lote em scripts/frota/canais-de-backend.json,
+      # executadas num Postgres real como papel de leitura. 16b positiva na base SEM as duas (tambem
+      # com os arquivos de antes em CRLF e depois dos dois rollbacks manuais); 16a positiva depois do
+      # apply real (LF, CRLF e rollback seguido de novo apply). Cada defeito (coluna, chave, RLS,
+      # politica, privilegio, corpo e forma das 4 funcoes, EXECUTE por papel, gatilho e o WHEN dele,
+      # estado MISTURADO, so a 20261209 aplicada, job) reprova a SUA linha e leva o portao a
+      # NEGATIVA, nunca a POSITIVA; mutantes das consultas ficam vermelhos; erro de SQL nao vira
+      # positivo; a 12a (cupom preso) segue positiva no estado que o lote deixa; ponta a ponta com o
+      # conferir-banco.cjs e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA loja
+      # depende dela. CLONE proprio.
+      - name: Prova viva do portao do cupom do PIX anulado (consultas 16a e 16b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-portao-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

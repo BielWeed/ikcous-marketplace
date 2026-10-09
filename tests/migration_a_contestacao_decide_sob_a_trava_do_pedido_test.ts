@@ -425,6 +425,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/cupons-do-checkout-portao-viva.cjs",
     // 20261209000000: a foto da cobranca no cancelamento (gatilho, tabela fechada, envelope, ida e volta).
     "tests/banco/cupom-pix-anulado-viva.cjs",
+    // 20261209000000 e 20261210000000: o portao da release (consultas 16a e 16b do lote) decide certo.
+    "tests/banco/cupom-pix-anulado-portao-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

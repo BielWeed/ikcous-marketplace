@@ -216,7 +216,26 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   **Limites declarados:** o `SET LOCAL lock_timeout` e cinto (sem trava de tabela nao ha espera
   que ele limite); a varredura nao e executada dentro da migration (so pela prova); o caso de uma
   instancia da varredura em voo no instante exato do COMMIT nao e provavel de forma
-  deterministica. O portao (consultas 16a/16b, 12a) e uma peca a parte.
+  deterministica. O portao (consultas 16a/16b) e o item seguinte.
+- **portao do cupom do PIX anulado (`cupom-pix-anulado-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `16a-conferir-pix-anulado-aplicado` (DEPOIS do apply, 32
+  linhas) e `16b-antes-pix-anulado-foto-ausente` (ANTES, 14 linhas), a "prova de objetos" do lote
+  20261209000000 + 20261210000000 (as duas vao juntas e em ordem). 16b positiva em `pre` (sem as duas:
+  auxiliar de 9 parametros, sem foto), tambem com os corpos de 1205/1206 em CRLF, com papel minimo,
+  `search_path` vazio e objetos-isca em outro schema, e DEPOIS dos dois rollbacks manuais (a ida e
+  volta devolve a loja ao estado de antes); 16a positiva na arvore inteira, nos ARQUIVOS aplicados
+  sobre `pre` (resposta identica), em CRLF e depois de rollback seguido de novo apply. Um defeito
+  por vez reprovando a SUA linha (coluna, chave primaria e estrangeira, RLS, politica, privilegio
+  por tabela e por coluna, forma / corpo / sobrecarga / EXECUTE por papel das 4 funcoes, gatilho
+  desligado, REPLICA, BEFORE, sem OF, sem WHEN, outra funcao, o estado MISTURADO, so a 20261209
+  aplicada, os donos sem EXECUTE no auxiliar, job); mutantes do texto das consultas (cada linha e
+  cada clausula composta) deixam a prova vermelha; o `conferir-banco.cjs` de verdade e o lote real
+  fecham em APLICAR / NADA / PARAR; e a 12a (cupom preso) segue positiva no estado que o lote
+  deixa. **Limites declarados:** a linha de controle nao tem negativo local (o catalogo e legivel
+  por todo papel); o EXECUTE de PUBLIC nao tem mutante proprio (equivalente: PUBLIC alcanca os papeis
+  nomeados); a linha de EXECUTE da varredura nao cobre `service_role`; o papel
+  `supabase_read_only_user` real e o pg_cron real nao foram medidos. **Nao prova** a IKCOUS nem a
+  Savy.
 
 ## Como rodar
 
