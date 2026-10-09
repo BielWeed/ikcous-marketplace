@@ -44,6 +44,7 @@ const guarda = (
   modo: string[],
   alvo: string,
   ferramenta = "Edit",
+  agente?: string,
 ) =>
   sh(
     process.execPath,
@@ -53,6 +54,7 @@ const guarda = (
       tool_name: ferramenta,
       cwd,
       tool_input: { file_path: alvo },
+      ...(agente ? { agent_type: agente } : {}),
     }),
   );
 
@@ -242,6 +244,29 @@ describe("frente.mjs — ciclo completo", () => {
     expect(frente(repo, "desconhecido").status).toBe(2);
   }, 60_000);
 
+  it("o piso de migration também olha as branches remotas (outra sessão já publicou à frente)", () => {
+    const repo = novoRepo();
+    const remoto = realpathSync(mkdtempSync(join(tmpdir(), "remoto-")));
+    temporarios.push(remoto);
+    git(remoto, "init", "-q", "--bare");
+    git(repo, "remote", "add", "origin", remoto);
+    git(repo, "switch", "-q", "-c", "outra-sessao");
+    escrever(
+      repo,
+      "supabase/migrations/20261500000000_da_outra_sessao.sql",
+      "select 9;\n",
+    );
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "chore(db): migration da outra sessao");
+    git(repo, "push", "-q", "origin", "outra-sessao");
+    git(repo, "switch", "-q", "main");
+    git(repo, "branch", "-D", "outra-sessao"); // sobra só refs/remotes/origin/outra-sessao
+
+    const r = frente(repo, "validar", M);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/já existe migration 20261500/);
+  }, 60_000);
+
   it("reprova manifesto com posse cruzada antes de criar qualquer worktree", () => {
     const repo = novoRepo();
     const ruim = {
@@ -284,6 +309,29 @@ describe("guarda-de-faixa.mjs — hook PreToolUse", () => {
     expect(guarda(repo, ["--estrito"], join(repo, "src/a/x.ts")).out).toMatch(
       /não tem faixa registrada/,
     );
+
+    // estrito por IDENTIDADE do agente (o hook do frontmatter não dispara no harness real):
+    // `agent_type: frente` fecha por padrão mesmo sem a flag; outro agente segue aberto.
+    const A2 = wt(repo, "a");
+    const semFaixa = guarda(
+      repo,
+      [],
+      join(repo, "src/a/x.ts"),
+      "Write",
+      "frente",
+    );
+    expect(semFaixa.status).toBe(2);
+    expect(semFaixa.out).toMatch(/não tem faixa registrada/);
+    expect(
+      guarda(A2, [], join(A2, "src/b/y.ts"), "Write", "frente").status,
+    ).toBe(2);
+    expect(
+      guarda(A2, [], join(A2, "src/a/x.ts"), "Write", "frente").status,
+    ).toBe(0);
+    expect(
+      guarda(repo, [], join(repo, "src/a/x.ts"), "Write", "general-purpose")
+        .status,
+    ).toBe(0);
 
     // sem alvo (ex.: ferramenta sem file_path) e entrada torta
     expect(

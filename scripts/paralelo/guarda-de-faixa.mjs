@@ -13,7 +13,7 @@
  *   mora num worktree que tem `.claude/lane.json`. Em qualquer outro lugar —
  *   sessão normal, árvore principal, orquestrador — deixa passar. Instalar esta
  *   guarda não muda nada para quem não usa frentes.
- * - `--estrito` (hook no frontmatter do agente `frente`): fecha por padrão.
+ * - ESTRITO (flag `--estrito`, ou `agent_type` = "frente" no JSON do harness): fecha por padrão.
  *   Sem faixa registrada, ou com o alvo fora do worktree do próprio agente,
  *   bloqueia. É o que impede a frente de editar a árvore principal ou o worktree
  *   de outra frente.
@@ -92,10 +92,14 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     const alvo =
       entrada?.tool_input?.file_path ?? entrada?.tool_input?.notebook_path;
     if (!alvo) process.exit(0);
+    // O harness manda `agent_type` nas chamadas de ferramenta de um subagente. Medido ao vivo:
+    // o hook `--estrito` do frontmatter do agente `frente` NÃO dispara (só o global dispara),
+    // então o modo estrito também liga aqui, por identidade do agente, sem depender do frontmatter.
+    const ehFrente = /(^|:)frente$/.test(String(entrada?.agent_type ?? ""));
     const motivo = decidir({
       alvo,
       cwd: entrada.cwd ?? process.cwd(),
-      estritoAtivo: estrito,
+      estritoAtivo: estrito || ehFrente,
     });
     if (motivo) bloquear(motivo);
   } catch (e) {

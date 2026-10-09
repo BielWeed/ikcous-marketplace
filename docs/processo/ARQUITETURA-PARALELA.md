@@ -92,10 +92,14 @@ arquivo em comum" e deixa a verificação disso ao olho do orquestrador.
    dígitos, acima da maior existente; `conferir` reprova migration (ou `rollback-manual-…`) fora dele.
 4. **Três camadas de defesa, da mais cedo à mais forte:**
    - *Hook `PreToolUse`* ([`guarda-de-faixa.mjs`](../../scripts/paralelo/guarda-de-faixa.mjs)):
-     bloqueia `Write/Edit` fora da faixa na hora, com o motivo. No agente `frente` roda em modo
-     **estrito** (fecha por padrão: sem faixa registrada, ou alvo fora do próprio worktree ⇒ bloqueia;
-     o comando tem `|| exit 2` porque, segundo a doc, script ausente sai 127 e **não bloqueia**).
-     No `settings.json` roda em modo global, inerte fora de worktree com faixa.
+     bloqueia `Write/Edit` fora da faixa na hora, com o motivo. Roda no `settings.json` e funciona
+     dentro de subagentes (provado ao vivo). Tem dois modos: **global** (inerte fora de worktree com
+     faixa) e **estrito** (fecha por padrão: sem faixa registrada, ou alvo fora do próprio worktree
+     ⇒ bloqueia). O estrito liga por `--estrito` **ou** quando o JSON do harness traz
+     `agent_type: frente`. **Medido ao vivo:** o hook declarado no *frontmatter* do agente `frente`
+     não disparou (a mensagem de bloqueio mostrou o comando global, sem `--estrito`) — por isso o
+     estrito não depende dele. O frontmatter fica como segunda via (se o harness passar a honrá-lo,
+     o comando tem `|| exit 2`, porque script ausente sai 127 e a doc diz que isso **não bloqueia**).
    - *`frente.mjs commitar`*: recusa o commit inteiro se houver arquivo fora da faixa; comita só o
      que é da frente; **deixa os hooks do repo rodarem** (secretlint, commitlint).
    - *`frente.mjs integrar`*: antes de mesclar **qualquer** frente, prova a faixa de **todas**;
@@ -112,6 +116,13 @@ o worktree nasceu de `e8f5a3cc` — a branch padrão do remoto — e **não** do
 frente enxergaria o sistema de frentes. Correção: `"worktree": { "baseRef": "head" }` em
 `.claude/settings.json` — e a regra de operação "**commite antes de despachar**" (Fase 0 do
 `/paralelizar`), porque o worktree nasce do commit, não da árvore suja.
+
+**Confirmado ao vivo depois da correção** (dois subagentes em worktree nativo): ambos nasceram em
+`f851bd23`, com o sistema de frentes presente — `baseRef: "head"` funciona. O isolamento nativo
+recusou escrita na árvore principal ("Edit the worktree copy of this file instead of the
+shared-checkout path"); o hook bloqueou `package.json` (compartilhado) e a faixa vizinha;
+`integrar --so-conferir` e `integrar` mesclaram as duas frentes sem conflito; remover os worktrees
+não tocou o `node_modules` real.
 
 Outras coisas medidas na sonda: `$CLAUDE_PROJECT_DIR` **não** existe no ambiente do `Bash` (só nos
 hooks, onde a doc o define) — por isso os comandos dos agentes usam caminho relativo, e só o hook usa
@@ -170,6 +181,22 @@ node scripts/paralelo/frente.mjs limpar   docs/superpowers/lanes/<manifesto>.jso
   de suprimento do dono. Se quiser: `/plugin install superpowers@claude-plugins-official`.
 - **Workflows multiagente em escala "ultracode"** (dezenas de agentes): custo alto e só com pedido
   explícito do dono. O `/paralelizar` usa o `Agent` nativo.
+
+## Outras sessões trabalhando no mesmo repositório
+
+Este repositório costuma ter uma sessão local (ZCode/Claude Code na máquina do dono) editando ao
+mesmo tempo. O `/paralelizar` isola frentes **entre si**; ele **não** enxerga o que uma sessão local
+ainda não publicou. Três consequências, todas operacionais:
+
+- **Faixa de migration:** `frente.mjs validar` confere o piso contra as migrations da sua cópia **e
+  das branches remotas já buscadas**, mas uma migration só existente numa máquina local é invisível.
+  Antes de fixar `faixa_migrations`, confirme com o dono a faixa reservada no mural
+  (`~/.claude/mural/core_app_mkt/_REGRAS.md`) — e deixe folga acima da última publicada.
+- **Base do PR:** a linha de trabalho do dono é `claude/app-major-upgrade-wmc8x2` ("o principal"),
+  **não** `main` (medido: `main` está 1.393 commits fora dela; um PR contra `main` mostrou 883
+  commits e 1.219 arquivos). `git branch -r --contains HEAD` e o último PR mergeado dizem a base.
+- **Arquivos de processo** (`AGENTS.md`, `.claude/settings.json`, `.gitignore`) são editados por
+  mais de uma sessão: conflito ali é trivial de texto, mas existe — rode `git fetch` antes de integrar.
 
 ## Riscos conhecidos desta camada
 

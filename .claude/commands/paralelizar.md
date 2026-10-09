@@ -33,6 +33,9 @@ disto.) Confira:
 2. `.claude/settings.json` tem `"worktree": { "baseRef": "head" }`.
 3. `git cat-file -e HEAD:scripts/paralelo/frente.mjs` e `HEAD:.claude/agents/frente.md` existem.
 4. Você está numa branch de integração própria (nunca `main`/`develop`; o `guarda-de-branch` barra).
+   A BASE do PR final é a linha de trabalho do dono — hoje `claude/app-major-upgrade-wmc8x2`, **não**
+   `main` (`git branch -r --contains HEAD` e o último PR mergeado confirmam). Pode haver uma sessão
+   local editando ao mesmo tempo: `git fetch` e olhe as branches recentes antes de decompor.
 5. `git worktree list` — se sobraram worktrees de uma rodada anterior, `frente.mjs limpar` primeiro.
 
 ## Fase 1 — mapear (leitura paraleliza)
@@ -69,8 +72,9 @@ Regras da decomposição (o `planejador` deve cumpri-las; você confere):
 - **Compartilhados** (`package.json`, lockfile, `database.types.ts`, `App.tsx`, `rotas.ts`,
   `vercel.json`, workflows, `AGENTS.md`…) não são de frente nenhuma: viram PEDIDO. Se UMA frente
   precisa de verdade escrever num deles, entregue o caminho exato em `"liberados"`.
-- **Migration:** `faixa_migrations` de 8 dígitos, acima da maior existente, sem cruzar com outra
-  frente — deixe folga de ~10 por frente. Migration nunca entra em `posse`.
+- **Migration:** `faixa_migrations` de 8 dígitos, acima da maior existente (o `validar` olha a sua
+  cópia e as branches remotas; **migration só local de outra sessão ele não vê** — confirme a faixa
+  com o dono/mural), sem cruzar com outra frente — folga de ~10 por frente. Migration nunca entra em `posse`.
 - **Granularidade:** 3 a 8 frentes grossas (uma frente = várias tarefas de 2–5 min do mesmo
   território), não uma por tarefa. O limite duro de subagentes simultâneos é 20.
 - **Etiqueta de risco** por frente (mapa do `AGENTS.md`): frente de risco é despachada com
@@ -155,7 +159,9 @@ contexto) até 3 rodadas; na quarta, `frente` novo com `model: "opus"`.
    PEDIDOS das frentes; `package-lock.json` e `src/types/database.types.ts` se **regeneram** com a
    ferramenta do repo (`npm install`/`supabase gen types`), nunca à mão; roteador pela skill
    `nova-tela`.
-3. `/checar` completo, **uma vez**, sobre a branch integrada: `npm run typecheck`, `npm test`,
+3. **Remova os worktrees das frentes ANTES de checar** (Fase 7): o Biome varre `.claude/worktrees/` e
+   conta as cópias como dívida — medido: um worktree esquecido subiu a catraca de 15 para 16 erros
+   e a falha parecia ser do código. Então `/checar` completo, **uma vez**, sobre a branch integrada: `npm run typecheck`, `npm test`,
    `npm run build`, `lint:links`, `lint:ratchet`, `size`. Cole a saída.
 4. Fim: revisão do branch inteiro pelo `revisor` (contexto limpo) → push → PR em rascunho.
 

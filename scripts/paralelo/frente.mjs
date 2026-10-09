@@ -110,8 +110,22 @@ export function carregarManifesto(arg, cwd) {
 
 function maiorMigrationDoRepo(cwd) {
   const dir = join(raizPrincipal(cwd), "supabase", "migrations");
-  if (!existsSync(dir)) return null;
-  return maiorPrefixoDeMigration(readdirSync(dir));
+  const nomes = existsSync(dir) ? readdirSync(dir) : [];
+  // Branches remotas já buscadas também contam: outra sessão que publicou uma
+  // migration à frente da sua cópia ocuparia a mesma numeração (medido: ~1 s
+  // para ~400 branches). O que ainda não foi publicado de uma sessão local
+  // ninguém enxerga daqui — a faixa tem que ser confirmada com o dono/mural.
+  const refs = git(
+    ["for-each-ref", "--format=%(refname)", "refs/remotes/origin"],
+    cwd,
+  )
+    .out.split("\n")
+    .filter(Boolean);
+  for (const ref of refs) {
+    const t = git(["ls-tree", "--name-only", ref, "supabase/migrations/"], cwd);
+    if (t.ok) nomes.push(...t.out.split("\n").map((n) => n.split("/").pop()));
+  }
+  return maiorPrefixoDeMigration(nomes);
 }
 
 /**
