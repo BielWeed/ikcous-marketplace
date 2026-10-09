@@ -36,7 +36,9 @@
  *             (CREATE OR REPLACE inócuo: um comentário a mais; vivo = o md5 dele),
  *             função AUSENTE (vivo = 'AUSENTE'), sobrecarga extra com o MESMO corpo
  *             (vivo = os dois md5 com vírgula) e o corpo da sucessora da OUTRA
- *             função (o aceito é por função). Também no estado da 99 e nos mistos.
+ *             função (o aceito é por função; esse caso só roda na árvore inteira).
+ *             No estado da 99 rodam o estranho e o AUSENTE; nos mistos, o estranho, o
+ *             AUSENTE e a sobrecarga.
  *             Controle: uma das outras 59 (crm_visao) com corpo estranho reprova só
  *             ela (nada mais foi afrouxado).
  *  MUTANTES   o texto da consulta com o hash da sucessora trocado, os aceitos

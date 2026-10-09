@@ -26,6 +26,9 @@
 -- uma loja pode ter só uma delas):
 --   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja);
 --   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo).
+-- ATENÇÃO (cadeia futura): cada função tem UMA sucessora no CTE, a da ÚLTIMA migration que a
+-- redefine; uma terceira definição troca o hash e uma loja parada no intermediário passa a dar
+-- NEGATIVA (falha fechada). Quem escrever a próxima sucessora decide se mantém o intermediário.
 -- Para essas duas a linha "corpo final <fn>" aceita o md5 da 20261199 (o do
 -- `final`, que é o `esperado`) OU o md5 da sucessora DA PRÓPRIA função (CTE
 -- `sucessoras`); aceito, o `vivo` mostra o `esperado`. O rollback-manual de cada

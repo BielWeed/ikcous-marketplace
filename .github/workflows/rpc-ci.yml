@@ -58,6 +58,8 @@ on:
       - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
       - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
       - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
+      - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -84,6 +86,8 @@ on:
       - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
       - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
       - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
+      - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
