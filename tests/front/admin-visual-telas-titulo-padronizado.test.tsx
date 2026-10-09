@@ -95,16 +95,10 @@ describe("Início e Dashboard CRM usam o título padrão", () => {
 // Voltar e da ajuda). Texto solto no `titulo` do AdminPageHeader é o que fazia
 // a mesma tela ter 2 a 4 nomes. Teste de fonte global: vale para toda tela
 // `Admin*View.tsx` que usa o cabeçalho padrão — tela nova já nasce obrigada.
-//
-// Exceção declarada: AdminWhatsAppConfigView ("Atendimento") fica com o título
-// próprio até virar apelido de Minha loja (onda 2, D11).
-const TELAS_COM_TITULO_PROPRIO = ["AdminWhatsAppConfigView.tsx"];
 
 describe("o título de toda tela do painel vem do nome único", () => {
-  const telas = Object.entries(FONTES).filter(
-    ([caminho, fonte]) =>
-      fonte.includes("<AdminPageHeader") &&
-      !TELAS_COM_TITULO_PROPRIO.some((t) => caminho.endsWith(`/${t}`)),
+  const telas = Object.entries(FONTES).filter(([, fonte]) =>
+    fonte.includes("<AdminPageHeader"),
   );
 
   it("o glob achou as telas do painel (nada de prova vazia)", () => {

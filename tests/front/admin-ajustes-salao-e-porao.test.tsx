@@ -387,11 +387,9 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
   });
 
   describe("Entrega e frete: o estado da entrega", () => {
-    it("sem CEP da loja e sem transportadora → diz as duas faltas", async () => {
+    it("sem CEP da loja → 'Falta: CEP da loja' (a transportadora não é pendência do passo)", async () => {
       await renderizar();
-      expect(subtituloDoGrupo("Entrega e frete")).toBe(
-        "Falta: CEP da loja, transportadora",
-      );
+      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: CEP da loja");
     });
 
     it("sem CEP mas com transportadora ligada → só 'Falta: CEP da loja'", async () => {
@@ -411,10 +409,12 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
       );
     });
 
-    it("com CEP, entrega nacional e nenhuma transportadora → 'Falta: transportadora'", async () => {
+    it("com CEP, entrega nacional e nenhuma transportadora → o passo está feito e o texto avisa 'Sem transportadora'", async () => {
       preencherMarcaEEndereco();
       await renderizar();
-      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: transportadora");
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Sem transportadora",
+      );
     });
 
     it("loja que só entrega na cidade, com CEP, não precisa de transportadora", async () => {
@@ -448,7 +448,9 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
         superfrete: { tem_chave: true, contato_email: null },
       };
       await renderizar();
-      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: transportadora");
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Sem transportadora",
+      );
     });
   });
 

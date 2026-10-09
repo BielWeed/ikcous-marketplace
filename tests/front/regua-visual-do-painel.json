@@ -12,7 +12,6 @@
   "src/components/admin/crm/PecasDoCrm.tsx": 1,
   "src/components/admin/crm/TileDeKpi.tsx": 1,
   "src/components/admin/crm/VisaoGeralDoCrm.tsx": 1,
-  "src/components/admin/dashboard/LojaProntaEEstoqueBaixo.tsx": 5,
   "src/components/admin/dashboard/OperationalPerformanceChart.tsx": 15,
   "src/components/admin/dashboard/StrategicIntelligenceBlocks.tsx": 12,
   "src/components/admin/dashboard/TopProductsList.tsx": 5,
@@ -70,10 +69,9 @@
   "src/views/admin/AdminPushView.tsx": 47,
   "src/views/admin/AdminQAView.tsx": 41,
   "src/views/admin/AdminReviewsView.tsx": 39,
-  "src/views/admin/AdminSettingsView.tsx": 19,
+  "src/views/admin/AdminSettingsView.tsx": 16,
   "src/views/admin/AdminShippingView.tsx": 1,
   "src/views/admin/AdminUserDetailView.tsx": 43,
-  "src/views/admin/AdminWhatsAppConfigView.tsx": 32,
   "src/views/admin/AlertasCancelados.tsx": 27,
   "src/views/admin/StatusPagamentoPix.tsx": 2
 }
