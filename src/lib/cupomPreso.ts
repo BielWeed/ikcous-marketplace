@@ -61,5 +61,5 @@ export function mensagemDeVagaPresa(codigo: string, minutos: number): string {
     minutos >= LIMITE_PARA_HORAS
       ? `${Math.ceil(minutos / MINUTOS_POR_HORA)} horas`
       : `${arredondado} ${arredondado === 1 ? "minuto" : "minutos"}`;
-  return `O cupom ${codigo} está no limite de usos agora. Uma vaga dele está presa num pedido seu que foi cancelado e volta sozinha em até ${prazo}.`;
+  return `O cupom ${codigo} está no limite de usos agora. Uma vaga dele está presa num pedido seu que foi cancelado e volta a ficar disponível em até ${prazo}.`;
 }

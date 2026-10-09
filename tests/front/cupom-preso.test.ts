@@ -18,7 +18,7 @@ import {
 describe("mensagemDeVagaPresa", () => {
   it("diz minutos quando falta menos de duas horas", () => {
     expect(mensagemDeVagaPresa("PROMO10", 15)).toBe(
-      "O cupom PROMO10 está no limite de usos agora. Uma vaga dele está presa num pedido seu que foi cancelado e volta sozinha em até 15 minutos.",
+      "O cupom PROMO10 está no limite de usos agora. Uma vaga dele está presa num pedido seu que foi cancelado e volta a ficar disponível em até 15 minutos.",
     );
   });
 

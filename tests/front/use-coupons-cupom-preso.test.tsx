@@ -137,7 +137,7 @@ describe("useCoupons.validateCoupon — cupom preso", () => {
       expect(r.discount).toBe(0);
       expect(r.networkError).toBeUndefined();
       expect(r.message).toBe(
-        "O cupom PROMO10 está no limite de usos agora. Uma vaga dele está presa num pedido seu que foi cancelado e volta sozinha em até 42 minutos.",
+        "O cupom PROMO10 está no limite de usos agora. Uma vaga dele está presa num pedido seu que foi cancelado e volta a ficar disponível em até 42 minutos.",
       );
       // A pergunta leva o código que a pessoa digitou, e só ele.
       expect(chamadasDaVaga()).toEqual([
@@ -153,7 +153,7 @@ describe("useCoupons.validateCoupon — cupom preso", () => {
 
       const r = await validar("PROMO10");
 
-      expect(r.message).toContain("volta sozinha em até 25 horas.");
+      expect(r.message).toContain("volta a ficar disponível em até 25 horas.");
     });
 
     it("vaga NÃO presa: a frase de sempre", async () => {
