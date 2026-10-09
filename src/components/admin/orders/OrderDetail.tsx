@@ -815,11 +815,36 @@ function OrderFinanceCard({
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
   // Anular venda do balcão (migration 20261204000000): só o BOTÃO mora aqui; a
-  // regra de verdade é do banco. `anuladaAgora` segura o aviso de sucesso na
-  // tela mesmo depois que o pedido muda para cancelado (aí a regra do botão
-  // passa a dizer não e, sem isto, o aviso sumiria no mesmo instante).
+  // regra de verdade é do banco. Esta ficha NÃO é desmontada quando o pedido
+  // aberto troca (as abas do painel ficam montadas), então tudo que A anulou,
+  // está anulando ou digitou é amarrado ao ID do pedido, nunca a um booleano:
+  //  - `anuladoId` segura o aviso de sucesso mesmo depois que o pedido muda
+  //    para cancelado (a regra do botão passa a dizer não e o aviso sumiria);
+  //  - `anulandoId` segura a peça no ar enquanto a chamada está em voo (o
+  //    tempo real pode trazer o pedido cancelado antes da resposta);
+  //  - `key={order.id}` na peça zera a pergunta aberta e o motivo digitado.
   const { anular } = useAnularVendaDoBalcao();
-  const [anuladaAgora, setAnuladaAgora] = useState(false);
+  const [anuladoId, setAnuladoId] = useState<string | null>(null);
+  const [anulandoId, setAnulandoId] = useState<string | null>(null);
+  // Trocou de pedido: o aviso de A não volta quando se reabre A (A já está
+  // cancelada; a peça, remontada, ofereceria anular de novo). Ajuste de estado
+  // durante a renderização, o padrão documentado do React para isto.
+  const [pedidoVisto, setPedidoVisto] = useState(order.id);
+  if (pedidoVisto !== order.id) {
+    setPedidoVisto(order.id);
+    setAnuladoId(null);
+  }
+  const anularEstePedido = async (motivo: string) => {
+    const id = order.id;
+    setAnulandoId(id);
+    try {
+      const resultado = await anular(id, motivo);
+      setAnuladoId(id);
+      return resultado;
+    } finally {
+      setAnulandoId(null);
+    }
+  };
   // T3 (lote B, 12/09) — a frase-situação do dinheiro responde "esse pedido
   // está pago?" antes de qualquer outra coisa. Verde quando o dinheiro entrou
   // SEM pendência; âmbar para tudo o mais — inclusive os "precisa de
@@ -914,14 +939,16 @@ function OrderFinanceCard({
         </div>
       )}
 
-      {(anuladaAgora || podeAnularVendaDoBalcao(order)) && (
+      {(anuladoId === order.id ||
+        anulandoId === order.id ||
+        podeAnularVendaDoBalcao(order)) && (
         <div className="border-t border-white/5 pt-4">
           <AnularVendaDoBalcao
+            key={order.id}
             total={order.total}
             forma={order.paymentMethod}
             clienteComConta={Boolean(order.userId)}
-            aoAnular={(motivo) => anular(order.id, motivo)}
-            aoConcluir={() => setAnuladaAgora(true)}
+            aoAnular={anularEstePedido}
           />
         </div>
       )}

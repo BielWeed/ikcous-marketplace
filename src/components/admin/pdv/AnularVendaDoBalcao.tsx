@@ -18,7 +18,14 @@ import {
 } from "@/lib/anulacao-do-balcao";
 import { formatCurrency } from "@/lib/utils";
 import { Ban, CheckCircle2 } from "lucide-react";
-import { type ReactElement, useId, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactElement,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 interface PropsDoAnularVendaDoBalcao {
   readonly total: number;
@@ -47,6 +54,20 @@ export function AnularVendaDoBalcao({
   // passariam os dois. O ref fecha a porta no mesmo instante.
   const emVoo = useRef(false);
   const idMotivo = useId();
+  // Foco: ao abrir a pergunta o botão some e o foco cairia no corpo da página;
+  // vai para o campo do motivo e, ao fechar, volta para o botão.
+  const campoRef = useRef<HTMLTextAreaElement>(null);
+  const botaoRef = useRef<HTMLButtonElement>(null);
+  const devolverFoco = useRef(false);
+
+  useEffect(() => {
+    if (aberto) {
+      campoRef.current?.focus();
+    } else if (devolverFoco.current) {
+      devolverFoco.current = false;
+      botaoRef.current?.focus();
+    }
+  }, [aberto]);
 
   if (resultado) {
     return (
@@ -56,7 +77,10 @@ export function AnularVendaDoBalcao({
       >
         <CheckCircle2 aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
         {resultado.jaAnulada ? (
-          <span>Esta venda já estava anulada. Nada foi mexido de novo.</span>
+          <span>
+            Esta venda já estava anulada. Nada foi mexido de novo. O app não
+            devolve o dinheiro. {orientacaoDeDevolucao(forma, total)}
+          </span>
         ) : (
           <span>
             Venda anulada: o estoque voltou e o Financeiro já descontou. O app
@@ -70,6 +94,7 @@ export function AnularVendaDoBalcao({
   if (!aberto) {
     return (
       <Button
+        ref={botaoRef}
         type="button"
         variant="outline"
         onClick={() => setAberto(true)}
@@ -79,6 +104,20 @@ export function AnularVendaDoBalcao({
         Anular venda
       </Button>
     );
+  }
+
+  function fechar(): void {
+    devolverFoco.current = true;
+    setAberto(false);
+    setErro(null);
+  }
+
+  // Esc fecha a pergunta, menos com a anulação em andamento (ela segue).
+  function aoTeclar(evento: KeyboardEvent<HTMLDivElement>): void {
+    if (evento.key === "Escape" && !emVoo.current) {
+      evento.stopPropagation();
+      fechar();
+    }
   }
 
   async function confirmar(): Promise<void> {
@@ -100,9 +139,11 @@ export function AnularVendaDoBalcao({
   }
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- o Esc vem da bolha das teclas do campo e dos botões filhos; o grupo em si não é um controle.
     <div
       role="group"
       aria-label="Anular venda"
+      onKeyDown={aoTeclar}
       className="flex flex-col gap-2 rounded-xl border border-red-900/60 bg-red-950/20 p-3"
     >
       <p className="text-sm font-semibold text-red-200">
@@ -117,6 +158,7 @@ export function AnularVendaDoBalcao({
         Motivo (obrigatório)
       </label>
       <textarea
+        ref={campoRef}
         id={idMotivo}
         value={motivo}
         maxLength={MOTIVO_MAXIMO_DA_ANULACAO}
@@ -143,10 +185,7 @@ export function AnularVendaDoBalcao({
           variant="outline"
           className="flex-1"
           disabled={enviando}
-          onClick={() => {
-            setAberto(false);
-            setErro(null);
-          }}
+          onClick={fechar}
         >
           Voltar
         </Button>

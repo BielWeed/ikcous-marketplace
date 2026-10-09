@@ -189,14 +189,72 @@ describe("AnularVendaDoBalcao", () => {
     await act(async () => liberar({ orderId: "p1", jaAnulada: false }));
   });
 
-  it("venda que já estava anulada: diz isso, sem mandar devolver dinheiro de novo", async () => {
-    await montar(async () => ({ orderId: "p1", jaAnulada: true }));
+  it("(a) venda que já estava anulada (nova tentativa depois de falha de rede): diz isso E repete quanto devolver e como, porque quem anulou de verdade nunca viu a instrução", async () => {
+    await montar(async () => ({ orderId: "p1", jaAnulada: true }), {
+      forma: "pix",
+    });
     await abrir();
     await act(async () => digitarMotivo("engano"));
     await confirmar();
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Esta venda já estava anulada");
-    expect(texto).not.toContain("Devolva");
+    expect(texto).toContain("O app não devolve o dinheiro");
+    expect(texto).toMatch(/Devolva R\$\s79,80 ao cliente por PIX\./);
+  });
+
+  it("(b) ao abrir a pergunta o foco vai para o campo do motivo", async () => {
+    await montar(vi.fn());
+    await abrir();
+    expect(document.activeElement).toBe(document.querySelector("textarea"));
+  });
+
+  it("(b) Esc fecha a pergunta sem chamar nada e devolve o foco ao botão 'Anular venda'", async () => {
+    const aoAnular = vi.fn();
+    await montar(aoAnular);
+    await abrir();
+    await act(async () => digitarMotivo("engano"));
+    await act(async () => {
+      (document.querySelector("textarea") as HTMLTextAreaElement).dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+      );
+    });
+    expect(document.querySelector("textarea")).toBeNull();
+    const aberto = botao(hospedeiro, "Anular venda");
+    expect(aberto).toBeDefined();
+    expect(document.activeElement).toBe(aberto);
+    expect(aoAnular).not.toHaveBeenCalled();
+  });
+
+  it("(b) 'Voltar' também devolve o foco ao botão", async () => {
+    await montar(vi.fn());
+    await abrir();
+    await act(async () => {
+      botao(hospedeiro, "Voltar")?.click();
+    });
+    expect(document.activeElement).toBe(botao(hospedeiro, "Anular venda"));
+  });
+
+  it("(b) Esc com a chamada em andamento NÃO fecha a pergunta (a anulação segue)", async () => {
+    let liberar: (r: ResultadoDaAnulacao) => void = () => {};
+    await montar(
+      () =>
+        new Promise<ResultadoDaAnulacao>((resolve) => {
+          liberar = resolve;
+        }),
+    );
+    await abrir();
+    await act(async () => digitarMotivo("engano"));
+    await confirmar();
+    await act(async () => {
+      document
+        .querySelector('[role="group"]')
+        ?.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+        );
+    });
+    expect(hospedeiro.textContent).toContain("Anulando");
+    await act(async () => liberar({ orderId: "p1", jaAnulada: false }));
+    expect(hospedeiro.textContent).toContain("Venda anulada");
   });
 
   it("recusa do dia que passou: mostra a frase que manda registrar uma devolução, fica aberto e deixa tentar de novo", async () => {

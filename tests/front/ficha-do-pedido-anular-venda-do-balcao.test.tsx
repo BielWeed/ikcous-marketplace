@@ -239,4 +239,130 @@ describe("ficha do pedido — Anular venda do balcão", () => {
     expect(botao(hospedeiro, "Anular venda")).toBeDefined();
     expect(hospedeiro.textContent).toContain("Total do pedido");
   });
+
+  // B1 da revisão da tela: a ficha NÃO é desmontada quando o pedido aberto troca
+  // (as abas do painel ficam montadas e a aba Pedidos parada passa direto de A
+  // para B). O que A anulou ou digitou não pode vazar para B.
+  const pedidoBDoSite = () =>
+    pedido({
+      id: "ped-site-b",
+      canal: "online",
+      paymentMethod: "online",
+      paymentStatus: "pago",
+      total: 80,
+      pagamentoRecebidoEm: null,
+      customer: {
+        name: "Cliente B",
+        whatsapp: "34999990000",
+        address: "Rua B",
+        number: "2",
+        neighborhood: "Centro",
+        city: "Patos",
+        state: "MG",
+      },
+    });
+
+  it("B1: anulei a venda A; troco para um pedido B do site SEM desmontar a ficha — B não herda o aviso de anulada nem a instrução de devolver dinheiro", async () => {
+    rpcMock.mockResolvedValue({
+      data: { order_id: "ped-balcao-1", ja_anulada: false },
+      error: null,
+    });
+    await renderizar(pedido());
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")?.click();
+    });
+    await act(async () => digitarMotivo("engano"));
+    await act(async () => {
+      botao(hospedeiro, "Confirmar anulação")?.click();
+    });
+    expect(hospedeiro.textContent).toContain("Venda anulada: o estoque voltou");
+
+    // mesma raiz, outra prop `order`: re-render, sem desmontar
+    await renderizar(pedidoBDoSite());
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("Venda anulada");
+    expect(texto).not.toContain("Devolva");
+    expect(texto).not.toContain("Anular venda");
+    expect(texto).toMatch(/R\$\s*80,00/);
+  });
+
+  it("B1: pergunta aberta e motivo digitado em A NÃO vazam para B (outra venda do balcão do mesmo dia): B começa fechada e nunca é anulada com o motivo de A", async () => {
+    await renderizar(pedido());
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")?.click();
+    });
+    await act(async () => digitarMotivo("motivo da venda A"));
+    expect(document.querySelector("textarea")).not.toBeNull();
+
+    await renderizar(pedido({ id: "ped-balcao-b", total: 55 }));
+    expect(document.querySelector("textarea")).toBeNull();
+    expect(botao(hospedeiro, "Confirmar anulação")).toBeUndefined();
+    expect(botao(hospedeiro, "Anular venda")).toBeDefined();
+
+    // abrindo a pergunta de B, o campo está vazio
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")?.click();
+    });
+    expect(
+      (document.querySelector("textarea") as HTMLTextAreaElement).value,
+    ).toBe("");
+    expect(
+      rpcMock.mock.calls.filter(([n]) => n === "anular_venda_presencial"),
+    ).toHaveLength(0);
+  });
+
+  it("B1: A anulada, passo por B e volto para A já cancelada: sem botão de anular", async () => {
+    rpcMock.mockResolvedValue({
+      data: { order_id: "ped-balcao-1", ja_anulada: false },
+      error: null,
+    });
+    await renderizar(pedido());
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")?.click();
+    });
+    await act(async () => digitarMotivo("engano"));
+    await act(async () => {
+      botao(hospedeiro, "Confirmar anulação")?.click();
+    });
+    await renderizar(pedidoBDoSite());
+    await renderizar(
+      pedido({ status: "cancelled", paymentStatus: "estornado" }),
+    );
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+  });
+
+  // (c) da revisão: o aviso de tempo real pode chegar ANTES da resposta da RPC.
+  it("(c): o pedido chega cancelado pelo tempo real no meio da chamada — a peça não some nem zera; ao responder, mostra o sucesso", async () => {
+    let responder: (v: unknown) => void = () => {};
+    rpcMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          responder = resolve;
+        }),
+    );
+    await renderizar(pedido());
+    await act(async () => {
+      botao(hospedeiro, "Anular venda")?.click();
+    });
+    await act(async () => digitarMotivo("engano"));
+    await act(async () => {
+      botao(hospedeiro, "Confirmar anulação")?.click();
+    });
+    expect(hospedeiro.textContent).toContain("Anulando");
+
+    await renderizar(
+      pedido({ status: "cancelled", paymentStatus: "estornado" }),
+    );
+    // ainda em voo: a peça continua ali, em "Anulando…", sem voltar ao botão
+    expect(hospedeiro.textContent).toContain("Anulando");
+    expect(botao(hospedeiro, "Anular venda")).toBeUndefined();
+
+    await act(async () => {
+      responder({
+        data: { order_id: "ped-balcao-1", ja_anulada: false },
+        error: null,
+      });
+    });
+    expect(hospedeiro.textContent).toContain("Venda anulada: o estoque voltou");
+  });
 });
