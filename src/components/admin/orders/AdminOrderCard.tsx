@@ -93,7 +93,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
   const nome = order.customer?.name || "Cliente";
   const resumo = resumoDosItens(order);
   const tempo = horarioRelativo(order.createdAt);
-  const forma = rotuloDaFormaDePagamento(order.paymentMethod);
+  const forma = rotuloDaFormaDePagamento(order);
   const total = (order.total || 0).toLocaleString("pt-BR", {
     minimumFractionDigits: 2,
   });
