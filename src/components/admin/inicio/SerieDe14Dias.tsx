@@ -106,9 +106,9 @@ export function SerieDe14Dias({
       <div className="flex items-baseline justify-between gap-3">
         <h2
           id="inicio-serie-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
         >
-          Últimos 14 dias
+          Vendas pagas · 14 dias
         </h2>
         <p className="text-right text-[11px] text-zinc-400" aria-live="polite">
           {pontoMarcado ? (
@@ -270,11 +270,11 @@ export function SerieDe14Dias({
             })}
           </div>
           <table className="sr-only">
-            <caption>Receita por dia nos últimos 14 dias</caption>
+            <caption>Vendas pagas por dia nos últimos 14 dias</caption>
             <thead>
               <tr>
                 <th scope="col">Dia</th>
-                <th scope="col">Receita</th>
+                <th scope="col">Vendas pagas</th>
               </tr>
             </thead>
             <tbody>

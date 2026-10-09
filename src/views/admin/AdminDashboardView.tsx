@@ -303,14 +303,16 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </p>
           <ul className="list-inside list-disc space-y-2">
             <li>
-              <strong className="text-white">Hoje:</strong> quanto entrou hoje,
-              quanto veio do app e quanto do balcão, comparado com o mesmo dia
-              da semana passada.
+              <strong className="text-white">Vendas pagas hoje:</strong> quanto
+              entrou hoje, quanto veio do app e quanto do balcão, comparado com
+              o mesmo dia da semana passada.
             </li>
             <li>
-              <strong className="text-white">Lucro estimado:</strong> a receita
-              do mês menos o custo cadastrado dos produtos vendidos. Produto sem
-              custo cadastrado conta custo zero.
+              <strong className="text-white">Lucro estimado:</strong> o
+              resultado do Financeiro no mês — o que entrou, menos estornos e
+              devoluções, o custo cadastrado dos produtos vendidos e as despesas
+              lançadas (mesmo as ainda não pagas). Produto sem custo cadastrado
+              conta custo zero.
             </li>
             <li>
               <strong className="text-white">
