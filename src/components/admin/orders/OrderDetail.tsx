@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
@@ -22,7 +23,7 @@ import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
-import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
+import type { Order, OrderStatus, PaymentStatus } from "@/types";
 import {
   Check,
   Clock,
@@ -110,17 +111,13 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
 const statusConfigByKey = new Map(Object.entries(statusConfig));
 
 // Rótulo do método de pagamento na ficha. T3 (lote B, 12/09): "Rede PIX" e
-// "Rede Crédito" eram vocabulário de operador — passam a ser "PIX" e
-// "Cartão de crédito", como o lojista fala.
-// "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
-// via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
-// caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
-const getPaymentMethodLabel = (method: PaymentMethod) => {
-  if (method === "pix") return "PIX";
-  if (method === "card") return "Cartão de crédito";
-  if (method === "online") return "Pagamento Online";
-  return "Dinheiro Espécie";
-};
+// "Rede Crédito" eram vocabulário de operador. Agora a ficha usa o MESMO
+// rótulo da planilha e da lista (`rotuloDaFormaDoPedido`, defeito D4 de
+// 28/09): cartão no balcão é "na maquininha", no site é "na entrega", e
+// "online" nunca vira "Dinheiro" (quem lança o caixa a partir daqui não pode
+// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia.
+const getPaymentMethodLabel = (order: Order) =>
+  order.paymentMethod === "pix" ? "PIX" : rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -838,7 +835,7 @@ function OrderFinanceCard({
       <div className="flex items-center justify-between gap-3">
         <h3 className={tituloDoBloco}>Pagamento</h3>
         <p className="text-sm font-medium text-zinc-300">
-          {getPaymentMethodLabel(order.paymentMethod)}
+          {getPaymentMethodLabel(order)}
         </p>
       </div>
 
