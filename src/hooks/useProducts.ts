@@ -144,6 +144,10 @@ async function syncOfflineUpdates(): Promise<boolean> {
         if (updates.originalPrice !== undefined)
           dbUpdates.preco_original = updates.originalPrice;
         if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        // `null` = volta ao padrão (5); zero é escolha da lojista. Só
+        // `undefined` ("não mexi") fica de fora — nunca `||` aqui.
+        if (updates.estoqueMinimo !== undefined)
+          dbUpdates.estoque_minimo = updates.estoqueMinimo;
         if (updates.category !== undefined)
           dbUpdates.categoria = updates.category;
         if (updates.images !== undefined) {
@@ -885,6 +889,11 @@ export function useProducts({ autoFetch = true } = {}) {
             custo: productData.costPrice ?? null,
             preco_original: productData.originalPrice,
             estoque: productData.stock,
+            // `undefined` fica de fora (o banco aplica o padrão da coluna);
+            // `null` e zero vão como estão.
+            ...(productData.estoqueMinimo !== undefined
+              ? { estoque_minimo: productData.estoqueMinimo }
+              : {}),
             categoria: productData.category,
             imagem_url: productData.images[0] || null,
             imagem_urls: productData.images,
@@ -1098,6 +1107,9 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.originalPrice !== undefined)
           dbUpdates.preco_original = updates.originalPrice;
         if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        // Mesma regra da fila offline acima: `null` limpa, zero vale.
+        if (updates.estoqueMinimo !== undefined)
+          dbUpdates.estoque_minimo = updates.estoqueMinimo;
         if (updates.category !== undefined)
           dbUpdates.categoria = updates.category;
         if (updates.images !== undefined) {
