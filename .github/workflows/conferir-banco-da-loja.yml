@@ -113,6 +113,7 @@ on:
           - 11b-antes-anular-venda-presencial-funcao-ausente
           - 12a-conferir-cupom-preso-aplicado
           - 12b-antes-cupom-preso-funcoes-ausentes
+          - 13a-contador-duplicado-do-cupom-so-leitura
           - 9a-conferir-60-a-66-aplicado
           - backups
       projeto:
