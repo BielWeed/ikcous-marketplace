@@ -16,9 +16,11 @@
 // visível (bloco 3). Este arquivo passou a renderizar a tela que continua
 // editando de verdade.
 //
-// A1 (09/10/2026): a tela Atendimento (AdminWhatsAppConfigView) também deixou
-// de editar e de enviar `businessHours` — este é o ÚNICO editor do horário.
-// Que ela não regrava o horário fica em atendimento-nao-grava-horario.test.tsx.
+// A1 (09/10/2026): a tela Atendimento também deixou de editar e de enviar
+// `businessHours` — este é o ÚNICO editor do horário. Desde o painel simples
+// (D9/D11) ela nem existe mais: o WhatsApp é o bloco Contato desta mesma tela
+// (ContatoDaLoja). Que o Salvar do contato não regrava o horário fica em
+// atendimento-nao-grava-horario.test.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
