@@ -2,8 +2,9 @@
 //
 // Pedido do Gabriel (02/09, segunda foto dos Ajustes): a tela precisa estar
 // SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Minha loja
-// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Entrega e
-// frete" e as demais só exibem o conteúdo quando o lojista clica no
+// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Transportadoras"
+// (era "Entrega e frete" até 09/10/2026, quando o nome virou o de um grupo
+// com porta para a tela de Frete) e as demais só exibem o conteúdo quando o lojista clica no
 // cabeçalho da seção. Títulos no vocabulário do desenho SALÃO+PORÃO
 // (13/09/2026). O acordeão "Nome, logo e cores" morou aqui e SAIU em
 // 22/09/2026 (duplicado de AdminAboutStoreView).
@@ -13,7 +14,7 @@
 //      do PIX NÃO estão no DOM (nada de informação técnica empurrando o que
 //      o lojista edita).
 //   2. Um clique no cabeçalho expande o conteúdo; clicar de novo recolhe.
-//   3. Os atalhos de vitrine (grupo "Sua loja") continuam SEMPRE visíveis —
+//   3. Os atalhos de vitrine (grupo "Aparência do app") continuam SEMPRE visíveis —
 //      são a porta de trabalho.
 //
 // RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a seção de
@@ -193,12 +194,12 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     });
   }
 
-  // Abre "Entrega e frete" e drena os dois fetches que a seção de
+  // Abre "Transportadoras" e drena os dois fetches que a seção de
   // Transportadoras faz no mount (ela só monta quando a seção expande):
   // `ler_configuracao_frete` chega em dois `await` (o `chamarEdgeDeFrete` e
   // a normalização do estado).
   async function abrirEntregaEFrete() {
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
+    const cabecalho = cabecalhoDaSecao("Transportadoras")!;
     await act(async () => {
       cabecalho.click();
     });
@@ -215,8 +216,10 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await renderizar();
 
     // A porta de estética continua à vista.
-    expect(hospedeiro.textContent).toContain("Banners Promocionais");
-    expect(hospedeiro.textContent).toContain("Vitrines (Carrosséis)");
+    expect(hospedeiro.textContent).toContain("Banners");
+    expect(hospedeiro.textContent).not.toContain("Banners Promocionais");
+    expect(hospedeiro.textContent).toContain("Vitrines");
+    expect(hospedeiro.textContent).not.toContain("Vitrines (Carrosséis)");
 
     // Conteúdo das seções técnicas NÃO está no DOM (recolhidas).
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
@@ -225,7 +228,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     // Os cabeçalhos existem e estão marcados como recolhidos.
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
-    const entrega = cabecalhoDaSecao("Entrega e frete")!;
+    const entrega = cabecalhoDaSecao("Transportadoras")!;
     expect(status).toBeTruthy();
     expect(entrega).toBeTruthy();
     expect(status.getAttribute("aria-expanded")).toBe("false");
@@ -259,9 +262,9 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
   // aqui e SAIU em 22/09/2026 junto com o acordeão "Nome, logo e cores"
   // (duplicado de AdminAboutStoreView, removido de AdminSettingsView). O
   // mecanismo genérico de abrir/expandir continua provado acima (Status) e
-  // abaixo (independência entre seções, usando Entrega e frete).
+  // abaixo (independência entre seções, usando Transportadoras).
 
-  it("as seções são independentes: abrir Status não abre Entrega e frete", async () => {
+  it("as seções são independentes: abrir Status não abre Transportadoras", async () => {
     await renderizar();
 
     await act(async () => {
@@ -274,10 +277,10 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
   // ── Seções novas da frente glm-visual-admin-0209 (transportadoras e
   // histórico mudaram da tela de Frete para cá) ──────────────────────────
-  it("as seções de Entrega e frete e Consultas de frete também nascem FECHADAS", async () => {
+  it("as seções de Transportadoras e Consultas de frete também nascem FECHADAS", async () => {
     await renderizar();
 
-    const transportadoras = cabecalhoDaSecao("Entrega e frete")!;
+    const transportadoras = cabecalhoDaSecao("Transportadoras")!;
     const historico = cabecalhoDaSecao("Consultas de frete")!;
     expect(transportadoras).toBeTruthy();
     expect(historico).toBeTruthy();
@@ -376,7 +379,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     // Montagem limpa: nenhuma pendência reportada.
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
 
-    const cabecalho = cabecalhoDaSecao("Entrega e frete")!;
+    const cabecalho = cabecalhoDaSecao("Transportadoras")!;
     await act(async () => {
       cabecalho.click();
     });
@@ -481,7 +484,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       await esperarMicrotarefas();
     });
 
-    // O cabeçalho "Entrega e frete" mostra o subtítulo "Ativo: X" fora da
+    // O cabeçalho "Transportadoras" mostra o subtítulo "Ativo: X" fora da
     // seção — reflete a mudança SEM fechar/reabrir e sem recarregar a
     // página: o callback avisou o pai direto.
     expect(hospedeiro.textContent).toContain(
