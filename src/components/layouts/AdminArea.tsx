@@ -89,11 +89,6 @@ const AdminReviews = lazyWithPreload(() =>
     default: m.AdminReviewsView,
   })),
 );
-const AdminWhatsAppConfig = lazyWithPreload(() =>
-  import("@/views/admin/AdminWhatsAppConfigView").then((m) => ({
-    default: m.AdminWhatsAppConfigView,
-  })),
-);
 const AdminAboutStore = lazyWithPreload(() =>
   import("@/views/admin/AdminAboutStoreView").then((m) => ({
     default: m.AdminAboutStoreView,
@@ -767,16 +762,20 @@ export function AdminArea({
                         />
                       </LocalErrorBoundary>
                     );
+                  // APELIDO (painel simples, D11): o antigo Atendimento é o
+                  // bloco Contato de Minha loja. A rota continua abrindo (link
+                  // antigo, push já enviado) e cai direto no bloco.
                   case "admin-whatsapp-config":
                     return (
                       <LocalErrorBoundary key="admin-whatsapp-config">
                         <PreloadedOrLazy
-                          component={AdminWhatsAppConfig}
+                          component={AdminAboutStore}
                           props={{
-                            active: currentView === "admin-whatsapp-config",
                             onNavigate,
+                            active: currentView === "admin-whatsapp-config",
                             onSetDirty: setIsAdminDirty,
                             onSetBackOverride: setBackOverride,
+                            secaoInicial: "contato",
                           }}
                         />
                       </LocalErrorBoundary>
@@ -790,6 +789,7 @@ export function AdminArea({
                             onNavigate,
                             active: currentView === "admin-about-store",
                             onSetDirty: setIsAdminDirty,
+                            onSetBackOverride: setBackOverride,
                           }}
                         />
                       </LocalErrorBoundary>

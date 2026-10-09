@@ -10,9 +10,17 @@
 //
 // O que este teste fixa:
 //   • salvar o WhatsApp manda `updateConfig` SEM a chave `businessHours`;
-//   • o bloco 2 mostra o horário como TEXTO (leitura) e oferece o botão
-//     "Alterar em Minha loja", que leva a "admin-about-store";
-//   • o horário não conta como alteração não salva (onSetDirty).
+//   • o bloco de contato não tem campo de horário nem o mostra: o horário é
+//     editado SÓ no BusinessHoursSection (bloco "Horário de atendimento" de
+//     Minha loja);
+//   • o horário não conta como alteração não salva (onDirtyChange).
+//
+// ATUALIZAÇÃO do painel simples (D9/D11, 09/10/2026): a tela "Atendimento"
+// (AdminWhatsAppConfigView) foi apagada; o WhatsApp virou o bloco Contato de
+// Minha loja (`ContatoDaLoja`). O bloco de leitura do horário com o botão
+// "Alterar em Minha loja" morreu junto — dentro de Minha loja o editor do
+// horário já está a um bloco de distância. O contrato que protege o dado (o
+// Salvar do contato nunca regrava o horário) continua inteiro.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -47,7 +55,7 @@ function esperar(ms = 0): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-describe("Atendimento — não grava nem edita o horário (A1)", () => {
+describe("Minha loja › Contato — não grava nem edita o horário (A1)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -68,14 +76,13 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
   });
 
   async function abrirTela(props: {
-    onNavigate?: (view: string) => void;
-    onSetDirty?: (dirty: boolean) => void;
+    onDirtyChange?: (dirty: boolean) => void;
   }) {
-    const { AdminWhatsAppConfigView } = await import(
-      "@/views/admin/AdminWhatsAppConfigView"
+    const { ContatoDaLoja } = await import(
+      "@/components/admin/minha-loja/ContatoDaLoja"
     );
     await act(async () => {
-      raiz.render(<AdminWhatsAppConfigView active {...(props as object)} />);
+      raiz.render(<ContatoDaLoja {...props} />);
     });
     await act(async () => {
       await esperar(50);
@@ -106,7 +113,7 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
   }
 
   it("salvar o WhatsApp manda updateConfig SEM a chave businessHours", async () => {
-    await abrirTela({ onNavigate: vi.fn() });
+    await abrirTela({});
     await digitarWhatsApp("1198765432");
 
     await act(async () => {
@@ -127,52 +134,49 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
     });
   });
 
-  it("o bloco 2 mostra o horário como texto, sem campo, e leva a Sobre a Loja", async () => {
-    const onNavigate = vi.fn();
-    await abrirTela({ onNavigate });
+  it("o contato não tem campo de horário nem o mostra (o editor é o de Minha loja)", async () => {
+    await abrirTela({});
 
-    const bloco = [
-      ...hospedeiro.querySelectorAll<HTMLElement>("section[aria-labelledby]"),
-    ].find(
-      (s) => s.querySelector("h2")?.textContent === "Horário de atendimento",
-    )!;
-    expect(bloco).toBeTruthy();
-
-    // Leitura: o horário salvo aparece como texto; nenhum campo editável.
-    expect(bloco.textContent).toContain("Seg a sex 9h–18h");
     expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
-    expect(bloco.querySelector("input, textarea")).toBeNull();
-
-    const alterar = botao("Alterar em Minha loja");
-    expect(alterar).toBeTruthy();
-    // Régua visual: o botão novo usa token (admin-bg), nunca cor hex literal.
-    expect(alterar!.className).not.toMatch(/#[0-9a-fA-F]{3,8}/);
-    await act(async () => {
-      alterar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
+    expect(hospedeiro.textContent).not.toContain("Seg a sex 9h–18h");
+    expect(hospedeiro.textContent).not.toContain("Horário de atendimento");
+    expect(botao("Alterar em Minha loja")).toBeUndefined();
   });
 
-  it("sem horário salvo, o bloco diz que não há horário (e ainda leva a Sobre a Loja)", async () => {
-    mockConfig.businessHours = "";
-    const onNavigate = vi.fn();
-    await abrirTela({ onNavigate });
+  it("tela intocada termina limpa: o horário não acusa alteração não salva", async () => {
+    const onDirtyChange = vi.fn();
+    await abrirTela({ onDirtyChange });
 
-    expect(hospedeiro.textContent).toContain("Nenhum horário definido");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("a tela inteira de Minha loja segue a mesma regra: o Salvar do contato não leva o horário", async () => {
+    const onSetDirty = vi.fn();
+    const { AdminAboutStoreView } = await import(
+      "@/views/admin/AdminAboutStoreView"
+    );
     await act(async () => {
-      botao("Alterar em Minha loja")!.dispatchEvent(
-        new MouseEvent("click", { bubbles: true }),
+      raiz.render(
+        <AdminAboutStoreView onNavigate={vi.fn()} onSetDirty={onSetDirty} />,
       );
     });
-    expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
-  });
+    await act(async () => {
+      await esperar(50);
+    });
+    await digitarWhatsApp("1198765432");
 
-  it("tela intocada termina limpa: o horário só lido não acusa alteração não salva", async () => {
-    const onSetDirty = vi.fn();
-    await abrirTela({ onNavigate: vi.fn(), onSetDirty });
+    await act(async () => {
+      botao("Salvar contato")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+      await esperar(50);
+    });
 
-    // (A primeira renderização, antes da sincronia inicial com a config, é
-    // transitória e preexistente; o que vale é o estado em repouso.)
-    expect(onSetDirty).toHaveBeenLastCalledWith(false);
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    const enviadoPelaTela = (
+      updateConfig.mock.calls[0] as unknown as [Record<string, unknown>]
+    )[0];
+    expect(enviadoPelaTela).not.toHaveProperty("businessHours");
+    expect(onSetDirty).toHaveBeenCalledWith(true);
   });
 });

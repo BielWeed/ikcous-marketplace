@@ -50,8 +50,8 @@ const VIEW_PREFETCH_MAP: Record<string, () => Promise<unknown>> = {
     import("@/views/admin/AdminShippingNationalView"),
   "admin-settings": () => import("@/views/admin/AdminSettingsView"),
   "admin-reviews": () => import("@/views/admin/AdminReviewsView"),
-  "admin-whatsapp-config": () =>
-    import("@/views/admin/AdminWhatsAppConfigView"),
+  // Apelido de Minha loja (seção Contato): o mesmo módulo.
+  "admin-whatsapp-config": () => import("@/views/admin/AdminAboutStoreView"),
   "admin-about-store": () => import("@/views/admin/AdminAboutStoreView"),
   "admin-qa": () => import("@/views/admin/AdminQAView"),
   "admin-customers": () => import("@/views/admin/AdminCustomersView"),

@@ -1,4 +1,5 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { ContatoDaLoja } from "@/components/admin/minha-loja/ContatoDaLoja";
 import {
   EnderecoDaLoja,
   type MudancaDoEndereco,
@@ -8,9 +9,13 @@ import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
-import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
+import {
+  type ChaveDosSeisPassos,
+  entradaDosSeisPassos,
+  seisPassosDaLojaPronta,
+} from "@/lib/loja-pronta";
 import { descricaoDaLojaParaHtml, textoDaLoja } from "@/lib/texto-da-loja";
-import { AlertTriangle, ExternalLink, RefreshCw, Save } from "lucide-react";
+import { AlertTriangle, RefreshCw, Save } from "lucide-react";
 import { Suspense, lazy, memo, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -19,25 +24,44 @@ import type { View } from "@/types";
 // Tela "Minha loja" do painel (antes "Sobre a Loja", pedido do dono de
 // 20/09/2026; renomeada no painel simples de 09/10/2026): concentra O QUE a
 // página pública "Sobre a Loja" (AboutStoreView) exibe — marca (nome/logo),
-// endereço que alimenta o mapa, horário e descrição. WhatsApp é LEITURA com
-// atalho: o número é configuração da tela Atendimento e alimenta o app todo
-// (checkout, pedido, perfil), não é desta página. Molde da
-// AdminWhatsAppConfigView (direção B, lote-b 12/09): blocos numerados todos
-// abertos, nada desmonta ao digitar.
+// endereço que alimenta o mapa, horário e descrição, mais o CONTATO (WhatsApp
+// e a mensagem de compartilhar, que antes moravam na tela "Atendimento" — hoje
+// só um apelido desta, `secaoInicial="contato"`). Direção B (lote-b 12/09):
+// blocos numerados todos abertos, nada desmonta ao digitar. No topo, "Falta
+// preencher" lista o que os seis passos da loja pronta ainda pedem aqui.
 //
-// DOIS CONTRATOS DE SALVAMENTO, por desenho: identidade e horário têm
-// editores próprios que salvam sozinhos (IdentitySettingsSection e
-// BusinessHoursSection — desde 22/09/2026 a edição mora só aqui; os
-// acordeões duplicados em Ajustes ("Nome, logo e cores" e "Atendimento")
-// saíram); endereço e descrição são gravados pelo botão "Salvar" desta tela
-// num único updateConfig. O ENDEREÇO é a fonte única da loja (CEP, texto,
+// TRÊS CONTRATOS DE SALVAMENTO, por desenho: identidade, horário e contato têm
+// editores próprios que salvam sozinhos (IdentitySettingsSection,
+// BusinessHoursSection e ContatoDaLoja — desde 22/09/2026 a edição mora só
+// aqui; os acordeões duplicados em Ajustes ("Nome, logo e cores" e
+// "Atendimento") saíram); endereço e descrição são gravados pelo botão
+// "Salvar" desta tela num único updateConfig. O ENDEREÇO é a fonte única da loja (CEP, texto,
 // cidade e UF — EnderecoDaLoja, sem migration: as quatro colunas que já
 // existem); ele só entra no pacote quando a lojista o alterou. O dirty da
 // tela é o OU de todos.
+/** Blocos de Minha loja a que um link (ou o "Falta preencher") leva. */
+type BlocoDeMinhaLoja = "marca" | "endereco" | "contato";
+
+/** Em que bloco mora cada passo da loja pronta que esta tela cuida. */
+const BLOCO_DO_PASSO = new Map<ChaveDosSeisPassos, BlocoDeMinhaLoja>([
+  ["marca", "marca"],
+  ["endereco", "endereco"],
+  ["whatsapp", "contato"],
+]);
+
 interface AdminAboutStoreViewProps {
+  /** O AdminArea repassa a todas as telas; esta não navega para fora (o
+   * Contato mora aqui e o "Falta preencher" rola até o bloco). */
   onNavigate: (view: View) => void;
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
+  /**
+   * Abre a tela já no bloco: rola até ele e põe o foco no título. O antigo
+   * Atendimento (`admin-whatsapp-config`) é apelido desta tela nessa seção.
+   */
+  secaoInicial?: "contato";
+  /** Voltar do aparelho com a folha de modelos do Contato aberta. */
+  onSetBackOverride?: (fn: (() => void) | null) => void;
 }
 
 const IdentitySettingsSection = lazy(() =>
@@ -52,11 +76,14 @@ function BlocoNumerado({
   numero,
   titulo,
   descricao,
+  refDoTitulo,
   children,
 }: {
   readonly numero: string;
   readonly titulo: string;
   readonly descricao: string;
+  /** Para levar o foco ao título (secaoInicial, "Falta preencher"). */
+  readonly refDoTitulo?: (titulo: HTMLHeadingElement | null) => void;
   readonly children: React.ReactNode;
 }) {
   const idDoTitulo = `bloco-sobre-a-loja-${numero}`;
@@ -76,7 +103,9 @@ function BlocoNumerado({
         </span>
         <h2
           id={idDoTitulo}
-          className="text-[15px] font-black tracking-tight text-white"
+          ref={refDoTitulo}
+          tabIndex={-1}
+          className="scroll-mt-24 rounded text-[15px] font-black tracking-tight text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-admin-gold"
         >
           {titulo}
         </h2>
@@ -90,9 +119,10 @@ function BlocoNumerado({
 }
 
 export const AdminAboutStoreView = memo(function AdminAboutStoreView({
-  onNavigate,
   active = true,
   onSetDirty,
+  secaoInicial,
+  onSetBackOverride,
 }: AdminAboutStoreViewProps) {
   const { config, updateConfig, isLoaded } = useStore();
   const isOffline = useOnlineStatus();
@@ -110,6 +140,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const [saving, setSaving] = useState(false);
   const [identidadePendente, setIdentidadePendente] = useState(false);
   const [horarioPendente, setHorarioPendente] = useState(false);
+  const [contatoPendente, setContatoPendente] = useState(false);
   const lifecycle = useRef({ mounted: true, active, serial: 0 });
   if (lifecycle.current.active && !active) lifecycle.current.serial++;
   lifecycle.current.active = active;
@@ -143,8 +174,21 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     }
   }, [baselineDescricao, config.storeDescription, saving]);
   useEffect(() => {
-    onSetDirty?.(formDirty || saving || identidadePendente || horarioPendente);
-  }, [formDirty, saving, identidadePendente, horarioPendente, onSetDirty]);
+    onSetDirty?.(
+      formDirty ||
+        saving ||
+        identidadePendente ||
+        horarioPendente ||
+        contatoPendente,
+    );
+  }, [
+    formDirty,
+    saving,
+    identidadePendente,
+    horarioPendente,
+    contatoPendente,
+    onSetDirty,
+  ]);
   useEffect(() => {
     const life = lifecycle.current;
     life.mounted = true;
@@ -218,7 +262,41 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     }
   }
 
-  const whatsOk = lojaTemWhatsapp(config.whatsappNumber);
+  // Títulos dos blocos que o "Falta preencher" e a `secaoInicial` alcançam.
+  const titulos = useRef(new Map<BlocoDeMinhaLoja, HTMLElement>());
+  const guardarTitulo =
+    (bloco: BlocoDeMinhaLoja) => (titulo: HTMLHeadingElement | null) => {
+      if (titulo) titulos.current.set(bloco, titulo);
+      else titulos.current.delete(bloco);
+    };
+  function irAoBloco(bloco: BlocoDeMinhaLoja) {
+    const titulo = titulos.current.get(bloco);
+    if (!titulo) return;
+    titulo.scrollIntoView?.({ block: "start" });
+    // O foco leva o leitor de tela junto; a rolagem já foi feita acima.
+    titulo.focus({ preventScroll: true });
+  }
+  useEffect(() => {
+    if (secaoInicial === "contato" && active) irAoBloco("contato");
+  }, [secaoInicial, active]);
+
+  // "Falta preencher": os passos da loja pronta que moram NESTA tela (marca,
+  // endereço, WhatsApp) e ainda estão pendentes. Mesma função dos seis passos
+  // do Início — o que não é desta tela (recebe, entrega, produto) fica de fora,
+  // por isso os fatos do resto entram neutros.
+  const passosAqui = seisPassosDaLojaPronta(
+    entradaDosSeisPassos(config, {
+      pixOk: false,
+      formasNaEntrega: [],
+      produtos: [],
+      configCarregando: !isLoaded,
+      produtosCarregando: false,
+      entrega: "pendente",
+    }),
+  ).filter(
+    (passo) =>
+      passo.destino === "admin-about-store" && passo.estado === "pendente",
+  );
 
   return (
     <div className="pb-admin relative min-h-screen bg-[#09090b] font-sans text-zinc-400 lg:pb-12">
@@ -271,10 +349,35 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           </div>
         )}
 
+        {passosAqui.length > 0 && (
+          <div
+            data-falta-preencher
+            className="flex flex-wrap items-center gap-2 rounded-2xl border border-admin-gold/20 bg-admin-gold/5 p-3"
+          >
+            <span className="text-sm font-bold text-white">
+              Falta preencher:
+            </span>{" "}
+            {passosAqui.map((passo) => (
+              <button
+                key={passo.chave}
+                type="button"
+                onClick={() => {
+                  const bloco = BLOCO_DO_PASSO.get(passo.chave);
+                  if (bloco) irAoBloco(bloco);
+                }}
+                className="flex min-h-11 items-center rounded-xl border border-admin-gold/30 bg-admin-bg px-4 text-sm font-bold text-admin-gold transition-colors hover:border-admin-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60"
+              >
+                {passo.rotulo}
+              </button>
+            ))}
+          </div>
+        )}
+
         <BlocoNumerado
           numero="1"
           titulo="Marca da loja"
           descricao="Nome, logo e cores que aparecem no app inteiro — inclusive na página Sobre a Loja."
+          refDoTitulo={guardarTitulo("marca")}
         >
           <Suspense
             fallback={
@@ -292,6 +395,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
           numero="2"
           titulo="Endereço da loja"
           descricao="Digite o CEP e complete o número: a rua, o bairro e a cidade vêm sozinhos. É o endereço do mapa da página Sobre a Loja e de onde saem as entregas."
+          refDoTitulo={guardarTitulo("endereco")}
         >
           <EnderecoDaLoja
             originCep={config.originCep}
@@ -366,24 +470,14 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
 
         <BlocoNumerado
           numero="5"
-          titulo="WhatsApp da loja"
-          descricao="O botão flutuante da página Sobre a Loja usa o número configurado na tela Atendimento — o MESMO número do checkout, dos pedidos e do perfil. Configure em um lugar, funciona em todos."
+          titulo="Contato"
+          descricao="O WhatsApp da loja — o MESMO número do botão da página Sobre a Loja, do checkout, dos pedidos e do perfil — e a mensagem que vai junto quando alguém compartilha um produto."
+          refDoTitulo={guardarTitulo("contato")}
         >
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-bold text-white">
-              {whatsOk
-                ? (config.whatsappNumber ?? "").replace(/\D/g, "").slice(-11)
-                : "Não configurado"}
-            </span>
-            <button
-              type="button"
-              onClick={() => onNavigate("admin-whatsapp-config")}
-              className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-2 text-xs font-bold uppercase tracking-wider text-zinc-300 transition-colors hover:border-white/20 hover:text-white"
-            >
-              <ExternalLink className="size-3.5" />
-              Editar em Atendimento
-            </button>
-          </div>
+          <ContatoDaLoja
+            onDirtyChange={setContatoPendente}
+            onSetBackOverride={onSetBackOverride}
+          />
         </BlocoNumerado>
 
         <p className="px-2 pb-2 text-[11px] leading-relaxed text-zinc-500">
