@@ -2,8 +2,10 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 
 /**
  * PASSO 2 do modal da grade (`ModalVarianteGrade.tsx`): só as combinações que
- * AINDA NÃO EXISTEM no produto, cada uma com estoque, preço e SKU editáveis,
- * mais o "Aplicar para todas" para o 90% do lote e o SKU base.
+ * AINDA NÃO EXISTEM no produto, cada uma com estoque e preço editáveis, mais o
+ * "Aplicar para todas" para o 90% do lote e o SKU base. O SKU de cada linha é
+ * gerado a partir do SKU base; para trocar um SKU específico, edite a variação
+ * depois de criada.
  *
  * É só a tela do passo: o estado (as linhas, o SKU base, o que foi digitado
  * em "aplicar") mora no modal, que é quem efetiva. Preço por combinação é o
