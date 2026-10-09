@@ -39,11 +39,27 @@ vi.mock("@/lib/supabase", () => ({
         Promise.resolve({ count: 0, error: null }).then(resolve, reject);
       return builder;
     }),
-    rpc: vi.fn(() =>
-      Promise.resolve({
-        data: { total_count: PERGUNTAS_PENDENTES_REAIS },
-        error: null,
-      }),
+    rpc: vi.fn((nome: string) =>
+      Promise.resolve(
+        nome === "admin_devolucoes_listar"
+          ? {
+              data: {
+                total: 0,
+                itens: [],
+                contagem: {
+                  solicitada: 0,
+                  aprovada: 0,
+                  em_transito: 0,
+                  recebida: 0,
+                },
+              },
+              error: null,
+            }
+          : {
+              data: { total_count: PERGUNTAS_PENDENTES_REAIS },
+              error: null,
+            },
+      ),
     ),
     channel: vi.fn(() => ({
       on: vi.fn().mockReturnThis(),
