@@ -2630,6 +2630,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                     type="button"
                     onClick={() => {
                       setFormData(draftToRecover.formData);
+                      // Rascunho com texto em Simples: salvar apagaria o
+                      // texto recuperado. O modo se revê como ao abrir.
+                      setBannerMode((m) =>
+                        modoAoAbrirOBanner(draftToRecover.formData, m),
+                      );
                       setDraftToRecover(null);
                       toast.success("Rascunho recuperado com sucesso!", {
                         icon: "⚡",

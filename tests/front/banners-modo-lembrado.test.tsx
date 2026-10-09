@@ -386,4 +386,48 @@ describe("AdminBannersView — o modo do editor é lembrado no aparelho", () => 
     await aguardarATroca();
     expect(emModoCompleto()).toBe(true);
   });
+
+  it("recuperar um rascunho COM texto passa o editor para Completo — salvar em Simples apagaria o texto", async () => {
+    const a = armazenamento();
+    a.mapa.set(CHAVE_DO_MODO_DO_EDITOR, "simple");
+    a.mapa.set(
+      "admin_banner_form_draft",
+      JSON.stringify({
+        formData: { title: "Rascunho com título", link: "" },
+        savedAt: new Date().toISOString(),
+      }),
+    );
+    vi.stubGlobal("localStorage", a.api);
+    await montar();
+    await abrirNovo();
+    await aguardarATroca();
+    expect(emModoSimples()).toBe(true);
+
+    await clicar(botao("Recuperar"));
+    await aguardarATroca();
+
+    expect(emModoCompleto()).toBe(true);
+    // A preferência do aparelho não muda por causa da recuperação.
+    expect(a.mapa.get(CHAVE_DO_MODO_DO_EDITOR)).toBe("simple");
+  });
+
+  it("recuperar um rascunho SEM texto mantém o modo em que o editor estava", async () => {
+    const a = armazenamento();
+    a.mapa.set(CHAVE_DO_MODO_DO_EDITOR, "simple");
+    a.mapa.set(
+      "admin_banner_form_draft",
+      JSON.stringify({
+        formData: { title: "", link: "/promo" },
+        savedAt: new Date().toISOString(),
+      }),
+    );
+    vi.stubGlobal("localStorage", a.api);
+    await montar();
+    await abrirNovo();
+
+    await clicar(botao("Recuperar"));
+    await aguardarATroca();
+
+    expect(emModoSimples()).toBe(true);
+  });
 });

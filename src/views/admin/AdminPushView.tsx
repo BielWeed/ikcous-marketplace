@@ -418,7 +418,11 @@ export const AdminPushView = memo(function AdminPushView({
 
   // Digitar no Avançado É escolher a "outra página": o destino vira `custom`.
   // Campo vazio volta para a página inicial (a URL "" é lida como "home").
+  // O campo devolve o valor também ao perder o foco SEM mudança, e ele existe
+  // sempre (o Avançado só o esconde): sem a guarda, focar e sair viraria
+  // "escolhi outra página" e zeraria o destino já escolhido na lista.
   const handleCustomPathChange = (val: string) => {
+    if (val === customPath) return;
     setCustomPath(val);
     setDestType("custom");
     updateUrl("custom", selectedProductId, val);
@@ -434,6 +438,15 @@ export const AdminPushView = memo(function AdminPushView({
       setSelectedProductId(destino.idDoProduto);
     if (destino.caminho !== null && customPath !== destino.caminho)
       setCustomPath(destino.caminho);
+    // O destino virou uma tela da lista (ex.: um modelo pronto): o caminho
+    // manual que sobrou não é mais o do aviso. Um caminho que é a própria URL
+    // (digitou "/cart" à mão) fica como está.
+    if (
+      destino.tipo !== "custom" &&
+      customPath !== "" &&
+      customPath !== notification.url
+    )
+      setCustomPath("");
   }, [notification.url]);
 
   // Produtos que o filtro por nome deixa à vista. O produto já escolhido fica
@@ -708,6 +721,7 @@ export const AdminPushView = memo(function AdminPushView({
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
             });
             setNotification({ title: "", body: "", url: "/" });
+            setCustomPath("");
           } catch (inAppErr) {
             console.error("Error saving in-app notification:", inAppErr);
             toast.error("Não foi possível registrar o aviso para este cliente");
@@ -903,6 +917,7 @@ export const AdminPushView = memo(function AdminPushView({
       );
 
       setNotification({ title: "", body: "", url: "/" });
+      setCustomPath("");
       fetchHistory();
     } catch (error) {
       console.error("Error sending push:", error);

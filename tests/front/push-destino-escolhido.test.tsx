@@ -456,4 +456,89 @@ describe("Avisar clientes — destino escolhido por lista", () => {
 
     expect(urlEnviada()).toBe("/orders");
   });
+
+  // O LocalBufferedInput devolve o valor ao PERDER O FOCO mesmo sem mudança.
+  // O campo do Avançado existe sempre (só fica recolhido): focar e sair sem
+  // digitar nada não pode virar "escolhi outra página".
+  async function focarESair(campo: HTMLInputElement) {
+    await act(async () => {
+      campo.focus();
+    });
+    await act(async () => {
+      campo.blur();
+    });
+    await act(async () => {
+      await esperar(260);
+    });
+  }
+
+  const campoManual = () =>
+    hospedeiro.querySelector<HTMLInputElement>("#push-custom-path")!;
+
+  it("focar e sair do campo do Avançado, sem digitar, não muda o destino: Carrinho segue Carrinho", async () => {
+    await abrirTela();
+    await preencherMensagem();
+    await escolher(seletorDoDestino(), "cart");
+
+    await focarESair(campoManual());
+    await enviar();
+
+    expect(urlEnviada()).toBe("/cart");
+  });
+
+  it("focar e sair do campo do Avançado não muda o destino: produto segue produto", async () => {
+    await abrirTela();
+    await preencherMensagem();
+    await escolher(seletorDoDestino(), "product");
+    await escolher(seletorDoProduto()!, "p-casual");
+
+    await focarESair(campoManual());
+    await enviar();
+
+    expect(urlEnviada()).toBe("/product-detail?id=p-casual");
+  });
+
+  it("modelo pronto depois de digitar um caminho manual: o campo esvazia e o aviso leva a URL do modelo, mesmo após focar e sair", async () => {
+    await abrirTela();
+    await preencherMensagem();
+
+    await act(async () => {
+      digitar(campoManual(), "/promo");
+    });
+    await act(async () => {
+      await esperar(260);
+    });
+
+    const modelo = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes("Lembrete de Carrinho"),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      modelo.click();
+    });
+
+    expect(seletorDoDestino().value).toBe("cart");
+    expect(campoManual().value).toBe("");
+
+    await focarESair(campoManual());
+    await enviar();
+
+    expect(urlEnviada()).toBe("/cart");
+  });
+
+  it("depois do envio o caminho manual some: o aviso seguinte volta limpo", async () => {
+    await abrirTela();
+    await preencherMensagem();
+
+    await act(async () => {
+      digitar(campoManual(), "/promo");
+    });
+    await act(async () => {
+      await esperar(260);
+    });
+    await enviar();
+    expect(urlEnviada()).toBe("/promo");
+
+    expect(campoManual().value).toBe("");
+    expect(seletorDoDestino().value).toBe("home");
+  });
 });
