@@ -1026,11 +1026,16 @@ export function AdminLayout({
                   }}
                   onMouseEnter={() => handleMouseEnter(parentView as any)}
                   onMouseLeave={handleMouseLeave}
-                  className="flex h-7 transform-gpu items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 active:scale-95"
+                  // Alvo de toque de 44px (painel simples, A3): o botão é o
+                  // envoltório clicável, transparente; a pílula de 28px que
+                  // o lojista vê mora no <span> de dentro.
+                  className="group flex min-h-11 min-w-11 transform-gpu items-center justify-center rounded-full bg-transparent p-0 transition-transform duration-200 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
                 >
-                  <ArrowLeft className="size-3.5 text-zinc-400" />{" "}
-                  <span className="inline">
-                    {isSubView ? "Voltar" : "Perfil"}
+                  <span className="flex h-7 items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color] duration-200 group-hover:bg-zinc-800">
+                    <ArrowLeft className="size-3.5 text-zinc-400" />{" "}
+                    <span className="inline">
+                      {isSubView ? "Voltar" : "Perfil"}
+                    </span>
                   </span>
                 </Button>
               </div>
@@ -1107,7 +1112,10 @@ export function AdminLayout({
                   variant="ghost"
                   size="icon"
                   aria-label="Notificações"
-                  className="relative size-7 transform-gpu rounded-full border border-white/5 bg-zinc-900 hover:bg-zinc-800 active:scale-95"
+                  // Alvo de toque de 44px (painel simples, A3): o botão é o
+                  // envoltório clicável, transparente; o círculo de 28px que
+                  // o lojista vê mora no <div> de dentro.
+                  className="group relative min-h-11 min-w-11 transform-gpu rounded-full bg-transparent p-0 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
                   onClick={() => {
                     haptic.light();
                     onNavigate(notificationBellTarget);
@@ -1115,10 +1123,12 @@ export function AdminLayout({
                   onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
                   onMouseLeave={handleMouseLeave}
                 >
-                  <Bell className="size-3.5 text-admin-gold" />
-                  {temAvisoNoSino && (
-                    <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
-                  )}
+                  <div className="relative flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900 transition-colors group-hover:bg-zinc-800">
+                    <Bell className="size-3.5 text-admin-gold" />
+                    {temAvisoNoSino && (
+                      <span className="absolute right-1 top-1 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
+                    )}
+                  </div>
                 </Button>
               </div>
             </div>
@@ -1246,6 +1256,13 @@ export function AdminLayout({
                 return (
                   <button
                     key={idx}
+                    // Nome acessível da aba; o selo de pedidos entra nele
+                    // ("Pedidos, 3 para preparar") e o selo visual é aria-hidden.
+                    aria-label={
+                      item.view === "admin-orders" && pendingOrdersCount > 0
+                        ? `${item.label}, ${pendingOrdersCount} para preparar`
+                        : item.label
+                    }
                     onClick={() => {
                       haptic.light();
                       onNavigate(item.view as View);
@@ -1291,16 +1308,23 @@ export function AdminLayout({
                       )}
                     />
                     {item.view === "admin-orders" && pendingOrdersCount > 0 && (
-                      <span className="absolute right-2 top-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]">
+                      <span
+                        aria-hidden="true"
+                        className="absolute right-2 top-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                      >
                         {pendingOrdersCount}
                       </span>
                     )}
                     {/* Badge de perguntas removido da engrenagem: o destino
                         dela (Ajustes) não lista pendência nenhuma — quem
                         acende e leva à lista é o sino (temAvisoNoSino). */}
+                    {/* Rótulo SEMPRE visível (painel simples, A2): a 11px e em
+                        caixa normal — em 360px cada aba tem ~53px (nav de
+                        328px, menos o padding e o Vender de 44px, dividido em
+                        5) e "CLIENTES" em maiúscula pesada não cabe. */}
                     <span
                       className={cn(
-                        "text-[9px] font-black uppercase tracking-tighter transition-all hidden sm:inline-block",
+                        "text-[11px] font-bold leading-none transition-all",
                         isActive ? "opacity-100" : "opacity-80",
                       )}
                     >
