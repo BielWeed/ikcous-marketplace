@@ -317,7 +317,7 @@ Todas as linhas marcadas **sim** foram provadas com marcador inofensivo, não su
 
 | Regra de `allow` | Executa código da frente? | Decisão |
 | --- | --- | --- |
-| `npx eslint:*` | por flag: `-c`/`--config` e `-f ./x.cjs` (**sim, provados**); `--parser` e `--plugin` carregam módulo por nome ou caminho | **deny** da forma literal; `-f`/`--format` viram **ask**. Config ao lado do arquivo **não** executa (eslint 9.39.2, provado) |
+| `npx eslint:*` | por flag: `-c`/`--config` e `-f ./x.cjs` (**sim, provados**); `--parser` e `--plugin` carregam módulo por nome ou caminho | **deny** da forma literal; `-f`/`--format` viram **ask**; `--flag` é **deny**. Config ao lado do arquivo **não** executa por padrão (eslint 9.39.2, provado), **mas executa com `--flag v10_config_lookup_from_file`** (achado R1 da re-revisão Opus, provado) |
 | `npx knip:*` | por flag: `-c`, `--config`, `--directory`, `--reporter`/`--preprocessor` por caminho | **deny** (`-c`, `--config`, `--directory`); **ask** (`--reporter`, `--preprocessor`) |
 | `npx vite build:*`, `npx vite preview:*` | por flag: `-c`, `--config` | **deny** |
 | `npx commitlint:*` | por flag: `-g`/`--config`, `-x`/`--extends`, `-p`/`--parser-preset`, `-d`/`--cwd` | **deny**; `-o`/`--format` **ask** |

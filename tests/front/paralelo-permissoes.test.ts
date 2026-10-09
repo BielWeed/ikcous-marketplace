@@ -89,6 +89,7 @@ describe("permissões das frentes: flags que carregam arquivo da frente", () => 
     "npx eslint --config x.mjs",
     "npx eslint --parser x src",
     "npx eslint --plugin x src",
+    "npx eslint --flag v10_config_lookup_from_file src/a/x.ts",
     "npx knip --config x",
     "npx knip -c x",
     "npx knip --directory d",

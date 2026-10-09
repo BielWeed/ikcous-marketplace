@@ -141,6 +141,7 @@
       "Bash(npx eslint*--config*)",
       "Bash(npx eslint*--parser*)",
       "Bash(npx eslint*--plugin*)",
+      "Bash(npx eslint*--flag*)",
       "Bash(npx htmlhint * -R*)",
       "Bash(npx htmlhint -R*)",
       "Bash(npx htmlhint*--rulesdir*)",

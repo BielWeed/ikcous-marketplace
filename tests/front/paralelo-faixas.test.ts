@@ -463,6 +463,13 @@ describe("achados da 2ª revisão (faixas)", () => {
       "src/lib/webhook-do-gateway.ts",
       "src/lib/password-policy.ts",
       "src/lib/senha-forte.ts",
+      // Dinheiro do checkout que o nome denuncia (re-revisão Opus do conserto, R2)
+      "src/hooks/useOrders.ts",
+      "src/hooks/useCart.ts",
+      "src/lib/cupomPreso.ts",
+      "src/lib/estrategias-de-frete.ts",
+      "src/lib/preco-vendido.ts",
+      "src/lib/reconferirCarrinho.ts",
     ]) {
       expect(riscoDoCaminho(caminho), caminho).not.toBeNull();
     }
@@ -471,7 +478,6 @@ describe("achados da 2ª revisão (faixas)", () => {
       "src/views/admin/AdminBannersView.tsx",
       "src/components/admin/BannerCard.tsx",
       "src/lib/formata-data.ts",
-      "src/hooks/useOrders.ts",
     ]) {
       expect(riscoDoCaminho(caminho), caminho).toBeNull();
     }
