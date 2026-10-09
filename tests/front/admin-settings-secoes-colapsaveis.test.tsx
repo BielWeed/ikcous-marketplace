@@ -2,9 +2,8 @@
 //
 // Pedido do Gabriel (02/09, segunda foto dos Ajustes): a tela precisa estar
 // SEPARADA por partes e as seções técnicas nascerem OCULTAS — "Minha loja
-// está no ar?" (termômetro do PIX + diagnóstico de conexão), "Transportadoras"
-// (era "Entrega e frete" até 09/10/2026, quando o nome virou o de um grupo
-// com porta para a tela de Frete) e as demais só exibem o conteúdo quando o lojista clica no
+// está no ar?" (diagnóstico de conexão), "Mercado Pago" e as demais só
+// exibem o conteúdo quando o lojista clica no
 // cabeçalho da seção. Títulos no vocabulário do desenho SALÃO+PORÃO
 // (13/09/2026). O acordeão "Nome, logo e cores" morou aqui e SAIU em
 // 22/09/2026 (duplicado de AdminAboutStoreView).
@@ -17,15 +16,10 @@
 //   3. Os atalhos de vitrine (grupo "Aparência do app") continuam SEMPRE visíveis —
 //      são a porta de trabalho.
 //
-// RELEASE 1.5.7 v2 (CONTRATO-1.5.7.md + EMENDA R2): a seção de
-// Transportadoras deixou de ler `store_shipping_credentials` por PostgREST e
-// de decidir estado por `config.shippingProvider` — ela lê e grava pela edge
-// `calculate-shipping` (`ler_configuracao_frete`/`save_credentials`) e
-// mostra um CARTÃO POR PROVEDOR (Melhor Envio, SuperFrete, Frenet), cada um
-// com seu próprio campo de chave e botão "Salvar". Os testes de
-// pendência/onSetDirty abaixo miram o PRIMEIRO cartão (Melhor Envio, index 0
-// na ordem de exibição) em vez de um único campo — não existe mais "o"
-// campo de token, existem três.
+// Painel simples (H5, 09/10/2026): a seção de Transportadoras e as Consultas
+// de frete saíram desta tela e moram na tela de Frete (provas em
+// frete-um-lugar-so.test.tsx). Os testes de pendência/onSetDirty abaixo
+// miram a seção do Mercado Pago, a seção de formulário que ficou aqui.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -129,8 +123,26 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     vi.clearAllMocks();
     estadoDoBanco.ligados = ["melhor_envio"];
     estadoDoBanco.provedores = { melhor_envio: { tem_chave: true } };
-    invoke.mockImplementation((_nome: string, opcoes: any) => {
+    invoke.mockImplementation((nome: string, opcoes: any) => {
       const action = opcoes?.body?.action;
+      if (nome === "credenciais-mercado-pago") {
+        // Chaves já salvas (chave FALSA): salvar só a pública é permitido.
+        return Promise.resolve({
+          data: {
+            configurado: true,
+            public_key: "APP_USR-publica-falsa-de-teste",
+            mascara_token: "••••9999",
+            mascara_webhook: "••••7777",
+            ultimo_teste: null,
+            atualizado_em: null,
+            pix_ligado: false,
+            public_key_na_loja: true,
+            faltando: [],
+            pausado: false,
+          },
+          error: null,
+        });
+      }
       if (action === "ler_configuracao_frete") {
         return Promise.resolve({ data: respostaConfig(), error: null });
       }
@@ -194,22 +206,54 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     });
   }
 
-  // Abre "Transportadoras" e drena os dois fetches que a seção de
-  // Transportadoras faz no mount (ela só monta quando a seção expande):
-  // `ler_configuracao_frete` chega em dois `await` (o `chamarEdgeDeFrete` e
-  // a normalização do estado).
-  async function abrirEntregaEFrete() {
-    const cabecalho = cabecalhoDaSecao("Transportadoras")!;
+  // Painel simples (H5, 09/10/2026): as Transportadoras saíram de Ajustes
+  // (moram na tela de Frete — provas em frete-um-lugar-so.test.tsx). A trava
+  // "Salve antes de fechar" e a guarda onSetDirty continuam valendo para as
+  // seções de formulário que ficaram; estes testes passaram a mirar a do
+  // Mercado Pago. Abre a seção (lazy: espera o import assentar), a camada
+  // "Suas chaves" e devolve o cabeçalho da seção.
+  async function abrirChavesDoMercadoPago() {
+    const cabecalho = cabecalhoDaSecao("Mercado Pago")!;
     await act(async () => {
       cabecalho.click();
     });
+    const camadaDasChaves = () =>
+      [...hospedeiro.querySelectorAll("button[aria-expanded]")].find((b) =>
+        b.textContent?.includes("Suas chaves"),
+      ) as HTMLButtonElement | undefined;
+    // A primeira importação do módulo lazy pode levar mais que um tick.
+    for (let i = 0; i < 50 && !camadaDasChaves(); i++) {
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    }
     await act(async () => {
-      await esperarMicrotarefas();
+      await new Promise((r) => setTimeout(r, 10));
     });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    if (camadaDasChaves()!.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        camadaDasChaves()!.click();
+      });
+    }
     return cabecalho;
+  }
+
+  async function digitarChavePublica(valor: string) {
+    const campo = hospedeiro.querySelector(
+      "#mp-public-key",
+    ) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value",
+    )?.set;
+    await act(async () => {
+      setter?.call(campo, valor);
+      campo.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
   }
 
   it("a tela abre com as seções técnicas FECHADAS e os atalhos de vitrine visíveis", async () => {
@@ -228,14 +272,16 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
 
     // Os cabeçalhos existem e estão marcados como recolhidos.
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
-    const entrega = cabecalhoDaSecao("Transportadoras")!;
+    const mercadoPago = cabecalhoDaSecao("Mercado Pago")!;
     expect(status).toBeTruthy();
-    expect(entrega).toBeTruthy();
+    expect(mercadoPago).toBeTruthy();
     expect(status.getAttribute("aria-expanded")).toBe("false");
-    expect(entrega.getAttribute("aria-expanded")).toBe("false");
+    expect(mercadoPago.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("clicar no cabeçalho de Status expande o termômetro do PIX e o diagnóstico; segundo clique recolhe", async () => {
+  it("clicar no cabeçalho de Status expande o diagnóstico de conexão; segundo clique recolhe", async () => {
+    // H6 (painel simples): o termômetro do PIX saiu daqui para o topo de
+    // Pagamentos (um status do PIX só) — a seção mostra a conexão.
     await renderizar();
 
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
@@ -243,8 +289,8 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       status.click();
     });
 
-    // Expandida: termômetro do PIX visível (com o estado) e diagnóstico.
-    expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
+    // Expandida: diagnóstico de conexão visível.
+    expect(hospedeiro.textContent).toContain("Diagnóstico de Conexão");
     expect(status.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => {
@@ -255,95 +301,69 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).not.toContain("Diagnóstico de Conexão");
   });
 
   // "clicar no cabeçalho de Identidade expande os campos da loja" morava
   // aqui e SAIU em 22/09/2026 junto com o acordeão "Nome, logo e cores"
   // (duplicado de AdminAboutStoreView, removido de AdminSettingsView). O
   // mecanismo genérico de abrir/expandir continua provado acima (Status) e
-  // abaixo (independência entre seções, usando Transportadoras).
+  // abaixo (independência entre seções).
 
-  it("as seções são independentes: abrir Status não abre Transportadoras", async () => {
+  it("as seções são independentes: abrir Status não abre o Mercado Pago", async () => {
     await renderizar();
 
     await act(async () => {
       cabecalhoDaSecao("Minha loja está no ar?")!.click();
     });
 
-    expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).toContain("Diagnóstico de Conexão");
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(
+      cabecalhoDaSecao("Mercado Pago")!.getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 
-  // ── Seções novas da frente glm-visual-admin-0209 (transportadoras e
-  // histórico mudaram da tela de Frete para cá) ──────────────────────────
-  it("as seções de Transportadoras e Consultas de frete também nascem FECHADAS", async () => {
+  // ── Transportadoras e Consultas de frete moraram aqui de 02/09 a
+  // 09/10/2026 (frente glm-visual-admin-0209 → painel simples, H5): voltaram
+  // para a tela de Frete. Ajustes não monta nenhuma das duas. ─────────────
+  it("Transportadoras e Consultas de frete não moram mais em Ajustes", async () => {
     await renderizar();
 
-    const transportadoras = cabecalhoDaSecao("Transportadoras")!;
-    const historico = cabecalhoDaSecao("Consultas de frete")!;
-    expect(transportadoras).toBeTruthy();
-    expect(historico).toBeTruthy();
-    expect(transportadoras.getAttribute("aria-expanded")).toBe("false");
-    expect(historico.getAttribute("aria-expanded")).toBe("false");
-
-    // Fechadas = nada de campo de token nem consulta ao histórico no DOM.
+    expect(cabecalhoDaSecao("Transportadoras")).toBeUndefined();
+    expect(cabecalhoDaSecao("Consultas de frete")).toBeUndefined();
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
     expect(hospedeiro.querySelector("table")).toBeNull();
   });
 
-  it("a seção de Transportadoras NÃO fecha com alteração não salva — e fecha depois de salvar", async () => {
-    // Achado A1 da revisão adversária: fechar a seção desmonta o card e
-    // jogaria fora o token digitado, sem aviso nenhum. Com pendência, o
+  it("uma seção com formulário NÃO fecha com alteração não salva — e fecha depois de salvar", async () => {
+    // Achado A1 da revisão adversária: fechar a seção desmonta o conteúdo e
+    // jogaria fora o que foi digitado, sem aviso nenhum. Com pendência, o
     // clique no cabeçalho é recusado (com aviso); depois de salvar, fecha.
     await renderizar();
-    const cabecalho = await abrirEntregaEFrete();
+    const cabecalho = await abrirChavesDoMercadoPago();
 
-    // Três cartões (Melhor Envio, SuperFrete, Frenet) — o teste mira o
-    // PRIMEIRO (Melhor Envio), que é o que a resposta mockada marca como
-    // "tem_chave".
-    const campos = [
-      ...hospedeiro.querySelectorAll('input[type="password"]'),
-    ] as HTMLInputElement[];
-    expect(campos).toHaveLength(3);
-    const campoToken = campos[0];
-    // 1.5.4/1.5.7: a chave salva não volta ao campo (só-escrita) — nasce vazio.
-    expect(campoToken.value).toBe("");
-
-    // Mexe no token do primeiro cartão: pendência criada.
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campoToken, "tok-novo");
-      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    // Mexe na chave pública: pendência criada.
+    await digitarChavePublica("APP_USR-outra-publica-falsa");
 
     // O aviso de pendência aparece no cabeçalho…
     expect(hospedeiro.textContent).toMatch(/salve antes de fechar/i);
 
-    // …e o clique de fechar é RECUSADO: os campos continuam na tela.
+    // …e o clique de fechar é RECUSADO: o campo continua na tela.
     await act(async () => {
       cabecalho.click();
     });
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
     });
-    expect(hospedeiro.querySelectorAll('input[type="password"]')).toHaveLength(
-      3,
-    );
+    expect(hospedeiro.querySelector("#mp-public-key")).not.toBeNull();
     expect(cabecalho.getAttribute("aria-expanded")).toBe("true");
 
-    // Salva o PRIMEIRO cartão (Melhor Envio)…
-    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+    // Salva as chaves…
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar chaves"),
     ) as HTMLButtonElement;
     expect(botaoSalvar).toBeDefined();
-    expect(botaoSalvar.disabled).toBe(false);
     await act(async () => {
       botaoSalvar.click();
       await new Promise((r) => setTimeout(r, 0));
@@ -354,6 +374,12 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await esperarMicrotarefas();
     });
+    expect(
+      invoke.mock.calls.some(
+        (c) =>
+          c[0] === "credenciais-mercado-pago" && c[1]?.body?.acao === "salvar",
+      ),
+    ).toBe(true);
 
     // …a pendência acaba, o aviso some, e fechar volta a funcionar.
     expect(hospedeiro.textContent).not.toMatch(/salve antes de fechar/i);
@@ -363,55 +389,31 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(hospedeiro.querySelector("#mp-public-key")).toBeNull();
     expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("a pendência do token é reportada ao App: onSetDirty true ao mexer, false ao salvar", async () => {
-    // Achado 1 da revisão do #414: a tela de Frete antiga ligava as guardas
-    // do App (beforeunload, diálogo de navegação, popstate) via onSetDirty;
-    // com a mudança de casa para o Ajustes, a pendência do token precisa ser
-    // espelhada nele também — recarregar/sair do painel não pode descartar
-    // o token digitado em silêncio.
+  it("a pendência é reportada ao App: onSetDirty true ao mexer, false ao salvar", async () => {
+    // Achado 1 da revisão do #414: as guardas do App (beforeunload, diálogo
+    // de navegação, popstate) ligam via onSetDirty — recarregar/sair do
+    // painel não pode descartar em silêncio o que foi digitado. (A pendência
+    // do token das transportadoras é somada pela tela de Frete desde H5:
+    // frete-um-lugar-so.test.tsx, F4.)
     const onSetDirty = vi.fn();
     await renderizar(onSetDirty);
 
     // Montagem limpa: nenhuma pendência reportada.
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
 
-    const cabecalho = cabecalhoDaSecao("Transportadoras")!;
-    await act(async () => {
-      cabecalho.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
+    await abrirChavesDoMercadoPago();
 
-    const campoToken = hospedeiro.querySelector(
-      'input[type="password"]',
-    ) as HTMLInputElement;
-    expect(campoToken).not.toBeNull();
-
-    // Mexe no token do primeiro cartão: a guarda liga.
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campoToken, "tok-novo");
-      campoToken.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    // Mexe na chave pública: a guarda liga.
+    await digitarChavePublica("APP_USR-outra-publica-falsa");
     expect(onSetDirty).toHaveBeenLastCalledWith(true);
 
     // Salva: a guarda desliga.
-    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Salvar",
+    const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Salvar chaves"),
     ) as HTMLButtonElement;
     await act(async () => {
       botaoSalvar.click();
@@ -426,69 +428,9 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
   });
 
-  // ── Achado 5 (revisão Opus): o subtítulo "Ativo: X" só lia os
-  // provedores ligados UMA VEZ, ao montar — salvar dentro da seção não o
-  // atualizava até a página recarregar. `TransportadorasSection` agora
-  // avisa o pai (`onLigadosMudou`) a cada leitura confirmada. ────────────
-  it("salvar os provedores ligados dentro da seção atualiza 'Ativo: X' sem precisar reabrir a tela", async () => {
-    estadoDoBanco.provedores = {
-      melhor_envio: { tem_chave: true },
-      superfrete: { tem_chave: true },
-    };
-    await renderizar();
-    expect(hospedeiro.textContent).toContain("Ativo: Melhor Envio");
-    expect(hospedeiro.textContent).not.toContain("Melhor Envio + SuperFrete");
-
-    await abrirEntregaEFrete();
-
-    const linhaSF = [...hospedeiro.querySelectorAll("label")].find(
-      (l) =>
-        /SuperFrete/.test(l.textContent ?? "") &&
-        l.querySelector('input[type="checkbox"]'),
-    ) as HTMLLabelElement;
-    const caixaSF = linhaSF.querySelector(
-      'input[type="checkbox"]',
-    ) as HTMLInputElement;
-    await act(async () => {
-      caixaSF.click();
-    });
-
-    invoke.mockImplementation((_nome: string, opcoes: any) => {
-      const action = opcoes?.body?.action;
-      if (action === "ler_configuracao_frete") {
-        return Promise.resolve({ data: respostaConfig(), error: null });
-      }
-      if (action === "save_active_providers") {
-        estadoDoBanco.ligados = ["melhor_envio", "superfrete"];
-        return Promise.resolve({
-          data: { success: true, ligados: estadoDoBanco.ligados },
-          error: null,
-        });
-      }
-      return Promise.resolve({ data: { success: true }, error: null });
-    });
-
-    const botaoSalvarProvedores = [
-      ...hospedeiro.querySelectorAll("button"),
-    ].find((b) => /Salvar provedores/.test(b.textContent ?? "")) as
-      | HTMLButtonElement
-      | undefined;
-    expect(botaoSalvarProvedores).toBeDefined();
-    await act(async () => {
-      botaoSalvarProvedores?.click();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-    await act(async () => {
-      await esperarMicrotarefas();
-    });
-
-    // O cabeçalho "Transportadoras" mostra o subtítulo "Ativo: X" fora da
-    // seção — reflete a mudança SEM fechar/reabrir e sem recarregar a
-    // página: o callback avisou o pai direto.
-    expect(hospedeiro.textContent).toContain(
-      "Ativo: Melhor Envio + SuperFrete",
-    );
-  });
+  // "salvar os provedores ligados dentro da seção atualiza 'Ativo: X'"
+  // (achado 5 da revisão Opus) morava aqui: com as Transportadoras na tela
+  // de Frete, a prova de que salvar quem está ligado atualiza o estado ao
+  // lado sem recarregar é a F5 de frete-um-lugar-so.test.tsx; a releitura do
+  // subtítulo de Ajustes ao voltar para a aba é a J2 do mesmo arquivo.
 });

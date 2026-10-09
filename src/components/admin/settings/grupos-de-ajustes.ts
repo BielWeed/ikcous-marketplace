@@ -18,9 +18,10 @@ import { type ConfigDaEntrega, statusDaEntrega } from "@/lib/status-da-entrega";
 //
 // As portas de dentro dos grupos são as de PORTAS_DO_PAINEL.ajustes, com o
 // nome de NOMES_DO_PAINEL; o teste confere que nenhuma se perde nem repete.
-// Os acordeões (Transportadoras, Formas de pagamento, Mercado Pago, Trocas e
-// devoluções, Minha loja está no ar?, Consultas de frete) não são portas:
-// continuam sendo montados pela tela dentro do grupo de cada um.
+// Os acordeões (Formas de pagamento, Mercado Pago, Trocas e devoluções, Minha
+// loja está no ar?) não são portas: continuam sendo montados pela tela dentro
+// do grupo de cada um. As Transportadoras e as Consultas de frete saíram de
+// Ajustes em 09/10/2026 (H5): moram na tela de Frete, atrás da porta.
 
 export type ChaveDoGrupoDeAjustes =
   | "minha-loja"
@@ -72,7 +73,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "entrega",
     titulo: NOMES_DO_PAINEL["admin-shipping"],
     ajuda:
-      "A tela de Entrega e frete (frete local, nacional e retirada) e, aqui mesmo, as Transportadoras: a escolha da transportadora e o token da integração — ajuste raro, feito uma vez.",
+      "A tela de Entrega e frete: frete na cidade, para todo o Brasil, retirada na loja e as transportadoras (a chave de acesso, o teste e quem está ligado), com o histórico das consultas de frete.",
     portas: [
       {
         tela: "admin-shipping",
@@ -84,7 +85,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "pagamentos",
     titulo: "Pagamentos",
     ajuda:
-      "O que a loja aceita na entrega e as chaves do Mercado Pago para receber pelo app, com teste de conexão.",
+      "No topo, o termômetro do PIX pelo app (funcionando, chave ausente ou desligado); depois, o que a loja aceita na entrega e o Mercado Pago: pausar ou retomar o recebimento pelo app e, em Avançado, as chaves com o teste de conexão.",
     portas: [],
   },
   {
@@ -98,7 +99,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "ferramentas",
     titulo: "Ferramentas",
     ajuda:
-      "A Conexão (online ou offline) da loja neste aparelho; Minha loja está no ar? — o termômetro do pagamento por PIX com o diagnóstico completo e a medição de latência com o banco de dados — e as Consultas de frete, o histórico das cotações já feitas à transportadora ativa.",
+      "A Conexão (online ou offline) da loja neste aparelho e Minha loja está no ar? — o teste da conexão deste aparelho com a loja, com um atalho para o PIX em Pagamentos.",
     portas: [],
   },
 ];
@@ -118,7 +119,8 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
 //
 // Passo `carregando` não chuta: o grupo fica SEM subtítulo. Na entrega isso
 // vale enquanto a leitura das transportadoras não chegou — e, se ela falhar,
-// continua sem subtítulo até a seção de Transportadoras reler.
+// continua sem subtítulo até a próxima vez que a aba Ajustes ficar ativa (a
+// tela relê a cada volta).
 
 /** Os três níveis do PIX pelo app em Ajustes (o mesmo do termômetro). */
 export type NivelDoPixEmAjustes = "ok" | "alerta" | "off";
@@ -132,10 +134,11 @@ export interface EntradaDosSubtitulos {
   readonly nivelDoPix: NivelDoPixEmAjustes;
   /**
    * Nomes das transportadoras com cotação REAL ligada (chave salva e, quando
-   * o provedor exige, e-mail de contato válido) — o que Ajustes já leu para o
-   * acordeão de Transportadoras. `null` = a leitura ainda não chegou (ou
+   * o provedor exige, e-mail de contato válido) — o que Ajustes lê de
+   * `ler_configuracao_frete` (a mesma leitura da tela de Frete), de novo a
+   * cada vez que a aba fica ativa. `null` = a leitura ainda não chegou (ou
    * falhou): com cobertura nacional a entrega fica SEM subtítulo (nada de
-   * "a confirmar"), até a seção de Transportadoras reler.
+   * "a confirmar"), até a próxima leitura.
    */
   readonly nomesLigados: readonly string[] | null;
 }

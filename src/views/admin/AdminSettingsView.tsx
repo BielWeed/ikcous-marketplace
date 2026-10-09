@@ -7,7 +7,6 @@ import {
   ChevronDown,
   CreditCard,
   HelpCircle,
-  History,
   Layers,
   Palette,
   RefreshCw,
@@ -16,19 +15,17 @@ import {
   Truck,
   Wifi,
 } from "lucide-react";
-import { Suspense, lazy, memo, useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, memo, useEffect, useState } from "react";
 
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { FormasDePagamentoSection } from "@/components/admin/settings/FormasDePagamentoCard";
-import { HistoricoCotacoesSection } from "@/components/admin/settings/HistoricoCotacoesCard";
 import { PoliticaDeDevolucaoSection } from "@/components/admin/settings/PoliticaDeDevolucaoSection";
 import {
   type ConfigDoProvedor,
   NOME_DO_PROVEDOR,
   PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR,
   type ProvedorFrete,
-  TransportadorasSection,
   buscarConfiguracaoDeFrete,
   emailDeContatoValido,
 } from "@/components/admin/settings/TransportadorasCard";
@@ -75,25 +72,89 @@ const MercadoPagoSection = lazy(() =>
 );
 
 // ==========================================
-// Connection Diagnostics Section (Glassmorphism)
+// Diagnóstico de Conexão (G7b, painel simples): o resultado é uma frase —
+// conexão boa, lenta ou sem internet — com o que fazer; os números (ms e
+// tentativas sem resposta) ficam num detalhe, para quem quiser.
 // ==========================================
+type ResultadoDaConexao =
+  | "boa"
+  | "lenta"
+  | "sem-internet"
+  | "loja-sem-resposta";
+
+interface MedidaDaConexao {
+  /** Tempo médio de resposta em ms; `null` = nenhuma tentativa respondeu. */
+  readonly media: number | null;
+  readonly minima: number | null;
+  readonly maxima: number | null;
+  readonly falhas: number;
+  readonly tentativas: number;
+  /** `navigator.onLine` no fim do teste: o aparelho diz que tem rede. */
+  readonly aparelhoOnline: boolean;
+}
+
+// Mesmo corte de antes (abaixo de 250 ms era "Excelente"/"Moderado"); uma
+// tentativa sem resposta já é conexão lenta (antes: "Instabilidade
+// Detectada"). Nenhuma resposta com o aparelho ONLINE é a loja que não
+// respondeu (erro do servidor), não falta de internet: mandar conferir o
+// Wi-Fi seria mandar mexer no lugar errado.
+function resultadoDaConexao(medida: MedidaDaConexao): ResultadoDaConexao {
+  if (medida.media === null) {
+    return medida.aparelhoOnline ? "loja-sem-resposta" : "sem-internet";
+  }
+  if (medida.falhas > 0 || medida.media >= 250) return "lenta";
+  return "boa";
+}
+
+const PALAVRAS_DA_CONEXAO = new Map<
+  ResultadoDaConexao,
+  { readonly titulo: string; readonly frase: string; readonly cor: string }
+>([
+  [
+    "boa",
+    {
+      titulo: "Conexão boa",
+      frase: "A loja responde rápido neste aparelho.",
+      cor: "text-emerald-400",
+    },
+  ],
+  [
+    "lenta",
+    {
+      titulo: "Conexão lenta",
+      frase:
+        "A loja demora (ou às vezes não responde) neste aparelho. Se o painel travar, tente outra rede: Wi-Fi ou dados móveis.",
+      cor: "text-amber-400",
+    },
+  ],
+  [
+    "sem-internet",
+    {
+      titulo: "Sem internet",
+      frase:
+        "Este aparelho não conseguiu falar com a loja. Confira o Wi-Fi ou os dados móveis e teste de novo.",
+      cor: "text-red-400",
+    },
+  ],
+  [
+    "loja-sem-resposta",
+    {
+      titulo: "A loja não respondeu",
+      frase: "A loja não respondeu agora. Tente de novo em instantes.",
+      cor: "text-red-400",
+    },
+  ],
+]);
+
 const ConnectionDiagnosticsSection = memo(
   function ConnectionDiagnosticsSection() {
     const [isOpen, setIsOpen] = useState(true);
-    const [testStatus, setTestStatus] = useState<
-      "idle" | "testing" | "success" | "error"
-    >("idle");
-    const [avgLatency, setAvgLatency] = useState<number | null>(null);
-    const [minLatency, setMinLatency] = useState<number | null>(null);
-    const [maxLatency, setMaxLatency] = useState<number | null>(null);
-    const [packetLoss, setPacketLoss] = useState<number>(0);
+    const [testando, setTestando] = useState(false);
+    const [medida, setMedida] = useState<MedidaDaConexao | null>(null);
 
     const handleTestConnectivity = async () => {
-      setTestStatus("testing");
-      setAvgLatency(null);
-      setMinLatency(null);
-      setMaxLatency(null);
-      setPacketLoss(0);
+      setTestando(true);
+      setMedida(null);
 
       const pings: number[] = [];
       let failed = 0;
@@ -119,21 +180,23 @@ const ConnectionDiagnosticsSection = memo(
         }
       }
 
-      const lossPercent = Math.round((failed / totalTests) * 100);
-      setPacketLoss(lossPercent);
-
-      if (pings.length > 0) {
-        const avg = Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
-        const min = Math.round(Math.min(...pings));
-        const max = Math.round(Math.max(...pings));
-        setAvgLatency(avg);
-        setMinLatency(min);
-        setMaxLatency(max);
-        setTestStatus(lossPercent > 50 ? "error" : "success");
-      } else {
-        setTestStatus("error");
-      }
+      const temResposta = pings.length > 0;
+      setMedida({
+        media: temResposta
+          ? Math.round(pings.reduce((a, b) => a + b, 0) / pings.length)
+          : null,
+        minima: temResposta ? Math.round(Math.min(...pings)) : null,
+        maxima: temResposta ? Math.round(Math.max(...pings)) : null,
+        falhas: failed,
+        tentativas: totalTests,
+        aparelhoOnline: navigator.onLine,
+      });
+      setTestando(false);
     };
+
+    const palavras = medida
+      ? PALAVRAS_DA_CONEXAO.get(resultadoDaConexao(medida))
+      : undefined;
 
     return (
       <div className="space-y-3">
@@ -174,135 +237,73 @@ const ConnectionDiagnosticsSection = memo(
           <div className="overflow-hidden">
             <div className="pt-2">
               <div className="admin-glass group relative overflow-hidden border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
-                <div className="flex flex-col gap-2.5">
-                  <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-                    Meça a latência (ping) e perda de pacotes entre o seu
-                    navegador e o banco de dados do Supabase. Útil para
-                    identificar lentidão ou instabilidade na sua rede local.
+                <div className="flex flex-col gap-3">
+                  <p className="text-left text-[11px] leading-snug text-zinc-400">
+                    Teste se a internet deste aparelho chega bem até a sua loja.
+                    Ajuda a saber se uma lentidão do painel vem da sua rede.
                   </p>
 
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                    {/* Latency metric */}
-                    <div className="flex min-h-[60px] flex-col justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                      <span className="text-[7.5px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                        Latência Média
-                      </span>
-                      {testStatus === "testing" ? (
-                        <div className="my-1 h-5 w-12 animate-pulse rounded bg-white/5" />
-                      ) : avgLatency !== null ? (
-                        <div className="my-1 flex items-baseline gap-0.5">
-                          <span
-                            className={`text-xl font-black tracking-tight ${
-                              avgLatency < 120
-                                ? "text-emerald-400"
-                                : avgLatency < 250
-                                  ? "text-amber-400"
-                                  : "text-red-400"
-                            }`}
-                          >
-                            {avgLatency}
-                          </span>
-                          <span className="text-[8px] font-bold text-zinc-500">
-                            ms
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="my-1 text-xs font-bold text-zinc-600">
-                          —
-                        </span>
-                      )}
-                      <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-600">
-                        {avgLatency !== null
-                          ? avgLatency < 120
-                            ? "Excelente"
-                            : avgLatency < 250
-                              ? "Moderado"
-                              : "Conexão Lenta"
-                          : "Aguardando Teste"}
-                      </span>
+                  {testando ? (
+                    <div
+                      aria-hidden="true"
+                      className="h-16 animate-pulse rounded-xl bg-white/5"
+                    />
+                  ) : medida && palavras ? (
+                    <div
+                      role="status"
+                      className="space-y-1.5 rounded-xl border border-white/5 bg-zinc-950/40 p-3"
+                    >
+                      <p className={cn("text-sm font-black", palavras.cor)}>
+                        {palavras.titulo}
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-zinc-400">
+                        {palavras.frase}
+                      </p>
+                      <details className="text-[11px] text-zinc-500">
+                        <summary className="min-h-11 cursor-pointer select-none py-2 font-bold text-zinc-400">
+                          Ver os números
+                        </summary>
+                        <ul className="space-y-0.5">
+                          {medida.media !== null && (
+                            <>
+                              <li>
+                                Tempo médio de resposta: {medida.media} ms
+                              </li>
+                              <li>
+                                Mais rápida: {medida.minima} ms · mais lenta:{" "}
+                                {medida.maxima} ms
+                              </li>
+                            </>
+                          )}
+                          <li>
+                            Tentativas sem resposta: {medida.falhas} de{" "}
+                            {medida.tentativas}
+                          </li>
+                        </ul>
+                      </details>
                     </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-500">
+                      Ainda não testada neste aparelho.
+                    </p>
+                  )}
 
-                    {/* Min/Max Latency */}
-                    <div className="flex min-h-[60px] flex-col justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                      <span className="text-[7.5px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                        Variação (Min / Max)
-                      </span>
-                      {testStatus === "testing" ? (
-                        <div className="my-1 h-5 w-16 animate-pulse rounded bg-white/5" />
-                      ) : minLatency !== null && maxLatency !== null ? (
-                        <div className="my-1 flex items-baseline gap-1 text-xs font-black text-zinc-200">
-                          <span>{minLatency}</span>
-                          <span className="font-normal text-zinc-600">/</span>
-                          <span>{maxLatency}</span>
-                          <span className="text-[8px] font-bold text-zinc-500">
-                            ms
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="my-1 text-xs font-bold text-zinc-600">
-                          —
-                        </span>
-                      )}
-                      <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-600">
-                        Tempo limite
-                      </span>
-                    </div>
-
-                    {/* Packet loss */}
-                    <div className="flex min-h-[60px] flex-col justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                      <span className="text-[7.5px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                        Perda de Pacotes
-                      </span>
-                      {testStatus === "testing" ? (
-                        <div className="my-1 h-5 w-8 animate-pulse rounded bg-white/5" />
-                      ) : testStatus !== "idle" ? (
-                        <div className="my-1 flex items-baseline gap-0.5">
-                          <span
-                            className={`text-xl font-black tracking-tight ${
-                              packetLoss === 0
-                                ? "text-emerald-400"
-                                : "text-red-400"
-                            }`}
-                          >
-                            {packetLoss}
-                          </span>
-                          <span className="text-[8px] font-bold text-zinc-500">
-                            %
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="my-1 text-xs font-bold text-zinc-600">
-                          —
-                        </span>
-                      )}
-                      <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-600">
-                        {testStatus !== "idle"
-                          ? packetLoss === 0
-                            ? "Conexão Estável"
-                            : "Instabilidade Detectada"
-                          : "Aguardando Teste"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-1 flex justify-end">
+                  <div className="flex justify-end">
                     <button
                       type="button"
-                      disabled={testStatus === "testing"}
+                      disabled={testando}
                       onClick={handleTestConnectivity}
-                      className="h-8.5 flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-amber-500/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                      className="flex min-h-11 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-amber-500/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                     >
-                      {testStatus === "testing" ? (
-                        <>
-                          <RefreshCw className="size-3 animate-spin text-amber-500" />
-                          <span>Medindo...</span>
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="size-3 text-amber-500" />
-                          <span>Testar Conectividade</span>
-                        </>
-                      )}
+                      <RefreshCw
+                        className={cn(
+                          "size-3 text-amber-500",
+                          testando && "animate-spin",
+                        )}
+                      />
+                      <span>
+                        {testando ? "Testando…" : "Testar a conexão agora"}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -325,7 +326,7 @@ const ConnectionDiagnosticsSection = memo(
  * volta enxuta a cada visita, e expandir é um clique.
  *
  * `subtitulo` (desenho SALÃO+PORÃO, 13/09/2026): a linha de estado sob o
- * título ("Entrega e frete — Ativo: Melhor Envio"). Mora DENTRO do <button>
+ * título ("Formas de pagamento — 3 na entrega"). Mora DENTRO do <button>
  * de propósito: fora dele a linha vira área morta que não abre a seção, e
  * o estado deixa de fazer parte do nome acessível do controle. Textos vêm
  * truncados (nome de loja longuíssimo não quebra o cabeçalho).
@@ -397,7 +398,7 @@ function SecaoColapsavel({
               {titulo}
             </span>
             {subtitulo && (
-              <span className="block truncate text-[10px] font-medium normal-case tracking-normal text-zinc-500">
+              <span className="block truncate text-[11px] font-medium normal-case tracking-normal text-zinc-500">
                 {subtitulo}
               </span>
             )}
@@ -405,7 +406,7 @@ function SecaoColapsavel({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {aberta && comPendencia && (
-            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
               Salve antes de fechar
             </span>
           )}
@@ -531,8 +532,11 @@ function GrupoDeAjustes({
   if (!grupo) return null;
   const subtitulo = subtitulos.get(chave);
   return (
-    <section className="space-y-3">
-      <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+    <section
+      id={`grupo-de-ajustes-${chave}`}
+      className="scroll-mt-24 space-y-3"
+    >
+      <h2 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
         {grupo.titulo}
       </h2>
       {subtitulo && (
@@ -623,22 +627,17 @@ function IndicadorDoPainel({
   );
 }
 
-// ── Rótulos do painel de estado ─────────────────────────────────────────
-// PIX tem TRÊS níveis, réplica do ROTULO do StatusPagamentoPix (linhas
-// 55-59) — arquivo do Claude, fora da fronteira. O rascunho do desenho
-// pedia "PIX ativo / não configurado" (2 rótulos) e o crítico de desenho
-// do lote E vetou: com a chave pública ausente o pagamento está QUEBRADO
-// (a tela de pagamento nem carrega) e "ativo" mentiria — a mesma mentira
-// que o laudo 0109 (D1) combateu. E "desligado" é escolha da lojista
-// (pagamento na entrega), não "não configurado". "Funcionando" só vale
-// com `pagamentoOnlineLigado() && pixConfiguradoNoBuild(chave)`.
+// ── Nível do PIX ────────────────────────────────────────────────────────
+// TRÊS níveis, os mesmos do termômetro (StatusPagamentoPix). O rascunho do
+// desenho pedia "PIX ativo / não configurado" (2 rótulos) e o crítico de
+// desenho do lote E vetou: com a chave pública ausente o pagamento está
+// QUEBRADO (a tela de pagamento nem carrega) e "ativo" mentiria — a mesma
+// mentira que o laudo 0109 (D1) combateu. E "desligado" é escolha da
+// lojista (pagamento na entrega), não "não configurado". "Funcionando" só
+// vale com `pagamentoOnlineLigado() && pixConfiguradoNoBuild(chave)`. O
+// rótulo em si só o termômetro escreve (H6: o status do PIX aparece uma vez);
+// aqui o nível alimenta o subtítulo do grupo Pagamentos.
 type NivelDoPix = "ok" | "alerta" | "off";
-
-const ROTULO_DO_PIX = new Map<NivelDoPix, string>([
-  ["ok", "Funcionando"],
-  ["alerta", "Chave ausente"],
-  ["off", "Desligado"],
-]);
 
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
@@ -648,11 +647,6 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const { config, isLoaded, updateConfig } = useStore();
   const isOffline = useOnlineStatus();
   const [showHelpModal, setShowHelpModal] = useState(false);
-  // A seção de Transportadoras reporta se tem alteração não salva; enquanto
-  // houver, ela não pode ser recolhida (fechar desmonta o conteúdo e
-  // descartaria o token digitado — trava explicada no SecaoColapsavel).
-  const [transportadorasPendentes, setTransportadorasPendentes] =
-    useState(false);
 
   // Peça 20: mesma trava das demais — chave digitada e não salva não pode
   // sumir num clique no cabeçalho da seção.
@@ -671,24 +665,27 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
   // continua dona do próprio fechar).
   const [abrirMercadoPagoGatilho, setAbrirMercadoPagoGatilho] = useState(0);
+  // Mesmo gênero de contador, só do "Configurar credenciais": além de abrir
+  // a seção, pede os campos das chaves já à mostra. O "Ver o PIX em
+  // Pagamentos" de Ferramentas abre a seção sem ele.
+  const [abrirChavesGatilho, setAbrirChavesGatilho] = useState(0);
 
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
   // — mesmo contrato da tela de Frete (AdminShippingView). Identidade e
   // horário saíram desta soma em 22/09/2026: os acordeões duplicados desta
   // tela foram removidos — a edição (e a pendência dela) mora só em
-  // AdminAboutStoreView agora.
+  // AdminAboutStoreView agora. As Transportadoras saíram em 09/10/2026 (H5):
+  // a pendência do token é somada pela tela de Frete, onde a seção mora.
   useEffect(() => {
     if (active !== false)
       onSetDirty?.(
-        transportadorasPendentes ||
-          pagamentosPendente ||
+        pagamentosPendente ||
           formasPagamentoPendente ||
           politicaDevolucaoPendente,
       );
   }, [
     active,
-    transportadorasPendentes,
     pagamentosPendente,
     formasPagamentoPendente,
     politicaDevolucaoPendente,
@@ -704,18 +701,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   // ── Estado do PIX: MESMAS fontes do StatusPagamentoPix, avaliadas UMA
   // vez aqui no hub e compartilhadas pelo subtítulo de Pagamentos e pelo
-  // termômetro de "Minha loja está no ar?". O
+  // termômetro no topo do grupo Pagamentos — o ÚNICO status do PIX da tela
+  // (H6, painel simples; antes ele se repetia em "Minha loja está no ar?",
+  // em "Formas de pagamento" e no bloco do Mercado Pago). O
   // contrato de pix-configurado-no-build exige este import cru DENTRO deste
   // arquivo (mesma regra do AdminDashboardView) — não extrair para
   // componente/arquivo novo sem atualizar aquele teste.
   //
   // mp-9: `pagamentoOnlineLigado()` é o retrato SÍNCRONO da ficha injetada
-  // no BOOT da página. O interruptor "Receber PIX no app" (MercadoPagoSection,
-  // logo abaixo) escreve `store_config.pagamento_online` pela edge e devolve
+  // no BOOT da página. Salvar, testar, Pausar e Retomar (MercadoPagoSection,
+  // logo abaixo) escrevem `store_config.pagamento_online` pela edge e devolvem
   // o estado GRAVADO — sem este eco, a mesma tela mostrava dois estados do
-  // dinheiro (subtítulo de Pagamentos, "PIX: …" e termômetro presos no
-  // valor velho) até um recarregamento completo, enquanto a própria seção
-  // dizia "a vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
+  // dinheiro (subtítulo de Pagamentos e termômetro presos no valor velho)
+  // até um recarregamento completo, enquanto a própria seção dizia "a
+  // vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
   // propósito: a ficha global (configuracaoDaLoja) não se reescreve em
   // memória, e a vitrine segue com o atraso do cache do porteiro.
   const [pixLigado, setPixLigado] = useState(() => pagamentoOnlineLigado());
@@ -731,7 +730,18 @@ export const AdminSettingsView = memo(function AdminSettingsView({
     : pixChaveOk
       ? "ok"
       : "alerta";
-  const rotuloDoPix = ROTULO_DO_PIX.get(nivelDoPix) ?? "";
+
+  // "Ver o PIX em Pagamentos" (Minha loja está no ar?): abre a seção do
+  // Mercado Pago (o mesmo gatilho de "Configurar credenciais") e rola até o
+  // termômetro, no topo do grupo.
+  const irParaOPixEmPagamentos = () => {
+    setAbrirMercadoPagoGatilho((n) => n + 1);
+    setTimeout(() => {
+      document
+        .getElementById("grupo-de-ajustes-pagamentos")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): ausente/inválido cai nas 3
   // (mesma regra de tratamento de config velha/corrompida que o resto do
@@ -744,7 +754,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // que a seção de Transportadoras usa (`ler_configuracao_frete`) — nunca
   // do espelho `config.shippingProvider`, que no modo multi não decide mais
   // nada (R1-3/R2-1). `null` = ainda não sabemos (leitura em curso ou
-  // falhou); o painel não afirma "sem cotação automática" nesse meio-tempo.
+  // falhou); o subtítulo de "Entrega e frete" não chuta nesse meio-tempo.
   const [ligadosDeFrete, setLigadosDeFrete] = useState<
     readonly ProvedorFrete[] | null
   >(null);
@@ -756,43 +766,24 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   const [provedoresDeFrete, setProvedoresDeFrete] = useState<
     ReadonlyMap<ProvedorFrete, ConfigDoProvedor>
   >(() => new Map());
+  // A leitura roda CADA VEZ que a aba Ajustes fica ativa (H5, painel
+  // simples): as Transportadoras moram na tela de Frete agora, e Ajustes é
+  // aba mantida montada — salvar a transportadora lá e voltar aqui não pode
+  // deixar o subtítulo de "Entrega e frete" contando a leitura velha. Só a
+  // leitura da vez em curso escreve (`vivo`): uma resposta atrasada de uma
+  // ida anterior não sobrescreve a nova.
   useEffect(() => {
+    if (active === false) return;
+    let vivo = true;
     buscarConfiguracaoDeFrete().then((resultado) => {
+      if (!vivo) return;
       setLigadosDeFrete(resultado.ok ? resultado.config.ligados : null);
       if (resultado.ok) setProvedoresDeFrete(resultado.config.provedores);
     });
-  }, []);
-  // Revisão Opus (achado 5): a leitura acima só rodava UMA vez, ao montar
-  // — salvar provedores dentro da seção (aberta logo abaixo) não
-  // atualizava o "Ativo: X" nem o subtítulo de Entrega e frete até um
-  // recarregamento completo da página. `TransportadorasSection` agora avisa
-  // a cada leitura confirmada (montagem e após salvar); o "Ativo: X" e o
-  // subtítulo do grupo seguem essa MESMA verdade em vez de só a da primeira
-  // leitura.
-  const onLigadosDaSecaoMudou = useCallback(
-    (
-      ligados: readonly ProvedorFrete[],
-      provedores: ReadonlyMap<ProvedorFrete, ConfigDoProvedor>,
-    ) => {
-      setLigadosDeFrete(ligados);
-      setProvedoresDeFrete(provedores);
-    },
-    [],
-  );
-  const nomeDoFrete =
-    ligadosDeFrete === null
-      ? "A confirmar"
-      : ligadosDeFrete.length === 0
-        ? "Sem cotação automática"
-        : ligadosDeFrete
-            .map((p) => {
-              const nome = NOME_DO_PROVEDOR.get(p) ?? p;
-              const incompleta =
-                PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
-                !emailDeContatoValido(provedoresDeFrete.get(p)?.contato_email);
-              return incompleta ? `${nome} incompleta` : nome;
-            })
-            .join(" + ");
+    return () => {
+      vivo = false;
+    };
+  }, [active]);
 
   // Transportadoras com cotação REAL ligada, só com o que esta tela JÁ leu
   // (nenhuma chamada nova): ligada, com chave salva e — quando o provedor
@@ -823,7 +814,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   return (
     <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
       {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]}>
             <button
@@ -890,54 +881,37 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               subtitulos={subtitulos}
             />
 
+            {/* Entrega e frete: só a PORTA para a tela de Frete e o
+                subtítulo do grupo (H5, painel simples, 09/10/2026). As
+                Transportadoras e as Consultas de frete, que moravam aqui em
+                acordeões, foram para a tela de Frete — o frete mora num lugar
+                só. */}
             <GrupoDeAjustes
               chave="entrega"
               onNavigate={onNavigate}
               subtitulos={subtitulos}
-            >
-              {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
-                  glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
-                  sentido o token da transportadora morar no meio das regras
-                  de frete). RELEASE 1.5.7 v2 (revisão Opus, comentário
-                  corrigido): a seção já não é dona de `shippingProvider`
-                  nem `enabledShippingMethods` — esses campos só existem
-                  como espelho legado que a edge escreve por conta própria
-                  (R1-3/R2-1). Ela é dona só das CREDENCIAIS de cada
-                  provedor e de quem está LIGADO na loja, tudo pela edge
-                  (`save_credentials`/`save_active_providers`) — salvar a
-                  tela de Frete continua sem tocar em nada disso.
-                  COLAPSADA e nascida FECHADA: ajuste raro, feito uma vez. */}
-              <SecaoColapsavel
-                titulo="Transportadoras"
-                subtitulo={`Ativo: ${nomeDoFrete}`}
-                icone={Truck}
-                comPendencia={transportadorasPendentes}
-              >
-                <TransportadorasSection
-                  onDirtyMudou={setTransportadorasPendentes}
-                  onLigadosMudou={onLigadosDaSecaoMudou}
-                />
-              </SecaoColapsavel>
-
-              {/* Lugar reservado (desenho SALÃO+PORÃO): o liga/desliga de
-                  retirada na loja (`enabled_shipping_methods`) entra aqui —
-                  peça do Claude. NÃO criar stub. */}
-            </GrupoDeAjustes>
+            />
 
             {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
                 prompt pronto para o agente de IA do app do MP, salvar e
-                testar conexão ali mesmo. Desde a mp-4 o interruptor
-                "Receber PIX no app" mora aqui dentro, e desde a mp-9 o que
-                ele grava volta por `onPixAlternado` para o subtítulo deste
-                grupo e para o termômetro de Ferramentas —
-                era a mesma tela contando dois estados do dinheiro. Nascida
-                FECHADA como as demais: ajuste feito uma vez. */}
+                testar conexão ali mesmo. Desde a mp-9 o que Salvar, Testar,
+                Pausar e Retomar gravam volta por `onPixAlternado` para o
+                subtítulo deste grupo e para o termômetro — era a mesma tela
+                contando dois estados do dinheiro. Nascida FECHADA como as
+                demais: ajuste feito uma vez. */}
             <GrupoDeAjustes
               chave="pagamentos"
               onNavigate={onNavigate}
               subtitulos={subtitulos}
             >
+              {/* O termômetro do PIX no TOPO do grupo: o ÚNICO status do PIX
+                  da tela (H6, painel simples, P2 aprovada). "Minha loja está
+                  no ar?", "Formas de pagamento" e o bloco do Mercado Pago
+                  deixaram de repetir o estado — cada um aponta para cá ou só
+                  traz a ação (Pausar/Retomar). */}
+              <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
+
               {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
                   brief) — a lojista decide primeiro O QUE aceita na
@@ -945,7 +919,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   pagamento pelo app. Nascida FECHADA como as demais. */}
               <SecaoColapsavel
                 titulo="Formas de pagamento"
-                subtitulo={`${formasNaEntrega.length} na entrega${pixLigado ? " + app" : ""}`}
+                subtitulo={`${formasNaEntrega.length} na entrega`}
                 icone={Banknote}
                 comPendencia={formasPagamentoPendente}
               >
@@ -956,9 +930,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   isOffline={isOffline}
                   updateConfig={updateConfig}
                   onDirtyMudou={setFormasPagamentoPendente}
-                  onAbrirMercadoPago={() =>
-                    setAbrirMercadoPagoGatilho((n) => n + 1)
-                  }
+                  onAbrirMercadoPago={() => {
+                    setAbrirMercadoPagoGatilho((n) => n + 1);
+                    // "Configurar credenciais" cai direto nos campos das
+                    // chaves (Avançado + Suas chaves abertos).
+                    setAbrirChavesGatilho((n) => n + 1);
+                  }}
                 />
               </SecaoColapsavel>
 
@@ -978,6 +955,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 >
                   <MercadoPagoSection
                     onDirtyMudou={setPagamentosPendente}
+                    abrirChavesGatilho={abrirChavesGatilho}
                     onPixAlternado={(ligado, chaveNaLoja) => {
                       setPixLigado(ligado);
                       // `chaveNaLoja` só vem preenchido no eco do `ler`
@@ -1055,28 +1033,30 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </div>
               {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de
-                  trabalho; a tela abre mostrando o que o lojista edita). */}
+                  trabalho; a tela abre mostrando o que o lojista edita).
+                  Desde H6 mostra só a conexão; o PIX é um atalho para o
+                  termômetro de Pagamentos (um status do PIX só). */}
               <SecaoColapsavel
                 titulo="Minha loja está no ar?"
-                subtitulo={`PIX: ${rotuloDoPix}`}
+                subtitulo="A conexão deste aparelho com a loja"
                 icone={Activity}
               >
                 <div className="space-y-3">
-                  <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
                   <ConnectionDiagnosticsSection />
+                  <button
+                    type="button"
+                    onClick={irParaOPixEmPagamentos}
+                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 px-4 text-left text-[11px] font-bold text-zinc-300 transition-colors hover:border-admin-gold/30 hover:text-white"
+                  >
+                    <span>
+                      O estado do PIX pelo app fica no topo de Pagamentos.
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-admin-gold">
+                      Ver o PIX em Pagamentos
+                      <ArrowUpRight className="size-3.5" />
+                    </span>
+                  </button>
                 </div>
-              </SecaoColapsavel>
-
-              {/* Histórico de cotações de frete — veio da tela de Frete na
-                  frente glm-visual-admin-0209: registro técnico de
-                  diagnóstico, consulta rara. Busca fresca a cada abertura
-                  (a seção só monta quando expandida). */}
-              <SecaoColapsavel
-                titulo="Consultas de frete"
-                subtitulo={`Ativo: ${nomeDoFrete}`}
-                icone={History}
-              >
-                <HistoricoCotacoesSection />
               </SecaoColapsavel>
             </GrupoDeAjustes>
           </>
@@ -1100,7 +1080,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
           {GRUPOS_DE_AJUSTES.map((grupo) => (
             <div key={grupo.chave} className="space-y-3">
-              <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                 {grupo.titulo}
               </h4>
               <p className="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 text-xs text-zinc-400">

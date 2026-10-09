@@ -86,11 +86,14 @@ function cortarMotivoExibido(motivo: string): string {
 }
 
 /**
- * Card "Histórico de cotações de frete" da tela de Ajustes.
+ * Card "Consultas de frete" da tela de Frete (painel "Consultas de frete",
+ * sob "Avançado").
  *
- * MODOU DE TELA (frente glm-visual-admin-0209, pedido do Gabriel em
- * 02/09/2026): a tabela de cotações vivia no pé da tela de Frete. Registro
- * técnico de diagnóstico — aqui virou seção colapsável, nascida fechada.
+ * MUDOU DE TELA DUAS VEZES: a tabela de cotações vivia no pé da tela de
+ * Frete, foi para Ajustes como seção colapsável (frente
+ * glm-visual-admin-0209, 02/09/2026) e voltou para a tela de Frete no painel
+ * simples (H5, 09/10/2026: o frete mora num lugar só). Registro técnico de
+ * diagnóstico — painel nascido fechado.
  *
  * O motivo do estado vazio lê os provedores LIGADOS (RELEASE 1.5.7 v2,
  * EMENDA R2: `ler_configuracao_frete`, nunca o espelho
@@ -107,13 +110,13 @@ function cortarMotivoExibido(motivo: string): string {
  * silêncio de quem ainda não recebeu tentativa de fora (ou pode ser uma
  * loja recusando toda venda nacional sem que a lojista saiba).
  *
- * Busca no mount: a seção só monta quando o lojista a expande, então cada
- * abertura traz a leitura fresca — o mesmo efeito do "expandia e buscava" da
- * tela antiga, sem controle extra.
+ * Busca no mount: a tela de Frete só monta a seção com o painel aberto,
+ * então cada abertura traz a leitura fresca — o mesmo efeito do "expandia e
+ * buscava" da tela antiga, sem controle extra.
  *
- * LOTE E (13/09/2026, peça C — salão e porão): o card `rounded-3xl
- * border-white/5` é da casca (SecaoColapsavel) — aqui sobra conteúdo puro,
- * no mesmo idioma da seção de Transportadoras ao lado.
+ * LOTE E (13/09/2026, peça C — salão e porão): a casca é de quem hospeda
+ * (hoje o `PainelRecolhivel` da tela de Frete) — aqui sobra conteúdo puro,
+ * no mesmo idioma da seção de Transportadoras.
  */
 export const HistoricoCotacoesSection = memo(
   function HistoricoCotacoesSection() {

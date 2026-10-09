@@ -199,11 +199,14 @@ describe("a tela de Ajustes", () => {
     expect(idas).toContain("admin-shipping");
   });
 
-  it("o acordeão das transportadoras se chama 'Transportadoras', não 'Entrega e frete'", () => {
+  it("'Entrega e frete' é só a porta: nenhum acordeão de transportadoras em Ajustes (H5)", () => {
+    // O acordeão "Transportadoras" (09/10/2026) foi para a tela de Frete no
+    // mesmo dia (H5, painel simples): o frete mora num lugar só.
     const cabecalhos = [...container.querySelectorAll("button[aria-expanded]")];
     const nomes = cabecalhos.map((b) => b.textContent ?? "");
-    expect(nomes.some((n) => n.includes("Transportadoras"))).toBe(true);
+    expect(nomes.some((n) => n.includes("Transportadoras"))).toBe(false);
     expect(nomes.some((n) => n.includes("Entrega e frete"))).toBe(false);
+    expect(porta("Entrega e frete")).toBeDefined();
   });
 
   it("o título da tela vem de NOMES_DO_PAINEL", () => {

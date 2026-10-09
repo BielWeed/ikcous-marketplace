@@ -4,7 +4,10 @@ import { Wallet } from "lucide-react";
 import { useState } from "react";
 
 /**
- * Termômetro do pagamento online (PIX) — tela de Ajustes.
+ * Termômetro do pagamento online (PIX) — tela de Ajustes, no TOPO do grupo
+ * Pagamentos: o único status do PIX da tela (H6, painel simples; antes ele
+ * morava em "Minha loja está no ar?" e o estado se repetia em mais três
+ * lugares).
  *
  * ANTES: um card inteiro com três parágrafos de diagnóstico por estado,
  * ocupando mais espaço que qualquer porta da tela (relato do Gabriel,
