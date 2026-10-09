@@ -251,6 +251,14 @@ export interface Review {
 /** Quem vê e quem usa o cupom (migration 20261208000000). */
 export type AlcanceDoCupom = "codigo" | "vitrine" | "exclusivo";
 
+/** Uma conta na lista de um cupom exclusivo (painel). Mora aqui, e não no hook,
+ * para o componente do formulário não depender do hook só por um tipo. */
+export interface ClienteDoCupom {
+  readonly id: string;
+  readonly nome: string | null;
+  readonly email: string | null;
+}
+
 export interface Coupon {
   id: string;
   code: string;
