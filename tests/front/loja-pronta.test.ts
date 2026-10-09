@@ -1,167 +1,20 @@
-// A função pura da lista "sua loja está pronta para vender?" (src/lib/loja-pronta.ts).
-// Dois jeitos convivem até o cartão do Início mudar (E3): a lista de 3 itens
-// (`passosDaLojaPronta`, que o cartão de hoje usa) e a de SEIS passos do painel
-// simples (`seisPassosDaLojaPronta`, §8 da spec). O conserto que as duas
-// trazem: uma loja que só recebe na entrega NÃO fica com "Configurar pagamento
-// PIX" pendente — "Como você recebe" vale PIX OU alguma forma de pagamento na
-// entrega.
+// A função pura da lista "sua loja está pronta para vender?" (src/lib/loja-pronta.ts):
+// os SEIS passos do painel simples (`seisPassosDaLojaPronta`, §8 da spec) e o
+// fato "entrega" que o Início calcula só com o que já está na config. O
+// conserto de fundo: uma loja que só recebe na entrega NÃO fica com
+// "Configurar pagamento PIX" pendente — "Como você recebe" vale PIX OU alguma
+// forma de pagamento na entrega.
 import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
 import {
   type ChaveDosSeisPassos,
   contagemDosPassos,
   entradaDosSeisPassos,
-  passosDaLojaPronta,
+  estadoDaEntrega,
   proximoPasso,
   seisPassosDaLojaPronta,
 } from "@/lib/loja-pronta";
+import { statusDaEntrega } from "@/lib/status-da-entrega";
 import { describe, expect, it } from "vitest";
-
-type Entrada = Parameters<typeof passosDaLojaPronta>[0];
-
-/** Loja toda pronta; cada teste estraga só o que quer provar. */
-function entrada(parcial: Partial<Entrada> = {}): Entrada {
-  return {
-    originCep: "38500-000",
-    pixOk: true,
-    formasNaEntrega: [],
-    produtos: [{ isActive: true }],
-    configCarregando: false,
-    produtosCarregando: false,
-    ...parcial,
-  };
-}
-
-function passo(chave: string, parcial: Partial<Entrada> = {}) {
-  const achado = passosDaLojaPronta(entrada(parcial)).find(
-    (item) => item.chave === chave,
-  );
-  if (!achado) throw new Error(`passo ${chave} não existe`);
-  return achado;
-}
-
-describe("passosDaLojaPronta", () => {
-  it("devolve os 3 itens de hoje, nesta ordem, com os rótulos novos", () => {
-    const itens = passosDaLojaPronta(entrada());
-    expect(itens.map((item) => item.rotulo)).toEqual([
-      "Como você recebe",
-      "Endereço da loja (CEP)",
-      "Primeiro produto à venda",
-    ]);
-  });
-
-  it("só o destino do item CEP muda: o endereço agora se edita em Minha loja", () => {
-    const itens = passosDaLojaPronta(entrada());
-    expect(itens.map((item) => item.destino)).toEqual([
-      "admin-settings",
-      "admin-about-store",
-      "admin-products",
-    ]);
-  });
-
-  describe("Como você recebe", () => {
-    it("só na entrega (pixOk=false, formas=['cash']): feito", () => {
-      const recebe = passo("recebe", {
-        pixOk: false,
-        formasNaEntrega: ["cash"],
-      });
-      expect(recebe.estado).toBe("feito");
-      // Não pode dizer "PIX configurado" de uma loja que não tem PIX.
-      expect(recebe.rotuloFeito).not.toMatch(/pix/i);
-    });
-
-    it("sem PIX e sem nenhuma forma na entrega: pendente", () => {
-      const recebe = passo("recebe", { pixOk: false, formasNaEntrega: [] });
-      expect(recebe.estado).toBe("pendente");
-      expect(recebe.rotuloPendente).toBe("Configurar pagamento PIX");
-    });
-
-    it("PIX ok, sem forma na entrega: feito", () => {
-      const recebe = passo("recebe", { pixOk: true, formasNaEntrega: [] });
-      expect(recebe.estado).toBe("feito");
-      expect(recebe.rotuloFeito).toBe("Pagamento PIX configurado");
-    });
-
-    it("PIX ok e forma na entrega: feito", () => {
-      expect(
-        passo("recebe", { pixOk: true, formasNaEntrega: ["pix", "card"] })
-          .estado,
-      ).toBe("feito");
-    });
-
-    it("config carregando e PIX não ok: carregando (as formas ainda não chegaram)", () => {
-      expect(
-        passo("recebe", {
-          pixOk: false,
-          formasNaEntrega: [],
-          configCarregando: true,
-        }).estado,
-      ).toBe("carregando");
-    });
-
-    it("config carregando com as formas PADRÃO (as três, como nasce o StoreContext): carregando, não 'feito' falso", () => {
-      expect(
-        passo("recebe", {
-          pixOk: false,
-          formasNaEntrega: ["pix", "card", "cash"],
-          configCarregando: true,
-        }).estado,
-      ).toBe("carregando");
-    });
-
-    it("PIX ok resolve na hora, mesmo com a config carregando (vem do build)", () => {
-      expect(
-        passo("recebe", { pixOk: true, configCarregando: true }).estado,
-      ).toBe("feito");
-    });
-  });
-
-  describe("Endereço da loja (CEP)", () => {
-    it.each([
-      { cep: "01310100", estado: "feito" },
-      { cep: "01310-100", estado: "feito" },
-      { cep: " 01310-100 ", estado: "feito" },
-      { cep: "0131", estado: "pendente" },
-      { cep: "", estado: "pendente" },
-      { cep: undefined, estado: "pendente" },
-      { cep: "1234-5678", estado: "pendente" },
-      { cep: "abcdefgh", estado: "pendente" },
-    ])("CEP $cep: $estado", ({ cep, estado }) => {
-      expect(passo("cep", { originCep: cep }).estado).toBe(estado);
-    });
-
-    it("config carregando: carregando, mesmo com CEP preenchido", () => {
-      expect(passo("cep", { configCarregando: true }).estado).toBe(
-        "carregando",
-      );
-    });
-  });
-
-  describe("Primeiro produto à venda", () => {
-    it("só produto inativo: pendente (conta isActive, não o tamanho da lista)", () => {
-      expect(passo("produto", { produtos: [{ isActive: false }] }).estado).toBe(
-        "pendente",
-      );
-    });
-
-    it("com 1 produto ativo: feito", () => {
-      expect(
-        passo("produto", {
-          produtos: [{ isActive: false }, { isActive: true }],
-        }).estado,
-      ).toBe("feito");
-    });
-
-    it("produtos carregando: carregando", () => {
-      expect(
-        passo("produto", { produtos: [], produtosCarregando: true }).estado,
-      ).toBe("carregando");
-    });
-
-    it("config carregando não segura o item de produto", () => {
-      expect(passo("produto", { configCarregando: true }).estado).toBe("feito");
-    });
-  });
-});
 
 // ── Os SEIS passos do painel simples (spec §8) ────────────────────────────
 
@@ -416,5 +269,59 @@ describe("contagemDosPassos e proximoPasso", () => {
     );
     expect(contagemDosPassos(passos)).toEqual({ feitos: 0, total: 6 });
     expect(proximoPasso(passos)?.chave).toBe("marca");
+  });
+});
+
+// ── O fato "entrega" no Início: só o que já está na config, sem rede ─────────
+//
+// Regra: sem CEP de oito dígitos a loja não entrega (local, retirada e
+// nacional partem do CEP da loja) e fica pendente; com CEP a entrega própria
+// na cidade já funciona — não há interruptor dela, só a taxa, e a taxa 0 é
+// "grátis na cidade". As transportadoras do "fora da cidade" dependem de
+// credenciais (chamada de rede) e o Início não as pergunta.
+describe("estadoDaEntrega", () => {
+  it.each([
+    { cep: "01310100", estado: "feito" },
+    { cep: "01310-100", estado: "feito" },
+    { cep: " 01310-100 ", estado: "feito" },
+    { cep: "0131", estado: "pendente" },
+    { cep: "", estado: "pendente" },
+    { cep: null, estado: "pendente" },
+    { cep: undefined, estado: "pendente" },
+    { cep: "1234-5678", estado: "pendente" },
+    { cep: "abcdefgh", estado: "pendente" },
+  ])("CEP $cep: $estado", ({ cep, estado }) => {
+    expect(estadoDaEntrega({ originCep: cep }, false)).toBe(estado);
+  });
+
+  it("config carregando: carregando, mesmo com CEP (a config ainda não chegou)", () => {
+    expect(estadoDaEntrega({ originCep: "01310-100" }, true)).toBe(
+      "carregando",
+    );
+    expect(estadoDaEntrega({}, true)).toBe("carregando");
+  });
+
+  // Só os casos em que as duas réguas já concordam: CEP completo, vazio e
+  // ausente. Divergência conhecida, fora desta frente: `statusDaEntrega` testa
+  // `!originCep` (CEP parcial como "1234" conta como preenchido lá), e o
+  // passo exige os oito dígitos.
+  it("CEP completo, vazio e ausente: concorda com a primeira linha da faixa do Frete ('Na sua cidade')", () => {
+    for (const originCep of ["01310-100", "", undefined]) {
+      const [naSuaCidade] = statusDaEntrega({
+        config: { originCep } as Parameters<
+          typeof statusDaEntrega
+        >[0]["config"],
+        credsErro: false,
+        nomesLigados: [],
+      });
+      expect(estadoDaEntrega({ originCep }, false)).toBe(
+        naSuaCidade.tom === "positivo" ? "feito" : "pendente",
+      );
+    }
+  });
+
+  it("alimenta o passo 'Como você entrega' dos seis", () => {
+    const entrega = estadoDaEntrega({ originCep: "" }, false);
+    expect(passoDosSeis("entrega", {}, { entrega }).estado).toBe("pendente");
   });
 });

@@ -6,136 +6,36 @@ import type { View } from "@/types";
 /**
  * Lista "sua loja está pronta para vender?" do Início, como função PURA:
  * recebe os fatos já lidos (config, produtos, flags de build) e devolve os
- * passos com o estado de cada um. Sem hook, sem `import.meta.env`, sem React
- * — o cartão só desenha o que esta função decide.
- *
- * Dois jeitos convivem até o cartão do Início passar para a lista nova (E3):
- *  - `passosDaLojaPronta`: os 3 passos de hoje (recebe, CEP, produto), que o
- *    cartão atual usa. Sai quando o cartão mudar.
- *  - `seisPassosDaLojaPronta` & cia. (mais abaixo): os SEIS passos do painel
- *    simples (spec §8) — marca, endereço, WhatsApp, recebe, entrega, produto.
- *    São exports NOVOS; nada da lista de 3 mudou, salvo o destino do item CEP.
+ * SEIS passos do painel simples (spec §8) com o estado de cada um. Sem hook,
+ * sem `import.meta.env`, sem React — o cartão só desenha o que esta função
+ * decide, e o "Falta preencher" de Minha loja e o subtítulo dos grupos de
+ * Ajustes leem os mesmos exports.
  */
 
 export type EstadoDoItem = "carregando" | "feito" | "pendente";
 
-export type ChaveDoPasso = "recebe" | "cep" | "produto";
-
-export interface ItemDoChecklist {
-  readonly chave: ChaveDoPasso;
-  /** Nome neutro do passo — usado na linha "Conferindo…", para dizer QUAL
-   * item está sendo conferido (leitor de tela não adivinha por posição). */
-  readonly rotulo: string;
-  readonly rotuloFeito: string;
-  readonly rotuloPendente: string;
-  readonly estado: EstadoDoItem;
-  readonly destino: View;
-}
-
-export interface EntradaDaLojaPronta {
-  /** `config.originCep` da loja. */
-  readonly originCep: string | undefined;
-  /** PIX online pronto: flag de build ligada E chave pública no deploy. */
-  readonly pixOk: boolean;
-  /** `config.formasPagamentoEntrega`: o que a loja aceita receber na entrega. */
-  readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
-  /** Catálogo da loja — só o campo que a lista precisa. */
-  readonly produtos: readonly { readonly isActive: boolean }[];
-  /** A config da loja (CEP, formas de pagamento) ainda não chegou. */
-  readonly configCarregando: boolean;
-  /** A lista de produtos ainda não chegou. */
-  readonly produtosCarregando: boolean;
-}
-
 /** CEP completo: oito dígitos, com ou sem o hífen após o quinto. */
-function cepCompleto(cep: string | undefined): boolean {
+function cepCompleto(cep: string | null | undefined): boolean {
   return /^\d{5}-?\d{3}$/.test(cep?.trim() ?? "");
 }
 
-export function passosDaLojaPronta(
-  entrada: EntradaDaLojaPronta,
-): ItemDoChecklist[] {
-  const {
-    originCep,
-    pixOk,
-    formasNaEntrega,
-    produtos,
-    configCarregando,
-    produtosCarregando,
-  } = entrada;
-
-  // "Como você recebe": PIX pronto OU alguma forma na entrega. Uma loja que
-  // só recebe na entrega está pronta — antes ela ficava com "Configurar
-  // pagamento PIX" pendente para sempre.
-  //
-  // O PIX vem de constantes de build (mesma fonte de AdminSettingsView): a
-  // resposta já é conhecida no mount, então com PIX ok o passo é `feito`
-  // mesmo com a config carregando. Sem PIX, a resposta depende das formas na
-  // entrega — e antes de a config chegar elas são o PADRÃO do app
-  // (defaultStoreConfig: pix, cartão e dinheiro), não a escolha da loja.
-  // Contar esse padrão marcaria "feito" falso e depois viraria "pendente";
-  // por isso, enquanto a config carrega, "não sei" (mesma ordem do CEP).
-  const recebeNaEntrega = formasNaEntrega.length > 0;
-  const estadoRecebe: EstadoDoItem = pixOk
-    ? "feito"
-    : configCarregando
-      ? "carregando"
-      : recebeNaEntrega
-        ? "feito"
-        : "pendente";
-
-  // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
-  // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
-  // filtra `deleted_at`).
-  //
-  // Limitação conhecida (achado do laudo de 08/09/2026, fora desta frente):
-  // `produtos` vem de `useStore().products`, que o `StoreContext` busca
-  // truncado em, no máximo, 200 itens (ordenados por data_cadastro DESC),
-  // sem sinal de truncamento hoje. Numa loja com 200+ produtos em que os 200
-  // mais recentes estejam todos inativos e exista um ativo mais antigo fora
-  // da janela, este item mostraria falso "pendente". O conserto correto
-  // depende do StoreContext expor esse sinal — reservado por outra frente.
-  const existeProdutoAtivo = produtos.some((produto) => produto.isActive);
-
-  return [
-    {
-      chave: "recebe",
-      rotulo: "Como você recebe",
-      // Não diz "PIX configurado" de uma loja que só recebe na entrega.
-      rotuloFeito: pixOk
-        ? "Pagamento PIX configurado"
-        : "Pagamento na entrega configurado",
-      rotuloPendente: "Configurar pagamento PIX",
-      estado: estadoRecebe,
-      destino: "admin-settings",
-    },
-    {
-      chave: "cep",
-      rotulo: "Endereço da loja (CEP)",
-      rotuloFeito: "Endereço da loja (CEP) preenchido",
-      rotuloPendente: "Cadastrar o endereço da loja (CEP)",
-      estado: configCarregando
-        ? "carregando"
-        : cepCompleto(originCep)
-          ? "feito"
-          : "pendente",
-      // O CEP só se edita em Minha loja (fonte única do endereço); o Frete
-      // passou a apenas lê-lo.
-      destino: "admin-about-store",
-    },
-    {
-      chave: "produto",
-      rotulo: "Primeiro produto à venda",
-      rotuloFeito: "Pelo menos 1 produto ativo à venda",
-      rotuloPendente: "Cadastrar um produto ativo",
-      estado: produtosCarregando
-        ? "carregando"
-        : existeProdutoAtivo
-          ? "feito"
-          : "pendente",
-      destino: "admin-products",
-    },
-  ];
+/**
+ * O fato "entrega" do Início, calculado SÓ com o que já está na config da loja
+ * (nenhuma chamada de rede: a régua completa, com transportadoras ligadas e
+ * credenciais, é `status-da-entrega` e mora no Frete).
+ *
+ * Sem CEP completo a loja não entrega nada — entrega local, retirada e
+ * transportadora partem do CEP da loja — e o passo fica pendente. Com CEP, a
+ * entrega própria na cidade já funciona (não há interruptor dela, só a taxa; a
+ * taxa 0 é "grátis na cidade"), que é exatamente o que a faixa do Frete diz em
+ * "Na sua cidade". Enquanto a config carrega, "não sei".
+ */
+export function estadoDaEntrega(
+  config: { readonly originCep?: string | null },
+  configCarregando: boolean,
+): EstadoDoItem {
+  if (configCarregando) return "carregando";
+  return cepCompleto(config.originCep) ? "feito" : "pendente";
 }
 
 // ── Os SEIS passos do painel simples (spec §8) ──────────────────────────────
@@ -180,9 +80,12 @@ export interface FatosDosSeisPassos {
   readonly configCarregando: boolean;
   readonly produtosCarregando: boolean;
   /**
-   * "Como você entrega" chega como FATO pronto: a régua (sem CEP, local,
-   * nacional com ou sem transportadora) é `status-da-entrega`, do Frete — esta
-   * lista não a reimplementa.
+   * "Como você entrega" chega como FATO pronto. Por decisão, o passo é só a
+   * parte barata da entrega — o CEP completo da loja —, calculada por
+   * `estadoDaEntrega` (acima). Quem chama (Início, Ajustes) DEVE usá-la em vez
+   * de calcular a própria régua, para as duas telas nunca divergirem. O
+   * detalhe de transportadora (credenciais, provedores ligados) fica no texto
+   * de `statusDaEntrega`, na tela do Frete, e não neste passo.
    */
   readonly entrega: EstadoDoItem;
 }
@@ -230,9 +133,17 @@ export function entradaDosSeisPassos(
       whatsapp: daConfig(lojaTemWhatsapp(config.whatsappNumber)),
       recebe,
       entrega: fatos.entrega,
-      // `.some(isActive)`, nunca `produtos.length` (o cofre guarda produto
-      // desativado também). Mesma ressalva da lista de 3 sobre o truncamento
-      // do StoreContext em 200 itens.
+      // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
+      // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
+      // filtra `deleted_at`).
+      //
+      // Limitação conhecida (achado do laudo de 08/09/2026, fora desta frente):
+      // `produtos` vem de `useStore().products`, que o `StoreContext` busca
+      // truncado em, no máximo, 200 itens (ordenados por data_cadastro DESC),
+      // sem sinal de truncamento hoje. Numa loja com 200+ produtos em que os 200
+      // mais recentes estejam todos inativos e exista um ativo mais antigo fora
+      // da janela, este item mostraria falso "pendente". O conserto correto
+      // depende do StoreContext expor esse sinal — reservado por outra frente.
       produto: fatos.produtosCarregando
         ? "carregando"
         : produtos.some((produto) => produto.isActive)

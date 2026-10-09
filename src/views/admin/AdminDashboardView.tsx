@@ -61,7 +61,7 @@ function SecaoLojaProntaEEstoqueBaixo({
   return (
     <LojaProntaEEstoqueBaixo
       stats={estoqueBaixo == null ? null : { inventoryAlerts: estoqueBaixo }}
-      originCep={config.originCep}
+      config={config}
       ligado={pagamentoOnlineLigado()}
       chaveOk={pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined)}
       // Mesma normalização de AdminSettingsView e CheckoutView: ausente ou
