@@ -105,6 +105,11 @@ arquivo em comum" e deixa a verificação disso ao olho do orquestrador.
    - *`frente.mjs integrar`*: antes de mesclar **qualquer** frente, prova a faixa de **todas**;
      reprovou uma ⇒ nada entra. É a garantia autoritativa — cobre o que o hook não vê
      (escrita por `Bash`: `sed -i`, `>`, `cp`).
+   - *Âncora do worktree* ([`integridade.mjs`](../../scripts/paralelo/integridade.mjs)): `entrar` grava
+     plano, frente, base e origem em `.git/worktrees/<nome>/paralelo-ancora.json` (fora da árvore de
+     trabalho) e hook, `conferir` e `commitar` só aceitam um `lane.json` que concorde com ela — e, em
+     worktree de `criar`, com o ramo `paralelo/<plano>/<frente>`. É o que impede trocar só o nome da
+     frente ou apontar a `base` para um commit antigo de manifesto mais largo.
 
 ## Por que worktree nativo e por que `baseRef: "head"` (medido, não suposto)
 
@@ -254,7 +259,8 @@ linhas `Bash(node scripts/paralelo/frente.mjs …)` do `allow`, ambas em `.claud
 - **Permissões auto-aprovadas** (`entrar`, `commitar`, `conferir`, `status`, `validar`, `criar`): com a faixa
   íntegra, forjar exige um commit forjado (git pede confirmação). Mesmo assim, qualquer comando auto-aprovado
   que roda código do repositório dá ao agente uma superfície a mais. Tirar `entrar`/`commitar` do `allow`
-  custa um prompt por frente (e prompts de subagente em segundo plano travam o paralelismo).
+  custa um prompt por frente (e prompts de subagente em segundo plano travam o paralelismo). **O `allow`
+  inteiro NÃO é uma fronteira de segurança** — a seção "O que o `allow` não garante" abaixo mede por quê.
 - **B6 — o hook global é "fail-open" fora do que eu consigo fechar:** se o `node` nem for executado (por
   exemplo, `${CLAUDE_PROJECT_DIR}` não expandir em PowerShell sem Git Bash) o Claude Code só bloqueia com
   exit 2 e a escrita passa; o hook do frontmatter só roda com workspace confiável e nunca em `-p`. A garantia
@@ -277,10 +283,101 @@ isolamento de subagente passam a nascer do **HEAD local** (com commits ainda nã
 `origin/HEAD`. É o que faz as frentes enxergarem este sistema, mas muda o hábito de quem usa
 `--worktree` hoje. Há relatos de que o app desktop ignora essa chave (não verificado aqui).
 
+## O que o `allow` não garante — re-revisão independente do #782 (09/10/2026)
+
+Uma re-revisão do que foi juntado (Opus, só leitura, reproduzida no Windows) achou três pontos: **M1**
+(`npx eslint -c <arquivo>.mjs` executava código sem confirmação), **M2** (o mapa de risco deixava dinheiro e
+login como "rotina") e **B2** (`lane.json` com só o nome trocado ou com `base` antiga passava). M2 e B2 estão
+corrigidos, com teste que falha sem a correção. **M1 não se fecha por `permissions`, e esta seção diz o porquê
+em vez de prometer "seguro por construção".**
+
+### O que a documentação oficial garante (e o que não)
+
+Fonte: <https://code.claude.com/docs/en/permissions>. Tudo abaixo foi **conferido no motor real**
+(`claude -p --bare --permission-prompts none` contra um servidor de API falso que devolve um `tool_use` Bash com o
+comando exato — sem modelo, sem custo).
+
+- **Garante:** a ordem é deny → ask → allow e a primeira que casa decide, em qualquer escopo de arquivo de
+  configuração; `*` casa qualquer texto (inclusive espaços) em qualquer posição; `Bash(x *)` casa também `x` sozinho,
+  mas só quando o `*` final é o único curinga; `:*` só vale no fim e equivale a ` *`; num comando composto
+  (`&&`, `||`, `;`, `|`, `&`, quebra de linha) o allow exige que **cada** subcomando case e o deny/ask vale se **qualquer**
+  um casar, inclusive dentro de `$()`; `timeout`, `time`, `nice`, `nohup`, `stdbuf` e atribuição `VAR=valor` à frente
+  são descascados antes de casar; `npx` **não** é descascado.
+- **Não garante** (a própria doc diz): regra de Bash que tenta restringir argumento é "frágil", não é "fronteira de
+  segurança" e não cobre outra forma de chamar o mesmo programa (`git 'push'`, `/bin/rm`, `sh -c`).
+- **Medido além da doc:** espaços repetidos e tab são normalizados; `$(…)` e `${…}` de valor desconhecido caem em
+  "pede confirmação"; `X=-c; cmd "$X"` é resolvido e barrado; **aspas partidas (`'-c'`, `--con"fig"`) e barra invertida
+  (`\-c`) escapam de qualquer regra, e não existe sintaxe de padrão que case a barra invertida**; aspas que preservam o
+  texto da flag (`"--config"`) ainda casam por subcadeia.
+
+### O que se fechou e o que fica como risco residual — as 57 regras de `allow`, agrupadas
+
+"Executa código da frente?" = a frente escreve um arquivo na própria faixa e a regra o executa **sem confirmação**.
+Todas as linhas marcadas **sim** foram provadas com marcador inofensivo, não supostas.
+
+| Regra de `allow` | Executa código da frente? | Decisão |
+| --- | --- | --- |
+| `npx eslint:*` | por flag: `-c`/`--config` e `-f ./x.cjs` (**sim, provados**); `--parser` e `--plugin` carregam módulo por nome ou caminho | **deny** da forma literal; `-f`/`--format` viram **ask**; `--flag` é **deny**. Config ao lado do arquivo **não** executa por padrão (eslint 9.39.2, provado), **mas executa com `--flag v10_config_lookup_from_file`** (achado R1 da re-revisão Opus, provado) |
+| `npx knip:*` | por flag: `-c`, `--config`, `--directory`, `--reporter`/`--preprocessor` por caminho | **deny** (`-c`, `--config`, `--directory`); **ask** (`--reporter`, `--preprocessor`) |
+| `npx vite build:*`, `npx vite preview:*` | por flag: `-c`, `--config` | **deny** |
+| `npx commitlint:*` | por flag: `-g`/`--config`, `-x`/`--extends`, `-p`/`--parser-preset`, `-d`/`--cwd` | **deny**; `-o`/`--format` **ask** |
+| `npx htmlhint:*` | por flag: `-R`/`--rulesdir`; `-c` só lê JSON (provado) | **deny** |
+| `npx stylelint:*` | por flag **e sem flag**: `stylelint.config.cjs` ao lado do `.css` executa (**sim, provado**) | flags **deny**; **risco residual** (config adjacente) |
+| `npx cspell:*` | por flag **e sem flag**: `cspell.config.cjs` numa subpasta do arquivo executa (**sim, provado**) | flags **deny**; **risco residual** |
+| `python -m sqlfluff lint:*` | sem flag: `.sqlfluff` ao lado do `.sql` com `library_path` importa Python (**sim, provado**) | **risco residual** |
+| `npm run lint:css`, `npm run spellcheck` | os mesmos arquivos adjacentes de stylelint/cspell (o script é fixo, os arquivos lidos não) | fica como está (o brief mantém `npm run` versionado); **risco residual** |
+| `deno test:*` | **sim, por desenho**: com `--allow-all`/`-A` (o fluxo que o `frente.md` prescreve) o teste da frente roda com todos os poderes; sem flag roda sem permissão nenhuma (provado) | **risco residual inerente**: a frente escreve código na própria faixa e roda o teste dele |
+| `deno lint:*` | o plugin de `deno.json` roda, **mas sem nenhuma permissão** (provado: escrita negada) | sem mudança |
+| `deno check:*`, `deno fmt:*` | não executam; `check` busca import remoto (rede) | sem mudança; rede é residual |
+| `git show:*`, `git diff:*`, `git log:*` | **sim, sem aspas**: `--output=<arquivo>` grava o blob da frente por cima de qualquer arquivo (provado) — via para trocar `scripts/paralelo/` e rodar o subcomando auto-aprovado | **deny** de `--output`; aspas partidas contornam |
+| `git branch:*` | não executa; `-D`/`-f`/`-m` apagam/movem refs | observação, fora da classe: não mexi |
+| `git blame`, `ls-files`, `rev-parse`, `status`, `remote -v`, `stash list`, `worktree list`, `ls`, `node --version`, `npm --version`, `npm ls` | não | sem mudança |
+| `node scripts/paralelo/frente.mjs <sub>:*` | executa o script do próprio worktree, que a frente não escreve (compartilhado + hook) — **exceto** por uma primitiva de escrita fora do hook | mitigado: `git --output` negado, âncora do worktree; `tsc` com `tsconfig` da faixa segue possível (abaixo) |
+| `npx tsc:*` | não executa, mas **`--outDir`/`--outFile` copiam JS da frente para onde ela quiser** (provado), direto ou num `tsconfig` da faixa (`-p`) | **risco residual** (`-p` tem uso legítimo; não dá para negar) |
+| `npx biome check/format:*` | não (config JSON, sem plugin executável no Biome 1.9.4); `--write` reescreve o que recebe | sem mudança |
+| `npx lockfile-lint:*`, `npx size-limit:*` | não; `size-limit --save-bundle/--clean-dir` e `vite build --emptyOutDir` apagam/escrevem pasta | observação: destrutivo, não executa |
+| `npm run build/dev/preview/lint/lint:html/lint:lockfile/knip/size/biome:*` | roda o `package.json` versionado | fica como está |
+| `supabase db lint/gen types/migration list/status/test db:*` | `test db` executa SQL da frente; com `--db-url`/`--linked`/`--project-id` fala com banco remoto | **risco residual**; só a falta de credencial ao alcance da frente segura (não testado) |
+| `Read(./.env.example)` | não | sem mudança |
+
+Nenhum `ask` ou `deny` anterior foi tocado (o teste `tests/front/paralelo-permissoes.test.ts` trava isso). As regras
+novas são só acréscimo: 41 `deny` e 8 `ask`.
+
+### O que isso significa na prática
+
+1. **O `allow` é um quebra-molas, não uma fronteira.** Barra a forma literal que um prompt injetado costuma digitar;
+   não barra quem parte a flag com aspas, usa barra invertida, grava um `.sqlfluff`/`stylelint.config.cjs`/`cspell.config.cjs`
+   ao lado do arquivo, ou roda `deno test --allow-all`. Código arbitrário rodando como o usuário lê `.env`, faz `git push`
+   por dentro (sem passar pelo `ask`) e fala com a rede.
+2. **O que segura de fato é outra coisa:** nada se integra sozinho. `integrar` lê o manifesto **canônico** da árvore do
+   integrador e reprova arquivo fora da faixa antes de qualquer merge; a revisão (`revisor`, `revisor-risco` onde o mapa
+   manda) lê o diff; e o resultado entra por branch e PR, que o dono vê. Isso protege **o que entra no repositório**.
+   **Não protege a máquina nem as credenciais** de um código que já rodou.
+3. **O limite de verdade não existe no Windows nativo:** o sandbox do Claude Code (restringe arquivos e rede por
+   sistema operacional) roda em macOS, Linux e WSL2; no Windows nativo os comandos rodam sem sandbox
+   (<https://code.claude.com/docs/en/sandboxing>).
+4. **Não foi feito aqui e é decisão de quem manda** (cada um fecha parte do residual): (a) a guarda de escrita recusar nome
+   de arquivo de configuração de ferramenta (`.sqlfluff`, `stylelint.config.*`, `cspell.config.*`) dentro de uma faixa —
+   fecha a via sem flag **na origem**, onde aspas não ajudam; (b) um hook `PreToolUse` para `Bash` que lê o comando inteiro
+   (a doc o recomenda quando o texto precisa ser inspecionado); (c) tirar `WebFetch`/`WebSearch` da lista de ferramentas do
+   agente `frente` (é a porta de entrada da injeção de prompt); (d) rodar as frentes em WSL2 com sandbox.
+
+### M2 e B2, em uma linha cada
+
+- **M2 — risco semântico:** o mapa de risco passou a casar por caminho `cartao`, `mercado`, `pix`, `payment`, `webhook`,
+  `financ`, `login`, `sessao`/`session`, `password`/`senha` (ligar crédito em `config_pagamento_cartao` é decisão de dinheiro do
+  dono, AGENTS.md); no conteúdo, `\bfin_` pega `fin_${acao}` montado em template; só `tests/` na raiz e os sufixos
+  `.test`/`_test`/`.spec` saem da leitura (uma pasta `tests/` sob `src/` é código); e a saída de `integrar` diz que **lista vazia não
+  significa "rotina"** — só que nenhum padrão conhecido casou. A caixa de `Supabase/migrations` já estava certa; ficou travada em teste.
+  Custo conhecido: falso alarme (ex.: `CartaoDaVitrine.tsx` é um cartão de tela, não de pagamento) custa um `revisor-risco` a mais.
+- **B2 — faixa:** a âncora do worktree (acima). Worktree registrado antes dela é recusado com a mensagem "sem âncora — recrie".
+
 ## Riscos conhecidos desta camada
 
 - O hook não vê escrita por `Bash` — a garantia é o diff (`conferir`/`integrar`). Um agente que
   burla pelo `Bash` só adia a reprovação.
+- `conferir --base <ref>` aceita qualquer base: serve para conferir um trecho, mas uma frente que o chama com
+  `--base HEAD` não vê violação já commitada. A prova que vale é `integrar`, que usa o manifesto canônico.
 - Subagente em worktree **não** carrega o `CLAUDE.md`/`.claude/rules` do próprio worktree (a doc é
   explícita); recebe o da sessão principal. As regras vão no brief e no corpo do agente `frente`.
 - O hook global falha SEM bloquear se o script não existir (exit 127 é não-bloqueante, segundo a
