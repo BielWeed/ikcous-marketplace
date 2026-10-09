@@ -465,9 +465,9 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
   // Ele sai de "Para preparar" (a regra do Início) e de todo contador; sem
   // este aviso sumiria da tela. Só leitura: não entra em cartão nenhum.
   const AVISO_PLURAL =
-    "2 pedidos em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.";
+    "2 pedidos em aberto com pagamento recusado ou estornado — confira no filtro Status de Pagamento.";
   const AVISO_SINGULAR =
-    "1 pedido em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.";
+    "1 pedido em aberto com pagamento recusado ou estornado — confira no filtro Status de Pagamento.";
   const textoDoAviso = () =>
     hospedeiro
       .querySelector('[data-aviso="pagamento-a-conferir"]')

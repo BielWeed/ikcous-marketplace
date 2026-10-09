@@ -325,7 +325,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       ? null
       : `${abertosComPagamentoAConferir} ${
           abertosComPagamentoAConferir === 1 ? "pedido" : "pedidos"
-        } em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.`;
+        } em aberto com pagamento recusado ou estornado — confira no filtro Status de Pagamento.`;
   const { abertas: devolucoesAbertas } = useDevolucoesAbertas(active);
 
   const [searchQuery, setSearchQuery] = useLocalStorage<string>(
