@@ -26,7 +26,8 @@
 -- baixo apagaria a guarda dela em silencio. O pre-voo trava as tabelas (lock_timeout
 -- de 5 s) antes de decidir e nao escreve nada.
 --
--- Executar via `psql -1 -f` (nunca pelo db-apply). Sem BEGIN/COMMIT de nivel
+-- Executar pelo workflow `aplicar-migrations.yml` (arquivo rollback-manual-*; ninguem tem psql
+-- direto nas lojas) ou, em banco proprio, via `psql -1 -f`. Sem BEGIN/COMMIT de nivel
 -- superior neste arquivo -- regra da casa.
 -- ============================================================================
 
