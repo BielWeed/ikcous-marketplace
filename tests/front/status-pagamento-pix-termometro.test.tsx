@@ -51,7 +51,7 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     expect(rotulo()).toContain("Funcionando");
     // Diagnóstico só aparece quando o lojista abre.
     expect(hospedeiro.textContent).not.toContain(
-      "o cliente já paga por PIX dentro do app",
+      "Ligado e com a chave pública da loja",
     );
     // Termômetro: as 3 barras acesas em verde.
     const barras = hospedeiro.querySelectorAll("span.bg-emerald-400");

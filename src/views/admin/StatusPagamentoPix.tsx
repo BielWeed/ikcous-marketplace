@@ -39,8 +39,13 @@ interface StatusPagamentoPixProps {
 // reprova warning novo.
 // Texto na língua da loja (G4 do painel simples): cada nível diz o que houve
 // e o que fazer, sem nome de segredo, de servidor nem de configuração interna.
+// O "ok" só enxerga ligado + chave pública: a senha dos avisos (sem a qual a
+// cobrança do PIX é recusada) não chega aqui, então o texto não promete mais.
 const DIAGNOSTICO = new Map<NivelDoPagamento, string>([
-  ["ok", "Funcionando: o cliente já paga por PIX dentro do app."],
+  [
+    "ok",
+    "Ligado e com a chave pública da loja. Se algum cliente não conseguir pagar por PIX, confira em Pagamentos › Mercado Pago se não falta nenhuma chave.",
+  ],
   [
     "alerta",
     "O pagamento online está ligado, mas falta a chave pública da loja: a tela de pagamento não abre para o cliente. Salve as chaves de novo em Pagamentos › Mercado Pago; se continuar, fale com o suporte técnico.",

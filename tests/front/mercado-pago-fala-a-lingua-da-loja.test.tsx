@@ -167,7 +167,10 @@ describe("StatusPagamentoPix — o diagnóstico na língua da loja (L1)", () => 
       nome: "ok",
       props: { ligado: true, chaveOk: true },
       rotulo: "Funcionando",
-      frases: ["Funcionando: o cliente já paga por PIX dentro do app."],
+      frases: [
+        "Ligado e com a chave pública da loja.",
+        "Se algum cliente não conseguir pagar por PIX, confira em Pagamentos › Mercado Pago se não falta nenhuma chave.",
+      ],
     },
     {
       nome: "alerta",
@@ -200,6 +203,9 @@ describe("StatusPagamentoPix — o diagnóstico na língua da loja (L1)", () => 
 
       expect(jargaoEm(texto)).toEqual([]);
       expect(texto).not.toMatch(/MP_|Supabase|\bflag\b|\bfrota\b/i);
+      // O termômetro só vê ligado + chave pública, não a senha dos avisos (sem
+      // ela a cobrança do PIX é recusada): nenhum nível promete que já paga.
+      expect(texto).not.toContain("já paga");
     });
   }
 
