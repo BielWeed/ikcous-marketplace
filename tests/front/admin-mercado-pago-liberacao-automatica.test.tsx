@@ -353,7 +353,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain("Falta para receber pelo app:");
-    expect(estado).toContain("colar a Chave de notificações");
+    expect(estado).toContain("colar a senha dos avisos");
     expect(estado).toContain("testar a conexão");
     // O que já está pronto NÃO aparece como falta.
     expect(estado).not.toContain("Public Key");
@@ -548,7 +548,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
     const texto = document.body.textContent ?? "";
     expect(texto).toContain(
-      "Chave de notificações (obrigatória para receber pelo app)",
+      "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
     );
     expect(texto).not.toContain("obrigatória para Pix");
     expect(texto.toLowerCase()).not.toContain("interruptor");
@@ -578,7 +578,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     raiz = await montarSecaoComChavesAbertas();
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain("Pausado por você");
-    expect(estado).toContain("colar a Chave de notificações");
+    expect(estado).toContain("colar a senha dos avisos");
   });
 
   it("A15 — edge ANTIGA (sem `faltando`): a tela não mente 'Tudo preenchido', não oferece Pausar/Retomar e diz que o sistema está sendo atualizado", async () => {

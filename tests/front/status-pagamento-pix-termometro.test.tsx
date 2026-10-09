@@ -50,7 +50,9 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
 
     expect(rotulo()).toContain("Funcionando");
     // Diagnóstico só aparece quando o lojista abre.
-    expect(hospedeiro.textContent).not.toContain("MP_ACCESS_TOKEN");
+    expect(hospedeiro.textContent).not.toContain(
+      "o cliente já paga por PIX dentro do app",
+    );
     // Termômetro: as 3 barras acesas em verde.
     const barras = hospedeiro.querySelectorAll("span.bg-emerald-400");
     expect(barras.length).toBeGreaterThanOrEqual(3);
@@ -60,14 +62,20 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     await renderizar({ ligado: true, chaveOk: false });
 
     expect(rotulo()).toContain("Chave ausente");
-    expect(hospedeiro.textContent).not.toContain("configuração da loja");
+    expect(hospedeiro.textContent).not.toContain(
+      "falta a chave pública da loja",
+    );
 
     await act(async () => {
       hospedeiro.querySelector("button")!.click();
     });
 
-    expect(hospedeiro.textContent).toContain("configuração da loja");
-    expect(hospedeiro.textContent).toContain("antes de divulgar a loja");
+    // G4 do painel simples: o diagnóstico diz o que houve e o que fazer na
+    // língua da loja (onde a chave se salva), sem nome de configuração interna.
+    expect(hospedeiro.textContent).toContain("falta a chave pública da loja");
+    expect(hospedeiro.textContent).toContain(
+      "Salve as chaves de novo em Pagamentos › Mercado Pago",
+    );
   });
 
   it("desligado: rótulo 'Desligado' e diagnóstico fala em pagamento na entrega", async () => {
@@ -79,7 +87,7 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
       hospedeiro.querySelector("button")!.click();
     });
 
-    expect(hospedeiro.textContent).toContain("pagamento na entrega");
+    expect(hospedeiro.textContent).toContain("O cliente paga na entrega");
   });
 
   it("desligado não herda cor de problema: sem vermelho nem verde no rótulo", async () => {
@@ -99,7 +107,7 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     await act(async () => {
       botao.click();
     });
-    expect(hospedeiro.textContent).toContain("configuração da loja");
+    expect(hospedeiro.textContent).toContain("falta a chave pública da loja");
 
     await act(async () => {
       botao.click();
@@ -108,6 +116,8 @@ describe("StatusPagamentoPix — termômetro compacto do pagamento online", () =
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.textContent).not.toContain("configuração da loja");
+    expect(hospedeiro.textContent).not.toContain(
+      "falta a chave pública da loja",
+    );
   });
 });
