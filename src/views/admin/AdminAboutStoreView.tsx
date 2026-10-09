@@ -1,7 +1,13 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import {
+  EnderecoDaLoja,
+  type MudancaDoEndereco,
+} from "@/components/admin/minha-loja/EnderecoDaLoja";
 import { BusinessHoursSection } from "@/components/admin/settings/BusinessHoursSection";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
 import { lojaTemWhatsapp } from "@/lib/loja-tem-whatsapp";
 import { descricaoDaLojaParaHtml, textoDaLoja } from "@/lib/texto-da-loja";
 import { AlertTriangle, ExternalLink, RefreshCw, Save } from "lucide-react";
@@ -10,8 +16,9 @@ import { toast } from "sonner";
 
 import type { View } from "@/types";
 
-// Tela "Sobre a Loja" do painel (pedido do dono, 20/09/2026): concentra O QUE
-// a página pública "Sobre a Loja" (AboutStoreView) exibe — marca (nome/logo),
+// Tela "Minha loja" do painel (antes "Sobre a Loja", pedido do dono de
+// 20/09/2026; renomeada no painel simples de 09/10/2026): concentra O QUE a
+// página pública "Sobre a Loja" (AboutStoreView) exibe — marca (nome/logo),
 // endereço que alimenta o mapa, horário e descrição. WhatsApp é LEITURA com
 // atalho: o número é configuração da tela Atendimento e alimenta o app todo
 // (checkout, pedido, perfil), não é desta página. Molde da
@@ -22,9 +29,11 @@ import type { View } from "@/types";
 // editores próprios que salvam sozinhos (IdentitySettingsSection e
 // BusinessHoursSection — desde 22/09/2026 a edição mora só aqui; os
 // acordeões duplicados em Ajustes ("Nome, logo e cores" e "Atendimento")
-// saíram); endereço e descrição são os campos novos da 20261167000000,
-// gravados pelo botão "Salvar" desta tela num único updateConfig. O dirty
-// da tela é o OU de todos.
+// saíram); endereço e descrição são gravados pelo botão "Salvar" desta tela
+// num único updateConfig. O ENDEREÇO é a fonte única da loja (CEP, texto,
+// cidade e UF — EnderecoDaLoja, sem migration: as quatro colunas que já
+// existem); ele só entra no pacote quando a lojista o alterou. O dirty da
+// tela é o OU de todos.
 interface AdminAboutStoreViewProps {
   onNavigate: (view: View) => void;
   active?: boolean;
@@ -88,15 +97,16 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const { config, updateConfig, isLoaded } = useStore();
   const isOffline = useOnlineStatus();
 
-  // Endereço e descrição: baseline do config, dirty por diff (mesmo molde do
-  // editor de horário: dado que chega só atualiza editor puro). A descrição
-  // gravada é HTML simples — o editor mostra o texto pelo INVERSO do mesmo
-  // módulo que converte no save (ida e volta exata; sem isto, micro-
-  // diferenças deixavam o botão Salvar eternamente habilitado).
-  const baselineEndereco = config.storeAddress ?? "";
+  // Descrição: baseline do config, dirty por diff (mesmo molde do editor de
+  // horário: dado que chega só atualiza editor puro). A descrição gravada é
+  // HTML simples — o editor mostra o texto pelo INVERSO do mesmo módulo que
+  // converte no save (ida e volta exata; sem isto, micro-diferenças deixavam
+  // o botão Salvar eternamente habilitado). O endereço tem baseline e dirty
+  // próprios, dentro do EnderecoDaLoja (`mudancaEndereco`).
   const baselineDescricao = textoDaLoja(config.storeDescription);
-  const [endereco, setEndereco] = useState(baselineEndereco);
   const [descricao, setDescricao] = useState(baselineDescricao);
+  const [mudancaEndereco, setMudancaEndereco] =
+    useState<MudancaDoEndereco | null>(null);
   const [saving, setSaving] = useState(false);
   const [identidadePendente, setIdentidadePendente] = useState(false);
   const [horarioPendente, setHorarioPendente] = useState(false);
@@ -114,29 +124,24 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   // formDirty pulava a sincronização para sempre (campos presos vazios e
   // botão Salvar habilitado sem edição — 1ª execução real, 20/09/2026).
   const usuarioEditou = useRef(false);
-  const lastIncoming = useRef(
-    `${config.storeAddress ?? ""}\n${config.storeDescription ?? ""}`,
-  );
-  const formDirty =
-    endereco !== baselineEndereco || descricao !== baselineDescricao;
+  const lastIncoming = useRef(config.storeDescription ?? "");
+  const enderecoAlterado = mudancaEndereco?.alterado ?? false;
+  // Endereço alterado mas incompleto: o Salvar espera (o motivo está à vista
+  // no bloco do endereço).
+  const enderecoPrecisaCompletar =
+    enderecoAlterado && mudancaEndereco?.valores == null;
+  const formDirty = enderecoAlterado || descricao !== baselineDescricao;
   useEffect(() => {
     // A assinatura é do config BRUTO (snake que o banco entrega via
     // mapConfig) — a MESMA forma do lastIncoming inicial, nunca texto
     // decodificado comparado com bruto.
-    const assinatura = `${config.storeAddress ?? ""}\n${config.storeDescription ?? ""}`;
+    const assinatura = config.storeDescription ?? "";
     if (assinatura === lastIncoming.current) return;
     lastIncoming.current = assinatura;
     if (!usuarioEditou.current && !saving) {
-      setEndereco(baselineEndereco);
       setDescricao(baselineDescricao);
     }
-  }, [
-    baselineEndereco,
-    baselineDescricao,
-    config.storeAddress,
-    config.storeDescription,
-    saving,
-  ]);
+  }, [baselineDescricao, config.storeDescription, saving]);
   useEffect(() => {
     onSetDirty?.(formDirty || saving || identidadePendente || horarioPendente);
   }, [formDirty, saving, identidadePendente, horarioPendente, onSetDirty]);
@@ -154,7 +159,11 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
   const local = [config.storeCity?.trim(), config.storeState?.trim()]
     .filter(Boolean)
     .join(", ");
-  const queryPrevia = endereco.trim() || config.originCep?.trim() || local;
+  const queryPrevia =
+    mudancaEndereco?.valores?.storeAddress ||
+    config.storeAddress?.trim() ||
+    config.originCep?.trim() ||
+    local;
 
   // O guard de navegação cobre o TODO (qualquer seção pendente). Já o botão
   // Salvar é SÓ do formulário (endereço/descrição) — identidade e horário
@@ -163,16 +172,20 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
 
   async function handleSubmit() {
     if (saving || !active || isOffline || !formDirty) return;
+    if (enderecoPrecisaCompletar) return;
     const life = lifecycle.current;
     const serial = ++life.serial;
     const isCurrent = () =>
       life.mounted && life.active && life.serial === serial;
-    const chosenEndereco = endereco.trim();
+    // Uma chamada só: descrição + (se mexeu) as quatro colunas do endereço.
+    const enderecoParaGravar = enderecoAlterado
+      ? (mudancaEndereco?.valores ?? null)
+      : null;
     setSaving(true);
     try {
       const success = await updateConfig(
         {
-          storeAddress: chosenEndereco || null,
+          ...(enderecoParaGravar ?? {}),
           storeDescription: descricaoDaLojaParaHtml(descricao) || null,
         },
         { isCurrent, silent: true },
@@ -182,10 +195,10 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         // Re-sincroniza o formulário com o que foi GRAVADO (o baseline vem
         // do config, que o updateConfig atualiza; sem isto, qualquer
         // diferença de normalização deixava o botão habilitado para sempre).
+        // O endereço se re-sincroniza sozinho pelo config que chega.
         usuarioEditou.current = false;
-        setEndereco(chosenEndereco);
         setDescricao(descricao.trim());
-        toast.success("Sobre a Loja salvo");
+        toast.success("Minha loja salva");
       } else {
         // silent:true suprime TODOS os toasts de dentro do updateConfig —
         // inclusive o de falha. A falha tem de ser avisada AQUI, com o
@@ -198,7 +211,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
     } catch (e) {
       if (isCurrent())
         toast.error(
-          `Falha ao salvar: ${e instanceof Error ? e.message : "erro desconhecido"}. O texto foi preservado.`,
+          `${mensagemDeErroDoPainel(e, "salvar")} O texto foi preservado.`,
         );
     } finally {
       if (isCurrent()) setSaving(false);
@@ -213,12 +226,22 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
       <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader
-            titulo="Sobre a Loja"
+            titulo={NOMES_DO_PAINEL["admin-about-store"]}
             acoes={
               <button
                 onClick={() => void handleSubmit()}
-                disabled={!isLoaded || isOffline || !formDirty || saving}
-                title="Salva o endereço e a descrição desta tela"
+                disabled={
+                  !isLoaded ||
+                  isOffline ||
+                  !formDirty ||
+                  saving ||
+                  enderecoPrecisaCompletar
+                }
+                title={
+                  enderecoPrecisaCompletar
+                    ? (mudancaEndereco?.motivo ?? undefined)
+                    : "Salva o endereço e a descrição desta tela"
+                }
                 className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[10.5px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-[#e3c25e] hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
               >
                 {saving ? (
@@ -272,21 +295,15 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         <BlocoNumerado
           numero="2"
           titulo="Endereço da loja"
-          descricao="Alimenta o mapa da página Sobre a Loja. Em branco, o mapa usa o CEP de frete e depois a cidade/UF — como antes deste campo existir."
+          descricao="Digite o CEP e complete o número: a rua, o bairro e a cidade vêm sozinhos. É o endereço do mapa da página Sobre a Loja e de onde saem as entregas."
         >
-          <label htmlFor="store-address" className="text-sm text-zinc-300">
-            Endereço
-          </label>
-          <input
-            id="store-address"
-            value={endereco}
+          <EnderecoDaLoja
+            originCep={config.originCep}
+            storeAddress={config.storeAddress}
+            storeCity={config.storeCity}
+            storeState={config.storeState}
             disabled={saving || !active}
-            onChange={(event) => {
-              usuarioEditou.current = true;
-              setEndereco(event.target.value);
-            }}
-            placeholder="Ex.: Avenida Paulista, 1578 — Bela Vista"
-            className="mt-2 h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
+            onMudou={setMudancaEndereco}
           />
           {queryPrevia && (
             <div className="mt-4 overflow-hidden rounded-2xl border border-white/5">

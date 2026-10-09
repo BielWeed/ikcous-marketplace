@@ -125,55 +125,90 @@ describe("os iframes do mapa da Sobre a Loja nascem credentialless", () => {
 
   it("prévia do painel: o que está DIGITADO alimenta o iframe credentialless SEM gravar nada", async () => {
     configAtual = LOJA_SEM_ENDERECO;
-    const { AdminAboutStoreView } = await import(
-      "@/views/admin/AdminAboutStoreView"
+    // O CEP digitado é buscado nos provedores públicos: aqui responde a
+    // Avenida Paulista, sem ir à rede. Restaurado no fim (os observers
+    // globais deste arquivo ficam).
+    const fetchOriginal = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              logradouro: "Avenida Paulista",
+              bairro: "Bela Vista",
+              localidade: "São Paulo",
+              uf: "SP",
+            }),
+            { status: 200 },
+          ),
+      ),
     );
-    await act(async () => {
-      raiz.render(
-        <AdminAboutStoreView
-          onNavigate={() => {}}
-          active
-          onSetDirty={() => {}}
-        />,
+    try {
+      const { AdminAboutStoreView } = await import(
+        "@/views/admin/AdminAboutStoreView"
       );
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
+      await act(async () => {
+        raiz.render(
+          <AdminAboutStoreView
+            onNavigate={() => {}}
+            active
+            onSetDirty={() => {}}
+          />,
+        );
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
 
-    // Fallback com o campo em branco: o mapa usa o CEP do frete.
-    const previa = hospedeiro.querySelector<HTMLIFrameElement>(
-      "iframe[title='Prévia do mapa da página Sobre a Loja']",
-    );
-    expect(previa).not.toBeNull();
-    expect(previa!.getAttribute("src")).toBe(
-      "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
-    );
-    expect(previa!.hasAttribute("credentialless")).toBe(true);
+      // Fallback com o endereço em branco: o mapa usa o CEP do frete.
+      const previa = hospedeiro.querySelector<HTMLIFrameElement>(
+        "iframe[title='Prévia do mapa da página Sobre a Loja']",
+      );
+      expect(previa).not.toBeNull();
+      expect(previa!.getAttribute("src")).toBe(
+        "https://maps.google.com/maps?q=38500-000&z=15&output=embed",
+      );
+      expect(previa!.hasAttribute("credentialless")).toBe(true);
 
-    // O lojista digita o endereço: a prévia acompanha NA HORA, e nada é
-    // gravado (o Salvar é ação explícita de outro teste). Input controlado do
-    // React: o valor entra pelo setter nativo, como em
-    // admin-sobre-a-loja-salva-sem-apagar.test.tsx.
-    const campo = hospedeiro.querySelector<HTMLInputElement>("#store-address");
-    expect(campo).not.toBeNull();
-    const setter = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "value",
-    )?.set;
-    await act(async () => {
-      setter?.call(campo, "Rodovia BR-365, km 12 — Monte Carmelo");
-      campo!.dispatchEvent(new globalThis.Event("input", { bubbles: true }));
-    });
+      // O lojista digita o CEP e o número: a prévia acompanha o endereço
+      // montado, e nada é gravado (o Salvar é ação explícita de outro
+      // teste). Input do React: o valor entra pelo setter nativo e é
+      // entregue 200 ms depois, como em
+      // admin-sobre-a-loja-salva-sem-apagar.test.tsx.
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      for (const [id, valor] of [
+        ["endereco-cep", "01310100"],
+        ["endereco-numero", "1578"],
+      ] as const) {
+        const campo = hospedeiro.querySelector<HTMLInputElement>(`#${id}`);
+        expect(campo).not.toBeNull();
+        await act(async () => {
+          campo!.focus();
+          setter?.call(campo, valor);
+          campo!.dispatchEvent(
+            new globalThis.Event("input", { bubbles: true }),
+          );
+        });
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 260));
+        });
+      }
 
-    const previaDigita = hospedeiro.querySelector<HTMLIFrameElement>(
-      "iframe[title='Prévia do mapa da página Sobre a Loja']",
-    );
-    expect(previaDigita!.getAttribute("src")).toBe(
-      `https://maps.google.com/maps?q=${encodeURIComponent("Rodovia BR-365, km 12 — Monte Carmelo")}&z=15&output=embed`,
-    );
-    expect(previaDigita!.hasAttribute("credentialless")).toBe(true);
-    expect(updateConfig).not.toHaveBeenCalled();
+      const previaDigita = hospedeiro.querySelector<HTMLIFrameElement>(
+        "iframe[title='Prévia do mapa da página Sobre a Loja']",
+      );
+      expect(previaDigita!.getAttribute("src")).toBe(
+        `https://maps.google.com/maps?q=${encodeURIComponent("Avenida Paulista, 1578 — Bela Vista, São Paulo/SP — CEP 01310-100")}&z=15&output=embed`,
+      );
+      expect(previaDigita!.hasAttribute("credentialless")).toBe(true);
+      expect(updateConfig).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal("fetch", fetchOriginal);
+    }
   });
 
   it("sem endereço, sem CEP e sem cidade: o cartão de mapa nem existe", async () => {
