@@ -4805,3 +4805,243 @@ Deno.test("10a/10b — o rpc-ci.yml roda a prova viva do portão dos cupons desl
       );
   }
 });
+
+// 11a/11b (08/10/2026) — a PROVA DE OBJETOS do lote da migration 20261204000000
+// (a venda do balcão se anula no mesmo dia) em scripts/frota/canais-de-backend.json.
+// A 11a é a consulta do lote (DEPOIS do apply, 14 linhas); a 11b é a de ausência
+// (ANTES, 9 linhas). As duas são de ROL FECHADO. Estes testes medem o texto dos
+// .sql contra a migration DESTA árvore; a decisão de cada consulta num Postgres real
+// está em tests/banco/anular-venda-portao-viva.cjs (rodado no rpc-ci.yml).
+const NOME_11A = "11a-conferir-anular-venda-presencial-aplicado";
+const NOME_11B = "11b-antes-anular-venda-presencial-funcao-ausente";
+const MIGRACAO_204 = `${MIGRATIONS_DIR}/20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql`;
+const ROLLBACK_204 = `${MIGRATIONS_DIR}/rollback-manual-20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql`;
+
+/** O corpo da função (prosrc) e seus hashes, recalculados do ARQUIVO da migration. */
+async function hashesDaMigration204() {
+  const { createHash } = require("node:crypto");
+  const h = (alg: string, s: string) =>
+    createHash(alg).update(s, "utf8").digest("hex");
+  const lf = (await Deno.readTextFile(MIGRACAO_204)).replace(/\r\n/g, "\n");
+  const m = lf.match(
+    /CREATE OR REPLACE FUNCTION public\.anular_venda_presencial\(p_order_id uuid, p_motivo text\)[\s\S]*?AS \$function\$([\s\S]*?)\$function\$;/,
+  );
+  assert(m, "não achei o corpo na migration 20261204000000");
+  const crlf = (s: string) => s.replace(/\n/g, "\r\n");
+  return {
+    corpo: m[1],
+    md5: h("md5", m[1]),
+    shaLF: h("sha256", m[1]),
+    shaCRLF: h("sha256", crlf(m[1])),
+    pre: lf,
+  };
+}
+
+const { ROL_DA_11A, ROL_DA_11B } = require(SCRIPT);
+for (const [nome, nItens, rol] of [
+  [NOME_11A, 14, ROL_DA_11A],
+  [NOME_11B, 9, ROL_DA_11B],
+] as Array<[string, number, string[]]>) {
+  Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo, saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+    await t.step("está no menu do workflow", async () => {
+      const yaml = await Deno.readTextFile(WORKFLOW);
+      const i = yaml.indexOf("consulta:");
+      assert(i >= 0, "não achei a entrada `consulta`");
+      assert(
+        yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+        `falta a opção ${nome} no workflow`,
+      );
+    });
+    await t.step(
+      "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com as reprovadas primeiro",
+      () => {
+        assertEquals(contarStatements(sql), 1);
+        assert(/^\s*WITH\b/i.test(limpo));
+        assert(
+          !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+            semTexto,
+          ),
+          "palavra de escrita fora de comentário/string",
+        );
+        assert(
+          !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+            semTexto,
+          ),
+          "SQL dinâmico (ou leitura de arquivo)",
+        );
+        assert(
+          /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+            limpo,
+          ),
+          "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+        );
+      },
+    );
+    await t.step(
+      "SÓ catálogo: nenhuma tabela de dados (pedido, venda, caixa, cliente) e nenhuma coluna de cliente ou dinheiro",
+      () => {
+        const permitidos = new Set([
+          "pg_proc",
+          "pg_namespace",
+          "pg_language",
+          "pg_attribute",
+          "aclexplode",
+          // CTEs desta consulta
+          "fn",
+          "tabelas",
+          "colunas",
+          "itens",
+        ]);
+        const alvos = [
+          ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+        ].map((m) => m[1].toLowerCase());
+        assert(alvos.length > 0);
+        for (const alvo of alvos)
+          assert(
+            permitidos.has(alvo),
+            `lê de "${alvo}", que não é catálogo nem CTE`,
+          );
+        assert(
+          !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|amount|total|subtotal|discount|gateway_payment_id|payment_status|paid_at|code)\b/i.test(
+            semTexto,
+          ),
+          "a consulta citaria dado pessoal ou financeiro",
+        );
+      },
+    );
+    await t.step(
+      `o rol fechado do código tem ${nItens} itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)`,
+      () => {
+        assertEquals(rol.length, nItens);
+        assertEquals(new Set(rol).size, rol.length);
+        assertEquals(
+          Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+            ([n]) => n === nome,
+          )?.[1],
+          rol,
+        );
+        for (const item of rol)
+          assertStringIncludes(
+            limpo,
+            `'${item}'`,
+            `o item do rol "${item}" não existe no .sql`,
+          );
+        const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',/g)].map(
+          (m) => m[1],
+        );
+        assertEquals(
+          doSql.length,
+          nItens,
+          `o .sql monta ${nItens} linhas de resultado`,
+        );
+        for (const item of doSql)
+          assert(
+            rol.includes(item),
+            `o .sql monta "${item}" e o rol do código não o tem`,
+          );
+      },
+    );
+  });
+}
+
+Deno.test("11a/11b — os hashes são EXATAMENTE os que o arquivo da migration 20261204000000 e o rollback-manual desta árvore definem", async (t) => {
+  const h = await hashesDaMigration204();
+  const sql11a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_11A}.sql`);
+  const sql11b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_11B}.sql`);
+  const hexDe = (sql: string, tam: number) =>
+    [
+      ...new Set(
+        [
+          ...sqlSemComentarios(sql).matchAll(
+            tam === 64 ? /'([0-9a-f]{64})'/g : /'([0-9a-f]{32})'/g,
+          ),
+        ].map((m) => m[1]),
+      ),
+    ].sort();
+  await t.step(
+    "11a: só os 2 sha256 do corpo final (LF e CRLF), o LF como esperado",
+    () => {
+      assertEquals(hexDe(sql11a, 64), [h.shaLF, h.shaCRLF].sort());
+      assert(
+        sqlSemComentarios(sql11a).includes(`'${h.shaLF}',`),
+        "o LF tem de ser o esperado",
+      );
+    },
+  );
+  await t.step(
+    "o rollback-manual aceita exatamente os mesmos dois sha256",
+    async () => {
+      const rb = await Deno.readTextFile(ROLLBACK_204);
+      const lit = [...rb.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
+      assertEquals(lit, [h.shaLF, h.shaCRLF]);
+    },
+  );
+  await t.step(
+    "o pré-voo da migration reconhece o md5 do próprio corpo",
+    () => {
+      assertStringIncludes(h.pre, `v_hash <> '${h.md5}'`);
+    },
+  );
+  await t.step(
+    "11b: os 2 md5 das dependências (is_admin_atual e pedido__mudar_status) são os MESMOS do pré-voo da migration",
+    () => {
+      const md5s = hexDe(sql11b, 32);
+      assertEquals(md5s.length, 2);
+      for (const m of md5s) assertStringIncludes(h.pre, `'${m}'`);
+    },
+  );
+});
+
+Deno.test("11a/11b — o rpc-ci.yml roda a prova viva do portão de anular a venda no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  for (const prova of ["anular-venda-viva", "anular-venda-portao-viva"]) {
+    // Sem RegExp montada com variavel: acha a linha do comando e confere as duas
+    // anteriores (o if e o nome do passo).
+    const linhas = bloqueante.split("\n");
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(linhas[k - 2].startsWith("      - name: "));
+    assert(
+      bloqueante.indexOf(linhas.at(k) ?? "") > bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(prova));
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_11A}.sql`,
+      `scripts/publicacao/consultas/${NOME_11B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,8 +12,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
+import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
 import {
   fraseDeEsperaDoPedido,
   idadeDoPedidoPendente,
@@ -22,7 +26,7 @@ import { supabase } from "@/lib/supabase";
 import { textoCancelamentoDoPainel } from "@/lib/texto-cancelamento-do-painel";
 import { cn } from "@/lib/utils";
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
-import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
+import type { Order, OrderStatus, PaymentStatus } from "@/types";
 import {
   Check,
   Clock,
@@ -110,17 +114,13 @@ const getNextStatus = (current: OrderStatus): OrderStatus | null => {
 const statusConfigByKey = new Map(Object.entries(statusConfig));
 
 // Rótulo do método de pagamento na ficha. T3 (lote B, 12/09): "Rede PIX" e
-// "Rede Crédito" eram vocabulário de operador — passam a ser "PIX" e
-// "Cartão de crédito", como o lojista fala.
-// "online" existe desde a Fase 2 (CHECKOUT-010): pedido cobrado no site
-// via Mercado Pago, não confundir com dinheiro na entrega — quem lança o
-// caixa a partir daqui não pode ler "Dinheiro Espécie" e cobrar de novo.
-const getPaymentMethodLabel = (method: PaymentMethod) => {
-  if (method === "pix") return "PIX";
-  if (method === "card") return "Cartão de crédito";
-  if (method === "online") return "Pagamento Online";
-  return "Dinheiro Espécie";
-};
+// "Rede Crédito" eram vocabulário de operador. Agora a ficha usa o MESMO
+// rótulo da planilha e da lista (`rotuloDaFormaDoPedido`, defeito D4 de
+// 28/09): cartão no balcão é "na maquininha", no site é "na entrega", e
+// "online" nunca vira "Dinheiro" (quem lança o caixa a partir daqui não pode
+// ler dinheiro e cobrar de novo). O PIX segue curto, como a ficha já dizia.
+const getPaymentMethodLabel = (order: Order) =>
+  order.paymentMethod === "pix" ? "PIX" : rotuloDaFormaDoPedido(order);
 
 // T3 (lote B, 12/09) — a frase-situação do dinheiro no cabeçalho da seção
 // Pagamento (emprestada da direção "Dinheiro primeiro"): a primeira dúvida
@@ -814,6 +814,37 @@ function OrderFinanceCard({
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
+  // Anular venda do balcão (migration 20261204000000): só o BOTÃO mora aqui; a
+  // regra de verdade é do banco. Esta ficha NÃO é desmontada quando o pedido
+  // aberto troca (as abas do painel ficam montadas), então tudo que A anulou,
+  // está anulando ou digitou é amarrado ao ID do pedido, nunca a um booleano:
+  //  - `anuladoId` segura o aviso de sucesso mesmo depois que o pedido muda
+  //    para cancelado (a regra do botão passa a dizer não e o aviso sumiria);
+  //  - `anulandoId` segura a peça no ar enquanto a chamada está em voo (o
+  //    tempo real pode trazer o pedido cancelado antes da resposta);
+  //  - `key={order.id}` na peça zera a pergunta aberta e o motivo digitado.
+  const { anular } = useAnularVendaDoBalcao();
+  const [anuladoId, setAnuladoId] = useState<string | null>(null);
+  const [anulandoId, setAnulandoId] = useState<string | null>(null);
+  // Trocou de pedido: o aviso de A não volta quando se reabre A (A já está
+  // cancelada; a peça, remontada, ofereceria anular de novo). Ajuste de estado
+  // durante a renderização, o padrão documentado do React para isto.
+  const [pedidoVisto, setPedidoVisto] = useState(order.id);
+  if (pedidoVisto !== order.id) {
+    setPedidoVisto(order.id);
+    setAnuladoId(null);
+  }
+  const anularEstePedido = async (motivo: string) => {
+    const id = order.id;
+    setAnulandoId(id);
+    try {
+      const resultado = await anular(id, motivo);
+      setAnuladoId(id);
+      return resultado;
+    } finally {
+      setAnulandoId(null);
+    }
+  };
   // T3 (lote B, 12/09) — a frase-situação do dinheiro responde "esse pedido
   // está pago?" antes de qualquer outra coisa. Verde quando o dinheiro entrou
   // SEM pendência; âmbar para tudo o mais — inclusive os "precisa de
@@ -838,7 +869,7 @@ function OrderFinanceCard({
       <div className="flex items-center justify-between gap-3">
         <h3 className={tituloDoBloco}>Pagamento</h3>
         <p className="text-sm font-medium text-zinc-300">
-          {getPaymentMethodLabel(order.paymentMethod)}
+          {getPaymentMethodLabel(order)}
         </p>
       </div>
 
@@ -905,6 +936,20 @@ function OrderFinanceCard({
               {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
             </button>
           )}
+        </div>
+      )}
+
+      {(anuladoId === order.id ||
+        anulandoId === order.id ||
+        podeAnularVendaDoBalcao(order)) && (
+        <div className="border-t border-white/5 pt-4">
+          <AnularVendaDoBalcao
+            key={order.id}
+            total={order.total}
+            forma={order.paymentMethod}
+            clienteComConta={Boolean(order.userId)}
+            aoAnular={anularEstePedido}
+          />
         </div>
       )}
     </section>

@@ -94,6 +94,7 @@ function pedidoFake(
     paymentStatus?: Order["paymentStatus"];
     pagamentoRecebidoEm?: string | null;
     trackingCode?: string;
+    canal?: Order["canal"];
   } = {},
 ): Order {
   return {
@@ -124,6 +125,7 @@ function pedidoFake(
     // null — diferente de `pagamentoRecebidoEm`): `?? null` aqui derrubava
     // o `tsc -b` do typecheck/build. `undefined` já casa com o opcional.
     trackingCode: overrides.trackingCode,
+    canal: overrides.canal,
   };
 }
 
@@ -406,12 +408,37 @@ describe("ficha do pedido (mesa do lojista) — vocabulário novo", () => {
     expect(texto).not.toContain("GRÁTIS");
   });
 
-  it("método cartão na entrega: 'Cartão de crédito' (era 'Rede Crédito')", async () => {
+  it("método cartão na entrega: 'Cartão na entrega' (era 'Rede Crédito', depois 'Cartão de crédito')", async () => {
     await renderizar(pedidoFake({ paymentMethod: "card" }));
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Cartão de crédito");
+    expect(texto).toContain("Cartão na entrega");
     expect(texto).not.toContain("Rede Crédito");
+  });
+
+  // Defeito D4 (28/09): a ficha dizia uma coisa e a planilha outra. Agora o
+  // rótulo é o mesmo de `rotuloDaFormaDoPedido`, e o canal entra na conta.
+  it("cartão no balcão diz 'na maquininha'; pagamento do site não vira 'Dinheiro'; PIX segue curto", async () => {
+    await renderizar(
+      pedidoFake({ paymentMethod: "card", canal: "presencial" }),
+    );
+    expect(hospedeiro.textContent ?? "").toContain("Cartão na maquininha");
+    expect(hospedeiro.textContent ?? "").not.toContain("Cartão na entrega");
+  });
+
+  it("pagamento online (site) não aparece como dinheiro", async () => {
+    await renderizar(pedidoFake({ paymentMethod: "online" }));
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).toContain("Pagamento pelo site");
+    expect(texto).not.toContain("Dinheiro Espécie");
+  });
+
+  it("dinheiro mostra 'Dinheiro', e PIX continua 'PIX' (não 'PIX Instantâneo')", async () => {
+    await renderizar(pedidoFake({ paymentMethod: "cash" }));
+    expect(hospedeiro.textContent ?? "").toContain("Dinheiro");
+    await renderizar(pedidoFake({ paymentMethod: "pix" }));
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("PIX Instantâneo");
   });
 });
 

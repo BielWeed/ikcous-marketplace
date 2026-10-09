@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 const CABECALHO =
   "Número do pedido;Data;Cliente;Telefone;Status;Forma de pagamento;Status do pagamento;Total;Cidade;UF;Itens;Subtotal;Frete;Desconto;Canal";
 
+const CRLF = "\r\n";
+
 function pedido(alteracoes: Partial<Pedido> = {}): Pedido {
   return {
     id: "pedido-abc123",
@@ -168,7 +170,59 @@ describe("pedidosParaCsv", () => {
           paymentMethod: "online",
         }),
       ]),
-    ).toContain(";Ana;;Novo Pedido;Outro;Sem cobrança online;1234,50;;");
+    ).toContain(
+      ";Ana;;Novo Pedido;Pagamento pelo site;Sem cobrança online;1234,50;;",
+    );
+  });
+
+  // D4: a coluna "Forma de pagamento" usa a fonte única
+  // (`src/lib/forma-de-pagamento.ts`) — a mesma da lista de pedidos. Só o
+  // TEXTO muda; as demais colunas, o filtro e o valor gravado não.
+  describe("coluna Forma de pagamento (D4)", () => {
+    const formaDe = (alteracoes: Partial<Pedido>) =>
+      pedidosParaCsv([pedido(alteracoes)])
+        .split(CRLF)[1]
+        .split(";")[5];
+
+    it("cartão deixa de ser 'Crédito Seguro': no site é 'na entrega', no balcão é 'na maquininha'", () => {
+      expect(formaDe({ paymentMethod: "card" })).toBe("Cartão na entrega");
+      expect(formaDe({ paymentMethod: "card", canal: "online" })).toBe(
+        "Cartão na entrega",
+      );
+      expect(formaDe({ paymentMethod: "card", canal: "presencial" })).toBe(
+        "Cartão na maquininha",
+      );
+    });
+
+    it("pago pelo app deixa de ser 'Outro': diz que foi pelo site", () => {
+      expect(formaDe({ paymentMethod: "online" })).toBe("Pagamento pelo site");
+    });
+
+    it("PIX e dinheiro seguem com o texto de antes (não-regressão)", () => {
+      expect(formaDe({ paymentMethod: "pix" })).toBe("PIX Instantâneo");
+      expect(formaDe({ paymentMethod: "cash" })).toBe("Dinheiro");
+      expect(formaDe({ paymentMethod: "cash", canal: "presencial" })).toBe(
+        "Dinheiro",
+      );
+    });
+
+    it("forma que o app não conhece continua 'Outro'", () => {
+      expect(
+        formaDe({
+          paymentMethod: "boleto" as unknown as Pedido["paymentMethod"],
+        }),
+      ).toBe("Outro");
+    });
+
+    it("o texto novo não mexe no resto da linha: mesmas 15 colunas, mesmo canal", () => {
+      const colunas = pedidosParaCsv([
+        pedido({ paymentMethod: "card", canal: "presencial" }),
+      ])
+        .split(CRLF)[1]
+        .split(";");
+      expect(colunas).toHaveLength(15);
+      expect(colunas[14]).toBe("Balcão");
+    });
   });
 
   it.each([

@@ -59,6 +59,31 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `canais-de-backend.json` real fecham em APLICAR / NADA / PARAR. **Não prova**
   a IKCOUS nem a Savy (só o run da consulta contra o ref de cada loja prova) e
   não mede o `supabase_read_only_user` nem o Postgres 15 da Supabase.
+- **anular venda do balcão (`anular-venda-viva.cjs`, via `rodar-isolado.cjs`)**: a
+  migration 20261204000000 — `anular_venda_presencial(uuid, text)`. Só o admin de
+  AGORA (o rebaixado com o JWT ainda dizendo admin é recusado sem escrever, nas duas
+  fontes do papel), só venda do balcão paga no ato, só no mesmo dia da loja (as duas
+  bordas da virada, em qualquer fuso de sessão), motivo obrigatório; sem devolução
+  nem estorno do app; o estoque volta UMA vez (inclusive com duas conexões reais),
+  o Financeiro e o caixa fecham em zero, repetir o toque devolve `ja_anulada`;
+  ordem global das travas, pré-voo, rollback (aplicar, desfazer, aplicar: idêntico)
+  e 22 mutantes (cada guarda tirada deixa a prova vermelha). O motivo exige ao menos uma
+  letra ou número (espaço de largura zero, BOM e só emoji são recusados) e o
+  pagamento desfeito e refeito no mesmo dia tem frase própria.
+- **portão da anulação do balcão (`anular-venda-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `11a-conferir-anular-venda-presencial-aplicado`
+  (DEPOIS do apply, 14 linhas) e `11b-antes-anular-venda-presencial-funcao-ausente`
+  (ANTES, 9 linhas), a "prova de objetos" do lote 20261204000000 em
+  `scripts/frota/canais-de-backend.json`, no mesmo molde da prova dos cupons:
+  11b positiva na base SEM a migration, 11a positiva depois do apply real (LF e
+  CRLF, igual à árvore inteira), um defeito por vez (SECURITY INVOKER, sem
+  `search_path`, `EXECUTE` para PUBLIC/anon/service_role, authenticated revogado,
+  corpo com 1 byte a mais, sobrecarga extra, função ou dependência ausente, corpo
+  de dependência diferente do pré-voo, tabela ou coluna ausente) reprovando a SUA
+  linha; 23 mutantes do texto das consultas ficam vermelhos; resposta parcial ou
+  duplicada tem `rol=invalido`; erro de SQL nunca vira positivo; o
+  `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR.
+  **Não prova** a IKCOUS nem a Savy (só o run da consulta contra o ref de cada loja).
 
 ## Como rodar
 

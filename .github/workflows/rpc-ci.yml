@@ -47,6 +47,8 @@ on:
       - "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql"
       - "scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql"
       - "scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql"
+      - "scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql"
+      - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -62,6 +64,8 @@ on:
       - "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql"
       - "scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql"
       - "scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql"
+      - "scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql"
+      - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -262,6 +266,29 @@ jobs:
       - name: Prova viva do portao dos cupons desligados (consultas 10a e 10b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-desligados-portao-viva.cjs
+      # Anular venda do balcão (migration 20261204000000, 08/10/2026): só o admin
+      # de AGORA (o funcionário rebaixado com o JWT ainda dizendo admin é recusado
+      # sem escrever, nas duas fontes do papel), só canal presencial, só no mesmo dia
+      # da loja (as duas bordas da virada, qualquer fuso de sessão), motivo
+      # obrigatório, sem devolução nem estorno do app, estoque devolvido UMA vez
+      # (inclusive com duas conexões reais), Financeiro e caixa fechando em zero,
+      # ordem global das travas, pré-voo e rollback; cada guarda tirada (mutante)
+      # deixa a prova vermelha. CLONE próprio.
+      - name: Prova viva de anular a venda do balcão (migration 20261204000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/anular-venda-viva.cjs
+      # Portão da release para a migration 20261204000000: as consultas 11a (DEPOIS)
+      # e 11b (ANTES) do lote em scripts/frota/canais-de-backend.json, executadas num
+      # Postgres real como papel de leitura. 11b positiva num banco SEM a função; 11a
+      # positiva depois do apply real (LF e CRLF); cada defeito (SECURITY INVOKER, sem
+      # search_path, EXECUTE para PUBLIC/anon/service_role, authenticated revogado, corpo
+      # com 1 byte a mais, sobrecarga extra, função ausente) reprova a SUA linha e leva o
+      # portão a NEGATIVA, nunca a POSITIVA; mutantes da consulta ficam vermelhos; erro de
+      # SQL não vira positivo; ponta a ponta com o conferir-banco.cjs e o lote real:
+      # APLICAR, NADA ou PARAR. BLOQUEANTE: o portão de CADA loja depende dela. CLONE próprio.
+      - name: Prova viva do portão de anular a venda do balcão (consultas 11a e 11b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/anular-venda-portao-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
