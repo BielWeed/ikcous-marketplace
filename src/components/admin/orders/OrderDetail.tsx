@@ -810,8 +810,15 @@ interface OrderFinanceCardProps {
 // mesmo dia. A 1ª frase é a da recusa do banco (migration 20261204000000,
 // `anular_venda_presencial`); a 2ª da recusa ("registre uma devolução") NÃO
 // vale aqui: o lojista não abre devolução de balcão no painel
-// (`solicitar_devolucao` exige o cliente logado).
+// (`solicitar_devolucao` exige o cliente logado, `user_id = auth.uid()`).
+// No balcão não há arrependimento (ele exige canal 'online'): sobra troca ou
+// vício, pedidos pelo cliente — e só se a venda nasceu na conta dele
+// (`registrar_venda_presencial(p_cliente_user_id)`; não há vínculo depois).
 const FRASE_ANULAR_SO_NO_MESMO_DIA = "Só dá para anular no mesmo dia da venda.";
+const DEPOIS_DO_DIA_COM_CLIENTE =
+  "Depois disso, a troca ou o reparo de defeito só podem ser pedidos pelo cliente, no app, dentro do prazo da loja.";
+const DEPOIS_DO_DIA_SEM_CLIENTE =
+  "Esta venda não está na conta de nenhum cliente: o app não abre devolução para ela.";
 
 /** A venda do balcão que só não se anula mais porque o dia passou: a MESMA
  * regra do botão, com o recebimento trazido para hoje. Não decide nada — só
@@ -964,12 +971,17 @@ function OrderFinanceCard({
         anulandoId === order.id ||
         podeAnularVendaDoBalcao(order)) && (
         <div className="border-t border-white/5 pt-4">
-          {podeAnularVendaDoBalcao(order) && (
-            <p className="mb-3 text-xs leading-relaxed text-zinc-400">
-              Venda do balcão não se cancela: se foi engano, anule hoje — o
-              estoque volta e o Financeiro desconta.
-            </p>
-          )}
+          {/* Some ao anular (e durante a chamada): o hook não atualiza o
+              pedido local, e com o tempo real atrasado "anule hoje" ficaria
+              ao lado de "Venda anulada". */}
+          {podeAnularVendaDoBalcao(order) &&
+            anuladoId !== order.id &&
+            anulandoId !== order.id && (
+              <p className="mb-3 text-xs leading-relaxed text-zinc-400">
+                Venda do balcão não se cancela: se foi engano, anule hoje — o
+                estoque volta e o Financeiro desconta.
+              </p>
+            )}
           <AnularVendaDoBalcao
             key={order.id}
             total={order.total}
@@ -982,8 +994,8 @@ function OrderFinanceCard({
 
       {anulacaoDoBalcaoPassouDoDia(order) && (
         <p className="border-t border-white/5 pt-4 text-xs leading-relaxed text-zinc-400">
-          {FRASE_ANULAR_SO_NO_MESMO_DIA} Depois disso, a devolução só pode ser
-          pedida pelo cliente que tem conta no app.
+          {FRASE_ANULAR_SO_NO_MESMO_DIA}{" "}
+          {order.userId ? DEPOIS_DO_DIA_COM_CLIENTE : DEPOIS_DO_DIA_SEM_CLIENTE}
         </p>
       )}
     </section>
