@@ -223,6 +223,13 @@ async function tentarSql(c, sql) {
   }
 }
 
+/** Uma conexão NOVA (para as provas de concorrência, que precisam de duas sessões reais). */
+async function novoCliente() {
+  const cl = new Client({ connectionString: lerDatabaseUrlEfemera() });
+  await cl.connect();
+  return cl;
+}
+
 /** Obriga o resultado de `como` a ter dado certo (asserção, nunca exceção solta). */
 function exigirOk(r, rotulo) {
   assert.ok(r.ok, `${rotulo}: ${r.message}`);
@@ -2255,6 +2262,9 @@ prova(
 );
 
 async function duasVarreduras(c) {
+  // Esta prova COMMITA um pedido elegível: um mutante que a derruba no meio
+  // deixaria o pedido para a rodada seguinte contar dois. Zera antes.
+  await varrer(c);
   const { id, cupom } = await emTx(
     c,
     () => montar(c, { kind: "v24-cancelado", offsetSec: 46 * MIN }),

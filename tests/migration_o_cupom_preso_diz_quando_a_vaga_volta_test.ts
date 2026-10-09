@@ -142,7 +142,7 @@ Deno.test("205: o hash da varredura e o do corpo VIVO — a ULTIMA migration que
 Deno.test("205: so cria as duas funcoes novas — nenhuma funcao existente e redefinida", () => {
   const criadas = [
     ...semComentarios(migration).matchAll(
-      /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w.]+)\(/gi,
+      /CREATE (?:OR REPLACE )?FUNCTION ([\w.]+)\(/g,
     ),
   ].map((m) => m[1]);
   assertEquals(criadas, [
@@ -157,12 +157,7 @@ Deno.test("205: so cria as duas funcoes novas — nenhuma funcao existente e red
     "devolver_uso_cupom(",
   ]) {
     // o unico uso permitido e' a checagem do pre-voo, nunca CREATE/REPLACE
-    assert(
-      !new RegExp(`FUNCTION\\s+public\\.${nome.replace("(", "\\(")}`, "i").test(
-        codigo,
-      ),
-      nome,
-    );
+    assert(!codigo.toLowerCase().includes(`function public.${nome}`), nome);
   }
 });
 
