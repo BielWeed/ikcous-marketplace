@@ -295,3 +295,55 @@ describe("primeiroSkuEmColisao — o SKU que já existe fora do lote", () => {
     expect(primeiroSkuEmColisao(["BLU-A", "BLU-B"], ["BLU-C"])).toBeNull();
   });
 });
+
+describe("gerarGrade — a chave de combinação não tem ambiguidade", () => {
+  // A chave usada para dizer "esta combinação já existe" era a junção dos
+  // pedaços com "|" e "#". Valor com "|" (ou nome com "#") fazia DUAS
+  // combinações diferentes darem a mesma chave: a grade então pulava uma
+  // combinação legítima, sem avisar — o lojista achava que a grade estava
+  // completa e a cor/tamanho nunca aparecia na loja.
+  const existente = (name: string, value: string) => ({ name, value });
+
+  it("valor com '|' não colide com outra combinação já existente", () => {
+    // Existente: Cor "A|B" × Tamanho "C". Grade pede: Cor "A" × Tamanho "B|C".
+    const { linhas, erro } = gerarGrade(
+      [atributo("Cor", "A"), atributo("Tamanho", "B|C")],
+      [existente("Cor / Tamanho", "A|B / C")],
+    );
+    expect(erro).toBeNull();
+    expect(linhas).toEqual([{ name: "Cor / Tamanho", value: "A / B|C" }]);
+  });
+
+  it("nome com '#' não colide com valor com '#' de outra linha", () => {
+    // Existente: "Cor" = "B#C". Grade pede: atributo "Cor#B" = "C".
+    const { linhas, erro } = gerarGrade(
+      [atributo("Cor#B", "C")],
+      [existente("Cor", "B#C")],
+    );
+    expect(erro).toBeNull();
+    expect(linhas).toEqual([{ name: "Cor#B", value: "C" }]);
+  });
+
+  it("duas combinações diferentes da MESMA grade não se fundem pela chave", () => {
+    const { linhas, erro } = gerarGrade(
+      [atributo("Cor", "A", "A|B"), atributo("Tamanho", "B|C", "C")],
+      [],
+    );
+    expect(erro).toBeNull();
+    expect(valoresGerados({ linhas, erro })).toEqual([
+      "A / B|C",
+      "A / C",
+      "A|B / B|C",
+      "A|B / C",
+    ]);
+  });
+
+  it("o que é IGUAL de verdade continua sendo pulado (caixa e espaço das pontas)", () => {
+    const { linhas, erro } = gerarGrade(
+      [atributo("Cor", "  azul "), atributo("Tamanho", "pp")],
+      [existente("Cor / Tamanho", "Azul / PP")],
+    );
+    expect(erro).toBeNull();
+    expect(linhas).toEqual([]);
+  });
+});

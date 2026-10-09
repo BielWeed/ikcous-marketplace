@@ -59,17 +59,21 @@ const chaveMinuscula = (texto: string): string =>
 
 /** A identidade inteira da linha vira UMA chave: atributos e valores
  *  desmontados pelo separador e normalizados. Linha legada de um atributo
- *  ("Cor" / "Branca") e combinação de um par da grade caem na mesma chave. */
-function chaveDaIdentidade(identidade: IdentidadeDeVariante): string {
+ *  ("Cor" / "Branca") e combinação de um par da grade caem na mesma chave.
+ *
+ *  A chave é `JSON.stringify([nomes, valores])` — duas listas, não texto
+ *  colado. Colar com "|" e "#" era ambíguo: Cor "A|B" × Tamanho "C" e Cor "A"
+ *  × Tamanho "B|C" davam a MESMA chave, e a grade pulava uma combinação
+ *  legítima como se já existisse. Em JSON cada pedaço é uma string entre
+ *  aspas dentro de uma lista: nenhum caractere do valor muda a fronteira. */
+export function chaveDaIdentidade(identidade: IdentidadeDeVariante): string {
   const nomes = identidade.name
     .split(SEPARADOR_DE_ATRIBUTOS)
-    .map(chaveMinuscula)
-    .join("|");
+    .map(chaveMinuscula);
   const valores = identidade.value
     .split(SEPARADOR_DE_ATRIBUTOS)
-    .map(chaveMinuscula)
-    .join("|");
-  return `${nomes}#${valores}`;
+    .map(chaveMinuscula);
+  return JSON.stringify([nomes, valores]);
 }
 
 /**
@@ -149,7 +153,7 @@ export function gerarGrade(
     limpos.push({ name: nome, valores });
   }
 
-  const existentesVistos = new Set(existentes.map(chaveDaIdentidade));
+  const existentesVistos = new Set(existentes.map((e) => chaveDaIdentidade(e)));
 
   // Cartesiano por acumulação: o primeiro atributo varia mais devagar —
   // [Amarela, Verde] × [PP, P] sai Amarela/PP, Amarela/P, Verde/PP, Verde/P,
