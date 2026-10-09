@@ -1,5 +1,6 @@
 import { EstadoDeOperacaoProvider } from "@/components/admin/PontoDeOperacao";
 import { Button } from "@/components/ui/button";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useDocumentMeta } from "@/hooks/useDocumentMeta";
@@ -32,7 +33,6 @@ import {
   Bell,
   Layers,
   LayoutGrid,
-  Megaphone,
   Package,
   Plus,
   ScanBarcode,
@@ -962,26 +962,6 @@ export function AdminLayout({
               <span className="absolute right-4 size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.6)]" />
             )}
           </Button>
-          {/*
-            "Avisar clientes" é a tela que ENVIA push para quem compra — o
-            oposto da tela de cima, que só RECEBE. O rótulo "Push" dizia o
-            mecanismo e não o efeito, e com dois sinos no mesmo bloco os dois
-            botões se confundiriam: por isso o megafone.
-          */}
-          <Button
-            variant="ghost"
-            aria-label="Avisar clientes"
-            onClick={() => {
-              haptic.light();
-              onNavigate("admin-push");
-            }}
-            onMouseEnter={() => handleMouseEnter("admin-push")}
-            onMouseLeave={handleMouseLeave}
-            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
-          >
-            <Megaphone className="size-4 text-admin-gold" />{" "}
-            <span>Avisar clientes</span>
-          </Button>
         </div>
       </aside>
 
@@ -1141,7 +1121,7 @@ export function AdminLayout({
                     <LayoutGrid className="size-3" />
                   </div>
                   <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
-                    Gerenciador de Banners
+                    {NOMES_DO_PAINEL["admin-banners"]}
                   </h1>
                 </div>
 
@@ -1169,7 +1149,7 @@ export function AdminLayout({
                     <Layers className="size-3" />
                   </div>
                   <h1 className="select-none text-xs font-black uppercase tracking-wider text-white truncate">
-                    Vitrines & Carrosséis
+                    {NOMES_DO_PAINEL["admin-carousels"]}
                   </h1>
                 </div>
               </div>
