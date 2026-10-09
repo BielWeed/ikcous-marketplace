@@ -31,12 +31,20 @@
 # principal e por isso usa o mesmo `SUPABASE_ACCESS_TOKEN` — nunca o da Savy.
 # Revogar: na mesma página do Supabase.
 #
-# LOJA CLIENTE (savy | almeida) = mesma disciplina, de propósito: só as cinco
-# Functions financeiras (as do apelido `cobranca`) e `expected_sha` completo,
-# igual ao SHA do run, conferido ANTES do primeiro deploy. Function de dinheiro
-# numa loja de terceiro não sobe de um commit que ninguém aprovou. As outras
-# lojas clientes (Brand Meliz, Space Loja do Kit) ficam em projetos de contas
-# sem acesso deste token e não têm rota aqui.
+# LOJA CLIENTE (ikcous-publicada | savy | almeida) = mesma disciplina, de
+# propósito: só as cinco Functions financeiras (as do apelido `cobranca`) e
+# `expected_sha` completo, igual ao SHA do run, conferido ANTES do primeiro
+# deploy. Function de dinheiro numa loja de terceiro não sobe de um commit que
+# ninguém aprovou. EXCEÇÃO (09/10/2026): `send-order-confirmation`, e SÓ na
+# ikcous-publicada e na savy (as lojas reais; a almeida segue nas cinco). O
+# comprovante do balcão divide `_shared/pedido.ts` e `_shared/comprovante.ts`
+# com as financeiras, então a release trava se esses arquivos mudam e a
+# function que os usa para o e-mail não pode subir. O apelido `cobranca` NÃO a
+# inclui: ela só entra pelo nome. A lista por loja que a release enxerga é
+# `functionsPublicaveis` em scripts/frota/canais-de-backend.json (o teste
+# tests/ci_publicar_functions_test.ts exige que as duas listas concordem). As
+# outras lojas clientes (Brand Meliz, Space Loja do Kit) ficam em projetos de
+# contas sem acesso deste token e não têm rota aqui.
 #
 # Testado por tests/ci_publicar_functions_test.ts: o bloco de validação é
 # extraído DESTE arquivo e rodado com bash contra os casos que importam.
@@ -144,7 +152,12 @@ jobs:
             if [ "$CLIENTE" = "sim" ]; then
               case "$n" in
                 criar-pagamento|webhook-mercadopago|reconciliar-pagamentos|estornar-pagamento|credenciais-mercado-pago) ;;
-                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras"; exit 1 ;;
+                send-order-confirmation)
+                  case "$PROJETO" in
+                    ikcous-publicada|savy) ;;
+                    *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (a send-order-confirmation só sobe na IKCOUS e na Savy)"; exit 1 ;;
+                  esac ;;
+                *) echo "::error::Loja cliente ($PROJETO) só admite as cinco Functions financeiras (mais a send-order-confirmation, só na IKCOUS e na Savy)"; exit 1 ;;
               esac
             fi
             if [ ! -f "supabase/functions/$n/index.ts" ]; then

@@ -383,6 +383,68 @@ Deno.test("pedido com canal 'presencial' no banco -> o e-mail abre com 'Compra n
   assertEquals((await htmlEnviadoPara(undefined)).includes("Compra na loja"), false);
 });
 
+// --- D3: a forma de pagamento do e-mail do BALCÃO não fala de entrega --------
+//
+// Defeito medido (spec do balcão, 28/09): venda de balcão pelo caminho real
+// (`enviarComprovantePedido`, canal lido do banco) saía com "Dinheiro na
+// entrega" / "PIX na entrega" / "Cartao na entrega". Aqui a ponta inteira:
+// coluna `canal` -> montador -> `htmlDoPedido` -> rótulo no HTML enviado.
+
+async function htmlDoComprovante(
+  paymentMethod: string,
+  canal: string | undefined,
+): Promise<string> {
+  const pedido: Record<string, unknown> = {
+    id: UUID_PEDIDO,
+    customer_data: { email: "cliente@exemplo.com" },
+    subtotal: 100,
+    total: 100,
+    payment_method: paymentMethod,
+    payment_status: "recebido_na_entrega",
+  };
+  if (canal !== undefined) pedido.canal = canal;
+  const enviados: Array<{ para: string; assunto: string; html: string }> = [];
+  const supabase = clienteFalso({
+    pedido,
+    itens: [{ product_name: "Blusa", quantity: 1, price: 100 }],
+    storeConfig: { store_name: "Loja Teste" },
+    reservou: true,
+  });
+  const desfecho = await enviarComprovantePedido({
+    supabase: supabase as never,
+    orderId: UUID_PEDIDO,
+    deps: {
+      remetenteConfigurado: () => true,
+      enviarEmail: async (args) => {
+        enviados.push(args);
+      },
+    },
+  });
+  assertEquals(desfecho, { ok: true });
+  assertEquals(enviados.length, 1);
+  return enviados[0].html;
+}
+
+Deno.test("e-mail do BALCÃO diz a forma real paga na loja e nunca 'na entrega'", async () => {
+  const dinheiro = await htmlDoComprovante("cash", "presencial");
+  assertStringIncludes(dinheiro, "Forma de pagamento");
+  assertStringIncludes(dinheiro, ">Dinheiro<");
+  const pix = await htmlDoComprovante("pix", "presencial");
+  assertStringIncludes(pix, ">PIX<");
+  const cartao = await htmlDoComprovante("card", "presencial");
+  assertStringIncludes(cartao, "Cartao na maquininha");
+  for (const html of [dinheiro, pix, cartao]) {
+    assertEquals(html.toLowerCase().includes("na entrega"), false);
+  }
+});
+
+Deno.test("e-mail do SITE (não presencial) segue com o texto de sempre: 'na entrega' (não-regressão do D3)", async () => {
+  assertStringIncludes(await htmlDoComprovante("cash", undefined), "Dinheiro na entrega");
+  assertStringIncludes(await htmlDoComprovante("cash", "online"), "Dinheiro na entrega");
+  assertStringIncludes(await htmlDoComprovante("pix", "online"), "PIX na entrega");
+  assertStringIncludes(await htmlDoComprovante("card", "online"), "Cartao na entrega");
+});
+
 // --- PIX pelo site: a abertura do e-mail depende do STATUS, não só do MÉTODO
 //
 // Achado de revisão de contexto limpo, 25/08/2026: mutar `comprovante.ts:331-
