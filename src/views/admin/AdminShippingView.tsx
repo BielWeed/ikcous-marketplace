@@ -662,7 +662,7 @@ export const AdminShippingView = memo(function AdminShippingView({
           botão Salvar (shrink-0) são os dois únicos filhos desta linha —
           sem quebra, os dois nunca encolhem e forçam a página a alargar em
           375px. */}
-      <div className="sticky top-0 z-30 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="sticky top-0 z-30 border-b border-white/5 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
           <AdminPageHeader
             titulo={NOMES_DO_PAINEL["admin-shipping"]}

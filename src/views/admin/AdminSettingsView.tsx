@@ -72,25 +72,71 @@ const MercadoPagoSection = lazy(() =>
 );
 
 // ==========================================
-// Connection Diagnostics Section (Glassmorphism)
+// Diagnóstico de Conexão (G7b, painel simples): o resultado é uma frase —
+// conexão boa, lenta ou sem internet — com o que fazer; os números (ms e
+// tentativas sem resposta) ficam num detalhe, para quem quiser.
 // ==========================================
+type ResultadoDaConexao = "boa" | "lenta" | "sem-internet";
+
+interface MedidaDaConexao {
+  /** Tempo médio de resposta em ms; `null` = nenhuma tentativa respondeu. */
+  readonly media: number | null;
+  readonly minima: number | null;
+  readonly maxima: number | null;
+  readonly falhas: number;
+  readonly tentativas: number;
+}
+
+// Mesmo corte de antes (abaixo de 250 ms era "Excelente"/"Moderado"); uma
+// tentativa sem resposta já é conexão lenta (antes: "Instabilidade
+// Detectada").
+function resultadoDaConexao(medida: MedidaDaConexao): ResultadoDaConexao {
+  if (medida.media === null) return "sem-internet";
+  if (medida.falhas > 0 || medida.media >= 250) return "lenta";
+  return "boa";
+}
+
+const PALAVRAS_DA_CONEXAO = new Map<
+  ResultadoDaConexao,
+  { readonly titulo: string; readonly frase: string; readonly cor: string }
+>([
+  [
+    "boa",
+    {
+      titulo: "Conexão boa",
+      frase: "A loja responde rápido neste aparelho.",
+      cor: "text-emerald-400",
+    },
+  ],
+  [
+    "lenta",
+    {
+      titulo: "Conexão lenta",
+      frase:
+        "A loja demora (ou às vezes não responde) neste aparelho. Se o painel travar, tente outra rede: Wi-Fi ou dados móveis.",
+      cor: "text-amber-400",
+    },
+  ],
+  [
+    "sem-internet",
+    {
+      titulo: "Sem internet",
+      frase:
+        "Este aparelho não conseguiu falar com a loja. Confira o Wi-Fi ou os dados móveis e teste de novo.",
+      cor: "text-red-400",
+    },
+  ],
+]);
+
 const ConnectionDiagnosticsSection = memo(
   function ConnectionDiagnosticsSection() {
     const [isOpen, setIsOpen] = useState(true);
-    const [testStatus, setTestStatus] = useState<
-      "idle" | "testing" | "success" | "error"
-    >("idle");
-    const [avgLatency, setAvgLatency] = useState<number | null>(null);
-    const [minLatency, setMinLatency] = useState<number | null>(null);
-    const [maxLatency, setMaxLatency] = useState<number | null>(null);
-    const [packetLoss, setPacketLoss] = useState<number>(0);
+    const [testando, setTestando] = useState(false);
+    const [medida, setMedida] = useState<MedidaDaConexao | null>(null);
 
     const handleTestConnectivity = async () => {
-      setTestStatus("testing");
-      setAvgLatency(null);
-      setMinLatency(null);
-      setMaxLatency(null);
-      setPacketLoss(0);
+      setTestando(true);
+      setMedida(null);
 
       const pings: number[] = [];
       let failed = 0;
@@ -116,21 +162,22 @@ const ConnectionDiagnosticsSection = memo(
         }
       }
 
-      const lossPercent = Math.round((failed / totalTests) * 100);
-      setPacketLoss(lossPercent);
-
-      if (pings.length > 0) {
-        const avg = Math.round(pings.reduce((a, b) => a + b, 0) / pings.length);
-        const min = Math.round(Math.min(...pings));
-        const max = Math.round(Math.max(...pings));
-        setAvgLatency(avg);
-        setMinLatency(min);
-        setMaxLatency(max);
-        setTestStatus(lossPercent > 50 ? "error" : "success");
-      } else {
-        setTestStatus("error");
-      }
+      const temResposta = pings.length > 0;
+      setMedida({
+        media: temResposta
+          ? Math.round(pings.reduce((a, b) => a + b, 0) / pings.length)
+          : null,
+        minima: temResposta ? Math.round(Math.min(...pings)) : null,
+        maxima: temResposta ? Math.round(Math.max(...pings)) : null,
+        falhas: failed,
+        tentativas: totalTests,
+      });
+      setTestando(false);
     };
+
+    const palavras = medida
+      ? PALAVRAS_DA_CONEXAO.get(resultadoDaConexao(medida))
+      : undefined;
 
     return (
       <div className="space-y-3">
@@ -171,135 +218,73 @@ const ConnectionDiagnosticsSection = memo(
           <div className="overflow-hidden">
             <div className="pt-2">
               <div className="admin-glass group relative overflow-hidden border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
-                <div className="flex flex-col gap-2.5">
-                  <p className="text-left text-[9.5px] leading-snug text-zinc-400">
-                    Meça a latência (ping) e perda de pacotes entre o seu
-                    navegador e o banco de dados do Supabase. Útil para
-                    identificar lentidão ou instabilidade na sua rede local.
+                <div className="flex flex-col gap-3">
+                  <p className="text-left text-[11px] leading-snug text-zinc-400">
+                    Teste se a internet deste aparelho chega bem até a sua loja.
+                    Ajuda a saber se uma lentidão do painel vem da sua rede.
                   </p>
 
-                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-                    {/* Latency metric */}
-                    <div className="flex min-h-[60px] flex-col justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                      <span className="text-[7.5px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                        Latência Média
-                      </span>
-                      {testStatus === "testing" ? (
-                        <div className="my-1 h-5 w-12 animate-pulse rounded bg-white/5" />
-                      ) : avgLatency !== null ? (
-                        <div className="my-1 flex items-baseline gap-0.5">
-                          <span
-                            className={`text-xl font-black tracking-tight ${
-                              avgLatency < 120
-                                ? "text-emerald-400"
-                                : avgLatency < 250
-                                  ? "text-amber-400"
-                                  : "text-red-400"
-                            }`}
-                          >
-                            {avgLatency}
-                          </span>
-                          <span className="text-[8px] font-bold text-zinc-500">
-                            ms
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="my-1 text-xs font-bold text-zinc-600">
-                          —
-                        </span>
-                      )}
-                      <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-600">
-                        {avgLatency !== null
-                          ? avgLatency < 120
-                            ? "Excelente"
-                            : avgLatency < 250
-                              ? "Moderado"
-                              : "Conexão Lenta"
-                          : "Aguardando Teste"}
-                      </span>
+                  {testando ? (
+                    <div
+                      aria-hidden="true"
+                      className="h-16 animate-pulse rounded-xl bg-white/5"
+                    />
+                  ) : medida && palavras ? (
+                    <div
+                      role="status"
+                      className="space-y-1.5 rounded-xl border border-white/5 bg-zinc-950/40 p-3"
+                    >
+                      <p className={cn("text-sm font-black", palavras.cor)}>
+                        {palavras.titulo}
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-zinc-400">
+                        {palavras.frase}
+                      </p>
+                      <details className="text-[11px] text-zinc-500">
+                        <summary className="min-h-11 cursor-pointer select-none py-2 font-bold text-zinc-400">
+                          Ver os números
+                        </summary>
+                        <ul className="space-y-0.5">
+                          {medida.media !== null && (
+                            <>
+                              <li>
+                                Tempo médio de resposta: {medida.media} ms
+                              </li>
+                              <li>
+                                Mais rápida: {medida.minima} ms · mais lenta:{" "}
+                                {medida.maxima} ms
+                              </li>
+                            </>
+                          )}
+                          <li>
+                            Tentativas sem resposta: {medida.falhas} de{" "}
+                            {medida.tentativas}
+                          </li>
+                        </ul>
+                      </details>
                     </div>
+                  ) : (
+                    <p className="text-[11px] text-zinc-500">
+                      Ainda não testada neste aparelho.
+                    </p>
+                  )}
 
-                    {/* Min/Max Latency */}
-                    <div className="flex min-h-[60px] flex-col justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                      <span className="text-[7.5px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                        Variação (Min / Max)
-                      </span>
-                      {testStatus === "testing" ? (
-                        <div className="my-1 h-5 w-16 animate-pulse rounded bg-white/5" />
-                      ) : minLatency !== null && maxLatency !== null ? (
-                        <div className="my-1 flex items-baseline gap-1 text-xs font-black text-zinc-200">
-                          <span>{minLatency}</span>
-                          <span className="font-normal text-zinc-600">/</span>
-                          <span>{maxLatency}</span>
-                          <span className="text-[8px] font-bold text-zinc-500">
-                            ms
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="my-1 text-xs font-bold text-zinc-600">
-                          —
-                        </span>
-                      )}
-                      <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-600">
-                        Tempo limite
-                      </span>
-                    </div>
-
-                    {/* Packet loss */}
-                    <div className="flex min-h-[60px] flex-col justify-between rounded-xl border border-white/5 bg-zinc-950/40 p-2.5">
-                      <span className="text-[7.5px] font-black uppercase leading-none tracking-widest text-zinc-500">
-                        Perda de Pacotes
-                      </span>
-                      {testStatus === "testing" ? (
-                        <div className="my-1 h-5 w-8 animate-pulse rounded bg-white/5" />
-                      ) : testStatus !== "idle" ? (
-                        <div className="my-1 flex items-baseline gap-0.5">
-                          <span
-                            className={`text-xl font-black tracking-tight ${
-                              packetLoss === 0
-                                ? "text-emerald-400"
-                                : "text-red-400"
-                            }`}
-                          >
-                            {packetLoss}
-                          </span>
-                          <span className="text-[8px] font-bold text-zinc-500">
-                            %
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="my-1 text-xs font-bold text-zinc-600">
-                          —
-                        </span>
-                      )}
-                      <span className="text-[7.5px] font-bold uppercase tracking-wider text-zinc-600">
-                        {testStatus !== "idle"
-                          ? packetLoss === 0
-                            ? "Conexão Estável"
-                            : "Instabilidade Detectada"
-                          : "Aguardando Teste"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-1 flex justify-end">
+                  <div className="flex justify-end">
                     <button
                       type="button"
-                      disabled={testStatus === "testing"}
+                      disabled={testando}
                       onClick={handleTestConnectivity}
-                      className="h-8.5 flex select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-amber-500/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                      className="flex min-h-11 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-amber-500/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                     >
-                      {testStatus === "testing" ? (
-                        <>
-                          <RefreshCw className="size-3 animate-spin text-amber-500" />
-                          <span>Medindo...</span>
-                        </>
-                      ) : (
-                        <>
-                          <RefreshCw className="size-3 text-amber-500" />
-                          <span>Testar Conectividade</span>
-                        </>
-                      )}
+                      <RefreshCw
+                        className={cn(
+                          "size-3 text-amber-500",
+                          testando && "animate-spin",
+                        )}
+                      />
+                      <span>
+                        {testando ? "Testando…" : "Testar a conexão agora"}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -394,7 +379,7 @@ function SecaoColapsavel({
               {titulo}
             </span>
             {subtitulo && (
-              <span className="block truncate text-[10px] font-medium normal-case tracking-normal text-zinc-500">
+              <span className="block truncate text-[11px] font-medium normal-case tracking-normal text-zinc-500">
                 {subtitulo}
               </span>
             )}
@@ -402,7 +387,7 @@ function SecaoColapsavel({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {aberta && comPendencia && (
-            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
               Salve antes de fechar
             </span>
           )}
@@ -529,7 +514,7 @@ function GrupoDeAjustes({
   const subtitulo = subtitulos.get(chave);
   return (
     <section className="space-y-3">
-      <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+      <h2 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
         {grupo.titulo}
       </h2>
       {subtitulo && (
@@ -795,7 +780,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   return (
     <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
       {/* Elite Header */}
-      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
+      <div className="sticky top-0 z-30 mb-3 border-b border-white/5 bg-admin-bg/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
           <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-settings"]}>
             <button
@@ -1037,7 +1022,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
           {GRUPOS_DE_AJUSTES.map((grupo) => (
             <div key={grupo.chave} className="space-y-3">
-              <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                 {grupo.titulo}
               </h4>
               <p className="rounded-2xl border border-white/5 bg-zinc-900/40 p-4 text-xs text-zinc-400">
