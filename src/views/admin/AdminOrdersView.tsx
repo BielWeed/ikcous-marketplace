@@ -558,7 +558,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         subValue: ACOES_PENDENTES_SUBTITULO,
       },
       {
-        label: "Ticket Médio",
+        label: "Valor médio por venda",
         value:
           stats.avgTicket !== null
             ? `R$ ${stats.avgTicket.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
@@ -1436,7 +1436,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   // concluído sem resultado = tela de erro com botão de voltar.
   if (selectedOrderId && loadingDetail) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
         <div className="relative size-16">
           <div className="absolute inset-0 animate-ping rounded-full border-2 border-amber-500/10 duration-1000" />
           <div className="size-16 animate-spin rounded-full border-2 border-amber-500/10 border-t-amber-500" />
@@ -1445,10 +1445,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
         </div>
         <div className="mt-6 flex flex-col items-center gap-1.5 text-center">
-          <p className="animate-pulse text-[10px] font-black uppercase tracking-[0.2em] text-amber-500">
+          <p className="animate-pulse text-[11px] font-black uppercase tracking-[0.2em] text-amber-500">
             Carregando Pedido
           </p>
-          <p className="text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+          <p className="text-[11px] font-bold uppercase leading-none tracking-widest text-zinc-500">
             Aguarde um instante
           </p>
         </div>
@@ -1460,7 +1460,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     // PAINEL-03: fetch concluiu sem resultado — erro de rede, id inválido,
     // ou sessão expirou. Antes: spinner eterno; agora: erro + voltar.
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
         <div className="flex size-16 items-center justify-center rounded-full border border-red-500/20 bg-red-500/10">
           <svg
             className="size-8 text-red-400"
@@ -1477,15 +1477,15 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </svg>
         </div>
         <div className="mt-6 flex flex-col items-center gap-1.5 text-center">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
             Não foi possível carregar
           </p>
-          <p className="max-w-[240px] text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+          <p className="max-w-[240px] text-[11px] font-bold uppercase leading-none tracking-widest text-zinc-500">
             Verifique a conexão e tente novamente
           </p>
           <button
             onClick={() => onNavigate("admin-orders")}
-            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
+            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-amber-500/30 hover:bg-amber-500/10"
           >
             Voltar aos pedidos
           </button>
@@ -1598,7 +1598,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
             container que rola — sticky só anda dentro do próprio containing
             block. O id="admin-pedidos-lista" (âncora do scroll do botão
             "Ver pedidos") fica no bloco da lista, mais abaixo. */}
-        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex w-full items-center gap-3">
             <div className="group relative w-full flex-1">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -1651,7 +1651,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 className="mt-2 w-80 rounded-3xl border-zinc-800/50 bg-zinc-950 p-4 shadow-2xl backdrop-blur-3xl"
               >
                 <div className="space-y-4">
-                  <h4 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h4 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     Filtro Temporal
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
@@ -1673,7 +1673,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       />
                       <label
                         htmlFor="filter-date-start"
-                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                        className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
                       >
                         Início
                       </label>
@@ -1696,7 +1696,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       />
                       <label
                         htmlFor="filter-date-end"
-                        className="pointer-events-none absolute left-4 top-2 text-[7px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
+                        className="pointer-events-none absolute left-4 top-2 text-[11px] font-black uppercase tracking-widest text-zinc-600 transition-colors group-focus-within:text-admin-gold"
                       >
                         Fim
                       </label>
@@ -1705,7 +1705,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {(dateRange.start || dateRange.end) && (
                     <Button
                       variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       onClick={() => {
                         setDateRange({ start: "", end: "" });
                         setCurrentPage(0);
@@ -1715,7 +1715,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                     </Button>
                   )}
 
-                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h4 className="mt-6 px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     Status de Pagamento
                   </h4>
                   <div className="flex flex-wrap gap-2">
@@ -1726,7 +1726,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         paymentFilter === "all"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1743,7 +1743,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                           setCurrentPage(0);
                         }}
                         className={cn(
-                          "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                          "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                           paymentFilter === value
                             ? "bg-admin-gold border-admin-gold text-black"
                             : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1756,7 +1756,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {paymentFilter !== "all" && (
                     <Button
                       variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       onClick={() => {
                         setPaymentFilter("all");
                         setCurrentPage(0);
@@ -1769,7 +1769,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {/* C4.4: chip de canal — molde literal do grupo "Status de
                       Pagamento" acima. Filtra NO BANCO (p_canal na RPC), não
                       em memória. */}
-                  <h4 className="mt-6 px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h4 className="mt-6 px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     Canal da venda
                   </h4>
                   <div className="flex flex-wrap gap-2">
@@ -1780,7 +1780,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         canalFilter === "all"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1795,7 +1795,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         canalFilter === "online"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1810,7 +1810,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         setCurrentPage(0);
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                        "px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all border",
                         canalFilter === "presencial"
                           ? "bg-admin-gold border-admin-gold text-black"
                           : "bg-zinc-900/60 border-zinc-800 text-zinc-500 hover:bg-zinc-800 hover:text-white",
@@ -1822,7 +1822,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   {canalFilter !== "all" && (
                     <Button
                       variant="ghost"
-                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[10px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
+                      className="mt-2 h-10 w-full rounded-xl border border-zinc-800 text-[11px] font-black uppercase tracking-widest text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       onClick={() => {
                         setCanalFilter("all");
                         setCurrentPage(0);
@@ -1878,7 +1878,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               disabled={totalOrders === 0 || gerandoCsv}
               aria-label={rotuloExportarCsv}
               title={rotuloExportarCsv}
-              className="group h-11 shrink-0 gap-1.5 rounded-xl border-zinc-800 bg-zinc-900/60 px-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 hover:text-white focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
+              className="group h-11 shrink-0 gap-1.5 rounded-xl border-zinc-800 bg-zinc-900/60 px-3 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-all hover:border-admin-gold/50 hover:bg-zinc-800 hover:text-white focus-visible:ring-0 focus-visible:ring-offset-0 disabled:opacity-40"
             >
               {gerandoCsv ? (
                 <Loader2 className="size-4 shrink-0 animate-spin text-admin-gold" />
@@ -1903,7 +1903,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "open"
                   ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                   : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -1919,7 +1919,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                   setCurrentPage(0);
                 }}
                 className={cn(
-                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                  "relative isolate flex h-11 shrink-0 snap-center items-center gap-1.5 rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                   filter === status
                     ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                     : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -1943,7 +1943,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 setCurrentPage(0);
               }}
               className={cn(
-                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                 filter === "all"
                   ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                   : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -1999,7 +1999,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                         Ainda não tem nenhum pedido
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Quando a primeira venda acontecer, o pedido aparece aqui
                         — com status, valor e o atalho de WhatsApp para o
                         cliente.
@@ -2015,7 +2015,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                         Nenhum pedido com esse filtro de pagamento
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Nenhum pedido com esse status de pagamento. Limpe o
                         filtro para ver todos os pedidos.
                       </p>
@@ -2032,7 +2032,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                       <h3 className="relative z-10 text-xs font-black uppercase tracking-widest text-zinc-400">
                         Nenhum pedido nesse canal
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Limpe o filtro de canal da venda para ver todos os
                         pedidos.
                       </p>
@@ -2054,7 +2054,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                         Nenhum pedido corresponde ao que está sendo mostrado
                         agora
                       </h3>
-                      <p className="relative z-10 mt-2 max-w-xs text-[10px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
+                      <p className="relative z-10 mt-2 max-w-xs text-[11px] font-bold uppercase leading-relaxed tracking-widest text-zinc-600">
                         Pode ser o filtro de status, a busca ou o período
                         aplicado. Toque em "Todos", no fim da fileira de
                         filtros, ou limpe a busca e o período para ver todos os
@@ -2135,7 +2135,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Ciclo de Vida do Pedido
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2186,7 +2186,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Recursos e Ações Rápidas
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
