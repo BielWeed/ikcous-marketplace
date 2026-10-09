@@ -171,11 +171,17 @@
     "'Catraca de lint'): 'eslint warnings 410 / teto 451 / baixou -41' e 'biome errors",
     "14 / teto 15 / baixou -1'. A queda VEIO do PR: a tela Atendimento (a",
     "AdminWhatsAppConfigView, com dezenas de warnings) foi apagada e o código que a",
-    "substitui nasce limpo. Baixado SÓ DEPOIS do CI, como as quedas anteriores."
+    "substitui nasce limpo. Baixado SÓ DEPOIS do CI, como as quedas anteriores.",
+    "",
+    "09/10/2026 — warnings de eslint de 410 para 409. Medido localmente com a catraca",
+    "(PR #785, ondas G e H, lote 2: 'eslint warnings 409 / teto 410 / baixou -1'); a",
+    "medição local bateu com a do CI nas duas quedas anteriores desta série (410 e 14).",
+    "A queda veio do PR: o acordeão de Transportadoras saiu de Ajustes (um warning de",
+    "classe h-8.5 junto). Baixado depois do CI verde (12/12) no commit b1bf2ba1."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 410
+    "warnings": 409
   },
   "biome": {
     "errors": 14,
