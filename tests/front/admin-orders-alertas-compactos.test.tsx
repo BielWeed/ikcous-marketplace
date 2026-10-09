@@ -2,7 +2,7 @@
 //
 // Histórico do desenho desta área (tudo por pedido do Gabriel):
 //   02/09 de manhã: os três blocos gigantes (dinheiro preso, mercadoria a
-//     voltar, estorno devido) viraram uma PÍLULA colapsável full-width.
+//     voltar, devolver ao cliente) viraram uma PÍLULA colapsável full-width.
 //   02/09 à tarde: a pílula ainda ocupava uma faixa inteira da tela — o
 //     Gabriel pediu o passo seguinte: um BOTÃO redondo com o ícone de alerta,
 //     no canto direito da linha do título "Pedidos" (onde nada mais vive —
@@ -374,7 +374,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
 
     expect(botaoAlerta()).toBeNull();
     expect(hospedeiro.textContent).not.toContain("produto a voltar");
-    expect(hospedeiro.textContent).not.toContain("estorno devido");
+    expect(hospedeiro.textContent).not.toContain("devolver ao cliente");
   });
 
   it("pedidos-4: cancelados fora da janela viram aviso no dropdown e o botão pede a varredura completa", async () => {
@@ -430,7 +430,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
       "produto a voltar (1)",
     );
     expect(botaoAlerta()!.getAttribute("aria-label")).not.toContain(
-      "estorno devido",
+      "devolver ao cliente",
     );
     expect(
       hospedeiro.querySelector('[data-testid="alertas-cancelados-badge"]')
@@ -438,7 +438,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
     ).toBe("1");
   });
 
-  it("cancelado pago sem envio: resumo e badge apontam ESTORNO devido", async () => {
+  it("cancelado pago sem envio: resumo e badge apontam DEVOLVER ao cliente", async () => {
     mockAnalyticsStats = statsFake(0);
     mockPedidosCancelados = [
       canceladoFake({ id: "def456", paymentStatus: "pago" }),
@@ -451,7 +451,7 @@ describe("AdminOrdersView — botão de alerta no header com dropdown de detalhe
 
     expect(botaoAlerta()).toBeTruthy();
     expect(botaoAlerta()!.getAttribute("aria-label")).toContain(
-      "estorno devido (1)",
+      "devolver ao cliente (1)",
     );
   });
 

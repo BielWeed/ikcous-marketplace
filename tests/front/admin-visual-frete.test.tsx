@@ -277,7 +277,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     );
     expect(rotuloServicos).toBeDefined();
     for (const classe of [
-      "text-[10px]",
+      "text-[11px]",
       "font-black",
       "uppercase",
       "tracking-[0.2em]",
@@ -289,7 +289,7 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     // ícone junto (o span interno é só o texto) — o que se prende é o
     // elemento que veste as classes.
     const classesDeRotulo = [
-      "text-[10px]",
+      "text-[11px]",
       "font-black",
       "uppercase",
       "tracking-[0.2em]",

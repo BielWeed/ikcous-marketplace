@@ -1020,7 +1020,7 @@ try {
     );
   });
   await test("explicit-source-without-reupload", async () => {
-    await page.click("details summary");
+    await page.click('section[aria-label="Ícones do app (avançado)"] > button[aria-expanded]');
     const before = counts();
     await clickButton("Guardar cabeçalho como fonte");
     await textPresent("Fontes guardadas (2/8)");
@@ -1033,7 +1033,7 @@ try {
       linked.sha256,
     );
     assert.equal(actual.identity.branding_assets.loader.sha256, linked.sha256);
-    await page.click("details summary");
+    await page.click('section[aria-label="Ícones do app (avançado)"] > button[aria-expanded]');
   });
   let canceledPreview;
   await test("cancel-first-chunk", async () => {

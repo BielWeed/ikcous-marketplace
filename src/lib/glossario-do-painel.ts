@@ -77,11 +77,15 @@ export const GLOSSARIO_DO_PAINEL: readonly EntradaDoGlossario[] = [
     lojista: "Lucro se vender tudo",
     proibido: /Lucro Potencial/,
   },
-  { tecnico: "Rendimento %", lojista: "Margem %", proibido: /Rendimento %/ },
-  { tecnico: "DRE", lojista: "Resultado do mês", proibido: /\bDRE\b/ },
+  {
+    tecnico: "Rendimento %",
+    lojista: "Lucro sobre o custo %",
+    proibido: /Rendimento %/,
+  },
+  { tecnico: "DRE", lojista: "Resultado", proibido: /\bDRE\b/ },
   {
     tecnico: "Competência",
-    lojista: "Mês da venda",
+    lojista: "Mês de referência",
     proibido: /Compet[êe]ncia/,
   },
   {

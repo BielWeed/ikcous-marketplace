@@ -139,7 +139,7 @@ describe("glossário do painel", () => {
 
   it("consulta o termo do lojista pelo técnico", () => {
     expect(termoDoLojista("Ticket médio")).toBe("Valor médio por venda");
-    expect(termoDoLojista("DRE")).toBe("Resultado do mês");
+    expect(termoDoLojista("DRE")).toBe("Resultado");
     expect(termoDoLojista("termo que não existe")).toBeNull();
   });
 });
