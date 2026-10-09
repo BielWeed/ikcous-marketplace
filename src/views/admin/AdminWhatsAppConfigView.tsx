@@ -949,7 +949,7 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
                 onClick={() => onNavigate("admin-about-store")}
                 className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-admin-gold/20 bg-admin-bg px-4 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-95"
               >
-                Alterar em Sobre a Loja
+                Alterar em Minha loja
               </button>
             )}
           </div>

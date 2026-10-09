@@ -11,7 +11,7 @@
 // O que este teste fixa:
 //   • salvar o WhatsApp manda `updateConfig` SEM a chave `businessHours`;
 //   • o bloco 2 mostra o horário como TEXTO (leitura) e oferece o botão
-//     "Alterar em Sobre a Loja", que leva a "admin-about-store";
+//     "Alterar em Minha loja", que leva a "admin-about-store";
 //   • o horário não conta como alteração não salva (onSetDirty).
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -143,7 +143,7 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
     expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
     expect(bloco.querySelector("input, textarea")).toBeNull();
 
-    const alterar = botao("Alterar em Sobre a Loja");
+    const alterar = botao("Alterar em Minha loja");
     expect(alterar).toBeTruthy();
     // Régua visual: o botão novo usa token (admin-bg), nunca cor hex literal.
     expect(alterar!.className).not.toMatch(/#[0-9a-fA-F]{3,8}/);
@@ -160,7 +160,7 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
 
     expect(hospedeiro.textContent).toContain("Nenhum horário definido");
     await act(async () => {
-      botao("Alterar em Sobre a Loja")!.dispatchEvent(
+      botao("Alterar em Minha loja")!.dispatchEvent(
         new MouseEvent("click", { bubbles: true }),
       );
     });

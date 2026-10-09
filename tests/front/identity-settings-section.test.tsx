@@ -591,13 +591,16 @@ describe("cancelamento, concorrência e resposta incerta", () => {
     await render();
     await type("store-name", "Meu nome");
     await click("Salvar identidade");
-    expect(input("store-city").value).toBe("Uberlândia");
+    // a cidade não é campo da marca, mas a tela de conflito a compara
+    expect(host.textContent).toContain("Cidade: Uberlândia / Cidade externa");
+    expect(host.querySelector("#store-city")).toBeNull();
     await click("Revisar meu rascunho");
-    expect(input("store-city").value).toBe("Cidade externa");
     expect(input("store-name").value).toBe("Meu nome");
     expect(h.save).toHaveBeenCalledTimes(1);
     await click("Salvar identidade");
     expect(h.save.mock.calls[1][0].expected.revision).toBe("4");
+    // a cidade externa não tocada entra no pacote da nova tentativa
+    expect(h.save.mock.calls[1][0].desired.store_city).toBe("Cidade externa");
   });
   it("conflito do servidor exige leitura antes de conciliar", async () => {
     h.save.mockResolvedValue({ status: "conflict", source: "server" });

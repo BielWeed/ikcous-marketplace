@@ -271,7 +271,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
   });
 
   // ── Aceite 3: CEP de origem ──
-  it("CEP de origem vazio: item pendente, e o clique navega para admin-shipping", async () => {
+  it("CEP de origem vazio: item pendente, e o clique navega para Minha loja (admin-about-store)", async () => {
     const { LojaProntaEEstoqueBaixo } = await import(
       "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
     );
@@ -295,7 +295,7 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     const cepPendente = botaoComTexto(/cep/i);
     expect(cepPendente).toBeTruthy();
     await clicar(cepPendente!);
-    expect(onNavigate).toHaveBeenCalledWith("admin-shipping");
+    expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
   });
 
   it("CEP de origem ausente (undefined): mesmo tratamento de pendente", async () => {

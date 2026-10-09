@@ -73,7 +73,7 @@ describe("CEP de origem só conclui o checklist com oito dígitos", () => {
       const botao = itemCep?.querySelector("button");
       expect(botao).toBeTruthy();
       await act(async () => botao?.click());
-      expect(onNavigate).toHaveBeenCalledWith("admin-shipping");
+      expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
     }
   });
 });
