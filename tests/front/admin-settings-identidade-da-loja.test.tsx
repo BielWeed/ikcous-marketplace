@@ -312,13 +312,11 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
   });
   it("imagens avançadas ficam sob título de gente, com todos os uploads alcançáveis", async () => {
     await render();
-    expect(host.textContent).toContain(
-      "Mais imagens da loja (favicon, ícones, compartilhamento)",
-    );
+    expect(host.textContent).toContain("Ícones do app (avançado)");
     expect(host.textContent).not.toContain("Ajustes avançados de imagens");
     // Renomear não pode esconder nada: as entradas de arquivo continuam na
-    // árvore, inclusive a de adicionar fonte (jsdom mantém o conteúdo do
-    // <details> na árvore esteja ele aberto ou fechado).
+    // árvore, inclusive a de adicionar fonte (a SecaoRecolhivel fechada só
+    // aplica `hidden`, não desmonta).
     expect(
       host.querySelector('input[id="identity-upload-Adicionar%20fonte"]'),
     ).not.toBeNull();

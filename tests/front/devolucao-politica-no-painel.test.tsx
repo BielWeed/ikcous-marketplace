@@ -123,10 +123,10 @@ describe("mínimos legais da política (funções puras)", () => {
     const { erroDaTroca, erroDoArrependimento, erroDoVicio } = await import(
       "@/components/admin/settings/PoliticaDeDevolucaoSection"
     );
-    expect(erroDoArrependimento("6")).toContain("CDC art. 49");
+    expect(erroDoArrependimento("6")).toContain("direito de arrependimento");
     expect(erroDoArrependimento("7")).toBeNull();
     expect(erroDoArrependimento("91")).toBe("No máximo 90 dias.");
-    expect(erroDoVicio("29")).toContain("CDC art. 26");
+    expect(erroDoVicio("29")).toContain("reclamar de defeito");
     expect(erroDoVicio("90")).toBeNull();
     expect(erroDaTroca("0")).toBeNull();
     expect(erroDaTroca("")).toBe("Informe o número de dias.");
@@ -139,11 +139,11 @@ describe("PoliticaDeDevolucaoSection", () => {
     expect(botao("Política salva")?.disabled).toBe(true);
 
     await digitar("politica-arrependimento", "5");
-    expect(hospedeiro.textContent).toContain("CDC art. 49");
+    expect(hospedeiro.textContent).toContain("direito de arrependimento");
     expect(botao("Salvar política")?.disabled).toBe(true);
 
     await digitar("politica-vicio", "20");
-    expect(hospedeiro.textContent).toContain("CDC art. 26");
+    expect(hospedeiro.textContent).toContain("reclamar de defeito");
     expect(rpc).not.toHaveBeenCalled();
   });
 

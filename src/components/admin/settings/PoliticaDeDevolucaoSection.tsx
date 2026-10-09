@@ -85,7 +85,7 @@ export function erroDoArrependimento(v: string): string | null {
   const n = inteiro(v);
   if (!Number.isInteger(n)) return "Informe o número de dias.";
   if (n < MINIMO_ARREPENDIMENTO_DIAS) {
-    return "Mínimo de 7 dias: é o prazo de arrependimento da lei para compras fora da loja física (CDC art. 49).";
+    return "Mínimo de 7 dias: é o direito de arrependimento que a lei garante em compras fora da loja física.";
   }
   if (n > 90) return "No máximo 90 dias.";
   return null;
@@ -102,7 +102,7 @@ export function erroDoVicio(v: string): string | null {
   const n = inteiro(v);
   if (!Number.isInteger(n)) return "Informe o número de dias.";
   if (n < MINIMO_VICIO_DIAS) {
-    return "Mínimo de 30 dias: é a garantia legal de produto não durável (CDC art. 26). Para produto durável a lei dá 90.";
+    return "Mínimo de 30 dias: é o prazo da lei para reclamar de defeito em produto não durável (o durável tem 90).";
   }
   if (n > 365) return "No máximo 365 dias.";
   return null;
@@ -111,7 +111,7 @@ export function erroDoVicio(v: string): string | null {
 const CAMPO =
   "h-11 w-full rounded-xl border border-white/5 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
 const ROTULO =
-  "mb-1.5 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 const CAIXA =
   "space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5";
 
@@ -394,7 +394,7 @@ export function PoliticaDeDevolucaoSection({
             />
           </div>
         </div>
-        <p className="text-[10px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-zinc-500">
           Arrependimento: mínimo 7 dias pela lei (compra pela internet),
           devolvendo tudo o que o cliente pagou, frete de ida incluso. Defeito:
           mínimo 30 dias; produto durável tem 90 pela lei. Troca por gosto é
@@ -426,7 +426,7 @@ export function PoliticaDeDevolucaoSection({
 
       <div className={CAIXA}>
         <h4 className={ROTULO}>Como o produto volta</h4>
-        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
           Pedidos locais (entrega da loja, retirada, balcão)
         </p>
         {METODOS_LOCAIS.map((m) => (
@@ -438,7 +438,7 @@ export function PoliticaDeDevolucaoSection({
             onMudar={(v) => alternarMetodo("metodos_locais", m, v)}
           />
         ))}
-        <p className="pt-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+        <p className="pt-1 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
           Pedidos pelos Correios ou transportadora
         </p>
         {METODOS_NACIONAIS.map((m) => (
@@ -513,7 +513,7 @@ export function PoliticaDeDevolucaoSection({
           ]}
           onMudar={(v) => mudar("frete_troca_pago_por", v)}
         />
-        <p className="text-[10px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-zinc-500">
           No arrependimento e no defeito o frete de volta é sempre da loja.
         </p>
       </div>
@@ -549,7 +549,7 @@ export function PoliticaDeDevolucaoSection({
             })}
           </div>
         )}
-        <p className="text-[10px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-zinc-500">
           Ex.: roupa íntima, cosméticos abertos. Defeito e arrependimento
           continuam valendo — a lei não deixa de fora.
         </p>
@@ -568,7 +568,7 @@ export function PoliticaDeDevolucaoSection({
           placeholder="Ex.: Aceitamos trocas em até 30 dias, com etiqueta e sem uso."
           className="w-full rounded-xl border border-white/5 bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
         />
-        <p className="text-right text-[10px] tabular-nums text-zinc-500">
+        <p className="text-right text-[11px] tabular-nums text-zinc-500">
           {form.texto_politica.length}/4000
         </p>
       </div>
@@ -605,7 +605,7 @@ function LinhaDeInterruptor({
     <div className="flex min-h-11 items-center justify-between gap-3">
       <span className="min-w-0">
         <span className="block text-xs font-bold text-zinc-200">{rotulo}</span>
-        <span className="block text-[10px] leading-snug text-zinc-500">
+        <span className="block text-[11px] leading-snug text-zinc-500">
           {ajuda}
         </span>
       </span>

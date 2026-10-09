@@ -276,7 +276,7 @@ describe("editor de identidade sobre fotografia RPC", () => {
       asset: asset("custom.png", 192, 192),
     });
     await render();
-    await select("Trocar Ícone 192");
+    await select("Trocar Ícone pequeno (192 × 192)");
     await select("Trocar ícone do aplicativo");
     expect(h.prepareIcons).toHaveBeenCalledWith(
       expect.any(File),
@@ -288,7 +288,7 @@ describe("editor de identidade sobre fotografia RPC", () => {
     expect(host.textContent).toContain(
       "No Android, o ícone mostra a logo da loja sobre a cor principal.",
     );
-    // O envio avulso do "Ícone 192" já passa onProgress: a asserção olha só as
+    // O envio avulso do "Ícone pequeno (192 × 192)" já passa onProgress: a asserção olha só as
     // 4 chamadas do envio principal (as últimas), uma por papel, na ordem.
     expect(h.upload).toHaveBeenCalledTimes(5);
     const principal = h.upload.mock.calls.slice(-4);
