@@ -22,6 +22,12 @@ import {
   vi,
 } from "vitest";
 
+import {
+  numeroComPais,
+  numeroParaOCampo,
+  whatsappParaGravar,
+} from "@/components/admin/minha-loja/contato";
+
 import { pararABuscaDeCep } from "./duble-busca-de-cep";
 
 let updateConfigMock: Mock<(...args: unknown[]) => Promise<boolean>>;
@@ -236,6 +242,75 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
     expect(aoSujar).toHaveBeenLastCalledWith(true);
   });
 
+  it("salvar o contato avisa UMA vez: updateConfig sai com silentSuccess e só o 'Contato salvo' aparece", async () => {
+    await abrirTela();
+    await digitarWhatsApp("11987654321");
+    await clicarSalvarContato();
+
+    expect(updateConfigMock.mock.calls[0][1]).toEqual({ silentSuccess: true });
+    expect(toast.success).toHaveBeenCalledTimes(1);
+    expect(toast.success).toHaveBeenCalledWith("Contato salvo");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  describe("os dois Salvar não se confundem", () => {
+    async function digitarDescricao(texto: string) {
+      const campo = hospedeiro.querySelector(
+        "#store-description",
+      ) as HTMLTextAreaElement;
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value",
+      )?.set;
+      await act(async () => {
+        setter?.call(campo, texto);
+        campo.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+
+    const botaoDoCabecalho = () =>
+      hospedeiro.querySelector("button.bg-admin-gold") as HTMLButtonElement;
+    const aviso = () =>
+      hospedeiro.querySelector<HTMLElement>("[data-contato-pendente]");
+
+    it("com WhatsApp e descrição alterados, o Salvar do cabeçalho NÃO grava o contato, avisa e mantém o dirty", async () => {
+      await abrirTela();
+      expect(aviso()).toBeNull();
+      await digitarWhatsApp("11987654321");
+      await digitarDescricao("Importados escolhidos a dedo.");
+
+      // O aviso fica à vista junto ao cabeçalho enquanto o contato está pendente.
+      expect(aviso()?.textContent).toContain("O contato ainda não foi salvo");
+      expect(aviso()?.textContent).toContain("Salvar contato");
+
+      await act(async () => {
+        botaoDoCabecalho().click();
+        await esperar(50);
+      });
+
+      expect(updateConfigMock).toHaveBeenCalledTimes(1);
+      const enviado = updateConfigMock.mock.calls[0][0] as Record<
+        string,
+        unknown
+      >;
+      expect(enviado).toHaveProperty("storeDescription");
+      expect(enviado).not.toHaveProperty("whatsappNumber");
+      expect(enviado).not.toHaveProperty("shareText");
+      // O toast diz só o que foi salvo; o contato segue pendente e avisado.
+      expect(toast.success).toHaveBeenCalledWith("Endereço e descrição salvos");
+      expect(toast.success).not.toHaveBeenCalledWith("Minha loja salva");
+      expect(aviso()).not.toBeNull();
+      expect(aoSujar).toHaveBeenLastCalledWith(true);
+      expect(botaoSalvarContato().disabled).toBe(false);
+    });
+
+    it("sem contato pendente o aviso não aparece", async () => {
+      await abrirTela();
+      await digitarDescricao("Só a descrição mudou.");
+      expect(aviso()).toBeNull();
+    });
+  });
+
   it("os modelos de mensagem abrem e fecham (Esc) e o modelo escolhido preenche o editor", async () => {
     await abrirTela();
 
@@ -384,5 +459,37 @@ describe("Minha loja — bloco Contato (WhatsApp e mensagem de compartilhar)", (
       await abrirTela();
       expect(faltaPreencher()).toBeNull();
     });
+  });
+});
+
+describe("regras do número de WhatsApp (contato.ts)", () => {
+  it("numeroParaOCampo tira o 55 só de número COM país (12 ou 13 dígitos)", () => {
+    expect(numeroParaOCampo("5534999998888")).toBe("34999998888");
+    expect(numeroParaOCampo("553432123456")).toBe("3432123456");
+    expect(numeroParaOCampo("(34) 99999-8888")).toBe("34999998888");
+    expect(numeroParaOCampo(null)).toBe("");
+  });
+
+  it("DDD 55 (interior do RS) sem país NÃO perde os dois primeiros dígitos", () => {
+    expect(numeroParaOCampo("55991234567")).toBe("55991234567");
+    expect(numeroParaOCampo("5532123456")).toBe("5532123456");
+  });
+
+  it("DDD 55 COM país: tira só o 55 do país", () => {
+    expect(numeroParaOCampo("5555991234567")).toBe("55991234567");
+  });
+
+  it("whatsappParaGravar: vazio é NULL, 10-11 dígitos ganham 55, menos de 10 é inválido", () => {
+    expect(whatsappParaGravar("")).toEqual({ valido: true, valor: null });
+    expect(whatsappParaGravar("34999998888")).toEqual({
+      valido: true,
+      valor: "5534999998888",
+    });
+    expect(whatsappParaGravar("55991234567")).toEqual({
+      valido: true,
+      valor: "5555991234567",
+    });
+    expect(whatsappParaGravar("119876543")).toEqual({ valido: false });
+    expect(numeroComPais("5534999998888")).toBe("5534999998888");
   });
 });

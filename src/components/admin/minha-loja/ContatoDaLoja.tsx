@@ -95,10 +95,15 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
       // em frente. Sem isto, o admin via "salvo" sobre uma gravação que
       // falhou — e o WhatsApp é o único canal de fechamento de pedido da loja
       // (ADMIN-010, #94).
-      const salvou = await updateConfig({
-        whatsappNumber: paraGravar.valor,
-        shareText: texto,
-      });
+      // `silentSuccess` cala só o "Configurações salvas" genérico: sai um
+      // único aviso, o "Contato salvo" daqui (o de erro continua do contexto).
+      const salvou = await updateConfig(
+        {
+          whatsappNumber: paraGravar.valor,
+          shareText: texto,
+        },
+        { silentSuccess: true },
+      );
       if (!salvou) return;
       toast.success("Contato salvo");
     } catch (erro) {
@@ -126,7 +131,9 @@ export const ContatoDaLoja = memo(function ContatoDaLoja({
         />
       </div>
 
-      <div className="flex justify-end border-t border-white/5 pt-4">
+      {/* Um só Salvar, sempre à vista: gruda acima da barra de baixo enquanto
+          o bloco está na tela, para não exigir rolar a prévia de 420px. */}
+      <div className="sticky bottom-[var(--admin-tab-pb,6.25rem)] z-20 flex justify-end rounded-xl border border-white/5 bg-admin-bg/95 p-3 backdrop-blur-md">
         <button
           type="button"
           onClick={() => void salvar()}

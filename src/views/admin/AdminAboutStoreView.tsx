@@ -242,7 +242,9 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         // O endereço se re-sincroniza sozinho pelo config que chega.
         usuarioEditou.current = false;
         setDescricao(descricao.trim());
-        toast.success("Minha loja salva");
+        // O Salvar do cabeçalho NÃO grava o contato (ele tem o próprio): o aviso
+        // diz só o que foi salvo, e o contato pendente segue avisado no topo.
+        toast.success("Endereço e descrição salvos");
       } else {
         // silent:true suprime TODOS os toasts de dentro do updateConfig —
         // inclusive o de falha. A falha tem de ser avisada AQUI, com o
@@ -315,7 +317,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   saving ||
                   enderecoPrecisaCompletar
                 }
-                title="Salva o endereço e a descrição desta tela"
+                title="Salva o endereço e a descrição desta tela (o contato tem o próprio Salvar)"
                 className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[10.5px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-[#e3c25e] hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
               >
                 {saving ? (
@@ -336,6 +338,16 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             }
           />
         </div>
+        {contatoPendente && (
+          <p
+            role="status"
+            data-contato-pendente
+            className="mx-auto mt-2 flex w-full max-w-4xl items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm font-bold text-amber-300"
+          >
+            <AlertTriangle aria-hidden="true" className="size-4 shrink-0" />O
+            contato ainda não foi salvo — use Salvar contato.
+          </p>
+        )}
       </div>
 
       <div className="mx-auto max-w-4xl space-y-4 px-4 pt-4">

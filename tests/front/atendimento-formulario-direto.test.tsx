@@ -208,9 +208,12 @@ describe("Minha loja › Contato — formulário direto (direção B)", () => {
     });
 
     // Sem `businessHours` no payload (A1): salvar aqui nunca toca o horário.
-    expect(updateConfig).toHaveBeenCalledWith({
-      whatsappNumber: null,
-      shareText: "Confira [nome] por [preco]: [link]",
-    });
+    expect(updateConfig).toHaveBeenCalledWith(
+      {
+        whatsappNumber: null,
+        shareText: "Confira [nome] por [preco]: [link]",
+      },
+      { silentSuccess: true },
+    );
   });
 });

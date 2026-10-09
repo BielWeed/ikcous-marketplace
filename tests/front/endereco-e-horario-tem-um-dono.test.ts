@@ -89,6 +89,22 @@ function miolo(texto: string, abertura: number): string {
   return texto.slice(abertura + 1);
 }
 
+/**
+ * O miolo do que o `nome` recebe na declaração: `const nome = { … }` ou
+ * `const [nome, setNome] = useState({ … })` (também `useState<Tipo>(…)`).
+ * `null` quando não acha (importado, parâmetro, vindo de um hook).
+ */
+function regiaoDeclarada(texto: string, nome: string): string | null {
+  const declaracao = new RegExp(
+    `\\b(?:const|let|var)\\s+(?:\\[\\s*${nome}\\b[^\\]]*\\]\\s*|${nome}\\b[^=]*)=`,
+  ).exec(texto);
+  if (!declaracao) return null;
+  const depois = declaracao.index + declaracao[0].length;
+  const abre = /[({]/.exec(texto.slice(depois, depois + 80));
+  if (!abre) return null;
+  return miolo(texto, depois + abre.index);
+}
+
 /** Os argumentos de cada `updateConfig(…)` do texto, já resolvidos. */
 function payloadsDoUpdateConfig(textoBruto: string): string[] {
   const texto = semComentarios(textoBruto);
@@ -101,17 +117,33 @@ function payloadsDoUpdateConfig(textoBruto: string): string[] {
     // Primeiro argumento por NOME (`updateConfig(dados)`): procura o objeto.
     const nome = /^\s*([A-Za-z_$][\w$]*)\s*(?:,|$)/.exec(argumentos)?.[1];
     if (nome) {
-      const declaracao = new RegExp(
-        `\\b(?:const|let|var)\\s+${nome}\\b[^=]*=\\s*\\{`,
-      ).exec(texto);
-      if (declaracao) {
-        payloads.push(
-          miolo(texto, declaracao.index + declaracao[0].length - 1),
-        );
-      }
+      const objeto = regiaoDeclarada(texto, nome);
+      if (objeto !== null) payloads.push(objeto);
+    }
+
+    // Espalhamento (`updateConfig({ ...formData, x })`): o objeto espalhado
+    // também vai ao banco. Só resolve nome simples; `...(a ?? {})` e o que
+    // vem de fora do arquivo ficam de fora (não dá para saber o que tem).
+    for (const espalhado of argumentos.matchAll(
+      /\.\.\.\s*([A-Za-z_$][\w$]*)\s*(?=[,}\s]|$)/g,
+    )) {
+      const objeto = regiaoDeclarada(texto, espalhado[1]);
+      if (objeto !== null) payloads.push(objeto);
     }
   }
   return payloads;
+}
+
+/**
+ * A chave está no objeto? Forma longa (`chave: valor`) ou curta (`{ chave }`,
+ * `{ ...a, chave }`). O `x: chave` (valor, não chave) não conta: a curta exige
+ * `{` ou `,` antes.
+ */
+function temChave(objeto: string, chave: string): boolean {
+  return (
+    new RegExp(`(?:^|[\\s{,])${chave}\\s*:`).test(objeto) ||
+    new RegExp(`(?:^|[{,])\\s*${chave}\\s*(?=[,}]|$)`).test(objeto)
+  );
 }
 
 /** Quais das `chaves` aparecem como chave de objeto nos payloads. */
@@ -121,9 +153,7 @@ function chavesGravadas(
 ): readonly string[] {
   const payloads = payloadsDoUpdateConfig(texto);
   return chaves.filter((chave) =>
-    payloads.some((payload) =>
-      new RegExp(`(?:^|[\\s{,])${chave}\\s*:`).test(payload),
-    ),
+    payloads.some((payload) => temChave(payload, chave)),
   );
 }
 
@@ -163,6 +193,73 @@ describe("o analisador da guarda (para não passar em falso)", () => {
       const dados = { businessHours: horario };
       await updateConfig(dados);`;
     expect(chavesGravadas(texto, CHAVES_DO_HORARIO)).toEqual(["businessHours"]);
+  });
+
+  it("pega a forma curta: updateConfig({ originCep })", () => {
+    expect(
+      chavesGravadas("await updateConfig({ originCep })", CHAVES_DO_ENDERECO),
+    ).toEqual(["originCep"]);
+    expect(
+      chavesGravadas(
+        "await updateConfig({ enableCoupons: on, storeState, storeCity })",
+        CHAVES_DO_ENDERECO,
+      ),
+    ).toEqual(["storeCity", "storeState"]);
+    expect(
+      chavesGravadas(
+        "await updateConfig({ businessHours })",
+        CHAVES_DO_HORARIO,
+      ),
+    ).toEqual(["businessHours"]);
+  });
+
+  it("a forma curta não pega o nome usado como VALOR de outra chave", () => {
+    expect(
+      chavesGravadas(
+        "await updateConfig({ enableCoupons: originCep, outra: storeCity })",
+        CHAVES_DO_ENDERECO,
+      ),
+    ).toEqual([]);
+  });
+
+  it("pega o espalhamento de um objeto que contém a chave protegida", () => {
+    const comEstado = `
+      const [formData, setFormData] = useState({ originCep: "", nome: "" });
+      await updateConfig({ ...formData, enableCoupons: true });`;
+    expect(chavesGravadas(comEstado, CHAVES_DO_ENDERECO)).toEqual([
+      "originCep",
+    ]);
+
+    const comConst = `
+      const parcial = { storeAddress: montar() };
+      await updateConfig({ ...parcial });`;
+    expect(chavesGravadas(comConst, CHAVES_DO_ENDERECO)).toEqual([
+      "storeAddress",
+    ]);
+
+    const tipado = `
+      const [dados, setDados] = useState<Dados>({ businessHours: "" });
+      await updateConfig({ x: 1, ...dados });`;
+    expect(chavesGravadas(tipado, CHAVES_DO_HORARIO)).toEqual([
+      "businessHours",
+    ]);
+  });
+
+  it("espalhar um objeto SEM chave protegida (ou que não dá para resolver) não acusa", () => {
+    const limpo = `
+      const [formData, setFormData] = useState({ nome: "", preco: 1 });
+      await updateConfig({ ...formData, enableCoupons: true });`;
+    expect(chavesGravadas(limpo, CHAVES_DO_ENDERECO)).toEqual([]);
+
+    const dePropsOuHook = "await updateConfig({ ...vindoDeFora, x: 1 })";
+    expect(chavesGravadas(dePropsOuHook, CHAVES_DO_ENDERECO)).toEqual([]);
+
+    // Espalhar em OUTRO lugar que não o updateConfig também não conta.
+    const outroLugar = `
+      const [formData] = useState({ originCep: "" });
+      const copia = { ...formData };
+      await updateConfig({ enableCoupons: true });`;
+    expect(chavesGravadas(outroLugar, CHAVES_DO_ENDERECO)).toEqual([]);
   });
 
   it("não confunde interface, leitura nem comentário com gravação", () => {
