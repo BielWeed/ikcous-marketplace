@@ -40,6 +40,7 @@ import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
+import { precisaDeReposicao } from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
 import {
@@ -1495,6 +1496,12 @@ const AdminProductCard = memo(function AdminProductCard({
   isOffline = false,
   onPrefetch,
 }: AdminProductCardProps) {
+  // "Estoque baixo" é UMA regra só no front (a mesma do sino e do aviso de
+  // reposição): o mínimo do produto, ou o limiar padrão quando não tem.
+  const estoqueBaixo = precisaDeReposicao(
+    product.stock,
+    product.estoqueMinimo ?? null,
+  );
   if (viewMode === "detailed") {
     // Achado 8 da auditoria de 20/08/2026
     // (docs/auditoria/2026-08-20-painel-pedidos-produtos.md): `costPrice || 0`
@@ -1635,7 +1642,7 @@ const AdminProductCard = memo(function AdminProductCard({
                       </Badge>
                     )
                   )}
-                  {product.stock <= 5 && (
+                  {estoqueBaixo && (
                     <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
                       Crítico
                     </Badge>
@@ -1716,7 +1723,7 @@ const AdminProductCard = memo(function AdminProductCard({
                     <div
                       className={cn(
                         "h-full transition-all duration-1000",
-                        product.stock <= 5 ? "bg-rose-500" : "bg-admin-gold",
+                        estoqueBaixo ? "bg-rose-500" : "bg-admin-gold",
                       )}
                       style={{ width: `${Math.min(product.stock * 5, 100)}%` }}
                     />
@@ -1724,7 +1731,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   <span
                     className={cn(
                       "text-xs font-black font-mono",
-                      product.stock <= 5 ? "text-rose-500" : "text-white",
+                      estoqueBaixo ? "text-rose-500" : "text-white",
                     )}
                   >
                     {product.stock.toString().padStart(2, "0")}
@@ -1887,7 +1894,7 @@ const AdminProductCard = memo(function AdminProductCard({
               <span
                 className={cn(
                   "font-black font-mono",
-                  product.stock <= 5 ? "text-rose-500" : "text-white",
+                  estoqueBaixo ? "text-rose-500" : "text-white",
                 )}
               >
                 {product.stock.toString().padStart(2, "0")}
