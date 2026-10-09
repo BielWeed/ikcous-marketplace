@@ -30,6 +30,16 @@ const ENDERECOS_POR_CEP = new Map<string, Record<string, string>>([
     },
   ],
   [
+    // CEP único de cidade pequena: o provedor não tem rua nem bairro.
+    "38500000",
+    {
+      logradouro: "",
+      bairro: "",
+      localidade: "Monte Carmelo",
+      uf: "MG",
+    },
+  ],
+  [
     "13010000",
     {
       logradouro: "Rua Barão de Jaguara",
@@ -273,6 +283,127 @@ describe("EnderecoDaLoja — preenche pelo CEP", () => {
     });
 
     expect(hospedeiro.textContent).not.toContain("Seu CEP é de");
+  });
+
+  // Só focar e sair do campo CEP faz o campo entregar o valor (blur): sem o
+  // CEP ter mudado, isso NÃO pode refazer o endereço.
+  async function focarESairDoCep() {
+    const input = campo("endereco-cep");
+    await act(async () => {
+      input.focus();
+    });
+    await act(async () => {
+      input.blur();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  }
+
+  const ENDERECO_DE_CEP_UNICO =
+    "Rua das Flores, 123 — Centro, Monte Carmelo/MG — CEP 38500-000";
+
+  it("focar e sair do CEP sem mudar nada NÃO apaga rua e bairro (CEP único, provedor sem rua)", async () => {
+    await montar({
+      originCep: "38500-000",
+      storeAddress: ENDERECO_DE_CEP_UNICO,
+      storeCity: "Monte Carmelo",
+      storeState: "MG",
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    await focarESairDoCep();
+
+    expect(campo("endereco-rua").value).toBe("Rua das Flores");
+    expect(campo("endereco-bairro").value).toBe("Centro");
+    expect(campo("endereco-cidade").value).toBe("Monte Carmelo");
+    expect(campo("endereco-uf").value).toBe("MG");
+    expect(ultima()?.alterado).toBe(false);
+    expect(ultima()?.motivo).toBeNull();
+  });
+
+  it("focar e sair do CEP sem mudar nada NÃO sobrescreve o que a lojista digitou", async () => {
+    await montar({
+      originCep: "01310-100",
+      storeAddress:
+        "Avenida Paulista, 1578 — Bela Vista, São Paulo/SP — CEP 01310-100",
+      storeCity: "São Paulo",
+      storeState: "SP",
+    });
+    await digitar("endereco-rua", "Minha rua corrigida");
+    await focarESairDoCep();
+
+    expect(campo("endereco-rua").value).toBe("Minha rua corrigida");
+    expect(campo("endereco-bairro").value).toBe("Bela Vista");
+  });
+
+  it("loja antiga (CEP salvo, rua vazia): focar e sair do CEP preenche SÓ o que está vazio", async () => {
+    await montar({
+      originCep: "01310-100",
+      storeAddress: "Av. Paulista 1578, perto do metrô",
+      storeCity: "São Paulo",
+      storeState: "SP",
+    });
+    await digitar("endereco-bairro", "Meu bairro");
+    await focarESairDoCep();
+
+    expect(campo("endereco-rua").value).toBe("Avenida Paulista");
+    expect(campo("endereco-bairro").value).toBe("Meu bairro");
+    expect(campo("endereco-cidade").value).toBe("São Paulo");
+  });
+
+  it("CEP que mudou de verdade refaz rua, bairro, cidade e UF", async () => {
+    await montar({
+      originCep: "01310-100",
+      storeAddress:
+        "Avenida Paulista, 1578 — Bela Vista, São Paulo/SP — CEP 01310-100",
+      storeCity: "São Paulo",
+      storeState: "SP",
+    });
+    await digitarOCep("13010000");
+
+    expect(campo("endereco-rua").value).toBe("Rua Barão de Jaguara");
+    expect(campo("endereco-bairro").value).toBe("Centro");
+    expect(campo("endereco-cidade").value).toBe("Campinas");
+  });
+
+  it("número com vírgula: gravado normalizado e, salvo, a tela não fica 'alterada'", async () => {
+    await montar();
+    await digitarOCep("01310100");
+    await digitar("endereco-numero", "1578, fundos");
+
+    const gravado = ultima()?.valores;
+    expect(gravado?.storeAddress).toBe(
+      "Avenida Paulista, 1578 fundos — Bela Vista, São Paulo/SP — CEP 01310-100",
+    );
+    expect(ultima()?.alterado).toBe(true);
+
+    // o banco devolve o que foi gravado: nada mais a salvar
+    const { EnderecoDaLoja } = await import(
+      "@/components/admin/minha-loja/EnderecoDaLoja"
+    );
+    await act(async () => {
+      raiz.render(
+        <EnderecoDaLoja
+          originCep={gravado?.originCep}
+          storeAddress={gravado?.storeAddress}
+          storeCity={gravado?.storeCity}
+          storeState={gravado?.storeState}
+          onMudou={onMudou}
+        />,
+      );
+    });
+    expect(ultima()?.alterado).toBe(false);
+  });
+
+  it("limites de tamanho: a cidade aceita até 160 (o máximo da identidade)", async () => {
+    await montar();
+    expect(campo("endereco-cidade").maxLength).toBe(160);
+    expect(campo("endereco-rua").maxLength).toBeGreaterThan(0);
+    expect(campo("endereco-numero").maxLength).toBeGreaterThan(0);
+    expect(campo("endereco-bairro").maxLength).toBeGreaterThan(0);
+    expect(campo("endereco-complemento").maxLength).toBeGreaterThan(0);
   });
 
   it("o campo de CEP e os de endereço têm alvo de toque de 44px (h-11)", async () => {

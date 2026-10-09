@@ -8,6 +8,7 @@ import {
   lerEnderecoConferido,
   montarEnderecoDaLoja,
   motivoDoEnderecoIncompleto,
+  normalizarPartes,
 } from "@/lib/endereco-da-loja";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import {
@@ -68,19 +69,31 @@ function digitosDoCep(cep: string): string {
   return cep.replace(/\D/g, "");
 }
 
-/** Mesmo endereço, ignorando espaço sobrando, hífen do CEP e caixa da UF. */
+/** Mesmo endereço pelas MESMAS regras com que ele é gravado (vírgula,
+ * travessão, espaços, hífen do CEP, caixa da UF — ver `normalizarPartes`). */
 function mesmasPartes(a: PartesDoEndereco, b: PartesDoEndereco): boolean {
-  const limpa = (texto: string) => texto.replace(/\s+/g, " ").trim();
+  const x = normalizarPartes(a);
+  const y = normalizarPartes(b);
   return (
-    digitosDoCep(a.cep) === digitosDoCep(b.cep) &&
-    limpa(a.rua) === limpa(b.rua) &&
-    limpa(a.numero) === limpa(b.numero) &&
-    limpa(a.complemento) === limpa(b.complemento) &&
-    limpa(a.bairro) === limpa(b.bairro) &&
-    limpa(a.cidade) === limpa(b.cidade) &&
-    limpa(a.uf).toUpperCase() === limpa(b.uf).toUpperCase()
+    x.cep === y.cep &&
+    x.rua === y.rua &&
+    x.numero === y.numero &&
+    x.complemento === y.complemento &&
+    x.bairro === y.bairro &&
+    x.cidade === y.cidade &&
+    x.uf === y.uf
   );
 }
+
+// Tamanhos que o formato e a identidade aguentam (a cidade vai no pacote da
+// `save_store_identity`, que recusa mais de 160).
+const MAXIMO = {
+  rua: 120,
+  numero: 20,
+  complemento: 80,
+  bairro: 80,
+  cidade: 160,
+} as const;
 
 interface Salvo {
   readonly partes: PartesDoEndereco;
@@ -110,7 +123,7 @@ function lerSalvo(
   };
 }
 
-type ModoDaBusca = "preencher" | "conferir";
+type ModoDaBusca = "preencher" | "completar" | "conferir";
 
 export const EnderecoDaLoja = memo(function EnderecoDaLoja({
   originCep,
@@ -139,41 +152,51 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
   }, [salvo.partes]);
 
   // ── Busca do CEP ──────────────────────────────────────────────────────
-  // "preencher": a lojista digitou o CEP — rua/bairro/cidade/UF vêm dele.
+  // "preencher": a lojista MUDOU o CEP — rua/bairro/cidade/UF vêm dele.
+  // "completar": o CEP é o mesmo (foco e saída do campo, loja de antes sem
+  //   rua) — só os campos VAZIOS são preenchidos; o que está escrito fica.
   // "conferir": o CEP já estava salvo — só descobre a cidade dele para o
-  // aviso de divergência, sem tocar nos campos.
+  //   aviso de divergência, sem tocar nos campos.
   const buscaAtual = useRef<{ modo: ModoDaBusca; cep: string }>({
     modo: "preencher",
     cep: "",
   });
   const [modoDoResultado, setModoDoResultado] =
     useState<ModoDaBusca>("preencher");
-  // CEPs cuja cidade já foi descoberta nesta tela: não pergunta de novo.
-  const cepsConsultados = useRef(new Set<string>());
+  // O que cada CEP respondeu nesta tela: não pergunta de novo.
+  const enderecosDoCep = useRef(new Map<string, EnderecoDoCep>());
   const [cidadeDoCep, setCidadeDoCep] = useState<{
     cep: string;
     cidade: string;
     uf: string;
   } | null>(null);
 
+  // `soVazios`: não pisa no que já está escrito (rua digitada à mão etc.).
+  const aplicarEndereco = (endereco: EnderecoDoCep, soVazios: boolean) =>
+    setPartes((atual) => {
+      const escolhe = (escrito: string, doCep: string | undefined) =>
+        soVazios && escrito.trim() !== "" ? escrito : (doCep ?? "");
+      return {
+        ...atual,
+        rua: escolhe(atual.rua, endereco.logradouro),
+        bairro: escolhe(atual.bairro, endereco.bairro),
+        cidade: escolhe(atual.cidade, endereco.localidade),
+        uf: escolhe(atual.uf, endereco.uf),
+      };
+    });
+
   const aoEncontrar = (endereco: EnderecoDoCep) => {
     const { modo, cep } = buscaAtual.current;
-    cepsConsultados.current.add(cep);
+    enderecosDoCep.current.set(cep, endereco);
     setCidadeDoCep({
       cep,
       cidade: endereco.localidade ?? "",
       uf: endereco.uf ?? "",
     });
-    if (modo !== "preencher") return;
     // O CEP novo troca rua/bairro/cidade/UF (os de antes eram de outro CEP);
     // número e complemento ficam — foi ela quem digitou.
-    setPartes((atual) => ({
-      ...atual,
-      rua: endereco.logradouro ?? "",
-      bairro: endereco.bairro ?? "",
-      cidade: endereco.localidade ?? "",
-      uf: endereco.uf ?? "",
-    }));
+    if (modo === "preencher") aplicarEndereco(endereco, false);
+    if (modo === "completar") aplicarEndereco(endereco, true);
   };
   const { buscando, buscar, resultado, limpar } = useBuscaCep(aoEncontrar, {
     avisarPorToast: false,
@@ -195,23 +218,35 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
   const temCidadeSalva = salvo.partes.cidade.trim() !== "";
   useEffect(() => {
     if (cepSalvo.length !== 8 || !temCidadeSalva) return;
-    if (cepsConsultados.current.has(cepSalvo)) return;
+    if (enderecosDoCep.current.has(cepSalvo)) return;
     iniciarBusca("conferir", cepSalvo);
   }, [cepSalvo, temCidadeSalva, iniciarBusca]);
 
+  // O campo entrega o valor a cada saída (blur), mudando ou não: só o CEP
+  // que MUDOU refaz o endereço.
   const mudarCep = (bruto: string) => {
     const formatado = formatarCepDaLoja(bruto);
     const limpo = digitosDoCep(formatado);
-    const jaBuscado =
-      cidadeDoCep?.cep === limpo && buscaAtual.current.modo === "preencher";
+    const mudou = limpo !== digitosDoCep(partes.cep);
     setPartes((atual) => ({ ...atual, cep: formatado }));
     if (limpo.length !== 8) {
-      limpar();
+      if (mudou) limpar();
       return;
     }
-    if (!jaBuscado || (resultado && resultado.tipo !== "achou")) {
+    if (mudou) {
       iniciarBusca("preencher", limpo);
+      return;
     }
+    const jaRespondeu = enderecosDoCep.current.get(limpo);
+    if (jaRespondeu) {
+      aplicarEndereco(jaRespondeu, true);
+      return;
+    }
+    const buscaDesteCep = buscaAtual.current.cep === limpo;
+    const preenchendo =
+      buscaDesteCep && buscaAtual.current.modo === "preencher";
+    if (preenchendo && buscando) return; // a busca em andamento já preenche tudo
+    iniciarBusca(preenchendo ? "preencher" : "completar", limpo);
   };
 
   const mudar = (campo: keyof PartesDoEndereco) => (valor: string) =>
@@ -249,7 +284,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
       : null;
 
   const mensagemDaBusca =
-    modoDoResultado !== "preencher" || !resultado
+    modoDoResultado === "conferir" || !resultado
       ? null
       : resultado.tipo === "naoEncontrado"
         ? "CEP não encontrado. Confira os números; o que estava preenchido foi mantido."
@@ -316,6 +351,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
               id="endereco-rua"
               value={partes.rua}
               onFlush={mudar("rua")}
+              maxLength={MAXIMO.rua}
               disabled={disabled}
               autoComplete="address-line1"
               className={CAMPO}
@@ -331,6 +367,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
               id="endereco-numero"
               value={partes.numero}
               onFlush={mudar("numero")}
+              maxLength={MAXIMO.numero}
               disabled={disabled}
               placeholder="Ex.: 1578"
               className={CAMPO}
@@ -346,6 +383,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
               id="endereco-complemento"
               value={partes.complemento}
               onFlush={mudar("complemento")}
+              maxLength={MAXIMO.complemento}
               disabled={disabled}
               className={CAMPO}
             />
@@ -360,6 +398,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
               id="endereco-bairro"
               value={partes.bairro}
               onFlush={mudar("bairro")}
+              maxLength={MAXIMO.bairro}
               disabled={disabled}
               className={CAMPO}
             />
@@ -374,6 +413,7 @@ export const EnderecoDaLoja = memo(function EnderecoDaLoja({
               id="endereco-cidade"
               value={partes.cidade}
               onFlush={mudar("cidade")}
+              maxLength={MAXIMO.cidade}
               disabled={disabled}
               autoComplete="address-level2"
               className={CAMPO}

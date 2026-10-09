@@ -62,18 +62,31 @@ function complementoLimpo(texto: string): string {
   return espacosEmUm(texto.replace(/\s*—\s*/g, " - "));
 }
 
+/**
+ * As partes como o `montar` as grava (e o `ler` as devolve): espaços em um,
+ * vírgula e travessão tratados, CEP com hífen, UF em maiúsculas. Quem compara
+ * "a tela" com "o que está salvo" compara por aqui — o texto CRU digitado
+ * ("1578, fundos") nunca é igual ao relido ("1578 fundos").
+ */
+export function normalizarPartes(partes: PartesDoEndereco): PartesDoEndereco {
+  return {
+    cep: formatarCepDaLoja(partes.cep),
+    rua: parte(partes.rua),
+    numero: parte(partes.numero),
+    complemento: complementoLimpo(partes.complemento),
+    bairro: parte(partes.bairro),
+    cidade: parte(partes.cidade),
+    uf: parte(partes.uf).toUpperCase(),
+  };
+}
+
 /** Monta o texto e as quatro colunas. Não valida: use
  * `motivoDoEnderecoIncompleto` antes de gravar. */
 export function montarEnderecoDaLoja(
   partes: PartesDoEndereco,
 ): EnderecoGravado {
-  const cep = formatarCepDaLoja(partes.cep);
-  const rua = parte(partes.rua);
-  const numero = parte(partes.numero);
-  const complemento = complementoLimpo(partes.complemento);
-  const bairro = parte(partes.bairro);
-  const cidade = parte(partes.cidade);
-  const uf = parte(partes.uf).toUpperCase();
+  const { cep, rua, numero, complemento, bairro, cidade, uf } =
+    normalizarPartes(partes);
 
   const lugar = [rua, numero, ...(complemento ? [complemento] : [])].join(", ");
   const regiao = [...(bairro ? [bairro] : []), `${cidade}/${uf}`].join(", ");
