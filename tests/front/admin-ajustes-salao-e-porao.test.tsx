@@ -1,35 +1,35 @@
 // @vitest-environment jsdom
 //
-// Desenho SALÃO+PORÃO do lote E (13/09/2026, escolhido pelo Gabriel): a
-// tela de Ajustes ganha DUAS camadas. O SALÃO responde "como está?" sem
-// clique — o painel de 4 indicadores espelho (Conexão, Pagamento, Frete,
-// Atendimento) — e organiza o resto em grupos (desde 09/10/2026, os seis do
-// painel simples: Minha loja / Aparência do app / Entrega e frete /
-// Pagamentos / Regras de troca e devolução / Ferramentas) com títulos na
-// linguagem de gente. O PORÃO (consulta rara)
-// fica no pé da tela.
+// Desenho SALÃO+PORÃO do lote E (13/09/2026) + painel simples (09/10/2026, E5).
+// A tela de Ajustes se organiza em seis grupos (Minha loja / Aparência do app /
+// Entrega e frete / Pagamentos / Regras de troca e devolução / Ferramentas).
+// O cartão "Como está sua loja" (4 indicadores: Conexão, Pagamento, Frete,
+// Atendimento) SAIU: o estado agora é o SUBTÍTULO de cada grupo, calculado
+// pela mesma função dos seis passos do Início (`src/lib/loja-pronta.ts`) — e
+// o indicador "Conexão" foi para o grupo Ferramentas, junto de "Minha loja
+// está no ar?". O PORÃO (consulta rara) fica no pé da tela.
 //
 // O que este teste fixa:
-//   1. O painel mostra os 4 indicadores e cada um diz a verdade do estado.
-//      PIX tem 3 níveis (Funcionando / Chave ausente / Desligado) — o
+//   1. O cartão "Como está sua loja" não existe, nem na carga nem depois.
+//   2. Minha loja diz "Falta: WhatsApp" (ou "Tudo preenchido"); Pagamentos
+//      diz "Na entrega + PIX" / o que estiver ativo; Entrega e frete diz o
+//      estado da entrega. Sem config carregada nenhum subtítulo chuta.
+//   3. PIX tem 3 níveis (Funcionando / Chave ausente / Desligado) — o
 //      crítico de desenho do lote E vetou o "PIX ativo" de 2 rótulos, que
 //      diria "ativo" numa loja com a chave ausente (a mentira exata que o
-//      laudo 0109 D1 combateu ao criar o termômetro).
-//   2. Config parcial/ausente (o campo não veio do banco) não quebra nem
-//      inventa: frete cai no MESMO fallback do resto da tela
-//      (`|| "flat_fee"`, com ramo para valor fora dos 3 conhecidos),
-//      horário vazio após trim = "não informado" ("" não é informado).
-//   3. O painel vive DENTRO do ramo isLoaded — durante a carga nenhum
-//      indicador pode dizer o estado de uma config que ainda não chegou.
-//   4. Grupos na ordem do desenho; vocabulário novo nos acordeões; velho
+//      laudo 0109 D1 combateu ao criar o termômetro). O nível mora no
+//      subtítulo de "Minha loja está no ar?".
+//   4. "Conexão" (Online/Offline) mora em Ferramentas.
+//   5. Grupos na ordem do desenho; vocabulário novo nos acordeões; velho
 //      aposentado.
-//   5. Contratos intactos: acordeões nascem FECHADOS (decisão 02/09),
+//   6. Contratos intactos: acordeões nascem FECHADOS (decisão 02/09),
 //      onSetDirty somando as pendências, atalhos de vitrine continuam
 //      portas role="button" com onNavigate.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
 import type { View } from "@/types";
 
 const {
@@ -163,7 +163,41 @@ async function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe("Painel 'Como está sua loja' — salão sem clique", () => {
+// Config zerada por teste, por propriedade (sem índice dinâmico): ausente vale
+// "a loja não preencheu" para os subtítulos dos grupos.
+function reiniciarConfig() {
+  mockConfig.shippingProvider = undefined;
+  mockConfig.businessHours = undefined;
+  mockConfig.storeName = undefined;
+  mockConfig.logoUrl = undefined;
+  mockConfig.whatsappNumber = undefined;
+  mockConfig.originCep = undefined;
+  mockConfig.storeAddress = undefined;
+  mockConfig.storeCity = undefined;
+  mockConfig.storeState = undefined;
+  mockConfig.shippingCoverage = undefined;
+  mockConfig.formasPagamentoEntrega = undefined;
+}
+
+/** Minha loja preenchida do jeito que a tela grava: marca, endereço e CEP. */
+function preencherMarcaEEndereco() {
+  mockConfig.storeName = "Loja Teste";
+  mockConfig.logoUrl = "https://exemplo.test/logo.png";
+  Object.assign(
+    mockConfig,
+    montarEnderecoDaLoja({
+      cep: "38500-000",
+      rua: "Rua das Flores",
+      numero: "10",
+      complemento: "",
+      bairro: "Centro",
+      cidade: "Monte Carmelo",
+      uf: "MG",
+    }),
+  );
+}
+
+describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
@@ -192,9 +226,7 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     // porta-de-avisar-clientes, que monta o hub com storeCity/storeState só).
     // Reset por propriedade (sem índice dinâmico): undefined vale ausente
     // para o hub (`|| "flat_fee"`, `?? ""`).
-    mockConfig.shippingProvider = undefined;
-    mockConfig.businessHours = undefined;
-    mockConfig.storeName = undefined;
+    reiniciarConfig();
     mockFlags.pagamentoOnlineLigado.mockReturnValue(true);
     mockChave.chavePublicaMercadoPago.mockReturnValue("APP_USR-prova");
     mockOnline.useOnlineStatus.mockReturnValue(false);
@@ -225,6 +257,28 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     vi.unstubAllGlobals();
   });
 
+  /** O `<section>` do grupo, achado pelo título (o `<h2>` filho direto). */
+  function secaoDoGrupo(titulo: string): Element {
+    const secao = [...hospedeiro.querySelectorAll("section")].find(
+      (s) => s.querySelector(":scope > h2")?.textContent === titulo,
+    );
+    expect(secao, `grupo "${titulo}" ausente`).toBeDefined();
+    return secao as Element;
+  }
+
+  /** A linha de estado sob o título do grupo (o `<p>` filho direto). */
+  function subtituloDoGrupo(titulo: string): string | null {
+    return (
+      secaoDoGrupo(titulo).querySelector(":scope > p")?.textContent ?? null
+    );
+  }
+
+  function cabecalhoDaSecao(texto: string) {
+    return [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes(texto),
+    ) as HTMLButtonElement | undefined;
+  }
+
   async function renderizar(
     onSetDirty?: (dirty: boolean) => void,
     onNavigate?: (view: View) => void,
@@ -253,27 +307,152 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     });
   }
 
-  it("mostra os 4 indicadores nessa ordem: Conexão, Pagamento, Frete, Atendimento", async () => {
+  it("o cartão 'Como está sua loja' não existe mais — nem o título, nem os rótulos dos 4 indicadores", async () => {
     estadoDeFrete.ligados = ["melhor_envio"];
     estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     mockConfig.businessHours = "Seg-Sáb: 9h às 18h";
     await renderizar();
 
-    const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Como está sua loja");
-    const posicoes = ["Conexão", "Pagamento", "Frete", "Atendimento"].map(
-      (rotulo) => texto.indexOf(rotulo),
+    const titulos = [...hospedeiro.querySelectorAll("h2")].map(
+      (h) => h.textContent,
     );
-    for (const posicao of posicoes) expect(posicao).toBeGreaterThan(-1);
-    expect(posicoes[0]).toBeLessThan(posicoes[1]);
-    expect(posicoes[1]).toBeLessThan(posicoes[2]);
-    expect(posicoes[2]).toBeLessThan(posicoes[3]);
+    expect(titulos).not.toContain("Como está sua loja");
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto).not.toContain("Como está sua loja");
+    // "Atendimento" e "Frete" (os rótulos soltos do cartão) não aparecem como
+    // tile; o horário salvo não é mais espelhado em Ajustes (mora em Minha loja).
+    expect(texto).not.toContain("Atendimento");
+    expect(texto).not.toContain("Seg-Sáb: 9h às 18h");
+  });
 
-    // Valores espelho: online, PIX funcionando, frete nomeado, horário salvo.
-    expect(texto).toContain("Online");
-    expect(texto).toContain("Funcionando");
-    expect(texto).toContain("Melhor Envio");
-    expect(texto).toContain("Seg-Sáb: 9h às 18h");
+  describe("Minha loja: 'Falta: …' ou 'Tudo preenchido' (mesma função dos seis passos)", () => {
+    it("só falta o WhatsApp → 'Falta: WhatsApp'", async () => {
+      preencherMarcaEEndereco();
+      await renderizar();
+      expect(subtituloDoGrupo("Minha loja")).toBe("Falta: WhatsApp");
+    });
+
+    it("loja vazia lista tudo o que falta, na ordem dos passos", async () => {
+      await renderizar();
+      expect(subtituloDoGrupo("Minha loja")).toBe(
+        "Falta: Nome e logo, Endereço, WhatsApp",
+      );
+    });
+
+    it("com marca, endereço e WhatsApp → 'Tudo preenchido'", async () => {
+      preencherMarcaEEndereco();
+      mockConfig.whatsappNumber = "(34) 99999-9999";
+      await renderizar();
+      expect(subtituloDoGrupo("Minha loja")).toBe("Tudo preenchido");
+    });
+  });
+
+  describe("Pagamentos: o que está ativo", () => {
+    it("na entrega (as três formas) + PIX pelo app funcionando → 'Na entrega + PIX'", async () => {
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Na entrega + PIX");
+    });
+
+    it("PIX desligado → só 'Na entrega'", async () => {
+      mockFlags.pagamentoOnlineLigado.mockReturnValue(false);
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Na entrega");
+    });
+
+    it("sem nada na entrega mas com PIX pelo app → 'PIX'", async () => {
+      mockConfig.formasPagamentoEntrega = [];
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("PIX");
+    });
+
+    it("sem nada na entrega e sem PIX → 'Falta: Como você recebe'", async () => {
+      mockConfig.formasPagamentoEntrega = [];
+      mockFlags.pagamentoOnlineLigado.mockReturnValue(false);
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Falta: Como você recebe");
+    });
+
+    it("PIX ligado com a chave ausente NÃO conta como PIX: o subtítulo avisa", async () => {
+      mockChave.chavePublicaMercadoPago.mockReturnValue(null);
+      await renderizar();
+      expect(subtituloDoGrupo("Pagamentos")).toBe("Na entrega · PIX sem chave");
+    });
+  });
+
+  describe("Entrega e frete: o estado da entrega", () => {
+    it("sem CEP da loja e sem transportadora → diz as duas faltas", async () => {
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "Falta: CEP da loja, transportadora",
+      );
+    });
+
+    it("sem CEP mas com transportadora ligada → só 'Falta: CEP da loja'", async () => {
+      estadoDeFrete.ligados = ["melhor_envio"];
+      estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: CEP da loja");
+    });
+
+    it("com CEP e transportadora ligada → diz a entrega local e a transportadora", async () => {
+      preencherMarcaEEndereco();
+      estadoDeFrete.ligados = ["melhor_envio"];
+      estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Melhor Envio ligado",
+      );
+    });
+
+    it("com CEP, entrega nacional e nenhuma transportadora → 'Falta: transportadora'", async () => {
+      preencherMarcaEEndereco();
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: transportadora");
+    });
+
+    it("loja que só entrega na cidade, com CEP, não precisa de transportadora", async () => {
+      preencherMarcaEEndereco();
+      mockConfig.shippingCoverage = "local";
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe(
+        "R$ 10 por entrega · Só na sua cidade",
+      );
+    });
+
+    it("SuperFrete ligada sem e-mail válido não conta como transportadora ligada", async () => {
+      preencherMarcaEEndereco();
+      estadoDeFrete.ligados = ["superfrete"];
+      estadoDeFrete.provedores = {
+        superfrete: { tem_chave: true, contato_email: null },
+      };
+      await renderizar();
+      expect(subtituloDoGrupo("Entrega e frete")).toBe("Falta: transportadora");
+    });
+  });
+
+  it("grupos sem passo próprio (Aparência, Regras de troca, Ferramentas) não inventam subtítulo", async () => {
+    await renderizar();
+    expect(subtituloDoGrupo("Aparência do app")).toBeNull();
+    expect(subtituloDoGrupo("Regras de troca e devolução")).toBeNull();
+    expect(subtituloDoGrupo("Ferramentas")).toBeNull();
+  });
+
+  it("'Conexão' mora em Ferramentas, junto de 'Minha loja está no ar?': Online", async () => {
+    await renderizar();
+    const ferramentas = secaoDoGrupo("Ferramentas");
+    expect(ferramentas.textContent).toContain("Conexão");
+    expect(ferramentas.textContent).toContain("Online");
+    expect(ferramentas.textContent).toContain("Minha loja está no ar?");
+    // E só lá: nenhum outro grupo carrega o indicador.
+    for (const outro of [
+      "Minha loja",
+      "Aparência do app",
+      "Entrega e frete",
+      "Pagamentos",
+      "Regras de troca e devolução",
+    ]) {
+      expect(secaoDoGrupo(outro).textContent).not.toContain("Conexão");
+    }
   });
 
   it.each([
@@ -290,7 +469,10 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
       mockFlags.pagamentoOnlineLigado.mockReturnValue(ligado);
       mockChave.chavePublicaMercadoPago.mockReturnValue(chave);
       await renderizar();
-      expect(hospedeiro.textContent).toContain(rotulo);
+      // O nível do PIX mora no cabeçalho de "Minha loja está no ar?" (porão).
+      expect(cabecalhoDaSecao("Minha loja está no ar?")?.textContent).toContain(
+        `PIX: ${rotulo}`,
+      );
     },
   );
 
@@ -353,28 +535,22 @@ describe("Painel 'Como está sua loja' — salão sem clique", () => {
     expect(hospedeiro.textContent).toContain("SuperFrete incompleta");
   });
 
-  it.each([null, "   "])(
-    "horário %p = 'não informado' (vazio após trim não é informado)",
-    async (horario) => {
-      mockConfig.businessHours = horario;
-      await renderizar();
-      expect(hospedeiro.textContent).toContain("não informado");
-    },
-  );
-
-  it("durante a carga (isLoaded=false) o painel NÃO existe — indicador nenhum chuta estado", async () => {
+  it("durante a carga (isLoaded=false) nenhum grupo existe — subtítulo nenhum chuta estado", async () => {
     estadoDeFrete.ligados = ["melhor_envio"];
     estadoDeFrete.provedores = { melhor_envio: { tem_chave: true } };
     mockStore.isLoaded = false;
     await renderizar();
-    expect(hospedeiro.textContent).not.toContain("Como está sua loja");
+    expect(hospedeiro.querySelectorAll("section").length).toBe(0);
+    expect(hospedeiro.textContent).not.toContain("Falta:");
     expect(hospedeiro.textContent).not.toContain("Melhor Envio");
   });
 
-  it("offline: Conexão diz Offline", async () => {
+  it("offline: Conexão diz Offline, em Ferramentas", async () => {
     mockOnline.useOnlineStatus.mockReturnValue(true);
     await renderizar();
-    expect(hospedeiro.textContent).toContain("Offline");
+    const ferramentas = secaoDoGrupo("Ferramentas").textContent ?? "";
+    expect(ferramentas).toContain("Conexão");
+    expect(ferramentas).toContain("Offline");
     expect(hospedeiro.textContent).not.toContain("Online");
   });
 });
@@ -467,13 +643,12 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     });
   }
 
-  it("os grupos aparecem na ordem do desenho: Como está sua loja e os seis grupos de Ajustes", async () => {
+  it("os grupos aparecem na ordem do desenho: os seis grupos de Ajustes, sem o cartão de indicadores", async () => {
     await renderizar();
     const titulos = [...hospedeiro.querySelectorAll("h2")].map(
       (h) => h.textContent,
     );
     expect(titulos).toEqual([
-      "Como está sua loja",
       "Minha loja",
       "Aparência do app",
       "Entrega e frete",
@@ -490,12 +665,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
   it("os acordeões usam o vocabulário novo — e o velho saiu", async () => {
     await renderizar();
     const texto = hospedeiro.textContent ?? "";
-    // "Nome, logo e cores" e "Atendimento" (o acordeão, não o rótulo do
-    // indicador-espelho) SAÍRAM em 22/09/2026: eram duplicados de
-    // AdminAboutStoreView, que monta a edição de verdade. "Atendimento"
-    // continua aparecendo — é o rótulo do indicador em "Como está sua
-    // loja" — mas não é mais cabeçalho de acordeão (provado no teste de
-    // contagem abaixo).
+    // "Nome, logo e cores" e "Atendimento" (acordeões) SAÍRAM em 22/09/2026:
+    // eram duplicados de AdminAboutStoreView, que monta a edição de verdade.
+    // Desde 09/10/2026 nem o rótulo do indicador "Atendimento" resta aqui.
     for (const novo of [
       "Entrega e frete",
       "Transportadoras",
