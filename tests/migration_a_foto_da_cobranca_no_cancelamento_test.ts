@@ -433,3 +433,64 @@ Deno.test("209 composicao: a prova viva esta no rpc-ci, na lista PROVAS_DO_DINHE
   // nao usa o admin atual: nao entra no fim de POSTERIORES_A_97
   assert(!/is_admin_atual|rls_admin_atual|is_admin\(/.test(codigo(migration)));
 });
+
+Deno.test("209 tipos: src/types/database.types.ts descreve a tabela da foto como a migration a cria (coluna a coluna, nulos e FK)", () => {
+  const tipos = lerLF(`${RAIZ}/src/types/database.types.ts`);
+  const i = tipos.indexOf("      pedido_cobranca_ao_cancelar: {");
+  assert(i >= 0, "a tabela nao esta nos tipos");
+  const bloco = tipos.slice(i, tipos.indexOf("\n      };\n", i));
+  const secao = (nome: string) => {
+    const a = bloco.indexOf(`        ${nome}: {`);
+    assert(a >= 0, `sem ${nome}`);
+    return bloco.slice(a, bloco.indexOf("\n        };", a));
+  };
+  const campos = (s: string) =>
+    [...s.matchAll(/^\s{10}(\w+)(\??): (.+);$/gm)].map((m) => [
+      m[1],
+      m[2] === "?",
+      m[3],
+    ]);
+  // Row: tudo obrigatorio; nulo so onde a coluna aceita NULL
+  assertEquals(campos(secao("Row")), [
+    ["cancelado_em", false, "string"],
+    ["gateway_payment_id", false, "string | null"],
+    ["metodo_online", false, "string | null"],
+    ["order_id", false, "string"],
+    ["payment_status", false, "string | null"],
+    ["tentativas", false, "number"],
+  ]);
+  // Insert: so order_id e tentativas sao obrigatorios (as outras aceitam NULL ou tem DEFAULT)
+  assertEquals(
+    campos(secao("Insert"))
+      .filter((c) => !c[1])
+      .map((c) => c[0]),
+    ["order_id", "tentativas"],
+  );
+  assertEquals(
+    campos(secao("Update")).every((c) => c[1]),
+    true,
+  );
+  assertStringIncludes(
+    bloco,
+    'foreignKeyName: "pedido_cobranca_ao_cancelar_order_id_fkey"',
+  );
+  assertStringIncludes(bloco, "isOneToOne: true");
+  assertStringIncludes(bloco, 'referencedRelation: "marketplace_orders"');
+  // as colunas dos tipos sao as da migration
+  const sqlCols = [
+    ...migration
+      .slice(
+        ini("CREATE TABLE IF NOT EXISTS public.pedido_cobranca_ao_cancelar ("),
+        ini("ALTER TABLE public.pedido_cobranca_ao_cancelar ENABLE"),
+      )
+      .matchAll(/^\s{2}(\w+) (?:uuid|text|integer|timestamptz)/gm),
+  ]
+    .map((m) => m[1])
+    .sort();
+  assertEquals(
+    campos(secao("Row"))
+      .map((c) => c[0])
+      .sort(),
+    sqlCols,
+  );
+});

@@ -1546,6 +1546,41 @@ export type Database = {
           },
         ];
       };
+      pedido_cobranca_ao_cancelar: {
+        Row: {
+          cancelado_em: string;
+          gateway_payment_id: string | null;
+          metodo_online: string | null;
+          order_id: string;
+          payment_status: string | null;
+          tentativas: number;
+        };
+        Insert: {
+          cancelado_em?: string;
+          gateway_payment_id?: string | null;
+          metodo_online?: string | null;
+          order_id: string;
+          payment_status?: string | null;
+          tentativas: number;
+        };
+        Update: {
+          cancelado_em?: string;
+          gateway_payment_id?: string | null;
+          metodo_online?: string | null;
+          order_id?: string;
+          payment_status?: string | null;
+          tentativas?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "pedido_cobranca_ao_cancelar_order_id_fkey";
+            columns: ["order_id"];
+            isOneToOne: true;
+            referencedRelation: "marketplace_orders";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       politica_devolucao: {
         Row: {
           aceita_troca: boolean;
