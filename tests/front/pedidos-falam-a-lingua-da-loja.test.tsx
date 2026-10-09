@@ -188,6 +188,11 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
       textoDe,
     );
     expect(cabecalhos).toContain("Devolver ao cliente");
+    // O resumo do botão (nome acessível e dica) usa o mesmo nome da lista.
+    expect(alavanca?.getAttribute("aria-label")).toContain(
+      "devolver ao cliente (1)",
+    );
+    expect(alavanca?.getAttribute("aria-label")).not.toMatch(/estorno devido/i);
     const paragrafoDoAviso = Array.from(hospedeiro.querySelectorAll("p"))
       .map(textoDe)
       .find((t) => t.includes("O dinheiro entrou e o pedido está cancelado"));
@@ -196,6 +201,98 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
     expect(hospedeiro.textContent).toContain("Devolver agora (1)");
     expect(hospedeiro.textContent).toContain("Já estornei no Mercado Pago");
     expect(hospedeiro.textContent).not.toContain("Estorno devido");
+  });
+
+  // Revisão da onda 3 (BLOQUEIA, layout × dinheiro): com o texto em 11px, no
+  // celular de 360px a linha "NOME LONGO · R$ 150,00" passava da largura e o
+  // `truncate` da linha inteira escondia o VALOR atrás da reticência. O jsdom
+  // não mede largura; o contrato é de classe: só o nome encurta, o valor não
+  // encolhe, e o botão "O produto voltou" desce para baixo do pedido no
+  // celular.
+  it("listas do aviso de cancelados: no celular só o NOME encurta; o valor nunca some e o botão não espreme o pedido", async () => {
+    const { AlertasCancelados } = await import(
+      "@/views/admin/AlertasCancelados"
+    );
+    const nomeLongo = "Maria Aparecida Souza de Oliveira Santos";
+    const paraDevolver = {
+      id: "pedido-devolver",
+      total: 150,
+      customer: { name: nomeLongo },
+      status: "cancelled",
+      paymentStatus: "pago",
+    } as unknown as Order;
+    const esperandoRetorno = {
+      id: "pedido-voltando",
+      total: 150,
+      customer: { name: nomeLongo },
+      status: "cancelled",
+      cancelledAfterShipping: true,
+    } as unknown as Order;
+    await act(async () => {
+      raiz.render(
+        <AlertasCancelados
+          pagoCanceladoCount={0}
+          avisoPagoAposCancelado=""
+          pedidosEsperandoRetorno={[esperandoRetorno]}
+          pedidosParaDevolverAgora={[paraDevolver]}
+          estornosEmCurso={new Map()}
+          incompleto={false}
+          confirmandoRetornoId={null}
+          onConfirmarRetorno={vi.fn()}
+          estornandoId={null}
+          onRegistrarEstorno={vi.fn()}
+          onVerPedidos={vi.fn()}
+        />,
+      );
+    });
+    await act(async () => {
+      hospedeiro
+        .querySelector<HTMLButtonElement>(
+          '[data-testid="alertas-cancelados-alavanca"]',
+        )
+        ?.click();
+    });
+
+    // "Devolver agora": o valor (mesmo data-testid de sempre) não encolhe, o
+    // nome encurta, e quem segura os dois não corta nada.
+    const itemDevolver = hospedeiro.querySelector(
+      '[data-testid="devolver-agora-item-pedido-devolver"]',
+    );
+    const valor = itemDevolver?.querySelector(
+      '[data-testid="devolver-agora-valor"]',
+    );
+    expect(textoDe(valor ?? null)).toBe("R$ 150,00");
+    expect(valor?.classList.contains("shrink-0")).toBe(true);
+    expect(valor?.classList.contains("truncate")).toBe(false);
+    expect(valor?.previousElementSibling?.classList.contains("truncate")).toBe(
+      true,
+    );
+    expect(textoDe(valor?.previousElementSibling ?? null)).toBe(
+      `${nomeLongo} ·`,
+    );
+    expect(valor?.parentElement?.classList.contains("truncate")).toBe(false);
+    expect(textoDe(valor?.parentElement ?? null)).toBe(
+      `${nomeLongo} · R$ 150,00`,
+    );
+
+    // "Esperando o produto voltar": a linha empilha no celular (botão
+    // embaixo) e só fica lado a lado a partir de `sm`.
+    const botaoVoltou = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => textoDe(b) === "O produto voltou",
+    );
+    const linha = botaoVoltou?.closest("li");
+    expect(linha?.classList.contains("flex-col")).toBe(true);
+    expect(linha?.classList.contains("sm:flex-row")).toBe(true);
+    const valorDoRetorno = Array.from(
+      linha?.querySelectorAll("span") ?? [],
+    ).find((s) => textoDe(s) === "R$ 150,00");
+    expect(valorDoRetorno?.classList.contains("shrink-0")).toBe(true);
+    expect(
+      valorDoRetorno?.previousElementSibling?.classList.contains("truncate"),
+    ).toBe(true);
+    expect(valorDoRetorno?.parentElement?.classList.contains("truncate")).toBe(
+      false,
+    );
   });
 
   it("guia do pagamento que não fechou: cita a lista como “Devolver ao cliente” e fala em contestação no cartão", async () => {
@@ -278,7 +375,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
     },
   );
 
-  it("ficha do pedido: o código do produto aparece como “Código:”, sem “SKU”", async () => {
+  it("ficha do pedido: o código do produto aparece como “Código interno:”, sem “SKU”", async () => {
     const { OrderDetail } = await import(
       "@/components/admin/orders/OrderDetail"
     );
@@ -318,7 +415,7 @@ describe("pedidos e dinheiro — o que a lojista lê", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(hospedeiro.textContent).toContain("Código: CAM-01");
+    expect(hospedeiro.textContent).toContain("Código interno: CAM-01");
     expect(hospedeiro.textContent).not.toMatch(/\bSKU\b/);
   });
 

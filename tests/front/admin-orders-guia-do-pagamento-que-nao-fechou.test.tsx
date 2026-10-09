@@ -328,7 +328,9 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     // devido" com o botão de devolver na ficha — o guia tem de mandar NÃO
     // tocar e deixar o registro em Anotações internas.
     expect(texto).toContain(
-      "Esse pedido vai continuar no aviso de pedidos cancelados como “Devolver ao cliente”, e a ficha dele vai continuar mostrando o botão “Devolver R$ …”.",
+      // Revisão da onda 3: a lista se chama “Devolver ao cliente” e o guia
+      // manda NÃO devolver — a ressalva desfaz a contradição aparente.
+      "Esse pedido vai continuar no aviso de pedidos cancelados como “Devolver ao cliente” (mesmo com esse nome, não é para devolver), e a ficha dele vai continuar mostrando o botão “Devolver R$ …”.",
     );
     expect(texto).toContain(
       "Não toque nele: depois de enviar, devolver é perder o produto e o dinheiro.",

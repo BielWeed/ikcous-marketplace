@@ -160,7 +160,7 @@ export function AlertasCancelados({
     pedidosEsperandoRetorno.length > 0 &&
       `produto a voltar (${pedidosEsperandoRetorno.length})`,
     pedidosParaDevolverAgora.length > 0 &&
-      `estorno devido (${pedidosParaDevolverAgora.length})`,
+      `devolver ao cliente (${pedidosParaDevolverAgora.length})`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -364,19 +364,29 @@ export function AlertasCancelados({
                 </h4>
                 <ul className="mt-3 space-y-2">
                   {pedidosEsperandoRetorno.map((pedido) => (
+                    // Painel simples (onda 3): abaixo de `sm` o botão desce
+                    // para a linha de baixo — lado a lado, no celular de
+                    // 360px, ele deixava ~15px para o número e o cliente, e a
+                    // lojista não via de qual pedido era cada botão. Só o
+                    // NOME encurta; o valor nunca some.
                     <li
                       key={pedido.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3"
+                      className="flex flex-col gap-3 rounded-xl border border-white/5 bg-black/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
                         <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
                           #{pedido.id.slice(-6).toUpperCase()}
                         </span>
-                        <span className="block truncate text-[11px] font-bold uppercase text-zinc-500">
-                          {pedido.customer?.name || "Cliente"} · R${" "}
-                          {(pedido.total || 0).toLocaleString("pt-BR", {
-                            minimumFractionDigits: 2,
-                          })}
+                        <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
+                          <span className="min-w-0 truncate">
+                            {pedido.customer?.name || "Cliente"} ·
+                          </span>{" "}
+                          <span className="shrink-0">
+                            R${" "}
+                            {(pedido.total || 0).toLocaleString("pt-BR", {
+                              minimumFractionDigits: 2,
+                            })}
+                          </span>
                         </span>
                       </div>
                       <Button
@@ -464,14 +474,21 @@ export function AlertasCancelados({
                         <span className="block truncate text-[11px] font-black uppercase tracking-widest text-white">
                           #{pedido.id.slice(-6).toUpperCase()}
                         </span>
-                        <span className="block truncate text-[11px] font-bold uppercase text-zinc-500">
-                          {/* Achado 1 (rodada 2): o valor que FALTA devolver,
+                        {/* Achado 1 (rodada 2): o valor que FALTA devolver,
                             não o total do pedido — descontado o que uma
                             devolução deste pedido já devolveu por fora, e
                             (L3e') o que o Mercado Pago já está devolvendo ou
-                            acabou de devolver. */}
-                          {pedido.customer?.name || "Cliente"} ·{" "}
-                          <span data-testid="devolver-agora-valor">
+                            acabou de devolver. Painel simples (onda 3): só o
+                            NOME encurta com reticência; o valor nunca some
+                            (no celular de 360px, nome longo escondia o R$). */}
+                        <span className="flex min-w-0 items-baseline gap-1 text-[11px] font-bold uppercase text-zinc-500">
+                          <span className="min-w-0 truncate">
+                            {pedido.customer?.name || "Cliente"} ·
+                          </span>{" "}
+                          <span
+                            data-testid="devolver-agora-valor"
+                            className="shrink-0"
+                          >
                             R$ {reais(valor)}
                           </span>
                         </span>
