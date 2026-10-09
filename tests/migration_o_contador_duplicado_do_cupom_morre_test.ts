@@ -206,3 +206,37 @@ Deno.test("207: o rollback so recria a coluna (sem DROP, sem dado), confere a fo
   ])
     assertStringIncludes(c.replace(/\s+/g, " "), t);
 });
+
+Deno.test("207: ninguem na arvore de producao cita used_count alem de comentario (src, functions, scripts, workflows)", async () => {
+  const RAIZ = `${DIR}..`;
+  const achados: string[] = [];
+  async function varrer(dir: string) {
+    for await (const e of Deno.readDir(dir)) {
+      const caminho = `${dir}/${e.name}`;
+      if (e.isDirectory) {
+        if (["node_modules", ".git", "dist", "coverage"].includes(e.name)) continue;
+        await varrer(caminho);
+      } else if (/\.(ts|tsx|js|jsx|cjs|mjs|json|yml|yaml|sql)$/.test(e.name)) {
+        // as migrations, as consultas de medicao (13a/14a/14b) e o rol delas em conferir-banco.cjs citam por obrigacao
+        if (
+          caminho.includes("/supabase/migrations/") ||
+          caminho.includes("/scripts/publicacao/consultas/") ||
+          caminho.endsWith("/scripts/publicacao/conferir-banco.cjs") ||
+          caminho.includes("/tests/") ||
+          caminho.includes("/docs/")
+        )
+          continue;
+        const texto = await Deno.readTextFile(caminho);
+        const codigoSemComentario = texto
+          .split("\n")
+          .filter((l) => !/^\s*(\/\/|\*|\/\*|#|--)/.test(l))
+          .join("\n");
+        if (codigoSemComentario.includes("used_count")) achados.push(caminho);
+      }
+    }
+  }
+  for (const sub of ["src", "supabase/functions", "scripts", ".github"])
+    await varrer(`${RAIZ}/${sub}`);
+  // os tipos gerados (src/types/database.types.ts) so deixam de citar quando a coluna sai do banco
+  assertEquals(achados, []);
+});

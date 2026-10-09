@@ -478,7 +478,6 @@ export type Database = {
           type: string;
           usage_count: number | null;
           usage_limit: number | null;
-          used_count: number | null;
           valid_until: string | null;
           value: number;
         };
@@ -491,7 +490,6 @@ export type Database = {
           type: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value: number;
         };
@@ -504,7 +502,6 @@ export type Database = {
           type?: string;
           usage_count?: number | null;
           usage_limit?: number | null;
-          used_count?: number | null;
           valid_until?: string | null;
           value?: number;
         };
