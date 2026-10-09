@@ -180,21 +180,24 @@ PROVAS.push({
       assert.equal(r.rows[0].estoque_minimo, 5);
       assert.equal(await gravado(c, P_NOVO_PADRAO), 5, "nasceu com o padrão 5");
 
-      // (d) cliente comum: 0 linhas ou erro, nunca gravar
-      for (const [rotulo, sql, params] of [
-        ["UPDATE pela view", SQL_VIEW_UPDATE, [P_PRODUTO, 99]],
-        ["UPDATE na tabela", SQL_TABELA_UPDATE, [P_PRODUTO, 99]],
-        ["INSERT pela view", SQL_VIEW_INSERT_COM, [P_DO_CLIENTE, 99]],
+      // (d) cliente comum: os UPDATE passam sem erro e afetam 0 linhas (a
+      // view filtra `WHERE is_admin()`; na tabela, a política de UPDATE); o
+      // INSERT pela view morre no `WITH CASCADED CHECK OPTION` (44000).
+      for (const [rotulo, sql] of [
+        ["UPDATE pela view", SQL_VIEW_UPDATE],
+        ["UPDATE na tabela", SQL_TABELA_UPDATE],
       ]) {
-        r = await como(c, "cliente", sql, params);
-        assert.ok(
-          !r.ok || r.n === 0,
-          `cliente ${rotulo} gravou ${r.n} linha(s)`,
-        );
-        console.log(
-          `    cliente ${rotulo}: ${r.ok ? `${r.n} linha(s)` : `recusado (${r.code}) ${r.message}`}`,
-        );
+        r = await como(c, "cliente", sql, [P_PRODUTO, 99]);
+        assert.ok(r.ok, `cliente ${rotulo} deu erro inesperado: ${r.message}`);
+        assert.equal(r.n, 0, `cliente ${rotulo} gravou ${r.n} linha(s)`);
       }
+      r = await como(c, "cliente", SQL_VIEW_INSERT_COM, [P_DO_CLIENTE, 99]);
+      assert.equal(r.ok, false, "cliente INSERT pela view passou");
+      assert.equal(
+        r.code,
+        "44000",
+        `cliente INSERT pela view: esperava a check option (44000), veio ${r.code} ${r.message}`,
+      );
       assert.equal(
         await gravado(c, P_PRODUTO),
         2,

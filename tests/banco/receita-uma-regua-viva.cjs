@@ -179,11 +179,6 @@ async function reguas(c, periodo) {
     "SELECT public.fin_resumo($1::date, $2::date) AS r",
     [mes, hoje],
   );
-  const analytics = await exigir(
-    c,
-    "admin",
-    "SELECT public.get_admin_analytics_v2(90)::jsonb AS r",
-  );
   // crm__vendas não tem EXECUTE para authenticated (20261178:136): é o
   // ajudante interno das duas RPCs acima, lido aqui pelo dono do banco.
   const somaCrmVendas = (
@@ -201,9 +196,28 @@ async function reguas(c, periodo) {
     finPresencial: num(fin.por_canal.presencial),
     finEntradas: num(fin.entradas),
     finSaidas: num(fin.saidas),
-    analyticsMes: num(analytics.month.revenue),
   };
 }
+
+/**
+ * A 4ª régua é só INFORMAÇÃO: falha ou formato diferente de
+ * get_admin_analytics_v2 (outra frente pode estar redefinindo o corpo) nunca
+ * derruba a caracterização — devolve {motivo} em vez do valor.
+ */
+async function quartaRegua(c) {
+  const r = await como(
+    c,
+    "admin",
+    "SELECT public.get_admin_analytics_v2(90)::jsonb AS r",
+  );
+  if (!r.ok) return { motivo: `erro ${r.code}: ${r.message}` };
+  const valor = Number(r.rows[0]?.r?.month?.revenue);
+  if (!Number.isFinite(valor)) return { motivo: "sem month.revenue numérico" };
+  return { valor: num(valor) };
+}
+
+const SE_CORRIGIDO =
+  " — se os achados A/B foram corrigidos de propósito, atualize a previsão desta caracterização";
 
 const delta = (depois, antes) =>
   Object.fromEntries(
@@ -247,6 +261,7 @@ PROVAS.push({
       ).rows[0];
 
       const antes = await reguas(c, periodo);
+      const quartaAntes = await quartaRegua(c);
 
       // ---- semente, pelos caminhos de produção ----
       // 1. online PIX 100: o webhook confirma.
@@ -407,24 +422,24 @@ PROVAS.push({
       assert.deepEqual(
         [...noCrm.keys()].sort(),
         [o1, o2, o3].sort(),
-        "DIVERGÊNCIA NÃO PREVISTA: crm__vendas devia conter só os casos 1, 2 e 3",
+        `DIVERGÊNCIA NÃO PREVISTA: crm__vendas devia conter só os casos 1, 2 e 3${SE_CORRIGIDO}`,
       );
       assert.deepEqual(
         [...vendaNoFin.keys()].sort(),
         [o1, o2, o3, o5, o6].sort(),
-        "DIVERGÊNCIA NÃO PREVISTA: as vendas do Financeiro deviam ser os casos 1, 2, 3, 5 e 6",
+        `DIVERGÊNCIA NÃO PREVISTA: as vendas do Financeiro deviam ser os casos 1, 2, 3, 5 e 6${SE_CORRIGIDO}`,
       );
       for (const id of [o1, o2, o3]) {
         assert.equal(
           vendaNoFin.get(id),
           noCrm.get(id),
-          `DIVERGÊNCIA NÃO PREVISTA: caso limpo ${id} com valor diferente`,
+          `DIVERGÊNCIA NÃO PREVISTA: caso limpo ${id} com valor diferente${SE_CORRIGIDO}`,
         );
       }
       assert.deepEqual(
         saidasNoFin,
         [[o5, "estorno_externo", 40]],
-        "DIVERGÊNCIA NÃO PREVISTA: a única saída devia ser o estorno externo do caso 5",
+        `DIVERGÊNCIA NÃO PREVISTA: a única saída devia ser o estorno externo do caso 5${SE_CORRIGIDO}`,
       );
 
       // ---- as réguas, por delta (o clone pode trazer pedidos de antes) ----
@@ -452,7 +467,7 @@ PROVAS.push({
           financeiroEntradas: 240,
           financeiroSaidas: 40,
         },
-        "DIVERGÊNCIA NÃO PREVISTA entre as réguas da receita",
+        `DIVERGÊNCIA NÃO PREVISTA entre as réguas da receita${SE_CORRIGIDO}`,
       );
 
       // ---- os dois achados, com o valor exato ----
@@ -461,7 +476,7 @@ PROVAS.push({
       assert.equal(
         num(medido.financeiroVendas - medido.inicio),
         num(achadoA + achadoB),
-        "a diferença entre Financeiro e Início é exatamente A + B",
+        `a diferença entre Financeiro e Início é exatamente A + B${SE_CORRIGIDO}`,
       );
       console.log(
         [
@@ -477,11 +492,15 @@ PROVAS.push({
           "status — entra nas vendas do Financeiro e fica fora do Início e do CRM.",
         ].join(" "),
       );
+      const quartaDepois = await quartaRegua(c);
+      const motivo = quartaAntes.motivo || quartaDepois.motivo;
       console.log(
-        [
-          `    INFORMAÇÃO — 4ª régua: get_admin_analytics_v2(90).month.revenue variou ${d.analyticsMes}`,
-          "(janela MÓVEL de 30 dias por created_at, 20261199:1693-1698 — não é o mês do pagamento).",
-        ].join(" "),
+        motivo
+          ? `    INFORMAÇÃO — 4ª régua: indisponível (${motivo})`
+          : [
+              `    INFORMAÇÃO — 4ª régua: get_admin_analytics_v2(90).month.revenue variou ${num(quartaDepois.valor - quartaAntes.valor)}`,
+              "(janela MÓVEL de 30 dias por created_at, 20261199:1693-1698 — não é o mês do pagamento).",
+            ].join(" "),
       );
     } finally {
       await c.query("ROLLBACK");
