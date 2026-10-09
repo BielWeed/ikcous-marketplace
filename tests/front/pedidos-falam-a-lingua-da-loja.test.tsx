@@ -7,7 +7,8 @@ import type { LinhaEstornoDoPedido } from "@/hooks/useEstornosDoPedido";
 //     que cita a lista pelo nome);
 //   - "chargeback" → "contestação no cartão" (quadro "Devolução de dinheiro");
 //   - "SKU" → "código" (ficha do pedido e busca manual do caixa);
-//   - "Ticket Médio" → "Valor médio por venda" (cartão do topo de Pedidos).
+//   - "Ticket Médio" → "Valor médio por venda" (cartão do topo de Pedidos;
+//     na onda F o cartão saiu do topo — ver o caso abaixo).
 //
 // SÓ TEXTO: nenhum valor, botão, RPC ou condição muda. Por isso cada caso
 // abaixo monta o componente de verdade com os mesmos dados de sempre e só
@@ -110,14 +111,19 @@ describe("pedidos e dinheiro — nenhum termo técnico do glossário nos arquivo
     expect(jargaoForaDeComentario(fonte)).toEqual([]);
   });
 
-  // O cartão do topo de Pedidos lê `stats.avgTicket` como sempre; só o
-  // rótulo muda (a Onda F, depois, decide se o cartão fica).
-  it("o cartão do topo de Pedidos se chama “Valor médio por venda”", () => {
+  // Onda F (F3) decidiu: o valor médio por venda saiu do topo de Pedidos
+  // (vive em Clientes e em Relatórios/Início), junto com a receita do dia.
+  // Nenhum rótulo de cartão do topo diz "Valor médio", "Ticket" ou "Receita
+  // Hoje" — nem com o nome técnico de volta.
+  it("o topo de Pedidos não tem cartão de “Valor médio”, “Ticket” nem “Receita Hoje”", () => {
     const fonte =
       new Map(Object.entries(FONTES)).get(
         "/src/views/admin/AdminOrdersView.tsx",
       ) ?? "";
-    expect(fonte).toContain('label: "Valor médio por venda",');
+    expect(fonte).toContain('label: "Para preparar",');
+    expect(fonte).not.toMatch(/label:\s*"[^"]*Valor médio/i);
+    expect(fonte).not.toMatch(/label:\s*"[^"]*Ticket/i);
+    expect(fonte).not.toMatch(/label:\s*"[^"]*Receita Hoje/i);
   });
 });
 
