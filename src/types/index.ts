@@ -248,6 +248,9 @@ export interface Review {
   createdAt: string;
 }
 
+/** Quem vê e quem usa o cupom (migration 20261208000000). */
+export type AlcanceDoCupom = "codigo" | "vitrine" | "exclusivo";
+
 export interface Coupon {
   id: string;
   code: string;
@@ -258,6 +261,9 @@ export interface Coupon {
   usageCount: number | null;
   validUntil?: string;
   active: boolean;
+  /** 'codigo' = secreto (só quem digita); 'vitrine' = o checkout mostra a
+   * todos; 'exclusivo' = só as contas escolhidas veem e usam. */
+  alcance?: AlcanceDoCupom;
 }
 
 export interface Banner {
