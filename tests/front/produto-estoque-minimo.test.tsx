@@ -373,10 +373,11 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
     });
   });
 
-  describe("d. negativo e decimal não passam", () => {
+  describe("d. negativo, decimal e acima do máximo do banco não passam", () => {
     it.each([
       ["negativo", "-3"],
       ["decimal", "2.5"],
+      ["acima do máximo do banco", "3000000000"],
     ])(
       "%s (%s): mostra o erro no campo, desliga o salvar e não grava",
       async (_nome, texto) => {
@@ -384,7 +385,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
         await digitarCampo(ID, texto);
 
         expect(secao("Avançado").textContent).toContain(
-          "Use um número inteiro, 0 ou mais.",
+          "Use um número inteiro de 0 a 2147483647.",
         );
         expect(botao("Salvar").disabled).toBe(true);
 
@@ -415,9 +416,21 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       await digitarCampo(ID, "4");
 
       expect(secao("Avançado").textContent).not.toContain(
-        "Use um número inteiro, 0 ou mais.",
+        "Use um número inteiro de 0 a 2147483647.",
       );
       expect(botao("Salvar").disabled).toBe(false);
+    });
+
+    it("o maior valor que o banco guarda (2147483647) passa e vai no payload", async () => {
+      await montar("prod-1");
+      await digitarCampo(ID, "2147483647");
+
+      expect(secao("Avançado").textContent).not.toContain(
+        "Use um número inteiro de 0 a 2147483647.",
+      );
+      await salvarEdicao();
+      expect(updateProduct).toHaveBeenCalledTimes(1);
+      expect(updateProduct.mock.calls[0][1].estoqueMinimo).toBe(2147483647);
     });
   });
 

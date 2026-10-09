@@ -309,13 +309,16 @@ interface ProductFormFields {
   lengthCm: string;
 }
 
-const MENSAGEM_ESTOQUE_MINIMO_INVALIDO = "Use um número inteiro, 0 ou mais.";
+// 2147483647 é o maior número que a coluna (inteiro de 32 bits) guarda.
+const ESTOQUE_MINIMO_MAXIMO = 2147483647;
+const MENSAGEM_ESTOQUE_MINIMO_INVALIDO = `Use um número inteiro de 0 a ${ESTOQUE_MINIMO_MAXIMO}.`;
 
 /**
  * Lê o campo "Avisar quando o estoque chegar a". Vazio vira `null` (volta ao
  * padrão do projeto, 5); só dígitos viram o número, zero incluído (zero é
- * escolha da lojista). Qualquer outra coisa — negativo, decimal, texto — vira
- * erro do campo, nunca NaN indo para o banco.
+ * escolha da lojista). Qualquer outra coisa — negativo, decimal, texto ou
+ * acima do que a coluna guarda — vira erro do campo, nunca NaN nem estouro
+ * indo para o banco.
  */
 function lerEstoqueMinimo(texto: string): {
   valor: number | null;
@@ -327,7 +330,7 @@ function lerEstoqueMinimo(texto: string): {
     return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_INVALIDO };
   }
   const numero = Math.max(0, Math.trunc(Number(limpo)));
-  if (!Number.isSafeInteger(numero)) {
+  if (!Number.isSafeInteger(numero) || numero > ESTOQUE_MINIMO_MAXIMO) {
     return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_INVALIDO };
   }
   return { valor: numero, erro: "" };
@@ -4368,9 +4371,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </div>
         </SecaoRecolhivel>
 
-        {/* Avançado (H1): código interno e código de barras — raros no dia a
-            dia, mas nada se apaga. MONTADA e FECHADA; erro de formato ou de
-            duplicidade em qualquer um dos dois a abre sozinha. */}
+        {/* Avançado (H1): código interno, código de barras e aviso de estoque
+            — raros no dia a dia, mas nada se apaga. MONTADA e FECHADA; erro
+            em qualquer um dos três (formato, duplicidade ou número inválido)
+            a abre sozinha. */}
         <SecaoRecolhivel
           titulo="Avançado"
           resumo="Código interno, código de barras e aviso de estoque"
