@@ -270,11 +270,11 @@ export function SerieDe14Dias({
             })}
           </div>
           <table className="sr-only">
-            <caption>Receita por dia nos últimos 14 dias</caption>
+            <caption>Vendas pagas por dia nos últimos 14 dias</caption>
             <thead>
               <tr>
                 <th scope="col">Dia</th>
-                <th scope="col">Receita</th>
+                <th scope="col">Vendas pagas</th>
               </tr>
             </thead>
             <tbody>

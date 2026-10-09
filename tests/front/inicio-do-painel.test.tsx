@@ -185,7 +185,7 @@ describe("Início do painel", () => {
 
     const pagina = texto(hospedeiro);
     for (const rotulo of [
-      "Receita do mês",
+      "Vendas pagas no mês",
       "Lucro estimado",
       "Saldo em contas",
       "A receber em 7 dias",
