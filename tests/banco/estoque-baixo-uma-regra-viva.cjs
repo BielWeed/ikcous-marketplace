@@ -154,7 +154,7 @@ const ESPERADO = PRODUTOS.filter((p) => p.baixo).length; // 4
 
 // ── A conta do front, copiada ──
 // src/utils/avisos-do-lojista.ts:70-75 (precisaDeReposicao) e a régua de
-// estoque de src/lib/mappers.ts (mapProductFromDB). A prova (1) confere que o
+// estoque de src/lib/mappers.ts (mapProductFromDB). A prova (0) confere que o
 // texto de origem ainda é este.
 const LIMIAR_PADRAO_DE_ESTOQUE = 5;
 const precisaDeReposicao = (estoque, estoqueMinimo) =>

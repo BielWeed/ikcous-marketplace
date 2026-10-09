@@ -354,7 +354,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             : "—",
         icon: Wallet,
         accent: "text-emerald-500",
-        subValue: "Capital Líquido",
+        subValue: "Pelo custo cadastrado",
       },
       {
         id: "lucro-potencial",
@@ -365,7 +365,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             : "—",
         icon: TrendingUp,
         accent: "text-admin-gold",
-        subValue: "Margem Bruta",
+        subValue: "Só produtos com custo",
       },
       {
         id: "roi-portfolio",
@@ -976,7 +976,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="mb-3 text-[10px] font-medium leading-relaxed text-zinc-500">
                         Custo total de aquisição de todas as unidades de
                         produtos atualmente em estoque. Representa o capital
-                        líquido imobilizado no inventário.
+                        líquido imobilizado no inventário. Produtos sem custo
+                        cadastrado ficam de fora da conta.
                       </p>
                       <div className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[9px] text-zinc-500">
                         <span className="text-[8px] font-bold uppercase text-zinc-600">
@@ -1000,6 +1001,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="mb-3 text-[10px] font-medium leading-relaxed text-zinc-500">
                         Lucro bruto total estimado se todos os produtos em
                         estoque forem vendidos pelo preço atual de venda.
+                        Produtos sem custo cadastrado ficam de fora da conta.
                       </p>
                       <div className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[9px] text-zinc-500">
                         <span className="text-[8px] font-bold uppercase text-zinc-600">
