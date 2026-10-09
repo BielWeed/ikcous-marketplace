@@ -30,7 +30,8 @@
  *       "presa" SE E SOMENTE SE a varredura VAI devolver um dia; e os minutos
  *       batem. A vaga volta de verdade: a validação do cupom recusa antes e
  *       aceita depois.
- *   (3) só o DONO: outro usuário, outro código, cupom inativo, sem sessão, anon.
+ *   (3) só o DONO: outro usuário, outro código, cupom inativo, sem sessão e convidado
+ *       recebem a MESMA resposta byte a byte (a RPC não vira sonda de código); anon, sem EXECUTE.
  *   (4) vários pedidos: vale o que volta primeiro.
  *   (5) MIGRATION: reaplicar é idempotente; pré-voo recusa SEM gravar, com o
  *       NOME do que falta ou diverge (inclusive 1 byte a mais no corpo da
@@ -723,7 +724,7 @@ prova("(0) fixtures", async (c) => {
 
 prova("(1) catálogo e ACL das duas funções novas", async (c) => {
   const r = await c.query(
-    `SELECT p.oid::regprocedure::text AS f, p.prosecdef, p.proconfig::text AS config,
+    `SELECT (p.oid = to_regprocedure(CASE p.proname WHEN 'cupom__vaga_volta_em' THEN 'public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamptz, boolean, timestamptz, text, integer)' ELSE 'public.vaga_do_cupom_presa(text)' END)) AS exata, p.prosecdef, p.proconfig::text AS config,
             p.provolatile, p.prorettype::regtype::text AS ret,
             EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                      WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS publico,
@@ -743,7 +744,7 @@ prova("(1) catálogo e ACL das duas funções novas", async (c) => {
   );
   const [aux, rpc] = r.rows;
 
-  assert.equal(aux.f, FN_AUX);
+  assert.equal(aux.exata, true, "assinatura do auxiliar");
   assert.equal(aux.ret, "timestamp with time zone");
   assert.equal(aux.provolatile, "s", "o auxiliar é STABLE (usa now())");
   assert.equal(aux.config, "{search_path=public}");
@@ -754,7 +755,7 @@ prova("(1) catálogo e ACL das duas funções novas", async (c) => {
     "ninguém executa o auxiliar (só o dono e as funções SECURITY DEFINER dele)",
   );
 
-  assert.equal(rpc.f, FN_RPC);
+  assert.equal(rpc.exata, true, "assinatura da RPC");
   assert.equal(rpc.ret, "jsonb");
   assert.equal(rpc.prosecdef, true);
   assert.equal(rpc.config, "{search_path=public}");
@@ -791,13 +792,6 @@ prova("(1) catálogo e ACL das duas funções novas", async (c) => {
       assert.equal(a.ok, false, `${quem} executou o auxiliar`);
       assert.equal(a.code, "42501", `${quem}: ${a.message}`);
     }
-    const s = await como(
-      c,
-      "semSessao",
-      "SELECT public.vaga_do_cupom_presa('X') AS r",
-    );
-    assert.equal(s.ok, false, "authenticated SEM sessão passou");
-    assert.equal(s.code, "42501", s.message);
   });
 });
 
@@ -810,61 +804,100 @@ prova(
 );
 
 async function soODono(c) {
+  const NADA = '{"presa":false,"volta_em_minutos":null}';
+  // A RPC não pode virar sonda: cada "não" tem de ser BYTE A BYTE o mesmo.
+  const bruto = async (quem, codigo) =>
+    JSON.stringify(await vagaPresa(c, quem, codigo));
   await emTx(c, async () => {
-    const { codigo, cupom } = await montar(c, {
+    const { codigo, cupom, id } = await montar(c, {
       kind: "v24-cancelado",
       offsetSec: 1380 * MIN,
     });
     // o dono: presa, 60 + 15 min
-    assert.deepEqual(await vagaPresa(c, "comprador", codigo), {
-      presa: true,
-      volta_em_minutos: 75,
-    });
+    assert.equal(
+      await bruto("comprador", codigo),
+      '{"presa":true,"volta_em_minutos":75}',
+    );
     // minúsculas casam (a validação compara em UPPER)
-    assert.deepEqual(await vagaPresa(c, "comprador", codigo.toLowerCase()), {
-      presa: true,
-      volta_em_minutos: 75,
-    });
+    assert.equal(
+      await bruto("comprador", codigo.toLowerCase()),
+      '{"presa":true,"volta_em_minutos":75}',
+    );
     // OUTRO usuário e o ADMIN (que não é o dono do pedido): nada, nem que o pedido existe
     for (const quem of ["outro", "admin"]) {
-      assert.deepEqual(
-        await vagaPresa(c, quem, codigo),
-        { presa: false, volta_em_minutos: null },
+      assert.equal(
+        await bruto(quem, codigo),
+        NADA,
         `${quem} viu o pedido do comprador`,
       );
     }
-    // outro código: nada
+    // outro código, código inexistente, vazio, NULL: a MESMA resposta que o
+    // código do pedido de outro usuário (quem de fora não distingue "o código
+    // existe" de "não existe")
     const outroCupom = await novoCupom(c);
-    assert.deepEqual(
-      await vagaPresa(c, "comprador", outroCupom.codigo),
-      { presa: false, volta_em_minutos: null },
-      "outro código",
+    for (const alvo of [codigo, outroCupom.codigo, "NAOEXISTE", "", null]) {
+      assert.equal(await bruto("outro", alvo), NADA, `outro / ${alvo}`);
+    }
+    assert.equal(await bruto("comprador", outroCupom.codigo), NADA);
+    assert.equal(await bruto("comprador", "NAOEXISTE"), NADA);
+    assert.equal(await bruto("comprador", ""), NADA);
+    assert.equal(await bruto("comprador", null), NADA);
+    // SEM SESSÃO (authenticated com auth.uid() NULL): a mesma resposta, sem
+    // erro de texto diferente, nem para o código do pedido que existe
+    for (const alvo of [codigo, "NAOEXISTE", null]) {
+      assert.equal(
+        await bruto("semSessao", alvo),
+        NADA,
+        `sem sessão / ${alvo}`,
+      );
+    }
+    // anon: sem EXECUTE, o MESMO erro (texto e código) para código que existe e
+    // para o que não existe
+    const negados = [];
+    for (const alvo of [codigo, "NAOEXISTE"]) {
+      const a = await como(
+        c,
+        "anon",
+        "SELECT public.vaga_do_cupom_presa($1) AS r",
+        [alvo],
+      );
+      assert.equal(a.ok, false);
+      negados.push(`${a.code}|${a.message}`);
+    }
+    assert.equal(
+      negados[0].replace(/.*\|/, ""),
+      negados[1].replace(/.*\|/, ""),
     );
-    assert.deepEqual(await vagaPresa(c, "comprador", "NAOEXISTE"), {
-      presa: false,
-      volta_em_minutos: null,
-    });
-    assert.deepEqual(await vagaPresa(c, "comprador", ""), {
-      presa: false,
-      volta_em_minutos: null,
-    });
-    assert.deepEqual(await vagaPresa(c, "comprador", null), {
-      presa: false,
-      volta_em_minutos: null,
-    });
-    // cupom desativado: não é o caso da frase de limite
+    assert.equal(negados[0].split("|")[0], "42501");
+    // pedido de CONVIDADO (user_id NULL) fica de fora, para o dono e para quem
+    // chama sem sessão (NULL = NULL nunca casa)
+    await c.query(
+      "UPDATE public.marketplace_orders SET user_id = NULL WHERE id = $1",
+      [id],
+    );
+    assert.equal(await bruto("comprador", codigo), NADA, "pedido de convidado");
+    assert.equal(
+      await bruto("semSessao", codigo),
+      NADA,
+      "convidado vs sem sessão",
+    );
+    await c.query(
+      "UPDATE public.marketplace_orders SET user_id = $2 WHERE id = $1",
+      [id, U_COMPRADOR],
+    );
+    assert.equal(
+      await bruto("comprador", codigo),
+      '{"presa":true,"volta_em_minutos":75}',
+    );
+    // cupom desativado: não é o caso da frase de limite, e a resposta é a mesma
     await c.query("UPDATE public.coupons SET active = false WHERE id = $1", [
       cupom.id,
     ]);
-    assert.deepEqual(
-      await vagaPresa(c, "comprador", codigo),
-      { presa: false, volta_em_minutos: null },
-      "cupom inativo",
-    );
+    assert.equal(await bruto("comprador", codigo), NADA, "cupom inativo");
   });
 }
 prova(
-  "(3) só o dono vê a vaga presa, só no código certo, só no cupom ativo",
+  '(3) só o dono vê a vaga presa; todo "não" é a mesma resposta (a RPC não vira sonda de código)',
   soODono,
 );
 
@@ -1016,12 +1049,12 @@ async function preVoo(c, sqlM1 = lerM1()) {
         cc.query(
           "ALTER FUNCTION public.devolver_uso_cupom(uuid) RENAME TO devolver_uso_cupom_x",
         ),
-      /PREFLIGHT_20261205.*devolver_uso_cupom/,
+      /PREFLIGHT_20261205: falta a funcao public\.devolver_uso_cupom/,
     ],
     [
       "tabela coupons ausente",
       (cc) => cc.query("ALTER TABLE public.coupons RENAME TO coupons_x"),
-      /PREFLIGHT_20261205.*public\.coupons/,
+      /PREFLIGHT_20261205: falta a tabela public\.coupons/,
     ],
     [
       "coluna tentativas_de_pagamento ausente",
@@ -1029,7 +1062,7 @@ async function preVoo(c, sqlM1 = lerM1()) {
         cc.query(
           "ALTER TABLE public.marketplace_orders RENAME COLUMN tentativas_de_pagamento TO tdp",
         ),
-      /PREFLIGHT_20261205.*tentativas_de_pagamento/,
+      /PREFLIGHT_20261205: falta a coluna public\.marketplace_orders\.tentativas_de_pagamento/,
     ],
     [
       "coluna coupon_usage_returned ausente",
@@ -1037,7 +1070,7 @@ async function preVoo(c, sqlM1 = lerM1()) {
         cc.query(
           "ALTER TABLE public.marketplace_orders RENAME COLUMN coupon_usage_returned TO cur",
         ),
-      /PREFLIGHT_20261205.*coupon_usage_returned/,
+      /PREFLIGHT_20261205: falta a coluna public\.marketplace_orders\.coupon_usage_returned/,
     ],
     [
       "coluna cancelled_after_shipping ausente",
@@ -1045,7 +1078,7 @@ async function preVoo(c, sqlM1 = lerM1()) {
         cc.query(
           "ALTER TABLE public.marketplace_orders RENAME COLUMN cancelled_after_shipping TO cas",
         ),
-      /PREFLIGHT_20261205.*cancelled_after_shipping/,
+      /PREFLIGHT_20261205: falta a coluna public\.marketplace_orders\.cancelled_after_shipping/,
     ],
     [
       "coluna returned_to_seller_at ausente",
@@ -1053,13 +1086,13 @@ async function preVoo(c, sqlM1 = lerM1()) {
         cc.query(
           "ALTER TABLE public.marketplace_orders RENAME COLUMN returned_to_seller_at TO rsa",
         ),
-      /PREFLIGHT_20261205.*returned_to_seller_at/,
+      /PREFLIGHT_20261205: falta a coluna public\.marketplace_orders\.returned_to_seller_at/,
     ],
     [
       "coluna coupons.code ausente",
       (cc) =>
         cc.query("ALTER TABLE public.coupons RENAME COLUMN code TO codigo_x"),
-      /PREFLIGHT_20261205.*coupons\.code/,
+      /PREFLIGHT_20261205: falta a coluna public\.coupons\.code/,
     ],
   ];
   for (const [rotulo, quebra, esperado] of quebras) {
@@ -1440,7 +1473,7 @@ prova(
       c,
       "RPC sem filtrar o dono do pedido",
       rpc,
-      "     WHERE o.user_id = v_usuario\n       AND o.coupon_id IN (",
+      "     WHERE o.user_id = (SELECT auth.uid())\n       AND o.coupon_id IN (",
       "     WHERE o.coupon_id IN (",
       [soODono, variosPedidos],
     );
@@ -1472,18 +1505,11 @@ prova(
     );
     await mutarFuncao(
       c,
-      "RPC sem a guarda de sessão",
+      "RPC deixa NULL casar com NULL (convidado e chamada sem sessão)",
       rpc,
-      `    IF v_usuario IS NULL THEN
-        RAISE EXCEPTION USING ERRCODE='42501', MESSAGE='Nao autorizado: e preciso estar autenticado.';
-    END IF;
-`,
-      "",
-      [
-        async (cc) => {
-          await PROVAS.find((p) => p.nome.startsWith("(1)")).corpo(cc);
-        },
-      ],
+      "o.user_id = (SELECT auth.uid())",
+      "o.user_id IS NOT DISTINCT FROM (SELECT auth.uid())",
+      [soODono],
     );
     await mutarFuncao(
       c,
