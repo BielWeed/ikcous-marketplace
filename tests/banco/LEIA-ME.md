@@ -164,7 +164,21 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   exclusivo, corte `<`, frase do limite trocada, lista vazando o secreto/o exclusivo alheio/sem
   limite/mostrando esgotado/ignorando a chave, painel devolvendo CPF, pré-voo sem a guarda do
   índice único e do hash) deixam a prova vermelha. **Não prova** a IKCOUS nem a Savy (o portão
-  da release, consultas 15a/15b, é da fase seguinte).
+  da release, consultas 15a/15b, é o item seguinte).
+- **portão dos cupons do checkout (`cupons-do-checkout-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `15a-conferir-cupons-do-checkout-aplicado` (DEPOIS do
+  apply, 37 linhas) e `15b-antes-cupons-do-checkout-pecas-ausentes` (ANTES, 15 linhas), a
+  "prova de objetos" do lote 20261208000000. 15b positiva em `pre` (sem a migration; também com
+  o corpo da validação da 203 em CRLF, com papel mínimo, `search_path` trocado e objetos-isca
+  em outro schema) e depois do rollback manual; 15a positiva na árvore inteira, no ARQUIVO da
+  migration aplicado sobre `pre` (resposta idêntica), em CRLF e depois de ida, volta e ida; um
+  defeito por vez reprovando a SUA linha (coluna `alcance`, CHECK, RLS, política, privilégio por
+  tabela e por coluna, forma / corpo / sobrecarga / EXECUTE de cada uma das 5 funções, gatilho
+  e a ORDEM dele, índice, meia migration); 34 mutantes do texto das consultas deixam a prova
+  vermelha; o `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR.
+  **Limite declarado:** a linha de controle não tem negativo local (o catálogo é legível por
+  todo papel) e o papel `supabase_read_only_user` real não foi medido. **Não prova** a IKCOUS
+  nem a Savy.
 - **consulta 13a (`consulta-13a-contador-duplicado-viva.cjs`)**: o item dos dependentes
   ignorava todo `pg_attrdef` e escondia uma coluna gerada que cita a coluna; a prova roda a
   consulta num Postgres real (base, coluna gerada, visão, índice) e o mutante que volta a

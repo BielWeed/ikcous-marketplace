@@ -365,6 +365,82 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         aceito:** um `INSERT` com `used_count` explicito diferente de zero, gravado nos segundos entre
         a foto e o `LOCK`, nao e visto; ninguem grava essa coluna (nenhuma RPC, gatilho, edge ou tela).
 
+  13. **Lote de UMA migration, de apply normal: `20261208000000` (o checkout mostra os cupons da
+      cliente).** Sem `backfillLedger` e sem `nuncaAplicar`; vale nas duas lojas assinantes (IKCOUS e
+      Savy). A migration CRIA: `coupons.alcance` (`text NOT NULL DEFAULT 'codigo'`, com CHECK dos
+      tres valores), a tabela `cupom_clientes` (RLS ligada, UMA politica de leitura que exige o admin
+      ATUAL), tres funcoes (`cupons_do_checkout(numeric)` para anon e authenticated;
+      `admin_cupom_clientes(uuid)` e `admin_cupom_definir_clientes(uuid, uuid[])` so para
+      authenticated), o gatilho `tr_pedido_com_cupom_so_nasce_para_a_lista` (com a funcao dele, sem
+      EXECUTE para ninguem) e TROCA o corpo de `validate_coupon_secure_v2`, partindo do corpo da
+      `20261203000000` (cupons desligados, #777). Duas consultas, so leitura e de ROL FECHADO (so
+      valem com `rol=ok`; o numero 16 e do PIX):
+      - **`15a-conferir-cupons-do-checkout-aplicado`** (a consulta do lote, 37 linhas) prova DEPOIS do
+        apply, cada linha com o nome do objeto que reprovou: a coluna `alcance` (tipo, NOT NULL,
+        default) e o CHECK validado; `cupom_clientes` (colunas, RLS, politicas, regra da politica,
+        privilegios de authenticated, anon e PUBLIC); para CADA uma das 5 funcoes a quantidade de
+        sobrecargas, a forma (linguagem, volatilidade, SECURITY DEFINER, `search_path`, retorno), o
+        corpo (sha256 de 10 hashes recalculados do arquivo da migration, LF e CRLF) e o EXECUTE por
+        papel; o gatilho (existe, BEFORE INSERT, habilitado, WHEN, funcao executada) e a ORDEM dele
+        depois de `tr_pedido_com_cupom_exige_a_chave_ligada` (gatilhos do mesmo tipo disparam em
+        ordem de nome); e o indice unico da chave de compra. Uma migration futura que troque o corpo
+        de `validate_coupon_secure_v2` precisa atualizar o hash da `15a`.
+      - **`15b-antes-cupons-do-checkout-pecas-ausentes`** (`ausenciaConfirmadaPor`, 15 linhas) prova o
+        ANTES, as condicoes do pre-voo da migration: NENHUMA das pecas novas existe (coluna, CHECK,
+        tabela, as 4 funcoes, o gatilho: em qualquer assinatura e qualquer estado), e o que ela PRECISA
+        ja existe: as 16 colunas que as pecas leem, `is_admin`, `is_admin_atual` e `rls_admin_atual`, o
+        gatilho `tr_pedido_com_cupom_exige_a_chave_ligada` ATIVO (BEFORE INSERT), o indice unico da
+        chave de compra e o corpo vivo de `validate_coupon_secure_v2` igual ao da `20261203000000`.
+        **Por isso o lote so fecha depois que a `20261203000000` esta no banco da loja** (senao a
+        `15b` sai NEGATIVA e o portao PARA).
+      - **Caminho, uma loja por vez:** ledger sem a versao e sem evidencia → `15a` (sai NEGATIVA: a
+        migration ainda nao esta) → `15b` MAIS NOVA que a `15a` e POSITIVA → UM comando
+        `aplicar-migrations.yml` com `20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql`
+        (o apply grava o ledger na mesma transacao) → o ensaio pede a `15a` DE NOVO, que tem de sair
+        POSITIVA. `15b` NEGATIVA (meia migration, gatilho da 20261203 ausente, corpo da validacao fora
+        do da 20261203): **PARAR, e o dono decide** (nada e aplicado). `15a` POSITIVA com a versao
+        fora do ledger: PARAR (sem backfill).
+      - **O que o apply faz e nao faz com o que ja existe:** ADITIVO. Nenhuma linha de cupom, de
+        pedido ou de cliente e lida nem reescrita (`ADD COLUMN ... DEFAULT 'codigo'` e constante) e
+        todo cupom que ja existe passa a valer `'codigo'`, o que ele ja era (so quem tem o codigo).
+        Duas diferencas visiveis num cupom ANTIGO, ambas so de texto ou de instante: a recusa por
+        minimo agora diz quanto falta e o cupom vence NO instante de `valid_until`. O unico `DROP` e
+        o da politica da tabela nova, recriada na hora. Rodar duas vezes e o mesmo que rodar uma (o
+        pre-voo aceita o corpo da 20261203 OU o que a migration deixa).
+      - **Trava e horario:** o pre-voo trava `coupons` (ACCESS EXCLUSIVE), `profiles` e
+        `marketplace_orders` (SHARE ROW EXCLUSIVE) com `lock_timeout` de 5 s: um pedido em andamento
+        que segure a linha do cupom faz a migration FALHAR sem gravar nada (55P03) e basta repetir.
+        Cancelamento e pedido pegam `coupons` e `marketplace_orders` em ordem oposta: se um
+        cancelamento em andamento cruzar com a trava, o Postgres desfaz UM dos dois (40P01, ou a
+        migration, e basta repetir, ou o cancelamento, e a tela pede para tentar de novo). **Aplicar
+        FORA DO HORARIO DE PICO.**
+      - **Ordem com o front:** o banco de CADA loja primeiro, o site novo logo depois. Banco novo com
+        front velho nada muda para quem compra. **NAO marcar "Clientes escolhidos" num cupom antes do
+        site novo estar no ar:** o painel antigo nao mostra nem preserva a lista (e o checkout antigo
+        guarda o codigo no rascunho sem dizer de quem ele e).
+      - **Desfazer (decisao do DONO, nunca automatica):**
+        `rollback-manual-20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql`, pelo
+        `aplicar-migrations.yml` (secao Rollback > Banco: apaga a linha da versao do ledger na mesma
+        transacao). **APAGA dado da lojista:** a lista de clientes de cada cupom exclusivo e a coluna
+        `alcance` (quem escolheu "todos os clientes" ou "clientes escolhidos" perde a escolha). DESATIVA
+        todo cupom exclusivo ANTES de apagar a coluna (a volta nunca abre um exclusivo para quem tiver o
+        codigo); os de "todos os clientes" voltam a ser secretos (somem do checkout, o codigo continua
+        valendo). Devolve `validate_coupon_secure_v2` ao corpo da 20261203 byte a byte e nao toca o
+        gatilho da chave desligada. Reativar um ex-exclusivo depois o torna publico para quem tiver o
+        codigo: so reative o que pode ser publico. Depois do rollback a `15b` volta a ser POSITIVA e a
+        `15a` NEGATIVA (provado em `tests/banco/cupons-do-checkout-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
+        rodar a `15a` e a `15b` DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/cupons-do-checkout-portao-viva.cjs` e
+        `tests/banco/cupons-do-checkout-viva.cjs` (Postgres 17 efemero, no `rpc-ci.yml`) provam que as
+        consultas DECIDEM certo (cada defeito reprova a PROPRIA linha, 34 mutantes do texto das
+        consultas ficam vermelhos, ida, volta e ida) e que a migration aplica e desfaz como descrito;
+        nao provam que a IKCOUS ou a Savy estao no estado A ou B (so o run da consulta contra o ref de
+        cada loja diz). O `supabase_read_only_user` real e o Postgres 15 da Supabase nao foram medidos
+        ali. A `15a` nao le dado: nao prova que cupons antigos continuam `'codigo'` (quem garante e o
+        `NOT NULL DEFAULT`). PK, chaves estrangeiras e MAINTAIN de `cupom_clientes` nao sao medidos.
+        O passo-a-passo para o dono esta em [publicar-cupons-no-checkout.md](publicar-cupons-no-checkout.md).
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell
