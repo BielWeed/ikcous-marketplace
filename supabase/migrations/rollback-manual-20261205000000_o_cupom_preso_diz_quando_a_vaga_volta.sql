@@ -42,8 +42,8 @@ BEGIN
     FROM pg_proc
    WHERE oid = to_regprocedure('public.vaga_do_cupom_presa(text)');
   IF v_hash IS NOT NULL AND v_hash NOT IN (
-    'b49a93a797b99545b6fbbcd326e39873d9b82c398b3c7fed75ab4bcdbed0cc5a',
-    '981ad73ca42caee38cf8d81cfadc04c8175234db02c42e56868323a90269d59d'
+    'a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47',
+    '49e0b6befb684756ed4f1fada1e30ed7162763dc903816f49f2f76ce61820593'
   ) THEN
     RAISE EXCEPTION 'corpo vivo de vaga_do_cupom_presa (hash %) nao e o da 20261205000000 -- uma migration posterior o redefiniu; reverta-a antes.', v_hash;
   END IF;

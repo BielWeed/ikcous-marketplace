@@ -901,6 +901,86 @@ prova(
   soODono,
 );
 
+/**
+ * Só é "vaga presa" quando devolver a vaga DESTRAVA o cupom: com limite e no
+ * limite exato. Limite rebaixado pelo lojista (mais usos que o limite), cupom
+ * ilimitado (NULL ou 0, como a validação trata) e vaga ainda livre: presa=false
+ * (falha segura = a frase antiga do front).
+ */
+async function soQuandoDestrava(c) {
+  const NADA = { presa: false, volta_em_minutos: null };
+  const PRESA = { presa: true, volta_em_minutos: 75 };
+  const ajustar = (cupom, limite, usos) =>
+    c.query(
+      "UPDATE public.coupons SET usage_limit = $2, usage_count = $3 WHERE id = $1",
+      [cupom.id, limite, usos],
+    );
+  await emTx(c, async () => {
+    // dois pedidos do comprador seguram as duas vagas de um cupom de limite 2
+    const cupom = await novoCupom(c, 2);
+    await montar(c, { kind: "v24-cancelado", offsetSec: 1380 * MIN, cupom });
+    await montar(c, { kind: "v24-cancelado", offsetSec: 1380 * MIN, cupom });
+    assert.equal(await usos(c, cupom.id), 2);
+    // o caso normal: no limite exato, devolver destrava
+    assert.deepEqual(
+      await vagaPresa(c, "comprador", cupom.codigo),
+      PRESA,
+      "normal",
+    );
+    // limite REBAIXADO pelo lojista (2 usos, limite 1): uma vaga devolvida não destrava
+    await ajustar(cupom, 1, 2);
+    assert.deepEqual(
+      await vagaPresa(c, "comprador", cupom.codigo),
+      NADA,
+      "limite rebaixado",
+    );
+    // limite 5 e 7 usos
+    await ajustar(cupom, 5, 7);
+    assert.deepEqual(
+      await vagaPresa(c, "comprador", cupom.codigo),
+      NADA,
+      "limite 5, 7 usos",
+    );
+    // ilimitado: limite NULL, limite 0 (a validação trata 0 como sem limite), e 0 usos com limite 0
+    for (const [limite, usosAgora] of [
+      [null, 2],
+      [0, 2],
+      [0, 0],
+      [null, 0],
+    ]) {
+      await ajustar(cupom, limite, usosAgora);
+      assert.deepEqual(
+        await vagaPresa(c, "comprador", cupom.codigo),
+        NADA,
+        `ilimitado (limite ${limite}, ${usosAgora} usos)`,
+      );
+    }
+    // vaga ainda livre (1 uso, limite 2): o cupom não está no limite, não há o que explicar
+    await ajustar(cupom, 2, 1);
+    assert.deepEqual(
+      await vagaPresa(c, "comprador", cupom.codigo),
+      NADA,
+      "vaga livre",
+    );
+    // voltou ao normal: a mesma resposta do início
+    await ajustar(cupom, 2, 2);
+    assert.deepEqual(
+      await vagaPresa(c, "comprador", cupom.codigo),
+      PRESA,
+      "de volta ao limite exato",
+    );
+    // minúsculas casam com o mesmo cupom (UPPER, como a validação)
+    assert.deepEqual(
+      await vagaPresa(c, "comprador", cupom.codigo.toLowerCase()),
+      PRESA,
+    );
+  });
+}
+prova(
+  "(3b) só é vaga presa quando devolver a vaga destrava o cupom (limite rebaixado, ilimitado e vaga livre: não)",
+  soQuandoDestrava,
+);
+
 async function variosPedidos(c) {
   await emTx(c, async () => {
     // Mesmo cupom (limite 3), três pedidos do comprador: um volta em 40 min,
@@ -1483,7 +1563,8 @@ prova(
       rpc,
       `o.coupon_id IN (
            SELECT c.id FROM public.coupons c
-            WHERE UPPER(c.code) = UPPER(p_code) AND c.active = true)`,
+            WHERE UPPER(c.code) = UPPER(p_code) AND c.active = true
+              AND c.usage_limit > 0 AND c.usage_count = c.usage_limit)`,
       "o.coupon_id IS NOT NULL",
       [soODono],
     );
@@ -1491,8 +1572,8 @@ prova(
       c,
       "RPC sem exigir cupom ativo",
       rpc,
-      " AND c.active = true)",
-      ")",
+      "UPPER(c.code) = UPPER(p_code) AND c.active = true",
+      "UPPER(c.code) = UPPER(p_code)",
       [soODono],
     );
     await mutarFuncao(
@@ -1502,6 +1583,38 @@ prova(
       "UPPER(c.code) = UPPER(p_code)",
       "c.code = p_code",
       [soODono],
+    );
+    await mutarFuncao(
+      c,
+      "RPC sem exigir limite (cupom ilimitado conta)",
+      rpc,
+      " AND c.usage_limit > 0 AND c.usage_count = c.usage_limit",
+      "",
+      [soQuandoDestrava],
+    );
+    await mutarFuncao(
+      c,
+      "RPC trata limite 0 como limite",
+      rpc,
+      "AND c.usage_limit > 0 AND",
+      "AND",
+      [soQuandoDestrava],
+    );
+    await mutarFuncao(
+      c,
+      "RPC aceita limite rebaixado (usos acima do limite)",
+      rpc,
+      "c.usage_count = c.usage_limit",
+      "c.usage_count >= c.usage_limit",
+      [soQuandoDestrava],
+    );
+    await mutarFuncao(
+      c,
+      "RPC aceita vaga ainda livre (usos abaixo do limite)",
+      rpc,
+      "c.usage_count = c.usage_limit",
+      "c.usage_count <= c.usage_limit",
+      [soQuandoDestrava],
     );
     await mutarFuncao(
       c,

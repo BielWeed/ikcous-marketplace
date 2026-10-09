@@ -44,6 +44,11 @@
 --       Aplica GREATEST(hora, now()) ANTES de subtrair: a aritmetica com
 --       infinito difere entre PG15 e PG17, e '-infinity' (pedido sem
 --       expires_at) so vira "0 min de espera" depois do GREATEST.
+--       So responde `presa` quando devolver a vaga DESTRAVA o cupom: cupom com
+--       limite e no limite exato (usage_count = usage_limit). Limite rebaixado
+--       pelo lojista (usage_count > usage_limit: uma vaga devolvida nao basta),
+--       cupom ilimitado (limite NULL ou 0, como a validacao trata) e cupom com
+--       vaga livre respondem `presa:false` (falha segura: a frase antiga).
 --       NUNCA diz nada de pedido de outro usuario, de outro codigo ou de cupom
 --       inativo: cupom inexistente, inativo, nao preso, pedido de convidado
 --       (user_id NULL) e chamada sem sessao devolvem a MESMA resposta
@@ -185,8 +190,8 @@ BEGIN
     FROM pg_proc
    WHERE oid = to_regprocedure('public.vaga_do_cupom_presa(text)');
   IF v_hash IS NOT NULL AND v_hash NOT IN (
-    'b49a93a797b99545b6fbbcd326e39873d9b82c398b3c7fed75ab4bcdbed0cc5a',
-    '981ad73ca42caee38cf8d81cfadc04c8175234db02c42e56868323a90269d59d'
+    'a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47',
+    '49e0b6befb684756ed4f1fada1e30ed7162763dc903816f49f2f76ce61820593'
   ) THEN
     RAISE EXCEPTION 'PREFLIGHT_20261205: public.vaga_do_cupom_presa ja existe com outro corpo (hash %) -- revise antes de aplicar.', v_hash;
   END IF;
@@ -236,7 +241,11 @@ DECLARE
 BEGIN
     -- A hora mais proxima em que a varredura devolve uma vaga DESTE cupom, entre
     -- os pedidos do PROPRIO usuario da sessao. Quem decide se um pedido conta e
-    -- o auxiliar (a mesma regra da varredura): 'infinity' = nunca. Sem sessao
+    -- o auxiliar (a mesma regra da varredura): 'infinity' = nunca. So conta o
+    -- cupom que DEVOLVER UMA vaga destrava de verdade: com limite (a validacao
+    -- trata NULL e 0 como ilimitado) e no limite exato (usage_count = usage_limit);
+    -- limite rebaixado (usage_count > usage_limit) ou vaga ainda livre: nao presa.
+    -- Sem sessao
     -- (auth.uid() NULL) e pedido de convidado (user_id NULL) `=` nunca casa: a
     -- resposta e a de "nao preso", igual a de cupom inexistente.
     SELECT min(public.cupom__vaga_volta_em(
@@ -248,7 +257,8 @@ BEGIN
      WHERE o.user_id = (SELECT auth.uid())
        AND o.coupon_id IN (
            SELECT c.id FROM public.coupons c
-            WHERE UPPER(c.code) = UPPER(p_code) AND c.active = true);
+            WHERE UPPER(c.code) = UPPER(p_code) AND c.active = true
+              AND c.usage_limit > 0 AND c.usage_count = c.usage_limit);
 
     IF v_volta IS NULL OR v_volta = 'infinity'::timestamptz THEN
         RETURN jsonb_build_object('presa', false, 'volta_em_minutos', NULL);
@@ -268,7 +278,7 @@ $function$;
 REVOKE ALL ON FUNCTION public.vaga_do_cupom_presa(text) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.vaga_do_cupom_presa(text) TO authenticated;
 
-COMMENT ON FUNCTION public.vaga_do_cupom_presa(text) IS 'Cupom preso (20261205000000): so LEITURA. Diz ao checkout se a vaga do cupom p_code esta presa num pedido cancelado do PROPRIO usuario da sessao e em quantos minutos a varredura a devolve (teto: espera ate a hora, arredondada para cima, mais 15 min do ciclo). Pedido de outro usuario, de convidado, outro codigo, cupom inexistente ou inativo, pedido que a varredura nao devolve e chamada sem sessao: a MESMA resposta presa = false (nao vira sonda de codigo).';
+COMMENT ON FUNCTION public.vaga_do_cupom_presa(text) IS 'Cupom preso (20261205000000): so LEITURA. Diz ao checkout se a vaga do cupom p_code esta presa num pedido cancelado do PROPRIO usuario da sessao e em quantos minutos a varredura a devolve (teto: espera ate a hora, arredondada para cima, mais 15 min do ciclo). Cupom ilimitado, com limite rebaixado (mais usos que o limite) ou com vaga livre tambem: presa = false (devolver uma vaga nao o destrava). Pedido de outro usuario, de convidado, outro codigo, cupom inexistente ou inativo, pedido que a varredura nao devolve e chamada sem sessao: a MESMA resposta presa = false (nao vira sonda de codigo).';
 
 DO $posvoo_20261205$
 DECLARE
@@ -279,7 +289,7 @@ BEGIN
     SELECT *
       FROM (VALUES
         ('public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamptz, boolean, timestamptz, text, integer)', 'e92200a0af3c3dfa4051e0076ae9ba184476678f9bc2484a369d317d745f534d', '865c4de58c2fbc272c41f5d0ab03deb1410b6a9d6ce8fd3762659e2c28e15a3d'),
-        ('public.vaga_do_cupom_presa(text)', 'b49a93a797b99545b6fbbcd326e39873d9b82c398b3c7fed75ab4bcdbed0cc5a', '981ad73ca42caee38cf8d81cfadc04c8175234db02c42e56868323a90269d59d'),
+        ('public.vaga_do_cupom_presa(text)', 'a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47', '49e0b6befb684756ed4f1fada1e30ed7162763dc903816f49f2f76ce61820593'),
         ('public.devolver_cupons_de_pedidos_mortos()', '85a340abad3fb3f3cd913f50126bc610f584076295bbb61a8203fabcbd6c0633', 'd0b285fdb3d939243e4399e69e04bbd1bead56ab231079199cac2ed56b3ea0ae')
       ) AS e(assinatura, hash_lf, hash_crlf)
   LOOP
