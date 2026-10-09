@@ -306,13 +306,14 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
   // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
-  // carrega sozinho ao ficar ativo; daqui só se pede recarga por tempo
-  // real, ação na tela ou volta da conexão — nunca por filtro.
+  // carrega sozinho ao ficar ativo; daqui só se pede recarga (coalescida na
+  // janela de 1 s) por tempo real, ação na tela ou volta da conexão — nunca
+  // por filtro.
   const {
     paraPreparar,
     aguardandoPagamento,
     aCaminho,
-    recarregar: recarregarNumerosDoTopo,
+    pedirRecarga: pedirRecargaDosNumeros,
   } = useNumerosDosPedidos(active ?? false);
   const { abertas: devolucoesAbertas } = useDevolucoesAbertas(active);
 
@@ -1026,10 +1027,10 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       });
       loadAllData(currentPage);
       // Eventos perdidos enquanto estava sem conexão: confere o topo de novo.
-      void recarregarNumerosDoTopo();
+      pedirRecargaDosNumeros();
     }
     wasOfflineRef.current = isOffline;
-  }, [isOffline, active, currentPage, loadAllData, recarregarNumerosDoTopo]);
+  }, [isOffline, active, currentPage, loadAllData, pedirRecargaDosNumeros]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
@@ -1082,9 +1083,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
       loadStats();
-      void recarregarNumerosDoTopo();
+      pedirRecargaDosNumeros();
     };
-  }, [loadStats, recarregarNumerosDoTopo, handleSelectOrder, selectedOrderId]);
+  }, [loadStats, pedirRecargaDosNumeros, handleSelectOrder, selectedOrderId]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
@@ -1266,7 +1267,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       );
 
       loadStats();
-      void recarregarNumerosDoTopo();
+      // Coalescida com o eco de tempo real desta mesma ação: uma recarga só.
+      pedirRecargaDosNumeros();
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);

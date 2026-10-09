@@ -374,6 +374,73 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     expect(contagensFeitas()).toBe(contagensAntes + 3);
   });
 
+  it("rajada de 10 eventos de tempo real em menos de 1 s vira UMA recarga das contagens", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
+    );
+    await deixarALista();
+    expect(eventoDeTempoReal).toBeTruthy();
+    const contagensAntes = contagensFeitas();
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        for (let i = 0; i < 10; i++) {
+          eventoDeTempoReal!({
+            eventType: "DELETE",
+            new: {},
+            old: { id: `p${i}` },
+          });
+          vi.advanceTimersByTime(90);
+        }
+      });
+      // 900 ms depois do primeiro evento: a janela ainda não fechou.
+      expect(contagensFeitas()).toBe(contagensAntes);
+
+      await act(async () => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(contagensFeitas()).toBe(contagensAntes + 3);
+
+      // Nada mais fica agendado: a rajada inteira custou uma recarga.
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(contagensFeitas()).toBe(contagensAntes + 3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recarga agendada não dispara depois que a tela sai", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
+    );
+    await deixarALista();
+    const contagensAntes = contagensFeitas();
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        eventoDeTempoReal!({ eventType: "DELETE", new: {}, old: { id: "p1" } });
+      });
+      act(() => {
+        raiz.unmount();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(contagensFeitas()).toBe(contagensAntes);
+    } finally {
+      vi.useRealTimers();
+      // O afterEach desmonta de novo; uma raiz nova evita o erro de
+      // "unmount de raiz já desmontada".
+      raiz = createRoot(hospedeiro);
+    }
+  });
+
   it("consulta que devolve erro mostra '—', nunca '0'", async () => {
     contagensFalham = true;
     await montar();
@@ -468,5 +535,27 @@ describe("useNumerosDosPedidos — rodada velha não grava número velho", () =>
     act(() => {
       raiz.unmount();
     });
+  });
+});
+
+// A janela do topo de Pedidos é a mesma dos crachás do AdminLayout (achado
+// C4). Fonte lida pelo Vite (`?raw`): em jsdom `import.meta.url` não é
+// `file:` — mesmo padrão de pedidos-falam-a-lingua-da-loja.
+const FONTE_DO_LAYOUT = import.meta.glob<string>(
+  "/src/components/layouts/AdminLayout.tsx",
+  { query: "?raw", import: "default", eager: true },
+);
+
+describe("useNumerosDosPedidos — mesma janela de coalescência do AdminLayout", () => {
+  it("ATRASO_COALESCENCIA_NUMEROS_MS é igual a ATRASO_COALESCENCIA_BADGES_MS", async () => {
+    const { ATRASO_COALESCENCIA_NUMEROS_MS } = await import(
+      "@/hooks/useNumerosDosPedidos"
+    );
+    const fonte = Object.values(FONTE_DO_LAYOUT)[0] ?? "";
+    const doLayout = /ATRASO_COALESCENCIA_BADGES_MS\s*=\s*(\d+)/.exec(
+      fonte,
+    )?.[1];
+    expect(doLayout).toBeDefined();
+    expect(ATRASO_COALESCENCIA_NUMEROS_MS).toBe(Number(doLayout));
   });
 });

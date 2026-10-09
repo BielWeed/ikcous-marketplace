@@ -27,9 +27,23 @@ export interface NumerosDosPedidos {
   aCaminho: number | null;
   /** Recarrega já. */
   recarregar: () => Promise<void>;
+  /**
+   * Recarrega UMA vez ao fim da janela de coalescência — para tempo real e
+   * ações: uma rajada de eventos custa uma rodada só, não uma por evento.
+   */
+  pedirRecarga: () => void;
 }
 
-type Contagens = Omit<NumerosDosPedidos, "recarregar">;
+type Contagens = Omit<NumerosDosPedidos, "recarregar" | "pedirRecarga">;
+
+/**
+ * Janela de coalescência das recargas pedidas por tempo real/ação. É a MESMA
+ * janela de `ATRASO_COALESCENCIA_BADGES_MS` do `AdminLayout` (achado C4 do
+ * laudo novos-ângulos 01/09): a primeira conferência é agendada e as demais
+ * da janela são absorvidas. O teste `pedidos-numeros-do-topo` prende os dois
+ * valores iguais.
+ */
+export const ATRASO_COALESCENCIA_NUMEROS_MS = 1000;
 
 const NADA_CONTADO: Contagens = {
   paraPreparar: null,
@@ -68,11 +82,16 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
   // número velho por cima do novo.
   const rodadaAtual = useRef(0);
   const montado = useRef(true);
+  const recargaAgendada = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     montado.current = true;
     return () => {
       montado.current = false;
+      if (recargaAgendada.current) {
+        clearTimeout(recargaAgendada.current);
+        recargaAgendada.current = null;
+      }
     };
   }, []);
 
@@ -95,12 +114,20 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
     setContagens({ paraPreparar, aguardandoPagamento, aCaminho });
   }, []);
 
+  const pedirRecarga = useCallback(() => {
+    if (recargaAgendada.current) return;
+    recargaAgendada.current = setTimeout(() => {
+      recargaAgendada.current = null;
+      if (montado.current) void recarregar();
+    }, ATRASO_COALESCENCIA_NUMEROS_MS);
+  }, [recarregar]);
+
   // O ÚNICO disparo automático: ao ficar ativa. Troca de filtro, busca ou
   // página NÃO recarrega — as contagens não dependem deles. Depois disso só
-  // `recarregar` (tempo real, ação na tela, volta da conexão).
+  // `pedirRecarga` (tempo real, ação na tela, volta da conexão).
   useEffect(() => {
     if (ativo) void recarregar();
   }, [ativo, recarregar]);
 
-  return { ...contagens, recarregar };
+  return { ...contagens, recarregar, pedirRecarga };
 }
