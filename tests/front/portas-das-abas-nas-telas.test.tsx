@@ -11,8 +11,10 @@
 // O teste mede a PORTA, não o texto de enfeite: monta a tela de verdade, clica
 // em cada atalho da faixa de portas e olha o destino chamado.
 //
-// A faixa de portas é lida pelos botões `min-h-11` com ícone que o
-// AtalhosDaAba desenha (alvo de toque de 44px).
+// As portas são contadas pelo NOME ACESSÍVEL (aria-label, title ou texto) e
+// pelo destino do clique, nunca por classe CSS: uma segunda porta para a mesma
+// tela, com outro desenho, tem de aparecer na conta (spec §2.1: cada função
+// tem uma única porta).
 import { act } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -38,6 +40,17 @@ vi.mock("@/hooks/useAnalytics", () => ({
   useAnalytics: () => ({
     stats: null,
     fetchExecutiveSummary: vi.fn().mockResolvedValue(null),
+  }),
+}));
+
+// Quantas devoluções estão em andamento: cada teste escolhe.
+let devolucoesAbertas: number | null = null;
+
+vi.mock("@/hooks/useDevolucoesAdmin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useDevolucoesAdmin")>()),
+  useDevolucoesAbertas: () => ({
+    abertas: devolucoesAbertas,
+    solicitadas: 0,
   }),
 }));
 
@@ -182,6 +195,7 @@ describe("as telas de aba mostram só as suas portas", () => {
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
+    devolucoesAbertas = null;
   });
 
   async function montar(ui: ReactNode) {
@@ -193,15 +207,49 @@ describe("as telas de aba mostram só as suas portas", () => {
     });
   }
 
-  /** As portas: os botões `min-h-11` com chevron que o AtalhosDaAba desenha. */
+  const NOMES_DAS_PORTAS = [
+    "Cupons",
+    "Devoluções",
+    "Perguntas e avaliações",
+    "Avisar clientes",
+    "Entrega e frete",
+  ];
+
+  function nomeAcessivel(b: HTMLButtonElement): string {
+    return (
+      b.getAttribute("aria-label") ??
+      b.getAttribute("title") ??
+      b.textContent ??
+      ""
+    ).trim();
+  }
+
+  /** Os botões da tela cujo nome acessível é o de uma porta de aba. */
   function portas(): HTMLButtonElement[] {
-    return Array.from(hospedeiro.querySelectorAll("button")).filter(
-      (b) => b.className.includes("min-h-11") && b.querySelector("svg"),
-    ) as HTMLButtonElement[];
+    return Array.from(hospedeiro.querySelectorAll("button")).filter((b) =>
+      NOMES_DAS_PORTAS.some((nome) => nomeAcessivel(b).startsWith(nome)),
+    );
+  }
+
+  /** Quantos botões da tela, ao serem clicados, levam a `destino`. */
+  function quantosLevamA(
+    destino: string,
+    onNavigate: ReturnType<typeof vi.fn>,
+  ): number {
+    let total = 0;
+    for (const b of Array.from(hospedeiro.querySelectorAll("button"))) {
+      if (!b.isConnected) continue;
+      onNavigate.mockClear();
+      act(() => {
+        b.click();
+      });
+      if (onNavigate.mock.calls.some((c) => c[0] === destino)) total++;
+    }
+    return total;
   }
 
   function nomesDasPortas(): string[] {
-    return portas().map((b) => b.textContent?.trim() ?? "");
+    return portas().map((b) => nomeAcessivel(b));
   }
 
   /** Clica em cada porta e devolve o destino de cada clique, na ordem. */
@@ -249,6 +297,26 @@ describe("as telas de aba mostram só as suas portas", () => {
       expect(b.textContent?.trim()).not.toBe("Perguntas");
       expect(b.textContent?.trim()).not.toBe("Avaliações");
     }
+  });
+
+  it("Pedidos: EXATAMENTE UMA porta leva a admin-devolucoes, com 'N em andamento' quando há abertas", async () => {
+    devolucoesAbertas = 3;
+    const onNavigate = vi.fn();
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await montar(<AdminOrdersView onNavigate={onNavigate} active={true} />);
+
+    expect(nomesDasPortas()).toEqual(["Devoluções, 3 em andamento"]);
+    expect(quantosLevamA("admin-devolucoes", onNavigate)).toBe(1);
+  });
+
+  it("Pedidos: sem devolução aberta o contador não aparece, e ainda há uma porta só", async () => {
+    devolucoesAbertas = 0;
+    const onNavigate = vi.fn();
+    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    await montar(<AdminOrdersView onNavigate={onNavigate} active={true} />);
+
+    expect(nomesDasPortas()).toEqual(["Devoluções"]);
+    expect(quantosLevamA("admin-devolucoes", onNavigate)).toBe(1);
   });
 
   it("Clientes: 'Perguntas e avaliações' -> admin-qa e 'Avisar clientes' -> admin-push; nenhuma porta para admin-whatsapp-config", async () => {
