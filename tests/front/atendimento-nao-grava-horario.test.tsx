@@ -144,6 +144,8 @@ describe("Atendimento — não grava nem edita o horário (A1)", () => {
 
     const alterar = botao("Alterar em Minha loja");
     expect(alterar).toBeTruthy();
+    // Régua visual: o botão novo usa token (admin-bg), nunca cor hex literal.
+    expect(alterar!.className).not.toMatch(/#[0-9a-fA-F]{3,8}/);
     await act(async () => {
       alterar!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
