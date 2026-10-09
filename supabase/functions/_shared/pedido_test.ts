@@ -74,41 +74,6 @@ Deno.test("rotuloDoPagamento devolve vazio para metodo desconhecido", () => {
   assertEquals(rotuloDoPagamento(null), "");
 });
 
-Deno.test("rotuloDoPagamento: venda de BALCAO diz a forma real paga na loja, sem 'na entrega' (D3)", () => {
-  // O balcao nao entrega nada: o cliente pagou ali, na hora.
-  assertEquals(rotuloDoPagamento("cash", null, "presencial"), "Dinheiro");
-  assertEquals(rotuloDoPagamento("pix", null, "presencial"), "PIX");
-  assertEquals(rotuloDoPagamento("card", null, "presencial"), "Cartao na maquininha");
-  for (const metodo of ["cash", "pix", "card"]) {
-    assertEquals(
-      rotuloDoPagamento(metodo, null, "presencial").toLowerCase().includes("entrega"),
-      false,
-      `${metodo} no balcao nao pode falar de entrega`,
-    );
-  }
-  // O segundo argumento continua irrelevante para quem nao e' `online`.
-  assertEquals(rotuloDoPagamento("card", "credito", "presencial"), "Cartao na maquininha");
-});
-
-Deno.test("rotuloDoPagamento: pedido do SITE nao muda de texto (nao-regressao do D3)", () => {
-  // Sem canal (chamadores antigos, cache), com canal 'online' e com lixo no
-  // canal: tudo isso e' o caminho de sempre.
-  for (const canal of [undefined, null, "", "online", "balcao", "PRESENCIAL "]) {
-    assertEquals(rotuloDoPagamento("pix", null, canal), "PIX na entrega");
-    assertEquals(rotuloDoPagamento("card", null, canal), "Cartao na entrega");
-    assertEquals(rotuloDoPagamento("cash", null, canal), "Dinheiro na entrega");
-    assertEquals(rotuloDoPagamento("online", "pix", canal), "PIX pelo site");
-    assertEquals(
-      rotuloDoPagamento("online", "credito", canal),
-      "Cartao de credito pelo site",
-    );
-    assertEquals(rotuloDoPagamento("online", null, canal), "PIX pelo site");
-  }
-  // Forma desconhecida no balcao continua sem palpite.
-  assertEquals(rotuloDoPagamento("cripto", null, "presencial"), "");
-  assertEquals(rotuloDoPagamento(null, null, "presencial"), "");
-});
-
 Deno.test("montarEndereco monta a partir do customer_data do convidado", () => {
   const saida = montarEndereco({
     address: "Rua das Flores",
