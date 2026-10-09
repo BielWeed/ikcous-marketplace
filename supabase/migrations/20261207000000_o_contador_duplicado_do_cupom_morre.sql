@@ -89,7 +89,8 @@
 -- Sem BEGIN/COMMIT de nivel superior (regra da casa: com eles o ROLLBACK da prova
 -- do workflow vira no-op). O arquivo roda numa unica consulta: os SET LOCAL, o
 -- pre-voo, o DROP e o pos-voo caem juntos ou nao caem; o db-apply grava o ledger
--- na mesma transacao. Com `psql`, usar `-1`.
+-- na mesma transacao. O caminho real e o workflow aplicar-migrations.yml; num banco
+-- local, com `psql`, usar `-1`.
 --
 -- 8. FRONT ANTIGO COM ESTE BANCO
 --

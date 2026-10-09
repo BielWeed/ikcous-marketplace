@@ -332,7 +332,10 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         ela FALHA sem gravar (erro 55P03) e basta repetir. Sem `CASCADE`. Desfazer:
         `rollback-manual-20261207000000_o_contador_duplicado_do_cupom_morre.sql` recria a coluna
         igual a do baseline com 0 em todas as linhas (e como so apagou com tudo 0, e o estado exato
-        de antes); executar por `psql -1 -f`, nunca pelo db-apply.
+        de antes); executar pelo WORKFLOW `aplicar-migrations.yml` com esse arquivo (secao Rollback >
+        Banco: ele apaga a linha da versao do ledger na mesma transacao), NUNCA por `psql` direto: a
+        coluna voltaria com o ledger ainda dizendo "aplicada" e o portao PARARIA; ninguem tem
+        credencial `psql` direta nas lojas.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
         rodar a `14a` e a `14b` DEPOIS da ultima mudanca nesses arquivos.
       - **Limites:** `tests/banco/contador-duplicado-portao-viva.cjs` e

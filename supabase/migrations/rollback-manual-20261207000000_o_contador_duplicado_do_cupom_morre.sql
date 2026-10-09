@@ -17,10 +17,16 @@
 -- nem identidade) e o rollback RECUSA com o nome do que diverge. Rollback repetido
 -- (a coluna ja existe com a forma do baseline) e idempotente: nao faz nada.
 --
--- Executar via `psql -1 -f` (nunca pelo db-apply). `lock_timeout` de 5 s: o ADD
--- COLUMN pede trava exclusiva por uma fracao de segundo; se a tabela estiver presa
--- por mais que isso, o rollback falha sem gravar nada e se repete. Sem BEGIN/COMMIT
--- de nivel superior neste arquivo -- regra da casa.
+-- COMO DESFAZER: pelo WORKFLOW `aplicar-migrations.yml`, com este arquivo
+-- (`rollback-manual-<versao>`; o runbook, secao Rollback > Banco). Ele roda o arquivo
+-- no mesmo envelope da migration e APAGA a linha 20261207000000 do ledger na MESMA
+-- transacao. NUNCA por `psql` direto: a coluna voltaria com o ledger ainda dizendo
+-- "aplicada", e o portao da release (14a NEGATIVA + ledger com a versao) PARARIA --
+-- e ninguem tem credencial `psql` direta nas lojas.
+--
+-- `lock_timeout` de 5 s: o ADD COLUMN pede trava exclusiva por uma fracao de segundo;
+-- se a tabela estiver presa por mais que isso, o rollback falha sem gravar nada e se
+-- repete. Sem BEGIN/COMMIT de nivel superior neste arquivo -- regra da casa.
 -- ============================================================================
 
 SET LOCAL lock_timeout = '5s';
