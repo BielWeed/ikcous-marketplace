@@ -88,6 +88,16 @@ describe("passosDaLojaPronta", () => {
       ).toBe("carregando");
     });
 
+    it("config carregando com as formas PADRÃO (as três, como nasce o StoreContext): carregando, não 'feito' falso", () => {
+      expect(
+        passo("recebe", {
+          pixOk: false,
+          formasNaEntrega: ["pix", "card", "cash"],
+          configCarregando: true,
+        }).estado,
+      ).toBe("carregando");
+    });
+
     it("PIX ok resolve na hora, mesmo com a config carregando (vem do build)", () => {
       expect(
         passo("recebe", { pixOk: true, configCarregando: true }).estado,

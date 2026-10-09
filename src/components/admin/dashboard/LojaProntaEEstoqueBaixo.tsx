@@ -1,4 +1,5 @@
 import type { DashboardStats } from "@/hooks/useAnalytics";
+import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
 import { type ChaveDoPasso, passosDaLojaPronta } from "@/lib/loja-pronta";
 import type { View } from "@/types";
 import {
@@ -40,7 +41,7 @@ interface LojaProntaEEstoqueBaixoProps {
   /** Chave pública do Mercado Pago presente no deploy. */
   readonly chaveOk: boolean;
   /** `config.formasPagamentoEntrega`: o que a loja aceita receber na entrega. */
-  readonly formasNaEntrega: readonly string[];
+  readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
   /** Catálogo da loja — só o campo que este bloco precisa. */
   readonly produtos: readonly ProdutoMinimo[];
   /** A config da loja (CEP, flags) ainda não terminou de carregar. */

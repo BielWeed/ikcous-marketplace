@@ -19,6 +19,7 @@ import { usePainelInicio } from "@/hooks/usePainelInicio";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { pagamentoOnlineLigado } from "@/lib/flags";
+import { formasPagamentoNaEntregaValidas } from "@/lib/formas-de-pagamento-na-entrega";
 import { nomeDaLoja } from "@/lib/nome-da-loja";
 import { pixConfiguradoNoBuild } from "@/lib/pix-configurado-no-build";
 import { cn } from "@/lib/utils";
@@ -62,9 +63,11 @@ function SecaoLojaProntaEEstoqueBaixo({
       originCep={config.originCep}
       ligado={pagamentoOnlineLigado()}
       chaveOk={pixConfiguradoNoBuild(chavePublicaMercadoPago() ?? undefined)}
-      // `?? []`: config vinda do banco pode não ter a coluna; "não sei" aqui
-      // vira "nenhuma forma", nunca um erro que derruba o cartão.
-      formasNaEntrega={config.formasPagamentoEntrega ?? []}
+      // Mesma normalização de AdminSettingsView e CheckoutView: ausente ou
+      // corrompido cai no padrão das três formas.
+      formasNaEntrega={formasPagamentoNaEntregaValidas(
+        config.formasPagamentoEntrega,
+      )}
       produtos={products}
       configCarregando={!isLoaded}
       produtosCarregando={loadingProducts}

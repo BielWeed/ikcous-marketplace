@@ -1,3 +1,4 @@
+import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
 import type { View } from "@/types";
 
 /**
@@ -31,7 +32,7 @@ export interface EntradaDaLojaPronta {
   /** PIX online pronto: flag de build ligada E chave pública no deploy. */
   readonly pixOk: boolean;
   /** `config.formasPagamentoEntrega`: o que a loja aceita receber na entrega. */
-  readonly formasNaEntrega: readonly string[];
+  readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
   /** Catálogo da loja — só o campo que a lista precisa. */
   readonly produtos: readonly { readonly isActive: boolean }[];
   /** A config da loja (CEP, formas de pagamento) ainda não chegou. */
@@ -61,17 +62,20 @@ export function passosDaLojaPronta(
   // só recebe na entrega está pronta — antes ela ficava com "Configurar
   // pagamento PIX" pendente para sempre.
   //
-  // O PIX vem de constantes de build (mesma fonte de AdminSettingsView), a
-  // resposta já é conhecida no mount: com PIX ok o passo é `feito` mesmo
-  // com a config carregando. Sem PIX, a resposta depende das formas na
-  // entrega, que vêm da config — enquanto ela carrega, "não sei", nunca
-  // "pendente".
+  // O PIX vem de constantes de build (mesma fonte de AdminSettingsView): a
+  // resposta já é conhecida no mount, então com PIX ok o passo é `feito`
+  // mesmo com a config carregando. Sem PIX, a resposta depende das formas na
+  // entrega — e antes de a config chegar elas são o PADRÃO do app
+  // (defaultStoreConfig: pix, cartão e dinheiro), não a escolha da loja.
+  // Contar esse padrão marcaria "feito" falso e depois viraria "pendente";
+  // por isso, enquanto a config carrega, "não sei" (mesma ordem do CEP).
   const recebeNaEntrega = formasNaEntrega.length > 0;
-  const estadoRecebe: EstadoDoItem =
-    pixOk || recebeNaEntrega
-      ? "feito"
-      : configCarregando
-        ? "carregando"
+  const estadoRecebe: EstadoDoItem = pixOk
+    ? "feito"
+    : configCarregando
+      ? "carregando"
+      : recebeNaEntrega
+        ? "feito"
         : "pendente";
 
   // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
