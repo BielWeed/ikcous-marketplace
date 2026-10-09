@@ -1,0 +1,2290 @@
+"use strict";
+
+/**
+ * PROVA VIVA do cupom preso depois de "cancelou com o PIX gerado" (09/10/2026), num Postgres
+ * EFEMERO local -- nada de rede, nada de loja. O arquivo tem BLOCOS, um por migration:
+ *
+ *   BLOCO DA FOTO  -- migration 20261209000000_a_foto_da_cobranca_no_cancelamento.sql (esta
+ *                     peca): no instante em que um pedido vira 'cancelled' um gatilho grava a
+ *                     FOTO da cobranca dele (id na vaga, tentativas, metodo online,
+ *                     payment_status) numa tabela fechada. Ninguem le a foto ainda.
+ *   BLOCO DA VAGA  -- (peca seguinte, 20261210000000) acrescenta-se abaixo, na lista BLOCOS.
+ *
+ * O QUE O BLOCO DA FOTO AFIRMA, EXECUTANDO (cada caso num banco CLONADO do estado "pre": a
+ * arvore inteira de migrations de versao MENOR que a 20261209000000, ja com pedidos, usuarios
+ * e produto de teste, que e o estado de uma loja antes do apply):
+ *  CATALOGO     a tabela tem a forma exata (colunas, chave, FK com CASCADE), seguranca por linha
+ *               ligada, nenhuma politica, nenhum privilegio para PUBLIC/anon/authenticated/
+ *               service_role (nem SELECT, nem escrita: 42501 para cada um); a funcao do gatilho e
+ *               SECURITY DEFINER, search_path = public, sem EXECUTE de fora; o gatilho e AFTER
+ *               UPDATE OF status, por linha, com o WHEN, ativo.
+ *  CAMINHOS     a foto existe, com os valores do MOMENTO do cancelamento, em todos os caminhos
+ *               reais: v24 + PIX + cancelar_pedido_com_cobranca (edge) e depois liberar (a foto
+ *               NAO muda); cliente e admin por update_order_status_atomic; pedido pago cancelado;
+ *               cartao em analise (metodo credito + sentinela verificando:); expiracao pelo
+ *               agendador (sai com payment_status 'expirado'); v23 "na entrega"; pedido__mudar_status
+ *               direto; UPDATE cru de superusuario; status NULL -> cancelled. O cliente (papel
+ *               authenticated, sem privilegio na tabela) cancela sem erro.
+ *  RECANCELAR   recancelar um pedido ja cancelado nao grava foto nova (a linha fisica nem e
+ *               reescrita: mesmo xmin); reativar e cancelar de novo SOBRESCREVE pelo estado do
+ *               segundo cancelamento (um cartao tentado no meio aparece).
+ *  NAO DISPARA  UPDATE que nao mexe em status, transicoes que nao levam a cancelled, status
+ *               repetido: nenhuma foto.
+ *  SIMULTANEO   dois cancelamentos ao mesmo tempo (UPDATE cru e update_order_status_atomic, 2
+ *               conexoes reais) geram UMA foto, a do primeiro.
+ *  CASCATA      apagar o pedido apaga a foto.
+ *  DADO ANTIGO  pedido cancelado ANTES da migration nao ganha foto (nem ao ser "recancelado"),
+ *               nada e preenchido retroativamente e nenhuma linha de pedido muda.
+ *  ENVELOPE     o envelope de producao (aplicar-migrations.yml: BEGIN ISOLATION LEVEL REPEATABLE
+ *               READ + uma leitura de marketplace_orders, a foto da impressao digital, ANTES do
+ *               LOCK): aplica sem concorrente; com um pedido em andamento ESPERA e aplica; com a
+ *               tabela ocupada por mais de 4 s RECUSA (55P03) sem gravar; com DOIS pedidos
+ *               cruzados (um segura a tabela de pedidos e quer a linha do cupom, o outro segura a
+ *               linha do cupom e quer a tabela) a migration que espera a trava NAO para o
+ *               checkout (o pedido que chega com ela esperando termina em milissegundos) e nao
+ *               ha deadlock (40P01) -- o mutante com `LOCK` simples (que espera na fila) deixa o
+ *               pedido parado; e um pedido que chega DEPOIS da trava espera o COMMIT e ja
+ *               encontra o gatilho.
+ *  IDA E VOLTA  aplicar, rollback, reaplicar, reaplicar de novo, rollback duas vezes: o catalogo
+ *               volta EXATO ao do estado pre; os pedidos nao mudam; atomicidade (falha depois da
+ *               ultima peca desfaz tudo; BEGIN ... ROLLBACK nao deixa rastro; CRLF aplica).
+ *  PRE-VOO      recusa, nomeando o problema e sem gravar nada: coluna ausente em
+ *               marketplace_orders; tabela com o nome mas outra forma / sem chave / sem FK /
+ *               com politica; funcao com o nome em outra assinatura ou com outro corpo; gatilho
+ *               com o nome e outra definicao. O rollback recusa funcao que cite a tabela (a
+ *               20261210000000), tabela/funcao/gatilho que nao sao os da migration, e visao
+ *               dependente (DROP sem CASCADE).
+ *  POS-VOO      cada peca quebrada de proposito (sem RLS, privilegio sobrando, EXECUTE sobrando,
+ *               corpo diferente, gatilho diferente, sem gatilho) faz a migration inteira falhar.
+ *  MUTANTES     cada guarda retirada do texto da migration/rollback deixa um caso VERMELHO (a
+ *               saida vermelha de cada um e' impressa).
+ *
+ * LIMITES DECLARADOS: (1) o Postgres e o 17 LOCAL; o Postgres 15/17 da Supabase, o papel
+ * `postgres` real e a ACL real das lojas nao foram medidos aqui. (2) O envelope do workflow e
+ * simulado por BEGIN ISOLATION LEVEL REPEATABLE READ / leitura / corpo / COMMIT em texto, nao pelo
+ * aplicar-migrations.yml nem pelo impressao-digital.sql. (3) O `SET LOCAL lock_timeout` da
+ * migration e cinto de seguranca: com a trava pega por NOWAIT nao ha espera alcancavel que ele
+ * limite, entao nenhum mutante o distingue. (4) O comportamento do Mercado Pago (PIX cancelado
+ * pago depois) nao e coberto: esta peca so grava a foto.
+ *
+ * USO: CI_BANCO_EFEMERO=1 DATABASE_URL=postgres://postgres:...@localhost:<porta>/postgres \
+ *        node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-viva.cjs
+ */
+
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-non-literal-regexp --
+ * Os caminhos vem do proprio repositorio (as migrations) e os trechos regex dos mutantes vem
+ * de constantes deste arquivo, nunca de entrada de rede. */
+
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawnSync } = require("node:child_process");
+const { Client } = require("pg");
+const { lerDatabaseUrlEfemera } = require("./efemero.cjs");
+
+const REPO = path.resolve(__dirname, "..", "..");
+const MIGRATIONS = path.join(REPO, "supabase", "migrations");
+
+// ---------------------------------------------------------------------------
+// Os arquivos (leitura SOB DEMANDA: com a migration ainda ausente a prova falha por
+// asserção clara, nunca por ENOENT solto no carregar)
+// ---------------------------------------------------------------------------
+const ARQ = "20261209000000_a_foto_da_cobranca_no_cancelamento.sql";
+const ARQ_RB = `rollback-manual-${ARQ}`;
+const lerLF = (arq) => {
+  const f = path.join(MIGRATIONS, arq);
+  assert.ok(
+    fs.existsSync(f),
+    `o arquivo ${arq} nao existe em supabase/migrations`,
+  );
+  return fs.readFileSync(f, "utf8").replace(/\r\n/g, "\n");
+};
+const lerMig = () => lerLF(ARQ);
+const lerRb = () => lerLF(ARQ_RB);
+
+const SUF = `${process.pid.toString(36)}${Date.now().toString(36).slice(-5)}`;
+
+const urlBase = lerDatabaseUrlEfemera();
+const urlDe = (db) => {
+  const u = new URL(urlBase);
+  u.pathname = `/${db}`;
+  return u.toString();
+};
+async function usar(db, fn) {
+  const c = new Client({ connectionString: urlDe(db) });
+  await c.connect();
+  try {
+    return await fn(c);
+  } finally {
+    await c.end().catch(() => {});
+  }
+}
+const clones = [];
+let PRE = null;
+async function criarBanco(nome, de = null) {
+  for (let tentativa = 0; ; tentativa += 1) {
+    try {
+      await usar("template1", (a) =>
+        a.query(
+          de
+            ? `CREATE DATABASE "${nome}" TEMPLATE "${de}"`
+            : `CREATE DATABASE "${nome}"`,
+        ),
+      );
+      break;
+    } catch (e) {
+      // 55006: o molde ainda esta sendo liberado pela conexao que acabou de fechar.
+      if (e.code !== "55006" || tentativa >= 40) throw e;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  clones.push(nome);
+  return nome;
+}
+const clonar = (rotulo, de = PRE) =>
+  criarBanco(`pa_${SUF}_${clones.length}_${rotulo}`.slice(0, 60), de);
+
+let resultados = 0;
+function ok(msg) {
+  resultados += 1;
+  console.log(`  ok ${resultados}. ${msg}`);
+}
+const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function rodarScriptNode(argv, env) {
+  const r = spawnSync(process.execPath, argv, { env, encoding: "utf8" });
+  assert.equal(
+    r.status,
+    0,
+    `${path.basename(argv[0])} falhou:\n${(r.stdout || "").slice(-600)}\n${(r.stderr || "").slice(-600)}`,
+  );
+}
+/** Monta um banco NOVO com as migrations que passam no filtro, pelos mesmos scripts do
+ * rpc-ci.yml, num diretorio temporario exclusivo desta execucao. */
+async function montarBase(nome, filtro) {
+  await criarBanco(nome);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pa-"));
+  try {
+    for (const e of fs.readdirSync(MIGRATIONS, { withFileTypes: true })) {
+      if (
+        e.isFile() &&
+        e.name.endsWith(".sql") &&
+        !e.name.startsWith("rollback-") &&
+        filtro(e.name)
+      )
+        fs.copyFileSync(path.join(MIGRATIONS, e.name), path.join(dir, e.name));
+    }
+    const env = { ...process.env, DATABASE_URL: urlDe(nome) };
+    rodarScriptNode([path.join(__dirname, "provisionar.cjs")], env);
+    rodarScriptNode([path.join(__dirname, "aplicar-migrations.cjs"), dir], env);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  return nome;
+}
+
+// ---------------------------------------------------------------------------
+// Fixtures: usuarios, produto, cupom, pedidos pelos caminhos REAIS
+// ---------------------------------------------------------------------------
+const U_COMPRADOR = "c9000000-0000-4000-8000-000000000001";
+const U_OUTRO = "c9000000-0000-4000-8000-000000000002";
+const U_ADMIN = "c9000000-0000-4000-8000-000000000003";
+const P_PRODUTO = "c9aaaaaa-0000-4000-8000-000000000001";
+const claims = (uid, papel) =>
+  JSON.stringify({
+    sub: uid,
+    role: "authenticated",
+    app_metadata: papel ? { role: papel } : {},
+  });
+const QUEM = new Map(
+  Object.entries({
+    anon: { papel: "anon", uid: "", jwt: "" },
+    comprador: {
+      papel: "authenticated",
+      uid: U_COMPRADOR,
+      jwt: claims(U_COMPRADOR, null),
+    },
+    outro: { papel: "authenticated", uid: U_OUTRO, jwt: claims(U_OUTRO, null) },
+    admin: {
+      papel: "authenticated",
+      uid: U_ADMIN,
+      jwt: claims(U_ADMIN, "admin"),
+    },
+    service: { papel: "service_role", uid: "", jwt: "" },
+  }),
+);
+
+/** Roda `sql` COMO `quem`, numa transacao PROPRIA (COMMIT no fim); erro vira {ok:false}. */
+async function como(c, quem, sql, params = []) {
+  const q = QUEM.get(quem);
+  await c.query("BEGIN");
+  try {
+    await c.query(`SET LOCAL ROLE ${q.papel}`);
+    await c.query(
+      "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
+      [q.uid, q.jwt],
+    );
+    const r = await c.query(sql, params);
+    await c.query("COMMIT");
+    return { ok: true, rows: r.rows };
+  } catch (e) {
+    await c.query("ROLLBACK").catch(() => {});
+    return { ok: false, code: e.code, message: e.message };
+  }
+}
+function exigir(r, rotulo) {
+  assert.ok(r.ok, `${rotulo}: ${r.code} ${r.message}`);
+  return r.rows;
+}
+
+async function semearBase(db) {
+  await usar(db, async (c) => {
+    await c.query(
+      "GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role",
+    );
+    await c.query(
+      "GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role",
+    );
+    for (const [id, papel] of [
+      [U_COMPRADOR, null],
+      [U_OUTRO, null],
+      [U_ADMIN, "admin"],
+    ]) {
+      await c.query(
+        `INSERT INTO auth.users (id, email, raw_app_meta_data) VALUES ($1::uuid, $1::text || '@pixanulado.teste', $2::jsonb)`,
+        [id, JSON.stringify(papel ? { role: papel } : {})],
+      );
+    }
+    await c.query(
+      `INSERT INTO public.profiles (id, full_name, role) VALUES
+         ($1, 'Comprador Foto', 'customer'), ($2, 'Outro Foto', 'customer'), ($3, 'Admin Foto', 'admin')`,
+      [U_COMPRADOR, U_OUTRO, U_ADMIN],
+    );
+    await c.query(
+      `INSERT INTO public.store_config
+         (id, origin_cep, local_cep_range, free_shipping_min, shipping_coverage, enable_coupons)
+       VALUES (1, '38500-000', '38500000-38505000', 0.01, 'national', true)
+       ON CONFLICT (id) DO UPDATE
+         SET origin_cep = EXCLUDED.origin_cep, local_cep_range = EXCLUDED.local_cep_range,
+             free_shipping_min = EXCLUDED.free_shipping_min,
+             shipping_coverage = EXCLUDED.shipping_coverage,
+             enable_coupons = EXCLUDED.enable_coupons`,
+    );
+    await c.query(
+      `INSERT INTO public.produtos (id, nome, preco_venda, estoque, ativo, custo, frete_gratis)
+       VALUES ($1, 'Produto foto', 100, 100000, true, 40, false)`,
+      [P_PRODUTO],
+    );
+    await c.query(
+      `INSERT INTO public.coupons (code, type, value, active, usage_count, usage_limit)
+       VALUES ('FOTOK', 'fixed', 10, true, 0, 50)`,
+    );
+  });
+}
+
+/** Pedido criado pelo caminho de producao (v23 = "na entrega", v24 = PIX). */
+async function novoPedido(
+  c,
+  rpc = "create_marketplace_order_v24",
+  quem = "comprador",
+) {
+  const metodo = rpc === "create_marketplace_order_v24" ? "pix" : "cash";
+  const r = await como(
+    c,
+    quem,
+    `SELECT public.${rpc}($1::jsonb, $2::numeric, 0::numeric, $3::text, NULL::uuid, NULL::text,
+       'Comprador', '5539000000000', NULL::text, $4::jsonb, '38500-000', 'local-delivery', $5::uuid) AS id`,
+    [
+      JSON.stringify([
+        { product_id: P_PRODUTO, variant_id: null, quantity: 1 },
+      ]),
+      100,
+      metodo,
+      JSON.stringify({ cep: "38500-000", rua: "Rua da Prova", numero: "1" }),
+      crypto.randomUUID(),
+    ],
+  );
+  return exigir(r, `${rpc} como ${quem}`)[0].id;
+}
+const COLUNAS_DA_COBRANCA = `status, payment_status, gateway_payment_id,
+  tentativas_de_pagamento, metodo_online`;
+const estado = async (c, id) =>
+  (
+    await c.query(
+      `SELECT ${COLUNAS_DA_COBRANCA} FROM public.marketplace_orders WHERE id = $1`,
+      [id],
+    )
+  ).rows[0];
+const foto = async (c, id) =>
+  (
+    await c.query(
+      `SELECT order_id, gateway_payment_id, tentativas, metodo_online, payment_status,
+              cancelado_em, xmin::text AS xmin
+         FROM public.pedido_cobranca_ao_cancelar WHERE order_id = $1`,
+      [id],
+    )
+  ).rows[0];
+const totalFotos = async (c) =>
+  Number(
+    (
+      await c.query(
+        "SELECT count(*) AS n FROM public.pedido_cobranca_ao_cancelar",
+      )
+    ).rows[0].n,
+  );
+/** A foto tem de ser a cobranca do pedido NO instante anterior ao cancelamento. */
+function mesmaCobranca(f, antes, rotulo) {
+  assert.ok(f, `${rotulo}: nao ha foto`);
+  assert.deepEqual(
+    {
+      gateway_payment_id: f.gateway_payment_id,
+      tentativas: f.tentativas,
+      metodo_online: f.metodo_online,
+      payment_status: f.payment_status,
+    },
+    {
+      gateway_payment_id: antes.gateway_payment_id,
+      tentativas: antes.tentativas_de_pagamento,
+      metodo_online: antes.metodo_online,
+      payment_status: antes.payment_status,
+    },
+    `${rotulo}: a foto nao e a cobranca do instante do cancelamento`,
+  );
+}
+const cancelarComo = async (c, quem, id) =>
+  exigir(
+    await como(
+      c,
+      quem,
+      "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
+      [id],
+    ),
+    `cancelar como ${quem}`,
+  );
+/** O que a edge criar-pagamento grava ao gerar o PIX: o id na vaga e o metodo. */
+async function gravarPix(c, id, g = "MP-PIX-A") {
+  await c.query(
+    "UPDATE public.marketplace_orders SET gateway_payment_id = $2, metodo_online = 'pix' WHERE id = $1",
+    [id, g],
+  );
+}
+const cancelarPelaEdge = async (c, id, ator, vaga, pagamento) =>
+  como(
+    c,
+    "service",
+    "SELECT public.cancelar_pedido_com_cobranca($1::uuid, $2::uuid, $3::text, $4::text) AS r",
+    [id, ator, vaga, pagamento],
+  );
+
+// ---------------------------------------------------------------------------
+// Fotografia do catalogo (para "nada gravado" e para "volta exata")
+// ---------------------------------------------------------------------------
+async function fotografia(db) {
+  return usar(db, async (c) => {
+    const q = async (sql) => (await c.query(sql)).rows;
+    return {
+      tabela: await q(
+        `SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, c.relacl::text AS acl,
+                c.relowner::regrole::text AS dono, obj_description(c.oid, 'pg_class') AS comentario
+           FROM pg_class c WHERE c.oid = to_regclass('public.pedido_cobranca_ao_cancelar')`,
+      ),
+      colunas: await q(
+        `SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS tipo, a.attnotnull,
+                pg_get_expr(d.adbin, d.adrelid) AS padrao
+           FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+          WHERE a.attrelid = to_regclass('public.pedido_cobranca_ao_cancelar')
+            AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
+      ),
+      restricoes: await q(
+        `SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+          WHERE conrelid = to_regclass('public.pedido_cobranca_ao_cancelar') ORDER BY conname`,
+      ),
+      politicas: await q(
+        `SELECT polname FROM pg_policy WHERE polrelid = to_regclass('public.pedido_cobranca_ao_cancelar')`,
+      ),
+      funcoes: (
+        await q(`SELECT md5(string_agg(p.oid::regprocedure::text || '|' || p.prosrc || '|'
+                 || coalesce(p.proacl::text, '') || '|' || p.proowner::regrole::text
+                 || '|' || coalesce(obj_description(p.oid, 'pg_proc'), ''),
+                 E'\\n' ORDER BY p.oid::regprocedure::text)) AS h
+                 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'public'`)
+      )[0].h,
+      gatilhos: (
+        await q(`SELECT md5(string_agg(t.tgrelid::regclass::text || '|' || pg_get_triggerdef(t.oid)
+                   || '|' || t.tgenabled, E'\\n' ORDER BY t.tgrelid::regclass::text, t.tgname)) AS h
+                   FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+                  WHERE NOT t.tgisinternal AND c.relnamespace = 'public'::regnamespace`)
+      )[0].h,
+      relacoes: (
+        await q(`SELECT md5(string_agg(c.relname || '|' || c.relkind || '|' || c.relrowsecurity::text
+                   || '|' || coalesce(c.relacl::text, ''), E'\\n' ORDER BY c.relname)) AS h
+                   FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace
+                    AND c.relkind IN ('r', 'v', 'm', 'p', 'S')`)
+      )[0].h,
+      politicasTodas: (
+        await q(`SELECT md5(string_agg(polrelid::regclass::text || '|' || polname, E'\\n'
+                   ORDER BY polrelid::regclass::text, polname)) AS h FROM pg_policy`)
+      )[0].h,
+      pedidos: (
+        await q(`SELECT md5(string_agg(to_jsonb(o)::text, E'\\n' ORDER BY o.id)) AS h
+                   FROM public.marketplace_orders o`)
+      )[0].h,
+    };
+  });
+}
+
+/** Aplica um texto SQL como o aplicar-migrations.cjs: UMA consulta com o arquivo todo. */
+async function aplicar(db, texto, { papel = null } = {}) {
+  const c = new Client({ connectionString: urlDe(db) });
+  await c.connect();
+  try {
+    if (papel) await c.query(`SET ROLE ${papel}`);
+    await c.query(texto);
+    return { ok: true };
+  } catch (erro) {
+    return { erro };
+  } finally {
+    await c.end().catch(() => {});
+  }
+}
+const crlf = (s) => s.replace(/\n/g, "\r\n");
+/** O envelope de producao: UMA transacao REPEATABLE READ, a foto da impressao digital (leitura
+ * de marketplace_orders) ANTES do corpo, COMMIT no fim. `depoisDaFoto` roda entre a foto e o
+ * corpo (sem esperar o corpo). */
+async function emEnvelopeRR(db, sql, depoisDaFoto = null) {
+  const c = new Client({ connectionString: urlDe(db) });
+  await c.connect();
+  try {
+    await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await c.query("SELECT count(*) FROM public.marketplace_orders");
+    if (depoisDaFoto) await depoisDaFoto();
+    await c.query(sql);
+    await c.query("COMMIT");
+    return { ok: true };
+  } catch (erro) {
+    await c.query("ROLLBACK").catch(() => {});
+    return { erro };
+  } finally {
+    await c.end().catch(() => {});
+  }
+}
+function recusou(r, trecho, rotulo, codigo = "P0001") {
+  assert.ok(
+    r.erro,
+    `${rotulo}: devia RECUSAR e aplicou (a migration passou por cima de algo que nao e dela)`,
+  );
+  assert.equal(
+    r.erro.code,
+    codigo,
+    `${rotulo}: ${r.erro.code} ${r.erro.message}`,
+  );
+  assert.match(r.erro.message, trecho, `${rotulo}: recusou por OUTRO motivo`);
+}
+async function nadaGravado(db, antes, rotulo) {
+  assert.deepEqual(
+    await fotografia(db),
+    antes,
+    `${rotulo}: algo mudou no banco`,
+  );
+}
+async function clonarComM1(rotulo, sql = lerMig()) {
+  const db = await clonar(rotulo);
+  const r = await aplicar(db, sql);
+  assert.ok(
+    !r.erro,
+    `aplicar a migration falhou: ${r.erro?.code} ${r.erro?.message}`,
+  );
+  return db;
+}
+
+/** `pg_stat_activity`: espera ate `ms` por `n` sessoes bloqueadas em trava neste banco. */
+async function esperarBloqueio(db, ms, n = 1) {
+  const fim = Date.now() + ms;
+  for (;;) {
+    const bloqueada = await usar(
+      db,
+      async (c) =>
+        (
+          await c.query(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event_type = 'Lock'
+                AND pid <> pg_backend_pid()`,
+          )
+        ).rows[0].n,
+    );
+    if (bloqueada >= n) return;
+    if (Date.now() > fim)
+      throw new assert.AssertionError({
+        message: `nenhuma sessao chegou a esperar uma trava (esperava ${n})`,
+      });
+    await dormir(40);
+  }
+}
+/** Espera a migration estar DORMINDO no laco do NOWAIT (pg_sleep), sinal de que ela viu a tabela ocupada. */
+async function esperarDormindo(db, ms) {
+  const fim = Date.now() + ms;
+  for (;;) {
+    const n = await usar(
+      db,
+      async (c) =>
+        (
+          await c.query(
+            `SELECT count(*)::int AS n FROM pg_stat_activity
+              WHERE datname = current_database() AND wait_event = 'PgSleep'
+                AND pid <> pg_backend_pid()`,
+          )
+        ).rows[0].n,
+    );
+    if (n >= 1) return;
+    if (Date.now() > fim)
+      throw new assert.AssertionError({
+        message: "a migration nao chegou a ficar tentando a trava (pg_sleep)",
+      });
+    await dormir(30);
+  }
+}
+const comTempo = (p, ms, rotulo) =>
+  Promise.race([
+    p,
+    dormir(ms).then(() => {
+      throw new assert.AssertionError({
+        message: `${rotulo}: nao terminou em ${ms} ms (travou)`,
+      });
+    }),
+  ]);
+
+// ---------------------------------------------------------------------------
+// Mutacao do texto da migration/rollback
+// ---------------------------------------------------------------------------
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function trocar(sql, de, para) {
+  assert.ok(
+    sql.includes(de),
+    `o trecho a mutar nao existe: ${de.slice(0, 90)}`,
+  );
+  const novo = sql.replace(de, () => para);
+  assert.notEqual(novo, sql);
+  return novo;
+}
+/** Troca por `NULL;` o RAISE EXCEPTION cuja mensagem comeca em `inicio`. */
+function semRaise(sql, inicio) {
+  const re = new RegExp(`RAISE EXCEPTION '${escRe(inicio)}[^']*'(?:, [^;]*)?;`);
+  assert.ok(re.test(sql), `nao achei o RAISE "${inicio}"`);
+  return sql.replace(re, "NULL;");
+}
+const MSG = {
+  coluna: "PREFLIGHT_20261209: public.marketplace_orders.%",
+  forma:
+    "PREFLIGHT_20261209: ja existe public.pedido_cobranca_ao_cancelar com outra forma",
+  pk: "PREFLIGHT_20261209: public.pedido_cobranca_ao_cancelar nao tem a chave primaria",
+  fk: "PREFLIGHT_20261209: public.pedido_cobranca_ao_cancelar nao tem a chave estrangeira",
+  politica:
+    "PREFLIGHT_20261209: public.pedido_cobranca_ao_cancelar tem politica",
+  assinatura:
+    "PREFLIGHT_20261209: ja existe public.pedido__foto_da_cobranca_ao_cancelar com outra assinatura",
+  corpo:
+    "PREFLIGHT_20261209: public.pedido__foto_da_cobranca_ao_cancelar() tem corpo diferente",
+  gatilho:
+    "PREFLIGHT_20261209: ja existe o gatilho tr_pedido_foto_da_cobranca_ao_cancelar",
+  posTabela: "POSVOO_20261209: public.pedido_cobranca_ao_cancelar nao existe",
+  posRls:
+    "POSVOO_20261209: public.pedido_cobranca_ao_cancelar saiu sem seguranca",
+  posAclTabela:
+    "POSVOO_20261209: public.pedido_cobranca_ao_cancelar saiu com privilegio",
+  posAclFuncao:
+    "POSVOO_20261209: public.pedido__foto_da_cobranca_ao_cancelar() saiu com EXECUTE",
+  posCorpo:
+    "POSVOO_20261209: public.pedido__foto_da_cobranca_ao_cancelar() saiu com o corpo",
+  posGatilho:
+    "POSVOO_20261209: o gatilho tr_pedido_foto_da_cobranca_ao_cancelar nao ficou",
+  rbForma:
+    "ROLLBACK_20261209: public.pedido_cobranca_ao_cancelar tem outra forma",
+  rbChaves:
+    "ROLLBACK_20261209: public.pedido_cobranca_ao_cancelar nao tem a chave primaria",
+  rbAssinatura:
+    "ROLLBACK_20261209: existe public.pedido__foto_da_cobranca_ao_cancelar com outra assinatura",
+  rbCorpo:
+    "ROLLBACK_20261209: public.pedido__foto_da_cobranca_ao_cancelar() tem corpo diferente",
+  rbGatilho:
+    "ROLLBACK_20261209: o gatilho tr_pedido_foto_da_cobranca_ao_cancelar chama outra funcao",
+  rbFuncoes: "ROLLBACK_20261209: % funcao(oes) citam",
+  rbDepois: "ROLLBACK_20261209: algum objeto da 20261209000000 ainda existe",
+};
+const T = {
+  lockNowait:
+    "LOCK TABLE public.marketplace_orders IN SHARE ROW EXCLUSIVE MODE NOWAIT;",
+  lockEspera:
+    "LOCK TABLE public.marketplace_orders IN SHARE ROW EXCLUSIVE MODE;",
+  orcamento: "IF v_tentativa >= 40 THEN",
+  orcamentoGrande: "IF v_tentativa >= 4000 THEN",
+  when: "WHEN (NEW.status = 'cancelled' AND OLD.status IS DISTINCT FROM 'cancelled')\n",
+  whenSemOld: "WHEN (NEW.status = 'cancelled')\n",
+  upsert:
+    "ON CONFLICT (order_id) DO UPDATE\n     SET gateway_payment_id = EXCLUDED.gateway_payment_id,\n         tentativas = EXCLUDED.tentativas,\n         metodo_online = EXCLUDED.metodo_online,\n         payment_status = EXCLUDED.payment_status,\n         cancelado_em = EXCLUDED.cancelado_em;",
+  doNothing: "ON CONFLICT (order_id) DO NOTHING;",
+  secDef: "SECURITY DEFINER\nSET search_path = public\nAS $foto_da_cobranca$",
+  semSecDef: "SET search_path = public\nAS $foto_da_cobranca$",
+  semPath: "SECURITY DEFINER\nAS $foto_da_cobranca$",
+  newPay: "NEW.payment_status, now())",
+  oldPay: "OLD.payment_status, now())",
+  rls: "ALTER TABLE public.pedido_cobranca_ao_cancelar ENABLE ROW LEVEL SECURITY;\n",
+  revTabela:
+    "REVOKE ALL ON TABLE public.pedido_cobranca_ao_cancelar FROM PUBLIC, anon, authenticated, service_role;\n",
+  revFuncao:
+    "REVOKE ALL ON FUNCTION public.pedido__foto_da_cobranca_ao_cancelar() FROM PUBLIC, anon, authenticated, service_role;\n",
+  cascade: "REFERENCES public.marketplace_orders (id) ON DELETE CASCADE",
+  semCascade: "REFERENCES public.marketplace_orders (id)",
+  retorno: "  RETURN NULL;\n",
+  retornoNew: "  RETURN NEW;\n",
+};
+/** O gatilho inteiro (de CREATE OR REPLACE TRIGGER ate o `;`), para tirar ou trocar. */
+function gatilhoDe(sql) {
+  const ini = sql.indexOf(
+    "CREATE OR REPLACE TRIGGER tr_pedido_foto_da_cobranca_ao_cancelar",
+  );
+  assert.ok(ini >= 0, "gatilho nao achado");
+  const fim = sql.indexOf(";\n", ini) + 2;
+  return sql.slice(ini, fim);
+}
+
+/** Um MUTANTE tem de ser PEGO: o caso, rodado com o texto mutado, LANCA AssertionError. */
+async function mutante(rotulo, caso, sqlMutado) {
+  let pego = null;
+  try {
+    await caso(sqlMutado);
+  } catch (e) {
+    assert.ok(
+      e instanceof assert.AssertionError,
+      `${rotulo}: o mutante falhou por erro que nao e de asserção: ${e?.stack}`,
+    );
+    pego = e;
+  }
+  assert.ok(
+    pego,
+    `${rotulo}: o MUTANTE passou despercebido (a prova ficaria VERDE)`,
+  );
+  console.log(
+    `     mutante "${rotulo}" -> VERMELHO: ${String(pego.message).split("\n")[0].slice(0, 200)}`,
+  );
+  ok(`mutante "${rotulo}" deixa a prova VERMELHA`);
+}
+
+// ===========================================================================
+// BLOCO DA FOTO -- os casos (cada um recebe o texto da migration, para os mutantes)
+// ===========================================================================
+
+async function casoCatalogo(sql = lerMig()) {
+  const db = await clonarComM1("catalogo", sql);
+  await usar(db, async (c) => {
+    const col = await c.query(
+      `SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS tipo, a.attnotnull,
+              pg_get_expr(d.adbin, d.adrelid) AS padrao
+         FROM pg_attribute a LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+        WHERE a.attrelid = 'public.pedido_cobranca_ao_cancelar'::regclass
+          AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
+    );
+    assert.deepEqual(
+      col.rows.map((l) => [l.attname, l.tipo, l.attnotnull, l.padrao]),
+      [
+        ["order_id", "uuid", true, null],
+        ["gateway_payment_id", "text", false, null],
+        ["tentativas", "integer", true, null],
+        ["metodo_online", "text", false, null],
+        ["payment_status", "text", false, null],
+        ["cancelado_em", "timestamp with time zone", true, "now()"],
+      ],
+      "colunas da tabela da foto",
+    );
+    const ch = await c.query(
+      `SELECT contype, pg_get_constraintdef(oid) AS def FROM pg_constraint
+        WHERE conrelid = 'public.pedido_cobranca_ao_cancelar'::regclass ORDER BY contype`,
+    );
+    assert.deepEqual(
+      ch.rows.map((l) => l.contype),
+      ["f", "p"],
+      "so a chave estrangeira e a primaria",
+    );
+    assert.match(
+      ch.rows[0].def,
+      /FOREIGN KEY \(order_id\) REFERENCES marketplace_orders\(id\) ON DELETE CASCADE/,
+    );
+    assert.match(ch.rows[1].def, /PRIMARY KEY \(order_id\)/);
+
+    const t = (
+      await c.query(
+        `SELECT c.relrowsecurity, c.relforcerowsecurity,
+                (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS politicas,
+                obj_description(c.oid, 'pg_class') IS NOT NULL AS comentada,
+                EXISTS (SELECT 1 FROM aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+                         WHERE a.grantee = 0) AS publico
+           FROM pg_class c WHERE c.oid = 'public.pedido_cobranca_ao_cancelar'::regclass`,
+      )
+    ).rows[0];
+    assert.equal(t.relrowsecurity, true, "seguranca por linha desligada");
+    assert.equal(t.politicas, 0, "a tabela nao pode ter politica");
+    assert.equal(t.publico, false, "PUBLIC com privilegio na tabela");
+    assert.equal(t.comentada, true, "a tabela tem COMMENT");
+    for (const papel of ["anon", "authenticated", "service_role"]) {
+      for (const priv of [
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "TRUNCATE",
+        "REFERENCES",
+        "TRIGGER",
+      ]) {
+        const p = (
+          await c.query(
+            "SELECT has_table_privilege($1, 'public.pedido_cobranca_ao_cancelar', $2) AS p",
+            [papel, priv],
+          )
+        ).rows[0].p;
+        assert.equal(p, false, `${papel} tem ${priv} na tabela da foto`);
+      }
+    }
+    const f = (
+      await c.query(
+        `SELECT p.prosecdef, p.proconfig::text AS config, p.prorettype::regtype::text AS ret,
+                p.pronargs, p.provolatile,
+                EXISTS (SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                         WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS publico,
+                has_function_privilege('anon', p.oid, 'EXECUTE') AS anon,
+                has_function_privilege('authenticated', p.oid, 'EXECUTE') AS auth,
+                has_function_privilege('service_role', p.oid, 'EXECUTE') AS service,
+                obj_description(p.oid, 'pg_proc') IS NOT NULL AS comentada
+           FROM pg_proc p WHERE p.oid = to_regprocedure('public.pedido__foto_da_cobranca_ao_cancelar()')`,
+      )
+    ).rows[0];
+    assert.equal(
+      f.prosecdef,
+      true,
+      "a funcao do gatilho precisa ser SECURITY DEFINER",
+    );
+    assert.equal(f.config, "{search_path=public}", "search_path da funcao");
+    assert.equal(f.ret, "trigger");
+    assert.equal(f.pronargs, 0);
+    assert.deepEqual(
+      [f.publico, f.anon, f.auth, f.service],
+      [false, false, false, false],
+      "EXECUTE de fora na funcao do gatilho",
+    );
+    assert.equal(f.comentada, true, "a funcao tem COMMENT");
+    const g = (
+      await c.query(
+        `SELECT t.tgenabled, t.tgtype, t.tgattr::text AS attr, t.tgfoid::regprocedure::text AS fn,
+                a.attnum::text AS status_attnum,
+                regexp_replace(lower(pg_get_expr(t.tgqual, t.tgrelid)), '[()[:space:]]', '', 'g') AS quando
+           FROM pg_trigger t JOIN pg_attribute a ON a.attrelid = t.tgrelid AND a.attname = 'status'
+          WHERE t.tgrelid = 'public.marketplace_orders'::regclass AND NOT t.tgisinternal
+            AND t.tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'`,
+      )
+    ).rows;
+    assert.equal(g.length, 1, "o gatilho nao existe (ou existe em dobro)");
+    assert.equal(g[0].tgenabled, "O");
+    assert.equal(g[0].tgtype, 17, "AFTER, por linha, UPDATE");
+    assert.equal(g[0].attr, g[0].status_attnum, "UPDATE OF status");
+    assert.equal(
+      g[0].fn,
+      "pedido__foto_da_cobranca_ao_cancelar()",
+      "a funcao do gatilho",
+    );
+    assert.equal(
+      g[0].quando,
+      "new.status='cancelled'::textandold.statusisdistinctfrom'cancelled'::text",
+      "o WHEN do gatilho",
+    );
+
+    // ninguem de fora toca na tabela: 42501 para cada papel e cada comando
+    const id = await novoPedido(c);
+    for (const quem of ["anon", "comprador", "admin", "service"]) {
+      for (const cmd of [
+        "SELECT count(*) FROM public.pedido_cobranca_ao_cancelar",
+        `INSERT INTO public.pedido_cobranca_ao_cancelar (order_id, tentativas) VALUES ('${id}', 0)`,
+        "UPDATE public.pedido_cobranca_ao_cancelar SET tentativas = 9",
+        "DELETE FROM public.pedido_cobranca_ao_cancelar",
+        "TRUNCATE public.pedido_cobranca_ao_cancelar",
+      ]) {
+        const r = await como(c, quem, cmd);
+        assert.equal(r.ok, false, `${quem} executou: ${cmd}`);
+        assert.equal(r.code, "42501", `${quem}/${cmd}: ${r.code} ${r.message}`);
+      }
+      const e = await como(
+        c,
+        quem,
+        "SELECT public.pedido__foto_da_cobranca_ao_cancelar()",
+      );
+      assert.equal(e.ok, false, `${quem} executou a funcao do gatilho`);
+      assert.equal(e.code, "42501", `${quem} funcao: ${e.code} ${e.message}`);
+    }
+  });
+}
+
+async function casoCaminhos(sql = lerMig()) {
+  const db = await clonarComM1("caminhos", sql);
+  await usar(db, async (c) => {
+    // 1. A edge: v24 + PIX gravado + cancelar_pedido_com_cobranca; depois o webhook libera a vaga.
+    const a = await novoPedido(c);
+    await gravarPix(c, a, "MP-PIX-A");
+    const antesA = await estado(c, a);
+    assert.deepEqual(
+      [
+        antesA.payment_status,
+        antesA.tentativas_de_pagamento,
+        antesA.metodo_online,
+      ],
+      ["aguardando", 0, "pix"],
+      "pre-condicao: o PIX gerado e o que o desenho descreve",
+    );
+    const rA = exigir(
+      await cancelarPelaEdge(c, a, U_COMPRADOR, "MP-PIX-A", "aguardando"),
+      "cancelar pela edge",
+    )[0].r;
+    assert.equal(rA.cancelado, true, JSON.stringify(rA));
+    const fA = await foto(c, a);
+    mesmaCobranca(fA, antesA, "edge (PIX)");
+    assert.deepEqual(
+      [
+        fA.gateway_payment_id,
+        fA.tentativas,
+        fA.metodo_online,
+        fA.payment_status,
+      ],
+      ["MP-PIX-A", 0, "pix", "aguardando"],
+      "a foto do PIX cancelado pela edge",
+    );
+    assert.ok(fA.cancelado_em instanceof Date);
+    // o webhook consulta o MP, ve `canceled` e libera a vaga: o pedido muda, a foto NAO
+    assert.equal(
+      (
+        await c.query(
+          "SELECT public.liberar_cobranca_do_pedido($1::uuid, 'MP-PIX-A') AS ok",
+          [a],
+        )
+      ).rows[0].ok,
+      true,
+      "liberar_cobranca_do_pedido nao liberou",
+    );
+    const depoisA = await estado(c, a);
+    assert.deepEqual(
+      [
+        depoisA.gateway_payment_id,
+        depoisA.tentativas_de_pagamento,
+        depoisA.metodo_online,
+      ],
+      [null, 1, null],
+      "pre-condicao: liberar esvazia a vaga e conta a tentativa",
+    );
+    assert.deepEqual(await foto(c, a), fA, "liberar mexeu na foto");
+
+    // 2. cliente cancela o proprio pedido PIX ainda sem id (papel authenticated, sem privilegio na tabela)
+    const b = await novoPedido(c);
+    const antesB = await estado(c, b);
+    await cancelarComo(c, "comprador", b);
+    mesmaCobranca(
+      await foto(c, b),
+      antesB,
+      "cliente cancela (sem id de cobranca)",
+    );
+
+    // 3. pedido PAGO cancelado pelo admin
+    const p = await novoPedido(c);
+    await c.query(
+      "UPDATE public.marketplace_orders SET gateway_payment_id = 'MP-PAGO-1' WHERE id = $1",
+      [p],
+    );
+    assert.equal(
+      (
+        await c.query(
+          "SELECT public.confirmar_pagamento($1::uuid, 'MP-PAGO-1', 'pago') AS r",
+          [p],
+        )
+      ).rows[0].r,
+      "pago",
+    );
+    const antesP = await estado(c, p);
+    await cancelarComo(c, "admin", p);
+    const fP = await foto(c, p);
+    mesmaCobranca(fP, antesP, "admin cancela pedido pago");
+    assert.equal(fP.payment_status, "pago");
+
+    // 4. cartao em analise: metodo credito + sentinela; so o admin cancela
+    const k = await novoPedido(c);
+    await c.query(
+      `UPDATE public.marketplace_orders
+          SET gateway_payment_id = 'verificando:abc123', metodo_online = 'credito',
+              updated_at = now() - interval '10 minutes'
+        WHERE id = $1`,
+      [k],
+    );
+    await c.query(
+      "UPDATE public.marketplace_orders SET updated_at = now() - interval '10 minutes' WHERE id = $1",
+      [k],
+    );
+    const antesK = await estado(c, k);
+    const rK = exigir(
+      await cancelarPelaEdge(c, k, U_ADMIN, "verificando:abc123", "aguardando"),
+      "admin cancela cartao em analise",
+    )[0].r;
+    assert.equal(rK.cancelado, true, JSON.stringify(rK));
+    const fK = await foto(c, k);
+    mesmaCobranca(fK, antesK, "cartao em analise");
+    assert.deepEqual(
+      [fK.gateway_payment_id, fK.metodo_online],
+      ["verificando:abc123", "credito"],
+    );
+
+    // 5. expiracao pelo agendador: sai com payment_status 'expirado'
+    const e = await novoPedido(c);
+    await c.query(
+      "UPDATE public.marketplace_orders SET expires_at = now() - interval '1 minute' WHERE id = $1",
+      [e],
+    );
+    const n = await c.query("SELECT public.expirar_pedidos_vencidos() AS n");
+    assert.equal(Number(n.rows[0].n), 1, "expirar_pedidos_vencidos");
+    const antesE = await estado(c, e);
+    assert.equal(antesE.status, "cancelled");
+    assert.equal(antesE.payment_status, "expirado");
+    const fE = await foto(c, e);
+    assert.ok(fE, "expiracao: sem foto");
+    assert.equal(
+      fE.payment_status,
+      "expirado",
+      "a foto da expiracao tem de ser a do NEW (expirado), nao a do OLD",
+    );
+    assert.equal(fE.tentativas, 0);
+
+    // 6. "na entrega" (v23): sem PIX, sem metodo online
+    const v = await novoPedido(c, "create_marketplace_order_v23");
+    const antesV = await estado(c, v);
+    await cancelarComo(c, "comprador", v);
+    const fV = await foto(c, v);
+    mesmaCobranca(fV, antesV, "v23 na entrega");
+    assert.deepEqual([fV.gateway_payment_id, fV.metodo_online], [null, null]);
+
+    // 7. pedido__mudar_status direto
+    const m = await novoPedido(c);
+    await gravarPix(c, m, "MP-QR-1");
+    const antesM = await estado(c, m);
+    await c.query(
+      "SELECT public.pedido__mudar_status($1::uuid, 'cancelled', NULL, $2::uuid, false, true)",
+      [m, U_COMPRADOR],
+    );
+    mesmaCobranca(await foto(c, m), antesM, "pedido__mudar_status");
+
+    // 8. UPDATE cru de superusuario e status NULL -> cancelled
+    const u = await novoPedido(c);
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = NULL WHERE id = $1",
+      [u],
+    );
+    assert.equal(await foto(c, u), undefined, "status NULL nao e cancelamento");
+    const antesU = await estado(c, u);
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [u],
+    );
+    mesmaCobranca(await foto(c, u), antesU, "UPDATE cru, NULL -> cancelled");
+
+    assert.equal(
+      await totalFotos(c),
+      8,
+      "uma foto por pedido cancelado, nenhuma a mais",
+    );
+  });
+}
+
+async function casoRecancelar(sql = lerMig()) {
+  const db = await clonarComM1("recancelar", sql);
+  await usar(db, async (c) => {
+    const id = await novoPedido(c);
+    await gravarPix(c, id, "MP-PIX-R");
+    exigir(
+      await cancelarPelaEdge(c, id, U_COMPRADOR, "MP-PIX-R", "aguardando"),
+      "cancelar",
+    );
+    const f1 = await foto(c, id);
+    assert.ok(f1, "sem foto no primeiro cancelamento");
+    // o webhook libera a vaga: o pedido muda (vaga vazia, tentativas 1), a foto deve ficar
+    await c.query(
+      "SELECT public.liberar_cobranca_do_pedido($1::uuid, 'MP-PIX-R')",
+      [id],
+    );
+    await dormir(30);
+    // (a) UPDATE cru com o mesmo status, mudando outra coluna na mesma instrucao
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled', notes = 'de novo' WHERE id = $1",
+      [id],
+    );
+    assert.deepEqual(
+      await foto(c, id),
+      f1,
+      "UPDATE com status repetido regravou a foto",
+    );
+    // (b) a RPC do cliente/admin sobre pedido ja cancelado (recusa ou ja-estava, tanto faz)
+    await como(
+      c,
+      "comprador",
+      "SELECT public.update_order_status_atomic($1::uuid, 'cancelled')",
+      [id],
+    );
+    await como(
+      c,
+      "admin",
+      "SELECT public.update_order_status_atomic($1::uuid, 'cancelled')",
+      [id],
+    );
+    assert.deepEqual(
+      await foto(c, id),
+      f1,
+      "recancelar pela RPC regravou a foto",
+    );
+    // (c) a edge de novo
+    await cancelarPelaEdge(c, id, U_COMPRADOR, null, "aguardando");
+    assert.deepEqual(
+      await foto(c, id),
+      f1,
+      "recancelar pela edge regravou a foto",
+    );
+    assert.equal(await totalFotos(c), 1);
+  });
+}
+
+async function casoReativar(sql = lerMig()) {
+  const db = await clonarComM1("reativar", sql);
+  await usar(db, async (c) => {
+    const id = await novoPedido(c);
+    await gravarPix(c, id, "MP-PIX-V");
+    exigir(
+      await cancelarPelaEdge(c, id, U_COMPRADOR, "MP-PIX-V", "aguardando"),
+      "1o cancelamento",
+    );
+    const f1 = await foto(c, id);
+    assert.deepEqual(
+      [
+        f1.gateway_payment_id,
+        f1.tentativas,
+        f1.metodo_online,
+        f1.payment_status,
+      ],
+      ["MP-PIX-V", 0, "pix", "aguardando"],
+    );
+    // o admin reativa o pedido (pedido__mudar_status nao barra o admin saindo de cancelled)
+    exigir(
+      await como(
+        c,
+        "admin",
+        "SELECT public.update_order_status_atomic($1::uuid, 'pending') AS r",
+        [id],
+      ),
+      "admin reativa",
+    );
+    assert.equal((await estado(c, id)).status, "pending");
+    assert.deepEqual(
+      await foto(c, id),
+      f1,
+      "reativar nao muda a foto (so o proximo cancelamento)",
+    );
+    // no meio, um cartao e tentado (vaga com sentinela, tentativas somadas)
+    await c.query(
+      `UPDATE public.marketplace_orders
+          SET gateway_payment_id = 'verificando:zzz', metodo_online = 'credito',
+              tentativas_de_pagamento = 2, payment_status = 'aguardando'
+        WHERE id = $1`,
+      [id],
+    );
+    await c.query(
+      "UPDATE public.marketplace_orders SET updated_at = now() - interval '10 minutes' WHERE id = $1",
+      [id],
+    );
+    const antes2 = await estado(c, id);
+    exigir(
+      await como(
+        c,
+        "admin",
+        "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
+        [id],
+      ),
+      "2o cancelamento",
+    );
+    const f2 = await foto(c, id);
+    mesmaCobranca(f2, antes2, "2o cancelamento");
+    assert.deepEqual(
+      [f2.gateway_payment_id, f2.tentativas, f2.metodo_online],
+      ["verificando:zzz", 2, "credito"],
+      "a foto nova tem de mostrar o cartao tentado (lado seguro)",
+    );
+    assert.ok(f2.cancelado_em > f1.cancelado_em, "cancelado_em nao avancou");
+    assert.equal(await totalFotos(c), 1, "uma foto por pedido, sobrescrita");
+  });
+}
+
+async function casoNaoDispara(sql = lerMig()) {
+  const db = await clonarComM1("naodispara", sql);
+  await usar(db, async (c) => {
+    const id = await novoPedido(c);
+    await c.query(
+      "UPDATE public.marketplace_orders SET notes = 'x', tracking_code = 'AB123' WHERE id = $1",
+      [id],
+    );
+    await c.query(
+      "UPDATE public.marketplace_orders SET payment_status = 'aguardando', gateway_payment_id = 'G1' WHERE id = $1",
+      [id],
+    );
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = status WHERE id = $1",
+      [id],
+    );
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = 'pending' WHERE id = $1",
+      [id],
+    );
+    exigir(
+      await como(
+        c,
+        "admin",
+        "SELECT public.update_order_status_atomic($1::uuid, 'processing') AS r",
+        [id],
+      ),
+      "processing",
+    );
+    exigir(
+      await como(
+        c,
+        "admin",
+        "SELECT public.update_order_status_atomic($1::uuid, 'shipping') AS r",
+        [id],
+      ),
+      "shipping",
+    );
+    assert.equal(
+      await totalFotos(c),
+      0,
+      "algo que nao e cancelamento gravou foto",
+    );
+    // um pedido que nasce e nao e cancelado nao tem foto; o INSERT de um pedido ja cancelado tambem nao
+    const novo = await c.query(
+      `INSERT INTO public.marketplace_orders (customer_name, customer_data, total, subtotal, status)
+       VALUES ('Nasce cancelado', '{}'::jsonb, 10, 10, 'cancelled') RETURNING id`,
+    );
+    assert.equal(await foto(c, novo.rows[0].id), undefined);
+    assert.equal(await totalFotos(c), 0);
+    // e depois do cancelamento real, so UPDATE de outras colunas: a linha da foto nao e reescrita
+    const outro = await novoPedido(c);
+    await cancelarComo(c, "comprador", outro);
+    const f = await foto(c, outro);
+    await c.query(
+      "UPDATE public.marketplace_orders SET notes = 'depois', tracking_code = 'ZZ' WHERE id = $1",
+      [outro],
+    );
+    assert.deepEqual(
+      await foto(c, outro),
+      f,
+      "UPDATE de outra coluna mexeu na foto",
+    );
+  });
+}
+
+async function casoSimultaneo(sql = lerMig()) {
+  const db = await clonarComM1("simultaneo", sql);
+  const a = new Client({ connectionString: urlDe(db) });
+  const b = new Client({ connectionString: urlDe(db) });
+  await a.connect();
+  await b.connect();
+  try {
+    // (1) UPDATE cru: o segundo espera a linha do primeiro e, depois do COMMIT, ve o pedido ja cancelado
+    const id = await novoPedido(a);
+    await gravarPix(a, id, "MP-SIM-1");
+    await a.query("BEGIN");
+    await a.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [id],
+    );
+    await b.query("BEGIN");
+    const emB = b
+      .query(
+        "UPDATE public.marketplace_orders SET status = 'cancelled', payment_status = 'expirado' WHERE id = $1",
+        [id],
+      )
+      .then(
+        () => ({ ok: true }),
+        (erro) => ({ erro }),
+      );
+    await esperarBloqueio(db, 4000);
+    await a.query("COMMIT");
+    const rB = await comTempo(emB, 8000, "2o cancelamento");
+    assert.ok(!rB.erro, `o 2o cancelamento falhou: ${rB.erro?.message}`);
+    await b.query("COMMIT");
+    const fs1 = (
+      await a.query(
+        "SELECT * FROM public.pedido_cobranca_ao_cancelar WHERE order_id = $1",
+        [id],
+      )
+    ).rows;
+    assert.equal(fs1.length, 1, "dois cancelamentos geraram mais de uma foto");
+    assert.equal(
+      fs1[0].payment_status,
+      "aguardando",
+      "a foto tem de ser a do PRIMEIRO cancelamento (o segundo nao dispara o gatilho)",
+    );
+    assert.equal(fs1[0].gateway_payment_id, "MP-SIM-1");
+  } finally {
+    await a.query("ROLLBACK").catch(() => {});
+    await b.query("ROLLBACK").catch(() => {});
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+  }
+  // (2) a RPC do cliente chamada ao mesmo tempo de duas sessoes
+  await usar(db, async (c) => {
+    const id = await novoPedido(c);
+    const c1 = new Client({ connectionString: urlDe(db) });
+    const c2 = new Client({ connectionString: urlDe(db) });
+    await c1.connect();
+    await c2.connect();
+    try {
+      const [r1, r2] = await comTempo(
+        Promise.all([
+          como(
+            c1,
+            "comprador",
+            "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
+            [id],
+          ),
+          como(
+            c2,
+            "comprador",
+            "SELECT public.update_order_status_atomic($1::uuid, 'cancelled') AS r",
+            [id],
+          ),
+        ]),
+        10000,
+        "duas RPCs",
+      );
+      assert.ok(r1.ok || r2.ok, "nenhuma das duas cancelou");
+      const n = await c.query(
+        "SELECT count(*)::int AS n FROM public.pedido_cobranca_ao_cancelar WHERE order_id = $1",
+        [id],
+      );
+      assert.equal(
+        n.rows[0].n,
+        1,
+        "duas RPCs simultaneas geraram mais de uma foto",
+      );
+    } finally {
+      await c1.end().catch(() => {});
+      await c2.end().catch(() => {});
+    }
+  });
+}
+
+async function casoCascata(sql = lerMig()) {
+  const db = await clonarComM1("cascata", sql);
+  await usar(db, async (c) => {
+    const r = await c.query(
+      `INSERT INTO public.marketplace_orders (customer_name, customer_data, total, subtotal, status)
+       VALUES ('Apagavel', '{}'::jsonb, 10, 10, 'pending') RETURNING id`,
+    );
+    const id = r.rows[0].id;
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [id],
+    );
+    assert.ok(await foto(c, id), "sem foto antes de apagar");
+    await c.query("DELETE FROM public.marketplace_orders WHERE id = $1", [id]);
+    assert.equal(
+      await foto(c, id),
+      undefined,
+      "apagar o pedido nao apagou a foto (CASCADE)",
+    );
+  });
+}
+
+/** Dado que JA existia antes da migration: pedido cancelado, pedido em andamento. */
+async function casoDadoAntigo(sql = lerMig()) {
+  const db = await clonar("dadoantigo");
+  let velho;
+  let pendente;
+  await usar(db, async (c) => {
+    velho = await novoPedido(c);
+    await gravarPix(c, velho, "MP-VELHO");
+    await cancelarComo(c, "comprador", velho);
+    pendente = await novoPedido(c);
+    assert.equal(
+      (
+        await c.query(
+          "SELECT to_regclass('public.pedido_cobranca_ao_cancelar') AS t",
+        )
+      ).rows[0].t,
+      null,
+      "pre-condicao: o estado pre nao tem a tabela",
+    );
+  });
+  const pedidosAntes = (await fotografia(db)).pedidos;
+  const r = await aplicar(db, sql);
+  assert.ok(!r.erro, `aplicar com dado antigo falhou: ${r.erro?.message}`);
+  await usar(db, async (c) => {
+    assert.equal(
+      await totalFotos(c),
+      0,
+      "a migration preencheu foto retroativamente",
+    );
+    assert.equal(
+      (await fotografia(db)).pedidos,
+      pedidosAntes,
+      "a migration mexeu em pedido",
+    );
+    // "recancelar" o pedido que ja estava cancelado antes: nao dispara, segue sem foto (prazo de hoje)
+    await c.query(
+      "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+      [velho],
+    );
+    assert.equal(
+      await foto(c, velho),
+      undefined,
+      "pedido cancelado antes ganhou foto ao ser recancelado",
+    );
+    // o pedido que estava em andamento ganha foto quando for cancelado agora
+    const antes = await estado(c, pendente);
+    await cancelarComo(c, "comprador", pendente);
+    mesmaCobranca(
+      await foto(c, pendente),
+      antes,
+      "pedido em andamento antes da migration",
+    );
+    assert.equal(await totalFotos(c), 1);
+  });
+}
+
+// ----------------------------------------------------------- ida e volta, atomicidade
+async function casoIdempotente(sql = lerMig()) {
+  const db = await clonar("idempotente");
+  const r1 = await aplicar(db, sql);
+  assert.ok(!r1.erro, `1a aplicacao falhou: ${r1.erro?.message}`);
+  await usar(db, async (c) => {
+    const id = await novoPedido(c);
+    await gravarPix(c, id, "MP-IDEM");
+    await cancelarComo(c, "comprador", id);
+  });
+  const meio = await fotografia(db);
+  const fotoAntes = await usar(
+    db,
+    async (c) =>
+      (await c.query("SELECT * FROM public.pedido_cobranca_ao_cancelar")).rows,
+  );
+  for (const [rot, texto] of [
+    ["2a", sql],
+    ["3a (CRLF)", crlf(sql)],
+  ]) {
+    const r = await aplicar(db, texto);
+    assert.ok(
+      !r.erro,
+      `${rot} aplicacao falhou: ${r.erro?.code} ${r.erro?.message}`,
+    );
+    assert.deepEqual(await fotografia(db), meio, `${rot} aplicacao mudou algo`);
+  }
+  const fotoDepois = await usar(
+    db,
+    async (c) =>
+      (await c.query("SELECT * FROM public.pedido_cobranca_ao_cancelar")).rows,
+  );
+  assert.deepEqual(fotoDepois, fotoAntes, "reaplicar mexeu nas fotos gravadas");
+}
+async function casoAtomico(sql = lerMig()) {
+  const db = await clonar("atomico");
+  const antes = await fotografia(db);
+  const r = await aplicar(db, `${sql}\nSELECT 1/0;\n`);
+  assert.ok(r.erro, "a divisao por zero tem de falhar");
+  assert.equal(r.erro.code, "22012", r.erro.message);
+  await nadaGravado(db, antes, "falha depois da ultima peca");
+  const r2 = await aplicar(db, `BEGIN;\n${sql}\nROLLBACK;\n`);
+  assert.ok(!r2.erro, r2.erro?.message);
+  await nadaGravado(db, antes, "BEGIN ... ROLLBACK");
+  const r3 = await aplicar(db, `BEGIN;\n${sql}\nCOMMIT;\n`);
+  assert.ok(!r3.erro, r3.erro?.message);
+  assert.equal(
+    await usar(
+      db,
+      async (c) =>
+        (
+          await c.query(
+            "SELECT to_regclass('public.pedido_cobranca_ao_cancelar') AS t",
+          )
+        ).rows[0].t,
+    ),
+    "pedido_cobranca_ao_cancelar",
+  );
+}
+async function casoIdaEVolta(sql = lerMig(), rb = lerRb()) {
+  const db = await clonar("idavolta");
+  const pre = await fotografia(db);
+  assert.equal(pre.tabela.length, 0, "pre-condicao: sem a tabela");
+  let aplicada = null;
+  for (let volta = 1; volta <= 2; volta += 1) {
+    const r = await aplicar(db, sql);
+    assert.ok(
+      !r.erro,
+      `aplicar (volta ${volta}): ${r.erro?.code} ${r.erro?.message}`,
+    );
+    const noAr = await fotografia(db);
+    if (aplicada)
+      assert.deepEqual(
+        noAr,
+        aplicada,
+        "reaplicar depois do rollback nao voltou ao mesmo estado",
+      );
+    aplicada = noAr;
+    // cria foto de verdade em cada volta
+    await usar(db, async (c) => {
+      const id = await novoPedido(c);
+      await gravarPix(c, id, `MP-IV-${volta}`);
+      exigir(
+        await cancelarPelaEdge(
+          c,
+          id,
+          U_COMPRADOR,
+          `MP-IV-${volta}`,
+          "aguardando",
+        ),
+        "cancelar",
+      );
+      assert.ok(await foto(c, id), "sem foto depois de reaplicar");
+    });
+    const pedidosComFoto = (await fotografia(db)).pedidos;
+    const rr = await aplicar(db, rb);
+    assert.ok(
+      !rr.erro,
+      `rollback (volta ${volta}): ${rr.erro?.code} ${rr.erro?.message}`,
+    );
+    const volt = await fotografia(db);
+    assert.deepEqual(
+      { ...volt, pedidos: null },
+      { ...pre, pedidos: null },
+      "o catalogo nao voltou EXATO ao do estado pre",
+    );
+    assert.equal(volt.pedidos, pedidosComFoto, "o rollback mexeu em pedido");
+    // rollback repetido: no-op
+    const rr2 = await aplicar(db, rb);
+    assert.ok(!rr2.erro, `rollback repetido: ${rr2.erro?.message}`);
+    assert.deepEqual(
+      await fotografia(db),
+      volt,
+      "rollback repetido mudou algo",
+    );
+    // CRLF tambem
+    const rr3 = await aplicar(db, crlf(rb));
+    assert.ok(!rr3.erro, `rollback CRLF: ${rr3.erro?.message}`);
+  }
+  // por fim: aplica, e ainda reaplica a migration de novo (idempotente por cima)
+  const r = await aplicar(db, sql);
+  assert.ok(!r.erro);
+  const r2 = await aplicar(db, sql);
+  assert.ok(!r2.erro);
+}
+
+// ----------------------------------------------------------- pre-voo e rollback que recusam
+async function casoPreVooColuna(sql = lerMig()) {
+  const db = await clonar("pvcol");
+  await usar(db, (c) =>
+    c.query(
+      "ALTER TABLE public.marketplace_orders RENAME COLUMN tentativas_de_pagamento TO tentativas_x",
+    ),
+  );
+  const antes = await fotografia(db);
+  recusou(
+    await aplicar(db, sql),
+    /tentativas_de_pagamento \(integer\) ausente ou em outra forma/,
+    "coluna ausente",
+  );
+  await nadaGravado(db, antes, "coluna ausente");
+}
+async function casoPreVooTabela(sql = lerMig(), so = null) {
+  const variantes = [
+    [
+      "forma",
+      "CREATE TABLE public.pedido_cobranca_ao_cancelar (order_id uuid PRIMARY KEY, x integer)",
+      /ja existe public\.pedido_cobranca_ao_cancelar com outra forma de colunas/,
+      MSG.forma,
+    ],
+    [
+      "pk",
+      "CREATE TABLE public.pedido_cobranca_ao_cancelar (order_id uuid NOT NULL REFERENCES public.marketplace_orders (id) ON DELETE CASCADE, gateway_payment_id text, tentativas integer NOT NULL, metodo_online text, payment_status text, cancelado_em timestamptz NOT NULL DEFAULT now())",
+      /nao tem a chave primaria em order_id/,
+      MSG.pk,
+    ],
+    [
+      "fk",
+      "CREATE TABLE public.pedido_cobranca_ao_cancelar (order_id uuid PRIMARY KEY REFERENCES public.marketplace_orders (id), gateway_payment_id text, tentativas integer NOT NULL, metodo_online text, payment_status text, cancelado_em timestamptz NOT NULL DEFAULT now())",
+      /nao tem a chave estrangeira para marketplace_orders com ON DELETE CASCADE/,
+      MSG.fk,
+    ],
+  ].filter((v) => !so || v[0] === so);
+  for (const [rot, ddl, trecho] of variantes) {
+    const db = await clonar("pvtab");
+    await usar(db, (c) => c.query(ddl));
+    const antes = await fotografia(db);
+    recusou(await aplicar(db, sql), trecho, `tabela ${rot}`);
+    await nadaGravado(db, antes, `tabela ${rot}`);
+  }
+}
+async function casoPreVooPolitica(sql = lerMig()) {
+  const db = await clonar("pvpol");
+  const r0 = await aplicar(db, lerMig());
+  assert.ok(!r0.erro, r0.erro?.message);
+  await usar(db, (c) =>
+    c.query(
+      "CREATE POLICY p_alheia ON public.pedido_cobranca_ao_cancelar FOR SELECT USING (true)",
+    ),
+  );
+  const antes = await fotografia(db);
+  recusou(
+    await aplicar(db, sql),
+    /pedido_cobranca_ao_cancelar tem politica de seguranca por linha/,
+    "politica",
+  );
+  await nadaGravado(db, antes, "politica");
+}
+async function casoPreVooFuncao(sql = lerMig(), so = null) {
+  const variantes = [
+    [
+      "assinatura",
+      "CREATE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar(p integer) RETURNS integer LANGUAGE sql AS $f$ SELECT 1 $f$",
+      /ja existe public\.pedido__foto_da_cobranca_ao_cancelar com outra assinatura/,
+    ],
+    [
+      "corpo",
+      "CREATE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NEW; END $f$",
+      /pedido__foto_da_cobranca_ao_cancelar\(\) tem corpo diferente do desta migration/,
+    ],
+  ].filter((v) => !so || v[0] === so);
+  for (const [rot, ddl, trecho] of variantes) {
+    const db = await clonar("pvfn");
+    await usar(db, (c) => c.query(ddl));
+    const antes = await fotografia(db);
+    recusou(await aplicar(db, sql), trecho, `funcao ${rot}`);
+    await nadaGravado(db, antes, `funcao ${rot}`);
+  }
+}
+async function casoPreVooGatilho(sql = lerMig()) {
+  const db = await clonar("pvtg");
+  await usar(db, async (c) => {
+    await c.query(
+      "CREATE FUNCTION public.fn_alheia_pa() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NULL; END $f$",
+    );
+    await c.query(
+      "CREATE TRIGGER tr_pedido_foto_da_cobranca_ao_cancelar AFTER UPDATE ON public.marketplace_orders FOR EACH ROW EXECUTE FUNCTION public.fn_alheia_pa()",
+    );
+  });
+  const antes = await fotografia(db);
+  recusou(
+    await aplicar(db, sql),
+    /ja existe o gatilho tr_pedido_foto_da_cobranca_ao_cancelar em marketplace_orders com outra definicao/,
+    "gatilho alheio",
+  );
+  await nadaGravado(db, antes, "gatilho alheio");
+}
+
+/** Pos-voo: cada peca quebrada de proposito derruba a migration inteira (nada fica). */
+async function casoPosvoo(sqlQuebrado, trecho, rotulo) {
+  const db = await clonar("posvoo");
+  const antes = await fotografia(db);
+  const r = await aplicar(db, sqlQuebrado);
+  recusou(r, trecho, `pos-voo: ${rotulo}`);
+  await nadaGravado(db, antes, `pos-voo: ${rotulo}`);
+}
+function quebras(base = lerMig()) {
+  return [
+    {
+      rotulo: "sem seguranca por linha",
+      msg: MSG.posRls,
+      trecho: /saiu sem seguranca por linha ligada ou com politica/,
+      sql: trocar(base, T.rls, ""),
+    },
+    {
+      rotulo: "privilegio sobrando na tabela",
+      msg: MSG.posAclTabela,
+      trecho:
+        /saiu com privilegio para PUBLIC, anon, authenticated ou service_role/,
+      sql: trocar(base, T.revTabela, ""),
+    },
+    {
+      rotulo: "EXECUTE sobrando na funcao",
+      msg: MSG.posAclFuncao,
+      trecho:
+        /saiu com EXECUTE para PUBLIC, anon, authenticated ou service_role/,
+      sql: trocar(base, T.revFuncao, ""),
+    },
+    {
+      rotulo: "corpo da funcao diferente",
+      msg: MSG.posCorpo,
+      trecho: /saiu com o corpo \(hash/,
+      sql: trocar(base, T.retorno, T.retornoNew),
+    },
+    {
+      rotulo: "gatilho sem o WHEN",
+      msg: MSG.posGatilho,
+      trecho:
+        /o gatilho tr_pedido_foto_da_cobranca_ao_cancelar nao ficou como esperado/,
+      sql: trocar(base, T.when, ""),
+    },
+    {
+      rotulo: "sem gatilho",
+      msg: MSG.posGatilho,
+      trecho:
+        /o gatilho tr_pedido_foto_da_cobranca_ao_cancelar nao ficou como esperado/,
+      sql: trocar(base, gatilhoDe(base), ""),
+    },
+  ];
+}
+
+// ----------------------------------------------------------- rollback que recusa
+async function casoRollbackRecusa(rb = lerRb(), so = null) {
+  const prepara = async (rot) => {
+    const db = await clonar(`rb${rot}`);
+    const r = await aplicar(db, lerMig());
+    assert.ok(!r.erro, r.erro?.message);
+    return db;
+  };
+  const variantes = [
+    {
+      rot: "funcao",
+      ddl: `CREATE FUNCTION public.fn_le_a_foto_pa() RETURNS bigint LANGUAGE plpgsql AS $f$
+              BEGIN RETURN (SELECT count(*) FROM public.pedido_cobranca_ao_cancelar); END $f$`,
+      trecho:
+        /1 funcao\(oes\) citam pedido_cobranca_ao_cancelar \(public\.fn_le_a_foto_pa\)/,
+    },
+    {
+      rot: "funcao fora de public",
+      ddl: `CREATE SCHEMA priv_pa;
+            CREATE FUNCTION priv_pa.f() RETURNS bigint LANGUAGE plpgsql AS $f$
+              BEGIN RETURN (SELECT count(*) FROM public.pedido_cobranca_ao_cancelar); END $f$`,
+      trecho: /funcao\(oes\) citam pedido_cobranca_ao_cancelar \(priv_pa\.f\)/,
+    },
+    {
+      rot: "tabela alheia",
+      ddl: `DROP TABLE public.pedido_cobranca_ao_cancelar CASCADE;
+            CREATE TABLE public.pedido_cobranca_ao_cancelar (order_id uuid PRIMARY KEY, x integer)`,
+      trecho: /pedido_cobranca_ao_cancelar tem outra forma de colunas/,
+    },
+    {
+      rot: "funcao com outra assinatura",
+      ddl: "CREATE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar(p integer) RETURNS integer LANGUAGE sql AS $f$ SELECT 1 $f$",
+      trecho:
+        /existe public\.pedido__foto_da_cobranca_ao_cancelar com outra assinatura/,
+    },
+    {
+      rot: "gatilho alheio",
+      ddl: `CREATE FUNCTION public.fn_alheia_pa() RETURNS trigger LANGUAGE plpgsql AS $f$ BEGIN RETURN NULL; END $f$;
+            DROP TRIGGER tr_pedido_foto_da_cobranca_ao_cancelar ON public.marketplace_orders;
+            CREATE TRIGGER tr_pedido_foto_da_cobranca_ao_cancelar AFTER UPDATE ON public.marketplace_orders
+              FOR EACH ROW EXECUTE FUNCTION public.fn_alheia_pa()`,
+      trecho:
+        /o gatilho tr_pedido_foto_da_cobranca_ao_cancelar chama outra funcao/,
+    },
+  ].filter((v) => !so || v.rot === so);
+  for (const v of variantes) {
+    const db = await prepara(v.rot.replace(/\W/g, ""));
+    await usar(db, (c) => c.query(v.ddl));
+    const antes = await fotografia(db);
+    const r = await aplicar(db, rb);
+    recusou(r, v.trecho, `rollback com ${v.rot}`);
+    await nadaGravado(db, antes, `rollback com ${v.rot}`);
+  }
+  // visao dependente: o DROP TABLE sem CASCADE recusa e nada e apagado
+  if (!so || so === "visao") {
+    const db = await prepara("visao");
+    await usar(db, (c) =>
+      c.query(
+        "CREATE VIEW public.vw_foto_pa AS SELECT order_id FROM public.pedido_cobranca_ao_cancelar",
+      ),
+    );
+    const antes = await fotografia(db);
+    const r = await aplicar(db, rb);
+    assert.ok(r.erro, "o rollback apagou a tabela que uma visao usa");
+    assert.equal(r.erro.code, "2BP01", `${r.erro.code} ${r.erro.message}`);
+    await nadaGravado(db, antes, "rollback com visao dependente");
+  }
+}
+/** O ultimo guarda do rollback: depois dele nao pode sobrar objeto (a conferencia final). */
+async function casoRollbackConfere(rb = lerRb()) {
+  const db = await clonarComM1("rbconfere");
+  const quebrado = trocar(
+    rb,
+    "DROP TABLE IF EXISTS public.pedido_cobranca_ao_cancelar;",
+    "-- DROP removido pelo caso",
+  );
+  const antes = await fotografia(db);
+  const r = await aplicar(db, quebrado);
+  recusou(
+    r,
+    /algum objeto da 20261209000000 ainda existe depois do rollback/,
+    "rollback que deixa a tabela",
+  );
+  await nadaGravado(db, antes, "rollback que deixa a tabela");
+}
+
+// ----------------------------------------------------------- envelope de producao, trava e deadlock
+async function casoEnvelopeFeliz(sql = lerMig()) {
+  const db = await clonar("rrok");
+  const r = await emEnvelopeRR(db, sql);
+  assert.ok(
+    !r.erro,
+    `no envelope REPEATABLE READ sem concorrente falhou: ${r.erro?.code} ${r.erro?.message}`,
+  );
+  const g = await usar(
+    db,
+    async (c) =>
+      (
+        await c.query(
+          "SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'",
+        )
+      ).rows[0].n,
+  );
+  assert.equal(g, 1);
+}
+/** Um pedido em andamento segura a tabela: a migration ESPERA (dormindo, sem entrar na fila) e aplica. */
+async function casoEnvelopeEspera(sql = lerMig()) {
+  const db = await clonar("rrespera");
+  const ped = await usar(db, (c) => novoPedido(c));
+  const p = new Client({ connectionString: urlDe(db) });
+  await p.connect();
+  try {
+    await p.query("BEGIN");
+    await p.query(
+      "UPDATE public.marketplace_orders SET notes = 'em andamento' WHERE id = $1",
+      [ped],
+    );
+    const t0 = Date.now();
+    const emM = emEnvelopeRR(db, sql);
+    await esperarDormindo(db, 6000);
+    await dormir(400);
+    await p.query("COMMIT");
+    const r = await comTempo(emM, 15000, "migration esperando o pedido");
+    assert.ok(
+      !r.erro,
+      `a migration devia esperar o pedido e aplicar: ${r.erro?.code} ${r.erro?.message}`,
+    );
+    assert.ok(Date.now() - t0 >= 400, "a migration nao esperou o pedido");
+  } finally {
+    await p.query("ROLLBACK").catch(() => {});
+    await p.end().catch(() => {});
+  }
+  const n = await usar(
+    db,
+    async (c) =>
+      (
+        await c.query(
+          "SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'",
+        )
+      ).rows[0].n,
+  );
+  assert.equal(n, 1, "a migration nao aplicou depois do pedido");
+}
+/** A tabela ocupada por mais de 4 s: recusa (55P03) sem gravar nada. */
+async function casoEnvelopeOcupada(sql = lerMig()) {
+  const db = await clonar("rrocupada");
+  const ped = await usar(db, (c) => novoPedido(c));
+  const antes = await fotografia(db);
+  const p = new Client({ connectionString: urlDe(db) });
+  await p.connect();
+  try {
+    await p.query("BEGIN");
+    await p.query(
+      "UPDATE public.marketplace_orders SET notes = 'preso' WHERE id = $1",
+      [ped],
+    );
+    const t0 = Date.now();
+    const r = await emEnvelopeRR(db, sql);
+    const ms = Date.now() - t0;
+    assert.ok(r.erro, "com a tabela presa a migration tem de recusar");
+    assert.equal(
+      r.erro.code,
+      "55P03",
+      `esperava 55P03: ${r.erro.code} ${r.erro.message}`,
+    );
+    assert.match(
+      r.erro.message,
+      /marketplace_orders ficou ocupada por mais de 4 s/,
+    );
+    assert.ok(ms >= 3500 && ms < 15000, `orcamento de 4 s: levou ${ms} ms`);
+  } finally {
+    await p.query("ROLLBACK").catch(() => {});
+    await p.end().catch(() => {});
+  }
+  await nadaGravado(db, antes, "tabela ocupada");
+}
+/**
+ * O CHECKOUT NAO PARA ENQUANTO A MIGRATION ESPERA. T1 segura a tabela de pedidos (gravou num
+ * pedido, em transacao aberta); a migration chega e nao consegue a trava; T2 (outro pedido,
+ * que ja segura a linha do cupom) quer gravar em `marketplace_orders`. Se a migration ESPERA NA
+ * FILA da trava, T2 fica parado atras dela ate T1 acabar (ou, com o cruzamento abaixo, ate o
+ * Postgres desfazer o ciclo "mole" depois de deadlock_timeout = 1 s). Se ela so TENTA (NOWAIT)
+ * e dorme, T2 passa na hora. Depois T1 pede a linha do cupom que T2 segura (o cruzamento que
+ * fecha o ciclo no mutante): nenhum dos dois pode levar 40P01, os dois dao COMMIT e a migration
+ * aplica no fim.
+ */
+async function casoCruzado(sql = lerMig()) {
+  const db = await clonar("cruzado");
+  const [x, y] = await usar(db, async (c) => [
+    await novoPedido(c),
+    await novoPedido(c),
+  ]);
+  const t1 = new Client({ connectionString: urlDe(db) });
+  const t2 = new Client({ connectionString: urlDe(db) });
+  await t1.connect();
+  await t2.connect();
+  const erros = [];
+  const registrar = (rotulo) => (erro) => {
+    erros.push(`${rotulo}: ${erro.code} ${erro.message}`);
+    return { erro };
+  };
+  try {
+    await t1.query("BEGIN");
+    await t1.query(
+      "UPDATE public.marketplace_orders SET notes = 't1' WHERE id = $1",
+      [x],
+    );
+    await t2.query("BEGIN");
+    await t2.query(
+      "SELECT id FROM public.coupons WHERE code = 'FOTOK' FOR UPDATE",
+    );
+    const emM = emEnvelopeRR(db, sql).then((r) => {
+      if (r.erro) erros.push(`migration: ${r.erro.code} ${r.erro.message}`);
+      return r;
+    });
+    await dormir(700); // a migration ja chegou e nao tem a trava (T1 segura a tabela)
+    // T2 quer a tabela de pedidos agora
+    const t0 = Date.now();
+    const p2 = t2
+      .query(
+        "UPDATE public.marketplace_orders SET notes = 't2' WHERE id = $1",
+        [y],
+      )
+      .then(() => ({ ok: true }), registrar("pedido T2 (quer a tabela)"));
+    const r2 = await comTempo(p2, 9000, "T2");
+    const ms2 = Date.now() - t0;
+    assert.ok(
+      ms2 < 600,
+      `o pedido que chegou com a migration esperando ficou parado ${ms2} ms (a migration esta na fila da trava: o checkout para)`,
+    );
+    // T1 pede a linha do cupom que T2 segura: T2 precisa dar COMMIT para T1 seguir
+    const p1 = t1
+      .query("SELECT id FROM public.coupons WHERE code = 'FOTOK' FOR UPDATE")
+      .then(() => ({ ok: true }), registrar("pedido T1 (quer o cupom)"));
+    await dormir(200);
+    if (!r2.erro) await t2.query("COMMIT").catch(registrar("commit T2"));
+    const r1 = await comTempo(p1, 9000, "T1");
+    if (!r1.erro) await t1.query("COMMIT").catch(registrar("commit T1"));
+    const rM = await comTempo(emM, 20000, "migration");
+    assert.deepEqual(
+      erros,
+      [],
+      `houve erro no cruzamento (40P01 = deadlock): ${erros.join(" | ")}`,
+    );
+    assert.ok(!rM.erro, "a migration devia aplicar no fim");
+  } finally {
+    await t1.query("ROLLBACK").catch(() => {});
+    await t2.query("ROLLBACK").catch(() => {});
+    await t1.end().catch(() => {});
+    await t2.end().catch(() => {});
+  }
+  const n = await usar(
+    db,
+    async (c) =>
+      (
+        await c.query(
+          "SELECT count(*)::int AS n FROM pg_trigger WHERE tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'",
+        )
+      ).rows[0].n,
+  );
+  assert.equal(n, 1, "a migration nao aplicou depois do cruzamento");
+}
+/** Um pedido que chega DEPOIS da trava espera o COMMIT e ja encontra o gatilho (a foto existe). */
+async function casoChegaDepois(sql = lerMig()) {
+  const db = await clonar("chegadepois");
+  const [ped, ins] = await usar(db, async (c) => [await novoPedido(c), 0]);
+  void ins;
+  const m = new Client({ connectionString: urlDe(db) });
+  const t = new Client({ connectionString: urlDe(db) });
+  await m.connect();
+  await t.connect();
+  try {
+    await m.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await m.query("SELECT count(*) FROM public.marketplace_orders");
+    await m.query(sql); // pegou a trava; ainda nao deu COMMIT
+    const emT = t
+      .query(
+        "UPDATE public.marketplace_orders SET status = 'cancelled' WHERE id = $1",
+        [ped],
+      )
+      .then(
+        () => ({ ok: true }),
+        (erro) => ({ erro }),
+      );
+    await esperarBloqueio(db, 4000);
+    await m.query("COMMIT");
+    const r = await comTempo(emT, 8000, "pedido que chegou depois");
+    assert.ok(
+      !r.erro,
+      `o pedido que esperou falhou: ${r.erro?.code} ${r.erro?.message}`,
+    );
+  } finally {
+    await m.query("ROLLBACK").catch(() => {});
+    await m.end().catch(() => {});
+    await t.end().catch(() => {});
+  }
+  const f = await usar(db, (c) => foto(c, ped));
+  assert.ok(
+    f,
+    "o pedido que esperou o COMMIT da migration nao encontrou o gatilho",
+  );
+}
+async function casoRollbackEnvelope(rb = lerRb()) {
+  const db = await clonarComM1("rbenvelope");
+  const ped = await usar(db, (c) => novoPedido(c));
+  const p = new Client({ connectionString: urlDe(db) });
+  await p.connect();
+  try {
+    await p.query("BEGIN");
+    await p.query(
+      "UPDATE public.marketplace_orders SET notes = 'preso' WHERE id = $1",
+      [ped],
+    );
+    const t0 = Date.now();
+    const antes = await fotografia(db);
+    const r = await emEnvelopeRR(db, rb);
+    const ms = Date.now() - t0;
+    assert.ok(r.erro, "rollback com a tabela presa tem de recusar");
+    assert.equal(r.erro.code, "55P03", `${r.erro.code} ${r.erro.message}`);
+    assert.match(
+      r.erro.message,
+      /ROLLBACK_20261209: public\.marketplace_orders ficou ocupada por mais de 4 s/,
+    );
+    assert.ok(ms >= 3500 && ms < 15000, `orcamento de 4 s: levou ${ms} ms`);
+    await p.query("COMMIT");
+    await nadaGravado(db, antes, "rollback com a tabela ocupada");
+  } finally {
+    await p.query("ROLLBACK").catch(() => {});
+    await p.end().catch(() => {});
+  }
+  // livre, o mesmo envelope desfaz
+  const r2 = await emEnvelopeRR(db, rb);
+  assert.ok(
+    !r2.erro,
+    `rollback em envelope RR livre: ${r2.erro?.code} ${r2.erro?.message}`,
+  );
+}
+
+// ----------------------------------------------------------------- o bloco
+async function blocoDaFoto() {
+  const sql = lerMig();
+  const rb = lerRb();
+  const hashes = {
+    mig: crypto.createHash("sha256").update(sql).digest("hex"),
+    rb: crypto.createHash("sha256").update(rb).digest("hex"),
+  };
+  console.log(`  sha256 da migration (LF): ${hashes.mig}`);
+  console.log(`  sha256 do rollback  (LF): ${hashes.rb}`);
+
+  await casoCatalogo();
+  ok(
+    "catalogo: tabela com a forma exata, RLS ligada, sem politica, sem privilegio (nem SELECT, INSERT, UPDATE, DELETE, TRUNCATE) para PUBLIC/anon/authenticated/service_role (42501 para cada um); funcao SECURITY DEFINER, search_path = public, sem EXECUTE de fora; gatilho AFTER UPDATE OF status, por linha, com o WHEN, ativo",
+  );
+  await casoCaminhos();
+  ok(
+    "caminhos reais: a foto tem os valores do momento do cancelamento em v24+PIX+cancelar_pedido_com_cobranca (e liberar depois nao a muda), cliente, admin (pedido pago), cartao em analise, expiracao ('expirado' do NEW), v23, pedido__mudar_status, UPDATE cru e NULL -> cancelled; o cliente (authenticated) cancela sem erro; 8 pedidos, 8 fotos",
+  );
+  await casoRecancelar();
+  ok(
+    "recancelar: UPDATE com status repetido, RPC do cliente e do admin e a edge de novo NAO regravam a foto (mesma linha fisica)",
+  );
+  await casoReativar();
+  ok(
+    "reativar e cancelar de novo SOBRESCREVE a foto pelo estado do 2o cancelamento (cartao tentado no meio aparece); uma foto por pedido",
+  );
+  await casoNaoDispara();
+  ok(
+    "nao dispara: UPDATE que nao mexe em status, status repetido, processing/shipping, INSERT ja cancelado e UPDATE de outra coluna depois do cancelamento nao criam nem mexem em foto",
+  );
+  await casoSimultaneo();
+  ok(
+    "dois cancelamentos simultaneos (UPDATE cru com 2 conexoes reais e duas RPCs do cliente) geram UMA foto, a do primeiro",
+  );
+  await casoCascata();
+  ok("apagar o pedido apaga a foto (ON DELETE CASCADE)");
+  await casoDadoAntigo();
+  ok(
+    "dado antigo: pedido cancelado antes da migration NAO ganha foto (nem ao ser recancelado), nada preenchido retroativamente, nenhum pedido muda; o pedido em andamento ganha foto quando for cancelado",
+  );
+  await casoIdempotente();
+  ok(
+    "idempotente: 2a aplicacao e 3a (CRLF) deixam o catalogo e as fotos ja gravadas IGUAIS",
+  );
+  await casoAtomico();
+  ok(
+    "atomico: falha DEPOIS da ultima peca desfaz tudo; BEGIN ... ROLLBACK nao deixa rastro; o envelope BEGIN ... COMMIT aplica",
+  );
+  await casoIdaEVolta();
+  ok(
+    "ida e volta: aplicar, rollback, reaplicar, rollback, reaplicar 2x: o catalogo volta EXATO ao do estado pre (tabelas, funcoes, gatilhos, ACL, politicas), pedidos intactos, foto funciona a cada reaplicacao; rollback repetido e CRLF sao no-op",
+  );
+  await casoPreVooColuna();
+  ok(
+    "pre-voo recusa coluna ausente de marketplace_orders, nomeando-a, sem gravar",
+  );
+  await casoPreVooTabela();
+  ok(
+    "pre-voo recusa tabela de outra pessoa com o nome (outra forma, sem chave primaria, sem FK com CASCADE), sem gravar",
+  );
+  await casoPreVooPolitica();
+  ok("pre-voo recusa a tabela com politica de seguranca por linha, sem gravar");
+  await casoPreVooFuncao();
+  ok(
+    "pre-voo recusa funcao com o nome em outra assinatura ou com outro corpo, sem gravar",
+  );
+  await casoPreVooGatilho();
+  ok("pre-voo recusa gatilho com o nome e outra definicao, sem gravar");
+  for (const q of quebras()) {
+    await casoPosvoo(q.sql, q.trecho, q.rotulo);
+  }
+  ok(
+    "pos-voo: sem RLS, privilegio sobrando na tabela, EXECUTE sobrando na funcao, corpo diferente, gatilho sem WHEN e sem gatilho fazem a migration inteira falhar sem deixar nada",
+  );
+  await casoRollbackRecusa();
+  ok(
+    "rollback recusa (sem apagar nada) funcao que cite a tabela (em public e fora), tabela alheia, funcao de outra assinatura, gatilho alheio e visao dependente (2BP01)",
+  );
+  await casoRollbackConfere();
+  ok("rollback confere no fim: se a tabela sobrasse, falharia");
+  await casoEnvelopeFeliz();
+  ok("envelope REPEATABLE READ sem concorrente: aplica");
+  await casoEnvelopeEspera();
+  ok(
+    "envelope RR com pedido em andamento: a migration ESPERA (dormindo no NOWAIT), o pedido da COMMIT e ela aplica; sem 40P01 nem 40001",
+  );
+  await casoEnvelopeOcupada();
+  ok(
+    "envelope RR com a tabela ocupada por mais de 4 s: recusa 55P03 nomeando o problema, NADA gravado",
+  );
+  await casoCruzado();
+  ok(
+    "DOIS pedidos cruzados (um segura a tabela de pedidos e quer a linha do cupom, o outro segura a linha do cupom e quer a tabela) com a migration esperando a trava: o pedido que chega com ela esperando NAO fica parado (< 600 ms), nenhum 40P01, os dois dao COMMIT e a migration aplica no fim",
+  );
+  await casoChegaDepois();
+  ok(
+    "pedido que chega DEPOIS da trava da migration espera o COMMIT e ja encontra o gatilho (a foto existe)",
+  );
+  await casoRollbackEnvelope();
+  ok(
+    "rollback no envelope RR: tabela ocupada recusa 55P03 sem apagar nada; livre, desfaz",
+  );
+
+  // ------------------------------------------------------------ mutantes
+  console.log(
+    "\n  --- MUTANTES DO BLOCO DA FOTO (cada guarda retirada tem de deixar a prova VERMELHA) ---",
+  );
+  // o gatilho/funcao mutados precisam passar pelo pos-voo (senao quem pega e o pos-voo): tira-se o raise
+  const sPosGatilho = (s) => semRaise(s, MSG.posGatilho);
+  const sPosCorpo = (s) => semRaise(s, MSG.posCorpo);
+  await mutante(
+    "gatilho sem o WHEN (todo UPDATE OF status fotografa)",
+    casoRecancelar,
+    sPosGatilho(trocar(sql, T.when, "")),
+  );
+  await mutante(
+    "WHEN sem o `OLD.status IS DISTINCT FROM` (recancelar regrava)",
+    casoRecancelar,
+    sPosGatilho(trocar(sql, T.when, T.whenSemOld)),
+  );
+  await mutante(
+    "ON CONFLICT DO NOTHING (reativar e cancelar de novo nao sobrescreve)",
+    casoReativar,
+    sPosCorpo(trocar(sql, T.upsert, T.doNothing)),
+  );
+  await mutante(
+    "funcao do gatilho sem SECURITY DEFINER (o cliente nao cancela)",
+    casoCaminhos,
+    sPosCorpo(trocar(sql, T.secDef, T.semSecDef)),
+  );
+  await mutante(
+    "funcao do gatilho sem search_path",
+    casoCatalogo,
+    sPosCorpo(trocar(sql, T.secDef, T.semPath)),
+  );
+  await mutante(
+    "foto lida do OLD em vez do NEW (a expiracao sai 'aguardando')",
+    casoCaminhos,
+    sPosCorpo(trocar(sql, T.newPay, T.oldPay)),
+  );
+  await mutante(
+    "sem seguranca por linha",
+    casoCatalogo,
+    semRaise(trocar(sql, T.rls, ""), MSG.posRls),
+  );
+  await mutante(
+    "sem REVOKE da tabela (os papeis do Supabase leem e escrevem)",
+    casoCatalogo,
+    semRaise(trocar(sql, T.revTabela, ""), MSG.posAclTabela),
+  );
+  await mutante(
+    "sem REVOKE da funcao (EXECUTE de fora)",
+    casoCatalogo,
+    semRaise(trocar(sql, T.revFuncao, ""), MSG.posAclFuncao),
+  );
+  await mutante(
+    "FK sem ON DELETE CASCADE",
+    casoCascata,
+    trocar(sql, T.cascade, T.semCascade),
+  );
+  await mutante(
+    "sem gatilho",
+    casoCaminhos,
+    sPosGatilho(trocar(sql, gatilhoDe(sql), "")),
+  );
+  await mutante(
+    "LOCK que espera na fila (em vez de NOWAIT): o checkout para atras da migration",
+    casoCruzado,
+    trocar(sql, T.lockNowait, T.lockEspera),
+  );
+  await mutante(
+    "orcamento do NOWAIT 100 vezes maior (a migration nunca recusa a tabela ocupada)",
+    casoEnvelopeOcupada,
+    trocar(sql, T.orcamento, T.orcamentoGrande),
+  );
+  for (const [rotulo, msg, caso_] of [
+    ["sem pre-voo da coluna", MSG.coluna, casoPreVooColuna],
+    [
+      "sem pre-voo da forma da tabela",
+      MSG.forma,
+      (s) => casoPreVooTabela(s, "forma"),
+    ],
+    ["sem pre-voo da chave primaria", MSG.pk, (s) => casoPreVooTabela(s, "pk")],
+    ["sem pre-voo da FK", MSG.fk, (s) => casoPreVooTabela(s, "fk")],
+    ["sem pre-voo da politica", MSG.politica, casoPreVooPolitica],
+    [
+      "sem pre-voo da assinatura da funcao",
+      MSG.assinatura,
+      (s) => casoPreVooFuncao(s, "assinatura"),
+    ],
+    [
+      "sem pre-voo do corpo da funcao",
+      MSG.corpo,
+      (s) => casoPreVooFuncao(s, "corpo"),
+    ],
+    ["sem pre-voo do gatilho", MSG.gatilho, casoPreVooGatilho],
+  ]) {
+    await mutante(rotulo, caso_, semRaise(sql, msg));
+  }
+  for (const q of quebras()) {
+    await mutante(
+      `sem a conferencia do pos-voo (${q.rotulo})`,
+      (s) => casoPosvoo(s, q.trecho, q.rotulo),
+      semRaise(q.sql, q.msg),
+    );
+  }
+  for (const [rotulo, msg, so] of [
+    [
+      "rollback sem a conferencia das funcoes que citam a tabela",
+      MSG.rbFuncoes,
+      "funcao",
+    ],
+    [
+      "rollback sem a conferencia da forma da tabela",
+      MSG.rbForma,
+      "tabela alheia",
+    ],
+    [
+      "rollback sem a conferencia da assinatura da funcao",
+      MSG.rbAssinatura,
+      "funcao com outra assinatura",
+    ],
+    ["rollback sem a conferencia do gatilho", MSG.rbGatilho, "gatilho alheio"],
+  ]) {
+    await mutante(rotulo, (r) => casoRollbackRecusa(r, so), semRaise(rb, msg));
+  }
+  await mutante(
+    "rollback sem a conferencia final",
+    casoRollbackConfere,
+    semRaise(rb, MSG.rbDepois),
+  );
+  await mutante(
+    "rollback com DROP TABLE ... CASCADE (leva a visao embora)",
+    (r) => casoRollbackRecusa(r, "visao"),
+    trocar(
+      rb,
+      "DROP TABLE IF EXISTS public.pedido_cobranca_ao_cancelar;",
+      "DROP TABLE IF EXISTS public.pedido_cobranca_ao_cancelar CASCADE;",
+    ),
+  );
+  await mutante(
+    "rollback sem o RETURN do ja-desfeito (reaplicar o rollback quebra)",
+    async (r) => {
+      await casoIdaEVolta(sql, r);
+    },
+    trocar(
+      rb,
+      "    RETURN; -- ja desfeito: nada a conferir nem a apagar\n",
+      "",
+    ),
+  );
+}
+
+// ===========================================================================
+// BLOCO DA VAGA (20261210000000) -- a peca seguinte acrescenta os casos aqui e o nome em BLOCOS.
+// ===========================================================================
+
+const BLOCOS = [{ nome: "foto", corpo: blocoDaFoto }];
+
+async function main() {
+  // o estado PRE: a arvore de migrations ANTERIOR a esta peca, com usuarios, produto e cupom
+  PRE = await montarBase(
+    `pa_${SUF}_pre`,
+    (nome) => nome < ARQ && !nome.startsWith("rollback-"),
+  );
+  await semearBase(PRE);
+  const sonda = await usar(PRE, async (c) => ({
+    tabela: (
+      await c.query(
+        "SELECT to_regclass('public.pedido_cobranca_ao_cancelar') AS t",
+      )
+    ).rows[0].t,
+    eu: (
+      await c.query(
+        "SELECT rolsuper FROM pg_roles WHERE rolname = current_user",
+      )
+    ).rows[0].rolsuper,
+  }));
+  assert.equal(
+    sonda.tabela,
+    null,
+    "precondicao: o estado pre NAO tem a tabela da foto",
+  );
+  assert.equal(
+    sonda.eu,
+    true,
+    "precondicao: a conexao da prova e superusuario",
+  );
+  ok(
+    "estado PRE montado (arvore anterior a 20261209000000, sem a tabela da foto), com usuarios, produto e cupom de teste",
+  );
+  for (const b of BLOCOS) {
+    console.log(`\n  === BLOCO: ${b.nome} ===`);
+    await b.corpo();
+  }
+  console.log(`\n[cupom-pix-anulado-viva] ${resultados} provas ok`);
+}
+
+main()
+  .catch((erro) => {
+    console.error("\n[FALHOU]", erro?.stack ? erro.stack : erro);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    for (const n of clones) {
+      await usar("template1", (a) =>
+        a.query(`DROP DATABASE IF EXISTS "${n}" WITH (FORCE)`),
+      ).catch(() => {});
+    }
+  });

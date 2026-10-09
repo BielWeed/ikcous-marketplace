@@ -387,6 +387,19 @@ jobs:
       - name: Prova viva do portao dos cupons do checkout (consultas 15a e 15b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-portao-viva.cjs
+      # O cupom preso depois de "cancelou com o PIX gerado" volta em minutos, nao em 24 h
+      # (09/10/2026). BLOCO DA FOTO (migration 20261209000000): um gatilho grava, no instante em
+      # que o pedido vira 'cancelled', a foto da cobranca dele numa tabela fechada. A prova cobre a
+      # foto em todos os caminhos reais de cancelamento (edge, cliente, admin, expiracao, v23),
+      # recancelar sem foto nova, reativar e cancelar de novo sobrescreve, nenhum acesso de fora
+      # (anon/authenticated/service_role), 2 cancelamentos simultaneos = 1 foto, dado antigo sem
+      # foto, o envelope REPEATABLE READ de producao (a migration espera o pedido em andamento sem
+      # parar o checkout, recusa em 4 s sem gravar, sem 40P01 com dois pedidos cruzados), ida e
+      # volta (aplicar, rollback, reaplicar 2x, catalogo exato) e cada guarda tirada (mutante)
+      # deixa a prova vermelha. Os blocos seguintes da mesma feature entram neste arquivo. CLONE proprio.
+      - name: Prova viva do cupom do PIX anulado (migration 20261209000000, bloco da foto)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

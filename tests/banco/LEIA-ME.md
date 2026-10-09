@@ -183,6 +183,22 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   ignorava todo `pg_attrdef` e escondia uma coluna gerada que cita a coluna; a prova roda a
   consulta num Postgres real (base, coluna gerada, visão, índice) e o mutante que volta a
   excluir todo `pg_attrdef` reproduz o defeito.
+- **cupom do PIX anulado (`cupom-pix-anulado-viva.cjs`, via `rodar-isolado.cjs`)**: o cupom
+  preso depois de "cancelou com o PIX gerado" volta em minutos, nao em 24 h. O arquivo tem um
+  bloco por migration. **Bloco da foto (20261209000000)**: um gatilho grava, no instante em que
+  o pedido vira `cancelled`, a foto da cobranca (id na vaga, tentativas, metodo online,
+  `payment_status`) em `pedido_cobranca_ao_cancelar`, tabela fechada (RLS sem politica e sem
+  privilegio para PUBLIC/anon/authenticated/service_role). A prova cobre: a foto com os valores
+  do momento do cancelamento em todos os caminhos reais (edge `cancelar_pedido_com_cobranca`,
+  cliente, admin, expiracao, v23); recancelar nao grava foto nova; reativar e cancelar de novo
+  sobrescreve; nenhum acesso de fora; 2 cancelamentos simultaneos geram 1 foto; pedido cancelado
+  antes da migration segue sem foto; o envelope de producao (`REPEATABLE READ`, foto antes do
+  `LOCK`): a migration espera o pedido em andamento SEM parar o checkout (trava por `NOWAIT`,
+  nao por fila), recusa em 4 s sem gravar e nao causa deadlock com dois pedidos cruzados; ida e
+  volta (aplicar, rollback, reaplicar 2x; o catalogo volta exato); pre-voo, pos-voo e rollback
+  que recusam nomeando o problema; mutante por guarda. **Limite declarado:** Postgres 17 local,
+  nao o 15/17 da Supabase; o envelope e simulado em texto, nao pelo `aplicar-migrations.yml`.
+  Os blocos seguintes da mesma feature (a vaga do cupom, o portao) entram no mesmo arquivo.
 
 ## Como rodar
 
