@@ -57,7 +57,7 @@ Deno.test("207: sem BEGIN/COMMIT de nivel superior e tudo em ASCII (migration e 
     );
 });
 
-Deno.test("207: nome da versao: e a mais nova da pasta, o rollback e o irmao, e nenhuma outra migration usa a versao", () => {
+Deno.test("207: nome da versao: o rollback e o irmao e nenhuma outra migration usa a versao", () => {
   const nomes = [...Deno.readDirSync(PASTA)]
     .map((e) => e.name)
     .filter((n) => n.endsWith(".sql") && !n.startsWith("rollback-"));
@@ -65,10 +65,8 @@ Deno.test("207: nome da versao: e a mais nova da pasta, o rollback e o irmao, e 
     nomes.filter((n) => n.startsWith("20261207000000")),
     [NOME],
   );
-  assertEquals(
-    nomes.filter((n) => n > NOME),
-    [],
-  );
+  // (Antes este teste exigia que a 207 fosse a mais NOVA da pasta: isso quebrava a
+  // cada migration seguinte sem proteger nada -- a versao unica acima e o que importa.)
   assert(
     [...Deno.readDirSync(PASTA)].some(
       (e) => e.name === `rollback-manual-${NOME}`,

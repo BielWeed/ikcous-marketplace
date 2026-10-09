@@ -471,6 +471,7 @@ export type Database = {
       coupons: {
         Row: {
           active: boolean | null;
+          alcance: string;
           code: string;
           created_at: string;
           id: string;
@@ -483,6 +484,7 @@ export type Database = {
         };
         Insert: {
           active?: boolean | null;
+          alcance?: string;
           code: string;
           created_at?: string;
           id?: string;
@@ -495,6 +497,7 @@ export type Database = {
         };
         Update: {
           active?: boolean | null;
+          alcance?: string;
           code?: string;
           created_at?: string;
           id?: string;
@@ -506,6 +509,39 @@ export type Database = {
           value?: number;
         };
         Relationships: [];
+      };
+      cupom_clientes: {
+        Row: {
+          coupon_id: string;
+          criado_em: string;
+          user_id: string;
+        };
+        Insert: {
+          coupon_id: string;
+          criado_em?: string;
+          user_id: string;
+        };
+        Update: {
+          coupon_id?: string;
+          criado_em?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cupom_clientes_coupon_id_fkey";
+            columns: ["coupon_id"];
+            isOneToOne: false;
+            referencedRelation: "coupons";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cupom_clientes_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       devolucao_eventos: {
         Row: {
@@ -2885,6 +2921,32 @@ export type Database = {
           p_status?: string | null;
         };
         Returns: Json;
+      };
+      admin_cupom_clientes: {
+        Args: { p_coupon_id: string };
+        Returns: {
+          email: string | null;
+          nome: string | null;
+          user_id: string;
+        }[];
+      };
+      admin_cupom_definir_clientes: {
+        Args: { p_clientes: string[]; p_coupon_id: string };
+        Returns: number;
+      };
+      cupons_do_checkout: {
+        Args: { p_subtotal: number };
+        Returns: {
+          aplica: boolean;
+          codigo: string;
+          desconto: number;
+          exclusivo: boolean;
+          falta: number;
+          minimo: number;
+          tipo: string;
+          valido_ate: string | null;
+          valor: number;
+        }[];
       };
       anular_venda_presencial: {
         Args: { p_motivo: string; p_order_id: string };

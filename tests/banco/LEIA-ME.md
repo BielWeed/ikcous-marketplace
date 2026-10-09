@@ -138,6 +138,47 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limite declarado:** a linha de
   controle não tem negativo local (o catálogo é legível por todo papel). **Não prova** a
   IKCOUS nem a Savy.
+- **o checkout mostra os cupons da cliente (`cupons-do-checkout-viva.cjs`, via
+  `rodar-isolado.cjs`)**: a migration 20261208000000 cria `coupons.alcance` ('codigo' =
+  secreto, o padrão de todo cupom que já existe; 'vitrine' = todos os clientes; 'exclusivo'
+  = a lista), `cupom_clientes`, `cupons_do_checkout(numeric)`, as duas funções do painel e o
+  gatilho `tr_pedido_com_cupom_so_nasce_para_a_lista`, e troca `validate_coupon_secure_v2`
+  partindo do corpo da 20261203 (a #777 fica intacta). Prova: a lista (anon vê só os de todos;
+  a dona vê o exclusivo dela, outra não; secreto nunca; sem esgotado, vencido, inativo ou de
+  valor 0; `LIMIT 20`; chave desligada esvazia); a validação (exclusivo alheio responde
+  "inválido" ANTES de qualquer motivo, `Faltam R$`, corte `<=`, a frase `Cupom atingiu o limite
+  de uso.` intacta); o gatilho (v24 e v23; outra conta e visitante recusados sem gastar a vaga,
+  inclusive com chave de compra nova; a frase da chave desligada vem antes); **a retentativa
+  gêmea com 3 conexões reais e COMMIT** (a lojista tira a cliente da lista entre as duas
+  tentativas e ela recebe o MESMO pedido; sem o atalho de retentativa a prova fica vermelha);
+  o painel (só o admin ATUAL — rebaixado com sessão velha e cliente comum recusados nas duas
+  funções, por superusuário e por `SET ROLE`; leitura sem CPF; teto de 500; anon sem EXECUTE;
+  `cupom_clientes` só o admin atual lê e ninguém escreve); a ida e volta (reaplicar 2x, o
+  rollback devolve o corpo da 20261203 byte a byte e desativa os exclusivos, rollback repetido,
+  corpo divergente recusa, CRLF aceito); **dado que já existia** (cupons e pedido antigos
+  ficam intactos e o cupom antigo continua comprando), atomicidade (erro depois do pós-voo não
+  deixa nada), envelope REPEATABLE READ com escritor concorrente e `lock_timeout` com pedido em
+  andamento (falha em ~5 s sem gravar nada); 18 mutantes por guarda (sem o gatilho, ordem do
+  gatilho, atalho só por chave preenchida, `is_admin()` sem o atual nas 2 funções, política com
+  `is_admin()`, escrita para `authenticated`, anon com EXECUTE, validação sem o bloco do
+  exclusivo, corte `<`, frase do limite trocada, lista vazando o secreto/o exclusivo alheio/sem
+  limite/mostrando esgotado/ignorando a chave, painel devolvendo CPF, pré-voo sem a guarda do
+  índice único e do hash) deixam a prova vermelha. **Não prova** a IKCOUS nem a Savy (o portão
+  da release, consultas 15a/15b, é o item seguinte).
+- **portão dos cupons do checkout (`cupons-do-checkout-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `15a-conferir-cupons-do-checkout-aplicado` (DEPOIS do
+  apply, 37 linhas) e `15b-antes-cupons-do-checkout-pecas-ausentes` (ANTES, 15 linhas), a
+  "prova de objetos" do lote 20261208000000. 15b positiva em `pre` (sem a migration; também com
+  o corpo da validação da 203 em CRLF, com papel mínimo, `search_path` trocado e objetos-isca
+  em outro schema) e depois do rollback manual; 15a positiva na árvore inteira, no ARQUIVO da
+  migration aplicado sobre `pre` (resposta idêntica), em CRLF e depois de ida, volta e ida; um
+  defeito por vez reprovando a SUA linha (coluna `alcance`, CHECK, RLS, política, privilégio por
+  tabela e por coluna, forma / corpo / sobrecarga / EXECUTE de cada uma das 5 funções, gatilho
+  e a ORDEM dele, índice, meia migration); 34 mutantes do texto das consultas deixam a prova
+  vermelha; o `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR.
+  **Limite declarado:** a linha de controle não tem negativo local (o catálogo é legível por
+  todo papel) e o papel `supabase_read_only_user` real não foi medido. **Não prova** a IKCOUS
+  nem a Savy.
 - **consulta 13a (`consulta-13a-contador-duplicado-viva.cjs`)**: o item dos dependentes
   ignorava todo `pg_attrdef` e escondia uma coluna gerada que cita a coluna; a prova roda a
   consulta num Postgres real (base, coluna gerada, visão, índice) e o mutante que volta a

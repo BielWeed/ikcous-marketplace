@@ -615,11 +615,22 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                           </div>
                         </div>
 
-                        <div className="mt-2 flex items-center gap-1.5 text-[8px] font-extrabold uppercase tracking-widest text-zinc-500">
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[8px] font-extrabold uppercase tracking-widest text-zinc-500">
                           <Sparkles className="size-3 text-amber-500" />
                           {coupon.type === "percentage"
                             ? "Desconto Percentual"
                             : "Desconto Fixo"}
+                          {/* Frente B: quem vê este cupom no checkout. */}
+                          {coupon.alcance === "vitrine" && (
+                            <span className="rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-sky-300">
+                              No checkout
+                            </span>
+                          )}
+                          {coupon.alcance === "exclusivo" && (
+                            <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-amber-300">
+                              Exclusivo
+                            </span>
+                          )}
                         </div>
                       </div>
 
