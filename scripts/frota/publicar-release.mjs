@@ -408,6 +408,8 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "14b-antes-contador-duplicado-coluna-presente-e-zerada",
   "15a-conferir-cupons-do-checkout-aplicado",
   "15b-antes-cupons-do-checkout-pecas-ausentes",
+  "16a-conferir-pix-anulado-aplicado",
+  "16b-antes-pix-anulado-foto-ausente",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */
