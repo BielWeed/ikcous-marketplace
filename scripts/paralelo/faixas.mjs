@@ -51,6 +51,27 @@ export const COMPARTILHADOS_PADRAO = Object.freeze([
   ".lint-baseline.json",
   ".size-limit.cjs",
   "scripts/portaoDividido.ts",
+  // Configuração que roda os hooks e os portões: uma frente que a altera muda as
+  // regras de TODAS as outras (e `commitar` é auto-aprovado em settings.json).
+  "lefthook.yml",
+  ".commitlintrc.json",
+  ".secretlintrc.json",
+  ".secretlintignore",
+  "eslint.config.js",
+  "eslint.config.rapido.js",
+  "biome.json",
+  "knip.json",
+  "tsconfig.json",
+  "tsconfig.app.json",
+  "tsconfig.node.json",
+  "tsconfig.middleware.json",
+  "vite.config.ts",
+  "vitest.config.ts",
+  "vitest.porteiro.config.ts",
+  ".vercelignore",
+  ".dependency-cruiser.cjs",
+  "deno.json",
+  "deno.lock",
   // Processo, não produto: faixa, agentes e manifestos são do orquestrador.
   // Inclui `.claude/lane.json` — a frente não alarga a própria faixa.
   ".claude/**",
@@ -59,6 +80,12 @@ export const COMPARTILHADOS_PADRAO = Object.freeze([
 ]);
 
 const NOME_DE_FRENTE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/**
+ * Plano + frente cabem na mensagem do merge de `integrar`
+ * (`chore(<escopo>): integra <frente> (<plano>)`) sob o `header-max-length` 100
+ * do commitlint: 20 fixos + escopo (até ~13) + frente + plano. Sobra 60.
+ */
+export const ORCAMENTO_DE_NOMES = 60;
 const PREFIXO_DE_MIGRATION = /^\d{8}$/;
 
 /** Troca `\` por `/` e tira `./` e `/` inicial — o git sempre fala com `/`. */
@@ -77,7 +104,7 @@ function escaparRegex(texto) {
  * Glob → RegExp. Suporta `**` (zero ou mais segmentos), `*` (dentro de um
  * segmento) e `?`. Sem chaves nem classes: a posse tem que ser legível.
  */
-export function globParaRegex(glob) {
+export function globParaRegex(glob, { semCaixa = false } = {}) {
   const g = normalizar(glob);
   let re = "";
   for (let i = 0; i < g.length; i++) {
@@ -100,11 +127,19 @@ export function globParaRegex(glob) {
     }
   }
   // eslint-disable-next-line security/detect-non-literal-regexp -- `re` é montado só com literais e com o texto do glob já escapado por escaparRegex.
-  return new RegExp(`^${re}$`);
+  return new RegExp(`^${re}$`, semCaixa ? "i" : "");
 }
 
 export function casa(glob, caminho) {
   return globParaRegex(glob).test(normalizar(caminho));
+}
+
+/**
+ * Sem distinguir caixa: Windows e macOS (o disco do dono) tratam `src/app.tsx` e
+ * `src/App.tsx` como o MESMO arquivo, então a lista de compartilhados tem que casar assim.
+ */
+export function casaSemCaixa(glob, caminho) {
+  return globParaRegex(glob, { semCaixa: true }).test(normalizar(caminho));
 }
 
 const temCuringa = (s) => /[*?]/.test(s);
@@ -114,8 +149,9 @@ const temCuringa = (s) => /[*?]/.test(s);
  * Conservador: na dúvida (curinga contra curinga), diz que sim.
  */
 export function globsSeSobrepoem(a, b) {
-  const sa = normalizar(a).split("/");
-  const sb = normalizar(b).split("/");
+  // Minúsculas: duas frentes que criam `src/Foo.ts` e `src/foo.ts` colidem no disco do dono.
+  const sa = normalizar(a).toLowerCase().split("/");
+  const sb = normalizar(b).toLowerCase().split("/");
   return sobrepoe(sa, 0, sb, 0);
 }
 
@@ -125,7 +161,9 @@ function sobrepoe(sa, i, sb, j) {
   const y = sb[j];
   // `**` num dos lados engole o que vier: se o outro lado também acabou ou tem
   // qualquer coisa, pode casar. Conservador de propósito.
-  if (x === "**" || y === "**") return true;
+  // `includes`, não `===`: `**` dentro de um segmento (`src/lib/**.ts`, `src/t**`) vira `.*`
+  // em globParaRegex e atravessa `/` — tratá-lo como curinga de um segmento só dava falso "disjunto".
+  if (x?.includes("**") || y?.includes("**")) return true;
   if (i === sa.length || j === sb.length) return false;
   if (!temCuringa(x) && !temCuringa(y)) {
     return x === y && sobrepoe(sa, i + 1, sb, j + 1);
@@ -186,6 +224,14 @@ export function validarManifesto(
       erros.push(`frente com nome inválido: ${f?.nome}`);
       continue;
     }
+    if (
+      String(manifesto.plano ?? "").length + f.nome.length >
+      ORCAMENTO_DE_NOMES
+    ) {
+      erros.push(
+        `frente ${f.nome}: plano + frente passam de ${ORCAMENTO_DE_NOMES} caracteres — a mensagem do merge estouraria o limite de 100 do commitlint`,
+      );
+    }
     if (nomes.has(f.nome)) erros.push(`frente repetida: ${f.nome}`);
     nomes.add(f.nome);
     if (!Array.isArray(f.posse) || f.posse.length === 0) {
@@ -197,6 +243,14 @@ export function validarManifesto(
       } else if (normalizar(g).startsWith("**") || normalizar(g) === "*") {
         erros.push(
           `frente ${f.nome}: glob largo demais ("${g}") — ancore num diretório`,
+        );
+      } else if (
+        normalizar(g)
+          .split("/")
+          .some((seg) => seg.includes("**") && seg !== "**")
+      ) {
+        erros.push(
+          `frente ${f.nome}: "**" só vale como segmento inteiro ("${g}") — use "dir/**" ou "dir/**/*.ts"`,
         );
       } else if (ehMigration(g)) {
         erros.push(
@@ -339,7 +393,7 @@ export function arquivoPermitido(frente, manifesto, caminho) {
     ...COMPARTILHADOS_PADRAO,
     ...(manifesto.compartilhados ?? []),
   ];
-  const c = compartilhados.find((g) => casa(g, n));
+  const c = compartilhados.find((g) => casaSemCaixa(g, n));
   if (c)
     return {
       ok: false,

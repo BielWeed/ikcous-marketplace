@@ -242,3 +242,62 @@ describe("migrations", () => {
     expect(maiorPrefixoDeMigration([])).toBeNull();
   });
 });
+
+describe("achados da revisão independente (09/10/2026)", () => {
+  it("`**` dentro de um segmento atravessa diretório: sobrepõe (era falso 'disjunto')", () => {
+    expect(globsSeSobrepoem("src/lib/**.ts", "src/lib/util/data.ts")).toBe(
+      true,
+    );
+    expect(globsSeSobrepoem("src/x**", "src/xa/b.ts")).toBe(true);
+    expect(globsSeSobrepoem("src/**.ts", "src/a/b.ts")).toBe(true);
+    expect(casa("src/lib/**.ts", "src/lib/util/data.ts")).toBe(true); // a regex já atravessava
+  });
+
+  it("validar reprova `**` que não é segmento inteiro (não engole src/types/**)", () => {
+    for (const glob of ["src/lib/**.ts", "src/t**"]) {
+      const m = manifesto();
+      m.frentes[0].posse.push(glob);
+      expect(validarManifesto(m).erros.join("\n"), glob).toMatch(
+        /"\*\*" só vale como segmento inteiro/,
+      );
+    }
+  });
+
+  it("não distingue maiúscula de minúscula (disco do dono é Windows/macOS)", () => {
+    expect(globsSeSobrepoem("src/Pages/**", "src/pages/x.tsx")).toBe(true);
+    expect(globsSeSobrepoem("src/Foo.ts", "src/foo.ts")).toBe(true);
+    const m = manifesto();
+    m.frentes[0].posse.push("src/app.tsx");
+    expect(validarManifesto(m).erros.join("\n")).toMatch(
+      /compartilhado "src\/App\.tsx"/,
+    );
+    const [cupom] = m.frentes;
+    expect(arquivoPermitido(cupom, m, "src/app.tsx").motivo).toMatch(
+      /compartilhado/,
+    );
+  });
+
+  it("configuração dos hooks e dos portões é compartilhada", () => {
+    const [cupom] = manifesto().frentes;
+    for (const c of [
+      "lefthook.yml",
+      ".commitlintrc.json",
+      ".secretlintrc.json",
+      "eslint.config.js",
+      "biome.json",
+    ]) {
+      expect(arquivoPermitido(cupom, manifesto(), c).ok, c).toBe(false);
+    }
+  });
+
+  it("plano + frente cabem na mensagem do merge (commitlint, 100 colunas)", () => {
+    const m = manifesto();
+    m.plano = "p".repeat(30);
+    m.frentes[0].nome = "f".repeat(31);
+    expect(validarManifesto(m).erros.join("\n")).toMatch(
+      /passam de 60 caracteres/,
+    );
+    m.frentes[0].nome = "f".repeat(30);
+    expect(validarManifesto(m).erros.join("\n")).not.toMatch(/passam de 60/);
+  });
+});

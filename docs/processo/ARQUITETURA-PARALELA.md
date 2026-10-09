@@ -198,6 +198,39 @@ ainda não publicou. Três consequências, todas operacionais:
 - **Arquivos de processo** (`AGENTS.md`, `.claude/settings.json`, `.gitignore`) são editados por
   mais de uma sessão: conflito ali é trivial de texto, mas existe — rode `git fetch` antes de integrar.
 
+## Revisão independente (09/10/2026) — o que ela achou e o que mudou
+
+Um `revisor` em contexto limpo atacou a garantia "duas frentes nunca tocam o mesmo arquivo". Veredito
+inicial: **não passa**. Corrigido neste PR, cada item com teste que falha sem a correção:
+
+- **BLOQUEIA — `**` dentro de um segmento** (`src/lib/**.ts`, `src/t**`) dava falso "disjunto": a
+  regex de casamento atravessava diretório, a prova de sobreposição não. Duas frentes passariam na
+  validação sendo donas do mesmo arquivo. Agora `sobrepoe` trata qualquer `**` como curinga e
+  `validar` rejeita `**` que não seja segmento inteiro.
+- **A guarda estrita falhava aberta** se a frente corrompesse `.claude/lane.json` por `Bash` (o
+  `catch` só olhava a flag, que o harness real não passa). Agora olha `agent_type` também.
+- **Ferramentas de escrita do Serena** saíram do agente `frente`: o hook só lê `file_path`, e o
+  Serena escreve por `relative_path` no projeto ativo dele (talvez a árvore principal).
+- **A mensagem do merge** estourava as 100 colunas do commitlint com nomes longos, e a falha era
+  rotulada "decomposição errada". Mensagem encurtada, orçamento de 60 caracteres para plano+frente,
+  checagem de tamanho antes do primeiro merge, e "recusado por hook" separado de "conflito".
+- **Caixa:** `src/app.tsx` × `src/App.tsx` é o mesmo arquivo no disco do dono; sobreposição e lista
+  de compartilhados agora ignoram maiúsculas.
+- **Configuração dos hooks e dos portões** (`lefthook.yml`, `.commitlintrc.json`, `eslint.config.js`,
+  `biome.json`, `tsconfig*.json`…) virou compartilhada: `commitar` é auto-aprovado em
+  `settings.json`, e uma frente que mude essas regras mudaria as de todas as outras.
+- `git diff` com falha não vira mais "sem alterações, pulada"; `status` e `limpar` validam o manifesto.
+
+Pendente de verificação (o revisor não conseguiu): junction do Windows sob `git worktree remove
+--force`; checkout em disco case-insensitive; qual projeto o Serena considera ativo num worktree.
+
+### Efeito colateral de `worktree.baseRef: "head"` para a equipe
+
+Como está versionado, vale para **todos** que abrirem o repo no Claude Code: `claude --worktree` e o
+isolamento de subagente passam a nascer do **HEAD local** (com commits ainda não publicados), não de
+`origin/HEAD`. É o que faz as frentes enxergarem este sistema, mas muda o hábito de quem usa
+`--worktree` hoje. Há relatos de que o app desktop ignora essa chave (não verificado aqui).
+
 ## Riscos conhecidos desta camada
 
 - O hook não vê escrita por `Bash` — a garantia é o diff (`conferir`/`integrar`). Um agente que

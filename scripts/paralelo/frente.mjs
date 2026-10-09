@@ -391,6 +391,7 @@ function cmdCommitar(args) {
 function cmdStatus([arg, ...resto]) {
   const cwd = process.cwd();
   const { manifesto } = carregarManifesto(arg, cwd);
+  validarOuSair(manifesto, cwd, { piso: false });
   const mapa = mapaDeBranches(resto);
   const linhas = [];
   for (const f of manifesto.frentes ?? []) {
@@ -407,11 +408,15 @@ function cmdStatus([arg, ...resto]) {
     const base = git(["merge-base", "HEAD", branch], cwd).out;
     const aMais = git(["rev-list", "--count", `${base}..${branch}`], cwd).out;
     const sujo = existsSync(pasta) ? alteradosDesde("HEAD", pasta).length : "-";
-    const alterados = nomesZ(
+    const dif = nomesZ(
       ["diff", "-z", "--name-only", "--no-renames", base, branch],
       cwd,
-    ).nomes;
-    const viol = conferirAlterados(f, manifesto, alterados).length;
+    );
+    if (!dif.ok) {
+      linhas.push(`${f.nome.padEnd(28)} ERRO no git diff: ${dif.err}`);
+      continue;
+    }
+    const viol = conferirAlterados(f, manifesto, dif.nomes).length;
     linhas.push(
       `${f.nome.padEnd(28)} commits+${String(aMais).padEnd(3)} sujo:${String(sujo).padEnd(3)} fora-da-faixa:${viol}`,
     );
@@ -457,10 +462,17 @@ function cmdIntegrar(args) {
       continue;
     }
     const base = git(["merge-base", "HEAD", branch], cwd).out;
-    const alterados = nomesZ(
+    const dif = nomesZ(
       ["diff", "-z", "--name-only", "--no-renames", base, branch],
       cwd,
-    ).nomes;
+    );
+    if (!dif.ok) {
+      // Falha do git NÃO pode virar "sem alterações, pulada": esconderia a frente.
+      console.error(`✗ ${f.nome}: git diff falhou em ${branch}: ${dif.err}`);
+      reprovado = true;
+      continue;
+    }
+    const alterados = dif.nomes;
     const viol = conferirAlterados(f, manifesto, alterados);
     if (viol.length) {
       reprovado = true;
@@ -479,6 +491,18 @@ function cmdIntegrar(args) {
     return;
   }
 
+  // O merge passa pelo commit-msg (commitlint, header ≤ 100). Descobrir isso no meio do
+  // caminho deixaria frentes já integradas e as demais não; confere TODAS antes de mesclar.
+  const cabecalho = (frente) =>
+    `chore(${escopo}): integra ${frente} (${manifesto.plano})`;
+  for (const p of plano) {
+    if (cabecalho(p.frente).length > 100) {
+      falhar(
+        `a mensagem do merge de "${p.frente}" passa de 100 caracteres (commitlint): ${cabecalho(p.frente)}`,
+      );
+    }
+  }
+
   // Passada 2: merge em ordem do manifesto. Faixas disjuntas => sem conflito;
   // se acontecer, a decomposição estava errada: aborta e diz onde.
   const feitas = [];
@@ -488,24 +512,25 @@ function cmdIntegrar(args) {
       continue;
     }
     const m = git(
-      [
-        "merge",
-        "--no-ff",
-        "-m",
-        `chore(${escopo}): integra a frente ${p.frente} do plano ${manifesto.plano}`,
-        p.branch,
-      ],
+      ["merge", "--no-ff", "-m", cabecalho(p.frente), p.branch],
       cwd,
     );
     if (!m.ok) {
+      // Arquivo não mesclado (índice com estágio ≥1) = conflito de verdade. Sem isso, o merge foi
+      // RECUSADO por hook (commit-msg) ou erro do git — e dizer "decomposição errada" seria falso.
+      const conflito = git(["ls-files", "-u"], cwd).out !== "";
       git(["merge", "--abort"], cwd);
       console.error(
-        `✗ conflito ao integrar "${p.frente}" (${p.branch}) — merge abortado.`,
+        conflito
+          ? `✗ conflito ao integrar "${p.frente}" (${p.branch}) — merge abortado.`
+          : `✗ o merge de "${p.frente}" (${p.branch}) foi recusado SEM conflito (hook commit-msg ou erro do git) — merge abortado.`,
       );
       console.error(`  Já integradas: ${feitas.join(", ") || "nenhuma"}.`);
-      console.error(
-        "  Conflito com faixas disjuntas = decomposição errada: reabra o plano.",
-      );
+      if (conflito) {
+        console.error(
+          "  Conflito com faixas disjuntas = decomposição errada: reabra o plano.",
+        );
+      }
       console.error(m.err || m.out);
       process.exit(1);
     }
@@ -520,6 +545,7 @@ function cmdIntegrar(args) {
 function cmdLimpar([arg]) {
   const cwd = process.cwd();
   const { manifesto } = carregarManifesto(arg, cwd);
+  validarOuSair(manifesto, cwd, { piso: false });
   if (ehWorktreeLigado(cwd)) falhar("`limpar` roda na árvore principal");
   for (const f of manifesto.frentes ?? []) {
     const branch = nomeDaBranch(manifesto, f.nome);

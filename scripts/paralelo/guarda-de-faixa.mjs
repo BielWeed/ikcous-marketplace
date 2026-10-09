@@ -87,15 +87,19 @@ async function lerStdin() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  // `ehFrente` fica FORA do try: o catch precisa dele. Se a frente corromper `.claude/lane.json`
+  // (por Bash, que o hook não vê), `acharLane` lança — e um catch que olhasse só a flag
+  // `--estrito` (que o harness real não passa) deixaria TODA escrita seguinte passar.
+  let ehFrente = false;
   try {
     const entrada = JSON.parse(await lerStdin());
-    const alvo =
-      entrada?.tool_input?.file_path ?? entrada?.tool_input?.notebook_path;
-    if (!alvo) process.exit(0);
     // O harness manda `agent_type` nas chamadas de ferramenta de um subagente. Medido ao vivo:
     // o hook `--estrito` do frontmatter do agente `frente` NÃO dispara (só o global dispara),
     // então o modo estrito também liga aqui, por identidade do agente, sem depender do frontmatter.
-    const ehFrente = /(^|:)frente$/.test(String(entrada?.agent_type ?? ""));
+    ehFrente = /(^|:)frente$/.test(String(entrada?.agent_type ?? ""));
+    const alvo =
+      entrada?.tool_input?.file_path ?? entrada?.tool_input?.notebook_path;
+    if (!alvo) process.exit(0);
     const motivo = decidir({
       alvo,
       cwd: entrada.cwd ?? process.cwd(),
@@ -103,7 +107,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     });
     if (motivo) bloquear(motivo);
   } catch (e) {
-    if (estrito)
+    if (estrito || ehFrente)
       bloquear(
         `erro ao avaliar a faixa (fecha por padrão no modo estrito): ${e.message}`,
       );

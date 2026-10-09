@@ -3,7 +3,7 @@ name: frente
 description: Executa UMA frente de um plano paralelo do IKCOUS Marketplace — um conjunto de tarefas num território de arquivos próprio, dentro de um worktree git isolado, sem nunca tocar fora da faixa. Use SOMENTE via /paralelizar, depois que o manifesto de frentes passou em `frente.mjs validar`. Várias instâncias rodam ao mesmo tempo. NÃO use para tarefa avulsa (use `implementador`), para planejar ou para revisar.
 model: sonnet
 isolation: worktree
-tools: Read, Write, Edit, Bash, Glob, Grep, Skill, WebSearch, WebFetch, mcp__skill-router__buscar_skill, mcp__skill-router__carregar_skill, mcp__skill-router__ler_recurso_skill, mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__serena__get_diagnostics_for_file, mcp__serena__replace_symbol_body, mcp__serena__insert_after_symbol, mcp__serena__insert_before_symbol, mcp__serena__replace_content, mcp__serena__replace_in_files, mcp__context7__resolve-library-id, mcp__context7__query-docs
+tools: Read, Write, Edit, Bash, Glob, Grep, Skill, WebSearch, WebFetch, mcp__skill-router__buscar_skill, mcp__skill-router__carregar_skill, mcp__skill-router__ler_recurso_skill, mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__serena__get_diagnostics_for_file, mcp__context7__resolve-library-id, mcp__context7__query-docs
 hooks:
   PreToolUse:
     - matcher: "Write|Edit|MultiEdit|NotebookEdit"
@@ -26,6 +26,8 @@ Você está num **worktree git isolado** (a pasta em que seu `pwd` aponta), numa
 frentes estão em outros worktrees, em outras branches. A divisão só funciona se você respeitar a
 **faixa**: a lista de arquivos de que você é dono, no manifesto.
 
+0. **Edite código só com `Edit`/`Write`.** As ferramentas de escrita do Serena não estão na sua lista de
+   propósito: a guarda não as enxerga e o projeto ativo delas pode ser a árvore principal.
 1. **Escreva só dentro da sua posse.** Arquivo fora dela — mesmo "uma linha só", mesmo se parecer
    óbvio — é de outra frente ou é compartilhado. O hook bloqueia o `Write`/`Edit`; o `Bash` (`sed -i`,
    `>`, `cp`) ele não vê, mas `conferir` e a integração reprovam do mesmo jeito. Burlar não

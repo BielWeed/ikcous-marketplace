@@ -195,7 +195,7 @@ describe("frente.mjs — ciclo completo", () => {
     expect(readFileSync(join(repo, "src/a/x.ts"), "utf8")).toContain("a = 2");
     expect(readFileSync(join(repo, "src/b/y.ts"), "utf8")).toContain("b = 2");
     expect(git(repo, "log", "--format=%s", "-3").out).toContain(
-      "integra a frente a do plano t",
+      "integra a (t)",
     );
 
     // retry é idempotente (frentes já integradas são puladas)
@@ -373,4 +373,68 @@ describe("guarda-de-faixa.mjs — hook PreToolUse", () => {
       sh(process.execPath, [GUARDA, "--estrito"], repo, "não é json").status,
     ).toBe(2); // estrito fecha
   }, 90_000);
+});
+
+describe("achados da revisão independente — CLI e guarda", () => {
+  it("guarda: lane.json corrompido NÃO abre a porta para agent_type=frente (falhava aberto)", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    writeFileSync(join(A, ".claude/lane.json"), ""); // a frente corrompe a faixa por Bash
+    const principal = guarda(
+      A,
+      [],
+      join(repo, "src/a/x.ts"),
+      "Write",
+      "frente",
+    );
+    expect(principal.status).toBe(2);
+    expect(principal.out).toMatch(/erro ao avaliar a faixa/);
+    // sessão normal (sem agent_type, sem flag) continua aberta: o modo global é inerte
+    expect(guarda(A, [], join(repo, "src/a/x.ts"), "Write").status).toBe(0);
+  }, 60_000);
+
+  it("integrar recusa ANTES de mesclar se a mensagem do merge passaria de 100 colunas", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(wt(repo, "a"), "src/a/x.ts", "export const a = 5;\n");
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(ui): a").status).toBe(
+      0,
+    );
+    const antes = git(repo, "rev-parse", "HEAD").out;
+    const r = frente(repo, "integrar", M, "--escopo", "e".repeat(90));
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/passa de 100 caracteres/);
+    expect(git(repo, "rev-parse", "HEAD").out).toBe(antes);
+  }, 60_000);
+
+  it("merge recusado por hook NÃO é rotulado como conflito de decomposição", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(wt(repo, "a"), "src/a/x.ts", "export const a = 6;\n");
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(ui): a").status).toBe(
+      0,
+    );
+    // commit-msg que recusa só a mensagem de integração (os commits das frentes já foram feitos)
+    const hook = join(repo, ".git/hooks/commit-msg");
+    writeFileSync(
+      hook,
+      '#!/bin/sh\ngrep -q "integra" "$1" && exit 1\nexit 0\n',
+      { mode: 0o755 },
+    );
+    const antes = git(repo, "rev-parse", "HEAD").out;
+    const r = frente(repo, "integrar", M);
+    expect(r.status).toBe(1);
+    expect(r.out).toMatch(/recusado SEM conflito/);
+    expect(r.out).not.toMatch(/decomposição errada/);
+    expect(git(repo, "rev-parse", "HEAD").out).toBe(antes);
+    expect(
+      git(repo, "status", "--porcelain").out.replace(
+        /\?\? \.worktrees\/\n?/,
+        "",
+      ),
+    ).toBe("");
+  }, 60_000);
 });
