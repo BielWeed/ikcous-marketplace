@@ -38,6 +38,7 @@ import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
+import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Address, CartItem, Order, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { format } from "date-fns";
@@ -488,8 +489,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   if (!isAdmin) return null;
 
   /*
-    Os quatro números do resumo (total gasto, nº de pedidos, última compra
-    e ticket médio) nascem de UM lugar: `calcularResumoFicha`
+    Os quatro números do resumo (total já comprado, nº de pedidos, última
+    compra e valor médio por venda) nascem de UM lugar: `calcularResumoFicha`
     (src/components/admin/users/ficha-resumo.ts), que carrega as regras e a
     história delas:
 
@@ -501,7 +502,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       nulo, 'aguardando', 'recusado', 'expirado' e 'estornado' ficam fora;
     - Última compra e contagem NÃO filtram cobrança (mesma regra do
       `last_order_date`/`orders_count` do servidor);
-    - Ticket médio = total gasto ÷ pedidos COM dinheiro reconhecido — a
+    - Valor médio por venda = total gasto ÷ pedidos COM dinheiro reconhecido — a
       fórmula do `get_admin_analytics_v2` aplicada ao recorte do cliente.
 
     A ABA de pedidos continua mostrando o histórico inteiro de propósito:
@@ -509,6 +510,15 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
   */
   const resumo = calcularResumoFicha(orders);
   const { pedidosQueContam, pedidosDescartados } = resumo;
+  // Número sem DDD+telefone (menos de 10 dígitos) não abre conversa: o botão
+  // "Contato Direto" fica desabilitado em vez de abrir um link quebrado.
+  const linkWhatsapp = linkWhatsappDoCliente(profile?.whatsapp);
+  // Botão desabilitado sem explicação confunde: diz o porquê (só quando o
+  // motivo é o cadastro; offline já tem o seu aviso na barra do painel).
+  let avisoDoWhatsapp: string | undefined;
+  if (!profile?.whatsapp) avisoDoWhatsapp = "Cliente sem WhatsApp cadastrado";
+  else if (!linkWhatsapp)
+    avisoDoWhatsapp = "Número sem DDD — corrija o cadastro";
 
   const renderContentSkeleton = () => (
     <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -581,12 +591,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </button>
           </AdminPageHeader>
           <div className="mt-1 flex items-center gap-2">
-            <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+            <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
               ID
             </span>
             <button
               onClick={() => handleCopy(userId, "id")}
-              className="group flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[10px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
+              className="group flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
             >
               <span className="blur-[0.3px] transition-all group-hover:blur-none">
                 {userId}
@@ -602,13 +612,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       </div>
 
       {loadFailed && !loading ? (
-        <div className="flex min-h-[60vh] flex-col items-center justify-center bg-[#09090b] text-white">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+        <div className="flex min-h-[60vh] flex-col items-center justify-center bg-admin-bg text-white">
+          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
             Não foi possível carregar os dados deste cliente
           </p>
           <button
             onClick={() => fetchUserData()}
-            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
           >
             Tentar novamente
           </button>
@@ -649,7 +659,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   {profile?.full_name || "Usuário Não-Nomeado"}
                 </CardTitle>
                 <Badge
-                  className={`mt-2 rounded border px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] ${profile?.role === "admin" ? "border-admin-gold/50 bg-admin-gold text-black" : "border-zinc-800 bg-black text-zinc-500"}`}
+                  className={`mt-2 rounded border px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.15em] ${profile?.role === "admin" ? "border-admin-gold/50 bg-admin-gold text-black" : "border-zinc-800 bg-black text-zinc-500"}`}
                 >
                   {profile?.role || "Cliente"}
                 </Badge>
@@ -658,15 +668,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               {/* Direct WhatsApp Call CTA */}
               <div className="mt-4 w-full px-2">
                 <Button
-                  className="h-10 w-full gap-2 rounded-xl border-none bg-gradient-to-br from-green-500 to-green-600 text-[9px] font-black uppercase tracking-widest text-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.2)] transition-all duration-300 hover:from-green-400 hover:to-green-500 hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] disabled:pointer-events-none disabled:opacity-40"
-                  disabled={!profile?.whatsapp || isOffline}
+                  className="h-10 w-full gap-2 rounded-xl border-none bg-gradient-to-br from-green-500 to-green-600 text-[11px] font-black uppercase tracking-widest text-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.2)] transition-all duration-300 hover:from-green-400 hover:to-green-500 hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] disabled:pointer-events-none disabled:opacity-40"
+                  disabled={!linkWhatsapp || isOffline}
+                  title={avisoDoWhatsapp}
                   onClick={() => {
-                    if (!profile?.whatsapp || isOffline) return;
-                    let phone = profile.whatsapp.replace(/\D/g, "");
-                    if (phone.length === 11 || phone.length === 10) {
-                      phone = `55${phone}`;
-                    }
-                    globalThis.open(`https://wa.me/${phone}`, "_blank");
+                    if (!linkWhatsapp || isOffline) return;
+                    globalThis.open(linkWhatsapp, "_blank");
                   }}
                 >
                   <MessageSquare className="size-3.5" />
@@ -685,7 +692,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       <Mail className="size-3.5" />
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                         Email
                       </span>
                       <span className="w-[130px] truncate font-semibold text-zinc-300 sm:w-[170px]">
@@ -715,7 +722,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                       <Phone className="size-3.5" />
                     </div>
                     <div className="flex min-w-0 flex-col">
-                      <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                         Telefone / WhatsApp
                       </span>
                       <span className="font-semibold text-zinc-300">
@@ -744,7 +751,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <Calendar className="size-3.5" />
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[8px] font-bold uppercase tracking-widest text-zinc-500">
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                       Registro Inicial
                     </span>
                     <span className="font-semibold text-zinc-300">
@@ -768,14 +775,13 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 abrir aba: quanto gastou, quantas vezes, qual o tíquete médio e
                 quando foi a última vez (frente ficha do cliente, 03/09). */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-              {/* LTV Widget — o "total gasto" do resumo. O rótulo continua
-                  "LTV Total" de propósito: é o nome estabelecido deste número
-                  nesta ficha e na lista de Clientes, e os testes vivos da
-                  tela leem o cartão por este rótulo exato. */}
+              {/* Cartão do "total gasto" do resumo. O rótulo é "Total já
+                  comprado": o mesmo nome deste número na lista de Clientes,
+                  e os testes vivos da tela leem o cartão por este rótulo. */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-admin-gold/50">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
-                    LTV Total
+                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                    Total já comprado
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
                     {formatCurrency(resumo.totalGasto)}
@@ -789,14 +795,14 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               {/* Total Orders Widget */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-zinc-700">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Cesta / Pedidos
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
                     {pedidosQueContam.length}
                   </span>
                   {pedidosDescartados > 0 && (
-                    <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-zinc-500">
+                    <span className="mt-0.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                       {/* "fora da conta" e nao "cancelado": `pedidosDescartados`
                           conta cancelado E devolvido, entao dizer "cancelado"
                           rotularia um pedido devolvido de cancelado. Hoje nao ha
@@ -819,8 +825,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   porque foi MEDIDO (o `ELSE 0` do servidor), não inventado. */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-purple-500/50">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
-                    Ticket Médio
+                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                    Valor médio por venda
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
                     {formatCurrency(resumo.ticketMedio)}
@@ -838,7 +844,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   conta, "—" — nunca data inventada. */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-sky-500/50">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Última Compra
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
@@ -857,12 +863,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               {/* Cart Standby Widget */}
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-green-500/50">
                 <div className="flex min-w-0 flex-col">
-                  <span className="mb-0.5 text-[9px] font-black uppercase tracking-[0.15em] text-zinc-500">
+                  <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
                     Carrinho (Standby)
                   </span>
                   <span className="text-xl font-black tracking-tight text-green-400 sm:text-2xl">
                     {cartItems.reduce((s, i) => s + i.quantity, 0)}{" "}
-                    <span className="ml-0.5 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                    <span className="ml-0.5 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                       itens
                     </span>
                   </span>
@@ -879,46 +885,46 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-zinc-800/50 bg-zinc-950/80 p-1.5 shadow-inner sm:grid-cols-4">
                   <TabsTrigger
                     value="orders"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
                   >
                     <Package className="size-3.5" />
                     <span className="hidden sm:inline">Pedidos</span>
                     <span className="sm:hidden">Ped.</span>
-                    <span className="ml-1 text-[9px] opacity-70">
+                    <span className="ml-1 text-[11px] opacity-70">
                       ({orders.length})
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="cart"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:border data-[state=active]:border-admin-gold/20 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold sm:text-xs"
+                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:border data-[state=active]:border-admin-gold/20 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold sm:text-xs"
                   >
                     <ShoppingCart className="size-3.5" />
                     <span className="hidden sm:inline">Carrinho</span>
                     <span className="sm:hidden">Carr.</span>
-                    <span className="ml-1 text-[9px] opacity-70">
+                    <span className="ml-1 text-[11px] opacity-70">
                       ({cartItems.reduce((acc, item) => acc + item.quantity, 0)}
                       )
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="addresses"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
                   >
                     <MapPin className="size-3.5" />
                     <span className="hidden sm:inline">Endereços</span>
                     <span className="sm:hidden">End.</span>
-                    <span className="ml-1 text-[9px] opacity-70">
+                    <span className="ml-1 text-[11px] opacity-70">
                       ({addresses.length})
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value="voz"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[9px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
                   >
                     <Star className="size-3.5" />
                     <span className="hidden sm:inline">Voz do Cliente</span>
                     <span className="sm:hidden">Voz</span>
-                    <span className="ml-1 text-[9px] opacity-70">
+                    <span className="ml-1 text-[11px] opacity-70">
                       ({avaliacoes.length + perguntas.length})
                     </span>
                   </TabsTrigger>
@@ -950,16 +956,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           <Table>
                             <TableHeader className="border-b border-zinc-800/80 bg-zinc-950/60 hover:bg-zinc-950/60">
                               <TableRow className="border-none hover:bg-transparent">
-                                <TableHead className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Registro
                                 </TableHead>
-                                <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Timeline
                                 </TableHead>
-                                <TableHead className="max-w-[120px] py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="max-w-[120px] py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Situação
                                 </TableHead>
-                                <TableHead className="py-4 text-right text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Volume
                                 </TableHead>
                                 <TableHead className="px-6 py-4" />
@@ -1037,12 +1043,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                             <span className="relative inline-flex size-2 rounded-full bg-green-500" />
                           </span>
                         </h2>
-                        <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-500">
+                        <p className="mt-1 text-[11px] uppercase tracking-widest text-zinc-500">
                           Produtos retidos na estrutura de checkout
                         </p>
                         {cartItems.length > 0 && (
                           <div className="mt-2 flex items-center gap-2">
-                            <Badge className="border-none bg-green-500 text-[9px] font-black text-black shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                            <Badge className="border-none bg-green-500 text-[11px] font-black text-black shadow-[0_0_15px_rgba(34,197,94,0.3)]">
                               {cartItems.length} Elementos
                             </Badge>
                             <Button
@@ -1050,7 +1056,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               size="sm"
                               onClick={handleClearUserCart}
                               disabled={isOffline}
-                              className="h-7 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[8px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
+                              className="h-7 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[11px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
                             >
                               Limpar Carrinho
                             </Button>
@@ -1076,16 +1082,16 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                           <Table>
                             <TableHeader className="border-b border-zinc-800/80 bg-zinc-950/60 hover:bg-zinc-950/60">
                               <TableRow className="border-none hover:bg-transparent">
-                                <TableHead className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="px-6 py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Identificador do Ativo
                                 </TableHead>
-                                <TableHead className="py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="py-4 text-center text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Densidade
                                 </TableHead>
-                                <TableHead className="py-4 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="py-4 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Precificação Base
                                 </TableHead>
-                                <TableHead className="px-6 py-4 text-right text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                                <TableHead className="px-6 py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                                   Estimativa (BRL)
                                 </TableHead>
                                 <TableHead className="px-6 py-4" />
@@ -1130,12 +1136,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                             {item.product.name}
                                           </span>
                                           {variant && (
-                                            <span className="mt-0.5 w-fit rounded bg-admin-gold/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-widest text-admin-gold">
+                                            <span className="mt-0.5 w-fit rounded bg-admin-gold/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-admin-gold">
                                               {variant.name}: {variant.value}
                                             </span>
                                           )}
                                           {isVariantMissing && (
-                                            <span className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[8px] font-black uppercase tracking-widest text-red-500">
+                                            <span className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-red-500">
                                               Variante Indisponível (ID:{" "}
                                               {item.variantId})
                                             </span>
@@ -1179,7 +1185,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               <TableRow className="border-t border-green-500/20 bg-gradient-to-r from-transparent via-green-500/5 to-green-500/10 hover:bg-transparent">
                                 <TableCell
                                   colSpan={4}
-                                  className="py-4 text-right text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                                  className="py-4 text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
                                 >
                                   Total Previsível do Retido
                                 </TableCell>
@@ -1245,7 +1251,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                   {addr.name}
                                 </span>
                                 {addr.is_default && (
-                                  <Badge className="h-4 border-none bg-admin-gold px-1.5 text-[8px] font-black uppercase tracking-widest text-black shadow-[0_0_10px_rgba(255,191,0,0.3)]">
+                                  <Badge className="h-4 border-none bg-admin-gold px-1.5 text-[11px] font-black uppercase tracking-widest text-black shadow-[0_0_10px_rgba(255,191,0,0.3)]">
                                     PADRÃO
                                   </Badge>
                                 )}
@@ -1263,7 +1269,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                 <p className="text-[11px] text-zinc-400">
                                   {addr.neighborhood}, {addr.city}-{addr.state}{" "}
                                   <span className="mx-1 text-zinc-700">•</span>{" "}
-                                  <span className="font-mono text-[9px] text-zinc-500">
+                                  <span className="font-mono text-[11px] text-zinc-500">
                                     {addr.cep}
                                   </span>
                                 </p>
@@ -1304,7 +1310,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                         <Star className="size-3.5 text-admin-gold" />O Que Este
                         Cliente Escreveu
                       </h2>
-                      <p className="mt-1 text-[9px] uppercase tracking-widest text-zinc-500">
+                      <p className="mt-1 text-[11px] uppercase tracking-widest text-zinc-500">
                         Avaliações e perguntas feitas pelo cliente
                       </p>
                     </div>
@@ -1327,7 +1333,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Ficha Detalhada do Cliente"
+        title="Como ler a ficha do cliente"
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
@@ -1338,7 +1344,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Seções do Perfil
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1348,10 +1354,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   Resumo do Topo
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Total gasto, número de pedidos, ticket médio e última compra.
-                  Pedido cancelado ou devolvido não entra na conta; o total só
-                  soma cobrança confirmada (paga, paga após expirar ou recebida
-                  na entrega).
+                  Total já comprado, número de pedidos, valor médio por venda e
+                  última compra. Pedido cancelado ou devolvido não entra na
+                  conta; o total só soma cobrança confirmada (paga, paga após
+                  expirar ou recebida na entrega).
                 </p>
               </div>
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">

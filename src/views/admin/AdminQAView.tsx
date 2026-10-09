@@ -416,7 +416,7 @@ export const AdminQAView = memo(function AdminQAView({
                 pendingCount > 0 && "animate-pulse",
               )}
             />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
               {statsUnavailable
                 ? "Erro ao atualizar"
                 : pendingCount > 0
@@ -462,36 +462,16 @@ export const AdminQAView = memo(function AdminQAView({
         content: (
           <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
             <Clock className="size-3.5 text-zinc-500" />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+            <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
               Desde o início
             </span>
           </div>
         ),
         footer: "Dúvidas totais enviadas",
       },
-      {
-        id: "conversao",
-        label: "Conversão Comercial",
-        icon: Sparkles,
-        iconClass: "text-admin-gold fill-admin-gold",
-        iconBg: "bg-admin-gold/10 border-admin-gold/20",
-        hoverBorder:
-          "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.05)]",
-        // PAINEL-16: era "Impacto Alto" cravado — número que nunca muda ao
-        // lado de três medidos. Sem métrica real de conversão, o honesto
-        // é não inventar: o valor fica vazio e o rodapé explica o porquê.
-        value: "", // B3 da 1a revisao: travessão contava como "não carregou" no teste (espera 3, ficava 4) — vazio não marca nada
-        accent: "text-admin-gold",
-        content: (
-          <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
-            <span className="size-1.5 animate-pulse rounded-full bg-admin-gold" />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-              Respostas Ajudam a Vender
-            </span>
-          </div>
-        ),
-        footer: "Q&A aumenta a confiança",
-      },
+      // O quarto cartão ("Conversão Comercial") saiu: nunca teve métrica
+      // real (PAINEL-16 já o tinha deixado sem valor) e só ocupava lugar ao
+      // lado dos três cartões medidos.
     ],
     [statsUnavailable, pendingCount, responseRate, answeredCount, totalCount],
   );
@@ -624,10 +604,10 @@ export const AdminQAView = memo(function AdminQAView({
                       <span className="max-w-[150px] truncate text-xs font-bold text-white">
                         {q.customerName}
                       </span>
-                      <span className="text-[10px] font-bold text-zinc-500">
+                      <span className="text-[11px] font-bold text-zinc-500">
                         {new Date(q.createdAt).toLocaleDateString("pt-BR")}
                       </span>
-                      <span className="max-w-[180px] truncate rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-bold text-zinc-400">
+                      <span className="max-w-[180px] truncate rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold text-zinc-400">
                         {q.productName}
                       </span>
                     </div>
@@ -659,11 +639,11 @@ export const AdminQAView = memo(function AdminQAView({
                     }}
                   >
                     {isAnswered ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-emerald-400">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-emerald-400">
                         <Check className="size-2.5" /> Respondida
                       </span>
                     ) : (
-                      <span className="inline-flex animate-pulse items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-amber-400">
+                      <span className="inline-flex animate-pulse items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-amber-400">
                         <Clock className="size-2.5" /> Pendente
                       </span>
                     )}
@@ -675,13 +655,13 @@ export const AdminQAView = memo(function AdminQAView({
                       <div className="flex items-center gap-1 rounded-xl border border-red-500/20 bg-red-950/40 p-0.5">
                         <button
                           onClick={() => handleDelete(q.id)}
-                          className="rounded-lg bg-red-500 px-2.5 py-1 text-[9px] font-black text-white transition-colors hover:bg-red-400"
+                          className="rounded-lg bg-red-500 px-2.5 py-1 text-[11px] font-black text-white transition-colors hover:bg-red-400"
                         >
                           Sim
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(null)}
-                          className="px-2 py-1 text-[9px] font-bold text-zinc-400 transition-colors hover:text-white"
+                          className="px-2 py-1 text-[11px] font-bold text-zinc-400 transition-colors hover:text-white"
                         >
                           Não
                         </button>
@@ -700,7 +680,7 @@ export const AdminQAView = memo(function AdminQAView({
                           <button
                             disabled={isOffline}
                             onClick={() => setSelectedQuestion(q)}
-                            className="flex h-8 items-center gap-1 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-wider text-white transition-all hover:bg-emerald-400 disabled:pointer-events-none disabled:opacity-40"
+                            className="flex h-8 items-center gap-1 rounded-xl bg-emerald-500 px-3 text-[11px] font-black uppercase tracking-wider text-white transition-all hover:bg-emerald-400 disabled:pointer-events-none disabled:opacity-40"
                           >
                             <MessageSquare className="size-3" /> Responder
                           </button>
@@ -753,7 +733,7 @@ export const AdminQAView = memo(function AdminQAView({
                     className="mt-3 space-y-3 overflow-hidden pl-11"
                   >
                     <div className="rounded-2xl border border-white/5 bg-white/[0.01] p-4">
-                      <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-zinc-500">
+                      <span className="mb-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                         Pergunta Completa
                       </span>
                       <p className="text-xs italic text-zinc-300">
@@ -765,10 +745,10 @@ export const AdminQAView = memo(function AdminQAView({
                       <div className="relative overflow-hidden rounded-2xl border border-emerald-500/10 bg-emerald-500/[0.02] p-4">
                         <div className="absolute left-0 top-0 h-full w-[2px] bg-emerald-500/30" />
                         <div className="mb-1.5 flex items-center justify-between">
-                          <span className="block text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                          <span className="block text-[11px] font-black uppercase tracking-widest text-emerald-400">
                             Resposta da Loja
                           </span>
-                          <span className="text-[8px] font-bold text-zinc-500">
+                          <span className="text-[11px] font-bold text-zinc-500">
                             {new Date(
                               q.answers.at(-1)!.createdAt,
                             ).toLocaleDateString("pt-BR")}
@@ -822,20 +802,20 @@ export const AdminQAView = memo(function AdminQAView({
                       <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
                         <div
                           className={cn(
-                            "w-5 h-5 rounded-full bg-gradient-to-br flex items-center justify-center text-[9px] font-black text-white",
+                            "w-5 h-5 rounded-full bg-gradient-to-br flex items-center justify-center text-[11px] font-black text-white",
                             avatarGrad,
                           )}
                         >
                           {initials}
                         </div>
-                        <span className="mt-0.5 text-[10px] font-black uppercase leading-none tracking-wider text-zinc-300">
+                        <span className="mt-0.5 text-[11px] font-black uppercase leading-none tracking-wider text-zinc-300">
                           {q.customerName}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
                         <Calendar className="size-3.5 text-zinc-500" />
-                        <span className="mt-0.5 text-[10px] font-black uppercase leading-none tracking-wider text-zinc-500">
+                        <span className="mt-0.5 text-[11px] font-black uppercase leading-none tracking-wider text-zinc-500">
                           {new Date(q.createdAt).toLocaleDateString("pt-BR")}
                         </span>
                       </div>
@@ -843,14 +823,14 @@ export const AdminQAView = memo(function AdminQAView({
                       {isAnswered ? (
                         <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-3 py-1.5 text-emerald-400 shadow-lg shadow-emerald-500/5">
                           <CheckCircle2 className="size-3.5" />
-                          <span className="mt-0.5 text-[9px] font-black uppercase leading-none tracking-wider">
+                          <span className="mt-0.5 text-[11px] font-black uppercase leading-none tracking-wider">
                             Respondida
                           </span>
                         </div>
                       ) : (
                         <div className="flex animate-pulse items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-amber-400 shadow-lg shadow-amber-500/5">
                           <Clock className="size-3.5" />
-                          <span className="mt-0.5 text-[9px] font-black uppercase leading-none tracking-wider">
+                          <span className="mt-0.5 text-[11px] font-black uppercase leading-none tracking-wider">
                             Pendente
                           </span>
                         </div>
@@ -880,7 +860,7 @@ export const AdminQAView = memo(function AdminQAView({
                         />
                       </div>
                       <div className="flex min-w-0 flex-col">
-                        <span className="mb-1 text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
+                        <span className="mb-1 text-[11px] font-black uppercase leading-none tracking-widest text-zinc-500">
                           Referente ao produto
                         </span>
                         <span className="max-w-[220px] truncate text-xs font-black uppercase text-zinc-300">
@@ -894,18 +874,18 @@ export const AdminQAView = memo(function AdminQAView({
                   <div className="flex shrink-0 items-center justify-end gap-3 md:flex-col">
                     {isConfirmingDelete ? (
                       <div className="flex w-28 flex-col gap-1 rounded-2xl border border-red-500/20 bg-red-950/40 p-2 text-center">
-                        <span className="mb-1 text-[8px] font-black uppercase tracking-wider text-red-400">
+                        <span className="mb-1 text-[11px] font-black uppercase tracking-wider text-red-400">
                           Excluir?
                         </span>
                         <button
                           onClick={() => handleDelete(q.id)}
-                          className="w-full rounded-xl bg-red-500 py-1.5 text-[10px] font-black text-white transition-colors hover:bg-red-400"
+                          className="w-full rounded-xl bg-red-500 py-1.5 text-[11px] font-black text-white transition-colors hover:bg-red-400"
                         >
                           Sim, Excluir
                         </button>
                         <button
                           onClick={() => setConfirmDeleteId(null)}
-                          className="mt-0.5 w-full py-1 text-[10px] font-bold text-zinc-400 transition-colors hover:text-white"
+                          className="mt-0.5 w-full py-1 text-[11px] font-bold text-zinc-400 transition-colors hover:text-white"
                         >
                           Cancelar
                         </button>
@@ -957,12 +937,12 @@ export const AdminQAView = memo(function AdminQAView({
                               <div className="flex size-5 items-center justify-center rounded-lg bg-emerald-500/25 text-emerald-400">
                                 <Send className="size-2.5" />
                               </div>
-                              <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                              <span className="text-[11px] font-black uppercase tracking-widest text-emerald-400">
                                 Resposta da Loja
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="mr-1 text-[9px] font-bold text-zinc-500">
+                              <span className="mr-1 text-[11px] font-bold text-zinc-500">
                                 {new Date(ans.createdAt).toLocaleDateString(
                                   "pt-BR",
                                 )}
@@ -973,7 +953,7 @@ export const AdminQAView = memo(function AdminQAView({
                                   setSelectedQuestion(q);
                                   setAnswer(ans.answer);
                                 }}
-                                className="rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-[9px] font-black text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+                                className="rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-black text-zinc-400 transition-all hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
                               >
                                 Editar
                               </button>
@@ -1030,10 +1010,10 @@ export const AdminQAView = memo(function AdminQAView({
   return (
     <div
       ref={viewRef}
-      className="h-auto bg-[#09090b] pb-admin lg:pb-12 text-zinc-100 duration-200 animate-in fade-in selection:bg-emerald-500/30"
+      className="h-auto bg-admin-bg pb-admin lg:pb-12 text-zinc-100 duration-200 animate-in fade-in selection:bg-emerald-500/30"
     >
       {/* Header Sticky */}
-      <div className="sticky top-0 z-50 bg-[#09090b]/80 p-2 pb-0 backdrop-blur-md sm:p-4">
+      <div className="sticky top-0 z-50 bg-admin-bg/80 p-2 pb-0 backdrop-blur-md sm:p-4">
         <div className="admin-glass rounded-2xl border border-white/5 p-3 shadow-2xl sm:rounded-[2rem] sm:p-4">
           <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
             {/* Title & Stats */}
@@ -1048,7 +1028,7 @@ export const AdminQAView = memo(function AdminQAView({
                       type="button"
                       onClick={() => setShowHelpModal(true)}
                       className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                      title="Guia de Q&A e Ajuda"
+                      title="Guia das perguntas e ajuda"
                     >
                       <HelpCircle className="size-4.5" />
                     </button>
@@ -1062,7 +1042,7 @@ export const AdminQAView = memo(function AdminQAView({
                   className="shrink-0 rounded-lg border border-admin-gold/20 bg-admin-gold/10 px-2 py-0.5"
                   title="Total de perguntas"
                 >
-                  <p className="text-[9px] font-black uppercase tracking-widest text-admin-gold sm:text-[10px]">
+                  <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold sm:text-[11px]">
                     {totalCount}
                   </p>
                 </div>
@@ -1072,7 +1052,7 @@ export const AdminQAView = memo(function AdminQAView({
                     title="Pendentes"
                   >
                     <span className="size-1 rounded-full bg-amber-500" />
-                    <span className="text-[9px] font-black tracking-widest text-amber-400 sm:text-[10px]">
+                    <span className="text-[11px] font-black tracking-widest text-amber-400 sm:text-[11px]">
                       {pendingCount} PENDENTES
                     </span>
                   </div>
@@ -1115,7 +1095,7 @@ export const AdminQAView = memo(function AdminQAView({
                       setFilter("pending");
                       setPage(0);
                     }}
-                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                       filter === "pending"
                         ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
@@ -1128,7 +1108,7 @@ export const AdminQAView = memo(function AdminQAView({
                       setFilter("all");
                       setPage(0);
                     }}
-                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-widest transition-all ${
                       filter === "all"
                         ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
@@ -1176,7 +1156,7 @@ export const AdminQAView = memo(function AdminQAView({
           active={active}
           cards={kpiCards}
           loading={loading && !cachedQAStats}
-          title="Métricas de Suporte (SAC)"
+          title="Resumo das perguntas"
         />
       </div>
 
@@ -1221,7 +1201,7 @@ export const AdminQAView = memo(function AdminQAView({
                 className="group flex h-12 items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-6 text-zinc-400 transition-all hover:border-white/20 hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-30"
               >
                 <ChevronLeft className="size-5 transition-transform group-hover:-translate-x-1" />
-                <span className="mt-0.5 text-[10px] font-black uppercase tracking-widest">
+                <span className="mt-0.5 text-[11px] font-black uppercase tracking-widest">
                   Anterior
                 </span>
               </button>
@@ -1237,7 +1217,7 @@ export const AdminQAView = memo(function AdminQAView({
                 disabled={page === totalPages - 1}
                 className="group flex h-12 items-center gap-3 rounded-2xl border border-emerald-400 bg-emerald-500 px-6 font-black text-white shadow-lg shadow-emerald-500/20 transition-all hover:bg-emerald-400 disabled:pointer-events-none disabled:opacity-30"
               >
-                <span className="mt-0.5 text-[10px] uppercase tracking-widest">
+                <span className="mt-0.5 text-[11px] uppercase tracking-widest">
                   Seguinte
                 </span>
                 <ChevronRight className="size-5 transition-transform group-hover:translate-x-1" />
@@ -1254,7 +1234,7 @@ export const AdminQAView = memo(function AdminQAView({
           if (!open) handleCloseDialog();
         }}
       >
-        <DialogContent className="overflow-hidden rounded-[2.5rem] border-white/10 bg-[#09090b] p-0 shadow-2xl sm:max-w-xl">
+        <DialogContent className="overflow-hidden rounded-[2.5rem] border-white/10 bg-admin-bg p-0 shadow-2xl sm:max-w-xl">
           {activeDialogQuestion && (
             <div className="p-8 md:p-10">
               <DialogHeader className="mb-8">
@@ -1274,7 +1254,7 @@ export const AdminQAView = memo(function AdminQAView({
                   <div className="absolute right-0 top-0 p-4 opacity-10">
                     <MessageSquare className="size-12" />
                   </div>
-                  <span className="mb-2 block text-[9px] font-black uppercase tracking-widest text-zinc-500">
+                  <span className="mb-2 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                     Pergunta Original
                   </span>
                   <p className="relative z-10 text-sm font-medium italic leading-relaxed text-zinc-300">
@@ -1286,11 +1266,11 @@ export const AdminQAView = memo(function AdminQAView({
                   <div className="ml-1 flex items-center justify-between">
                     <label
                       htmlFor="merchant-answer"
-                      className="text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                      className="text-[11px] font-black uppercase tracking-widest text-zinc-500"
                     >
                       Sua Mensagem Specialist
                     </label>
-                    <span className="text-[10px] font-bold text-zinc-500">
+                    <span className="text-[11px] font-bold text-zinc-500">
                       {answer.length} caracteres
                     </span>
                   </div>
@@ -1311,7 +1291,7 @@ export const AdminQAView = memo(function AdminQAView({
                     />
                     <div className="pointer-events-none absolute bottom-4 right-6 flex items-center gap-2 opacity-40">
                       <Send className="size-4 text-emerald-400" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-white">
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-white">
                         Notificar Cliente
                       </span>
                     </div>
@@ -1366,17 +1346,17 @@ export const AdminQAView = memo(function AdminQAView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Guia de Dúvidas (Q&A)"
+        title="Como funcionam as perguntas"
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            A Central de Perguntas & Respostas funciona como um canal de suporte
-            assíncrono (SAC) diretamente na página dos produtos. Responder essas
-            dúvidas ajuda a aumentar a taxa de conversão da loja.
+            Aqui você responde as dúvidas que os clientes deixam na página dos
+            produtos, sem precisar de conversa ao vivo. Responder essas dúvidas
+            ajuda a vender mais.
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Fluxo Operacional
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

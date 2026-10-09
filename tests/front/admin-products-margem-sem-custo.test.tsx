@@ -267,7 +267,8 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
   /** Raiz do cartão detalhado de UM produto — classe exclusiva
    * (`content-visibility-detailed-card`, AdminProductsView.tsx:1462).
-   * Necessário para escopar as buscas abaixo: o rótulo "Capital Alocado"
+   * Necessário para escopar as buscas abaixo: o rótulo "Dinheiro parado em
+   * estoque" (antes "Capital Alocado")
    * também existe no dicionário do modal de ajuda global (~linha 920),
    * sempre presente no DOM mesmo fechado (Radix Dialog sem `forceMount`
    * ainda assim renderizou o conteúdo neste jsdom) — sem escopo, `find()`
@@ -299,7 +300,8 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     };
   }
 
-  /** Acha o valor pelo RÓTULO vizinho ("Capital Alocado" / "Potencial"),
+  /** Acha o valor pelo RÓTULO vizinho ("Dinheiro parado em estoque" /
+   * "Potencial"),
    * escopado ao cartão do produto — em vez de por classe Tailwind com
    * barra (`text-white/80`), que exigiria escapar "/" no seletor CSS. */
   function lerValorPeloRotulo(rotulo: string): string | null {
@@ -312,7 +314,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
   function lerCapitalEPotencial() {
     return {
-      capitalTexto: lerValorPeloRotulo("Capital Alocado"),
+      capitalTexto: lerValorPeloRotulo("Dinheiro parado em estoque"),
       potencialTexto: lerValorPeloRotulo("Potencial"),
     };
   }
@@ -409,6 +411,23 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
     expect(hospedeiro.textContent).not.toContain("Sem Custo Cadastrado");
     expect(hospedeiro.textContent).not.toContain("Custo Suspeito");
+
+    // Resto do jargão (painel simples, onda 3): os cartões do topo e a
+    // ajuda falam a língua da loja; o número continua o mesmo.
+    const tela = hospedeiro.textContent ?? "";
+    expect(tela).toContain("Dinheiro parado em estoque");
+    expect(tela).toContain("Lucro se vender tudo");
+    // O KPI do topo é markup ((Preço−Custo)÷Custo): "Margem" é só a do
+    // produto, calculada sobre o preço. Os dois não podem ter o mesmo nome.
+    expect(tela).toContain("Lucro sobre o custo %");
+    expect(tela).not.toContain("Margem %");
+    expect(tela).not.toContain("Retorno sobre o custo");
+    expect(tela).not.toContain("Capital Alocado");
+    expect(tela).not.toContain("Lucro Potencial");
+    expect(tela).not.toContain("Rendimento %");
+    // Botões da lista: verbo + substantivo em minúscula, como o resto do painel.
+    expect(tela).toContain("Novo produto");
+    expect(tela).not.toContain("Novo Produto");
   });
 
   it("custo na faixa suspeita (0,05): etiqueta continua aparecendo, como hoje", async () => {

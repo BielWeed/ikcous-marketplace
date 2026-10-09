@@ -58,7 +58,7 @@ import {
 /** Ordenações da fileira de chips abaixo da busca (o funil dropdown virou
  * chips — pedido do Gabriel de 02/09; mesmos pares campo/direção de antes). */
 const ORDENACOES_CLIENTES = [
-  { campo: "total_spent", direcao: "desc", rotulo: "Maior LTV" },
+  { campo: "total_spent", direcao: "desc", rotulo: "Maior total comprado" },
   { campo: "orders_count", direcao: "desc", rotulo: "Mais Pedidos" },
   { campo: "full_name", direcao: "asc", rotulo: "Alfabética" },
 ] as const;
@@ -66,8 +66,9 @@ const ORDENACOES_CLIENTES = [
 /** Mesmo par campo/direção de ORDENACOES_CLIENTES, como `Map` — pra
  * `handleSort` (abaixo) usar a direção-padrão de CADA campo no primeiro
  * clique do cabeçalho da coluna, igual ao chip equivalente (achado
- * AdminCustomersView-636: o cabeçalho "LTV (Gasto)" começava em "asc",
- * ao contrário do chip "Maior LTV", que é "desc"). `Map.get` em vez de
+ * AdminCustomersView-636: o cabeçalho "Total já comprado" (antes "LTV
+ * (Gasto)") começava em "asc", ao contrário do chip "Maior total comprado",
+ * que é "desc"). `Map.get` em vez de
  * indexar um objeto por campo dinâmico: o eslint-plugin-security acusa
  * `detect-object-injection` em `objeto[variável]` mesmo quando a chave
  * vem de uma união fechada — mesmo padrão de CustomerPaymentBadge.tsx
@@ -273,7 +274,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
         subValue: "Crescimento",
       },
       {
-        label: "Ticket Médio",
+        label: "Valor médio por venda",
         // Até 21/08/2026 este card CALCULAVA `global_ltv / global_orders`
         // a partir de `get_admin_customers_paged` — que, NAQUELA ÉPOCA,
         // filtrava pedidos só por status (`NOT IN ('cancelled','returned')`),
@@ -372,9 +373,9 @@ export const AdminCustomersView = memo(function AdminCustomersView({
   const paginatedCustomers = customers; // Already paginated from server
 
   // `sortField`/`sortDirection` já NASCEM como "total_spent"/"desc" (linhas
-  // 111-112, pra bater com o chip "Maior LTV" antes de qualquer clique). O
-  // defeito 636 era comparar `sortField === field` contra esse estado
-  // pré-populado: no primeiro clique em "LTV (Gasto)" isso parecia "o
+  // 111-112, pra bater com o chip "Maior total comprado" antes de qualquer
+  // clique). O defeito 636 era comparar `sortField === field` contra esse
+  // estado pré-populado: no primeiro clique em "Total já comprado" parecia "o
   // lojista já tinha escolhido total_spent" e caía direto no ramo de
   // alternância, invertendo pra "asc" — menor gasto no topo, ao contrário
   // do chip. Este ref guarda "o lojista já clicou em ALGUM cabeçalho
@@ -506,7 +507,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           {/* Sticky de filha DIRETA deste bloco (que contém a lista): sticky
               só anda dentro do próprio containing block — embrulhada num
               wrapper da própria altura ela nunca gruda (achado 1 da revisão). */}
-          <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+          <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
             <div className="flex w-full items-center gap-3">
               <div className="group relative w-full flex-1">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -576,7 +577,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                     shouldScrollToTop.current = true;
                   }}
                   className={cn(
-                    "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                    "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                     sortField === o.campo && sortDirection === o.direcao
                       ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                       : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -613,7 +614,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                       <p className="text-sm font-bold uppercase tracking-widest text-zinc-500">
                         Nenhum cliente retornado
                       </p>
-                      <p className="mt-2 text-[10px] text-zinc-600">
+                      <p className="mt-2 text-[11px] text-zinc-600">
                         Revise os filtros ou sua pesquisa.
                       </p>
                     </div>
@@ -637,7 +638,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
                           Cliente
                         </span>
                         <ArrowUpDown className="size-3 text-zinc-600 transition-all group-hover/th:translate-y-0.5 group-hover/th:text-admin-gold" />
@@ -654,8 +655,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
-                          Contato / Role
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                          Contato / Tipo de conta
                         </span>
                         <ArrowUpDown className="size-3 text-zinc-600 transition-all group-hover/th:translate-y-0.5 group-hover/th:text-admin-gold" />
                       </div>
@@ -671,8 +672,8 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
-                          LTV (Gasto)
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                          Total já comprado
                         </span>
                         <ArrowUpDown className="size-3 text-zinc-600 transition-all group-hover/th:translate-y-0.5 group-hover/th:text-admin-gold" />
                       </div>
@@ -688,12 +689,12 @@ export const AdminCustomersView = memo(function AdminCustomersView({
                           }
                         }}
                       >
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500 transition-colors group-hover/th:text-admin-gold">
                           Pedidos
                         </span>
                       </div>
                       <div className="col-span-2 flex items-center justify-end">
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                        <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                           Gestão
                         </span>
                       </div>
@@ -755,7 +756,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Métricas e Conceitos
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -773,7 +774,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Wallet className="size-4 text-admin-gold" />
-                  LTV (Lifetime Value)
+                  Total já comprado
                 </div>
                 <p className="text-xs text-zinc-400">
                   O valor financeiro total gasto por um cliente ao longo de todo
@@ -867,7 +868,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
               {customer.full_name || "Usuário"}
             </h4>
             <Badge
-              className={`rounded-md border px-2 py-0.5 text-[8px] font-black uppercase tracking-widest sm:text-[9px] ${
+              className={`rounded-md border px-2 py-0.5 text-[11px] font-black uppercase tracking-widest sm:text-[11px] ${
                 customer.role === "admin"
                   ? "border-admin-gold/50 bg-admin-gold text-black"
                   : "border-zinc-800/80 bg-zinc-950 text-zinc-500 shadow-inner"
@@ -880,10 +881,10 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
             </Badge>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <span className="rounded border border-white/5 bg-black/20 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-widest text-zinc-600">
+            <span className="rounded border border-white/5 bg-black/20 px-1.5 py-0.5 font-mono text-[11px] font-bold tracking-widest text-zinc-600">
               #{customer.id.slice(0, 8).toUpperCase()}
             </span>
-            <span className="truncate text-[9px] font-bold uppercase tracking-widest text-zinc-600 md:hidden">
+            <span className="truncate text-[11px] font-bold uppercase tracking-widest text-zinc-600 md:hidden">
               Desde {new Date(customer.created_at).toLocaleDateString("pt-BR")}
             </span>
           </div>
@@ -919,11 +920,11 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
       <div className="grid grid-cols-2 justify-between gap-4 md:col-span-3 md:flex md:items-center md:justify-end">
         {/* Desktop: LTV | Mobile: Col 1 */}
         <div className="flex flex-col items-start gap-1.5 md:w-full md:items-end">
-          <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600 md:hidden">
-            LTV Total
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 md:hidden">
+            Total já comprado
           </span>
           <div className="flex min-w-[100px] items-center gap-1.5 rounded-xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 px-3 py-2 text-sm font-black text-white shadow-inner transition-colors group-hover:border-admin-gold/30 md:min-w-0 xl:text-base">
-            <span className="text-[10px] leading-none text-zinc-500">R$</span>
+            <span className="text-[11px] leading-none text-zinc-500">R$</span>
             <span className="leading-none">
               {Number(customer.total_spent || 0).toLocaleString("pt-BR", {
                 minimumFractionDigits: 2,
@@ -934,7 +935,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
 
         {/* Desktop: Orders | Mobile: Col 2 */}
         <div className="flex flex-col items-end gap-1.5 md:items-center">
-          <span className="text-right text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600 md:hidden">
+          <span className="text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 md:hidden">
             Pedidos
           </span>
           <div className="flex size-10 shrink-0 items-center justify-center rounded-[0.8rem] border border-zinc-800/80 bg-gradient-to-b from-zinc-900 to-zinc-950 shadow-inner transition-colors group-hover:border-admin-gold/50 group-hover:bg-black group-hover:text-admin-gold sm:size-11">
@@ -948,7 +949,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
       {/* Column 5: Desktop Date (hidden on mobile, inline above) */}
       <div className="hidden flex-col items-end gap-1.5 md:col-span-1 md:flex">
         <div
-          className="flex w-full items-center justify-center truncate rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-zinc-400 shadow-inner"
+          className="flex w-full items-center justify-center truncate rounded-lg border border-zinc-800/80 bg-zinc-950/80 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-zinc-400 shadow-inner"
           title={
             customer.last_order_date
               ? new Date(customer.last_order_date).toLocaleDateString()
@@ -979,19 +980,19 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
               align="end"
               className="z-[100] w-[200px] rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
             >
-              <DropdownMenuLabel className="p-3 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+              <DropdownMenuLabel className="p-3 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                 Gestão de Cliente
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-zinc-800/60" />
               <DropdownMenuItem
-                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
+                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
                 onClick={() => onNavigate("admin-user-detail", customer.id)}
               >
                 <Shield className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
                 Ver Perfil Elite
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
+                className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
                 onClick={() => onNavigate("admin-push", customer.id)}
               >
                 <Zap className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
@@ -1064,19 +1065,19 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
                 align="end"
                 className="z-[100] w-[180px] rounded-2xl border border-zinc-800/80 bg-zinc-950/95 p-2 shadow-[0_20px_50px_rgba(0,0,0,0.8)] backdrop-blur-2xl"
               >
-                <DropdownMenuLabel className="p-2.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                <DropdownMenuLabel className="p-2.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                   Gestão de Cliente
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator className="bg-zinc-800/60" />
                 <DropdownMenuItem
-                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[9px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
+                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
                   onClick={() => onNavigate("admin-user-detail", customer.id)}
                 >
                   <Shield className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
                   Ver Perfil Elite
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[9px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
+                  className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
                   onClick={() => onNavigate("admin-push", customer.id)}
                 >
                   <Zap className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
@@ -1095,7 +1096,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <Badge
               className={cn(
-                "px-1.5 py-0.5 rounded-md text-[7px] font-black tracking-widest uppercase border",
+                "px-1.5 py-0.5 rounded-md text-[11px] font-black tracking-widest uppercase border",
                 customer.role === "admin"
                   ? "bg-admin-gold text-black border-admin-gold/50"
                   : "bg-zinc-950 text-zinc-500 border-zinc-800/80 shadow-inner",
@@ -1103,14 +1104,14 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
             >
               {customer.role}
             </Badge>
-            <span className="rounded border border-white/5 bg-black/20 px-1 py-0.5 font-mono text-[8px] font-bold text-zinc-600">
+            <span className="rounded border border-white/5 bg-black/20 px-1 py-0.5 font-mono text-[11px] font-bold text-zinc-600">
               #{customer.id.slice(0, 8).toUpperCase()}
             </span>
           </div>
         </div>
 
         {/* Email & Phone */}
-        <div className="mt-3 space-y-1 text-[10px] text-zinc-400">
+        <div className="mt-3 space-y-1 text-[11px] text-zinc-400">
           <div className="flex items-center gap-1.5 truncate">
             <Mail className="size-3 shrink-0 text-zinc-600" />
             <span className="truncate">{customer.email || "N/A"}</span>
@@ -1127,18 +1128,18 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       {/* Bottom KPIs: LTV & Pedidos */}
       <div className="relative z-10 mt-4 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
         <div className="flex flex-col">
-          <span className="text-[7px] font-black uppercase tracking-[0.2em] text-zinc-600">
-            LTV Total
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+            Total já comprado
           </span>
           <span className="mt-0.5 text-xs font-black text-white">
-            <span className="mr-0.5 text-[9px] text-zinc-500">R$</span>
+            <span className="mr-0.5 text-[11px] text-zinc-500">R$</span>
             {Number(customer.total_spent || 0).toLocaleString("pt-BR", {
               minimumFractionDigits: 2,
             })}
           </span>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-[7px] font-black uppercase tracking-[0.2em] text-zinc-600">
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
             Pedidos
           </span>
           <span className="mt-0.5 text-xs font-black text-admin-gold">
