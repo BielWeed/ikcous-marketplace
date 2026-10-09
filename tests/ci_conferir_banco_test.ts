@@ -5685,3 +5685,252 @@ Deno.test("14a/14b — o rpc-ci.yml roda as duas provas vivas do contador duplic
       );
   }
 });
+
+// 15a/15b (09/10/2026) — a PROVA DE OBJETOS do lote da migration 20261208000000 (o
+// checkout mostra os cupons da cliente: `coupons.alcance`, `cupom_clientes`,
+// `cupons_do_checkout`, as duas funções do painel, o gatilho do exclusivo e a nova
+// `validate_coupon_secure_v2`) em scripts/frota/canais-de-backend.json. A 15a é a consulta
+// do lote (DEPOIS do apply); a 15b é a de ausência (ANTES). As duas são de ROL FECHADO.
+// Estes testes medem o texto dos .sql contra a migration DESTA árvore; a decisão de cada
+// consulta num Postgres real está em tests/banco/cupons-do-checkout-portao-viva.cjs
+// (rodado no rpc-ci.yml).
+const NOME_15B = "15b-antes-cupons-do-checkout-pecas-ausentes";
+
+/** O que cada consulta de 15 pode ler: catálogo e as CTEs da própria consulta. Nenhuma tabela de dados. */
+const PERMITIDOS_15B = [
+  "pg_proc",
+  "pg_namespace",
+  "pg_attribute",
+  "pg_constraint",
+  "pg_trigger",
+  "pg_index",
+  "pg_class",
+  "unnest",
+  // CTEs desta consulta
+  "tab",
+  "va",
+  "gat",
+  "faltam",
+  "admin_faltam",
+  "idx",
+  "itens",
+];
+
+const { ROL_DA_15B } = require(SCRIPT);
+for (const [nome, nItens, rol, permitidos] of [
+  [NOME_15B, 15, ROL_DA_15B, PERMITIDOS_15B],
+] as Array<[string, number, string[], string[]]>) {
+  Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo, saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+    await t.step("está no menu do workflow", async () => {
+      const yaml = await Deno.readTextFile(WORKFLOW);
+      const i = yaml.indexOf("consulta:");
+      assert(i >= 0, "não achei a entrada `consulta`");
+      assert(
+        yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+        `falta a opção ${nome} no workflow`,
+      );
+    });
+    await t.step(
+      "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com as reprovadas primeiro",
+      () => {
+        assertEquals(contarStatements(sql), 1);
+        assert(/^\s*WITH\b/i.test(limpo));
+        assert(
+          !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+            semTexto,
+          ),
+          "palavra de escrita fora de comentário/string",
+        );
+        assert(
+          !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+            semTexto,
+          ),
+          "SQL dinâmico (ou leitura de arquivo)",
+        );
+        assert(
+          /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+            limpo,
+          ),
+          "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+        );
+      },
+    );
+    await t.step(
+      "SÓ catálogo: nenhuma tabela de dados (pedido, cupom, loja, cliente) e nenhuma coluna de cliente ou dinheiro",
+      () => {
+        const ok = new Set(permitidos);
+        const alvos = [
+          ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+        ].map((m) => m[1].toLowerCase());
+        assert(alvos.length > 0);
+        for (const alvo of alvos)
+          assert(ok.has(alvo), `lê de "${alvo}", que não é catálogo nem CTE`);
+        assert(
+          !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|amount|total|subtotal|discount|gateway_payment_id|payment_status|paid_at|code|value|usage_count)\b/i.test(
+            semTexto,
+          ),
+          "a consulta citaria dado pessoal, financeiro ou o código de um cupom fora de um literal",
+        );
+      },
+    );
+    await t.step(
+      `o rol fechado do código tem ${nItens} itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)`,
+      () => {
+        assertEquals(rol.length, nItens);
+        assertEquals(new Set(rol).size, rol.length);
+        assertEquals(
+          Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+            ([n]) => n === nome,
+          )?.[1],
+          rol,
+        );
+        for (const item of rol)
+          assertStringIncludes(
+            limpo,
+            `'${item}'`,
+            `o item do rol "${item}" não existe no .sql`,
+          );
+        const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',/g)].map(
+          (m) => m[1],
+        );
+        assertEquals(
+          doSql.length,
+          nItens,
+          `o .sql monta ${nItens} linhas de resultado`,
+        );
+        for (const item of doSql)
+          assert(
+            rol.includes(item),
+            `o .sql monta "${item}" e o rol do código não o tem`,
+          );
+      },
+    );
+  });
+}
+
+Deno.test("15b — os hashes são EXATAMENTE os do corpo da 20261203000000 (LF e CRLF) que o pré-voo da migration aceita; o corpo NOVO reprova de propósito (a 15b é o 'antes')", async () => {
+  const h = await hashesDaMigration203();
+  const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_15B}.sql`);
+  const limpo = sqlSemComentarios(sql);
+  const hex = [...limpo.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
+  assertEquals([...new Set(hex)].sort(), [h.novoLF, h.novoCRLF].sort());
+  assert(
+    limpo.includes(`'${h.novoLF}',\n`),
+    "o `esperado` é o LF; o CRLF só entra na lista de aceitos",
+  );
+  // o corpo NOVO da 208 (e o do baseline antigo) nunca é aceito aqui
+  for (const proibido of [h.suc208LF, h.suc208CRLF, h.baseLF, h.baseCRLF])
+    assert(!limpo.includes(proibido), `a 15b aceitaria ${proibido}`);
+  // e são os mesmos quatro literais do pré-voo da migration (203 LF/CRLF + 208 LF/CRLF)
+  const mig = (await Deno.readTextFile(MIGRACAO_208)).replace(/\r\n/g, "\n");
+  const pre = mig.match(
+    /IF v_hash IS NULL OR v_hash NOT IN \(([\s\S]*?)\) THEN/,
+  );
+  assert(pre, "não achei a lista de hashes do pré-voo da migration");
+  const doPre = [...pre[1].matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]);
+  assertEquals(doPre, [h.novoLF, h.novoCRLF, h.suc208LF, h.suc208CRLF]);
+});
+
+Deno.test("15b — espelha o PRÉ-VOO da migration 20261208000000: as mesmas 16 colunas, as mesmas 3 funções do admin atual, o mesmo índice, e a ausência de TUDO que ela cria (pelo nome que a migration usa)", async () => {
+  const sql = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_15B}.sql`),
+  );
+  const mig = (await Deno.readTextFile(MIGRACAO_208)).replace(/\r\n/g, "\n");
+  const migSem = mig
+    .split("\n")
+    .filter((l) => !/^\s*--/.test(l))
+    .join("\n");
+  const lista = (texto: string, abre: RegExp) => {
+    const m = texto.match(abre);
+    assert(m, `não achei a lista ${abre}`);
+    return [...m[1].matchAll(/'([a-z_.]+)'/g)].map((x) => x[1]);
+  };
+  const colunasMig = lista(
+    migSem,
+    /FOREACH v_item IN ARRAY ARRAY\[([\s\S]*?)\] LOOP/,
+  );
+  const colunas15b = lista(
+    sql,
+    /unnest\(ARRAY\[([\s\S]*?)\]\) AS v\(item\)\s+WHERE NOT EXISTS/,
+  );
+  assertEquals(colunas15b.length, 16);
+  assertEquals(colunas15b, colunasMig);
+  // as três funções do admin atual
+  for (const f of ["is_admin()", "is_admin_atual()", "rls_admin_atual()"]) {
+    assertStringIncludes(sql, `'${f}'`);
+    assertStringIncludes(migSem, `to_regprocedure('public.${f}')`);
+  }
+  // o gatilho da 203 tem de estar ATIVO e o índice tem o predicado que a migration exige
+  assertStringIncludes(
+    migSem,
+    "tgname = 'tr_pedido_com_cupom_exige_a_chave_ligada'",
+  );
+  assertStringIncludes(
+    sql,
+    "t.tgname = 'tr_pedido_com_cupom_exige_a_chave_ligada'",
+  );
+  assertStringIncludes(migSem, "'idempotency_keyisnotnull'");
+  assertStringIncludes(sql, "'idempotency_keyisnotnull'");
+  assertStringIncludes(migSem, "marketplace_orders_chave_da_compra_unica");
+  assertStringIncludes(sql, "marketplace_orders_chave_da_compra_unica");
+  // a ausência de tudo que a migration cria, pelo nome dela
+  for (const [naMig, naConsulta] of [
+    [
+      "ADD COLUMN IF NOT EXISTS alcance text NOT NULL DEFAULT 'codigo'",
+      "a.attname = 'alcance'",
+    ],
+    [
+      "conname = 'coupons_alcance_check'",
+      "c.conname = 'coupons_alcance_check'",
+    ],
+    [
+      "CREATE TABLE IF NOT EXISTS public.cupom_clientes",
+      "to_regclass('public.cupom_clientes')",
+    ],
+    [
+      "CREATE OR REPLACE FUNCTION public.cupons_do_checkout(",
+      "p.proname = 'cupons_do_checkout'",
+    ],
+    [
+      "CREATE OR REPLACE FUNCTION public.admin_cupom_clientes(",
+      "p.proname = 'admin_cupom_clientes'",
+    ],
+    [
+      "CREATE OR REPLACE FUNCTION public.admin_cupom_definir_clientes(",
+      "p.proname = 'admin_cupom_definir_clientes'",
+    ],
+    [
+      "CREATE OR REPLACE FUNCTION public.pedido_com_cupom_so_nasce_para_a_lista(",
+      "p.proname = 'pedido_com_cupom_so_nasce_para_a_lista'",
+    ],
+    [
+      "CREATE OR REPLACE TRIGGER tr_pedido_com_cupom_so_nasce_para_a_lista",
+      "t.tgname = 'tr_pedido_com_cupom_so_nasce_para_a_lista'",
+    ],
+  ] as Array<[string, string]>) {
+    assertStringIncludes(migSem, naMig);
+    assertStringIncludes(sql, naConsulta);
+  }
+  // não ficou nenhuma peça nova sem linha de ausência: o que a migration cria é isto e só isto
+  const criados = [
+    ...migSem.matchAll(
+      /CREATE (?:OR REPLACE )?(FUNCTION|TABLE|TRIGGER|INDEX)(?: IF NOT EXISTS)?(?: UNIQUE)? (?:public\.)?(\w+)/g,
+    ),
+  ]
+    .map((m) => `${m[1]} ${m[2]}`)
+    .sort();
+  assertEquals(criados, [
+    "FUNCTION admin_cupom_clientes",
+    "FUNCTION admin_cupom_definir_clientes",
+    "FUNCTION cupons_do_checkout",
+    "FUNCTION pedido_com_cupom_so_nasce_para_a_lista",
+    "FUNCTION validate_coupon_secure_v2",
+    "INDEX idx_cupom_clientes_user_id",
+    "TABLE cupom_clientes",
+    "TRIGGER tr_pedido_com_cupom_so_nasce_para_a_lista",
+  ]);
+});
