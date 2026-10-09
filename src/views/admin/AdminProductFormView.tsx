@@ -475,6 +475,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
+  // `key` da seção "Variações": muda UMA vez quando um RASCUNHO com variações
+  // é aplicado depois da montagem (o `abertaInicial` da seção só vale na
+  // montagem, e o rascunho chega por efeito/toast, já com o corpo montado).
+  // Sai no mesmo lote do `setFormData` do rascunho; edições normais não mexem.
+  const [chaveDasVariacoes, setChaveDasVariacoes] = useState(0);
 
   const [skuError, setSkuError] = useState("");
   // C5.2 — três estados para o código de barras do PRODUTO: `ErroLocal`
@@ -810,6 +815,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setFormData(draftFields);
           setInitialData(draftFields);
           setIsPromoActive(!!parsed.originalPrice);
+          if (draftFields.variants.length > 0) {
+            setChaveDasVariacoes((chave) => chave + 1);
+          }
 
           toast.success("Rascunho recuperado automaticamente!", {
             description:
@@ -910,6 +918,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 onClick: () => {
                   setFormData(draftFields);
                   setIsPromoActive(!!draftFields.originalPrice);
+                  if (draftFields.variants.length > 0) {
+                    setChaveDasVariacoes((chave) => chave + 1);
+                  }
                   toast.success("Rascunho restaurado!");
                 },
               },
@@ -1735,9 +1746,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       toast.error("Não é possível salvar alterações em modo offline.");
       return;
     }
-    // Erro de validação num campo: não grava; leva a lojista até ele (abre a
-    // seção recolhida, se for o caso). O botão já fica desligado nesse estado
-    // — isto cobre o envio do formulário por outro caminho (Enter, teclado).
+    // Rede de segurança: com erro bloqueante num campo não grava e leva até ele
+    // (abre a seção recolhida, se for o caso). Pela tela este ponto não é
+    // alcançável — o botão de salvar fica desligado nesse estado e o <form>
+    // não tem botão de envio; quem leva a lojista ao campo é o motivo do
+    // bloqueio, que vira botão (acima). Vale para um submit sintético.
     const campoComErro = idDoPrimeiroCampoComErro();
     if (campoComErro) {
       mostrarEFocarCampo(campoComErro);
@@ -2935,7 +2948,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
           >
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-            <span>{motivoDoBloqueio}</span>
+            {/* Com erro num CAMPO (e não foto subindo), o motivo vira um botão
+                de texto que leva até o campo — abre a seção recolhida onde o
+                erro ficou escondido e põe o foco nele. O botão de salvar
+                continua desligado; isto só mostra o caminho. */}
+            {!isImageUploading && idDoPrimeiroCampoComErro() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const id = idDoPrimeiroCampoComErro();
+                  if (id) mostrarEFocarCampo(id);
+                }}
+                className="min-h-11 text-left font-bold underline underline-offset-2"
+              >
+                {motivoDoBloqueio}
+              </button>
+            ) : (
+              <span>{motivoDoBloqueio}</span>
+            )}
           </p>
         )}
         {/* Visual Media Section */}
@@ -3622,6 +3652,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 expandido; sem variações, fechado. */}
             <div className="md:col-span-2">
               <SecaoRecolhivel
+                key={chaveDasVariacoes}
                 titulo="Variações"
                 resumo={
                   formData.variants.length === 0

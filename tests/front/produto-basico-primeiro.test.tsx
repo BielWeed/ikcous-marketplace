@@ -537,5 +537,128 @@ describe("AdminProductFormView — o básico primeiro (H1)", () => {
       await montar();
       expect(estaAberta("Variações")).toBe(false);
     });
+
+    it("produto novo com RASCUNHO que tem variação: 'Variações' abre quando o rascunho é aplicado", async () => {
+      armazem.set(
+        "ikcous_product_form_draft",
+        JSON.stringify({
+          name: "Produto Teste",
+          description: "Descrição de teste",
+          price: "10.00",
+          stock: "3",
+          category: "Geral",
+          variants: [variacao],
+        }),
+      );
+      await montar();
+      await act(async () => {
+        await esperar(50);
+      });
+
+      expect(campo("product-name").value).toBe("Produto Teste");
+      expect(estaAberta("Variações")).toBe(true);
+    });
+
+    it("produto novo com rascunho SEM variação: 'Variações' fechada", async () => {
+      armazem.set(
+        "ikcous_product_form_draft",
+        JSON.stringify({ name: "Produto Teste", variants: [] }),
+      );
+      await montar();
+      await act(async () => {
+        await esperar(50);
+      });
+      expect(campo("product-name").value).toBe("Produto Teste");
+      expect(estaAberta("Variações")).toBe(false);
+    });
+
+    it("'Restaurar' o rascunho de um produto salvo sem variações, com variação no rascunho, abre 'Variações'", async () => {
+      armazem.set(
+        "ikcous_product_form_draft_edit_prod-1",
+        JSON.stringify({ ...produtoDoBanco, variants: [variacao] }),
+      );
+      await montar("prod-1");
+      expect(estaAberta("Variações")).toBe(false);
+
+      const { toast } = await import("sonner");
+      const aviso = vi
+        .mocked(toast.info)
+        .mock.calls.find((c) => String(c[0]).includes("Rascunho não salvo"));
+      expect(aviso).toBeDefined();
+      const restaurar = (
+        aviso?.[1] as unknown as { action: { onClick: () => void } }
+      ).action.onClick;
+      await act(async () => {
+        restaurar();
+      });
+
+      expect(estaAberta("Variações")).toBe(true);
+    });
+
+    it("editar normalmente NÃO remonta a seção 'Variações' (mesmo painel, mesma escolha da lojista)", async () => {
+      fetchProduct.mockResolvedValue({
+        ...produtoDoBanco,
+        variants: [variacao],
+      });
+      await montar("prod-1");
+      const painel = painelDaSecao("Variações");
+      await clicar(botaoDaSecao("Variações"));
+      expect(estaAberta("Variações")).toBe(false);
+
+      await digitarCampo("product-name", "Camiseta nova");
+      await digitarCampo("product-sale-price", "7000");
+
+      expect(painelDaSecao("Variações")).toBe(painel);
+      expect(estaAberta("Variações")).toBe(false);
+    });
+  });
+
+  describe("d. o motivo do botão desligado leva ao campo com erro", () => {
+    function motivo(): HTMLElement {
+      return document.querySelector(
+        '[data-testid="motivo-do-bloqueio"]',
+      ) as HTMLElement;
+    }
+
+    it("com erro dentro de seção FECHADA, tocar no motivo abre a seção e foca o campo", async () => {
+      await montar();
+      await preencherOBasico();
+      await clicar(botaoDaSecao("Avançado"));
+      await digitarCampo("product-sku", "AB!");
+      await clicar(botaoDaSecao("Avançado"));
+      expect(estaAberta("Avançado")).toBe(false);
+
+      const botaoDoMotivo = motivo().querySelector("button");
+      expect(botaoDoMotivo).not.toBeNull();
+      expect(botaoDoMotivo?.getAttribute("type")).toBe("button");
+      expect(botaoDoMotivo?.textContent).toContain("corrija os campos");
+
+      await act(async () => {
+        botaoDoMotivo?.click();
+        await esperar(100);
+      });
+
+      expect(estaAberta("Avançado")).toBe(true);
+      expect(document.activeElement).toBe(campo("product-sku"));
+      expect(addProduct).not.toHaveBeenCalled();
+    });
+
+    it("o botão de salvar segue desligado (o motivo não o liga)", async () => {
+      await montar();
+      await preencherOBasico();
+      await clicar(botaoDaSecao("Avançado"));
+      await digitarCampo("product-sku", "AB!");
+      const publicar = [...document.querySelectorAll("button")].find((b) =>
+        b.textContent?.includes("Publicar"),
+      ) as HTMLButtonElement;
+      expect(publicar.disabled).toBe(true);
+    });
+
+    it("sem erro de campo (só falta preencher) o motivo aparece como texto, sem botão", async () => {
+      await montar();
+      expect(motivo()).not.toBeNull();
+      expect(motivo().textContent).toContain("falta preencher");
+      expect(motivo().querySelector("button")).toBeNull();
+    });
   });
 });
