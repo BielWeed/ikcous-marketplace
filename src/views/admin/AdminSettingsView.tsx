@@ -513,7 +513,10 @@ function GrupoDeAjustes({
   if (!grupo) return null;
   const subtitulo = subtitulos.get(chave);
   return (
-    <section className="space-y-3">
+    <section
+      id={`grupo-de-ajustes-${chave}`}
+      className="scroll-mt-24 space-y-3"
+    >
       <h2 className="px-1 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
         {grupo.titulo}
       </h2>
@@ -605,22 +608,17 @@ function IndicadorDoPainel({
   );
 }
 
-// ── Rótulos do painel de estado ─────────────────────────────────────────
-// PIX tem TRÊS níveis, réplica do ROTULO do StatusPagamentoPix (linhas
-// 55-59) — arquivo do Claude, fora da fronteira. O rascunho do desenho
-// pedia "PIX ativo / não configurado" (2 rótulos) e o crítico de desenho
-// do lote E vetou: com a chave pública ausente o pagamento está QUEBRADO
-// (a tela de pagamento nem carrega) e "ativo" mentiria — a mesma mentira
-// que o laudo 0109 (D1) combateu. E "desligado" é escolha da lojista
-// (pagamento na entrega), não "não configurado". "Funcionando" só vale
-// com `pagamentoOnlineLigado() && pixConfiguradoNoBuild(chave)`.
+// ── Nível do PIX ────────────────────────────────────────────────────────
+// TRÊS níveis, os mesmos do termômetro (StatusPagamentoPix). O rascunho do
+// desenho pedia "PIX ativo / não configurado" (2 rótulos) e o crítico de
+// desenho do lote E vetou: com a chave pública ausente o pagamento está
+// QUEBRADO (a tela de pagamento nem carrega) e "ativo" mentiria — a mesma
+// mentira que o laudo 0109 (D1) combateu. E "desligado" é escolha da
+// lojista (pagamento na entrega), não "não configurado". "Funcionando" só
+// vale com `pagamentoOnlineLigado() && pixConfiguradoNoBuild(chave)`. O
+// rótulo em si só o termômetro escreve (H6: o status do PIX aparece uma vez);
+// aqui o nível alimenta o subtítulo do grupo Pagamentos.
 type NivelDoPix = "ok" | "alerta" | "off";
-
-const ROTULO_DO_PIX = new Map<NivelDoPix, string>([
-  ["ok", "Funcionando"],
-  ["alerta", "Chave ausente"],
-  ["off", "Desligado"],
-]);
 
 export const AdminSettingsView = memo(function AdminSettingsView({
   onNavigate,
@@ -680,18 +678,20 @@ export const AdminSettingsView = memo(function AdminSettingsView({
 
   // ── Estado do PIX: MESMAS fontes do StatusPagamentoPix, avaliadas UMA
   // vez aqui no hub e compartilhadas pelo subtítulo de Pagamentos e pelo
-  // termômetro de "Minha loja está no ar?". O
+  // termômetro no topo do grupo Pagamentos — o ÚNICO status do PIX da tela
+  // (H6, painel simples; antes ele se repetia em "Minha loja está no ar?",
+  // em "Formas de pagamento" e no bloco do Mercado Pago). O
   // contrato de pix-configurado-no-build exige este import cru DENTRO deste
   // arquivo (mesma regra do AdminDashboardView) — não extrair para
   // componente/arquivo novo sem atualizar aquele teste.
   //
   // mp-9: `pagamentoOnlineLigado()` é o retrato SÍNCRONO da ficha injetada
-  // no BOOT da página. O interruptor "Receber PIX no app" (MercadoPagoSection,
-  // logo abaixo) escreve `store_config.pagamento_online` pela edge e devolve
+  // no BOOT da página. Salvar, testar, Pausar e Retomar (MercadoPagoSection,
+  // logo abaixo) escrevem `store_config.pagamento_online` pela edge e devolvem
   // o estado GRAVADO — sem este eco, a mesma tela mostrava dois estados do
-  // dinheiro (subtítulo de Pagamentos, "PIX: …" e termômetro presos no
-  // valor velho) até um recarregamento completo, enquanto a própria seção
-  // dizia "a vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
+  // dinheiro (subtítulo de Pagamentos e termômetro presos no valor velho)
+  // até um recarregamento completo, enquanto a própria seção dizia "a
+  // vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
   // propósito: a ficha global (configuracaoDaLoja) não se reescreve em
   // memória, e a vitrine segue com o atraso do cache do porteiro.
   const [pixLigado, setPixLigado] = useState(() => pagamentoOnlineLigado());
@@ -707,7 +707,18 @@ export const AdminSettingsView = memo(function AdminSettingsView({
     : pixChaveOk
       ? "ok"
       : "alerta";
-  const rotuloDoPix = ROTULO_DO_PIX.get(nivelDoPix) ?? "";
+
+  // "Ver o PIX em Pagamentos" (Minha loja está no ar?): abre a seção do
+  // Mercado Pago (o mesmo gatilho de "Configurar credenciais") e rola até o
+  // termômetro, no topo do grupo.
+  const irParaOPixEmPagamentos = () => {
+    setAbrirMercadoPagoGatilho((n) => n + 1);
+    setTimeout(() => {
+      document
+        .getElementById("grupo-de-ajustes-pagamentos")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   // FORMAS DE PAGAMENTO POR LOJA (25/09/2026): ausente/inválido cai nas 3
   // (mesma regra de tratamento de config velha/corrompida que o resto do
@@ -861,17 +872,23 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             {/* ── Pagamentos (peça 20, pedido do dono 14/09 por voz): o
                 lojista cadastra as chaves do Mercado Pago dele — guia com
                 prompt pronto para o agente de IA do app do MP, salvar e
-                testar conexão ali mesmo. Desde a mp-4 o interruptor
-                "Receber PIX no app" mora aqui dentro, e desde a mp-9 o que
-                ele grava volta por `onPixAlternado` para o subtítulo deste
-                grupo e para o termômetro de Ferramentas —
-                era a mesma tela contando dois estados do dinheiro. Nascida
-                FECHADA como as demais: ajuste feito uma vez. */}
+                testar conexão ali mesmo. Desde a mp-9 o que Salvar, Testar,
+                Pausar e Retomar gravam volta por `onPixAlternado` para o
+                subtítulo deste grupo e para o termômetro — era a mesma tela
+                contando dois estados do dinheiro. Nascida FECHADA como as
+                demais: ajuste feito uma vez. */}
             <GrupoDeAjustes
               chave="pagamentos"
               onNavigate={onNavigate}
               subtitulos={subtitulos}
             >
+              {/* O termômetro do PIX no TOPO do grupo: o ÚNICO status do PIX
+                  da tela (H6, painel simples, P2 aprovada). "Minha loja está
+                  no ar?", "Formas de pagamento" e o bloco do Mercado Pago
+                  deixaram de repetir o estado — cada um aponta para cá ou só
+                  traz a ação (Pausar/Retomar). */}
+              <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
+
               {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
                   brief) — a lojista decide primeiro O QUE aceita na
@@ -879,7 +896,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   pagamento pelo app. Nascida FECHADA como as demais. */}
               <SecaoColapsavel
                 titulo="Formas de pagamento"
-                subtitulo={`${formasNaEntrega.length} na entrega${pixLigado ? " + app" : ""}`}
+                subtitulo={`${formasNaEntrega.length} na entrega`}
                 icone={Banknote}
                 comPendencia={formasPagamentoPendente}
               >
@@ -989,15 +1006,29 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               </div>
               {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de
-                  trabalho; a tela abre mostrando o que o lojista edita). */}
+                  trabalho; a tela abre mostrando o que o lojista edita).
+                  Desde H6 mostra só a conexão; o PIX é um atalho para o
+                  termômetro de Pagamentos (um status do PIX só). */}
               <SecaoColapsavel
                 titulo="Minha loja está no ar?"
-                subtitulo={`PIX: ${rotuloDoPix}`}
+                subtitulo="A conexão deste aparelho com a loja"
                 icone={Activity}
               >
                 <div className="space-y-3">
-                  <StatusPagamentoPix ligado={pixLigado} chaveOk={pixChaveOk} />
                   <ConnectionDiagnosticsSection />
+                  <button
+                    type="button"
+                    onClick={irParaOPixEmPagamentos}
+                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 px-4 text-left text-[11px] font-bold text-zinc-300 transition-colors hover:border-admin-gold/30 hover:text-white"
+                  >
+                    <span>
+                      O estado do PIX pelo app fica no topo de Pagamentos.
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1 text-admin-gold">
+                      Ver o PIX em Pagamentos
+                      <ArrowUpRight className="size-3.5" />
+                    </span>
+                  </button>
                 </div>
               </SecaoColapsavel>
             </GrupoDeAjustes>

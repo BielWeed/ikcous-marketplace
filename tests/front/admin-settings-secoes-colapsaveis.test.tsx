@@ -276,7 +276,9 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     expect(mercadoPago.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("clicar no cabeçalho de Status expande o termômetro do PIX e o diagnóstico; segundo clique recolhe", async () => {
+  it("clicar no cabeçalho de Status expande o diagnóstico de conexão; segundo clique recolhe", async () => {
+    // H6 (painel simples): o termômetro do PIX saiu daqui para o topo de
+    // Pagamentos (um status do PIX só) — a seção mostra a conexão.
     await renderizar();
 
     const status = cabecalhoDaSecao("Minha loja está no ar?")!;
@@ -284,8 +286,8 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       status.click();
     });
 
-    // Expandida: termômetro do PIX visível (com o estado) e diagnóstico.
-    expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
+    // Expandida: diagnóstico de conexão visível.
+    expect(hospedeiro.textContent).toContain("Diagnóstico de Conexão");
     expect(status.getAttribute("aria-expanded")).toBe("true");
 
     await act(async () => {
@@ -296,7 +298,7 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 300));
     });
-    expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).not.toContain("Diagnóstico de Conexão");
   });
 
   // "clicar no cabeçalho de Identidade expande os campos da loja" morava
@@ -312,8 +314,11 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
       cabecalhoDaSecao("Minha loja está no ar?")!.click();
     });
 
-    expect(hospedeiro.textContent).toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).toContain("Diagnóstico de Conexão");
     expect(hospedeiro.querySelector('input[type="password"]')).toBeNull();
+    expect(
+      cabecalhoDaSecao("Mercado Pago")!.getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 
   // ── Transportadoras e Consultas de frete moraram aqui de 02/09 a

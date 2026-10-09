@@ -12,7 +12,8 @@
 // injetada no BOOT da página; o interruptor da seção Mercado Pago escreve
 // `store_config.pagamento_online` pela edge. Sem eco entre os dois, o tile
 // "Pagamento" do painel "Como está sua loja", o subtítulo "PIX: …" e o
-// termômetro de "Minha loja está no ar?" continuavam com o valor ANTIGO até
+// termômetro (hoje no topo de Pagamentos, o único status do PIX desde H6)
+// continuavam com o valor ANTIGO até
 // um recarregamento completo — enquanto a própria seção já dizia ao lojista
 // "Pronto. A vitrine passa a refletir em até 1 minuto".
 //
@@ -233,10 +234,16 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     await clicar(botaoPorTexto("Suas chaves"));
   }
 
-  /** O termômetro mora dentro do porão "Minha loja está no ar?", que nasce
-   * fechado (decisão do dono, 02/09) e só monta ao abrir. */
-  async function abrirOTermometro() {
-    await clicar(botaoPorTexto("Minha loja está no ar?"));
+  /** O termômetro mora no TOPO do grupo Pagamentos desde H6 (painel simples:
+   * o único status do PIX da tela) — antes ficava no porão "Minha loja está
+   * no ar?" e se repetia no subtítulo "PIX: …" dele. Devolve o texto da
+   * linha do termômetro (rótulo do nível incluso). */
+  function termometro(): string {
+    const linha = [...hospedeiro.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Pagamento online (PIX)"),
+    );
+    if (!linha) throw new Error("O termômetro do PIX não está na tela.");
+    return linha.textContent ?? "";
   }
 
   it("P0 — abrir a seção com o boot desatualizado corrige o painel pelo que o `ler` devolveu, sem clicar em nada", async () => {
@@ -250,8 +257,8 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     cenario.salvo = { ...CONFIGURADO, pix_ligado: false };
     await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
-    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Desligado");
+    expect(termometro()).not.toContain("Funcionando");
   });
 
   it("P0b — abrir a seção com o PIX ligado mas a Public Key ausente da ficha NÃO acende o painel (achado BLOQUEIA da revisão)", async () => {
@@ -272,8 +279,8 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     };
     await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Chave ausente");
-    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Chave ausente");
+    expect(termometro()).not.toContain("Funcionando");
   });
 
   it("P1 — salvar as chaves (o servidor liga sozinho) acende o painel inteiro na mesma sessão", async () => {
@@ -285,19 +292,16 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     await abrirOEstadoDoPix();
 
     // Retrato do boot: a ficha injetada diz desligado.
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
+    expect(termometro()).toContain("Desligado");
 
     await clicar(botaoPorTexto("Salvar chaves"));
 
     expect(chamadas.some((c) => c.corpo.acao === "salvar")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
-    expect(hospedeiro.textContent).not.toContain("PIX: Desligado");
+    expect(termometro()).toContain("Funcionando");
+    expect(termometro()).not.toContain("Desligado");
 
-    await abrirOTermometro();
-    const termometro = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Pagamento online (PIX)"),
-    );
-    expect(termometro?.textContent).toContain("Funcionando");
+    // Um status do PIX só (H6): nenhum outro lugar da tela repete o rótulo.
+    expect(hospedeiro.textContent?.match(/Funcionando/g)).toHaveLength(1);
   });
 
   it("P2 — Pausar apaga o painel inteiro na mesma sessão", async () => {
@@ -305,31 +309,27 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     cenario.salvo = { ...CONFIGURADO, pix_ligado: true };
     await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Funcionando");
 
     await clicar(botaoPorTexto("Pausar"));
 
     expect(chamadas.some((c) => c.corpo.acao === "desligar_pix")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
-    expect(hospedeiro.textContent).not.toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Desligado");
+    expect(termometro()).not.toContain("Funcionando");
 
-    await abrirOTermometro();
-    const termometro = [...hospedeiro.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Pagamento online (PIX)"),
-    );
-    expect(termometro?.textContent).toContain("Desligado");
+    expect(hospedeiro.textContent?.match(/Desligado/g)).toHaveLength(1);
   });
 
   it("P4 — Retomar acende o painel inteiro de novo", async () => {
     cenario.salvo = { ...CONFIGURADO, pausado: true };
     await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
+    expect(termometro()).toContain("Desligado");
 
     await clicar(botaoPorTexto("Retomar"));
 
     expect(chamadas.some((c) => c.corpo.acao === "ligar_pix")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Funcionando");
   });
 
   it("P3 — salvar credencial nova (pix_desligado da edge) também apaga o painel", async () => {
@@ -346,12 +346,12 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     };
     await abrirOEstadoDoPix();
 
-    expect(hospedeiro.textContent).toContain("PIX: Funcionando");
+    expect(termometro()).toContain("Funcionando");
 
     await clicar(botaoPorTexto("Salvar chaves"));
 
     expect(chamadas.some((c) => c.corpo.acao === "salvar")).toBe(true);
-    expect(hospedeiro.textContent).toContain("PIX: Desligado");
+    expect(termometro()).toContain("Desligado");
     expect(hospedeiro.textContent).toContain("Desliguei o pagamento pelo app");
   });
 });

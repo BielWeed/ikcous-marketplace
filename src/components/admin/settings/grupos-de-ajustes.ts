@@ -85,7 +85,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "pagamentos",
     titulo: "Pagamentos",
     ajuda:
-      "O que a loja aceita na entrega e as chaves do Mercado Pago para receber pelo app, com teste de conexão.",
+      "No topo, o termômetro do PIX pelo app (funcionando, chave ausente ou desligado); depois, o que a loja aceita na entrega e o Mercado Pago: pausar ou retomar o recebimento pelo app e, em Avançado, as chaves com o teste de conexão.",
     portas: [],
   },
   {
@@ -99,7 +99,7 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "ferramentas",
     titulo: "Ferramentas",
     ajuda:
-      "A Conexão (online ou offline) da loja neste aparelho e Minha loja está no ar? — o termômetro do pagamento por PIX com o diagnóstico completo e o teste da conexão deste aparelho com a loja.",
+      "A Conexão (online ou offline) da loja neste aparelho e Minha loja está no ar? — o teste da conexão deste aparelho com a loja, com um atalho para o PIX em Pagamentos.",
     portas: [],
   },
 ];

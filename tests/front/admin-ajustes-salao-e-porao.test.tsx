@@ -17,8 +17,9 @@
 //   3. PIX tem 3 níveis (Funcionando / Chave ausente / Desligado) — o
 //      crítico de desenho do lote E vetou o "PIX ativo" de 2 rótulos, que
 //      diria "ativo" numa loja com a chave ausente (a mentira exata que o
-//      laudo 0109 D1 combateu ao criar o termômetro). O nível mora no
-//      subtítulo de "Minha loja está no ar?".
+//      laudo 0109 D1 combateu ao criar o termômetro). Desde H6 o nível mora
+//      só no termômetro do topo de Pagamentos (antes: subtítulo de "Minha
+//      loja está no ar?").
 //   4. "Conexão" (Online/Offline) mora em Ferramentas.
 //   5. Grupos na ordem do desenho; vocabulário novo nos acordeões; velho
 //      aposentado.
@@ -488,15 +489,20 @@ describe("Ajustes — o estado mora no subtítulo de cada grupo, sem cartão", (
     { ligado: true, chave: null, rotulo: "Chave ausente" },
     { ligado: false, chave: null, rotulo: "Desligado" },
   ])(
-    "PIX replica o termômetro: ligado=$ligado, chave=$chave → $rotulo",
+    "PIX no termômetro do topo de Pagamentos: ligado=$ligado, chave=$chave → $rotulo",
     async ({ ligado, chave, rotulo }) => {
       mockFlags.pagamentoOnlineLigado.mockReturnValue(ligado);
       mockChave.chavePublicaMercadoPago.mockReturnValue(chave);
       await renderizar();
-      // O nível do PIX mora no cabeçalho de "Minha loja está no ar?" (porão).
-      expect(cabecalhoDaSecao("Minha loja está no ar?")?.textContent).toContain(
-        `PIX: ${rotulo}`,
-      );
+      // H6 (painel simples): o nível do PIX mora no termômetro do topo de
+      // Pagamentos — o único status; "Minha loja está no ar?" não o repete.
+      const termometro = [
+        ...secaoDoGrupo("Pagamentos").querySelectorAll("button"),
+      ].find((b) => b.textContent?.includes("Pagamento online (PIX)"));
+      expect(termometro?.textContent).toContain(rotulo);
+      expect(
+        cabecalhoDaSecao("Minha loja está no ar?")?.textContent,
+      ).not.toContain("PIX");
     },
   );
 
@@ -723,8 +729,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // migration 20261174000000), Mercado Pago e Minha loja está no ar? — e,
     // desde o plano 2026-09-26, Trocas e devoluções (grupo Regras de troca e
     // devolução). Transportadoras e Consultas de frete foram para a tela de
-    // Frete em 09/10/2026 (H5).
-    expect(cabecalhos.length).toBe(4);
+    // Frete em 09/10/2026 (H5). O quinto é o termômetro do PIX, no topo de
+    // Pagamentos desde H6: a linha está à vista, o diagnóstico dele fechado.
+    expect(cabecalhos.length).toBe(5);
     for (const cabecalho of cabecalhos) {
       expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
     }
@@ -732,7 +739,9 @@ describe("SALÃO+PORÃO — grupos e vocabulário", () => {
     // "fechado", é ausente).
     expect(hospedeiro.querySelector("#store-business-hours")).toBeNull();
     expect(hospedeiro.querySelector("#store-name")).toBeNull();
-    expect(hospedeiro.textContent).not.toContain("Pagamento online (PIX)");
+    expect(hospedeiro.textContent).not.toContain(
+      "Ligado e com a chave pública da loja",
+    );
     expect(hospedeiro.querySelector("table")).toBeNull();
   });
 

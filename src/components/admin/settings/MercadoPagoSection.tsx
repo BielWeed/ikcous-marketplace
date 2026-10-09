@@ -1,3 +1,4 @@
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { lerSupabaseUrl } from "@/lib/env-valores";
 import { mensagemAmigavelErroEdgeFunction } from "@/lib/mensagens-erro";
@@ -60,9 +61,14 @@ import {
  * - Chave de sandbox conecta igual à de produção: o aviso amarelo de
  *   ambiente "teste" vem PRONTO da edge e é mostrado como veio.
  * - (mp-9) O resultado de tudo isso sobe pelo `onPixAlternado` para quem
- *   hospeda a seção (a tela de Ajustes), porque o painel "Minha loja está
- *   no ar?" lê o retrato do BOOT da ficha e ficaria contando o estado
- *   antigo até um recarregamento completo.
+ *   hospeda a seção (a tela de Ajustes), porque o termômetro do PIX lê o
+ *   retrato do BOOT da ficha e ficaria contando o estado antigo até um
+ *   recarregamento completo.
+ * - (H6, painel simples) Um status do PIX só: o termômetro no topo de
+ *   Pagamentos. Esta seção não repete "Pix liberado" — fica com a AÇÃO
+ *   (Pausar/Retomar) e com a lista do que falta, sempre à vista. O guia e as
+ *   chaves moram em "Avançado: chaves do Mercado Pago" (`SecaoRecolhivel`
+ *   montada; abre sozinha quando falta alguma coisa).
  *
  * Fluxo do dono, ditado por voz: a lojista cola as chaves, ELA SALVA e ELA
  * TESTA. Por isso "Testar conexão" fica bloqueado enquanto houver coisa
@@ -660,6 +666,16 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           : "pronto";
   const listaDoQueFalta = faltando.map(textoDaFalta);
   const faltaTestar = faltando.includes("teste");
+  // Pendência que abre "Avançado: chaves do Mercado Pago" sozinho (H6): nada
+  // salvo ainda, alguma falta (chave ou teste) ou tudo preenchido mas
+  // desligado sem pausa (o conserto é Testar conexão, que mora lá dentro).
+  // Só depois da leitura: durante o `ler` não há o que afirmar.
+  const pendenciaNasChaves =
+    !carregando &&
+    !erroCarga &&
+    (!config.configurado ||
+      faltando.length > 0 ||
+      estadoDoRecebimento === "pronto");
 
   // Mesma trava do fluxo do dono nos DOIS botões de testar (o do formulário
   // e o do aviso âmbar): testar coisa diferente do que está salvo enganaria.
@@ -734,430 +750,433 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           </p>
         )}
 
-      {/* ── Camada 2a: o guia, escondido até pedido (expande o passo a
+      {/* ── Avançado (H6, painel simples): o guia e as chaves — o lado
+          técnico, feito uma vez — numa seção recolhível MONTADA (fechar só
+          esconde; o formulário e o estado dele moram aqui no componente).
+          Abre sozinha quando falta alguma coisa para receber pelo app: aí
+          a lojista precisa mesmo das chaves e do teste. ───────────────── */}
+      <SecaoRecolhivel
+        titulo="Avançado: chaves do Mercado Pago"
+        resumo="O passo a passo, as chaves e o teste de conexão"
+        temErro={pendenciaNasChaves}
+      >
+        {/* ── Camada 2a: o guia, escondido até pedido (expande o passo a
           passo e o botão de copiar o prompt) ──────────────────────────── */}
-      <Expansor
-        titulo="Como pegar suas chaves"
-        subtitulo="O passo a passo com o prompt pronto para o agente do app"
-        icone={KeyRound}
-        aberto={guiaAberto}
-        onAlternar={() => setGuiaAberto((antes) => !antes)}
-      >
-        <ol className="space-y-3">
-          {PASSOS_DO_GUIA.map((passo, indice) => (
-            <li key={passo.titulo} className="flex gap-3">
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 text-[11px] font-black text-admin-gold ring-1 ring-admin-gold/30">
-                {indice + 1}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-xs font-bold text-white">
-                  {passo.titulo}
+        <Expansor
+          titulo="Como pegar suas chaves"
+          subtitulo="O passo a passo com o prompt pronto para o agente do app"
+          icone={KeyRound}
+          aberto={guiaAberto}
+          onAlternar={() => setGuiaAberto((antes) => !antes)}
+        >
+          <ol className="space-y-3">
+            {PASSOS_DO_GUIA.map((passo, indice) => (
+              <li key={passo.titulo} className="flex gap-3">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-admin-gold/15 text-[11px] font-black text-admin-gold ring-1 ring-admin-gold/30">
+                  {indice + 1}
                 </span>
-                <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-400">
-                  {passo.descricao}
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold text-white">
+                    {passo.titulo}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] leading-relaxed text-zinc-400">
+                    {passo.descricao}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-        </ol>
+              </li>
+            ))}
+          </ol>
 
-        {/* O prompt pronto: o texto vive no arquivo de conteúdo; aqui só a
+          {/* O prompt pronto: o texto vive no arquivo de conteúdo; aqui só a
             caixa e o botão de copiar, com o feedback "Copiado!". */}
-        <div className="space-y-2">
-          <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-            Pedido pronto para colar no agente
-          </span>
-          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
-            {promptDoAgente}
-          </pre>
-          <button
-            type="button"
-            onClick={copiarPrompt}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
-              copiado
-                ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-                : "border-admin-gold/30 bg-admin-gold/10 text-admin-gold hover:bg-admin-gold/20"
-            }`}
-          >
-            {copiado ? (
-              <CheckCircle2 className="size-3.5" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
-            <span>{copiado ? "Copiado!" : "Copiar prompt"}</span>
-          </button>
-        </div>
-      </Expansor>
-
-      {/* ── Camada 2b: as chaves em si — campos, salvar e testar ──────── */}
-      <Expansor
-        titulo="Suas chaves"
-        subtitulo="Cole as chaves, salve e teste a conexão"
-        icone={Lock}
-        aberto={chavesAberto}
-        onAlternar={() => setChavesAberto((antes) => !antes)}
-      >
-        <div className="space-y-3">
-          <div className="space-y-1.5">
-            <label
-              htmlFor="mp-public-key"
-              className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
-            >
-              Chave pública (Public Key)
-            </label>
-            <input
-              id="mp-public-key"
-              type="text"
-              disabled={carregando}
-              value={publicKey}
-              onChange={(e) => setPublicKey(e.target.value)}
-              placeholder="APP_USR-…"
-              autoComplete="off"
-              spellCheck={false}
-              className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="mp-access-token"
-              className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
-            >
-              <span>Chave secreta (Access Token)</span>
-              {config.mascara_token && (
-                <span className="font-mono normal-case tracking-normal text-zinc-400">
-                  salva: {config.mascara_token}
-                </span>
-              )}
-            </label>
-            <input
-              id="mp-access-token"
-              type="password"
-              disabled={carregando}
-              value={accessToken}
-              onChange={(e) => setAccessToken(e.target.value)}
-              placeholder={
-                config.mascara_token
-                  ? "Deixe vazio para manter a chave salva"
-                  : "Cole aqui a chave secreta de produção…"
-              }
-              autoComplete="new-password"
-              className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label
-              htmlFor="mp-webhook-secret"
-              className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
-            >
-              <span>
-                Senha dos avisos (Chave de notificações) — obrigatória para
-                receber pelo app
-              </span>
-              {config.mascara_webhook && (
-                <span className="font-mono normal-case tracking-normal text-zinc-400">
-                  salva: {config.mascara_webhook}
-                </span>
-              )}
-            </label>
-            <input
-              id="mp-webhook-secret"
-              type="password"
-              disabled={carregando}
-              value={webhookSecret}
-              onChange={(e) => setWebhookSecret(e.target.value)}
-              placeholder={
-                config.mascara_webhook
-                  ? "Deixe vazio para manter a salva"
-                  : "Cole aqui a senha dos avisos da sua loja"
-              }
-              autoComplete="new-password"
-              className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            />
-            {!config.mascara_webhook && (
-              <p className="text-[11px] leading-relaxed text-amber-300">
-                Sem a assinatura da sua loja, o pagamento pelo app não é
-                liberado. Testar conexão não valida notificações; a chave global
-                do app não substitui a sua.
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="space-y-2">
+            <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              Pedido pronto para colar no agente
+            </span>
+            <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
+              {promptDoAgente}
+            </pre>
             <button
               type="button"
-              disabled={salvando || carregando || isOffline || alternandoPix}
-              onClick={salvar}
-              className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+              onClick={copiarPrompt}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
+                copiado
+                  ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                  : "border-admin-gold/30 bg-admin-gold/10 text-admin-gold hover:bg-admin-gold/20"
+              }`}
             >
-              {salvando ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Save className="size-3.5" />
-              )}
-              <span>Salvar chaves</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={testeBloqueado}
-              onClick={testarConexao}
-              title={
-                dirty
-                  ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
-                  : undefined
-              }
-              className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
-            >
-              {testando ? (
-                <RefreshCw className="size-3.5 animate-spin" />
-              ) : (
+              {copiado ? (
                 <CheckCircle2 className="size-3.5" />
+              ) : (
+                <Copy className="size-3.5" />
               )}
-              <span>Testar conexão</span>
+              <span>{copiado ? "Copiado!" : "Copiar prompt"}</span>
             </button>
-
-            {dirty && (
-              <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
-                Salve para testar
-              </span>
-            )}
           </div>
+        </Expansor>
 
-          {/* ── Receber pelo app: o ESTADO que o CLIENTE sente ─────────────
-              Antes era um interruptor (mp-4). Agora o servidor liga sozinho
-              quando as três chaves estão salvas e o teste passou, e a tela só
-              mostra o que ele decidiu — com Pausar/Retomar nas mãos do
-              lojista. Nada de estado por palpite do clique. ─────────────── */}
-          {!carregando && !erroCarga && (
-            <div
-              data-estado-recebimento={estadoDoRecebimento}
-              className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3"
-            >
-              <span className="block text-xs font-bold text-white">
-                Receber PIX no app
-              </span>
-              {!servidorDesatualizado && (
-                <span className="block text-[11px] leading-relaxed text-zinc-400">
-                  O Pix pelo app liga sozinho quando as três chaves estão salvas
-                  e o teste de conexão passa.
+        {/* ── Camada 2b: as chaves em si — campos, salvar e testar ──────── */}
+        <Expansor
+          titulo="Suas chaves"
+          subtitulo="Cole as chaves, salve e teste a conexão"
+          icone={Lock}
+          aberto={chavesAberto}
+          onAlternar={() => setChavesAberto((antes) => !antes)}
+        >
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="mp-public-key"
+                className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+              >
+                Chave pública (Public Key)
+              </label>
+              <input
+                id="mp-public-key"
+                type="text"
+                disabled={carregando}
+                value={publicKey}
+                onChange={(e) => setPublicKey(e.target.value)}
+                placeholder="APP_USR-…"
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="mp-access-token"
+                className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+              >
+                <span>Chave secreta (Access Token)</span>
+                {config.mascara_token && (
+                  <span className="font-mono normal-case tracking-normal text-zinc-400">
+                    salva: {config.mascara_token}
+                  </span>
+                )}
+              </label>
+              <input
+                id="mp-access-token"
+                type="password"
+                disabled={carregando}
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                placeholder={
+                  config.mascara_token
+                    ? "Deixe vazio para manter a chave salva"
+                    : "Cole aqui a chave secreta de produção…"
+                }
+                autoComplete="new-password"
+                className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                htmlFor="mp-webhook-secret"
+                className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
+              >
+                <span>
+                  Senha dos avisos (Chave de notificações) — obrigatória para
+                  receber pelo app
+                </span>
+                {config.mascara_webhook && (
+                  <span className="font-mono normal-case tracking-normal text-zinc-400">
+                    salva: {config.mascara_webhook}
+                  </span>
+                )}
+              </label>
+              <input
+                id="mp-webhook-secret"
+                type="password"
+                disabled={carregando}
+                value={webhookSecret}
+                onChange={(e) => setWebhookSecret(e.target.value)}
+                placeholder={
+                  config.mascara_webhook
+                    ? "Deixe vazio para manter a salva"
+                    : "Cole aqui a senha dos avisos da sua loja"
+                }
+                autoComplete="new-password"
+                className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+              />
+              {!config.mascara_webhook && (
+                <p className="text-[11px] leading-relaxed text-amber-300">
+                  Sem a senha dos avisos da sua loja, o pagamento pelo app não é
+                  liberado. Testar conexão não confere os avisos; a chave global
+                  do app não substitui a sua.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                disabled={salvando || carregando || isOffline || alternandoPix}
+                onClick={salvar}
+                className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+              >
+                {salvando ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                <span>Salvar chaves</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={testeBloqueado}
+                onClick={testarConexao}
+                title={
+                  dirty
+                    ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
+                    : undefined
+                }
+                className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+              >
+                {testando ? (
+                  <RefreshCw className="size-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="size-3.5" />
+                )}
+                <span>Testar conexão</span>
+              </button>
+
+              {dirty && (
+                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+                  Salve para testar
                 </span>
               )}
+            </div>
 
-              {estadoDoRecebimento === "desatualizado" && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p
-                      role="status"
-                      className={cn(
-                        "flex items-center gap-1.5 text-xs font-bold",
-                        config.pix_ligado
-                          ? "text-emerald-300"
-                          : "text-zinc-300",
-                      )}
-                    >
-                      {config.pix_ligado
-                        ? "Pix liberado no app"
-                        : "Pagamento pelo app desligado"}
-                    </p>
-                    {(config.pix_ligado || teste?.conectado) && (
-                      <button
-                        type="button"
-                        disabled={
-                          alternandoPix || isOffline || testando || salvando
-                        }
-                        onClick={() => pausarOuRetomar(!config.pix_ligado)}
-                        className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
-                      >
-                        {config.pix_ligado ? "Desligar" : "Ligar"}
-                      </button>
-                    )}
-                  </div>
-                  <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
-                    <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                    <span>
-                      O sistema de pagamentos desta loja ainda não foi
-                      atualizado. Enquanto isso, o Pix segue como está; fale com
-                      o suporte para atualizar.
-                    </span>
-                  </p>
-                </div>
-              )}
+            <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-zinc-500">
+              <Lock className="mt-0.5 size-3 shrink-0" /> {RECADO_DE_SEGURANCA}
+            </p>
+          </div>
+        </Expansor>
+      </SecaoRecolhivel>
 
-              {estadoDoRecebimento === "recebendo" && (
-                <div className="flex items-center justify-between gap-3">
-                  {/* Só o que é verdade: `pagamento_online` liberou o PIX, mas o
-                      CARTÃO tem interruptor próprio (`config_pagamento_cartao`,
-                      no card Formas de pagamento) e nasce desligado — o
-                      `criar-pagamento` recusa cartão enquanto ele estiver
-                      assim. Esta seção não lê essa config (não há prop nem
-                      contexto, e o card vizinho a muda sem avisar aqui), então
-                      o texto não afirma cartão nem o nega. */}
-                  <div role="status" className="space-y-0.5">
-                    <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-300">
-                      <CheckCircle2 className="size-4 shrink-0" />
-                      Pix liberado no app
-                    </p>
-                    <p className="text-[11px] leading-relaxed text-zinc-400">
-                      Cartão pelo app: ligue ou desligue em Formas de pagamento.
-                    </p>
-                  </div>
+      {/* ── Receber pelo app: o que o lojista FAZ — Pausar/Retomar e o
+              que falta. Antes era um interruptor (mp-4). Agora o servidor
+              liga sozinho quando as três chaves estão salvas e o teste
+              passou, e a tela só mostra o que ele decidiu. Desde H6 (painel
+              simples) este bloco não repete o estado ("Pix liberado"): o
+              status do PIX é só o termômetro no topo de Pagamentos, que
+              recebe o eco por `onPixAlternado`. Fica FORA do Avançado: a
+              pausa e o que falta ficam sempre à vista. ─────────────── */}
+      {!carregando && !erroCarga && (
+        <div
+          data-estado-recebimento={estadoDoRecebimento}
+          className="space-y-2 rounded-xl border border-white/5 bg-zinc-900/60 p-3"
+        >
+          <span className="block text-xs font-bold text-white">
+            Receber PIX no app
+          </span>
+          {!servidorDesatualizado && (
+            <span className="block text-[11px] leading-relaxed text-zinc-400">
+              O Pix pelo app liga sozinho quando as três chaves estão salvas e o
+              teste de conexão passa.
+            </span>
+          )}
+
+          {estadoDoRecebimento === "desatualizado" && (
+            <div className="space-y-2">
+              {/* Sem "Pix liberado"/"desligado" aqui (H6): o estado REAL
+                      que a edge antiga devolveu sobe pelo `onPixAlternado`
+                      para o termômetro de Pagamentos; o botão diz a ação. */}
+              {(config.pix_ligado || teste?.conectado) && (
+                <div className="flex justify-end">
                   <button
                     type="button"
                     disabled={
                       alternandoPix || isOffline || testando || salvando
                     }
-                    onClick={() => pausarOuRetomar(false)}
+                    onClick={() => pausarOuRetomar(!config.pix_ligado)}
                     className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
                   >
-                    Pausar
+                    {config.pix_ligado
+                      ? "Desligar o pagamento pelo app"
+                      : "Ligar o pagamento pelo app"}
                   </button>
                 </div>
               )}
+              <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+                <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                <span>
+                  O sistema de pagamentos desta loja ainda não foi atualizado.
+                  Enquanto isso, o Pix segue como está; fale com o suporte para
+                  atualizar.
+                </span>
+              </p>
+            </div>
+          )}
 
-              {estadoDoRecebimento === "pausado" && (
-                <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p
-                      role="status"
-                      className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
-                    >
-                      <AlertCircle className="size-4 shrink-0" />
-                      Pausado por você
-                    </p>
-                    <button
-                      type="button"
-                      disabled={
-                        alternandoPix || isOffline || testando || salvando
-                      }
-                      onClick={() => pausarOuRetomar(true)}
-                      className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
-                    >
-                      Retomar
-                    </button>
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-amber-200/90">
-                    Nenhum cliente consegue pagar pelo app enquanto estiver
-                    pausado. Salvar ou testar as chaves não religa: toque em
-                    Retomar.
-                  </p>
-                  {listaDoQueFalta.length > 0 && (
-                    <p className="text-[11px] leading-relaxed text-amber-200/90">
-                      Para receber quando retomar, ainda falta:{" "}
-                      {listaDoQueFalta.join(", ")}.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {estadoDoRecebimento === "faltando" && (
-                <div className="space-y-1.5">
-                  <p
-                    role="status"
-                    className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
-                  >
-                    <AlertCircle className="size-4 shrink-0" />
-                    Falta para receber pelo app:
-                  </p>
-                  <ul className="list-disc space-y-0.5 pl-9 text-[11px] leading-relaxed text-zinc-300">
-                    {listaDoQueFalta.map((texto) => (
-                      <li key={texto}>{texto}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {estadoDoRecebimento === "pronto" && (
-                <div className="space-y-1">
-                  <p
-                    role="status"
-                    className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
-                  >
-                    <AlertCircle className="size-4 shrink-0" />
-                    Tudo preenchido, mas o pagamento pelo app está desligado.
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-zinc-400">
-                    Toque em Testar conexão para liberar.
-                  </p>
-                </div>
-              )}
-
-              {/* LIGADO COM FALTA (loja que já existia): a loja estaria
-                  cobrando com uma chave que nunca passou por tudo isto. O
-                  conserto — testar — fica no próprio aviso: mandar o lojista
-                  procurar o botão lá em cima era contar o problema e
-                  esconder a saída. */}
-              {estadoDoRecebimento === "recebendo" &&
-                listaDoQueFalta.length > 0 && (
-                  <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
-                    <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
-                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                      <span>
-                        O pagamento pelo app está ligado, mas ainda falta:{" "}
-                        {listaDoQueFalta.join(", ")}. Complete para o cliente
-                        não travar no fim da compra.
-                      </span>
-                    </p>
-                    {faltaTestar && (
-                      <button
-                        type="button"
-                        disabled={testeBloqueado}
-                        onClick={testarConexao}
-                        className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
-                      >
-                        {testando ? (
-                          <RefreshCw className="size-3.5 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="size-3.5" />
-                        )}
-                        <span>Testar conexão</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-
-              {/* O que o servidor fez e quer contar (chave de sandbox,
-                  "desliguei porque o teste não passou"...) vem PRONTO da edge
-                  e aparece como veio. */}
-              {avisoPix && (
-                <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
-                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                  <span>{avisoPix}</span>
-                </p>
-              )}
-
-              {/* Por que "até 1 minuto": a vitrine lê a ficha da loja pelo
-                  porteiro, que guarda a ficha fresca por CACHE_FRESCO_MS =
-                  60_000 (src/hospedagem/porteiro.ts). Prometer "na hora"
-                  faria o lojista abrir a loja, não ver mudança e achar que
-                  falhou. */}
-              {ecoDaVitrine && (
+          {estadoDoRecebimento === "recebendo" && (
+            <div className="flex items-center justify-between gap-3">
+              {/* Só o que é verdade: `pagamento_online` liberou o PIX, mas o
+                      CARTÃO tem interruptor próprio (`config_pagamento_cartao`,
+                      no card Formas de pagamento) e nasce desligado — o
+                      `criar-pagamento` recusa cartão enquanto ele estiver
+                      assim. Esta seção não lê essa config (não há prop nem
+                      contexto, e o card vizinho a muda sem avisar aqui), então
+                      o texto não afirma cartão nem o nega. E não repete
+                      "Pix liberado" (H6): o estado é o termômetro de
+                      Pagamentos; aqui fica só a ação. */}
+              <div className="space-y-0.5">
                 <p className="text-[11px] leading-relaxed text-zinc-400">
-                  Pronto. A vitrine passa a refletir em até 1 minuto.
+                  Para parar de receber pelo app por um tempo, toque em Pausar.
                 </p>
-              )}
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  Cartão pelo app: ligue ou desligue em Formas de pagamento.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={alternandoPix || isOffline || testando || salvando}
+                onClick={() => pausarOuRetomar(false)}
+                className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+              >
+                Pausar
+              </button>
+            </div>
+          )}
 
-              {/* Ligado sem a Public Key publicada na ficha é exatamente o
-                  caso em que o cliente NÃO vê PIX — a tela conta em vez de
-                  deixar o lojista descobrir na venda perdida. */}
-              {config.pix_ligado && !config.public_key_na_loja && (
-                <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
-                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-                  <span>
-                    A ficha da loja ainda não carrega esta chave pública — salve
-                    as chaves de novo para o cliente conseguir pagar.
-                  </span>
+          {estadoDoRecebimento === "pausado" && (
+            <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+              <div className="flex items-center justify-between gap-3">
+                <p
+                  role="status"
+                  className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+                >
+                  <AlertCircle className="size-4 shrink-0" />
+                  Pausado por você
+                </p>
+                <button
+                  type="button"
+                  disabled={alternandoPix || isOffline || testando || salvando}
+                  onClick={() => pausarOuRetomar(true)}
+                  className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                >
+                  Retomar
+                </button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-200/90">
+                Nenhum cliente consegue pagar pelo app enquanto estiver pausado.
+                Salvar ou testar as chaves não religa: toque em Retomar.
+              </p>
+              {listaDoQueFalta.length > 0 && (
+                <p className="text-[11px] leading-relaxed text-amber-200/90">
+                  Para receber quando retomar, ainda falta:{" "}
+                  {listaDoQueFalta.join(", ")}.
                 </p>
               )}
             </div>
           )}
 
-          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-zinc-500">
-            <Lock className="mt-0.5 size-3 shrink-0" /> {RECADO_DE_SEGURANCA}
-          </p>
+          {estadoDoRecebimento === "faltando" && (
+            <div className="space-y-1.5">
+              <p
+                role="status"
+                className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+              >
+                <AlertCircle className="size-4 shrink-0" />
+                Falta para receber pelo app:
+              </p>
+              <ul className="list-disc space-y-0.5 pl-9 text-[11px] leading-relaxed text-zinc-300">
+                {listaDoQueFalta.map((texto) => (
+                  <li key={texto}>{texto}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {estadoDoRecebimento === "pronto" && (
+            <div className="space-y-1">
+              <p
+                role="status"
+                className="flex items-center gap-1.5 text-xs font-bold text-amber-300"
+              >
+                <AlertCircle className="size-4 shrink-0" />
+                Tudo preenchido.
+              </p>
+              <p className="text-[11px] leading-relaxed text-zinc-400">
+                Toque em Testar conexão (em Avançado) para liberar o pagamento
+                pelo app.
+              </p>
+            </div>
+          )}
+
+          {/* LIGADO COM FALTA (loja que já existia): a loja estaria
+                  cobrando com uma chave que nunca passou por tudo isto. O
+                  conserto — testar — fica no próprio aviso: mandar o lojista
+                  procurar o botão lá em cima era contar o problema e
+                  esconder a saída. */}
+          {estadoDoRecebimento === "recebendo" &&
+            listaDoQueFalta.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2">
+                <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-300">
+                  <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    O pagamento pelo app está ligado, mas ainda falta:{" "}
+                    {listaDoQueFalta.join(", ")}. Complete para o cliente não
+                    travar no fim da compra.
+                  </span>
+                </p>
+                {faltaTestar && (
+                  <button
+                    type="button"
+                    disabled={testeBloqueado}
+                    onClick={testarConexao}
+                    className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                  >
+                    {testando ? (
+                      <RefreshCw className="size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                    <span>Testar conexão</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+          {/* O que o servidor fez e quer contar (chave de sandbox,
+                  "desliguei porque o teste não passou"...) vem PRONTO da edge
+                  e aparece como veio. */}
+          {avisoPix && (
+            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+              <span>{avisoPix}</span>
+            </p>
+          )}
+
+          {/* Por que "até 1 minuto": a vitrine lê a ficha da loja pelo
+                  porteiro, que guarda a ficha fresca por CACHE_FRESCO_MS =
+                  60_000 (src/hospedagem/porteiro.ts). Prometer "na hora"
+                  faria o lojista abrir a loja, não ver mudança e achar que
+                  falhou. */}
+          {ecoDaVitrine && (
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              Pronto. A vitrine passa a refletir em até 1 minuto.
+            </p>
+          )}
+
+          {/* Ligado sem a Public Key publicada na ficha é exatamente o
+                  caso em que o cliente NÃO vê PIX — a tela conta em vez de
+                  deixar o lojista descobrir na venda perdida. */}
+          {config.pix_ligado && !config.public_key_na_loja && (
+            <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                A ficha da loja ainda não carrega esta chave pública — salve as
+                chaves de novo para o cliente conseguir pagar.
+              </span>
+            </p>
+          )}
         </div>
-      </Expansor>
+      )}
     </div>
   );
 });
