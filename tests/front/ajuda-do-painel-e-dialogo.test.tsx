@@ -7,6 +7,7 @@
 //
 // Padrão da casa: createRoot/act + queries DOM nativas (a testing-library não
 // está instalada). A folha renderiza em PORTAL: as queries saem de document.
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -127,6 +128,21 @@ describe("AdminHelpModal — diálogo acessível sobre a FolhaDoPainel", () => {
 
     await render(false);
     expect(document.body.classList.contains("admin-modal-open")).toBe(false);
+  });
+
+  it("a folha de baixo desconta a área segura do iPhone e volta ao padding de sm", () => {
+    // Teste de fonte: o index.html usa viewport-fit=cover, e a folha encostada
+    // no fundo precisa de env(safe-area-inset-bottom) (como FolhaInferior e
+    // FolhaFinanceira). Em sm vira cartão centralizado, sem a compensação.
+    const fonte = readFileSync(
+      "src/components/admin/primitivos/FolhaDoPainel.tsx",
+      "utf8",
+    );
+    expect(fonte).toContain(
+      "pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]",
+    );
+    // Token inteiro (cercado por espaço ou aspas), não colado em outro.
+    expect(fonte).toMatch(/[\s"]sm:pb-8[\s"]/);
   });
 
   it("fechada, não renderiza nada", async () => {

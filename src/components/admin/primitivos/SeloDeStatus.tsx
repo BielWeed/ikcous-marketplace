@@ -12,7 +12,7 @@ export type TomDoSelo = "ok" | "atencao" | "erro" | "neutro";
 
 // Cada tom tem COR e ÍCONE próprios: a cor nunca é a única pista (regra
 // visual do dono; quem não distingue verde de vermelho lê o ícone e o texto).
-function tonDoSelo(tom: TomDoSelo): { icone: LucideIcon; classe: string } {
+function tomDoSelo(tom: TomDoSelo): { icone: LucideIcon; classe: string } {
   switch (tom) {
     case "ok":
       return {
@@ -47,7 +47,7 @@ export function SeloDeStatus({
   readonly children: ReactNode;
   readonly className?: string;
 }) {
-  const { icone: Icone, classe } = tonDoSelo(tom);
+  const { icone: Icone, classe } = tomDoSelo(tom);
   return (
     <span
       className={cn(

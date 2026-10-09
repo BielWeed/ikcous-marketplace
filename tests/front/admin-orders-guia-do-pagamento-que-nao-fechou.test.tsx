@@ -476,7 +476,8 @@ describe("Guia do pagamento que não fechou — ligado ao modal de ajuda da tela
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    // Fechado, o modal não renderiza nada (AdminHelpModal: `if (!isOpen)`).
+    // Fechado, o modal não renderiza nada (a FolhaDoPainel do Radix só monta
+    // o conteúdo com `aberta`).
     expect(document.body.textContent).not.toContain(TITULO_DO_GUIA);
 
     const botaoDeAjuda = hospedeiro.querySelector<HTMLButtonElement>(

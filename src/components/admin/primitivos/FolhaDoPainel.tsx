@@ -59,9 +59,9 @@ export function FolhaDoPainel({
           // cala o aviso do Radix sem inventar um texto que ninguém leria.
           aria-describedby={undefined}
           className={cn(
-            "fixed inset-x-0 bottom-0 z-[100] flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-admin-bg p-5 text-left text-sm text-zinc-300 shadow-2xl outline-none",
+            "fixed inset-x-0 bottom-0 z-[100] flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-admin-bg p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] text-left text-sm text-zinc-300 shadow-2xl outline-none",
             "data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-            "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85vh] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-8 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
+            "sm:inset-auto sm:left-1/2 sm:top-1/2 sm:max-h-[85vh] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-8 sm:pb-8 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:slide-in-from-bottom-0 sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95",
           )}
         >
           <div className="mb-4 flex shrink-0 items-center justify-between gap-3 border-b border-white/5 pb-4">
