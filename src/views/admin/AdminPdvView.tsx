@@ -31,6 +31,7 @@ import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
 import { branding } from "@/config/branding";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import {
@@ -498,7 +499,7 @@ export function AdminPdvView({
     // "os botões não têm rolagem suficiente para eu poder clicar".
     <div className="pb-admin flex flex-col gap-4 lg:pb-12">
       <div className="flex items-center justify-between gap-3">
-        <AdminPageHeader titulo="Vender" />
+        <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
       </div>
 
       <LeitorDeCodigo

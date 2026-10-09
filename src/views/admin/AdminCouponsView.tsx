@@ -13,6 +13,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -285,7 +286,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                 {/* Onda 3 da reforma visual (03/09): o título vivia com
                     fórmula própria (text-xl) — agora é o AdminPageHeader; o
                     botão de ajuda continua dentro da linha do título. */}
-                <AdminPageHeader titulo="Cupons">
+                <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-coupons"]}>
                   <button
                     type="button"
                     onClick={() => setShowHelpModal(true)}

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useCoupons } from "@/hooks/useCoupons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { cn, formatCurrency } from "@/lib/utils";
@@ -219,7 +220,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               {/* Onda 3 da reforma visual (03/09): o título minúsculo
                   (text-sm) virou o AdminPageHeader, igual ao resto do painel. */}
               <AdminPageHeader
-                titulo={isEditing ? "Editar Cupom" : "Novo Cupom"}
+                titulo={`${isEditing ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-coupon-form"].toLowerCase()}`}
               />
               <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
                 Configure os detalhes do seu cupom de desconto

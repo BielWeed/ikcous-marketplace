@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ImageAdjuster } from "@/components/ui/custom/ImageAdjuster";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1976,12 +1977,12 @@ export const AdminBannersView = memo(function AdminBannersView({
                     {/* Onda 3 da reforma visual (03/09): o título minúsculo
                         (text-xs) virou o AdminPageHeader, igual ao das listas
                         aprovadas; o botão de ajuda continua ao lado. */}
-                    <AdminPageHeader titulo="Gerenciador de Banners">
+                    <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-banners"]}>
                       <button
                         type="button"
                         onClick={() => setShowHelpModal(true)}
                         className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-                        title="Guia do Gerenciador de Banners"
+                        title={`Como usar os ${NOMES_DO_PAINEL["admin-banners"]}`}
                       >
                         <HelpCircle className="size-4.5" />
                       </button>
@@ -4937,13 +4938,13 @@ export const AdminBannersView = memo(function AdminBannersView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Manual do Gerenciador de Banners"
+        title={`Como usar os ${NOMES_DO_PAINEL["admin-banners"]}`}
       >
         <div className="space-y-4">
           <p className="leading-relaxed">
-            O Gerenciador de Banners permite que você faça a curadoria dos
-            banners rotativos na página inicial do aplicativo do cliente. Essa
-            seção é a principal vitrine de promoções e produtos em destaque.
+            Aqui você escolhe os banners rotativos na página inicial do
+            aplicativo do cliente. Essa seção é a principal vitrine de promoções
+            e produtos em destaque.
           </p>
 
           <div className="space-y-3">
@@ -4968,8 +4969,8 @@ export const AdminBannersView = memo(function AdminBannersView({
                   Link de Destino
                 </div>
                 <p className="text-[10px] text-zinc-500">
-                  A rota interna do app para onde o cliente será direcionado
-                  (ex: `/produtos` ou `/categoria/calcados`).
+                  A página do app para onde o cliente será levado ao tocar no
+                  banner (por exemplo, um produto ou uma categoria).
                 </p>
               </div>
 

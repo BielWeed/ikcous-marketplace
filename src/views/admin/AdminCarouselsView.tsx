@@ -24,6 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -526,7 +527,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         <div>
           <div className="flex items-center justify-between gap-3">
             <AdminPageHeader
-              titulo="Vitrines"
+              titulo={NOMES_DO_PAINEL["admin-carousels"]}
               acoes={
                 <>
                   <button
@@ -779,7 +780,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Guia do Gerenciador de Vitrines (Carrosséis)"
+        title={`Como usar as ${NOMES_DO_PAINEL["admin-carousels"]}`}
       >
         <div className="space-y-3 text-xs leading-relaxed text-zinc-400">
           <p>

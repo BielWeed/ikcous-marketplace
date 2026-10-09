@@ -10,6 +10,7 @@ import {
 } from "@/components/admin/crm/PecasDoCrm";
 import { VisaoGeralDoCrm } from "@/components/admin/crm/VisaoGeralDoCrm";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useCrmVisao, useDashboardClassico } from "@/hooks/useCrm";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
@@ -163,7 +164,7 @@ export function AdminCrmView({ onNavigate, active }: AdminCrmViewProps) {
     >
       <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-6 sm:gap-4 sm:px-6">
         <AdminPageHeader
-          titulo="Dashboard CRM"
+          titulo={NOMES_DO_PAINEL["admin-crm"]}
           tituloEncolhe
           acoes={
             <button
