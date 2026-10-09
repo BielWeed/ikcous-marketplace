@@ -355,6 +355,21 @@ jobs:
       - name: Prova viva do portao do contador duplicado do cupom (consultas 14a e 14b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-portao-viva.cjs
+      # O checkout mostra os cupons da cliente (migration 20261208000000, 09/10/2026): a
+      # lista do checkout (anon ve so 'todos os clientes'; a dona ve o exclusivo dela, outra
+      # nao; o secreto nunca; sem esgotado, vencido ou inativo; LIMIT 20); a validacao diz
+      # 'invalido' para exclusivo alheio ANTES de qualquer motivo e mantem a frase do limite
+      # de uso; o gatilho do pedido recusa exclusivo de outra conta e de visitante sem gastar a
+      # vaga, e TEM o atalho de retentativa da 20261203 (2 conexoes reais com COMMIT: a
+      # cliente tirada da lista no meio de uma compra repetida recebe o MESMO pedido, nao
+      # um em dobro); o painel so aceita o admin ATUAL (rebaixado com sessao velha recusado
+      # nas 2 funcoes e sem ler a lista); ida e volta (reaplicar 2x, rollback devolve o corpo
+      # da 203 byte a byte, dado que ja existia, atomicidade, envelope REPEATABLE READ,
+      # lock_timeout com pedido em andamento); cada guarda tirada (mutante) deixa a prova
+      # vermelha. CLONE proprio.
+      - name: Prova viva dos cupons do checkout (migration 20261208000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

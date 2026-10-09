@@ -1694,6 +1694,14 @@ const POSTERIORES_A_97 = [
     nome: "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
     noAr: `SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim`,
   },
+  // 20261208000000: o checkout mostra os cupons da cliente. As funcoes do painel
+  // (admin_cupom_clientes, admin_cupom_definir_clientes) e a politica de cupom_clientes
+  // usam is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
+    noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(c) {
