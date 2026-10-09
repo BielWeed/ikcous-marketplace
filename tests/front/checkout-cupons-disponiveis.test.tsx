@@ -307,3 +307,199 @@ describe("CheckoutView — a validação do toque em 'Aplicar' (tarefa 18)", () 
     erro.mockRestore();
   });
 });
+
+const CHAVE_DO_RASCUNHO = "ikcous-rascunho-do-checkout-v1";
+
+function semearRascunhoComCupom(cupom: string, contaDoCupom?: string | null) {
+  sessionStorage.setItem(
+    CHAVE_DO_RASCUNHO,
+    JSON.stringify({
+      notas: "x",
+      cupom,
+      ...(contaDoCupom === undefined ? {} : { contaDoCupom }),
+    }),
+  );
+}
+
+const rascunhoGravado = () =>
+  JSON.parse(sessionStorage.getItem(CHAVE_DO_RASCUNHO) ?? "{}") as {
+    cupom?: string | null;
+    contaDoCupom?: string | null;
+  };
+
+/** Redesenha o MESMO componente (a conta/autenticação dos dublês já mudou). */
+async function redesenhar(
+  CheckoutView: Awaited<ReturnType<typeof renderizar>>,
+) {
+  await act(async () => {
+    raiz.render(
+      <CheckoutView
+        onNavigate={onNavigate}
+        onSetBackOverride={onSetBackOverride}
+      />,
+    );
+  });
+}
+
+describe("CheckoutView — o cupom nunca passa de uma conta para outra (tarefa 19)", () => {
+  it("rascunho com o cupom de OUTRA conta: o código não aparece, não é validado e sai do rascunho", async () => {
+    mockUser = { id: "conta-bia" };
+    semearRascunhoComCupom("VIP15", "conta-ana");
+    await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15");
+    expect(validateCoupon).not.toHaveBeenCalled();
+    // O código alheio também não fica esperando no armazenamento da aba.
+    expect(sessionStorage.getItem(CHAVE_DO_RASCUNHO) ?? "").not.toContain(
+      "VIP15",
+    );
+  });
+
+  it("rascunho com o cupom da MESMA conta volta — mesmo com a autenticação chegando depois", async () => {
+    mockUser = null;
+    mockAuthLoading = true;
+    semearRascunhoComCupom("VIP15", "conta-ana");
+    const CheckoutView = await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+
+    mockUser = { id: "conta-ana" };
+    mockAuthLoading = false;
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+    expect(validateCoupon).toHaveBeenCalledWith("VIP15", 100);
+  });
+
+  it("rascunho de uma conta com a sessão perdida (sem usuário): o convidado não vê o código", async () => {
+    mockUser = null;
+    mockAuthLoading = false;
+    semearRascunhoComCupom("VIP15", "conta-ana");
+    const CheckoutView = await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15");
+    expect(validateCoupon).not.toHaveBeenCalled();
+    // O cupom continua guardado para a dona: se ela entrar de novo, volta.
+    expect(rascunhoGravado().cupom).toBe("VIP15");
+    expect(rascunhoGravado().contaDoCupom).toBe("conta-ana");
+
+    mockUser = { id: "conta-ana" };
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+  });
+
+  it("rascunho de convidado (ou antigo, sem dono) volta para quem abrir o checkout", async () => {
+    mockUser = { id: "conta-ana" };
+    semearRascunhoComCupom("GERAL10");
+    await renderizar();
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("GERAL10 aplicado");
+    expect(validateCoupon).toHaveBeenCalledWith("GERAL10", 100);
+  });
+
+  it("o rascunho carimba a conta que aplicou o cupom", async () => {
+    mockUser = { id: "conta-ana" };
+    await renderizar();
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(rascunhoGravado().cupom).toBe("VIP15");
+    expect(rascunhoGravado().contaDoCupom).toBe("conta-ana");
+  });
+
+  it("o rascunho do convidado carimba 'sem conta'", async () => {
+    mockUser = null;
+    await renderizar();
+    await aplicarPeloCampo("GERAL10");
+    await esvaziarFila();
+    expect(rascunhoGravado().cupom).toBe("GERAL10");
+    expect(rascunhoGravado().contaDoCupom ?? null).toBeNull();
+  });
+
+  it("trocar de conta com o checkout aberto tira o cupom aplicado", async () => {
+    mockUser = { id: "conta-ana" };
+    const CheckoutView = await renderizar();
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+
+    mockUser = { id: "conta-bia" };
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+  });
+
+  it("sair da conta (virar convidado) com o checkout aberto também tira o cupom", async () => {
+    mockUser = { id: "conta-ana" };
+    const CheckoutView = await renderizar();
+    await aplicarPeloCampo("VIP15");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+
+    mockUser = null;
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(hospedeiro.textContent).not.toContain("VIP15 aplicado");
+  });
+
+  it("convidado que entra na conta mantém o cupom (não é troca de conta)", async () => {
+    // Primeira resolução (convidado -> conta) NÃO é troca: o cupom que o
+    // convidado aplicou fica (o funil manda o convidado entrar no meio do
+    // checkout) e é conferido para a conta nova.
+    mockUser = null;
+    const CheckoutView = await renderizar();
+    await aplicarPeloCampo("GERAL10");
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("GERAL10 aplicado");
+
+    mockUser = { id: "conta-ana" };
+    await redesenhar(CheckoutView);
+    await esvaziarFila();
+    expect(hospedeiro.textContent).toContain("GERAL10 aplicado");
+  });
+
+  for (const destino of [null, "conta-bia"]) {
+    it(`Ana aplica o exclusivo, a aba passa para ${destino ?? "sem conta"} e a Bia abre o checkout: o código nunca aparece para a Bia`, async () => {
+      // No commit da troca o cupom velho ainda está no estado; carimbá-lo com
+      // a conta NOVA no rascunho o faria reaparecer na tela da Bia.
+      respostaDaValidacao = async () =>
+        mockUser?.id === "conta-ana"
+          ? { valid: true, discount: 15 }
+          : {
+              valid: false,
+              discount: 0,
+              message: "Cupom inválido ou expirado.",
+            };
+      mockUser = { id: "conta-ana" };
+      const CheckoutView = await renderizar();
+      await aplicarPeloCampo("VIP15");
+      await esvaziarFila();
+      expect(hospedeiro.textContent).toContain("VIP15 aplicado");
+
+      mockUser = destino ? { id: destino } : null;
+      await redesenhar(CheckoutView);
+      await esvaziarFila();
+
+      act(() => raiz.unmount());
+      raiz = createRoot(hospedeiro);
+      validateCoupon.mockClear();
+      let viuAplicado = false;
+      const olho = new MutationObserver(() => {
+        if (hospedeiro.textContent?.includes("VIP15 aplicado")) {
+          viuAplicado = true;
+        }
+      });
+      olho.observe(hospedeiro, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+      mockUser = { id: "conta-bia" };
+      await renderizar();
+      await esvaziarFila();
+      olho.disconnect();
+      expect(viuAplicado).toBe(false);
+      expect(validateCoupon).not.toHaveBeenCalled();
+    });
+  }
+});

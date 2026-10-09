@@ -605,6 +605,21 @@ function GatilhoDoResumoDoPedido({
   );
 }
 
+/**
+ * Tira o cupom (e o dono dele) do rascunho da sessão. Chamado quando o cupom
+ * guardado ali é de uma conta que não está mais na tela: o código de um
+ * exclusivo não fica esperando no armazenamento da aba (frente B).
+ */
+function esquecerCupomDoRascunho(): void {
+  const rascunho = lerRascunhoDoCheckout(globalThis.sessionStorage);
+  if (!rascunho?.cupom) return;
+  salvarRascunhoDoCheckout(globalThis.sessionStorage, {
+    ...rascunho,
+    cupom: null,
+    contaDoCupom: null,
+  });
+}
+
 interface CheckoutViewProps {
   readonly cart?: CartItem[];
   readonly subtotal?: number;
@@ -948,6 +963,14 @@ export function CheckoutView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // CUPOM DO RASCUNHO À ESPERA DA CONTA (frente B): o rascunho devolve só o
+  // código e o DONO dele. Quem decide se o cupom volta é o efeito "cupom
+  // pendente do rascunho", mais abaixo — a conta só é conhecida quando a
+  // autenticação termina, que pode ser DEPOIS da config da loja.
+  const cupomPendenteDoRascunhoRef = useRef<{
+    codigo: string;
+    conta: string | null;
+  } | null>(null);
   const hasInitializedRef = useRef(false);
   useEffect(() => {
     if (storeConfigLoaded && !hasInitializedRef.current) {
@@ -1019,19 +1042,65 @@ export function CheckoutView({
             cepAssociadoRef.current = formatarCep(rascunho.cep).limpo;
           }
           // O cupom volta SÓ o código: o efeito de revalidação do E1
-          // (logo acima, [codigoDoCupom, subtotal]) decide em seguida —
+          // (logo abaixo, [codigoDoCupom, subtotal]) decide em seguida —
           // válido atualiza o desconto; inválido sai com o motivo na tela.
+          // Frente B (28/09/2026): o cupom só volta para a MESMA conta que o
+          // aplicou — o código de um cupom exclusivo nunca aparece na tela
+          // de outra conta que abra o checkout nesta aba. Fica pendente até
+          // o efeito "cupom pendente do rascunho" decidir.
           if (rascunho.cupom) {
-            setAppliedCoupon({
-              code: rascunho.cupom,
-              discount: 0,
+            cupomPendenteDoRascunhoRef.current = {
+              codigo: rascunho.cupom,
               conta: rascunho.contaDoCupom ?? null,
-            });
+            };
           }
         }
       }
     }
   }, [storeConfigLoaded, profile, user]);
+
+  // Troca de conta com o checkout aberto (frente B): o cupom aplicado por
+  // uma CONTA sai quando outra entra (ou quando ela sai) — exclusivo não passa
+  // de mão em mão. Convidado → conta NÃO é troca: cupom de convidado nunca é
+  // exclusivo (o servidor recusa exclusivo para anon), e o funil manda o
+  // convidado entrar na conta no meio do checkout — o cupom dele fica e é
+  // revalidado para a conta nova. A primeira resolução da autenticação
+  // também não conta.
+  const contaAnteriorRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (authLoading) return;
+    const agora = user?.id ?? null;
+    const antes = contaAnteriorRef.current;
+    contaAnteriorRef.current = agora;
+    if (antes === undefined || antes === null || antes === agora) return;
+    cupomPendenteDoRascunhoRef.current = null;
+    setAppliedCoupon(null);
+    setCouponError("");
+    // O código da conta que saiu não fica esperando no armazenamento da aba.
+    esquecerCupomDoRascunho();
+  }, [authLoading, user]);
+
+  // Cupom pendente do rascunho: devolvido só quando a conta é conhecida E é a
+  // mesma que o aplicou. Declarado DEPOIS do efeito de init — no mesmo commit
+  // em que a config chega, roda logo depois dele.
+  // - cupom de convidado (conta null) volta para qualquer um — não é
+  //   exclusivo, e a revalidação confere o valor para a conta de agora;
+  // - cupom de uma conta com a autenticação ainda SEM usuário (sessão que
+  //   chega tarde, ou sessão perdida) fica pendente, escondido;
+  // - cupom de outra conta é descartado, inclusive do rascunho.
+  useEffect(() => {
+    if (!storeConfigLoaded || authLoading) return;
+    const pendente = cupomPendenteDoRascunhoRef.current;
+    if (!pendente) return;
+    const agora = user?.id ?? null;
+    if (pendente.conta !== null && agora === null) return;
+    cupomPendenteDoRascunhoRef.current = null;
+    if (pendente.conta === null || pendente.conta === agora) {
+      setAppliedCoupon({ code: pendente.codigo, discount: 0, conta: agora });
+    } else {
+      esquecerCupomDoRascunho();
+    }
+  }, [storeConfigLoaded, authLoading, user]);
 
   // A quem os campos de endereço ATUALMENTE pertencem: o último CEP cuja
   // busca foi aplicada. `null` só quando o campo nasce vazio — aí não existe
@@ -2127,7 +2196,15 @@ export function CheckoutView({
         estado: valores.state ?? "",
         complemento: valores.complement ?? "",
         notas: notasRef.current,
-        cupom: cupomRef.current?.code ?? null,
+        // Cupom ainda pendente (auth carregando) não se perde numa gravação.
+        cupom:
+          cupomRef.current?.code ??
+          cupomPendenteDoRascunhoRef.current?.codigo ??
+          null,
+        // O dono do cupom que ESTÁ no estado — nunca a conta de agora.
+        contaDoCupom: cupomRef.current
+          ? cupomRef.current.conta
+          : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
       };
       if (!rascunhoTemConteudo(rascunho)) return;
       salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
@@ -2152,7 +2229,13 @@ export function CheckoutView({
       estado: form.getValues("state") ?? "",
       complemento: form.getValues("complement") ?? "",
       notas: notes,
-      cupom: appliedCoupon?.code ?? null,
+      cupom:
+        appliedCoupon?.code ??
+        cupomPendenteDoRascunhoRef.current?.codigo ??
+        null,
+      contaDoCupom: appliedCoupon
+        ? appliedCoupon.conta
+        : (cupomPendenteDoRascunhoRef.current?.conta ?? null),
     };
     if (!rascunhoTemConteudo(rascunho)) return;
     salvarRascunhoDoCheckout(globalThis.sessionStorage, rascunho);
