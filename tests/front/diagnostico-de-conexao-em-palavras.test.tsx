@@ -174,7 +174,26 @@ describe("Ajustes — o diagnóstico de conexão fala em palavras", () => {
     expect(bloco.querySelector("details")?.textContent).toContain("400 ms");
   });
 
-  it("D2 — nenhuma tentativa chegou: 'Sem internet', com o que fazer, sem número inventado", async () => {
+  it("D2 — aparelho online, mas a loja não respondeu nenhuma vez: não culpa o Wi-Fi", async () => {
+    // As quatro consultas falham por erro do servidor com o aparelho online:
+    // "Sem internet / confira o Wi-Fi" mandaria a lojista mexer no lugar
+    // errado.
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(true);
+    consulta.falha = true;
+    await abrirDiagnostico();
+    await testarAgora();
+
+    const bloco = diagnostico();
+    expect(bloco.textContent).toContain(
+      "A loja não respondeu agora. Tente de novo em instantes.",
+    );
+    expect(bloco.textContent).not.toContain("Sem internet");
+    expect(bloco.textContent).not.toMatch(/Wi-Fi/);
+    expect(bloco.textContent).not.toMatch(JARGAO);
+  });
+
+  it("D2 — nenhuma tentativa chegou e o aparelho está offline: 'Sem internet', com o que fazer, sem número inventado", async () => {
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
     consulta.falha = true;
     await abrirDiagnostico();
     await testarAgora();

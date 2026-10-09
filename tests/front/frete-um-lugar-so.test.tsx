@@ -31,8 +31,9 @@ import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { estadoDaLoja, estadoDoBanco, invoke, tabelasLidas } = vi.hoisted(
-  () => ({
+const { estadoDaLoja, estadoDoBanco, invoke, tabelasLidas, updateConfig } =
+  vi.hoisted(() => ({
+    updateConfig: vi.fn(),
     estadoDaLoja: { atual: {} as Record<string, unknown> },
     // O que a edge `ler_configuracao_frete` devolveria.
     estadoDoBanco: {
@@ -44,8 +45,7 @@ const { estadoDaLoja, estadoDoBanco, invoke, tabelasLidas } = vi.hoisted(
     },
     invoke: vi.fn(),
     tabelasLidas: [] as string[],
-  }),
-);
+  }));
 
 function lojaPadrao(): Record<string, unknown> {
   return {
@@ -89,7 +89,7 @@ vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
     config: estadoDaLoja.atual,
     isLoaded: true,
-    updateConfig: vi.fn(async () => true),
+    updateConfig,
   }),
 }));
 vi.mock("@/hooks/useOnlineStatus", () => ({ useOnlineStatus: () => false }));
@@ -174,6 +174,8 @@ let hospedeiro: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  updateConfig.mockReset();
+  updateConfig.mockResolvedValue(true);
   tabelasLidas.length = 0;
   estadoDaLoja.atual = lojaPadrao();
   estadoDoBanco.ligados = ["melhor_envio"];
@@ -362,6 +364,72 @@ describe("Frete: as Transportadoras e as Consultas de frete moram aqui", () => {
       invoke.mock.calls.some((c) => c[1]?.body?.action === "save_credentials"),
     ).toBe(true);
     expect(onSetDirty).toHaveBeenLastCalledWith(false);
+  });
+
+  it("F4b — token digitado com o painel FECHADO: o resumo do painel avisa que falta salvar", async () => {
+    await abrirFrete();
+    const cabecalho = cabecalhoDoPainel("painel-frete-transportadoras");
+    expect(cabecalho.textContent).not.toMatch(/falta salvar/);
+    await clicar(cabecalho);
+    const campo = hospedeiro.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      digitar(campo, "tok-novo");
+    });
+    await drenar();
+
+    await clicar(cabecalho);
+    expect(cabecalho.getAttribute("aria-expanded")).toBe("false");
+    // O Salvar do cabeçalho segue "Salvo" (é das regras); a pista da chave
+    // pendente fica no próprio painel fechado.
+    expect(cabecalho.textContent).toContain("chave digitada — falta salvar");
+  });
+
+  it("F4c — salvar as regras pelo cabeçalho com um token sendo digitado no meio do caminho mantém a guarda ligada", async () => {
+    let soltarSave: (ok: boolean) => void = () => {};
+    updateConfig.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          soltarSave = resolve;
+        }),
+    );
+    const onSetDirty = vi.fn();
+    await abrirFrete({ onSetDirty });
+
+    // Mexe numa regra (acende o Salvar do cabeçalho).
+    await clicar(cabecalhoDoPainel("painel-frete-local"));
+    const taxa = hospedeiro.querySelector(
+      "#local-delivery-fee",
+    ) as HTMLInputElement;
+    expect(taxa, "campo da taxa local ausente").not.toBeNull();
+    await act(async () => {
+      digitar(taxa, "12");
+    });
+    await drenar();
+    const salvarCabecalho = botaoComTexto(/^Salvar$/) as HTMLButtonElement;
+    expect(salvarCabecalho).toBeDefined();
+    await act(async () => {
+      salvarCabecalho.click();
+    });
+
+    // Enquanto o salvar das regras espera o servidor, a lojista cola um token.
+    await clicar(cabecalhoDoPainel("painel-frete-transportadoras"));
+    const campo = hospedeiro.querySelector(
+      'input[type="password"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      digitar(campo, "tok-novo");
+    });
+    await drenar();
+
+    await act(async () => {
+      soltarSave(true);
+    });
+    await drenar();
+
+    // A chave não foi salva: a guarda de navegação continua ligada.
+    expect(onSetDirty).toHaveBeenLastCalledWith(true);
   });
 
   it("F5 — salvar quem está ligado dentro do painel atualiza 'Fora da cidade' na hora", async () => {

@@ -275,6 +275,7 @@ function Expansor({
 export const MercadoPagoSection = memo(function MercadoPagoSection({
   onDirtyMudou,
   onPixAlternado,
+  abrirChavesGatilho = 0,
 }: {
   /** Mesma trava das demais seções: avisa o pai para BLOQUEAR o fecho da
    * seção colapsável enquanto houver chave digitada e não salva. */
@@ -294,6 +295,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
    * o que é falso justamente para o `ler` — e o painel de Ajustes acenderia
    * "Funcionando" com o PIX quebrado (achado da revisão de mp-10). */
   readonly onPixAlternado?: (ligado: boolean, chaveNaLoja?: boolean) => void;
+  /** Contador que só CRESCE (H6): o atalho "Configurar credenciais" de
+   * "Formas de pagamento" pede para cair direto nos campos das chaves —
+   * abre "Avançado" e "Suas chaves" de uma vez. 0 = ninguém pediu. */
+  readonly abrirChavesGatilho?: number;
 }) {
   const isOffline = useOnlineStatus();
 
@@ -324,7 +329,14 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
   // expandidores próprios, ambos FECHADOS por padrão — o grupo abre
   // mostrando só o resumo do status.
   const [guiaAberto, setGuiaAberto] = useState(false);
-  const [chavesAberto, setChavesAberto] = useState(false);
+  // (H6) "Suas chaves" também abre sozinha quando há pendência (efeito mais
+  // abaixo) ou quando o atalho "Configurar credenciais" pediu os campos.
+  const [chavesAberto, setChavesAberto] = useState(
+    () => abrirChavesGatilho > 0,
+  );
+  useEffect(() => {
+    if (abrirChavesGatilho > 0) setChavesAberto(true);
+  }, [abrirChavesGatilho]);
 
   const copiadoTimer = useRef<number | null>(null);
   useEffect(
@@ -676,6 +688,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     (!config.configurado ||
       faltando.length > 0 ||
       estadoDoRecebimento === "pronto");
+  // Com pendência, a camada "Suas chaves" abre junto: o "Testar conexão"
+  // que o bloco do recebimento manda tocar mora nela — abrir só o Avançado
+  // deixaria o conserto a um clique a mais.
+  useEffect(() => {
+    if (pendenciaNasChaves) setChavesAberto(true);
+  }, [pendenciaNasChaves]);
 
   // Mesma trava do fluxo do dono nos DOIS botões de testar (o do formulário
   // e o do aviso âmbar): testar coisa diferente do que está salvo enganaria.
@@ -754,11 +772,16 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           técnico, feito uma vez — numa seção recolhível MONTADA (fechar só
           esconde; o formulário e o estado dele moram aqui no componente).
           Abre sozinha quando falta alguma coisa para receber pelo app: aí
-          a lojista precisa mesmo das chaves e do teste. ───────────────── */}
+          a lojista precisa mesmo das chaves e do teste — e também quando há
+          chave digitada e não salva (`dirty`). O atalho "Configurar
+          credenciais" remonta a seção já aberta (`key` pelo gatilho; nada se
+          perde: o formulário mora neste componente). ───────────────── */}
       <SecaoRecolhivel
+        key={`avancado-${abrirChavesGatilho}`}
         titulo="Avançado: chaves do Mercado Pago"
         resumo="O passo a passo, as chaves e o teste de conexão"
-        temErro={pendenciaNasChaves}
+        abertaInicial={abrirChavesGatilho > 0}
+        temErro={pendenciaNasChaves || dirty}
       >
         {/* ── Camada 2a: o guia, escondido até pedido (expande o passo a
           passo e o botão de copiar o prompt) ──────────────────────────── */}

@@ -231,7 +231,9 @@ describe("Ajustes — o painel do PIX acompanha o interruptor sem recarregar", (
     // A seção é lazy: espera o import dinâmico assentar antes de procurar
     // o expansor interno.
     await assentar();
-    await clicar(botaoPorTexto("Suas chaves"));
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    const chaves = botaoPorTexto("Suas chaves");
+    if (chaves.getAttribute("aria-expanded") !== "true") await clicar(chaves);
   }
 
   /** O termômetro mora no TOPO do grupo Pagamentos desde H6 (painel simples:

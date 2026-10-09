@@ -283,6 +283,14 @@ export const AdminShippingView = memo(function AdminShippingView({
   // a chave tem o Salvar do próprio cartão.
   const [transportadorasPendentes, setTransportadorasPendentes] =
     useState(false);
+  // Espelho em ref, escrito no MESMO instante do aviso: o `handleSave` lê a
+  // pendência DEPOIS do `await` do salvar, e o valor capturado no clique
+  // estaria velho se a lojista colou um token enquanto as regras salvavam.
+  const transportadorasPendentesRef = useRef(false);
+  const marcarTransportadorasPendentes = useCallback((pendente: boolean) => {
+    transportadorasPendentesRef.current = pendente;
+    setTransportadorasPendentes(pendente);
+  }, []);
 
   // ── Sincronização LOCAL (achado 3 da auditoria, intacta) ──────────────
   const jaSincronizouRef = useRef(false);
@@ -571,7 +579,7 @@ export const AdminShippingView = memo(function AdminShippingView({
       setFalhaAoSalvar(false);
       // As regras salvaram; um token de transportadora ainda não salvo
       // continua segurando a guarda.
-      onSetDirty?.(transportadorasPendentes);
+      onSetDirty?.(transportadorasPendentesRef.current);
       haptic.success();
       toast.success("Regras de frete salvas!");
     } catch (err) {
@@ -841,13 +849,19 @@ export const AdminShippingView = memo(function AdminShippingView({
               <PainelRecolhivel
                 id="painel-frete-transportadoras"
                 titulo="Transportadoras"
-                resumo="chave de acesso, teste e quem está ligado"
+                resumo={
+                  // Fechado com token não salvo: a pista fica aqui, porque
+                  // o Salvar do cabeçalho (das regras) continua "Salvo".
+                  transportadorasPendentes
+                    ? "chave digitada — falta salvar"
+                    : "chave de acesso, teste e quem está ligado"
+                }
                 aberta={painelAberto.transportadoras}
                 onToggle={alternarTransportadoras}
               >
                 {transportadorasMontada && (
                   <TransportadorasSection
-                    onDirtyMudou={setTransportadorasPendentes}
+                    onDirtyMudou={marcarTransportadorasPendentes}
                     onLigadosMudou={onLigadosDasTransportadorasMudou}
                   />
                 )}

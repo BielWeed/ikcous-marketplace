@@ -200,9 +200,12 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     await abrirGuia();
     expect(document.body.textContent).toContain("Assinatura secreta");
     const chaves = botaoPorTexto("Suas chaves");
-    await act(async () => {
-      chaves.click();
-    });
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    if (chaves.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        chaves.click();
+      });
+    }
     expect(document.body.textContent).toContain(
       "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
     );

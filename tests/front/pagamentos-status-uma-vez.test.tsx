@@ -276,6 +276,17 @@ describe("Ajustes — o status do PIX aparece uma vez", () => {
     expect(cabecalhoDaSecao("Mercado Pago").getAttribute("aria-expanded")).toBe(
       "true",
     );
+    // Cai direto nos campos das chaves (lazy: espera o import assentar).
+    for (
+      let i = 0;
+      i < 50 && !hospedeiro.querySelector("#mp-public-key");
+      i++
+    ) {
+      await assentar();
+    }
+    const campo = hospedeiro.querySelector("#mp-public-key");
+    expect(campo, "campos das chaves não abriram").not.toBeNull();
+    expect(campo!.closest("[hidden]")).toBeNull();
   });
 
   it("S3 — 'Minha loja está no ar?' mostra a conexão e um atalho para Pagamentos, que abre o Mercado Pago", async () => {
@@ -338,6 +349,14 @@ describe("MercadoPagoSection — as chaves em 'Avançado: chaves do Mercado Pago
     await assentar();
   }
 
+  function camadaAberta(titulo: string): boolean {
+    const botao = [
+      ...hospedeiro.querySelectorAll("button[aria-expanded]"),
+    ].find((b) => b.textContent?.includes(titulo));
+    if (!botao) throw new Error(`Camada "${titulo}" ausente.`);
+    return botao.getAttribute("aria-expanded") === "true";
+  }
+
   function avancado(): HTMLElement {
     const secao = hospedeiro.querySelector(
       'section[aria-label="Avançado: chaves do Mercado Pago"]',
@@ -385,5 +404,53 @@ describe("MercadoPagoSection — as chaves em 'Avançado: chaves do Mercado Pago
     ) as HTMLElement;
     expect(bloco.textContent).toContain("Falta para receber pelo app:");
     expect(bloco.textContent).toContain("colar a senha dos avisos");
+    // "Suas chaves" abre junto: o conserto (campos e Testar conexão) fica à
+    // mão, sem um clique a mais.
+    expect(camadaAberta("Suas chaves")).toBe(true);
+    expect(hospedeiro.querySelector("#mp-webhook-secret")).not.toBeNull();
+    const testar = [...avancado().querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Testar conexão"),
+    );
+    expect(testar, "Testar conexão fora do alcance").toBeDefined();
+    expect(testar!.closest("[hidden]")).toBeNull();
+  });
+
+  it("S5 — tudo preenchido e desligado: Avançado e 'Suas chaves' abrem com o Testar conexão à mão", async () => {
+    cenario.salvo = { ...RECEBENDO, pix_ligado: false };
+    await montarSecao();
+
+    expect(
+      hospedeiro
+        .querySelector(
+          'section[aria-label="Avançado: chaves do Mercado Pago"] > button[aria-expanded]',
+        )
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(camadaAberta("Suas chaves")).toBe(true);
+    const testar = [...avancado().querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Testar conexão"),
+    );
+    expect(testar?.closest("[hidden]")).toBeNull();
+  });
+
+  it("S5 — o atalho 'Configurar credenciais' (gatilho) abre direto os campos, mesmo sem pendência", async () => {
+    cenario.salvo = { ...RECEBENDO };
+    const { MercadoPagoSection } = await import(
+      "@/components/admin/settings/MercadoPagoSection"
+    );
+    await act(async () => {
+      raiz.render(<MercadoPagoSection abrirChavesGatilho={1} />);
+    });
+    await assentar();
+
+    expect(
+      avancado()
+        .querySelector(":scope > button[aria-expanded]")
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(camadaAberta("Suas chaves")).toBe(true);
+    const campo = hospedeiro.querySelector("#mp-public-key");
+    expect(campo).not.toBeNull();
+    expect(campo!.closest("[hidden]")).toBeNull();
   });
 });

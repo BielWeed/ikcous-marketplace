@@ -76,7 +76,11 @@ const MercadoPagoSection = lazy(() =>
 // conexão boa, lenta ou sem internet — com o que fazer; os números (ms e
 // tentativas sem resposta) ficam num detalhe, para quem quiser.
 // ==========================================
-type ResultadoDaConexao = "boa" | "lenta" | "sem-internet";
+type ResultadoDaConexao =
+  | "boa"
+  | "lenta"
+  | "sem-internet"
+  | "loja-sem-resposta";
 
 interface MedidaDaConexao {
   /** Tempo médio de resposta em ms; `null` = nenhuma tentativa respondeu. */
@@ -85,13 +89,19 @@ interface MedidaDaConexao {
   readonly maxima: number | null;
   readonly falhas: number;
   readonly tentativas: number;
+  /** `navigator.onLine` no fim do teste: o aparelho diz que tem rede. */
+  readonly aparelhoOnline: boolean;
 }
 
 // Mesmo corte de antes (abaixo de 250 ms era "Excelente"/"Moderado"); uma
 // tentativa sem resposta já é conexão lenta (antes: "Instabilidade
-// Detectada").
+// Detectada"). Nenhuma resposta com o aparelho ONLINE é a loja que não
+// respondeu (erro do servidor), não falta de internet: mandar conferir o
+// Wi-Fi seria mandar mexer no lugar errado.
 function resultadoDaConexao(medida: MedidaDaConexao): ResultadoDaConexao {
-  if (medida.media === null) return "sem-internet";
+  if (medida.media === null) {
+    return medida.aparelhoOnline ? "loja-sem-resposta" : "sem-internet";
+  }
   if (medida.falhas > 0 || medida.media >= 250) return "lenta";
   return "boa";
 }
@@ -123,6 +133,14 @@ const PALAVRAS_DA_CONEXAO = new Map<
       titulo: "Sem internet",
       frase:
         "Este aparelho não conseguiu falar com a loja. Confira o Wi-Fi ou os dados móveis e teste de novo.",
+      cor: "text-red-400",
+    },
+  ],
+  [
+    "loja-sem-resposta",
+    {
+      titulo: "A loja não respondeu",
+      frase: "A loja não respondeu agora. Tente de novo em instantes.",
       cor: "text-red-400",
     },
   ],
@@ -171,6 +189,7 @@ const ConnectionDiagnosticsSection = memo(
         maxima: temResposta ? Math.round(Math.max(...pings)) : null,
         falhas: failed,
         tentativas: totalTests,
+        aparelhoOnline: navigator.onLine,
       });
       setTestando(false);
     };
@@ -646,6 +665,10 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // incrementa para abrir a seção Mercado Pago de fora (SecaoColapsavel
   // continua dona do próprio fechar).
   const [abrirMercadoPagoGatilho, setAbrirMercadoPagoGatilho] = useState(0);
+  // Mesmo gênero de contador, só do "Configurar credenciais": além de abrir
+  // a seção, pede os campos das chaves já à mostra. O "Ver o PIX em
+  // Pagamentos" de Ferramentas abre a seção sem ele.
+  const [abrirChavesGatilho, setAbrirChavesGatilho] = useState(0);
 
   // Espelha a soma das pendências para o App (onSetDirty = setIsAdminDirty):
   // é o que liga as guardas de beforeunload, diálogo de navegação e popstate
@@ -907,9 +930,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                   isOffline={isOffline}
                   updateConfig={updateConfig}
                   onDirtyMudou={setFormasPagamentoPendente}
-                  onAbrirMercadoPago={() =>
-                    setAbrirMercadoPagoGatilho((n) => n + 1)
-                  }
+                  onAbrirMercadoPago={() => {
+                    setAbrirMercadoPagoGatilho((n) => n + 1);
+                    // "Configurar credenciais" cai direto nos campos das
+                    // chaves (Avançado + Suas chaves abertos).
+                    setAbrirChavesGatilho((n) => n + 1);
+                  }}
                 />
               </SecaoColapsavel>
 
@@ -929,6 +955,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 >
                   <MercadoPagoSection
                     onDirtyMudou={setPagamentosPendente}
+                    abrirChavesGatilho={abrirChavesGatilho}
                     onPixAlternado={(ligado, chaveNaLoja) => {
                       setPixLigado(ligado);
                       // `chaveNaLoja` só vem preenchido no eco do `ler`

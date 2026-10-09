@@ -230,9 +230,12 @@ describe("AdminSettingsView — seções colapsadas por padrão", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 10));
     });
-    await act(async () => {
-      camadaDasChaves()!.click();
-    });
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    if (camadaDasChaves()!.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        camadaDasChaves()!.click();
+      });
+    }
     return cabecalho;
   }
 
