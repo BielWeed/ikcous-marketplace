@@ -39,6 +39,19 @@
  *       de outra migration e varredura diferente da 20260970.
  *   (6) MUTANTES: cada guarda tirada deixa a prova certa VERMELHA.
  *
+ * MIGRATION 20261206000000 (provas "M2" e "7x", depois de reaplicá-la): a vaga do
+ * pedido NUNCA COBRADO (sem id de cobrança gravado E zero tentativas) volta 45
+ * min depois de expires_at, e não mais em 24 h; a varredura passa a perguntar
+ * ao auxiliar. A ordem dos arquivos importa: o banco que chega aqui (CI) tem as
+ * duas migrations, e a prova "(1-M2)" desfaz a segunda pelo rollback (provando
+ * que ele restaura byte a byte) para as provas da 20261205 rodarem no estado em
+ * que só ela existe; "(M2-a)" reaplica a segunda.
+ *   (7a) tabela de casos da pista rápida (fronteiras de 45 min, cobrança gravada,
+ *        tentativa, pago, enviado...); (7b) o cenário do crítico: com a vaga de
+ *        cobrança vazia nenhum pagamento se liga ao pedido (`divergente`);
+ *        (7c) duas varreduras em conexões reais: uma devolução só; (7d-g)
+ *        reaplicar, pré-voo, pós-voo e rollback; (8) mutantes.
+ *
  * USO: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-viva.cjs
  */
 
@@ -65,6 +78,63 @@ const NOME_M1 = "20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql";
 const ler = (nome) => fs.readFileSync(path.join(PASTA, nome), "utf8");
 const lerM1 = () => ler(NOME_M1);
 const lerRollbackM1 = () => ler(`rollback-manual-${NOME_M1}`);
+const NOME_M2 =
+  "20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql";
+const NOME_970 = "20260970000000_cancelamento_respeita_o_envio.sql";
+const lerM2 = () => ler(NOME_M2);
+const lerRollbackM2 = () => ler(`rollback-manual-${NOME_M2}`);
+
+const CAB_AUX = "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(";
+const CAB_VARREDURA =
+  "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()";
+const TAG_FN = "$function$";
+const TAG_VARREDURA = "$devolver_cupons_mortos$";
+
+const sha256 = (s) =>
+  crypto.createHash("sha256").update(Buffer.from(s, "utf8")).digest("hex");
+
+/** O corpo de uma função dentro de um arquivo, entre `AS $tag$` e `$tag$;` (LF). */
+function corpoDe(texto, cabecalho, tag) {
+  const t = texto.replace(/\r\n/g, "\n");
+  const ini = t.indexOf(cabecalho);
+  assert.ok(ini >= 0, `cabeçalho não achado: ${cabecalho}`);
+  const abre = t.indexOf(`AS ${tag}`, ini) + `AS ${tag}`.length;
+  return t.slice(abre, t.indexOf(`${tag};`, abre));
+}
+/** sha256 do corpo como o banco o guarda: texto em LF e em CRLF. */
+const shas = (corpo) => [sha256(corpo), sha256(corpo.replace(/\n/g, "\r\n"))];
+
+const SHA_AUX_V1 = () => shas(corpoDe(lerM1(), CAB_AUX, TAG_FN));
+const SHA_AUX_V2 = () => shas(corpoDe(lerM2(), CAB_AUX, TAG_FN));
+const SHA_VARREDURA_970 = () =>
+  shas(corpoDe(ler(NOME_970), CAB_VARREDURA, TAG_VARREDURA));
+const SHA_VARREDURA_V2 = () =>
+  shas(corpoDe(lerM2(), CAB_VARREDURA, TAG_VARREDURA));
+
+/** O comentário da varredura como a 20260901000000 o deixou (e o rollback da M2 o restaura). */
+const COMENTARIO_VARREDURA_970 =
+  'Unico lugar onde a vaga de um cupom volta depois que um pedido que o usou e desfeito. Só age sobre pedido definitivamente morto -- PIX que ja nao pode mais ser pago, pelo mesmo criterio de pagamentos_a_reconciliar (expires_at + 24h) -- e nunca deduz "ja devolvido" do estado: le e grava o fato na coluna coupon_usage_returned. Agendada via pg_cron a cada 15 minutos, ver abaixo.';
+/** O comentário do auxiliar como a M1 o deixou. */
+const comentarioDoAuxiliarNaM1 = () => {
+  const m =
+    /COMMENT ON FUNCTION public\.cupom__vaga_volta_em\([^)]*\) IS '([^']*)';/.exec(
+      lerM1(),
+    );
+  assert.ok(m, "COMMENT do auxiliar não achado na M1");
+  return m[1];
+};
+
+/** Estado COMPLETO de uma função: corpo, definição, ACL e comentário. */
+async function estadoDe(c, assinatura) {
+  return (
+    await c.query(
+      `SELECT encode(sha256(convert_to(prosrc, 'UTF8')), 'hex') AS sha, pg_get_functiondef(oid) AS def,
+              proacl::text AS acl, obj_description(oid, 'pg_proc') AS comentario
+         FROM pg_proc WHERE oid = to_regprocedure($1)`,
+      [assinatura],
+    )
+  ).rows[0];
+}
 
 const FN_AUX =
   "public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamp with time zone, boolean, timestamp with time zone, text, integer)";
@@ -291,6 +361,14 @@ const ESTADO_ESPERADO = new Map([
     "v23-enviado-retornado",
     ["cancelled", null, 0, false, true, true, true, false],
   ],
+  [
+    "v24-enviado-cancelado",
+    ["cancelled", "aguardando", 0, false, true, false, true, true],
+  ],
+  [
+    "v24-vaga-liberada",
+    ["cancelled", "aguardando", 1, false, false, false, true, true],
+  ],
   ["v23-sem-cupom", ["cancelled", null, 0, false, false, false, false, false]],
 ]);
 
@@ -390,6 +468,26 @@ async function montar(c, { kind, offsetSec = null, cupom = null }) {
     }
     case "v24-pendente":
       break;
+    case "v24-vaga-liberada": {
+      // cobrança gravada e depois liberada (cartão recusado): a vaga de
+      // cobrança volta a ficar VAZIA, sempre com tentativas + 1
+      await c.query(
+        "UPDATE public.marketplace_orders SET gateway_payment_id = 'MP-LIB-1' WHERE id = $1",
+        [id],
+      );
+      const lib = await c.query(
+        "SELECT public.liberar_cobranca_do_pedido($1::uuid, 'MP-LIB-1') AS ok",
+        [id],
+      );
+      assert.equal(
+        lib.rows[0].ok,
+        true,
+        "liberar_cobranca_do_pedido não liberou",
+      );
+      await cancelarComo(c, "comprador", id);
+      break;
+    }
+    case "v24-enviado-cancelado":
     case "v23-enviado-cancelado":
     case "v23-enviado-retornado":
       exigirOk(
@@ -589,6 +687,238 @@ const CASOS_M1 = [
     presa: false,
     minutos: null,
   },
+  {
+    nome: "PIX enviado e cancelado depois do envio, produto não voltou: NUNCA",
+    kind: "v24-enviado-cancelado",
+    offsetSec: 1441 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "vaga de cobrança esvaziada (liberar_cobranca_do_pedido), 24 h 01 min: volta",
+    kind: "v24-vaga-liberada",
+    offsetSec: 1441 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "vaga de cobrança esvaziada, 23 h: espera 60 min",
+    kind: "v24-vaga-liberada",
+    offsetSec: 1380 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 75,
+  },
+];
+
+/**
+ * Valem para a 20261206000000: a pista RÁPIDA (pedido NUNCA cobrado = sem id de
+ * cobrança gravado E zero tentativas de pagamento) espera 45 min depois de
+ * expires_at; qualquer outro pedido segue com as 24 h. Minutos por EXTENSO.
+ */
+const CASOS_M2 = [
+  {
+    nome: "na entrega (v23, sem expires_at) cancelado: volta no próximo ciclo",
+    kind: "v23-cancelado",
+    offsetSec: null,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "PIX cancelado sem cobrança, venceu há 46 min: volta",
+    kind: "v24-cancelado",
+    offsetSec: 46 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "venceu há 45 min 30 s: passou 30 s da espera, volta",
+    kind: "v24-cancelado",
+    offsetSec: 45 * MIN + 30,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "venceu há 44 min: falta 1 min",
+    kind: "v24-cancelado",
+    offsetSec: 44 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 16,
+  },
+  {
+    nome: "faltam 90 s: arredonda PARA CIMA (2 min, não 1)",
+    kind: "v24-cancelado",
+    offsetSec: 45 * MIN - 90,
+    devolve: false,
+    presa: true,
+    minutos: 17,
+  },
+  {
+    nome: "venceu há 10 min: faltam 35 min",
+    kind: "v24-cancelado",
+    offsetSec: 10 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 50,
+  },
+  {
+    nome: "venceu há 23 h: já voltou há muito",
+    kind: "v24-cancelado",
+    offsetSec: 1380 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "PIX expirado pela varredura, venceu há 10 min",
+    kind: "v24-expirado",
+    offsetSec: 10 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 50,
+  },
+  {
+    nome: "PIX expirado pela varredura, venceu há 46 min",
+    kind: "v24-expirado",
+    offsetSec: 46 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "cartão recusado antes da cobrança (1 tentativa), 46 min: a vaga JÁ foi ocupada uma vez, segue as 24 h",
+    kind: "v24-recusa-antes",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 1409,
+  },
+  {
+    nome: "cartão recusado antes da cobrança, 23 h: ainda espera",
+    kind: "v24-recusa-antes",
+    offsetSec: 1380 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 75,
+  },
+  {
+    nome: "cartão recusado antes da cobrança, 24 h 01 min: volta",
+    kind: "v24-recusa-antes",
+    offsetSec: 1441 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "vaga de cobrança esvaziada por liberar_cobranca_do_pedido (tentativa +1), 46 min: 24 h",
+    kind: "v24-vaga-liberada",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 1409,
+  },
+  {
+    nome: "vaga de cobrança esvaziada, 24 h 01 min: volta",
+    kind: "v24-vaga-liberada",
+    offsetSec: 1441 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "com QR/cobrança gravada, 46 min: vaga OCUPADA, segue as 24 h",
+    kind: "v24-com-qr",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: true,
+    minutos: 1409,
+  },
+  {
+    nome: "com QR/cobrança gravada, 24 h 01 min: volta",
+    kind: "v24-com-qr",
+    offsetSec: 1441 * MIN,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "pago depois de expirar, 46 min: NUNCA",
+    kind: "v24-pago-apos-expirar",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "pago depois de expirar, 24 h 01 min: NUNCA",
+    kind: "v24-pago-apos-expirar",
+    offsetSec: 1441 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "pago e depois cancelado pelo lojista, 46 min: NUNCA",
+    kind: "v24-pago-cancelado",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "pedido ainda pendente (não cancelado), 46 min: não é vaga presa",
+    kind: "v24-pendente",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "PIX enviado e cancelado DEPOIS do envio, produto não voltou, 46 min: NUNCA (a pista rápida não pula essa guarda)",
+    kind: "v24-enviado-cancelado",
+    offsetSec: 46 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "PIX enviado e cancelado depois do envio, 24 h 01 min: NUNCA",
+    kind: "v24-enviado-cancelado",
+    offsetSec: 1441 * MIN,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "na entrega cancelado DEPOIS do envio, produto não voltou: NUNCA (ainda)",
+    kind: "v23-enviado-cancelado",
+    offsetSec: null,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
+  {
+    nome: "cancelado depois do envio e o lojista registrou o retorno: volta",
+    kind: "v23-enviado-retornado",
+    offsetSec: null,
+    devolve: true,
+    presa: true,
+    minutos: 15,
+  },
+  {
+    nome: "pedido sem cupom: nada a devolver",
+    kind: "v23-sem-cupom",
+    offsetSec: null,
+    devolve: false,
+    presa: false,
+    minutos: null,
+  },
 ];
 
 /**
@@ -721,6 +1051,89 @@ prova("(0) fixtures", async (c) => {
     [P_PRODUTO],
   );
 });
+
+// A árvore inteira (CI) chega aqui com as DUAS migrations aplicadas. As provas
+// da 20261205 falam do estado em que SÓ ela existe (espera de 24 h para todo
+// pedido): esta prova desfaz a 20261206 pelo rollback dela — e prova, no
+// caminho, que o rollback restaura byte a byte — e deixa o banco nesse estado.
+// A prova "(M2-a)" reaplica a 20261206 e começam as provas dela.
+const FORA_DO_PAR = [
+  "cupom__vaga_volta_em",
+  "devolver_cupons_de_pedidos_mortos",
+];
+
+async function estadoDoPar(c) {
+  return {
+    aux: await estadoDe(c, FN_AUX),
+    varredura: await estadoDe(c, FN_VARREDURA),
+  };
+}
+const commitar = (c, sql) => emTx(c, () => c.query(sql), { commit: true });
+
+prova(
+  "(1-M2) rollback da 20261206 restaura o auxiliar e a varredura byte a byte (e reaplicar volta ao da 20261206); deixa o banco no estado da 20261205",
+  async (c) => {
+    const v2 = await estadoDoPar(c);
+    assert.ok(
+      SHA_AUX_V2().includes(v2.aux.sha),
+      "o banco ainda não está no estado da 20261206 (auxiliar)",
+    );
+    assert.ok(
+      SHA_VARREDURA_V2().includes(v2.varredura.sha),
+      "o banco ainda não está no estado da 20261206 (varredura)",
+    );
+    const fora = await impressao(c, FORA_DO_PAR);
+    // um pedido que existe antes e depois: o rollback não toca dado
+    const id = await emTx(
+      c,
+      async () =>
+        (await montar(c, { kind: "v24-cancelado", offsetSec: 600 })).id,
+      { commit: true },
+    );
+    const pedidoAntes = await pedido(c, id);
+
+    await commitar(c, lerRollbackM2());
+    const v1 = await estadoDoPar(c);
+    assert.ok(
+      SHA_AUX_V1().includes(v1.aux.sha),
+      "o auxiliar não voltou ao corpo da 20261205",
+    );
+    assert.ok(
+      SHA_VARREDURA_970().includes(v1.varredura.sha),
+      "a varredura não voltou ao corpo da 20260970",
+    );
+    assert.equal(v1.varredura.comentario, COMENTARIO_VARREDURA_970);
+    assert.equal(v1.aux.comentario, comentarioDoAuxiliarNaM1());
+    assert.equal(v1.aux.acl, v2.aux.acl, "ACL do auxiliar mudou");
+    assert.equal(v1.varredura.acl, v2.varredura.acl, "ACL da varredura mudou");
+    assert.deepEqual(
+      await impressao(c, FORA_DO_PAR),
+      fora,
+      "o rollback mexeu em outra função",
+    );
+    assert.deepEqual(
+      await pedido(c, id),
+      pedidoAntes,
+      "o rollback mexeu num pedido",
+    );
+
+    // idempotente: o segundo rollback não faz nada
+    await commitar(c, lerRollbackM2());
+    assert.deepEqual(await estadoDoPar(c), v1);
+
+    // reaplicar a 20261206 volta ao estado dela, idêntico
+    await commitar(c, lerM2());
+    assert.deepEqual(
+      await estadoDoPar(c),
+      v2,
+      "reaplicar não voltou ao estado idêntico",
+    );
+
+    // e o banco fica no estado da 20261205 para as provas dela
+    await commitar(c, lerRollbackM2());
+    assert.deepEqual(await estadoDoPar(c), v1);
+  },
+);
 
 prova("(1) catálogo e ACL das duas funções novas", async (c) => {
   const r = await c.query(
@@ -1715,6 +2128,542 @@ prova(
     }
 
     assert.deepEqual(await defs(c), antes, "as funções não foram restauradas");
+  },
+);
+
+// =============================================================== 20261206000000
+// A vaga do cupom de um pedido NUNCA COBRADO volta em ~1 h (45 min depois de
+// expires_at, mais o ciclo de 15 min). Daqui para baixo o banco está no estado
+// das DUAS migrations.
+
+prova(
+  "(M2-a) aplica a 20261206 e confere o estado: auxiliar e varredura novos, ACL e RPC intactas",
+  async (c) => {
+    const antes = await estadoDoPar(c);
+    const aclRpc = (
+      await c.query(
+        "SELECT proacl::text AS acl FROM pg_proc WHERE oid = to_regprocedure($1)",
+        [FN_RPC],
+      )
+    ).rows[0].acl;
+    await commitar(c, lerM2());
+    const v2 = await estadoDoPar(c);
+    assert.ok(
+      SHA_AUX_V2().includes(v2.aux.sha),
+      "o auxiliar não saiu com o corpo da M2",
+    );
+    assert.ok(
+      SHA_VARREDURA_V2().includes(v2.varredura.sha),
+      "a varredura não saiu com o corpo da M2",
+    );
+    assert.equal(v2.aux.acl, antes.aux.acl, "ACL do auxiliar mudou");
+    assert.equal(
+      v2.varredura.acl,
+      antes.varredura.acl,
+      "ACL da varredura mudou",
+    );
+    assert.equal(
+      (
+        await c.query(
+          "SELECT proacl::text AS acl FROM pg_proc WHERE oid = to_regprocedure($1)",
+          [FN_RPC],
+        )
+      ).rows[0].acl,
+      aclRpc,
+      "ACL da RPC mudou",
+    );
+    // a varredura segue fechada para os papéis de aplicação e agendada a cada 15 min
+    const v = await c.query(
+      `SELECT has_function_privilege('anon', $1, 'EXECUTE') AS anon,
+            has_function_privilege('authenticated', $1, 'EXECUTE') AS auth,
+            (SELECT count(*)::int FROM cron.job WHERE jobname = 'devolver-cupons-de-pedidos-mortos' AND schedule = '*/15 * * * *') AS job`,
+      [FN_VARREDURA],
+    );
+    assert.deepEqual(v.rows[0], { anon: false, auth: false, job: 1 });
+  },
+);
+
+async function tabelaM2(c) {
+  await rodarTabela(c, CASOS_M2);
+}
+prova(
+  "(7a) tabela de casos da 20261206: a pista rápida só vale para pedido NUNCA cobrado; o auxiliar e a RPC seguem a varredura caso a caso",
+  tabelaM2,
+);
+
+/**
+ * O cenário do crítico de desenho: o que impede o cupom de valer DUAS vezes na
+ * pista rápida não é o relógio de 45 min, é que, com a vaga de cobrança vazia
+ * (sem id de gateway gravado), nenhum pagamento se liga ao pedido.
+ */
+async function pagamentoFantasma(c) {
+  await emTx(c, async () => {
+    const { id, cupom, codigo } = await montar(c, {
+      kind: "v24-cancelado",
+      offsetSec: 46 * MIN,
+    });
+    assert.equal(await usos(c, cupom.id), 1, "a vaga está segurada");
+    await varrer(c);
+    assert.equal(await usos(c, cupom.id), 0, "a pista rápida devolveu a vaga");
+    assert.equal((await pedido(c, id)).coupon_usage_returned, true);
+
+    // o pagamento "fantasma": chega um id de cobrança para um pedido SEM vaga de cobrança
+    for (const idPagamento of ["MP-FANTASMA-1", null]) {
+      const r = await c.query(
+        "SELECT public.confirmar_pagamento($1::uuid, $2::text, 'pago') AS r",
+        [id, idPagamento],
+      );
+      assert.equal(
+        r.rows[0].r,
+        "divergente",
+        `confirmar_pagamento(${idPagamento})`,
+      );
+    }
+    const p = await pedido(c, id);
+    assert.equal(p.payment_status, "aguardando", "o pedido virou pago");
+    assert.equal(p.status, "cancelled");
+    assert.equal(p.gateway_payment_id, null);
+    assert.equal(p.paid_at, null);
+    assert.equal(await usos(c, cupom.id), 0, "o uso do cupom mudou");
+
+    // o cupom de uso único vale para o próximo cliente e não estoura o limite
+    const v = await validar(c, codigo);
+    assert.equal(v.is_valid, true, "a vaga devolvida não valida");
+    const outro = await criarPedido(
+      c,
+      "create_marketplace_order_v24",
+      "outro",
+      codigo,
+    );
+    assert.equal(await usos(c, cupom.id), 1);
+    const r2 = await c.query(
+      "SELECT public.confirmar_pagamento($1::uuid, 'MP-FANTASMA-2', 'pago') AS r",
+      [id],
+    );
+    assert.equal(
+      r2.rows[0].r,
+      "divergente",
+      "o pagamento fantasma achou pedido",
+    );
+    assert.equal(await usos(c, cupom.id), 1);
+    assert.equal((await pedido(c, outro)).coupon_usage_returned, false);
+  });
+}
+prova(
+  "(7b) cenário do crítico: vaga devolvida na pista rápida e pagamento tardio é `divergente` (payment_status segue aguardando, usage_count não muda)",
+  pagamentoFantasma,
+);
+
+async function duasVarreduras(c) {
+  const { id, cupom } = await emTx(
+    c,
+    () => montar(c, { kind: "v24-cancelado", offsetSec: 46 * MIN }),
+    { commit: true },
+  );
+  const A = await novoCliente();
+  const B = await novoCliente();
+  try {
+    await A.query("BEGIN");
+    const ra = await A.query(`SELECT ${FN_VARREDURA} AS n`);
+    assert.equal(Number(ra.rows[0].n), 1, "a 1a varredura devolve o pedido");
+    await B.query("BEGIN");
+    await B.query("SET LOCAL lock_timeout = '1500ms'");
+    let rb;
+    try {
+      rb = await B.query(`SELECT ${FN_VARREDURA} AS n`);
+    } catch (e) {
+      assert.fail(
+        `a 2a varredura ESPEROU a linha da 1a (sem SKIP LOCKED): ${e.message}`,
+      );
+    }
+    assert.equal(
+      Number(rb.rows[0].n),
+      0,
+      "a 2a varredura pulou a linha travada",
+    );
+    await A.query("COMMIT");
+    const rb2 = await B.query(`SELECT ${FN_VARREDURA} AS n`);
+    assert.equal(
+      Number(rb2.rows[0].n),
+      0,
+      "depois do commit, nada a devolver de novo",
+    );
+    await B.query("COMMIT");
+  } finally {
+    await A.query("ROLLBACK").catch(() => {});
+    await B.query("ROLLBACK").catch(() => {});
+    await A.end();
+    await B.end();
+  }
+  assert.equal(
+    await usos(c, cupom.id),
+    0,
+    "devolvida exatamente UMA vez (nunca negativo)",
+  );
+  assert.equal((await pedido(c, id)).coupon_usage_returned, true);
+}
+prova(
+  "(7c) duas varreduras em conexões reais (SKIP LOCKED): uma devolução só",
+  duasVarreduras,
+);
+
+// --------------------------------------------------------------- migration M2
+
+const alterarAuxiliarUmByte = async (c) => {
+  const def = (await estadoDe(c, FN_AUX)).def;
+  const i = def.lastIndexOf("$function$");
+  await c.query(`${def.slice(0, i)} ${def.slice(i)}`);
+};
+
+async function reaplicarM2(c, sqlM2 = lerM2()) {
+  const antes = await estadoDoPar(c);
+  await emTx(c, async () => {
+    await c.query(sqlM2);
+    await c.query(sqlM2);
+    assert.deepEqual(await estadoDoPar(c), antes);
+  });
+  assert.deepEqual(await estadoDoPar(c), antes);
+}
+prova(
+  "(7d) reaplicar a 20261206 é idempotente (mesmo corpo, ACL e comentário)",
+  (c) => reaplicarM2(c),
+);
+
+async function preVooM2(c, sqlM2 = lerM2()) {
+  const quebras = [
+    [
+      "varredura com 1 byte a mais",
+      varreduraComUmByteAMais,
+      /PREFLIGHT_20261206: corpo vivo de devolver_cupons_de_pedidos_mortos/,
+    ],
+    [
+      "duas versões da varredura",
+      (cc) =>
+        cc.query(
+          "CREATE FUNCTION public.devolver_cupons_de_pedidos_mortos(p_x integer) RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$",
+        ),
+      /PREFLIGHT_20261206: esperava exatamente uma/,
+    ],
+    [
+      "auxiliar com 1 byte a mais",
+      alterarAuxiliarUmByte,
+      /PREFLIGHT_20261206: corpo vivo de cupom__vaga_volta_em/,
+    ],
+    [
+      "20261205 não aplicada (sem auxiliar nem RPC)",
+      derrubarAsDuas,
+      /PREFLIGHT_20261206: falta a funcao public\.cupom__vaga_volta_em/,
+    ],
+    [
+      "RPC ausente",
+      (cc) => cc.query(`DROP FUNCTION ${FN_RPC}`),
+      /PREFLIGHT_20261206: falta a funcao public\.vaga_do_cupom_presa/,
+    ],
+    [
+      "devolver_uso_cupom ausente",
+      (cc) =>
+        cc.query(
+          "ALTER FUNCTION public.devolver_uso_cupom(uuid) RENAME TO devolver_uso_cupom_x",
+        ),
+      /PREFLIGHT_20261206: falta a funcao public\.devolver_uso_cupom/,
+    ],
+    [
+      "coluna gateway_payment_id ausente",
+      (cc) =>
+        cc.query(
+          "ALTER TABLE public.marketplace_orders RENAME COLUMN gateway_payment_id TO gpi",
+        ),
+      /PREFLIGHT_20261206: falta a coluna public\.marketplace_orders\.gateway_payment_id/,
+    ],
+    [
+      "coluna tentativas_de_pagamento ausente",
+      (cc) =>
+        cc.query(
+          "ALTER TABLE public.marketplace_orders RENAME COLUMN tentativas_de_pagamento TO tdp",
+        ),
+      /PREFLIGHT_20261206: falta a coluna public\.marketplace_orders\.tentativas_de_pagamento/,
+    ],
+  ];
+  for (const [rotulo, quebra, esperado] of quebras) {
+    await emTx(c, async () => {
+      await quebra(c);
+      const antes = [await impressao(c, []), await estadoDoPar(c)];
+      const r = await tentarSql(c, sqlM2);
+      assert.equal(r.ok, false, `${rotulo}: a migration passou`);
+      assert.match(r.message, esperado, rotulo);
+      assert.deepEqual(
+        [await impressao(c, []), await estadoDoPar(c)],
+        antes,
+        `${rotulo}: gravou algo`,
+      );
+    });
+  }
+}
+prova(
+  "(7e) pré-voo da 20261206 recusa SEM gravar, com o nome do que falta ou diverge",
+  (c) => preVooM2(c),
+);
+
+async function posVooM2(c, sqlM2 = lerM2()) {
+  const marca = "interval '45 minutes'";
+  cortarUma(sqlM2, marca, "pós-voo da M2: corpo do auxiliar alterado");
+  const alterada = sqlM2.replace(
+    marca,
+    () => `${marca} + interval '0 seconds'`,
+  );
+  await emTx(c, async () => {
+    const antes = [await impressao(c, []), await estadoDoPar(c)];
+    const r = await tentarSql(c, alterada);
+    assert.equal(r.ok, false, "a migration com o auxiliar alterado concluiu");
+    assert.match(r.message, /POSVOO_20261206/);
+    assert.deepEqual(
+      [await impressao(c, []), await estadoDoPar(c)],
+      antes,
+      "algo ficou",
+    );
+  });
+}
+prova(
+  "(7f) pós-voo da 20261206: auxiliar que sai com outro corpo derruba a migration inteira",
+  (c) => posVooM2(c),
+);
+
+async function rollbackM2Recusa(c, sqlRb = lerRollbackM2()) {
+  const casos = [
+    [
+      "auxiliar de OUTRA migration",
+      alterarAuxiliarUmByte,
+      /corpo vivo de cupom__vaga_volta_em .* nao e o da 20261206000000/,
+    ],
+    [
+      "varredura de OUTRA migration",
+      varreduraComUmByteAMais,
+      /a varredura devolver_cupons_de_pedidos_mortos .* nao e a da 20261206000000/,
+    ],
+  ];
+  for (const [rotulo, preparar, esperado] of casos) {
+    await emTx(c, async () => {
+      await preparar(c);
+      const antes = await estadoDoPar(c);
+      const r = await tentarSql(c, sqlRb);
+      assert.equal(r.ok, false, `${rotulo}: o rollback passou`);
+      assert.match(r.message, esperado, rotulo);
+      assert.deepEqual(
+        await estadoDoPar(c),
+        antes,
+        `${rotulo}: o rollback gravou algo`,
+      );
+    });
+  }
+}
+prova(
+  "(7g) rollback da 20261206 recusa corpo de OUTRA migration e não derruba nada",
+  (c) => rollbackM2Recusa(c),
+);
+
+// ------------------------------------------------------------ mutantes da M2
+
+prova(
+  "(8) mutantes da 20261206: tirar cada guarda deixa a prova certa vermelha",
+  async (c) => {
+    const sqlM2 = lerM2();
+    const sqlRb = lerRollbackM2();
+    const aux = bloco(
+      sqlM2,
+      "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(",
+    );
+    const antes = await estadoDoPar(c);
+
+    const varredura = (() => {
+      const ini = sqlM2.indexOf(CAB_VARREDURA);
+      const fim = sqlM2.indexOf(
+        TAG_VARREDURA,
+        sqlM2.indexOf(`AS ${TAG_VARREDURA}`, ini) + 30,
+      );
+      assert.ok(ini > 0 && fim > ini);
+      return sqlM2.slice(ini, fim + TAG_VARREDURA.length + 1);
+    })();
+
+    // ---- o auxiliar: as guardas herdadas da M1 e a pista rápida
+    const L = (condicao) =>
+      `        WHEN ${condicao} THEN 'infinity'::timestamptz\n`;
+    for (const [rotulo, condicao] of [
+      ["sem a guarda do cupom", "p_coupon_id IS NULL"],
+      [
+        "sem a guarda do status cancelado",
+        "p_status IS DISTINCT FROM 'cancelled'",
+      ],
+      [
+        "sem a guarda de pagamento",
+        "p_payment_status IN ('pago', 'pago_apos_expirar')",
+      ],
+      [
+        "sem a guarda do já devolvido",
+        "p_coupon_usage_returned IS DISTINCT FROM false",
+      ],
+      [
+        "sem a guarda do cancelado depois do envio",
+        "(p_cancelled_after_shipping = false OR p_returned_to_seller_at IS NOT NULL) IS NOT TRUE",
+      ],
+    ]) {
+      await mutarFuncao(c, `auxiliar v2 ${rotulo}`, aux, L(condicao), "", [
+        tabelaM2,
+      ]);
+    }
+    await mutarFuncao(
+      c,
+      "auxiliar v2 sem tratar expires_at vazio",
+      aux,
+      "        WHEN p_expires_at IS NULL THEN '-infinity'::timestamptz\n",
+      "",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "pista rápida sem exigir a vaga de cobrança vazia (id de gateway)",
+      aux,
+      "WHEN p_gateway_payment_id IS NULL AND p_tentativas = 0 THEN",
+      "WHEN p_tentativas = 0 THEN",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "pista rápida sem exigir ZERO tentativas (vaga já esvaziada uma vez)",
+      aux,
+      "WHEN p_gateway_payment_id IS NULL AND p_tentativas = 0 THEN",
+      "WHEN p_gateway_payment_id IS NULL THEN",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "pista rápida com espera de 30 min",
+      aux,
+      "interval '45 minutes'",
+      "interval '30 minutes'",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "pista rápida com espera de 60 min",
+      aux,
+      "interval '45 minutes'",
+      "interval '60 minutes'",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "auxiliar v2 com espera de 23 h nas outras",
+      aux,
+      "ELSE p_expires_at + interval '24 hours'",
+      "ELSE p_expires_at + interval '23 hours'",
+      [tabelaM2],
+    );
+
+    // ---- a varredura reescrita
+    const PRED = `          AND public.cupom__vaga_volta_em(
+                coupon_id, status, payment_status, coupon_usage_returned, expires_at,
+                cancelled_after_shipping, returned_to_seller_at,
+                gateway_payment_id, tentativas_de_pagamento) < now()
+`;
+    await mutarFuncao(
+      c,
+      "varredura sem consultar o auxiliar (devolve todo cancelado com cupom, até pago)",
+      varredura,
+      PRED,
+      "",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "varredura com folga de 1 h a mais no relógio",
+      varredura,
+      "gateway_payment_id, tentativas_de_pagamento) < now()",
+      "gateway_payment_id, tentativas_de_pagamento) < now() + interval '1 hour'",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "varredura sem SKIP LOCKED (espera a linha travada)",
+      varredura,
+      "        FOR UPDATE SKIP LOCKED\n    LOOP",
+      "        FOR UPDATE\n    LOOP",
+      [duasVarreduras],
+    );
+    await mutarFuncao(
+      c,
+      "varredura sem trava nenhuma (dois ciclos devolvem o mesmo pedido)",
+      varredura,
+      "        FOR UPDATE SKIP LOCKED\n    LOOP",
+      "    LOOP",
+      [duasVarreduras],
+    );
+    await mutarFuncao(
+      c,
+      "varredura sem devolver o uso do cupom",
+      varredura,
+      "        PERFORM public.devolver_uso_cupom(v_pedido.id);\n",
+      "",
+      [tabelaM2],
+    );
+    await mutarFuncao(
+      c,
+      "varredura sem registrar o fato (devolve em dobro)",
+      varredura,
+      "           SET coupon_usage_returned = TRUE\n",
+      "           SET coupon_usage_returned = coupon_usage_returned\n",
+      [tabelaM2],
+    );
+
+    // ---- pré-voo, pós-voo e rollback
+    const quebra = (msg) => [`RAISE EXCEPTION '${msg}`, `RAISE NOTICE '${msg}`];
+    for (const [rotulo, msg] of [
+      [
+        "pré-voo da M2 sem exigir UMA varredura",
+        "PREFLIGHT_20261206: esperava exatamente uma",
+      ],
+      [
+        "pré-voo da M2 sem conferir o corpo da varredura",
+        "PREFLIGHT_20261206: corpo vivo de devolver_cupons_de_pedidos_mortos",
+      ],
+      [
+        "pré-voo da M2 sem conferir o corpo do auxiliar",
+        "PREFLIGHT_20261206: corpo vivo de cupom__vaga_volta_em",
+      ],
+      [
+        "pré-voo da M2 sem exigir a 20261205 e as dependências",
+        "PREFLIGHT_20261206: falta a funcao",
+      ],
+      ["pré-voo da M2 sem as colunas", "PREFLIGHT_20261206: falta a coluna"],
+    ]) {
+      const [a, b] = quebra(msg);
+      await mutarTexto(c, rotulo, sqlM2, a, b, [preVooM2]);
+    }
+    {
+      const [a, b] = quebra("POSVOO_20261206");
+      await mutarTexto(
+        c,
+        "pós-voo da M2 sem recusar corpo diferente",
+        sqlM2,
+        a,
+        b,
+        [posVooM2],
+      );
+    }
+    for (const [rotulo, msg] of [
+      [
+        "rollback da M2 derruba auxiliar de outra migration",
+        "corpo vivo de cupom__vaga_volta_em",
+      ],
+      [
+        "rollback da M2 derruba varredura de outra migration",
+        "a varredura devolver_cupons_de_pedidos_mortos",
+      ],
+    ]) {
+      const [a, b] = quebra(msg);
+      await mutarTexto(c, rotulo, sqlRb, a, b, [rollbackM2Recusa]);
+    }
+
+    assert.deepEqual(await estadoDoPar(c), antes, "o par não foi restaurado");
   },
 );
 
