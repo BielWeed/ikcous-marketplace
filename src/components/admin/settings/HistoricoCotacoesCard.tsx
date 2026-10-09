@@ -1,8 +1,22 @@
-import { buscarConfiguracaoDeFrete } from "@/components/admin/settings/TransportadorasCard";
+import {
+  NOME_DO_PROVEDOR,
+  type ProvedorFrete,
+  buscarConfiguracaoDeFrete,
+} from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  motivoDaCotacao,
+  nomeDoProvedorNoHistorico,
+} from "@/lib/motivo-da-cotacao";
 import { supabase } from "@/lib/supabase";
 import { Boxes, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
+
+// O histórico guarda o id da transportadora (`melhor_envio`); a lojista lê o
+// nome ("Melhor Envio"). `NOME_DO_PROVEDOR` é um Map, então `.get` aceita o
+// texto solto da coluna sem cast.
+const nomeDaTransportadora = (id: string) =>
+  NOME_DO_PROVEDOR.get(id as ProvedorFrete);
 
 /**
  * Achado HistoricoCotacoesCard-100: a edge function AGUARDA a gravação do
@@ -189,9 +203,9 @@ export const HistoricoCotacoesSection = memo(
           <div className="overflow-x-auto rounded-2xl border border-white/5 bg-zinc-950/60">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="border-b border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                <tr className="border-b border-white/5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                   <th className="p-2.5">Quando</th>
-                  <th className="p-2.5">Destino</th>
+                  <th className="p-2.5">CEP do cliente</th>
                   <th className="p-2.5">Transportadora</th>
                   <th className="p-2.5">Tempo</th>
                   <th className="p-2.5">Status</th>
@@ -219,8 +233,11 @@ export const HistoricoCotacoesSection = memo(
                           "$1-$2",
                         )}
                       </td>
-                      <td className="p-2.5 capitalize text-zinc-300">
-                        {(log.provider ?? "").replace("_", " ")}
+                      <td className="p-2.5 text-zinc-300">
+                        {nomeDoProvedorNoHistorico(
+                          log.provider,
+                          nomeDaTransportadora,
+                        )}
                       </td>
                       <td className="p-2.5 font-mono text-zinc-400">
                         {log.response_time_ms
@@ -229,7 +246,7 @@ export const HistoricoCotacoesSection = memo(
                       </td>
                       <td className="p-2.5">
                         <span
-                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase ${
                             log.status === "success"
                               ? "bg-emerald-500/20 text-emerald-300"
                               : log.status === "contingency"
@@ -240,7 +257,7 @@ export const HistoricoCotacoesSection = memo(
                           {log.status === "success"
                             ? "Sucesso"
                             : log.status === "contingency"
-                              ? "Contingência"
+                              ? "Valor de reserva"
                               : "Erro"}
                           {repeticoes > 1 ? ` ×${repeticoes}` : ""}
                         </span>
@@ -273,7 +290,12 @@ export const HistoricoCotacoesSection = memo(
                           <span className="font-bold text-zinc-300">
                             Motivo:{" "}
                           </span>
-                          {cortarMotivoExibido(log.error_message)}
+                          {cortarMotivoExibido(
+                            motivoDaCotacao(
+                              log.error_message,
+                              nomeDaTransportadora,
+                            ),
+                          )}
                         </td>
                       </tr>
                     ) : null}
