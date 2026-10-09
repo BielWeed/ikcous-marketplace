@@ -202,7 +202,7 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
       chaves.click();
     });
     expect(document.body.textContent).toContain(
-      "Chave de notificações (obrigatória para receber pelo app)",
+      "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
     );
     expect(document.body.textContent).toContain(
       "Sem a assinatura da sua loja, o pagamento pelo app não é liberado",

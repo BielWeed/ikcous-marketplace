@@ -156,9 +156,9 @@ function comoListaDeFaltas(valor: unknown): string[] {
  * vazar o nome interno.
  */
 const TEXTO_DA_FALTA: ReadonlyMap<string, string> = new Map([
-  ["public_key", "colar a Public Key"],
-  ["access_token", "colar o Access Token"],
-  ["chave_notificacoes", "colar a Chave de notificações"],
+  ["public_key", "colar a chave pública"],
+  ["access_token", "colar a chave secreta"],
+  ["chave_notificacoes", "colar a senha dos avisos"],
   ["teste", "testar a conexão com o Mercado Pago"],
 ]);
 
@@ -245,7 +245,7 @@ function Expansor({
             <span className="block truncate text-[11px] font-black uppercase tracking-[0.2em] text-white">
               {titulo}
             </span>
-            <span className="block truncate text-[10px] normal-case tracking-normal text-zinc-500">
+            <span className="block truncate text-[11px] normal-case tracking-normal text-zinc-500">
               {subtitulo}
             </span>
           </span>
@@ -403,12 +403,12 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
     // Não salva no meio de um pausar/retomar (as duas gravações correm juntas).
     if (salvando || alternandoPix) return;
     if (!publicKey.trim()) {
-      toast.error("Cole a Public Key do Mercado Pago.");
+      toast.error("Cole a chave pública do Mercado Pago.");
       return;
     }
     if (!config.configurado && !accessToken.trim()) {
       toast.error(
-        "Cole também o Access Token — é a chave que processa os pagamentos.",
+        "Cole também a chave secreta — é ela que processa os pagamentos.",
       );
       return;
     }
@@ -726,10 +726,10 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         (config.mascara_token || config.mascara_webhook) && (
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[11px] text-zinc-500">
             {config.mascara_token && (
-              <span>Access Token {config.mascara_token}</span>
+              <span>Chave secreta {config.mascara_token}</span>
             )}
             {config.mascara_webhook && (
-              <span>Notificações {config.mascara_webhook}</span>
+              <span>Senha dos avisos {config.mascara_webhook}</span>
             )}
           </p>
         )}
@@ -764,7 +764,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
         {/* O prompt pronto: o texto vive no arquivo de conteúdo; aqui só a
             caixa e o botão de copiar, com o feedback "Copiado!". */}
         <div className="space-y-2">
-          <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
             Pedido pronto para colar no agente
           </span>
           <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-xl border border-white/5 bg-zinc-900 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
@@ -801,9 +801,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <div className="space-y-1.5">
             <label
               htmlFor="mp-public-key"
-              className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+              className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
             >
-              Public Key
+              Chave pública (Public Key)
             </label>
             <input
               id="mp-public-key"
@@ -821,9 +821,9 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <div className="space-y-1.5">
             <label
               htmlFor="mp-access-token"
-              className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+              className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
             >
-              <span>Access Token</span>
+              <span>Chave secreta (Access Token)</span>
               {config.mascara_token && (
                 <span className="font-mono normal-case tracking-normal text-zinc-400">
                   salva: {config.mascara_token}
@@ -839,7 +839,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               placeholder={
                 config.mascara_token
                   ? "Deixe vazio para manter a chave salva"
-                  : "Cole aqui o Access Token de produção…"
+                  : "Cole aqui a chave secreta de produção…"
               }
               autoComplete="new-password"
               className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
@@ -849,10 +849,11 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <div className="space-y-1.5">
             <label
               htmlFor="mp-webhook-secret"
-              className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500"
+              className="flex items-center justify-between gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500"
             >
               <span>
-                Chave de notificações (obrigatória para receber pelo app)
+                Senha dos avisos (Chave de notificações) — obrigatória para
+                receber pelo app
               </span>
               {config.mascara_webhook && (
                 <span className="font-mono normal-case tracking-normal text-zinc-400">
@@ -869,7 +870,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
               placeholder={
                 config.mascara_webhook
                   ? "Deixe vazio para manter a salva"
-                  : "Cole a Assinatura secreta dos Webhooks da sua loja"
+                  : "Cole aqui a senha dos avisos da sua loja"
               }
               autoComplete="new-password"
               className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
@@ -918,7 +919,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             </button>
 
             {dirty && (
-              <span className="text-[10px] font-bold uppercase tracking-widest text-amber-400">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
                 Salve para testar
               </span>
             )}
@@ -1144,15 +1145,15 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 <p className="flex items-start gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-[11px] leading-relaxed text-amber-300">
                   <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
                   <span>
-                    A ficha da loja ainda não carrega esta Public Key — salve as
-                    chaves de novo para o cliente conseguir pagar.
+                    A ficha da loja ainda não carrega esta chave pública — salve
+                    as chaves de novo para o cliente conseguir pagar.
                   </span>
                 </p>
               )}
             </div>
           )}
 
-          <p className="flex items-start gap-1.5 text-[10px] leading-relaxed text-zinc-500">
+          <p className="flex items-start gap-1.5 text-[11px] leading-relaxed text-zinc-500">
             <Lock className="mt-0.5 size-3 shrink-0" /> {RECADO_DE_SEGURANCA}
           </p>
         </div>

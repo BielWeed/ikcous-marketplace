@@ -353,11 +353,14 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain("Falta para receber pelo app:");
-    expect(estado).toContain("colar a Chave de notificações");
+    expect(estado).toContain("colar a senha dos avisos");
     expect(estado).toContain("testar a conexão");
     // O que já está pronto NÃO aparece como falta.
     expect(estado).not.toContain("Public Key");
     expect(estado).not.toContain("Access Token");
+    // Os nomes da loja (G4): sem estas duas, a prova acima ficava sem efeito.
+    expect(estado).not.toContain("colar a chave pública");
+    expect(estado).not.toContain("colar a chave secreta");
     expect(temBotao("Pausar")).toBe(false);
     expect(temBotao("Retomar")).toBe(false);
     expect(document.body.querySelector('[role="switch"]')).toBeNull();
@@ -377,6 +380,10 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
     expect(document.body.textContent).toContain("ainda falta");
     expect(document.body.textContent).toContain("testar a conexão");
+    // As três chaves já estão salvas: nenhuma delas aparece como falta.
+    expect(document.body.textContent).not.toContain("colar a chave pública");
+    expect(document.body.textContent).not.toContain("colar a chave secreta");
+    expect(document.body.textContent).not.toContain("colar a senha dos avisos");
     // O conserto (testar) tem de estar ao alcance da mão, não em outra camada.
     const testes = [...document.body.querySelectorAll("button")].filter((b) =>
       b.textContent?.includes("Testar conexão"),
@@ -548,7 +555,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
     const texto = document.body.textContent ?? "";
     expect(texto).toContain(
-      "Chave de notificações (obrigatória para receber pelo app)",
+      "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
     );
     expect(texto).not.toContain("obrigatória para Pix");
     expect(texto.toLowerCase()).not.toContain("interruptor");
@@ -578,7 +585,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     raiz = await montarSecaoComChavesAbertas();
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain("Pausado por você");
-    expect(estado).toContain("colar a Chave de notificações");
+    expect(estado).toContain("colar a senha dos avisos");
   });
 
   it("A15 — edge ANTIGA (sem `faltando`): a tela não mente 'Tudo preenchido', não oferece Pausar/Retomar e diz que o sistema está sendo atualizado", async () => {

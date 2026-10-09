@@ -37,18 +37,22 @@ interface StatusPagamentoPixProps {
 // Map (não Record indexado por variável): o eslint-security acusa
 // `detect-object-injection` em dicionário[variável] — e o teto do lint
 // reprova warning novo.
+// Texto na língua da loja (G4 do painel simples): cada nível diz o que houve
+// e o que fazer, sem nome de segredo, de servidor nem de configuração interna.
+// O "ok" só enxerga ligado + chave pública: a senha dos avisos (sem a qual a
+// cobrança do PIX é recusada) não chega aqui, então o texto não promete mais.
 const DIAGNOSTICO = new Map<NivelDoPagamento, string>([
   [
     "ok",
-    "Ligado e com chave pública na configuração da loja (frota). Antes de divulgar a loja, confira se os segredos MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET estão gravados no Supabase.",
+    "Ligado e com a chave pública da loja. Se algum cliente não conseguir pagar por PIX, confira em Pagamentos › Mercado Pago se não falta nenhuma chave.",
   ],
   [
     "alerta",
-    'A flag está LIGADA, mas a chave pública do Mercado Pago não está na configuração da loja (frota): a tela de pagamento nem carrega para o cliente ("Não foi possível carregar o pagamento."). Grave as chaves MP antes de divulgar a loja.',
+    "O pagamento online está ligado, mas falta a chave pública da loja: a tela de pagamento não abre para o cliente. Salve as chaves de novo em Pagamentos › Mercado Pago; se continuar, fale com o suporte técnico.",
   ],
   [
     "off",
-    "O cliente finaliza por pagamento na entrega. Para aceitar PIX/cartão: cadastre as chaves do Mercado Pago e ligue o pagamento online na configuração da loja (frota); MP_ACCESS_TOKEN e MP_WEBHOOK_SECRET vão nos segredos do Supabase.",
+    "O cliente paga na entrega. Para receber por PIX no app, cadastre as chaves em Pagamentos › Mercado Pago.",
   ],
 ]);
 
@@ -111,7 +115,7 @@ export function StatusPagamentoPix({
         <span className="flex shrink-0 items-center gap-2.5">
           <span
             className={cn(
-              "text-[10px] font-black uppercase tracking-wider",
+              "text-[11px] font-black uppercase tracking-wider",
               corDoRotulo,
             )}
           >
@@ -147,7 +151,7 @@ export function StatusPagamentoPix({
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="overflow-hidden"
           >
-            <p className="border-t border-white/5 px-4 pb-3 pt-2.5 text-[10px] leading-relaxed text-zinc-400">
+            <p className="border-t border-white/5 px-4 pb-3 pt-2.5 text-[11px] leading-relaxed text-zinc-400">
               {DIAGNOSTICO.get(nivel) ?? ""}
             </p>
           </motion.div>
