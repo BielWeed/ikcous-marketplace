@@ -1,4 +1,6 @@
 import type { DashboardStats } from "@/hooks/useAnalytics";
+import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
+import { type ChaveDoPasso, passosDaLojaPronta } from "@/lib/loja-pronta";
 import type { View } from "@/types";
 import {
   AlertTriangle,
@@ -38,6 +40,8 @@ interface LojaProntaEEstoqueBaixoProps {
   readonly ligado: boolean;
   /** Chave pública do Mercado Pago presente no deploy. */
   readonly chaveOk: boolean;
+  /** `config.formasPagamentoEntrega`: o que a loja aceita receber na entrega. */
+  readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
   /** Catálogo da loja — só o campo que este bloco precisa. */
   readonly produtos: readonly ProdutoMinimo[];
   /** A config da loja (CEP, flags) ainda não terminou de carregar. */
@@ -58,25 +62,19 @@ interface LojaProntaEEstoqueBaixoProps {
   readonly onTentarDeNovo: () => void;
 }
 
-type EstadoDoItem = "carregando" | "feito" | "pendente";
-
-interface ItemDoChecklist {
-  readonly chave: string;
-  readonly icone: typeof Wallet;
-  /** Nome neutro do item — usado só na linha "Conferindo…", para dizer QUAL
-   * item está sendo conferido (leitor de tela não adivinha por posição). */
-  readonly rotulo: string;
-  readonly rotuloFeito: string;
-  readonly rotuloPendente: string;
-  readonly estado: EstadoDoItem;
-  readonly destino: View;
-}
+/** Ícone de cada passo — a função pura não conhece React. */
+const ICONE_DO_PASSO: Record<ChaveDoPasso, typeof Wallet> = {
+  recebe: Wallet,
+  cep: MapPin,
+  produto: Package,
+};
 
 export function LojaProntaEEstoqueBaixo({
   stats,
   originCep,
   ligado,
   chaveOk,
+  formasNaEntrega,
   produtos,
   configCarregando,
   produtosCarregando,
@@ -96,63 +94,14 @@ export function LojaProntaEEstoqueBaixo({
   // (ex.: um refresh em segundo plano com o número anterior em cache).
   const estoqueEstaCarregando = estoqueCarregando && !numeroDeAlertasValido;
 
-  // CEP completo: oito dígitos, com ou sem o hífen após o quinto.
-  const cepPreenchido = /^\d{5}-?\d{3}$/.test(originCep?.trim() ?? "");
-  // `.some(isActive)`, nunca `produtos.length`: o cofre do admin também
-  // guarda produto desativado (realtimeSyncEngine.ts seleciona `ativo` e só
-  // filtra `deleted_at`).
-  //
-  // Limitação conhecida (achado do laudo de 08/09/2026, fora desta frente):
-  // `produtos` vem de `useStore().products`, que o `StoreContext` busca
-  // truncado em, no máximo, 200 itens (ordenados por data_cadastro DESC),
-  // sem sinal de truncamento hoje. Numa loja com 200+ produtos em que os 200
-  // mais recentes estejam todos inativos e exista um ativo mais antigo fora
-  // da janela, este item mostraria falso "pendente". O conserto correto
-  // depende do StoreContext expor esse sinal — reservado por outra frente.
-  const existeProdutoAtivo = produtos.some((produto) => produto.isActive);
-  const pixOk = ligado && chaveOk;
-
-  const itens: readonly ItemDoChecklist[] = [
-    {
-      chave: "pix",
-      icone: Wallet,
-      rotulo: "Pagamento PIX",
-      rotuloFeito: "Pagamento PIX configurado",
-      rotuloPendente: "Configurar pagamento PIX",
-      // Não depende de `configCarregando`: `ligado`/`chaveOk` vêm de
-      // constantes de build (mesma fonte de AdminSettingsView), calculadas
-      // no import e que nunca mudam — a resposta já é conhecida no mount,
-      // então "Conferindo…" aqui seria "não sei" na direção errada.
-      estado: pixOk ? "feito" : "pendente",
-      destino: "admin-settings",
-    },
-    {
-      chave: "cep",
-      icone: MapPin,
-      rotulo: "CEP de origem do frete",
-      rotuloFeito: "CEP de origem do frete preenchido",
-      rotuloPendente: "Cadastrar CEP de origem do frete",
-      estado: configCarregando
-        ? "carregando"
-        : cepPreenchido
-          ? "feito"
-          : "pendente",
-      destino: "admin-shipping",
-    },
-    {
-      chave: "produto",
-      icone: Package,
-      rotulo: "Produto ativo à venda",
-      rotuloFeito: "Pelo menos 1 produto ativo à venda",
-      rotuloPendente: "Cadastrar um produto ativo",
-      estado: produtosCarregando
-        ? "carregando"
-        : existeProdutoAtivo
-          ? "feito"
-          : "pendente",
-      destino: "admin-products",
-    },
-  ];
+  const itens = passosDaLojaPronta({
+    originCep,
+    pixOk: ligado && chaveOk,
+    formasNaEntrega,
+    produtos,
+    configCarregando,
+    produtosCarregando,
+  });
 
   const lojaPronta = itens.every((item) => item.estado === "feito");
 
@@ -216,38 +165,41 @@ export function LojaProntaEEstoqueBaixo({
           Sua loja está pronta para vender?
         </p>
         <ul className="space-y-2.5">
-          {itens.map((item) => (
-            <li key={item.chave} className="flex items-center gap-3">
-              {item.estado === "carregando" && (
-                <>
-                  <CircleDashed className="size-4 shrink-0 animate-spin text-zinc-500" />
-                  <span className="text-xs text-zinc-500">
-                    Conferindo {item.rotulo}…
-                  </span>
-                </>
-              )}
-              {item.estado === "feito" && (
-                <>
-                  <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
-                  <span className="text-xs text-zinc-300">
-                    {item.rotuloFeito}
-                  </span>
-                </>
-              )}
-              {item.estado === "pendente" && (
-                <button
-                  type="button"
-                  onClick={() => onNavigate(item.destino)}
-                  className="flex items-center gap-3 text-left transition-colors hover:text-white"
-                >
-                  <item.icone className="size-4 shrink-0 text-amber-400" />
-                  <span className="text-xs font-bold text-amber-300 underline underline-offset-2">
-                    {item.rotuloPendente}
-                  </span>
-                </button>
-              )}
-            </li>
-          ))}
+          {itens.map((item) => {
+            const Icone = ICONE_DO_PASSO[item.chave];
+            return (
+              <li key={item.chave} className="flex items-center gap-3">
+                {item.estado === "carregando" && (
+                  <>
+                    <CircleDashed className="size-4 shrink-0 animate-spin text-zinc-500" />
+                    <span className="text-xs text-zinc-500">
+                      Conferindo {item.rotulo}…
+                    </span>
+                  </>
+                )}
+                {item.estado === "feito" && (
+                  <>
+                    <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
+                    <span className="text-xs text-zinc-300">
+                      {item.rotuloFeito}
+                    </span>
+                  </>
+                )}
+                {item.estado === "pendente" && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(item.destino)}
+                    className="flex items-center gap-3 text-left transition-colors hover:text-white"
+                  >
+                    <Icone className="size-4 shrink-0 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-300 underline underline-offset-2">
+                      {item.rotuloPendente}
+                    </span>
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
 
         {lojaPronta && (

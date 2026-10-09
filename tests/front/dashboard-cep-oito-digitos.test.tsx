@@ -45,6 +45,7 @@ describe("CEP de origem só conclui o checklist com oito dígitos", () => {
           originCep={cep}
           ligado={true}
           chaveOk={true}
+          formasNaEntrega={[]}
           produtos={[{ isActive: true }]}
           configCarregando={false}
           produtosCarregando={false}
@@ -60,13 +61,13 @@ describe("CEP de origem só conclui o checklist com oito dígitos", () => {
     expect(itemCep).toBeDefined();
     if (feito) {
       expect(itemCep?.textContent).toContain(
-        "CEP de origem do frete preenchido",
+        "Endereço da loja (CEP) preenchido",
       );
       expect(itemCep?.querySelector("button")).toBeNull();
       expect(hospedeiro.textContent).toContain("está pronta para vender.");
     } else {
       expect(itemCep?.textContent).toContain(
-        "Cadastrar CEP de origem do frete",
+        "Cadastrar o endereço da loja (CEP)",
       );
       expect(hospedeiro.textContent).not.toContain("está pronta para vender.");
       const botao = itemCep?.querySelector("button");
