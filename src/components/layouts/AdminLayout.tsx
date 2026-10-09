@@ -44,6 +44,33 @@ import {
 import React from "react";
 
 /**
+ * Palavras do selo de conexão (painel simples, G7a). A barra lateral e o
+ * cabeçalho do celular dizem a mesma coisa — "Sem internet / Sincronizado /
+ * Lenta / Online" — e o title explica em frase, sem milissegundo: o lojista
+ * não precisa do número, só de saber se a conexão está boa. A medição em si
+ * (`useConnectionDiagnostics`) não muda.
+ */
+function rotuloDoSelo(
+  isOffline: boolean,
+  showSyncFlash: boolean,
+  quality: string,
+): string {
+  if (isOffline) return "Sem internet";
+  if (showSyncFlash) return "Sincronizado";
+  return quality === "slow" ? "Lenta" : "Online";
+}
+
+function tituloDoSelo(
+  isOffline: boolean,
+  showSyncFlash: boolean,
+  quality: string,
+): string {
+  if (isOffline) return "Sem conexão com o servidor";
+  if (showSyncFlash) return "Sincronização concluída!";
+  return quality === "slow" ? "Conexão lenta" : "Conexão boa";
+}
+
+/**
  * Pedidos que ainda exigem ação do lojista — espelha o predicado de
  * `today_pending` na RPC `get_admin_analytics_v2` (o cartão "Ações
  * Pendentes" da tela de Pedidos). Um pedido em "Em Separação" ainda
@@ -770,13 +797,7 @@ export function AdminLayout({
                     ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_15px_rgba(16,185,129,0.2)] scale-105"
                     : "border-white/5",
                 )}
-                title={
-                  isOffline
-                    ? "Sem conexão com o servidor"
-                    : showSyncFlash
-                      ? "Sincronização concluída!"
-                      : `Latência: ${latency}ms`
-                }
+                title={tituloDoSelo(isOffline, showSyncFlash, quality)}
               >
                 <span
                   className={cn(
@@ -809,23 +830,14 @@ export function AdminLayout({
                 </span>
                 <span
                   className={cn(
-                    "text-[7px] font-black uppercase tracking-widest transition-colors",
+                    "text-[11px] font-black uppercase tracking-wide transition-colors",
                     showSyncFlash ? "text-emerald-400" : "text-zinc-400",
                   )}
                 >
-                  {isOffline
-                    ? "Offline"
-                    : showSyncFlash
-                      ? "Sincronizado"
-                      : quality === "slow"
-                        ? "Lento"
-                        : "Online"}
+                  {rotuloDoSelo(isOffline, showSyncFlash, quality)}
                 </span>
               </div>
             </div>
-            <p className="mt-1.5 text-[9px] font-medium uppercase leading-none tracking-widest text-zinc-500">
-              Navegação Unificada
-            </p>
           </div>
 
           <nav className="flex flex-col gap-1.5">
@@ -1032,13 +1044,7 @@ export function AdminLayout({
                       ? "border-emerald-500/50 bg-emerald-500/10 shadow-[0_0_12px_rgba(16,185,129,0.2)] scale-105"
                       : "border-white/5",
                   )}
-                  title={
-                    isOffline
-                      ? "Offline"
-                      : showSyncFlash
-                        ? "Sincronizado"
-                        : `Latência: ${latency}ms`
-                  }
+                  title={tituloDoSelo(isOffline, showSyncFlash, quality)}
                 >
                   <span
                     className={cn(
@@ -1071,17 +1077,11 @@ export function AdminLayout({
                   </span>
                   <span
                     className={cn(
-                      "text-[6.5px] font-black uppercase tracking-widest transition-colors",
+                      "text-[11px] font-black uppercase tracking-wide transition-colors",
                       showSyncFlash ? "text-emerald-400" : "text-zinc-400",
                     )}
                   >
-                    {isOffline
-                      ? "Off"
-                      : showSyncFlash
-                        ? "Sync"
-                        : quality === "slow"
-                          ? "Slow"
-                          : "On"}
+                    {rotuloDoSelo(isOffline, showSyncFlash, quality)}
                   </span>
                 </div>
               </div>
