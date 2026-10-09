@@ -198,8 +198,10 @@ nativos do ZCode (general-purpose, Explore, judge, feature-dev):
 - **Escrever o plano antes do código** em tarefa não trivial; uma tarefa por execução.
 - **Revisar após escrever** — quem escreveu não é testemunha; revisão é contexto limpo.
 - **O risco define o que exige revisão** (tabela abaixo); tamanho não decide nada.
-- **Leitura paraleliza, escrita não** — varreduras e verificações em paralelo; escrita
-  no mesmo arquivo, nunca.
+- **Leitura paraleliza; escrita só paraleliza com faixa provada** — varreduras e verificações
+  em paralelo; escrita no mesmo arquivo, nunca. A ÚNICA exceção é o `/paralelizar`: cada frente
+  escreve no **worktree próprio**, numa **faixa de arquivos** que `scripts/paralelo/frente.mjs
+  validar` provou disjunta das demais ([método](docs/processo/ARQUITETURA-PARALELA.md)).
 - **Sócio/decisão:** tudo que é produto, dinheiro, público ou irreversível sobe ao
   Gabriel com recomendação — nunca menu sem conta feita (melhora, piora, conserto, bem maior).
 
@@ -217,7 +219,7 @@ oficializado pelo dono em 02/09/2026 — Missão 05.2):
 
 O brief de subagente é SEMPRE autocontido — objetivo, arquivos, travas relevantes e o
 que trazer de volta: subagente não vê a sessão. Valem em toda camada as regras de cima:
-escrita serial; quem escreveu não revisa; decisão de produto sobe ao Gabriel com a conta feita.
+escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não revisa; decisão de produto sobe ao Gabriel com a conta feita.
 
 ## Banco de dados — regras que não se negociam
 
@@ -312,6 +314,13 @@ entram no prompt de TODO subagente:
 3. Arquivo compartilhado não entra no seu commit — vira commit próprio depois que todos
    terminarem, ou entra por montagem cirúrgica.
 
+Estas travas protegem a árvore COMPARTILHADA. Uma frente de `/paralelizar` trabalha no seu
+próprio worktree (índice privado) e commita **só** por `node scripts/paralelo/frente.mjs
+commitar`, que recusa arquivo fora da faixa e deixa os hooks rodarem; nunca `push`, `merge` ou
+`checkout` dentro da frente. Arquivos como `package-lock.json`, `src/types/database.types.ts`,
+`src/App.tsx`, `src/config/rotas.ts` e `vercel.json` não pertencem a nenhuma frente — viram
+PEDIDO ao integrador (lista em `scripts/paralelo/faixas.mjs`, `COMPARTILHADOS_PADRAO`).
+
 ## Mapa de risco — quando a revisão é cara
 
 **Revisão cara obrigatória, independente do tamanho do diff, se o diff toca:**
@@ -376,4 +385,7 @@ em `public/` (que servem o `vite dev` e envelhecem — o build é a fonte fresca
 - **`context7`** — API de biblioteca (React 19, Vite, Supabase JS, Deno) em vez de memória.
 - **`serena`** — navegação de código (símbolos e referências) em vez de grep cego.
 - **`supabase` (MCP)** — schema, RLS, RPC, geração de tipos.
+- **Frentes paralelas** — `/paralelizar` (comando), agente `frente`, `scripts/paralelo/`:
+  trabalho grande em várias frentes ao mesmo tempo, sem conflito. Método e limites em
+  [`docs/processo/ARQUITETURA-PARALELA.md`](docs/processo/ARQUITETURA-PARALELA.md).
 - Não invoque ferramenta que não está na sua lista; diga que não tem e siga com o que tem.
