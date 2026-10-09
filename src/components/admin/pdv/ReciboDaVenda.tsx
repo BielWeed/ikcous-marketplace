@@ -7,7 +7,9 @@
 // Este arquivo NÃO chama Supabase.
 
 import { OrderReceipt } from "@/components/admin/orders/OrderReceipt";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import { Button } from "@/components/ui/button";
+import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import type {
   AcaoDaVenda,
   ClienteDaVenda,
@@ -16,13 +18,14 @@ import type {
 import { linkWhatsappDoCliente } from "@/lib/whatsapp-do-cliente";
 import type { Order } from "@/types";
 import {
+  Ban,
   CheckCircle2,
   MessageCircle,
   Printer,
   RefreshCcw,
   ShoppingCart,
 } from "lucide-react";
-import type { ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 
 export interface PropsDoReciboDaVenda {
   readonly recibo: ReciboDaVendaRegistrada;
@@ -31,6 +34,9 @@ export interface PropsDoReciboDaVenda {
    * apaga o rascunho (o reducer sozinho não faz nenhuma das duas). */
   readonly limparCupom: () => void;
   readonly storeName?: string;
+  /** Anula ESTA venda (a tela de cima amarra o `orderId`). Ausente = sem o
+   * botão de anular (testes e telas que não oferecem a anulação). */
+  readonly aoAnular?: (motivo: string) => Promise<ResultadoDaAnulacao>;
 }
 
 function reais(valor: number): string {
@@ -94,7 +100,11 @@ export function ReciboDaVenda({
   recibo,
   limparCupom,
   storeName,
+  aoAnular,
 }: PropsDoReciboDaVenda): ReactElement {
+  // Depois de anular, este recibo deixa de ser comprovante de compra: nada de
+  // mandar "sua compra" por WhatsApp nem de imprimir o papel da venda.
+  const [anulada, setAnulada] = useState(false);
   const whatsapp = whatsappDoCliente(recibo.cliente);
   const linkWhatsapp = linkWhatsappDoCliente(whatsapp);
 
@@ -110,8 +120,14 @@ export function ReciboDaVenda({
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
       <div className="flex flex-col items-center gap-1 border-b border-dashed border-zinc-800 pb-4 text-center">
-        <CheckCircle2 className="size-8 text-emerald-400" />
-        <h3 className="text-lg font-bold text-white">Compra na loja</h3>
+        {anulada ? (
+          <Ban className="size-8 text-red-400" />
+        ) : (
+          <CheckCircle2 className="size-8 text-emerald-400" />
+        )}
+        <h3 className="text-lg font-bold text-white">
+          {anulada ? "Venda anulada" : "Compra na loja"}
+        </h3>
         <p className="text-xs text-zinc-500">
           Pedido #{recibo.numero} ·{" "}
           {new Date(recibo.criadoEm).toLocaleString("pt-BR")}
@@ -173,8 +189,18 @@ export function ReciboDaVenda({
         </div>
       </div>
 
+      {aoAnular && (
+        <AnularVendaDoBalcao
+          total={recibo.total}
+          forma={recibo.pagamento}
+          clienteComConta={recibo.cliente.tipo === "cadastrado"}
+          aoAnular={aoAnular}
+          aoConcluir={() => setAnulada(true)}
+        />
+      )}
+
       <div className="flex flex-col gap-2 sm:flex-row">
-        {linkWhatsapp && (
+        {linkWhatsapp && !anulada && (
           <Button
             type="button"
             variant="outline"
@@ -185,15 +211,17 @@ export function ReciboDaVenda({
             Enviar por WhatsApp
           </Button>
         )}
-        <Button
-          type="button"
-          variant="outline"
-          className="flex-1"
-          onClick={() => globalThis.print()}
-        >
-          <Printer className="mr-1.5 size-4" />
-          Imprimir
-        </Button>
+        {!anulada && (
+          <Button
+            type="button"
+            variant="outline"
+            className="flex-1"
+            onClick={() => globalThis.print()}
+          >
+            <Printer className="mr-1.5 size-4" />
+            Imprimir
+          </Button>
+        )}
         <Button
           type="button"
           className="flex-1 bg-admin-gold text-black hover:bg-admin-gold/90"

@@ -1,4 +1,5 @@
 import { LazyImage } from "@/components/LazyImage";
+import { AnularVendaDoBalcao } from "@/components/admin/pdv/AnularVendaDoBalcao";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,6 +12,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
+import { podeAnularVendaDoBalcao } from "@/lib/anulacao-do-balcao";
 import { copiarParaClipboard } from "@/lib/copiar-para-clipboard";
 import { formaDeEntregaDaNota } from "@/lib/forma-de-entrega-da-nota";
 import { rotuloDaFormaDoPedido } from "@/lib/forma-de-pagamento";
@@ -811,6 +814,12 @@ function OrderFinanceCard({
   onRegistrarPagamento,
   registrandoPagamento,
 }: Readonly<OrderFinanceCardProps>) {
+  // Anular venda do balcão (migration 20261204000000): só o BOTÃO mora aqui; a
+  // regra de verdade é do banco. `anuladaAgora` segura o aviso de sucesso na
+  // tela mesmo depois que o pedido muda para cancelado (aí a regra do botão
+  // passa a dizer não e, sem isto, o aviso sumiria no mesmo instante).
+  const { anular } = useAnularVendaDoBalcao();
+  const [anuladaAgora, setAnuladaAgora] = useState(false);
   // T3 (lote B, 12/09) — a frase-situação do dinheiro responde "esse pedido
   // está pago?" antes de qualquer outra coisa. Verde quando o dinheiro entrou
   // SEM pendência; âmbar para tudo o mais — inclusive os "precisa de
@@ -902,6 +911,18 @@ function OrderFinanceCard({
               {registrandoPagamento ? "Registrando..." : "Marcar como recebido"}
             </button>
           )}
+        </div>
+      )}
+
+      {(anuladaAgora || podeAnularVendaDoBalcao(order)) && (
+        <div className="border-t border-white/5 pt-4">
+          <AnularVendaDoBalcao
+            total={order.total}
+            forma={order.paymentMethod}
+            clienteComConta={Boolean(order.userId)}
+            aoAnular={(motivo) => anular(order.id, motivo)}
+            aoConcluir={() => setAnuladaAgora(true)}
+          />
         </div>
       )}
     </section>
