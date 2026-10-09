@@ -49,6 +49,8 @@ on:
       - "scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql"
       - "scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql"
       - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
+      - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
+      - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -66,6 +68,8 @@ on:
       - "scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql"
       - "scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql"
       - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
+      - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
+      - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -289,6 +293,31 @@ jobs:
       - name: Prova viva do portão de anular a venda do balcão (consultas 11a e 11b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/anular-venda-portao-viva.cjs
+      # Cupom preso (migrations 20261205000000 e 20261206000000, issues #210 e
+      # #116, 09/10/2026): a RPC vaga_do_cupom_presa só LÊ e só responde ao DONO
+      # do pedido cancelado (outro usuário, outro código, cupom inativo, sem
+      # sessão e anon recebem nada); pedidos criados pelos caminhos REAIS
+      # (v23/v24, cancelamento do cliente, da borda e do lojista, pagamento
+      # tardio, expiração, envio e retorno) provam que o auxiliar diz "volta"
+      # SE E SOMENTE SE a varredura devolve; a vaga volta de verdade (a validação
+      # do cupom aceita depois); pré-voo recusa SEM gravar (inclusive 1 byte a mais
+      # no corpo da varredura), rollbacks byte a byte e cada guarda tirada
+      # (mutante) deixa a prova vermelha. CLONE próprio.
+      - name: Prova viva do cupom preso (migrations 20261205000000 e 20261206000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-viva.cjs
+      # Portao da release para as migrations 20261205000000 e 20261206000000: as
+      # consultas 12a (DEPOIS) e 12b (ANTES) do lote em scripts/frota/canais-de-backend.json,
+      # executadas num Postgres real como papel de leitura. 12b positiva num banco SEM as
+      # funcoes novas; 12a positiva depois do apply real (LF e CRLF); cada defeito (corpo com
+      # 1 byte a mais, EXECUTE indevido, dono sem EXECUTE no auxiliar, job inativo ou fora do
+      # horario, objeto ausente) reprova a SUA linha e leva o portao a NEGATIVA, nunca a
+      # POSITIVA; mutantes da consulta ficam vermelhos; erro de SQL nao vira positivo; ponta a
+      # ponta com o conferir-banco.cjs e o lote real: APLICAR (as duas migrations, em ordem),
+      # NADA ou PARAR. BLOQUEANTE: o portao de CADA loja depende dela. CLONE proprio.
+      - name: Prova viva do portao do cupom preso (consultas 12a e 12b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-portao-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

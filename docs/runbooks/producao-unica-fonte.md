@@ -238,6 +238,64 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         depois do apply a 11a so exige que existam, para uma migration futura que as aperfeicoe nao
         reprovar a prova desta.
 
+  11. **Lote de DUAS migrations, de apply normal: `20261205000000` + `20261206000000` (o cupom
+      preso diz quando a vaga volta; a vaga do pedido nunca cobrado volta em cerca de 1 h).** Sem
+      `backfillLedger` e sem `nuncaAplicar`; vale nas duas lojas assinantes (IKCOUS e Savy). A
+      20261205 cria a RPC `vaga_do_cupom_presa(text)` (a tela pergunta quando a vaga do cupom
+      volta) e o auxiliar `cupom__vaga_volta_em(...)`; a 20261206 reescreve a varredura
+      `devolver_cupons_de_pedidos_mortos()` e o auxiliar. As duas vao JUNTAS e em ordem (a 20261206
+      exige a 20261205 no banco). Duas consultas, so leitura e de ROL FECHADO (so valem com
+      `rol=ok`), sobre o catalogo e o agendador (`cron.job`: so `jobname`, `schedule` e `active`):
+      - **`12a-conferir-cupom-preso-aplicado`** (a consulta do lote, 24 linhas) prova as TRES
+        funcoes DEPOIS do apply: uma sobrecarga so de cada, corpo com o sha256 das migrations (LF ou
+        CRLF), a RPC `SECURITY DEFINER` com `search_path=public` e `EXECUTE` so para authenticated, o
+        auxiliar sem `EXECUTE` para PUBLIC, anon, authenticated e service_role, a varredura sem
+        `EXECUTE` para PUBLIC, anon e authenticated; o DONO da varredura e o DONO da RPC com
+        `EXECUTE` no auxiliar (se divergirem e nao tiverem, a varredura falha em TODO ciclo e as
+        vagas deixam de voltar, sem erro visivel); `devolver_uso_cupom(uuid)` e `auth.uid()`
+        existem; e o job `devolver-cupons-de-pedidos-mortos` agendado a cada 15 minutos e ATIVO.
+      - **`12b-antes-cupom-preso-funcoes-ausentes`** (`ausenciaConfirmadaPor`, 10 linhas) prova o
+        ANTES, as mesmas condicoes dos pre-voos das duas migrations: auxiliar e RPC ausentes, a
+        varredura com UMA sobrecarga e o corpo da 20260970000000 (sha256), as dependencias, as
+        tabelas e colunas que as funcoes leem, e o job agendado e ativo.
+      - **Caminho, uma loja por vez, e ordem com o front:** ledger sem as versoes e sem evidencia →
+        `12a` (sai NEGATIVA: as migrations ainda nao estao no banco) → `12b` MAIS NOVA que a `12a` e
+        POSITIVA → UM comando `aplicar-migrations.yml` com os DOIS arquivos, `20261205000000_...sql`
+        e `20261206000000_...sql` nesta ordem (cada apply grava o ledger na mesma transacao) → o
+        ensaio pede a `12a` DE NOVO, que tem de sair POSITIVA → so entao o front desta release (o
+        banco novo de CADA loja primeiro; com o banco novo e o front velho a tela segue como
+        estava, porque a RPC so e chamada pela tela nova, e so muda a varredura, abaixo). `12a` POSITIVA com as versoes fora do ledger e
+        PARAR (sem backfill: registrar a mao e decisao do dono). `12a` e `12b` NEGATIVAS, ou so a
+        20261205 aplicada (a `12b` reprova porque o auxiliar ja existe): PARAR, diagnostico com o
+        dono, nenhum apply.
+      - **`NAO VERIFICAVEL` na linha do job:** o `cron.job` tem RLS, e um papel que SOFRE essa RLS
+        pode ver zero jobs mesmo com o job rodando. So quando a RLS vale para o papel
+        (`row_security_active('cron.job')`) E ele ve zero jobs, a linha diz `NAO VERIFICAVEL` nas
+        duas colunas e fica `ok`. **A release passa em silencio com essa linha**, porque
+        `publicar-release.mjs` so conta `ok_false`. Quando a linha sai assim, conferir a mao o job
+        `devolver-cupons-de-pedidos-mortos` no painel do Supabase (Database -> Cron): ativo e
+        `*/15 * * * *`. Um papel que atravessa a RLS (BYPASSRLS, como o `supabase_read_only_user`)
+        com zero jobs REPROVA a linha como `AUSENTE`; um papel que ve o job e estrito (ausente,
+        inativo ou fora de `*/15` reprova). A consulta nao le o comando do job.
+      - **MUDANCA DE COMPORTAMENTO (acontece no apply da 20261206, nao no front):** a varredura
+        passa a devolver a vaga do cupom de um pedido NUNCA cobrado (sem id de cobranca gravado e
+        zero tentativas de pagamento) 45 minutos depois de `expires_at`, em vez de 24 h depois — para
+        o cliente, cerca de 1 h em vez de cerca de 1 dia. Pedido que chegou a ser cobrado segue com
+        as 24 h, e pedido pago, enviado ou ja devolvido nunca devolve. O apply so CRIA/REESCREVE
+        funcoes (nenhuma linha de dado muda ao aplicar), mas o PROXIMO ciclo do job (a cada 15 min)
+        ja usa a regra nova. Essa pista rapida so e segura porque, com a vaga de cobranca vazia,
+        `confirmar_pagamento` devolve `divergente`; depende de dois pontos de codigo das edge
+        functions que o banco NAO prova: `criar-pagamento` nunca manda cartao ao Mercado Pago sem
+        ocupar a vaga, e `webhook-mercadopago` so adota cobranca para cartao (teste no
+        `index_test.ts` do webhook). Se um dia o webhook passar a adotar PIX, essa pista precisa ser
+        revista.
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
+        rodar a `12a` e a `12b` DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/cupom-preso-portao-viva.cjs` (Postgres 17 efemero, no
+        `rpc-ci.yml`) prova que as consultas DECIDEM certo, nao que a IKCOUS ou a Savy estao no estado
+        A ou B; o `supabase_read_only_user`, o pg_cron real e o Postgres 15 da Supabase nao foram
+        medidos ali (o stub local do cron nao tem `active`; a prova o acrescenta).
+
 4. **Promover UM front e conferir a frota.**
 
    ```powershell

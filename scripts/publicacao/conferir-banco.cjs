@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1077,6 +1077,58 @@ const ROL_DA_11B = [
   "dependencia pedido__mudar_status(...): corpo e o esperado (md5)",
   "tabelas usadas: existem",
 ];
+/** O rol da 12a (a prova de objetos do lote das migrations 20261205000000 e
+ * 20261206000000, o cupom preso diz quando a vaga volta e a vaga do pedido nunca
+ * cobrado volta em 1 h): as 24 linhas que
+ * scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql devolve, cada uma
+ * UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha). Como a 10a e a 11a, NÃO serve de pré-checagem de ledger (o lote não
+ * tem backfill: é de apply normal). A linha do job do cron diz `NAO VERIFICAVEL` (e
+ * fica ok) só quando a RLS do cron.job vale para o papel (row_security_active) e ele
+ * não vê job nenhum: ver o cabeçalho da consulta.
+ * tests/banco/cupom-preso-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_12A = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "cupom__vaga_volta_em: corpo (sha256)",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia auth.uid(): existe",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para PUBLIC",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para anon",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para authenticated",
+  "devolver_cupons_de_pedidos_mortos: SECURITY DEFINER",
+  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  "devolver_cupons_de_pedidos_mortos: search_path",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "donos da varredura e da RPC: EXECUTE no auxiliar",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "vaga_do_cupom_presa: EXECUTE para PUBLIC",
+  "vaga_do_cupom_presa: EXECUTE para anon",
+  "vaga_do_cupom_presa: EXECUTE para authenticated",
+  "vaga_do_cupom_presa: EXECUTE para service_role",
+  "vaga_do_cupom_presa: SECURITY DEFINER",
+  "vaga_do_cupom_presa: corpo (sha256)",
+  "vaga_do_cupom_presa: linguagem e retorno",
+  "vaga_do_cupom_presa: search_path",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 12b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as 10
+ * linhas que scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql
+ * devolve — o que os pré-voos das duas migrations exigem, lido ANTES de aplicar. */
+const ROL_DA_12B = [
+  "colunas usadas: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: ausente",
+  "dependencia auth.uid(): existe",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: corpo e o da 20260970 (sha256)",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "tabelas usadas: existem",
+  "vaga_do_cupom_presa: ausente",
+];
 
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
@@ -1090,6 +1142,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "10b-antes-cupons-desligados-gatilho-e-corpo": ROL_DA_10B,
   "11a-conferir-anular-venda-presencial-aplicado": ROL_DA_11A,
   "11b-antes-anular-venda-presencial-funcao-ausente": ROL_DA_11B,
+  "12a-conferir-cupom-preso-aplicado": ROL_DA_12A,
+  "12b-antes-cupom-preso-funcoes-ausentes": ROL_DA_12B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1640,6 +1694,8 @@ module.exports = {
   ROL_DA_10B,
   ROL_DA_11A,
   ROL_DA_11B,
+  ROL_DA_12A,
+  ROL_DA_12B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

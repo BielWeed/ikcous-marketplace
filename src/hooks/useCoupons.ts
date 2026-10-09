@@ -1,4 +1,9 @@
 import { useAuth } from "@/hooks/useAuth";
+import {
+  ehRecusaPorLimiteDeUso,
+  mensagemDeVagaPresa,
+  minutosDaVagaPresa,
+} from "@/lib/cupomPreso";
 import { mensagemDeErroDoCupom } from "@/lib/erro-do-cupom";
 import { supabase } from "@/lib/supabase";
 import type { Coupon } from "@/types";
@@ -6,6 +11,31 @@ import type { Database } from "@/types/database.types";
 import { cachedCouponsData, setCachedCouponsData } from "@/utils/admin_cache";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+
+/**
+ * Em quantos minutos volta a vaga do cupom presa num pedido cancelado do
+ * cliente logado — ou `null` quando não há o que dizer. NUNCA lança e `null`
+ * significa "mantém a frase de sempre": sem sessão (a RPC é só para
+ * authenticated, nem se pergunta), RPC ausente (checkout novo + banco velho =
+ * PGRST202), rede caída ou resposta fora do contrato são o mesmo caso.
+ */
+async function minutosDaVagaPresaDoCliente(
+  code: string,
+): Promise<number | null> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) return null;
+    const { data, error } = await supabase.rpc("vaga_do_cupom_presa", {
+      p_code: code,
+    });
+    if (error) return null;
+    return minutosDaVagaPresa(data);
+  } catch {
+    return null;
+  }
+}
 
 export function useCoupons(autoFetch = false) {
   const { isAdmin } = useAuth();
@@ -97,6 +127,20 @@ export function useCoupons(autoFetch = false) {
             discount: 0,
             message: "Erro ao validar cupom",
           };
+
+        // Cupom preso (#210/#116): recusa por LIMITE + sessão → pergunta se a
+        // vaga está presa num pedido cancelado do próprio cliente. Só a
+        // resposta confirmada troca a frase; cupom válido nunca pergunta.
+        if (!result.is_valid && ehRecusaPorLimiteDeUso(result.error_message)) {
+          const minutos = await minutosDaVagaPresaDoCliente(code);
+          if (minutos !== null) {
+            return {
+              valid: false,
+              discount: Number(result.discount_value),
+              message: mensagemDeVagaPresa(code, minutos),
+            };
+          }
+        }
 
         return {
           valid: result.is_valid,
