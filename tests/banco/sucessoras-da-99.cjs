@@ -41,6 +41,7 @@ const NOME_99 = "20261199000000_portas_do_painel_exigem_admin_atual.sql";
 // Na ordem de APLICAÇÃO (a de nome de arquivo).
 const NOMES = [
   "20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql",
+  "20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql",
 ];
 
 const ler = (nome) => fs.readFileSync(path.join(DIR_MIGRATIONS, nome), "utf8");
