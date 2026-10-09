@@ -929,3 +929,48 @@ Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy,
     },
   );
 });
+
+// O portão da release (scripts/frota/publicar-release.mjs) só imprime comando
+// de publicação para o que está em `functionsPublicaveis` do canal; o workflow
+// é quem de fato aceita ou recusa o nome. Se as duas listas divergirem, ou a
+// release imprime um comando que o workflow recusa, ou trava uma function que
+// o workflow aceitaria. Este teste roda o bash REAL do workflow contra cada
+// pasta de supabase/functions/ e exige a mesma resposta do JSON, nos dois sentidos.
+Deno.test("publicar-functions: o JSON dos canais e o workflow concordam, function por function, nos dois sentidos", async () => {
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const naoPublicadas = new Set(["_shared", ...canais.funcoesNaoPublicadas]);
+  assert(
+    naoPublicadas.has("send-order-whatsapp"),
+    "send-order-whatsapp precisa continuar fora da lista",
+  );
+  const pastas: string[] = [];
+  for await (const e of Deno.readDir(`${RAIZ}/supabase/functions`)) {
+    if (e.isDirectory && !naoPublicadas.has(e.name)) pastas.push(e.name);
+  }
+  pastas.sort();
+  assert(pastas.length >= 10, `pastas achadas: ${pastas.join(",")}`);
+
+  const sha = "a".repeat(40);
+  const nomesDosCanais = Object.values(canais.canais).map((c) => c.nome);
+  assertEquals(nomesDosCanais.sort(), ["IKCOUS", "Savy"]);
+
+  for (const [ref, canal] of Object.entries(canais.canais)) {
+    const publicaveis = new Set(canal.functionsPublicaveis);
+    for (const nome of publicaveis) {
+      assert(
+        pastas.includes(nome),
+        `${canal.nome}: "${nome}" está em functionsPublicaveis mas não existe em supabase/functions/`,
+      );
+    }
+    for (const nome of pastas) {
+      const r = await validar(canal.functions, nome, sha);
+      assertEquals(
+        r.codigo === 0,
+        publicaveis.has(nome),
+        `${canal.nome} (${ref}): o workflow ${r.codigo === 0 ? "ACEITA" : "RECUSA"} "${nome}", mas o JSON ${publicaveis.has(nome) ? "a lista como publicável" : "não a lista"}`,
+      );
+    }
+  }
+});
