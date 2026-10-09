@@ -2889,6 +2889,10 @@ export type Database = {
         };
         Returns: Json;
       };
+      anular_venda_presencial: {
+        Args: { p_motivo: string; p_order_id: string };
+        Returns: Json;
+      };
       assinatura_da_loja_ler: {
         Args: never;
         Returns: Json;
