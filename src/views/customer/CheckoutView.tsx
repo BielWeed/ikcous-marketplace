@@ -1022,7 +1022,11 @@ export function CheckoutView({
           // (logo acima, [codigoDoCupom, subtotal]) decide em seguida —
           // válido atualiza o desconto; inválido sai com o motivo na tela.
           if (rascunho.cupom) {
-            setAppliedCoupon({ code: rascunho.cupom, discount: 0 });
+            setAppliedCoupon({
+              code: rascunho.cupom,
+              discount: 0,
+              conta: rascunho.contaDoCupom ?? null,
+            });
           }
         }
       }
@@ -1814,7 +1818,33 @@ export function CheckoutView({
   const [cupomGuardado, setAppliedCoupon] = useState<{
     code: string;
     discount: number;
+    /**
+     * DONO do cupom na tela (id da conta; null = convidado), gravado na hora
+     * do Aplicar/restauração/revalidação. O rascunho carimba ESTE dono —
+     * nunca a conta de agora: no commit em que a conta troca, o cupom velho
+     * ainda está no estado, e carimbá-lo com a conta nova o faria reaparecer
+     * na tela dela.
+     */
+    conta: string | null;
   } | null>(null);
+  // Frente B: o código em validação agora (toque em "Aplicar") — mostra
+  // "Aplicando…" e trava o toque duplo. A TRAVA de verdade é o ref (síncrono:
+  // dois toques no mesmo instante enxergam o mesmo estado velho); o estado
+  // só desenha.
+  const [aplicandoCupom, setAplicandoCupom] = useState<string | null>(null);
+  const aplicacaoDoCupomEmVooRef = useRef<object | null>(null);
+  // A conta de AGORA (id; null = convidado ou autenticação ainda sem usuário),
+  // espelhada em ref para a resposta que chega tarde saber se a conta mudou.
+  const contaDoCheckout = user?.id ?? null;
+  const contaRef = useRef<string | null>(contaDoCheckout);
+  useEffect(() => {
+    if (contaRef.current === contaDoCheckout) return;
+    contaRef.current = contaDoCheckout;
+    // A validação em voo era de OUTRA conta: a resposta dela será descartada,
+    // e a conta nova não fica presa atrás dela.
+    aplicacaoDoCupomEmVooRef.current = null;
+    setAplicandoCupom(null);
+  }, [contaDoCheckout]);
   // CUPONS DESLIGADOS (issue #645, decisão do dono 08/10/2026): com a chave
   // `enable_coupons` em FALSO nenhum desconto de cupom entra no pedido — nem o
   // de quem aplicou antes de a lojista desligar, nem o que o rascunho da
@@ -2002,15 +2032,19 @@ export function CheckoutView({
   useEffect(() => {
     if (!codigoDoCupom) return;
     let vivo = true;
+    // A conta que PEDIU esta conferência: resposta que chega com outra conta
+    // na tela é descartada, e o dono carimbado é quem de fato validou.
+    const contaQueConferiu = contaRef.current;
     (async () => {
       try {
         const resultado = await validateCoupon(codigoDoCupom, subtotal);
-        if (!vivo) return;
+        if (!vivo || contaRef.current !== contaQueConferiu) return;
         if (resultado.networkError) return;
         if (resultado.valid) {
           setAppliedCoupon({
             code: codigoDoCupom,
             discount: resultado.discount,
+            conta: contaQueConferiu,
           });
         } else {
           setAppliedCoupon(null);
@@ -2964,18 +2998,41 @@ export function CheckoutView({
   };
 
   const handleApplyCoupon = async (code: string) => {
+    // Toque duplo (ou toque em outro cartão) com uma validação em voo: nada.
+    if (aplicacaoDoCupomEmVooRef.current) return;
+    const minhaAplicacao = {};
+    aplicacaoDoCupomEmVooRef.current = minhaAplicacao;
     setCouponError("");
+    setAplicandoCupom(code);
+    // A conta que PEDIU a validação: se outra entrar enquanto a resposta não
+    // chega, a resposta é descartada — o cupom de uma conta nunca aparece
+    // aplicado na tela da outra.
+    const contaQuePediu = contaRef.current;
     try {
       const result = await validateCoupon(code, subtotal);
+      if (contaRef.current !== contaQuePediu) return;
 
       if (result.valid) {
-        setAppliedCoupon({ code, discount: result.discount });
+        setAppliedCoupon({
+          code,
+          discount: result.discount,
+          conta: contaQuePediu,
+        });
       } else {
         setCouponError(result.message || "Cupom inválido");
       }
     } catch (error) {
       console.error("Error applying coupon:", error);
-      setCouponError("Erro ao validar cupom");
+      if (contaRef.current === contaQuePediu) {
+        setCouponError("Erro ao validar cupom");
+      }
+    } finally {
+      // Só solta a trava que é DESTA aplicação: a troca de conta já a soltou,
+      // e a conta nova pode ter uma validação própria em voo.
+      if (aplicacaoDoCupomEmVooRef.current === minhaAplicacao) {
+        aplicacaoDoCupomEmVooRef.current = null;
+        setAplicandoCupom(null);
+      }
     }
   };
 
@@ -5297,6 +5354,7 @@ export function CheckoutView({
                 onRemove={handleRemoveCoupon}
                 appliedCoupon={appliedCoupon}
                 error={couponError}
+                aplicando={aplicandoCupom !== null}
               />
             </div>
           </div>
