@@ -858,6 +858,12 @@ export async function instalarSessaoClienteFixtura(
       await responderJson(false);
       return;
     }
+    // O checkout lista os cupons que a cliente pode usar (cupons_do_checkout):
+    // nas jornadas a loja não tem nenhum cupom visível, então a lista é vazia.
+    if (chave === "POST /rest/v1/rpc/cupons_do_checkout") {
+      await responderJson([]);
+      return;
+    }
     // Só a LEITURA dos endereços: escrita não tem stub (cai na guarda).
     if (chave === "GET /rest/v1/user_addresses") {
       await responderJson(
