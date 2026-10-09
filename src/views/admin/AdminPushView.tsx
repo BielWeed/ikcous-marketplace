@@ -4,6 +4,8 @@ import {
   LocalBufferedInput,
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -19,7 +21,9 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { useVOR } from "@/hooks/useVOR";
+import { destinoDaUrl, urlDoDestino } from "@/lib/destino-do-aviso";
 import { supabase } from "@/lib/supabase";
+import { normalizeText } from "@/lib/utils";
 import type { View } from "@/types";
 import {
   type ContagemMedida,
@@ -358,6 +362,7 @@ export const AdminPushView = memo(function AdminPushView({
   const [destType, setDestType] = useState<string>("home");
   const [selectedProductId, setSelectedProductId] = useState<string>("");
   const [customPath, setCustomPath] = useState<string>("");
+  const [filtroDeProduto, setFiltroDeProduto] = useState("");
   const [products, setProducts] = useState<{ id: string; nome: string }[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -388,31 +393,22 @@ export const AdminPushView = memo(function AdminPushView({
     loadProducts();
   }, []);
 
+  // A URL de cada destino mora em `src/lib/destino-do-aviso.ts` (função pura,
+  // com a tabela de URLs presa em teste): este componente só guarda a escolha.
   const updateUrl = (type: string, prodId: string, custom: string) => {
-    let finalUrl = "/";
-    if (type === "home") {
-      finalUrl = "/";
-    } else if (type === "search") {
-      finalUrl = "/search";
-    } else if (type === "cart") {
-      finalUrl = "/cart";
-    } else if (type === "favorites") {
-      finalUrl = "/favorites";
-    } else if (type === "orders") {
-      finalUrl = "/orders";
-    } else if (type === "profile") {
-      finalUrl = "/profile";
-    } else if (type === "product") {
-      finalUrl = prodId ? `/product-detail?id=${prodId}` : "/product-detail";
-    } else if (type === "custom") {
-      finalUrl = custom;
-    }
-    setNotification((prev) => ({ ...prev, url: finalUrl }));
+    setNotification((prev) => ({
+      ...prev,
+      url: urlDoDestino(type, prodId, custom),
+    }));
   };
 
   const handleDestTypeChange = (type: string) => {
     setDestType(type);
-    updateUrl(type, selectedProductId, customPath);
+    // O caminho manual (Avançado) só vale enquanto "Outra página" é o destino:
+    // escolher uma tela da lista o esvazia para o campo não mostrar um caminho
+    // que o aviso já não leva.
+    setCustomPath("");
+    updateUrl(type, selectedProductId, "");
   };
 
   const handleProductChange = (prodId: string) => {
@@ -420,39 +416,50 @@ export const AdminPushView = memo(function AdminPushView({
     updateUrl(destType, prodId, customPath);
   };
 
+  // Digitar no Avançado É escolher a "outra página": o destino vira `custom`.
+  // Campo vazio volta para a página inicial (a URL "" é lida como "home").
+  // O campo devolve o valor também ao perder o foco SEM mudança, e ele existe
+  // sempre (o Avançado só o esconde): sem a guarda, focar e sair viraria
+  // "escolhi outra página" e zeraria o destino já escolhido na lista.
   const handleCustomPathChange = (val: string) => {
+    if (val === customPath) return;
     setCustomPath(val);
-    updateUrl(destType, selectedProductId, val);
+    setDestType("custom");
+    updateUrl("custom", selectedProductId, val);
   };
 
   useEffect(() => {
-    const url = notification.url;
-    if (url === "/" || url === "" || url === "/home") {
-      if (destType !== "home") setDestType("home");
-    } else if (url === "/search") {
-      if (destType !== "search") setDestType("search");
-    } else if (url === "/cart") {
-      if (destType !== "cart") setDestType("cart");
-    } else if (url === "/favorites") {
-      if (destType !== "favorites") setDestType("favorites");
-    } else if (url === "/orders") {
-      if (destType !== "orders") setDestType("orders");
-    } else if (url === "/profile") {
-      if (destType !== "profile") setDestType("profile");
-    } else if (
-      url.startsWith("/product-detail?id=") ||
-      url.startsWith("/product/")
-    ) {
-      if (destType !== "product") setDestType("product");
-      const id = url.includes("?id=")
-        ? url.split("?id=")[1] || ""
-        : url.split("/product/")[1] || "";
-      if (selectedProductId !== id) setSelectedProductId(id);
-    } else {
-      if (destType !== "custom") setDestType("custom");
-      if (customPath !== url) setCustomPath(url);
-    }
+    const destino = destinoDaUrl(notification.url);
+    if (destType !== destino.tipo) setDestType(destino.tipo);
+    if (
+      destino.idDoProduto !== null &&
+      selectedProductId !== destino.idDoProduto
+    )
+      setSelectedProductId(destino.idDoProduto);
+    if (destino.caminho !== null && customPath !== destino.caminho)
+      setCustomPath(destino.caminho);
+    // O destino virou uma tela da lista (ex.: um modelo pronto): o caminho
+    // manual que sobrou não é mais o do aviso. Um caminho que é a própria URL
+    // (digitou "/cart" à mão) fica como está.
+    if (
+      destino.tipo !== "custom" &&
+      customPath !== "" &&
+      customPath !== notification.url
+    )
+      setCustomPath("");
   }, [notification.url]);
+
+  // Produtos que o filtro por nome deixa à vista. O produto já escolhido fica
+  // sempre na lista: sem ele o seletor ficaria vazio enquanto o aviso sairia
+  // com aquele produto.
+  const produtosVisiveis = (() => {
+    const termo = normalizeText(filtroDeProduto);
+    if (!termo) return products;
+    return products.filter(
+      (p) =>
+        p.id === selectedProductId || normalizeText(p.nome).includes(termo),
+    );
+  })();
 
   useEffect(() => {
     if (targetUserId) {
@@ -714,6 +721,7 @@ export const AdminPushView = memo(function AdminPushView({
                 "A mensagem foi registrada como aviso dentro do app — ele vai ver na próxima vez que abrir a loja.",
             });
             setNotification({ title: "", body: "", url: "/" });
+            setCustomPath("");
           } catch (inAppErr) {
             console.error("Error saving in-app notification:", inAppErr);
             toast.error("Não foi possível registrar o aviso para este cliente");
@@ -909,6 +917,7 @@ export const AdminPushView = memo(function AdminPushView({
       );
 
       setNotification({ title: "", body: "", url: "/" });
+      setCustomPath("");
       fetchHistory();
     } catch (error) {
       console.error("Error sending push:", error);
@@ -1401,13 +1410,16 @@ export const AdminPushView = memo(function AdminPushView({
 
             {/* Destino — inline (direção B): o próprio gatilho do Select é a
                 linha "Ao clicar na mensagem, o cliente abre … mudar ↗" — um
-                clique abre as opções. Os 8 itens e a trava PAINEL-07 são os
+                clique abre as opções. Os 7 itens da lista (o caminho manual
+                foi para o "Avançado", abaixo) e a trava PAINEL-07 são os
                 de antes; a leitura mono do URL saiu (o destino escolhido já
                 aparece no próprio gatilho — dizer de novo era redundância). */}
             <div className="space-y-2">
               <Select
                 name="destType"
-                value={destType}
+                // "custom" (caminho digitado no Avançado) não é item da lista:
+                // o seletor fica vazio e o placeholder diz onde está o destino.
+                value={destType === "custom" ? "" : destType}
                 onValueChange={handleDestTypeChange}
                 // PAINEL-07: sem o loadingProducts aqui, escolher
                 // "Produto" antes da lista carregar gerava um URL
@@ -1425,7 +1437,13 @@ export const AdminPushView = memo(function AdminPushView({
                       Ao clicar na mensagem, o cliente abre
                     </span>
                     <span className="mt-0.5 flex items-center gap-2 text-[13px] font-bold text-white">
-                      <SelectValue placeholder="Selecione a tela..." />
+                      <SelectValue
+                        placeholder={
+                          destType === "custom"
+                            ? "Outra página (veja Avançado)"
+                            : "Selecione a tela..."
+                        }
+                      />
                       <span className="shrink-0 text-[11px] font-black text-admin-gold">
                         mudar ↗
                       </span>
@@ -1444,9 +1462,6 @@ export const AdminPushView = memo(function AdminPushView({
                   <SelectItem value="product">
                     Abrir um Produto Específico
                   </SelectItem>
-                  <SelectItem value="custom">
-                    Outra Página (Link manual)
-                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -1458,6 +1473,17 @@ export const AdminPushView = memo(function AdminPushView({
                   >
                     Selecione o produto
                   </Label>
+                  <Input
+                    id="push-product-filter"
+                    type="search"
+                    autoComplete="off"
+                    aria-label="Buscar produto pelo nome"
+                    placeholder="Buscar pelo nome..."
+                    value={filtroDeProduto}
+                    onChange={(e) => setFiltroDeProduto(e.target.value)}
+                    disabled={isOffline || loading || loadingProducts}
+                    className="h-9 rounded-lg border-white/10 bg-black/50 text-xs text-white shadow-inner placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-0"
+                  />
                   <Select
                     name="productId"
                     value={selectedProductId}
@@ -1477,7 +1503,7 @@ export const AdminPushView = memo(function AdminPushView({
                       />
                     </SelectTrigger>
                     <SelectContent className="max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-zinc-950 text-white shadow-2xl">
-                      {products.map((p) => (
+                      {produtosVisiveis.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.nome}
                         </SelectItem>
@@ -1487,13 +1513,20 @@ export const AdminPushView = memo(function AdminPushView({
                 </div>
               )}
 
-              {destType === "custom" && (
-                <div className="space-y-1 duration-200 animate-in fade-in">
+              {/* Avançado: o caminho manual (mesmo `#push-custom-path` de
+                  antes). Recolhido por padrão; abre sozinho quando a URL de
+                  um modelo pronto não é uma das telas da lista (destino
+                  `custom`), para o caminho nunca ficar escondido. */}
+              <SecaoRecolhivel
+                titulo="Avançado: abrir outra página"
+                temErro={destType === "custom"}
+              >
+                <div className="space-y-1">
                   <Label
                     htmlFor="push-custom-path"
                     className="text-[9px] font-black uppercase tracking-widest text-zinc-400"
                   >
-                    Digite o caminho da página
+                    Endereço da página (comece com /)
                   </Label>
                   <LocalBufferedInput
                     id="push-custom-path"
@@ -1502,12 +1535,12 @@ export const AdminPushView = memo(function AdminPushView({
                     value={customPath}
                     onFlush={handleCustomPathChange}
                     disabled={isOffline || loading}
-                    placeholder="/exemplo-pagina"
+                    placeholder="/nome-da-pagina"
                     useShadcn={true}
                     className="h-9 rounded-lg border-white/10 bg-black/50 font-mono text-xs text-white shadow-inner focus:border-admin-gold/50 focus:ring-0 placeholder:text-zinc-600"
                   />
                 </div>
-              )}
+              </SecaoRecolhivel>
             </div>
 
             {/* Botão de Ação */}

@@ -41,6 +41,11 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { arquivoDaImagemRecortada } from "@/lib/arquivo-da-imagem-recortada";
+import {
+  gravarModoDoEditor,
+  lerModoDoEditor,
+  modoAoAbrirOBanner,
+} from "@/lib/modo-do-editor-de-banner";
 import { cn, normalizeText } from "@/lib/utils";
 import type { Banner, View } from "@/types";
 import { AnimatePresence, type Variants, motion } from "framer-motion";
@@ -1379,6 +1384,13 @@ export const AdminBannersView = memo(function AdminBannersView({
     return () => clearTimeout(timer);
   }, [formData, isDialogOpen, editingBanner, banners, selectedTab]);
 
+  // O toque no alternador troca o modo E o lembra neste aparelho. Abrir o
+  // editor nunca grava: só a escolha do lojista vira preferência.
+  const escolherOModo = (modo: "simple" | "complete") => {
+    setBannerMode(modo);
+    gravarModoDoEditor(modo);
+  };
+
   const handleOpenDialog = (banner?: Banner) => {
     setActiveColorElement("titleColor");
     setProductSearch("");
@@ -1396,12 +1408,10 @@ export const AdminBannersView = memo(function AdminBannersView({
     setActiveStep(1);
     if (banner?.id) {
       setEditingBanner(banner);
-      const isSimple =
-        !banner.title?.trim() &&
-        !banner.subtitle?.trim() &&
-        !banner.buttonText?.trim() &&
-        !banner.badgeText?.trim();
-      setBannerMode(isSimple ? "simple" : "complete");
+      // Banner com texto abre SEMPRE em Completo: salvar em Simples apaga
+      // título, subtítulo, botão, selo, cores e fonte. Sem texto, vale o modo
+      // lembrado neste aparelho (Simples na primeira vez).
+      setBannerMode(modoAoAbrirOBanner(banner, lerModoDoEditor()));
       // Fallback campo a campo contra defaultBannerFor (não um spread cego):
       // banner vem do banco e pode ter nascido ANTES de um campo novo
       // existir (coluna ainda não preenchida para linhas antigas) — o
@@ -1440,7 +1450,7 @@ export const AdminBannersView = memo(function AdminBannersView({
       });
     } else {
       setEditingBanner(null);
-      setBannerMode("simple");
+      setBannerMode(modoAoAbrirOBanner(null, lerModoDoEditor()));
       const defaultPosition =
         banner?.position || (selectedTab !== "all" ? selectedTab : "home_top");
       setFormData(
@@ -2297,7 +2307,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                   <div className="flex shrink-0 select-none items-center gap-0.5 rounded-xl border border-white/5 bg-zinc-950 p-0.5">
                     <button
                       type="button"
-                      onClick={() => setBannerMode("simple")}
+                      onClick={() => escolherOModo("simple")}
                       className={cn(
                         "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider transition-all duration-300 relative",
                         bannerMode === "simple"
@@ -2320,7 +2330,7 @@ export const AdminBannersView = memo(function AdminBannersView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setBannerMode("complete")}
+                      onClick={() => escolherOModo("complete")}
                       className={cn(
                         "px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[8.5px] sm:text-[9px] font-bold uppercase tracking-wider transition-all duration-300 relative",
                         bannerMode === "complete"
@@ -2620,6 +2630,11 @@ export const AdminBannersView = memo(function AdminBannersView({
                     type="button"
                     onClick={() => {
                       setFormData(draftToRecover.formData);
+                      // Rascunho com texto em Simples: salvar apagaria o
+                      // texto recuperado. O modo se revê como ao abrir.
+                      setBannerMode((m) =>
+                        modoAoAbrirOBanner(draftToRecover.formData, m),
+                      );
                       setDraftToRecover(null);
                       toast.success("Rascunho recuperado com sucesso!", {
                         icon: "⚡",
