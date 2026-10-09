@@ -198,7 +198,7 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
 
   /**
    * O valor em reais do card, extraído EXATO — mesma ideia do `numeroDoCard`,
-   * mas para "LTV Total".
+   * mas para "Total já comprado" (antes "LTV Total").
    *
    * `toContain("R$ 40,00")` no texto inteiro da tela é decorativo: a tabela
    * "Extrato Histórico" imprime `formatCurrency(order.total)` por LINHA,
@@ -301,7 +301,7 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     // Os dois continuam "pedidos que contam" para a contagem — só o dinheiro
     // do pendente sai do LTV.
     expect(numeroDoCard("Cesta / Pedidos")).toBe(2);
-    expect(valorDoCard("LTV Total")).toBe("R$ 100,00");
+    expect(valorDoCard("Total já comprado")).toBe("R$ 100,00");
   });
 
   // Task 3b do plano docs/superpowers/plans/2026-08-27-recebimento-na-entrega.md
@@ -326,7 +326,7 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
 
     // A contagem de pedidos continua igual — só o dinheiro sai do LTV.
     expect(numeroDoCard("Cesta / Pedidos")).toBe(1);
-    expect(valorDoCard("LTV Total")).toBe("R$ 0,00");
+    expect(valorDoCard("Total já comprado")).toBe("R$ 0,00");
   });
 
   it("pedido com payment_status 'recebido_na_entrega' entra no LTV, igual a 'pago'", async () => {
@@ -341,6 +341,6 @@ describe("AdminUserDetailView — a contagem de pedidos bate com a lista", () =>
     await abrirFicha();
 
     expect(numeroDoCard("Cesta / Pedidos")).toBe(1);
-    expect(valorDoCard("LTV Total")).toBe("R$ 75,00");
+    expect(valorDoCard("Total já comprado")).toBe("R$ 75,00");
   });
 });

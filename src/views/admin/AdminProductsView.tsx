@@ -343,7 +343,7 @@ export const AdminProductsView = memo(function AdminProductsView({
     () => [
       {
         id: "capital-alocado",
-        label: "Capital Alocado",
+        label: "Dinheiro parado em estoque",
         value:
           financialStats.invested !== null
             ? `R$ ${financialStats.invested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
@@ -354,7 +354,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       },
       {
         id: "lucro-potencial",
-        label: "Lucro Potencial",
+        label: "Lucro se vender tudo",
         value:
           financialStats.potential !== null
             ? `R$ ${financialStats.potential.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
@@ -372,7 +372,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             : "—",
         icon: DollarSign,
         accent: "text-blue-500",
-        subValue: "Rendimento %",
+        subValue: "Margem %",
       },
       {
         id: "produtos-cadastrados",
@@ -652,7 +652,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                 onClick={() => handleLocalNavigate("admin-product-form")}
               >
                 <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
-                Novo Produto
+                Novo produto
               </Button>
               <Button
                 disabled={isOffline}
@@ -706,7 +706,7 @@ export const AdminProductsView = memo(function AdminProductsView({
         {/* Unified Control Bar Compacta — sticky: filha DIRETA do container
             que contém a lista (sticky só anda dentro do próprio containing
             block; embrulhada num wrapper da própria altura nunca gruda). */}
-        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-[#09090b]/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+        <div className="sticky top-0 z-30 -mx-4 border-b border-white/5 bg-admin-bg/95 px-4 py-2.5 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           <div className="flex w-full items-center gap-3">
             <div className="group relative w-full flex-1">
               <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
@@ -965,8 +965,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <div className="rounded-lg bg-admin-gold/10 p-1 text-admin-gold">
                           <Coins className="size-3.5" />
                         </div>
-                        <p className="text-[9px] font-black uppercase tracking-wider text-white">
-                          Capital Alocado
+                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
+                          Dinheiro parado em estoque
                         </p>
                       </div>
                       <p className="mb-3 text-[10px] font-medium leading-relaxed text-zinc-500">
@@ -989,8 +989,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <div className="rounded-lg bg-emerald-500/10 p-1 text-emerald-400">
                           <TrendingUp className="size-3.5" />
                         </div>
-                        <p className="text-[9px] font-black uppercase tracking-wider text-white">
-                          Lucro Potencial
+                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
+                          Lucro se vender tudo
                         </p>
                       </div>
                       <p className="mb-3 text-[10px] font-medium leading-relaxed text-zinc-500">
@@ -1025,7 +1025,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           Fórmula:
                         </span>
                         <span className="font-black text-zinc-300">
-                          (Lucro Potencial ÷ Custo) × 100
+                          (Lucro se vender tudo ÷ Custo) × 100
                         </span>
                       </div>
                     </div>
@@ -1101,8 +1101,8 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-1.5">
                           <TrendingUp className="size-3.5 text-blue-400" />
-                          <p className="text-[9px] font-black uppercase tracking-wider text-white">
-                            ROI de Rendimento %
+                          <p className="text-[11px] font-black uppercase tracking-wider text-white">
+                            Retorno sobre o custo (Margem %)
                           </p>
                         </div>
                         <p className="text-[10px] font-medium leading-relaxed text-zinc-500">
@@ -1557,7 +1557,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
                 >
                   <Edit2 className="mr-3 size-4 shrink-0 text-admin-gold" />{" "}
-                  Editar Produto
+                  Editar produto
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={isOffline}
@@ -1732,8 +1732,8 @@ const AdminProductCard = memo(function AdminProductCard({
               </div>
 
               <div className="group/spec flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
-                  Capital Alocado
+                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
+                  Dinheiro parado em estoque
                 </span>
                 <span className="font-mono text-xs font-bold text-zinc-400">
                   {invested === null
@@ -1820,7 +1820,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   className="mb-0.5 flex cursor-pointer items-center rounded-xl px-3.5 py-2.5 text-xs font-bold text-zinc-300 transition-colors focus:bg-white/[0.08] focus:text-white disabled:pointer-events-none disabled:opacity-40"
                 >
                   <Edit2 className="mr-2 size-3.5 shrink-0 text-admin-gold" />{" "}
-                  Editar Produto
+                  Editar produto
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={isOffline}
