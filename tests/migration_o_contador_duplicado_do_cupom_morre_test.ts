@@ -96,6 +96,19 @@ Deno.test("207: a ordem e trava de tempo -> trava da tabela -> pre-voo -> UM DRO
   assertEquals(c.match(/\bLOCK TABLE\b/g).length, 1);
 });
 
+Deno.test("207: o FOR SHARE vem DEPOIS da trava e ANTES da contagem (envelope REPEATABLE READ: a foto e anterior ao LOCK)", () => {
+  const c = semComentarios(migration);
+  const pre = c.slice(c.indexOf("DO $preflight_20261207$"));
+  assertEquals(c.match(/FOR SHARE/g).length, 1);
+  const iLock = pre.indexOf("LOCK TABLE");
+  const iShare = pre.indexOf("PERFORM 1 FROM public.coupons FOR SHARE;");
+  const iConta = pre.indexOf("used_count IS DISTINCT FROM 0");
+  assert(iLock > 0 && iShare > iLock && iConta > iShare, `${iLock} ${iShare} ${iConta}`);
+  // e a verdade esta escrita no cabecalho: a trava vale do LOCK em diante; o resto e risco residual aceito
+  for (const frase of ["40001", "REPEATABLE READ", "RISCO RESIDUAL ACEITO", "INSERT"])
+    assertStringIncludes(migration, frase);
+});
+
 Deno.test("207: so apaga a coluna used_count -- sem CASCADE, sem outro DROP, sem escrita em dado", () => {
   const c = codigo(migration);
   assertEquals(c.match(/\bDROP\b/gi).length, 1);

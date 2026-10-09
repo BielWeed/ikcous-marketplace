@@ -339,7 +339,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/contador-duplicado-viva.cjs` (Postgres 17 efemero, no `rpc-ci.yml`) provam que as
         consultas DECIDEM certo e que a migration recusa/aplica como descrito, nao que a IKCOUS ou a
         Savy estao no estado A ou B. Uma gravacao em `used_count` entre a `14b` e o apply nao e vista
-        pela `14b`: quem fecha essa janela e o pre-voo da migration.
+        pela `14b`: quem a fecha e o pre-voo da migration, assim: a trava (`SHARE ROW EXCLUSIVE`)
+        impede quem grava DEPOIS do `LOCK`; o workflow aplica em transacao `REPEATABLE READ` e tira a
+        foto da impressao digital ANTES do `LOCK`, entao o pre-voo faz `FOR SHARE` nas linhas, e sob
+        esse nivel QUALQUER `UPDATE` posterior a foto faz a migration RECUSAR (erro `40001`, o
+        workflow mostra `ESTADO DESCONHECIDO`; nada e gravado e basta repetir). **Risco residual
+        aceito:** um `INSERT` com `used_count` explicito diferente de zero, gravado nos segundos entre
+        a foto e o `LOCK`, nao e visto; ninguem grava essa coluna (nenhuma RPC, gatilho, edge ou tela).
 
 4. **Promover UM front e conferir a frota.**
 

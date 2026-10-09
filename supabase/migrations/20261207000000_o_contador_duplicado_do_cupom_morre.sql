@@ -55,13 +55,27 @@
 --
 -- 5. ORDEM, TRAVAS E CONCORRENCIA
 --
--- A primeira coisa do pre-voo e travar `coupons` em SHARE ROW EXCLUSIVE: ninguem
--- grava no cupom (nem em `used_count`) entre a conferencia e o DROP, e a leitura
--- (o checkout validando cupom) continua. Sem essa trava, uma gravacao que
--- terminasse DEPOIS da contagem e ANTES do DROP sumiria junto com a coluna. O DROP
--- sobe a trava para ACCESS EXCLUSIVE por uma fracao de segundo. `lock_timeout` de
--- 5 s: se alguem segura a tabela por mais que isso, a migration FALHA (55P03) sem
--- gravar nada, em vez de enfileirar o checkout atras dela; e so repetir.
+-- A primeira coisa do pre-voo e travar `coupons` em SHARE ROW EXCLUSIVE: a partir do
+-- LOCK ninguem grava no cupom (nem em `used_count`) ate o DROP, e a leitura (o checkout
+-- validando cupom) continua. Sem essa trava, uma gravacao que terminasse DEPOIS da
+-- contagem e ANTES do DROP sumiria junto com a coluna. O DROP sobe a trava para ACCESS
+-- EXCLUSIVE. `lock_timeout` de 5 s: se alguem segura a tabela por mais que isso, a
+-- migration FALHA (55P03) sem gravar nada, em vez de enfileirar o checkout atras dela; e
+-- so repetir.
+--
+-- A TRAVA SO PROTEGE DO LOCK EM DIANTE. O que o workflow aplicar-migrations.yml faz: a
+-- transacao e REPEATABLE READ e a impressao digital ANTES tira a foto do banco ANTES do
+-- LOCK. Sob esse nivel a contagem (f) enxergaria a FOTO VELHA: um UPDATE de used_count
+-- gravado depois da foto e antes da trava seria invisivel, e a coluna seria apagada com o
+-- valor dentro. Por isso, logo depois do LOCK e da checagem de coluna ausente, o pre-voo
+-- faz `PERFORM 1 FROM public.coupons FOR SHARE`: sob REPEATABLE READ o Postgres RECUSA
+-- (40001, "could not serialize access due to concurrent update") qualquer linha alterada
+-- depois da foto -- a migration falha sem gravar nada (o workflow mostra ESTADO
+-- DESCONHECIDO) e basta repetir; sob READ COMMITTED o FOR SHARE so trava as linhas.
+-- RISCO RESIDUAL ACEITO: um INSERT com used_count explicito diferente de zero, gravado nos
+-- segundos entre a foto e o LOCK, NAO e visto (linha nova nao existe na foto e o FOR SHARE
+-- nao a alcanca). Ninguem grava essa coluna (nenhuma RPC, gatilho, edge function ou tela),
+-- e a janela e de segundos: o risco foi aceito em vez de uma checagem a mais.
 -- O DROP e sem CASCADE de proposito: se algum dependente escapasse do pre-voo, o
 -- Postgres recusa em vez de apagar o objeto junto.
 --
@@ -111,6 +125,11 @@ BEGIN
   IF v_attnum IS NULL THEN
     RETURN; -- ja apagada: reaplicacao, nada a conferir nem a fazer
   END IF;
+
+  -- Sob REPEATABLE READ (o envelope do workflow), recusa (40001) linha alterada depois da
+  -- foto da impressao digital; sob READ COMMITTED so trava as linhas. Antes de (f): e o que
+  -- faz a contagem enxergar o que a trava impediu de mudar. Ver o item 5.
+  PERFORM 1 FROM public.coupons FOR SHARE;
 
   -- (a) o contador verdadeiro existe.
   IF NOT EXISTS (

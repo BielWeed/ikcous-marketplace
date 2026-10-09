@@ -42,8 +42,12 @@
 -- LIMITES: nao le valor de cupom, so conta. Evidencia LOCAL nao prova a IKCOUS nem a
 -- Savy: so o run desta consulta contra o ref de cada loja. A resposta vale como
 -- evidencia so com rol=ok no veredito. Uma gravacao em used_count DEPOIS desta consulta
--- e ANTES do apply nao e' vista aqui: quem fecha essa janela e' o pre-voo da migration
--- (trava `coupons` em SHARE ROW EXCLUSIVE antes de contar e recusa sem gravar).
+-- e ANTES do apply nao e' vista aqui: o pre-voo da migration a trava a partir do LOCK
+-- (SHARE ROW EXCLUSIVE). No envelope REPEATABLE READ do aplicar-migrations.yml a foto da
+-- impressao digital e' tirada ANTES do LOCK: um UPDATE depois da foto faz o pre-voo
+-- RECUSAR (40001; o workflow mostra ESTADO DESCONHECIDO; e' so repetir). Um INSERT com
+-- used_count explicito diferente de zero nos segundos entre a foto e o LOCK nao e' visto:
+-- risco residual aceito (ninguem grava essa coluna).
 WITH tab AS (
   SELECT to_regclass('public.coupons') AS oid
 ), col AS (

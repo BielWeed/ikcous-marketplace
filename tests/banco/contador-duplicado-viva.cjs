@@ -33,12 +33,20 @@
  *   usage     `usage_count` ausente.
  *  CONCORRENCIA (duas conexoes reais)
  *   corrida   uma gravacao em used_count (valor 7) em transacao ABERTA, a migration espera a
- *             trava; a gravacao commita; a migration recusa (7) e o valor continua la.
+ *             trava; a gravacao commita; a migration recusa (7) e o valor continua la. Duas
+ *             variantes: UPDATE (segurado pelo LOCK e tambem pelo FOR SHARE) e INSERT de linha
+ *             nova (so o LOCK da tabela a segura; e' o que o mutante "sem LOCK" prova).
  *   timeout   uma transacao segurando `coupons` por mais de 5 s: a migration falha com
  *             lock_timeout (55P03), sem gravar nada.
+ *   rr        o ENVELOPE de producao (aplicar-migrations.yml): BEGIN ISOLATION LEVEL REPEATABLE
+ *             READ, uma leitura de `coupons` (a foto da impressao digital, ANTES do LOCK), a
+ *             migration, COMMIT. Sem concorrente aplica. Com um UPDATE used_count = 7
+ *             gravado DEPOIS da foto e ANTES da trava, a migration RECUSA (40001, o FOR SHARE
+ *             do pre-voo) e a coluna e o 7 continuam la (a prova `corrida`, em READ
+ *             COMMITTED, nao enxerga isso: la a contagem ja le o dado novo).
  *  MUTANTES (cada guarda retirada do texto da migration/rollback deixa um caso VERMELHO; a
- *   saida vermelha de cada um e' impressa): sem LOCK; sem lock_timeout; sem (a) usage_count;
- *   sem (b) forma; sem (c) RLS; sem (d) dependentes; (d) voltando a ignorar todo pg_attrdef;
+ *   saida vermelha de cada um e' impressa): sem LOCK (corrida com INSERT); sem lock_timeout; sem (a) usage_count;
+ *   sem o FOR SHARE (envelope REPEATABLE READ); sem (b) forma; sem (c) RLS; sem (d) dependentes; (d) voltando a ignorar todo pg_attrdef;
  *   (d) sem ignorar o default da propria coluna; sem (e) funcoes; sem (f) valores; (f) com
  *   COALESCE (NULL vira 0); sem o RETURN da coluna ja ausente; sem o pos-voo; rollback sem a
  *   conferencia de forma. E a CAMADA FINAL: sem o item (d), o DROP sem CASCADE ainda recusa
@@ -46,7 +54,10 @@
  *
  * LIMITES DECLARADOS: (1) o Postgres e o 17 LOCAL; o Postgres 15/17 da Supabase, o papel
  * `postgres` real e a ACL real das lojas nao foram medidos aqui. (2) O envelope do db-apply
- * e simulado por BEGIN/COMMIT em texto, nao pelo db-apply de verdade. (3) Politica, gatilho e
+ * e simulado por BEGIN [ISOLATION LEVEL REPEATABLE READ] / foto / COMMIT em texto, nao pelo
+ * aplicar-migrations.yml nem pelo impressao-digital.sql de verdade. Um INSERT com used_count
+ * explicito diferente de zero entre a foto e o LOCK NAO e visto (risco residual aceito,
+ * documentado na migration): a prova nao o exercita. (3) Politica, gatilho e
  * visao que citam a coluna sao recusados pelo item (d) (pg_depend); a prova nao distingue
  * esses tres entre si, so a visao e a coluna gerada sao exercitadas.
  *
@@ -279,6 +290,7 @@ function semRaise(sql, inicio) {
 const T = {
   lock: "  LOCK TABLE public.coupons IN SHARE ROW EXCLUSIVE MODE;\n",
   lockTimeout: "SET LOCAL lock_timeout = '5s';\n",
+  forShare: "  PERFORM 1 FROM public.coupons FOR SHARE;\n",
   retorno: "    RETURN; -- ja apagada: reaplicacao, nada a conferir nem a fazer\n",
   drop: "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count;",
   nullComo0: "WHERE used_count IS DISTINCT FROM 0'",
@@ -582,6 +594,39 @@ async function casoCorrida(sql = MIG) {
   assert.equal(depois.usedExiste, true, "corrida: a coluna foi apagada com o 7");
   assert.equal(depois.usedValores.find((l) => l.code === "CJ1").v, "7", "o 7 continua la");
 }
+/** O que o LOCK da tabela protege e o FOR SHARE nao: uma LINHA NOVA. Um INSERT com used_count
+ * = 7 em transacao aberta nao aparece na contagem (nao commitou) nem no FOR SHARE (nao existe
+ * para ele); so a trava da tabela faz a migration esperar o COMMIT e ver o 7. Sem ela, o DROP
+ * (que pede ACCESS EXCLUSIVE) espera o INSERT commitar e apaga a coluna COM o 7 dentro. */
+async function casoCorridaInsert(sql = MIG) {
+  const db = await clonar("corridains");
+  await semear(db);
+  const a = new Client({ connectionString: urlDe(db) });
+  const b = new Client({ connectionString: urlDe(db) });
+  await a.connect();
+  await b.connect();
+  try {
+    await a.query("BEGIN");
+    await a.query(
+      `INSERT INTO public.coupons (code, type, value, used_count) VALUES ('CJ9', 'fixed', 1, 7)`,
+    );
+    const emB = b.query(sql).then(
+      () => ({ ok: true }),
+      (erro) => ({ erro }),
+    );
+    await esperarBloqueio(db, 4000);
+    await a.query("COMMIT");
+    const r = await emB;
+    recusou(r, /used_count tem 1 linha\(s\) diferente\(s\) de 0/, "corrida com INSERT");
+  } finally {
+    await a.query("ROLLBACK").catch(() => {});
+    await a.end().catch(() => {});
+    await b.end().catch(() => {});
+  }
+  const depois = await fotografia(db);
+  assert.equal(depois.usedExiste, true, "corrida com INSERT: a coluna foi apagada com o 7");
+  assert.equal(depois.usedValores.find((l) => l.code === "CJ9").v, "7", "o 7 do INSERT continua la");
+}
 async function casoTimeout(sql = MIG) {
   const db = await clonar("timeout");
   await semear(db);
@@ -602,6 +647,50 @@ async function casoTimeout(sql = MIG) {
     await a.end().catch(() => {});
   }
   await nadaGravado(db, antes, "lock_timeout");
+}
+
+/** Aplica `sql` como o envelope de producao (aplicar-migrations.yml): UMA transacao
+ * REPEATABLE READ, a foto da impressao digital (uma leitura de `coupons`) ANTES do corpo,
+ * COMMIT no fim. `entreFotoETrava` roda DEPOIS da foto e ANTES da migration, em OUTRA
+ * conexao (autocommit). */
+async function emEnvelopeRR(db, sql, entreFotoETrava = null) {
+  const c = new Client({ connectionString: urlDe(db) });
+  await c.connect();
+  try {
+    await c.query("BEGIN ISOLATION LEVEL REPEATABLE READ");
+    await c.query("SELECT count(*) FROM public.coupons"); // a foto: o snapshot nasce aqui
+    if (entreFotoETrava) await entreFotoETrava();
+    await c.query(sql);
+    await c.query("COMMIT");
+    return { ok: true };
+  } catch (erro) {
+    await c.query("ROLLBACK").catch(() => {});
+    return { erro };
+  } finally {
+    await c.end().catch(() => {});
+  }
+}
+async function casoRepeatableRead(sql = MIG) {
+  // (1) o envelope sem concorrente aplica (o FOR SHARE nao atrapalha o caminho normal)
+  const feliz = await clonar("rrok");
+  await semear(feliz);
+  const r1 = await emEnvelopeRR(feliz, sql);
+  assert.ok(!r1.erro, `no envelope REPEATABLE READ sem concorrente falhou: ${r1.erro?.message}`);
+  assert.equal((await fotografia(feliz)).usedExiste, false, "RR sem concorrente: a coluna tem de sumir");
+  // (2) UPDATE gravado depois da foto e antes da trava: a foto velha diz "tudo 0"
+  const db = await clonar("rr");
+  await semear(db);
+  const r = await emEnvelopeRR(db, sql, () =>
+    usar(db, (c) => c.query(`UPDATE public.coupons SET used_count = 7 WHERE code = 'CJ1'`)),
+  );
+  assert.ok(
+    r.erro,
+    "RR: devia RECUSAR e aplicou (a coluna foi apagada com o 7 gravado depois da foto)",
+  );
+  assert.equal(r.erro.code, "40001", `RR: esperava 40001 (could not serialize): ${r.erro.code} ${r.erro.message}`);
+  const depois = await fotografia(db);
+  assert.equal(depois.usedExiste, true, "RR: a coluna foi apagada");
+  assert.equal(depois.usedValores.find((l) => l.code === "CJ1").v, "7", "RR: o 7 continua la");
 }
 
 /** Rollback: devolve a coluna IDENTICA a do baseline. */
@@ -692,8 +781,13 @@ async function main() {
   // ----------------------------------------------------------- concorrencia
   await casoCorrida();
   ok("corrida: gravacao de used_count = 7 em transacao aberta; a migration ESPERA a trava, ve o 7 depois do COMMIT e RECUSA; o 7 continua la");
+  await casoCorridaInsert();
+  ok("corrida com INSERT: linha nova com used_count = 7 em transacao aberta (o FOR SHARE nao a alcanca); a migration ESPERA a trava da tabela, ve o 7 depois do COMMIT e RECUSA; o 7 continua la");
   await casoTimeout();
   ok("timeout: tabela presa por outra transacao -> falha com lock_timeout (55P03) em ~5 s, NADA gravado");
+
+  await casoRepeatableRead();
+  ok("envelope REPEATABLE READ (como o aplicar-migrations.yml): sem concorrente aplica; com UPDATE used_count = 7 gravado DEPOIS da foto e ANTES da trava a migration RECUSA (40001) e a coluna e o 7 continuam la");
 
   // ----------------------------------------------------------- rollback
   await casoRollback();
@@ -703,8 +797,11 @@ async function main() {
 
   // ----------------------------------------------------------- mutantes
   console.log("\n  --- MUTANTES (cada guarda retirada tem de deixar a prova VERMELHA) ---");
-  await mutante("sem LOCK da tabela (corrida)", casoCorrida, trocar(MIG, T.lock, ""));
+  // O FOR SHARE tambem segura quem faz UPDATE, entao sem o LOCK a corrida de UPDATE ainda e
+  // recusada (verificado: o mutante daquele caso passava). O LOCK e' o que segura o INSERT.
+  await mutante("sem LOCK da tabela (corrida com INSERT)", casoCorridaInsert, trocar(MIG, T.lock, ""));
   await mutante("sem lock_timeout", casoTimeout, trocar(MIG, T.lockTimeout, ""));
+  await mutante("sem o FOR SHARE (envelope REPEATABLE READ)", casoRepeatableRead, trocar(MIG, T.forShare, ""));
   await mutante("sem (a) usage_count", casoUsage, semRaise(MIG, MSG.usage));
   await mutante("sem (b) forma do baseline", casoForma, semRaise(MIG, MSG.forma));
   await mutante("sem (c) RLS", casoRls, semRaise(MIG, MSG.rls));
