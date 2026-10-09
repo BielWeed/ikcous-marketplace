@@ -20,7 +20,7 @@ import {
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
 import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
-import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
+import { SeloDeStatus } from "@/components/admin/primitivos/SeloDeStatus";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import {
@@ -39,6 +39,7 @@ import {
   useEstornosEmCursoDosPedidos,
 } from "@/hooks/useEstornosEmCursoDosPedidos";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useNumerosDosPedidos } from "@/hooks/useNumerosDosPedidos";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   ErroCancelamentoNaoConcluido,
@@ -51,6 +52,7 @@ import { useViewTransition } from "@/hooks/useViewTransition";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
+import { STATUS_PARA_PREPARAR } from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import {
@@ -70,7 +72,6 @@ import { AlertasCancelados } from "@/views/admin/AlertasCancelados";
 import {
   CheckCircle2,
   Clock,
-  DollarSign,
   Download,
   Filter,
   HelpCircle,
@@ -79,7 +80,7 @@ import {
   Loader2,
   Package,
   Search,
-  TrendingUp,
+  Truck,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -94,20 +95,20 @@ const STATUS_ORDER_COLORS: Record<string, string> = {
 };
 
 /**
- * Subtítulo do cartão "Ações Pendentes" — achado 10 da auditoria de
- * 20/08/2026. Antes alternava entre "Urgente" e "Limpo" conforme
- * `stats.pending`, e um pedido parado em "Em Separação" desde 24/03/2026
- * deixou "Urgente" aceso por cinco meses seguidos: um alarme que nunca
- * apaga deixa de ser lido no dia em que significar alguma coisa.
+ * Subtítulo do cartão "Para preparar" — achado 10 da auditoria de
+ * 20/08/2026. O cartão antigo ("Ações Pendentes") alternava entre "Urgente"
+ * e "Limpo" conforme o número, e um pedido parado em "Em Separação" desde
+ * 24/03/2026 deixou "Urgente" aceso por cinco meses seguidos: um alarme que
+ * nunca apaga deixa de ser lido no dia em que significar alguma coisa.
  *
  * Em vez de julgar o número, o subtítulo descreve o que ele conta — e isso
  * é verdade sempre, então não precisa mudar. Derivado de
- * `STATUS_PEDIDOS_COM_ACAO_PENDENTE` (mesma lista que o crachá de Pedidos
- * usa em `AdminLayout.tsx`) para as duas contagens nunca voltarem a
- * divergir. `"new"` não tem rótulo em `statusConfig` (valor histórico do
- * banco, nunca modelado no front) e é descartado aqui.
+ * `STATUS_PARA_PREPARAR` (a regra única do selo da aba e do Início, onda F)
+ * para as contagens nunca voltarem a divergir. `"new"` não tem rótulo em
+ * `statusConfig` (valor histórico do banco, nunca modelado no front) e é
+ * descartado aqui.
  */
-const ACOES_PENDENTES_SUBTITULO = STATUS_PEDIDOS_COM_ACAO_PENDENTE.map(
+const SUBTITULO_PARA_PREPARAR = STATUS_PARA_PREPARAR.map(
   (status) => statusConfig[status as OrderStatus]?.label,
 )
   .filter((label): label is string => Boolean(label))
@@ -305,6 +306,26 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
+  // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
+  // carrega sozinho ao ficar ativo; daqui só se pede recarga (coalescida na
+  // janela de 1 s) por tempo real, ação na tela ou volta da conexão — nunca
+  // por filtro.
+  const {
+    paraPreparar,
+    aguardandoPagamento,
+    aCaminho,
+    abertosComPagamentoAConferir,
+    pedirRecarga: pedirRecargaDosNumeros,
+  } = useNumerosDosPedidos(active ?? false);
+  // Revisão da onda F (S3): pedido aberto com pagamento recusado/estornado
+  // saiu de todo contador; este aviso (só leitura) o mantém à vista. `null`
+  // (consulta falhou) e 0 escondem o aviso — nunca "0 pedidos".
+  const avisoPagamentoAConferir =
+    abertosComPagamentoAConferir === null || abertosComPagamentoAConferir <= 0
+      ? null
+      : `${abertosComPagamentoAConferir} ${
+          abertosComPagamentoAConferir === 1 ? "pedido" : "pedidos"
+        } em aberto com pagamento recusado ou estornado — confira no filtro Pagamento.`;
   const { abertas: devolucoesAbertas } = useDevolucoesAbertas(active);
 
   const [searchQuery, setSearchQuery] = useLocalStorage<string>(
@@ -393,16 +414,12 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
   // Removed ref tracking for filter changes in favor of direct state resets
 
+  // Onda F (F3): "Receita Hoje" e "Valor médio por venda" saíram do topo —
+  // a receita do dia vive no Início (`painel_inicio`, pelo dia do pagamento)
+  // e em Relatórios; o valor médio por venda, em Clientes e Relatórios. O
+  // `today_pending` da RPC também saiu: contava o PIX que espera a cliente
+  // (ver `useNumerosDosPedidos`).
   const [stats, setStats] = useState(() => ({
-    // PAINEL-05: `?? null` + "—" na exibição — `|| 0` afirma "R$ 0,00"
-    // quando a RPC falhou; o travessão não afirma nada (mesma razão do
-    // `completed` abaixo, que já fazia certo).
-    revenueDay: analyticsStats?.today?.revenue ?? null,
-    pending: analyticsStats?.today?.pending ?? null,
-    avgTicket:
-      analyticsStats?.averageTicket ??
-      analyticsStats?.executive?.avgTicket ??
-      null,
     // `deliveredTotal` (status='delivered') veio pra substituir
     // `month.count`, que contava TODOS os pedidos não cancelados dos
     // últimos 30 dias — inclusive os que nunca saíram de "Novo Pedido".
@@ -419,12 +436,6 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   useEffect(() => {
     if (analyticsStats) {
       setStats({
-        revenueDay: analyticsStats.today?.revenue ?? null,
-        pending: analyticsStats.today?.pending ?? null,
-        avgTicket:
-          analyticsStats.averageTicket ??
-          analyticsStats.executive?.avgTicket ??
-          null,
         completed: analyticsStats.deliveredTotal ?? null,
       });
     }
@@ -538,44 +549,41 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     [registrarPagamentoRecebido],
   );
 
+  // PAINEL-05: número que não se sabe é "—", nunca "0" — um `0` afirma
+  // "nenhum pedido" quando a consulta simplesmente falhou.
   const kpiCards = useMemo<readonly KpiCardConfig[]>(
     () => [
       {
-        label: "Receita Hoje",
-        value:
-          stats.revenueDay !== null
-            ? `R$ ${stats.revenueDay.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-            : "—",
-        icon: DollarSign,
-        accent: "text-emerald-500",
-        subValue: "Finanças",
-      },
-      {
-        label: "Ações Pendentes",
-        value: stats.pending !== null ? stats.pending.toString() : "—",
-        icon: Clock,
+        label: "Para preparar",
+        value: paraPreparar === null ? "—" : paraPreparar.toString(),
+        icon: Package,
         accent: "text-amber-500",
-        subValue: ACOES_PENDENTES_SUBTITULO,
+        subValue: SUBTITULO_PARA_PREPARAR,
       },
       {
-        label: "Valor médio por venda",
+        label: "Aguardando pagamento",
         value:
-          stats.avgTicket !== null
-            ? `R$ ${stats.avgTicket.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
-            : "—",
-        icon: TrendingUp,
-        accent: "text-admin-gold",
-        subValue: "Rendimento",
+          aguardandoPagamento === null ? "—" : aguardandoPagamento.toString(),
+        icon: Clock,
+        accent: "text-blue-500",
+        subValue: "PIX ou cartão ainda não pago",
       },
       {
-        label: "Total Concluído",
+        label: "Em trânsito",
+        value: aCaminho === null ? "—" : aCaminho.toString(),
+        icon: Truck,
+        accent: "text-indigo-500",
+        subValue: "Enviados",
+      },
+      {
+        label: "Finalizados",
         value: stats.completed === null ? "—" : stats.completed.toString(),
         icon: CheckCircle2,
         accent: "text-sky-500",
-        subValue: "Concluído",
+        subValue: "Desde o início · app e balcão",
       },
     ],
-    [stats],
+    [paraPreparar, aguardandoPagamento, aCaminho, stats],
   );
 
   const loadStats = useCallback(async () => {
@@ -1029,9 +1037,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         icon: "⚡",
       });
       loadAllData(currentPage);
+      // Eventos perdidos enquanto estava sem conexão: confere o topo de novo.
+      pedirRecargaDosNumeros();
     }
     wasOfflineRef.current = isOffline;
-  }, [isOffline, active, currentPage, loadAllData]);
+  }, [isOffline, active, currentPage, loadAllData, pedirRecargaDosNumeros]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
@@ -1084,8 +1094,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
       loadStats();
+      pedirRecargaDosNumeros();
     };
-  }, [loadStats, handleSelectOrder, selectedOrderId]);
+  }, [loadStats, pedirRecargaDosNumeros, handleSelectOrder, selectedOrderId]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
@@ -1267,6 +1278,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       );
 
       loadStats();
+      // Coalescida com o eco de tempo real desta mesma ação: uma recarga só.
+      pedirRecargaDosNumeros();
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
@@ -1587,6 +1600,13 @@ export const AdminOrdersView = memo(function AdminOrdersView({
                 title="Métricas de Pedidos"
               />
             </LocalErrorBoundary>
+            {avisoPagamentoAConferir && (
+              <div role="status" data-aviso="pagamento-a-conferir">
+                <SeloDeStatus tom="atencao" className="rounded-xl text-left">
+                  {avisoPagamentoAConferir}
+                </SeloDeStatus>
+              </div>
+            )}
           </div>
         )}
 

@@ -10,7 +10,7 @@
 //      Início, Pedidos, Produtos, Clientes, Ajustes (aria-label).
 //   2. O rótulo visível NUNCA leva a classe `hidden` — aparece sempre, a
 //      ~11px, e cabe porque a aba é `flex-1` (o Vender segue `shrink-0`).
-//   3. O selo de pedidos entra no NOME ("Pedidos, 3 pendentes") e o selo
+//   3. O selo de pedidos entra no NOME ("Pedidos, 3 para preparar") e o selo
 //      visual fica `aria-hidden`, para o leitor não ler "Pedidos 3 3".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -25,6 +25,7 @@ function criarContagemBuilder() {
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>
@@ -186,11 +187,10 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
       ),
     );
     const pedidos = botaoDaAba(nav, "Pedidos")!;
-    // Texto neutro ("pendentes"): o selo conta pending+new+processing, o que
-    // inclui PIX ainda não pago, e o "Para preparar" do Início não conta esse
-    // pedido. Até a Onda F unificar a contagem, o nome não promete mais que o número.
+    // Onda F: o selo conta a regra única "para preparar" (a mesma do
+    // Início, sem PIX/cartão ainda não pago) — então o nome pode dizê-lo.
     expect(pedidos.getAttribute("aria-label")).toBe(
-      `Pedidos, ${PEDIDOS_PARA_PREPARAR} pendentes`,
+      `Pedidos, ${PEDIDOS_PARA_PREPARAR} para preparar`,
     );
     const selo = Array.from(pedidos.querySelectorAll("span")).find(
       (s) => s.textContent?.trim() === String(PEDIDOS_PARA_PREPARAR),
@@ -199,13 +199,14 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
     expect(selo!.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("no singular o nome diz '1 pendente'", async () => {
+  it("no singular o nome diz '1 para preparar'", async () => {
     const { supabase } = await import("@/lib/supabase");
     (supabase.from as any).mockImplementation(() => {
       const builder: any = {};
       builder.select = vi.fn(() => builder);
       builder.eq = vi.fn(() => builder);
       builder.in = vi.fn(() => builder);
+      builder.or = vi.fn(() => builder);
       builder.is = vi.fn(() => builder);
       // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
       builder.then = (resolve: any, reject?: any) =>
@@ -216,10 +217,10 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
     await esperarAte(
       () =>
         botaoDaAba(nav, "Pedidos")?.getAttribute("aria-label") ===
-        "Pedidos, 1 pendente",
+        "Pedidos, 1 para preparar",
     );
     expect(botaoDaAba(nav, "Pedidos")!.getAttribute("aria-label")).toBe(
-      "Pedidos, 1 pendente",
+      "Pedidos, 1 para preparar",
     );
   });
 });

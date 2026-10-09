@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { useProducts } from "@/hooks/useProducts";
 import { contagemDe, lerListaAdmin } from "@/lib/devolucao";
+import {
+  FILTRO_POSTGREST_PARA_PREPARAR,
+  STATUS_PARA_PREPARAR,
+} from "@/lib/pedidos-para-preparar";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types";
 import {
@@ -48,11 +51,15 @@ interface AvaliacaoCrua {
   created_at: string;
 }
 
+// A regra unica "para preparar" (onda F, F2b) — a mesma do selo de Pedidos
+// e do Inicio. So status nao bastava: o PIX/cartao ainda nao pago virava
+// "Pedido de X esperando voce", e quem espera ali e a CLIENTE.
 async function buscarPedidosPendentes(): Promise<PedidoPendente[]> {
   const { data, error } = await supabase
     .from("marketplace_orders")
     .select("id, customer_name, total, created_at")
-    .in("status", STATUS_PEDIDOS_COM_ACAO_PENDENTE as unknown as string[]);
+    .in("status", STATUS_PARA_PREPARAR as unknown as string[])
+    .or(FILTRO_POSTGREST_PARA_PREPARAR);
 
   if (error) throw error;
   return (data ?? []) as unknown as PedidoPendente[];

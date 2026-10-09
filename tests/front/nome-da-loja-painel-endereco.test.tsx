@@ -17,7 +17,10 @@ vi.mock("@/lib/supabase", () => ({
       const builder = {
         select: () => builder,
         eq: () => builder,
-        in: () => result,
+        in: () => builder,
+        // O selo de Pedidos encadeia `.in(...).or(...)` (regra única "para
+        // preparar", onda F); o `.or` é quem devolve o resultado.
+        or: () => result,
         is: () => result,
       };
       return builder;
