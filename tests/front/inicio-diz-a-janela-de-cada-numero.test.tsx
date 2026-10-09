@@ -147,7 +147,17 @@ describe("Início: cada número diz o conceito e a janela", () => {
     expect(pagina).toMatch(/4\s*vendas/);
     // O lucro vem do DRE do Financeiro: não ganha o rótulo de vendas.
     expect(pagina).toContain("Lucro estimado");
-    expect(pagina).not.toContain("Lucro de vendas");
+    // ...e o tile do lucro (entre o seu rótulo e o do saldo) não herda a
+    // régua de crm__vendas.
+    const tileDoLucro = pagina.slice(
+      pagina.indexOf("Lucro estimado"),
+      pagina.indexOf("Saldo em contas"),
+    );
+    expect(tileDoLucro).toContain("Margem estimada");
+    expect(tileDoLucro).not.toContain("Vendas pagas");
+    // O topo do mês conta as mesmas vendas do Hoje: "80 vendas".
+    expect(pagina).toMatch(/80\s*vendas/);
+    expect(pagina).not.toContain("80 pedidos");
   });
 
   it("(a2) sem margem calculável, o rodapé do lucro diz de onde vem a conta", async () => {
@@ -155,7 +165,7 @@ describe("Início: cada número diz o conceito e a janela", () => {
     hospedeiro.remove();
     await montar({ ...PAINEL, mes: { ...PAINEL.mes, receita: 0 } });
     expect(texto(hospedeiro)).toContain(
-      "Vendas pagas menos o custo dos produtos",
+      "Do Financeiro: vendas menos devoluções, custo dos produtos e despesas do mês",
     );
   });
 
@@ -183,6 +193,10 @@ describe("Início: cada número diz o conceito e a janela", () => {
     );
     expect(texto(serie)).toContain("Vendas pagas por dia nos últimos 14 dias");
     expect(texto(serie)).not.toContain("Receita por dia");
+    // O conceito também está visível no título, não só na tabela sr-only.
+    expect(texto(serie?.querySelector("h2") ?? null)).toBe(
+      "Vendas pagas · 14 dias",
+    );
 
     const ajuda = hospedeiro.querySelector<HTMLButtonElement>(
       '[aria-label="Como ler o Início"]',
@@ -190,6 +204,6 @@ describe("Início: cada número diz o conceito e a janela", () => {
     await act(async () => ajuda?.click());
     const corpo = texto(document.body);
     expect(corpo).toContain("Vendas pagas hoje:");
-    expect(corpo).toContain("as vendas pagas do mês menos o custo");
+    expect(corpo).toContain("o resultado do Financeiro no mês");
   });
 });

@@ -56,7 +56,7 @@ export function NumerosDoMes({
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarInteiro(mes.pedidos)}
             </strong>{" "}
-            {mes.pedidos === 1 ? "pedido" : "pedidos"} · valor médio por venda{" "}
+            {mes.pedidos === 1 ? "venda" : "vendas"} · valor médio por venda{" "}
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarMoeda(mes.ticketMedio)}
             </strong>
@@ -90,7 +90,7 @@ export function NumerosDoMes({
           valorCompacto={formatarMoedaCompacta(mes?.lucroEstimado)}
           rodape={
             margem == null
-              ? "Vendas pagas menos o custo dos produtos"
+              ? "Do Financeiro: vendas menos devoluções, custo dos produtos e despesas do mês"
               : `Margem estimada de ${formatarPercentual(margem, 0)}`
           }
         />
