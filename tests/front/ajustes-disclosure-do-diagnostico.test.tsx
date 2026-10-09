@@ -87,11 +87,20 @@ describe("AdminSettingsView — disclosure do diagnóstico de conexão", () => {
     // fechada (decisão do dono, 02/09). Só ao abrir é que ele monta.
     await clicar(botaoPorTexto("Minha loja está no ar?"));
 
+    // Painel simples (E5): o diagnóstico e o indicador "Conexão" moram no
+    // MESMO grupo — Ferramentas — e nenhum cartão "Como está sua loja" resta.
+    const ferramentas = [...hospedeiro.querySelectorAll("section")].find(
+      (s) => s.querySelector(":scope > h2")?.textContent === "Ferramentas",
+    );
+    expect(ferramentas?.textContent).toContain("Diagnóstico de Conexão");
+    expect(ferramentas?.textContent).toContain("Online");
+    expect(hospedeiro.textContent).not.toContain("Como está sua loja");
+
     // O painel do diagnóstico NASCE ABERTO (isOpen=true): o estado tem de
     // estar declarado desde o primeiro render.
-    expect(botaoPorTexto("Diagnóstico de Conexão").getAttribute("aria-expanded")).toBe(
-      "true",
-    );
+    expect(
+      botaoPorTexto("Diagnóstico de Conexão").getAttribute("aria-expanded"),
+    ).toBe("true");
 
     // Fechar: o estado declarado vira false.
     await clicar(botaoPorTexto("Diagnóstico de Conexão"));
@@ -100,13 +109,16 @@ describe("AdminSettingsView — disclosure do diagnóstico de conexão", () => {
         b.textContent?.includes("Diagnóstico de Conexão") &&
         b.getAttribute("aria-expanded") === "false",
     );
-    expect(fechado, "após fechar, aria-expanded deveria ser false").toBeDefined();
+    expect(
+      fechado,
+      "após fechar, aria-expanded deveria ser false",
+    ).toBeDefined();
 
     // Reabrir — o padrão do lote E: acha o botão com expanded=false, clica,
     // e o estado volta a true.
     await clicar(fechado as HTMLButtonElement);
-    expect(botaoPorTexto("Diagnóstico de Conexão").getAttribute("aria-expanded")).toBe(
-      "true",
-    );
+    expect(
+      botaoPorTexto("Diagnóstico de Conexão").getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 });

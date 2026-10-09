@@ -1,4 +1,13 @@
 import { NOMES_DO_PAINEL, type TelaDoPainel } from "@/config/nomes-do-painel";
+import type { FormaDePagamentoNaEntrega } from "@/lib/formas-de-pagamento-na-entrega";
+import {
+  type ChaveDosSeisPassos,
+  type ConfigDosSeisPassos,
+  type EstadoDoItem,
+  entradaDosSeisPassos,
+  seisPassosDaLojaPronta,
+} from "@/lib/loja-pronta";
+import { type ConfigDaEntrega, statusDaEntrega } from "@/lib/status-da-entrega";
 
 // Os seis grupos da tela de Ajustes (painel simples, spec 2026-10-09 §3),
 // declarados UMA vez. A tela (AdminSettingsView) desenha os grupos e a ajuda
@@ -88,7 +97,148 @@ export const GRUPOS_DE_AJUSTES: readonly GrupoDeAjustes[] = [
     chave: "ferramentas",
     titulo: "Ferramentas",
     ajuda:
-      "Minha loja está no ar? — o termômetro do pagamento por PIX com o diagnóstico completo e a medição de latência com o banco de dados — e as Consultas de frete, o histórico das cotações já feitas à transportadora ativa.",
+      "A Conexão (online ou offline) da loja neste aparelho; Minha loja está no ar? — o termômetro do pagamento por PIX com o diagnóstico completo e a medição de latência com o banco de dados — e as Consultas de frete, o histórico das cotações já feitas à transportadora ativa.",
     portas: [],
   },
 ];
+
+// ── O subtítulo de status de cada grupo (painel simples, E5) ────────────────
+//
+// O cartão "Como está sua loja" (4 indicadores) saiu de Ajustes: o estado
+// agora mora numa linha sob o título do grupo, calculada pela MESMA função dos
+// seis passos do Início (`loja-pronta.ts`) — "Falta: WhatsApp", "Na entrega +
+// PIX". Regra escrita em dois lugares diverge (lição #53), então aqui só se
+// ESCOLHE qual passo fala por qual grupo e como o texto se escreve.
+//
+//   minha-loja  → marca + endereço + WhatsApp: "Falta: …" ou "Tudo preenchido"
+//   entrega     → o passo "entrega": "Falta: …" ou o resumo da cidade e do país
+//   pagamentos  → o passo "recebe": o que está ativo, ou "Falta: Como você recebe"
+//   aparencia, devolucao, ferramentas → sem passo próprio: sem subtítulo
+//
+// Passo `carregando` não chuta: o grupo fica SEM subtítulo. Na entrega isso
+// vale enquanto a leitura das transportadoras não chegou — e, se ela falhar,
+// continua sem subtítulo até a seção de Transportadoras reler.
+
+/** Os três níveis do PIX pelo app em Ajustes (o mesmo do termômetro). */
+export type NivelDoPixEmAjustes = "ok" | "alerta" | "off";
+
+export interface EntradaDosSubtitulos {
+  /** A config da loja já carregada (a tela só desenha os grupos com ela). */
+  readonly config: ConfigDosSeisPassos & ConfigDaEntrega;
+  /** `formasPagamentoNaEntregaValidas(config.formasPagamentoEntrega)`. */
+  readonly formasNaEntrega: readonly FormaDePagamentoNaEntrega[];
+  /** PIX pelo app: funcionando, ligado sem chave, ou desligado. */
+  readonly nivelDoPix: NivelDoPixEmAjustes;
+  /**
+   * Nomes das transportadoras com cotação REAL ligada (chave salva e, quando
+   * o provedor exige, e-mail de contato válido) — o que Ajustes já leu para o
+   * acordeão de Transportadoras. `null` = a leitura ainda não chegou (ou
+   * falhou): com cobertura nacional a entrega fica SEM subtítulo (nada de
+   * "a confirmar"), até a seção de Transportadoras reler.
+   */
+  readonly nomesLigados: readonly string[] | null;
+}
+
+interface EntregaEmAjustes {
+  readonly estado: EstadoDoItem;
+  /** O que falta, quando `pendente`; o resumo curto, quando `feito`. */
+  readonly texto: string;
+}
+
+// O fato "entrega" dos seis passos, com o que Ajustes TEM em mãos (nenhuma
+// chamada nova): a régua é a do Frete (`statusDaEntrega`). Pronta = a cidade
+// atendida (tem CEP da loja) E o resto do país resolvido — transportadora
+// ligada ou a loja declarou entregar só na cidade. Sem CEP ou, entregando no
+// país todo, sem transportadora, é pendente.
+function entregaEmAjustes(
+  config: ConfigDaEntrega,
+  nomesLigados: readonly string[] | null,
+): EntregaEmAjustes {
+  const [local, nacional] = statusDaEntrega({
+    config,
+    credsErro: nomesLigados === null,
+    nomesLigados: nomesLigados ?? [],
+  });
+  const faltas = [
+    ...(local.tom === "atencao" ? ["CEP da loja"] : []),
+    ...(nacional.tom === "atencao" ? ["transportadora"] : []),
+  ];
+  if (faltas.length > 0) {
+    return { estado: "pendente", texto: `Falta: ${faltas.join(", ")}` };
+  }
+  const soNaCidade = (config.shippingCoverage || "national") === "local";
+  if (nomesLigados === null && !soNaCidade) {
+    return { estado: "carregando", texto: "" };
+  }
+  return { estado: "feito", texto: `${local.valor} · ${nacional.valor}` };
+}
+
+function textoDoRecebimento(
+  formasNaEntrega: readonly FormaDePagamentoNaEntrega[],
+  nivelDoPix: NivelDoPixEmAjustes,
+): string {
+  const naEntrega = formasNaEntrega.length > 0 ? "Na entrega" : null;
+  if (nivelDoPix === "ok") return naEntrega ? `${naEntrega} + PIX` : "PIX";
+  // Ligado sem a chave pública: o PIX está QUEBRADO, não "ativo" — a mesma
+  // verdade do termômetro. (Sem forma na entrega o passo nem chega aqui:
+  // ele é pendente.)
+  if (nivelDoPix === "alerta") return `${naEntrega ?? ""} · PIX sem chave`;
+  return naEntrega ?? "";
+}
+
+/**
+ * O subtítulo de status de cada grupo que tem um. Grupo ausente do mapa =
+ * sem subtítulo. Lido com `.get` (índice de variável acorda o
+ * object-injection do eslint).
+ */
+export function subtitulosDosGrupos(
+  entrada: EntradaDosSubtitulos,
+): ReadonlyMap<ChaveDoGrupoDeAjustes, string> {
+  const { config, formasNaEntrega, nivelDoPix, nomesLigados } = entrada;
+  const entrega = entregaEmAjustes(config, nomesLigados);
+  const passos = seisPassosDaLojaPronta(
+    entradaDosSeisPassos(config, {
+      pixOk: nivelDoPix === "ok",
+      formasNaEntrega,
+      // Os dois passos que Ajustes não lê: produto fica de fora da conta.
+      produtos: [],
+      produtosCarregando: true,
+      configCarregando: false,
+      entrega: entrega.estado,
+    }),
+  );
+  const passo = (chave: ChaveDosSeisPassos) =>
+    passos.find((p) => p.chave === chave);
+
+  const subtitulos = new Map<ChaveDoGrupoDeAjustes, string>();
+
+  const daLoja = [passo("marca"), passo("endereco"), passo("whatsapp")].filter(
+    (p) => p !== undefined,
+  );
+  const faltam = daLoja.filter((p) => p.estado === "pendente");
+  if (faltam.length > 0) {
+    subtitulos.set(
+      "minha-loja",
+      `Falta: ${faltam.map((p) => p.rotulo).join(", ")}`,
+    );
+  } else if (daLoja.every((p) => p.estado === "feito")) {
+    subtitulos.set("minha-loja", "Tudo preenchido");
+  }
+
+  const passoEntrega = passo("entrega");
+  if (passoEntrega?.estado === "pendente" || passoEntrega?.estado === "feito") {
+    subtitulos.set("entrega", entrega.texto);
+  }
+
+  const recebe = passo("recebe");
+  if (recebe?.estado === "pendente") {
+    subtitulos.set("pagamentos", `Falta: ${recebe.rotulo}`);
+  } else if (recebe?.estado === "feito") {
+    subtitulos.set(
+      "pagamentos",
+      textoDoRecebimento(formasNaEntrega, nivelDoPix),
+    );
+  }
+
+  return subtitulos;
+}

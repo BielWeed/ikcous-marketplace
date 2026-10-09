@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   Banknote,
   ChevronDown,
-  Clock,
   CreditCard,
   HelpCircle,
   History,
@@ -15,7 +14,6 @@ import {
   RotateCcw,
   Store,
   Truck,
-  Wallet,
   Wifi,
 } from "lucide-react";
 import { Suspense, lazy, memo, useCallback, useEffect, useState } from "react";
@@ -38,6 +36,7 @@ import {
   type ChaveDoGrupoDeAjustes,
   GRUPOS_DE_AJUSTES,
   type PortaDoGrupoDeAjustes,
+  subtitulosDosGrupos,
 } from "@/components/admin/settings/grupos-de-ajustes";
 import { Skeleton } from "@/components/ui/skeleton";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
@@ -436,9 +435,8 @@ function SecaoColapsavel({
   );
 }
 
-// Ícone de cada porta (o nome e a rota vêm de GRUPOS_DE_AJUSTES). Map + `.get`
-// pelo mesmo motivo do PALETA_DO_INDICADOR abaixo: índice de variável acorda o
-// object-injection do eslint. Guarda o ELEMENTO pronto, não o componente: um
+// Ícone de cada porta (o nome e a rota vêm de GRUPOS_DE_AJUSTES). Map + `.get`:
+// índice de variável acorda o object-injection do eslint. Guarda o ELEMENTO pronto, não o componente: um
 // componente tirado do Map no render dispara react-hooks/static-components.
 const CLASSE_DO_ICONE_DA_PORTA = "relative size-[18px]";
 const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
@@ -512,23 +510,36 @@ function PortaDeAjustes({
  * fixos desde o painel simples, 09/10/2026). O título e as portas vêm de
  * GRUPOS_DE_AJUSTES pela `chave` — a ajuda lê a mesma constante. Os
  * acordeões do grupo entram como `children`, depois das portas.
+ *
+ * `subtitulos` (E5): a linha de estado sob o título ("Falta: WhatsApp"),
+ * vinda de `subtitulosDosGrupos` (a mesma função dos seis passos). Grupo sem
+ * entrada no mapa não desenha a linha. É um `<p>` irmão do `<h2>`: o título
+ * do grupo continua sendo só o nome.
  */
 function GrupoDeAjustes({
   chave,
   onNavigate,
+  subtitulos,
   children,
 }: {
   readonly chave: ChaveDoGrupoDeAjustes;
   readonly onNavigate: (view: View) => void;
+  readonly subtitulos: ReadonlyMap<ChaveDoGrupoDeAjustes, string>;
   readonly children?: React.ReactNode;
 }) {
   const grupo = GRUPO_POR_CHAVE.get(chave);
   if (!grupo) return null;
+  const subtitulo = subtitulos.get(chave);
   return (
     <section className="space-y-3">
       <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
         {grupo.titulo}
       </h2>
+      {subtitulo && (
+        <p className="-mt-1 px-1 text-xs font-medium text-zinc-300">
+          {subtitulo}
+        </p>
+      )}
       {grupo.portas.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {grupo.portas.map((porta) => (
@@ -546,75 +557,47 @@ function GrupoDeAjustes({
 }
 
 /**
- * Indicador do painel "Como está sua loja" (desenho SALÃO+PORÃO). Espelho
- * PURO: ícone + rótulo curto + valor lido do que já existe — sem ação, sem
- * fetch novo, sem estado. O valor vem truncado: horário e nome de loja
- * longos não empurram os vizinhos do grid.
+ * Indicador "Conexão" do grupo Ferramentas (desenho SALÃO+PORÃO; o cartão de
+ * quatro indicadores onde ele nasceu saiu em 09/10/2026 — só este sobrou).
+ * Espelho PURO: ícone + rótulo curto + valor lido do que já existe — sem
+ * ação, sem fetch novo, sem estado.
  *
- * `estado` (refinamento do dono, 13/09: acabamento premium do painel)
- * escolhe SÓ a paleta visual do tile — container do ícone tintado pelo
- * estado + dot de status na frente do rótulo (pulsa apenas em "vivo", o
- * único estado momentâneo). Não carrega julgamento de dado nenhum: o
- * VALOR e a COR do valor continuam sendo escolha do chamador no hub,
- * pelas mesmas fontes de antes.
+ * `estado` escolhe SÓ a paleta visual do tile — container do ícone tintado
+ * pelo estado + dot de status na frente do rótulo (pulsa apenas em "vivo", o
+ * único estado momentâneo). Não carrega julgamento de dado nenhum: o VALOR e
+ * a COR do valor continuam sendo escolha do chamador.
  */
-type EstadoDoIndicador = "vivo" | "problema" | "neutro" | "apagado";
+type EstadoDoIndicador = "vivo" | "problema";
 
-// Paleta por estado do tile: container do ícone + dot do rótulo. Vivo e
-// problema ganham glow fraco da própria cor; neutro dourado é o idioma do
-// painel; apagado é vidro sem luz — nada a comemorar, nada a temer.
-// Map + `.get` no mesmo padrão do ROTULO_DO_PIX/COR_DO_PIX abaixo: acesso
-// por índice de variável (`Record[estado]`) acorda o object-injection do
-// eslint, e o teto de warnings do repo não abre exceção para estilo.
-const PALETA_NEUTRA = {
+// Paleta por estado do tile: container do ícone + dot do rótulo, com glow
+// fraco da própria cor.
+const PALETA_VIVA = {
   container:
-    "bg-admin-gold/10 text-admin-gold ring-admin-gold/20 shadow-[0_0_16px_-6px] shadow-admin-gold/40",
-  dot: "bg-admin-gold",
+    "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-[0_0_16px_-6px] shadow-emerald-500/40",
+  dot: "bg-emerald-400",
 };
-
-const PALETA_DO_INDICADOR = new Map<
-  EstadoDoIndicador,
-  { readonly container: string; readonly dot: string }
->([
-  [
-    "vivo",
-    {
-      container:
-        "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20 shadow-[0_0_16px_-6px] shadow-emerald-500/40",
-      dot: "bg-emerald-400",
-    },
-  ],
-  [
-    "problema",
-    {
-      container:
-        "bg-red-500/10 text-red-400 ring-red-500/20 shadow-[0_0_16px_-6px] shadow-red-500/40",
-      dot: "bg-red-400",
-    },
-  ],
-  ["neutro", PALETA_NEUTRA],
-  [
-    "apagado",
-    { container: "bg-white/5 text-zinc-300 ring-white/10", dot: "bg-zinc-500" },
-  ],
-]);
+const PALETA_DE_PROBLEMA = {
+  container:
+    "bg-red-500/10 text-red-400 ring-red-500/20 shadow-[0_0_16px_-6px] shadow-red-500/40",
+  dot: "bg-red-400",
+};
 
 function IndicadorDoPainel({
   icone: Icone,
   rotulo,
   valor,
   cor = "text-zinc-200",
-  estado = "neutro",
+  estado,
 }: {
   readonly icone: React.ElementType;
   readonly rotulo: string;
   readonly valor: string;
   readonly cor?: string;
-  readonly estado?: EstadoDoIndicador;
+  readonly estado: EstadoDoIndicador;
 }) {
-  const paleta = PALETA_DO_INDICADOR.get(estado) ?? PALETA_NEUTRA;
+  const paleta = estado === "vivo" ? PALETA_VIVA : PALETA_DE_PROBLEMA;
   return (
-    <div className="flex min-w-0 flex-col gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
+    <div className="flex min-h-11 min-w-0 flex-col gap-2.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3">
       <span
         className={cn(
           "flex size-10 items-center justify-center rounded-xl ring-1 backdrop-blur-sm",
@@ -623,7 +606,7 @@ function IndicadorDoPainel({
       >
         <Icone className="size-[18px]" strokeWidth={2.25} />
       </span>
-      <span className="flex items-center gap-1.5 text-[9.5px] font-black uppercase tracking-[0.18em] text-zinc-500">
+      <span className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-zinc-400">
         <span
           className={cn(
             "size-1.5 shrink-0 rounded-full",
@@ -655,22 +638,6 @@ const ROTULO_DO_PIX = new Map<NivelDoPix, string>([
   ["ok", "Funcionando"],
   ["alerta", "Chave ausente"],
   ["off", "Desligado"],
-]);
-
-// Cores espelham o corDoRotulo do StatusPagamentoPix.
-const COR_DO_PIX = new Map<NivelDoPix, string>([
-  ["ok", "text-emerald-400"],
-  ["alerta", "text-red-400"],
-  ["off", "text-zinc-500"],
-]);
-
-// Estado VISUAL do tile do PIX no painel (paleta do IndicadorDoPainel),
-// derivado do MESMO NivelDoPix: ok=vivo (dot pulsa), alerta=problema,
-// off=apagado.
-const ESTADO_DO_PIX = new Map<NivelDoPix, EstadoDoIndicador>([
-  ["ok", "vivo"],
-  ["alerta", "problema"],
-  ["off", "apagado"],
 ]);
 
 export const AdminSettingsView = memo(function AdminSettingsView({
@@ -736,7 +703,8 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   }, [active]);
 
   // ── Estado do PIX: MESMAS fontes do StatusPagamentoPix, avaliadas UMA
-  // vez aqui no hub e compartilhadas pelo painel e pelo termômetro. O
+  // vez aqui no hub e compartilhadas pelo subtítulo de Pagamentos e pelo
+  // termômetro de "Minha loja está no ar?". O
   // contrato de pix-configurado-no-build exige este import cru DENTRO deste
   // arquivo (mesma regra do AdminDashboardView) — não extrair para
   // componente/arquivo novo sem atualizar aquele teste.
@@ -745,7 +713,7 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   // no BOOT da página. O interruptor "Receber PIX no app" (MercadoPagoSection,
   // logo abaixo) escreve `store_config.pagamento_online` pela edge e devolve
   // o estado GRAVADO — sem este eco, a mesma tela mostrava dois estados do
-  // dinheiro (tile "Pagamento", subtítulo "PIX: …" e termômetro presos no
+  // dinheiro (subtítulo de Pagamentos, "PIX: …" e termômetro presos no
   // valor velho) até um recarregamento completo, enquanto a própria seção
   // dizia "a vitrine reflete em até 1 minuto". Estado LOCAL da sessão de
   // propósito: a ficha global (configuracaoDaLoja) não se reescreve em
@@ -796,10 +764,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
   }, []);
   // Revisão Opus (achado 5): a leitura acima só rodava UMA vez, ao montar
   // — salvar provedores dentro da seção (aberta logo abaixo) não
-  // atualizava o "Ativo: X" deste indicador até um recarregamento
-  // completo da página. `TransportadorasSection` agora avisa a cada
-  // leitura confirmada (montagem e após salvar); o indicador do topo
-  // segue essa MESMA verdade em vez de só a da primeira leitura.
+  // atualizava o "Ativo: X" nem o subtítulo de Entrega e frete até um
+  // recarregamento completo da página. `TransportadorasSection` agora avisa
+  // a cada leitura confirmada (montagem e após salvar); o "Ativo: X" e o
+  // subtítulo do grupo seguem essa MESMA verdade em vez de só a da primeira
+  // leitura.
   const onLigadosDaSecaoMudou = useCallback(
     (
       ligados: readonly ProvedorFrete[],
@@ -824,10 +793,32 @@ export const AdminSettingsView = memo(function AdminSettingsView({
               return incompleta ? `${nome} incompleta` : nome;
             })
             .join(" + ");
-  // Vazio após trim = não informado (string de espaços não é horário).
-  const horarioSalvo = (config.businessHours ?? "").trim();
-  const atendimentoDeRelacao =
-    horarioSalvo === "" ? "não informado" : horarioSalvo;
+
+  // Transportadoras com cotação REAL ligada, só com o que esta tela JÁ leu
+  // (nenhuma chamada nova): ligada, com chave salva e — quando o provedor
+  // exige — e-mail de contato válido. Mesma régua da tela de Frete
+  // (`provedoresNacional`). `null` = a leitura ainda não chegou.
+  const nomesLigadosDeFrete =
+    ligadosDeFrete === null
+      ? null
+      : ligadosDeFrete
+          .filter((p) => {
+            const salvo = provedoresDeFrete.get(p);
+            const incompleta =
+              PROVEDORES_QUE_EXIGEM_EMAIL_PARA_SALVAR.has(p) &&
+              !emailDeContatoValido(salvo?.contato_email);
+            return (salvo?.tem_chave ?? false) && !incompleta;
+          })
+          .map((p) => NOME_DO_PROVEDOR.get(p) ?? p);
+
+  // O subtítulo de status de cada grupo — a mesma função dos seis passos do
+  // Início (grupos-de-ajustes.ts); aqui só se entregam os fatos.
+  const subtitulos = subtitulosDosGrupos({
+    config,
+    formasNaEntrega,
+    nivelDoPix,
+    nomesLigados: nomesLigadosDeFrete,
+  });
 
   return (
     <div className="pb-admin h-auto bg-admin-bg duration-200 animate-in fade-in lg:pb-12">
@@ -872,53 +863,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
           </div>
         ) : (
           <>
-            {/* ── SALÃO, camada 1: o estado sem clicar (desenho
-                SALÃO+PORÃO, 13/09/2026). Card destacado com acento
-                dourado — é a resposta da pergunta "como está?". Espelho
-                puro do que já existe; vive DENTRO do ramo isLoaded, porque
-                indicador com config pela metade é indicador mentiroso
-                (o de Frete diria "Sem cotação automática" numa loja
-                Melhor Envio durante a carga). */}
-            <section className="space-y-3 delay-75 duration-300 animate-in fade-in slide-in-from-bottom-2">
-              <h2 className="px-1 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                Como está sua loja
-              </h2>
-              <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900/90 via-zinc-950/80 to-admin-gold/[0.06] p-4 shadow-2xl shadow-black/50 sm:p-5">
-                <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-admin-gold/50 to-transparent" />
-                <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                  <IndicadorDoPainel
-                    icone={Wifi}
-                    rotulo="Conexão"
-                    valor={isOffline ? "Offline" : "Online"}
-                    cor={isOffline ? "text-red-400" : "text-emerald-400"}
-                    estado={isOffline ? "problema" : "vivo"}
-                  />
-                  <IndicadorDoPainel
-                    icone={Wallet}
-                    rotulo="Pagamento"
-                    valor={rotuloDoPix}
-                    cor={COR_DO_PIX.get(nivelDoPix)}
-                    estado={ESTADO_DO_PIX.get(nivelDoPix) ?? "apagado"}
-                  />
-                  <IndicadorDoPainel
-                    icone={Truck}
-                    rotulo="Frete"
-                    valor={nomeDoFrete}
-                    cor="text-white"
-                    estado="neutro"
-                  />
-                  <IndicadorDoPainel
-                    icone={Clock}
-                    rotulo="Atendimento"
-                    valor={atendimentoDeRelacao}
-                    cor={horarioSalvo === "" ? "text-zinc-500" : "text-white"}
-                    estado="apagado"
-                  />
-                </div>
-              </div>
-            </section>
-
-            {/* ── SALÃO, camada 2: grupos com o que o lojista edita ── */}
+            {/* ── Os grupos com o que o lojista edita. O cartão "Como está
+                sua loja" (4 indicadores) SAIU em 09/10/2026 (painel simples,
+                E5): o estado de cada grupo é a linha sob o título dele,
+                calculada pela mesma função dos seis passos do Início.
+                Vive DENTRO do ramo isLoaded, porque estado com config pela
+                metade é estado mentiroso. ── */}
             {/* Minha loja: porta única para a edição de marca, endereço,
                 horário e descrição (pedido do dono, 20/09/2026). "Nome, logo
                 e cores" e "Atendimento" — os dois acordeões que moravam
@@ -927,12 +877,24 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 (IdentitySettingsSection, BusinessHoursSection) com o mesmo
                 contrato de salvamento. A edição existe só lá; o atalho para
                 lá é o cartão deste grupo. */}
-            <GrupoDeAjustes chave="minha-loja" onNavigate={onNavigate} />
+            <GrupoDeAjustes
+              chave="minha-loja"
+              onNavigate={onNavigate}
+              subtitulos={subtitulos}
+            />
 
             {/* Aparência do app: Banners e Vitrines — só portas. */}
-            <GrupoDeAjustes chave="aparencia" onNavigate={onNavigate} />
+            <GrupoDeAjustes
+              chave="aparencia"
+              onNavigate={onNavigate}
+              subtitulos={subtitulos}
+            />
 
-            <GrupoDeAjustes chave="entrega" onNavigate={onNavigate}>
+            <GrupoDeAjustes
+              chave="entrega"
+              onNavigate={onNavigate}
+              subtitulos={subtitulos}
+            >
               {/* Transportadoras e cotação de frete — MUDOU DE TELA (frente
                   glm-visual-admin-0209, pedido do Gabriel 02/09: não fazia
                   sentido o token da transportadora morar no meio das regras
@@ -967,10 +929,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 prompt pronto para o agente de IA do app do MP, salvar e
                 testar conexão ali mesmo. Desde a mp-4 o interruptor
                 "Receber PIX no app" mora aqui dentro, e desde a mp-9 o que
-                ele grava volta por `onPixAlternado` para o painel acima —
+                ele grava volta por `onPixAlternado` para o subtítulo deste
+                grupo e para o termômetro de Ferramentas —
                 era a mesma tela contando dois estados do dinheiro. Nascida
                 FECHADA como as demais: ajuste feito uma vez. */}
-            <GrupoDeAjustes chave="pagamentos" onNavigate={onNavigate}>
+            <GrupoDeAjustes
+              chave="pagamentos"
+              onNavigate={onNavigate}
+              subtitulos={subtitulos}
+            >
               {/* FORMAS DE PAGAMENTO POR LOJA (25/09/2026, migration
                   20261174000000): ANTES do Mercado Pago (pedido explícito do
                   brief) — a lojista decide primeiro O QUE aceita na
@@ -1040,7 +1007,11 @@ export const AdminSettingsView = memo(function AdminSettingsView({
                 AGENTS.md): a política de trocas e devoluções de CADA loja —
                 prazos (com os mínimos da lei), formas de devolver e o texto
                 que o cliente lê. Nascida FECHADA como as demais. */}
-            <GrupoDeAjustes chave="devolucao" onNavigate={onNavigate}>
+            <GrupoDeAjustes
+              chave="devolucao"
+              onNavigate={onNavigate}
+              subtitulos={subtitulos}
+            >
               <SecaoColapsavel
                 titulo="Trocas e devoluções"
                 subtitulo="Prazos, formas de devolver e a política da loja"
@@ -1064,7 +1035,24 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             */}
 
             {/* ── PORÃO: consulta rara e técnica, no pé da tela ── */}
-            <GrupoDeAjustes chave="ferramentas" onNavigate={onNavigate}>
+            <GrupoDeAjustes
+              chave="ferramentas"
+              onNavigate={onNavigate}
+              subtitulos={subtitulos}
+            >
+              {/* "Conexão": o único indicador do antigo cartão "Como está
+                  sua loja" que sobrou — mora aqui, junto de "Minha loja está
+                  no ar?" (painel simples, E5). Espelho puro de
+                  `useOnlineStatus`, sem fetch. */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <IndicadorDoPainel
+                  icone={Wifi}
+                  rotulo="Conexão"
+                  valor={isOffline ? "Offline" : "Online"}
+                  cor={isOffline ? "text-red-400" : "text-emerald-400"}
+                  estado={isOffline ? "problema" : "vivo"}
+                />
+              </div>
               {/* Status de funcionamento — COLAPSADA por padrão (pedido do
                   Gabriel, 02/09: status é consulta rara, não porta de
                   trabalho; a tela abre mostrando o que o lojista edita). */}
@@ -1103,33 +1091,12 @@ export const AdminSettingsView = memo(function AdminSettingsView({
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">
-            Esta tela responde primeiro COMO ESTÁ a sua loja — conexão,
-            pagamento por PIX, frete e horário de atendimento ficam à vista no
-            painel do topo. O resto fica nestes grupos:{" "}
-            {GRUPOS_DE_AJUSTES.map((g) => g.titulo).join(", ")}. Cada seção abre
+            Esta tela reúne o que a sua loja precisa, nestes grupos:{" "}
+            {GRUPOS_DE_AJUSTES.map((g) => g.titulo).join(", ")}. Sob o título de
+            cada grupo uma linha diz como ele está (por exemplo, o que falta
+            preencher em Minha loja), com o que já está salvo. Cada seção abre
             com um clique.
           </p>
-
-          <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
-              Como está sua loja
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
-                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold ring-1 ring-admin-gold/20">
-                    <Activity className="size-3.5" strokeWidth={2.25} />
-                  </span>
-                  Painel de estado
-                </div>
-                <p className="text-xs text-zinc-400">
-                  Conexão com a internet, estado do PIX (Funcionando, Chave
-                  ausente ou Desligado), frete ativo e horário de atendimento —
-                  de relance, atualizado com o que já está salvo.
-                </p>
-              </div>
-            </div>
-          </div>
 
           {GRUPOS_DE_AJUSTES.map((grupo) => (
             <div key={grupo.chave} className="space-y-3">
