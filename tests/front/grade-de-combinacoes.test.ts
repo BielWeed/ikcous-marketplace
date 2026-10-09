@@ -12,9 +12,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  type AtributoDaGrade,
   MAX_ATRIBUTOS_DA_GRADE,
   MAX_LINHAS_DA_GRADE,
-  type AtributoDaGrade,
   gerarGrade,
   primeiroSkuEmColisao,
   skusDaGrade,
@@ -160,10 +160,7 @@ describe("gerarGrade — valores vazios, duplicados e com /", () => {
   });
 
   it("recusa valor com / — ele é o separador da casa", () => {
-    const { linhas, erro } = gerarGrade(
-      [atributo("Cor", "Preto/Branco")],
-      [],
-    );
+    const { linhas, erro } = gerarGrade([atributo("Cor", "Preto/Branco")], []);
     expect(linhas).toEqual([]);
     expect(erro).toContain('"/"');
   });
@@ -239,9 +236,12 @@ describe("gerarGrade — deduplicação contra o que o produto já tem", () => {
   it("linha DESATIVADA continua existindo: não recria nem reativa", () => {
     // A desativada entra nas existentes pela identidade (name/value) — a
     // grade não a recria em dobro nem a reativa por trás do lojista.
-    const { linhas, erro } = gerarGrade([atributo("Cor", "Branca", "Preta")], [
-      { name: "Cor", value: "Branca" }, // active = false no produto
-    ]);
+    const { linhas, erro } = gerarGrade(
+      [atributo("Cor", "Branca", "Preta")],
+      [
+        { name: "Cor", value: "Branca" }, // active = false no produto
+      ],
+    );
     expect(erro).toBeNull();
     expect(valoresGerados({ linhas, erro })).toEqual(["Preta"]);
   });
@@ -259,13 +259,10 @@ describe("gerarGrade — deduplicação contra o que o produto já tem", () => {
 
 describe("skusDaGrade — base + sufixo por valor, único no lote", () => {
   it("junta base e os 3 primeiros caracteres de cada valor", () => {
-    const skus = skusDaGrade(
-      "blu tsh",
-      [
-        { name: "Cor / Tamanho", value: "Amarela / P" },
-        { name: "Cor / Tamanho", value: "Verde / GG" },
-      ],
-    );
+    const skus = skusDaGrade("blu tsh", [
+      { name: "Cor / Tamanho", value: "Amarela / P" },
+      { name: "Cor / Tamanho", value: "Verde / GG" },
+    ]);
     expect(skus).toEqual(["BLU-TSH-AMA-P", "BLU-TSH-VER-GG"]);
   });
 
@@ -295,8 +292,6 @@ describe("primeiroSkuEmColisao — o SKU que já existe fora do lote", () => {
   });
 
   it("lote sem colisão devolve null", () => {
-    expect(
-      primeiroSkuEmColisao(["BLU-A", "BLU-B"], ["BLU-C"]),
-    ).toBeNull();
+    expect(primeiroSkuEmColisao(["BLU-A", "BLU-B"], ["BLU-C"])).toBeNull();
   });
 });

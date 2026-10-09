@@ -28,8 +28,8 @@
  */
 
 import {
-  SEPARADOR_DE_ATRIBUTOS,
   type IdentidadeDeVariante,
+  SEPARADOR_DE_ATRIBUTOS,
 } from "@/utils/variante-composta";
 
 /** Teto aprovado de dimensões da grade (Shopify e Nuvemshop: 3 também). */
@@ -87,8 +87,7 @@ export function gerarGrade(
   if (atributos.length === 0) {
     return {
       linhas: [],
-      erro:
-        "Escolha os atributos da grade (ex: Cor e Tamanho) e os valores de cada um.",
+      erro: "Escolha os atributos da grade (ex: Cor e Tamanho) e os valores de cada um.",
     };
   }
   if (atributos.length > MAX_ATRIBUTOS_DA_GRADE) {
@@ -172,7 +171,9 @@ export function gerarGrade(
     const identidade: IdentidadeDeVariante = {
       // Um atributo só sai CRU ("Cor" / "Azul"), igual ao caso simples da
       // peça 19 — a grade de uma dimensão não inventa separador.
-      name: limpos.map((atributo) => atributo.name).join(SEPARADOR_DE_ATRIBUTOS),
+      name: limpos
+        .map((atributo) => atributo.name)
+        .join(SEPARADOR_DE_ATRIBUTOS),
       value: combo.join(SEPARADOR_DE_ATRIBUTOS),
     };
     const chave = chaveDaIdentidade(identidade);
