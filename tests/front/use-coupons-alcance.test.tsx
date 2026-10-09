@@ -22,14 +22,22 @@ const insert = vi.fn();
 const update = vi.fn();
 const eq = vi.fn();
 const rpc = vi.fn();
+const sonda = vi.fn();
+/** O que a sonda `select('alcance').limit(0)` encontra; "lanca" simula um cliente sem `.limit`. */
+let respostaDaSonda: (() => unknown) | "lanca" = () => ({ error: null });
 let linhasDoBanco: Record<string, unknown>[] = [];
 
 vi.mock("@/lib/supabase", () => ({
   supabase: {
     rpc: (...args: unknown[]) => rpc(...args),
     from: () => ({
-      select: () => ({
+      select: (colunas?: string) => ({
         order: () => Promise.resolve({ data: linhasDoBanco, error: null }),
+        limit: (n: number) => {
+          if (respostaDaSonda === "lanca") throw new Error("sem limit");
+          sonda(colunas, n);
+          return Promise.resolve(respostaDaSonda());
+        },
       }),
       insert: (linhas: unknown) => {
         insert(linhas);
@@ -88,6 +96,8 @@ describe("useCoupons — alcance e clientes do cupom", () => {
     eq.mockReset();
     eq.mockResolvedValue({ error: null });
     rpc.mockReset();
+    sonda.mockClear();
+    respostaDaSonda = () => ({ error: null });
     linhasDoBanco = [];
     hospedeiro = document.createElement("div");
     document.body.appendChild(hospedeiro);
@@ -104,11 +114,14 @@ describe("useCoupons — alcance e clientes do cupom", () => {
   });
 
   /** Monta o hook com os hooks do React vivos e devolve um acessor ao estado mais novo. */
-  async function montar(autoFetch = true): Promise<() => Hook> {
+  async function montar(
+    autoFetch = true,
+    sondarAlcance = false,
+  ): Promise<() => Hook> {
     const { useCoupons } = await import("@/hooks/useCoupons");
     let atual!: Hook;
     function Sonda() {
-      const valor = useCoupons(autoFetch);
+      const valor = useCoupons(autoFetch, sondarAlcance);
       useEffect(() => {
         atual = valor;
       });
@@ -222,6 +235,54 @@ describe("useCoupons — alcance e clientes do cupom", () => {
       });
       expect(update).toHaveBeenCalledTimes(1);
       expect("alcance" in update.mock.calls[0][0]).toBe(false);
+    });
+  });
+
+  describe("alcanceSuportado (a sonda do banco sem a coluna)", () => {
+    it("banco COM a coluna: a sonda lê só `alcance`, sem linhas, e confirma", async () => {
+      const hook = await montar(true, true);
+      expect(sonda).toHaveBeenCalledTimes(1);
+      expect(sonda).toHaveBeenCalledWith("alcance", 0);
+      expect(hook().alcanceSuportado).toBe(true);
+    });
+
+    it("banco SEM a coluna (42703): a opção fica escondida", async () => {
+      respostaDaSonda = () => ({
+        error: {
+          code: "42703",
+          message: "column coupons.alcance does not exist",
+        },
+      });
+      const hook = await montar(true, true);
+      expect(hook().alcanceSuportado).toBe(false);
+    });
+
+    it("sonda inconclusiva (erro de rede, permissão): esconde — nunca oferece o que pode quebrar o salvar", async () => {
+      respostaDaSonda = () => ({
+        error: { code: "PGRST000", message: "rede" },
+      });
+      const hook = await montar(true, true);
+      expect(hook().alcanceSuportado).toBe(false);
+    });
+
+    it("cliente que nem tem `.limit` (a sonda lança): esconde e não derruba a tela", async () => {
+      respostaDaSonda = "lanca";
+      const hook = await montar(true, true);
+      expect(hook().alcanceSuportado).toBe(false);
+      expect(hook().coupons).toEqual([]);
+    });
+
+    it("sem pedir a sonda (checkout, lista, banners) não há consulta extra", async () => {
+      const hook = await montar(true, false);
+      expect(sonda).not.toHaveBeenCalled();
+      expect(hook().alcanceSuportado).toBe(false);
+    });
+
+    it("a lista de cupons carrega do mesmo jeito com a sonda negativa", async () => {
+      respostaDaSonda = () => ({ error: { code: "42703" } });
+      linhasDoBanco = [cupomSecreto];
+      const hook = await montar(true, true);
+      expect(hook().coupons.map((c) => c.code)).toEqual(["SECRETO"]);
     });
   });
 

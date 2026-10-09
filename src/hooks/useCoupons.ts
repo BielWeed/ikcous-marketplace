@@ -45,8 +45,33 @@ async function minutosDaVagaPresaDoCliente(
   }
 }
 
-export function useCoupons(autoFetch = false) {
+/**
+ * O banco desta loja já tem a coluna `coupons.alcance` (migration
+ * 20261208000000)? Lojas de teste recebem só o site, nunca a migration: site
+ * novo + banco antigo é combinação PERMANENTE lá. A sonda lê só a coluna e
+ * nenhuma linha (`limit(0)`): banco sem ela responde 42703.
+ *
+ * Só `true` quando a resposta veio limpa. Erro de rede, de permissão ou
+ * cliente que nem consegue perguntar também dão `false` — esconder a opção é
+ * de graça, oferecê-la num banco que a recusa quebra o salvar do cupom.
+ */
+async function bancoTemAlcanceDoCupom(): Promise<boolean> {
+  try {
+    const { error } = await supabase.from("coupons").select("alcance").limit(0);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param autoFetch carrega a lista de cupons ao montar (telas do painel).
+ * @param sondarAlcance só o formulário do cupom precisa saber se o banco já
+ *   tem o "quem pode usar"; as outras telas não pagam a consulta extra.
+ */
+export function useCoupons(autoFetch = false, sondarAlcance = false) {
   const { isAdmin } = useAuth();
+  const [alcanceSuportado, setAlcanceSuportado] = useState(false);
   const [coupons, setCoupons] = useState<Coupon[]>(
     () => cachedCouponsData || [],
   );
@@ -93,6 +118,17 @@ export function useCoupons(autoFetch = false) {
       fetchCoupons();
     }
   }, [fetchCoupons, autoFetch]);
+
+  useEffect(() => {
+    if (!sondarAlcance) return;
+    let vivo = true;
+    bancoTemAlcanceDoCupom().then((sim) => {
+      if (vivo) setAlcanceSuportado(sim);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [sondarAlcance]);
 
   const validateCoupon = useCallback(
     async (
@@ -386,6 +422,8 @@ export function useCoupons(autoFetch = false) {
     updateCoupon,
     deleteCoupon,
     getCouponStats,
+    /** `true` só depois da sonda confirmar a coluna `alcance` no banco. */
+    alcanceSuportado,
     listarClientesDoCupom,
     definirClientesDoCupom,
     buscarClientesParaCupom,
