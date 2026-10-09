@@ -39,12 +39,7 @@ describe("FreteNacionalBloco — botão 'Estratégias do frete nacional'", () =>
   }) {
     act(() => {
       raiz.render(
-        <FreteNacionalBloco
-          originCep="38400-000"
-          onOriginCep={() => {}}
-          provedores={[]}
-          {...props}
-        />,
+        <FreteNacionalBloco cepDaLoja="38400-000" provedores={[]} {...props} />,
       );
     });
   }
@@ -93,8 +88,7 @@ describe("FreteNacionalBloco — botão 'Estratégias do frete nacional'", () =>
     act(() => {
       raiz.render(
         <FreteNacionalBloco
-          originCep="38400-000"
-          onOriginCep={() => {}}
+          cepDaLoja="38400-000"
           provedores={[]}
           resumoDaEstrategiaNacional="desligado"
           onAbrirEstrategiasNacionais={onAbrir}

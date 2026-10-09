@@ -12,11 +12,9 @@ import { EstrategiaNacionalBloco } from "@/components/admin/shipping/EstrategiaN
 import { FreteGratisBloco } from "@/components/admin/shipping/FreteGratisBloco";
 import { FreteLocalBloco } from "@/components/admin/shipping/FreteLocalBloco";
 import { FreteNacionalBloco } from "@/components/admin/shipping/FreteNacionalBloco";
-import {
-  FreteResumoFaixa,
-  type StatusDaFaixaFrete,
-} from "@/components/admin/shipping/FreteResumoFaixa";
+import { FreteResumoFaixa } from "@/components/admin/shipping/FreteResumoFaixa";
 import { PainelRecolhivel } from "@/components/admin/shipping/PainelRecolhivel";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
@@ -30,6 +28,7 @@ import {
   presetDoConfig,
   valorDoPreset,
 } from "@/lib/presets-de-frete-gratis";
+import { statusDaEntrega } from "@/lib/status-da-entrega";
 import type { EstrategiaDeFreteNacional, View } from "@/types";
 import { haptic } from "@/utils/haptic";
 import { AlertCircle, Check, HelpCircle, RefreshCw, Save } from "lucide-react";
@@ -65,7 +64,7 @@ interface AdminShippingViewProps {
 }
 
 /**
- * Tela "Frete" do painel — UNIFICADA (pedido do dono, 23/09/2026): a tela
+ * Tela "Entrega e frete" do painel — UNIFICADA (pedido do dono, 23/09/2026): a tela
  * "Estratégias do frete nacional" (`admin-shipping-national`,
  * `AdminShippingNationalView`, T4 do mesmo dia) foi trazida de volta para
  * cá como o CONTEÚDO do painel "Fora da cidade" — a tela separada existia
@@ -114,6 +113,12 @@ interface AdminShippingViewProps {
  *   (nada muda em App.tsx/AdminArea.tsx), e o botão "Estratégias do frete
  *   nacional →" dentro de "Fora da cidade" deixou de navegar: agora
  *   garante o painel aberto e rola até `#bloco-estrategia-nacional`.
+ *
+ * O CEP DA LOJA NÃO É DESTA TELA (D6, painel simples, P2 = um CEP só): o
+ * CEP de Minha loja É o de onde saem as entregas. Esta tela o LÊ ("Entregas
+ * saem de: CEP …", botão "Alterar em Minha loja"), nunca o edita e o Salvar
+ * nunca envia `originCep`. O título vem de `NOMES_DO_PAINEL` ("Entrega e
+ * frete") e a régua da faixa-resumo mora em `src/lib/status-da-entrega.ts`.
  *
  * COMPOSIÇÃO DOS DADOS (intacta): o card de taxa fixa NÃO existe — fora da
  * cidade, o preço é só o da cotação real da transportadora.
@@ -169,7 +174,6 @@ export const AdminShippingView = memo(function AdminShippingView({
   const [formData, setFormData] = useState({
     preset: "desligado" as PresetFreteGratis,
     acimaDe: 0,
-    originCep: "",
     shippingCoverage: "national" as "local" | "national",
     localDeliveryFee: 10,
     localCepRange: "",
@@ -240,7 +244,6 @@ export const AdminShippingView = memo(function AdminShippingView({
       setFormData({
         preset: presetSalvo,
         acimaDe: presetSalvo === "acima_de_valor" ? minSalvo : 0,
-        originCep: config.originCep ?? "",
         shippingCoverage: (config.shippingCoverage || "national") as
           | "local"
           | "national",
@@ -308,102 +311,12 @@ export const AdminShippingView = memo(function AdminShippingView({
   );
 
   // ── Faixa-resumo: descreve o SALVO (intacto) ──────────────────────────
-  const statusDaFaixa = useMemo(() => {
-    const minSalvo = Number(config?.freeShippingMin ?? 0);
-    const presetSalvo = presetDoConfig(minSalvo);
-    const localFee = Number(config?.localDeliveryFee ?? 10);
-    const cidade = config?.storeCity;
-    const uf = config?.storeState;
-    const ondeCidade =
-      cidade && uf ? `${cidade}/${uf}` : cidade ? cidade : "sua cidade";
-
-    const local: StatusDaFaixaFrete = !config?.originCep
-      ? {
-          rotulo: "Na sua cidade",
-          valor: "Parado — falta o CEP da loja",
-          detalhe: "Configure abaixo para abrir as vendas",
-          tom: "atencao",
-        }
-      : {
-          rotulo: "Na sua cidade",
-          valor:
-            localFee > 0
-              ? `R$ ${reais(localFee)} por entrega`
-              : "Grátis na cidade",
-          detalhe: `Entrega própria em ${ondeCidade}`,
-          tom: "positivo",
-        };
-
-    const resumoNacional =
-      config != null ? resumoDaEstrategiaNacional(config) : "desligado";
-    const detalheNacional = (base: string): string =>
-      resumoNacional === "desligado" ? base : `${base} · ${resumoNacional}`;
-
-    const nacional: StatusDaFaixaFrete =
-      (config?.shippingCoverage || "national") === "local"
-        ? {
-            rotulo: "Fora da cidade",
-            valor: "Só na sua cidade",
-            detalhe: "fora dela, a loja não atende",
-            tom: "neutro",
-          }
-        : credsErro
-          ? {
-              rotulo: "Fora da cidade",
-              valor: "Conexão a confirmar",
-              detalhe: "confira a transportadora em Ajustes",
-              tom: "neutro",
-            }
-          : algumProvedorLigado
-            ? {
-                rotulo: "Fora da cidade",
-                valor:
-                  nomesLigados.length === 1
-                    ? `${nomesLigados[0]} ligado`
-                    : `${nomesLigados.length} provedores ligados`,
-                detalhe: detalheNacional("cotação real na hora"),
-                tom: "positivo",
-              }
-            : {
-                rotulo: "Fora da cidade",
-                valor: "Sem transportadora",
-                detalhe: "por enquanto, só entrega na cidade",
-                tom: "atencao",
-              };
-
-    const gratis: StatusDaFaixaFrete =
-      presetSalvo === "acima_de_valor"
-        ? {
-            rotulo: "Frete grátis local",
-            valor: `Acima de R$ ${reais(minSalvo)}`,
-            detalhe:
-              "a compra que passa do valor não paga entrega na cidade nem retirada",
-            tom: "positivo",
-          }
-        : presetSalvo === "sempre"
-          ? {
-              rotulo: "Frete grátis local",
-              valor: "Em toda a loja",
-              detalhe: "toda entrega na cidade e retirada saem grátis",
-              tom: "positivo",
-            }
-          : presetSalvo === "por_produto"
-            ? {
-                rotulo: "Frete grátis local",
-                valor: "Por produto marcado",
-                detalhe:
-                  "produtos marcados saem sem custo na entrega da cidade e na retirada",
-                tom: "positivo",
-              }
-            : {
-                rotulo: "Frete grátis local",
-                valor: "Desligado",
-                detalhe: "nenhuma regra de grátis ativa",
-                tom: "neutro",
-              };
-
-    return [local, nacional, gratis] as const;
-  }, [config, credsErro, algumProvedorLigado, nomesLigados]);
+  // A régua mora em `src/lib/status-da-entrega.ts` (E2) — aqui só se escolhe
+  // o que entra nela.
+  const statusDaFaixa = useMemo(
+    () => statusDaEntrega({ config, credsErro, nomesLigados }),
+    [config, credsErro, nomesLigados],
+  );
 
   // Resumo CURTO de cada painel fechado — deriva do MESMO `statusDaFaixa`
   // (fonte única; regra escrita em dois lugares diverge — lição #53).
@@ -422,7 +335,6 @@ export const AdminShippingView = memo(function AdminShippingView({
     if (formData.preset !== presetDoConfig(minAtual)) return true;
     if (formData.preset === "acima_de_valor" && formData.acimaDe !== minAtual)
       return true;
-    if (formData.originCep !== (config.originCep ?? "")) return true;
     if (formData.shippingCoverage !== (config.shippingCoverage || "national"))
       return true;
     if (formData.localDeliveryFee !== Number(config.localDeliveryFee ?? 10))
@@ -572,7 +484,6 @@ export const AdminShippingView = memo(function AdminShippingView({
       // erro sai de dentro do `updateConfig`.
       const salvou = await updateConfig({
         freeShippingMin: valorDoPreset(formData.preset, formData.acimaDe),
-        originCep: formData.originCep,
         shippingCoverage: formData.shippingCoverage,
         localDeliveryFee: Math.max(0, formData.localDeliveryFee),
         localCepRange: formData.localCepRange,
@@ -695,7 +606,10 @@ export const AdminShippingView = memo(function AdminShippingView({
           375px. */}
       <div className="sticky top-0 z-30 border-b border-white/5 bg-[#09090b]/90 px-4 py-3 backdrop-blur-md sm:px-6">
         <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
-          <AdminPageHeader titulo="Frete" acoes={botaoSalvar}>
+          <AdminPageHeader
+            titulo={NOMES_DO_PAINEL["admin-shipping"]}
+            acoes={botaoSalvar}
+          >
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
@@ -767,6 +681,7 @@ export const AdminShippingView = memo(function AdminShippingView({
                     atualizarFormData((prev) => ({ ...prev, retiradaNaLoja }))
                   }
                   enderecoDaLoja={config?.storeAddress}
+                  onNavigate={onNavigate}
                 />
               </PainelRecolhivel>
 
@@ -781,9 +696,11 @@ export const AdminShippingView = memo(function AdminShippingView({
                 <div className="space-y-10">
                   <FreteNacionalBloco
                     mostrarCabecalho={false}
-                    originCep={formData.originCep}
-                    onOriginCep={(originCep) =>
-                      atualizarFormData((prev) => ({ ...prev, originCep }))
+                    cepDaLoja={config?.originCep}
+                    onAbrirMinhaLoja={
+                      onNavigate
+                        ? () => onNavigate("admin-about-store")
+                        : undefined
                     }
                     provedores={provedoresNacional}
                     erroNaLeitura={credsErro}
@@ -981,9 +898,10 @@ export const AdminShippingView = memo(function AdminShippingView({
             </div>
             <p className="text-xs leading-relaxed text-zinc-400">
               O CEP da loja é obrigatório: sem ele o app não consegue calcular
-              frete nenhum e o cliente não finaliza a compra. Mexeu em algo
-              aqui? Toque em "Salvar" no cabeçalho da tela — nada é aplicado
-              antes disso.
+              frete nenhum e o cliente não finaliza a compra. Ele se cadastra em
+              Minha loja — aqui você só vê de onde as entregas saem. Mexeu em
+              algo aqui? Toque em "Salvar" no cabeçalho da tela — nada é
+              aplicado antes disso.
             </p>
           </div>
         </div>
@@ -991,11 +909,3 @@ export const AdminShippingView = memo(function AdminShippingView({
     </div>
   );
 });
-
-/** Dinheiro como a pessoa escreve: R$ 10, R$ 49,90 — nunca "R$ 49.9". */
-function reais(valor: number): string {
-  const seguro = Number.isFinite(valor) ? valor : 0;
-  return Number.isInteger(seguro)
-    ? `${seguro}`
-    : seguro.toFixed(2).replace(".", ",");
-}
