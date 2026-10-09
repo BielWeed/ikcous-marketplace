@@ -50,7 +50,7 @@ export function NumerosDoMes({
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2
           id="inicio-mes-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
         >
           Este mês
         </h2>
@@ -59,7 +59,7 @@ export function NumerosDoMes({
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarInteiro(mes.pedidos)}
             </strong>{" "}
-            {mes.pedidos === 1 ? "pedido" : "pedidos"} · ticket médio{" "}
+            {mes.pedidos === 1 ? "pedido" : "pedidos"} · valor médio por venda{" "}
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarMoeda(mes.ticketMedio)}
             </strong>

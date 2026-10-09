@@ -635,7 +635,9 @@ describe("segmentos RFM e WhatsApp", () => {
       expect(info.rotulo.length).toBeGreaterThan(0);
       expect(info.descricao.length).toBeGreaterThan(0);
     }
-    expect(infoDoSegmento("nao_pode_perder").rotulo).toBe("Não pode perder");
+    expect(infoDoSegmento("nao_pode_perder").rotulo).toBe(
+      "Bons clientes sumindo",
+    );
     expect(infoDoSegmento("pediu_nao_pagou").rotulo).toBe("Pediu e não pagou");
     expect(infoDoSegmento("nunca_comprou").rotulo).toBe(
       "Cadastrado, nunca comprou",

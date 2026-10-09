@@ -22,7 +22,7 @@ export function ChipDeVariacao({
     return (
       <span
         className={cn(
-          "inline-flex items-center gap-1 text-[10px] font-semibold text-zinc-500",
+          "inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-500",
           className,
         )}
       >
@@ -52,7 +52,7 @@ export function ChipDeVariacao({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-bold tabular-nums",
         bom === true &&
           "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
         bom === false && "border-rose-500/20 bg-rose-500/10 text-rose-300",

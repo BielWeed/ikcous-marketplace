@@ -58,7 +58,7 @@ export function TileDeKpi({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-black uppercase leading-tight tracking-widest text-zinc-400">
+        <p className="text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-400">
           {rotulo}
         </p>
         <Icone

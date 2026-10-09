@@ -18,7 +18,7 @@
 // COR da receita, mas o `opacity-60` continuava no BOTÃO inteiro (~3,2:1,
 // ainda abaixo de AA) — agora a opacidade fica só no ponto de cor (gráfico),
 // igual ao que já tinha sido feito em CanaisDoCrm. Também troca para
-// text-zinc-400: "(67%)" ao lado de Pedidos e "· ticket R$…" em
+// text-zinc-400: "(67%)" ao lado de Pedidos e "· R$… por venda" em
 // CanaisDoCrm.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -134,7 +134,7 @@ describe("CanaisDoCrm — frase do canal zerado usa text-zinc-400 a 100% de opac
     }
   });
 
-  it('N3: "(N%)" ao lado de Pedidos e "· ticket R$…" usam text-zinc-400', async () => {
+  it('N3: "(N%)" ao lado de Pedidos e "· R$… por venda" usam text-zinc-400', async () => {
     const { CanaisDoCrm } = await import("@/components/admin/crm/CanaisDoCrm");
 
     const canais: CanalDoCrm[] = [
@@ -173,7 +173,7 @@ describe("CanaisDoCrm — frase do canal zerado usa text-zinc-400 a 100% de opac
     expect(fatiaPedidos?.classList.contains("text-zinc-500")).toBe(false);
 
     const ticket = Array.from(hospedeiro.querySelectorAll("span")).find((el) =>
-      texto(el).trim().startsWith("· ticket"),
+      /^· R\$.*por venda$/.test(texto(el).trim()),
     );
     expect(ticket).not.toBeUndefined();
     expect(ticket?.classList.contains("text-zinc-400")).toBe(true);
@@ -222,7 +222,7 @@ describe("ClientesDoCrm — receita do segmento zerado e títulos de faixa usam 
 
     const blocoCampeoes = Array.from(
       hospedeiro.querySelectorAll("button"),
-    ).find((b) => texto(b).includes("Campeões"));
+    ).find((b) => texto(b).includes("Melhores clientes"));
     expect(blocoCampeoes).not.toBeUndefined();
     const receita = Array.from(blocoCampeoes!.querySelectorAll("span")).find(
       (el) => texto(el).startsWith("R$"),
