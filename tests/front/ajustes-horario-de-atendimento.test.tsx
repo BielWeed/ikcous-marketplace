@@ -15,6 +15,10 @@
 // AdminAboutStoreView, que monta o MESMO BusinessHoursSection sempre
 // visível (bloco 3). Este arquivo passou a renderizar a tela que continua
 // editando de verdade.
+//
+// A1 (09/10/2026): a tela Atendimento (AdminWhatsAppConfigView) também deixou
+// de editar e de enviar `businessHours` — este é o ÚNICO editor do horário.
+// Que ela não regrava o horário fica em atendimento-nao-grava-horario.test.tsx.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -89,9 +93,8 @@ describe("Sobre a Loja — Horário de atendimento", () => {
   });
 
   async function abrirTela() {
-    const { AdminAboutStoreView } = await import(
-      "@/views/admin/AdminAboutStoreView"
-    );
+    const { AdminAboutStoreView } =
+      await import("@/views/admin/AdminAboutStoreView");
     await act(async () => {
       raiz.render(<AdminAboutStoreView onNavigate={vi.fn()} active={true} />);
     });

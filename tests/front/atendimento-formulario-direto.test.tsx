@@ -11,6 +11,8 @@
 //   • campo vazio continua salvando NULL (o botão de WhatsApp some da loja);
 //   • os 30 modelos prontos continuam preenchendo o editor com as tags
 //     🏷️/💰/🔗;
+//   • (A1, 09/10) o bloco "Horário de atendimento" virou leitura: sem campo e
+//     sem `businessHours` no payload de salvar;
 //   • o campo de telefone vira type="tel" com rótulo clicável, como manda a
 //     qualidade de interface da direção B.
 import { act } from "react";
@@ -67,9 +69,8 @@ describe("Atendimento — formulário direto (direção B)", () => {
   });
 
   async function abrirTela() {
-    const { AdminWhatsAppConfigView } = await import(
-      "@/views/admin/AdminWhatsAppConfigView"
-    );
+    const { AdminWhatsAppConfigView } =
+      await import("@/views/admin/AdminWhatsAppConfigView");
     await act(async () => {
       raiz.render(<AdminWhatsAppConfigView active />);
     });
@@ -101,7 +102,8 @@ describe("Atendimento — formulário direto (direção B)", () => {
 
     // Tudo à vista de uma vez — nada escondido atrás de clique.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
-    expect(hospedeiro.querySelector("#settings-business-hours")).not.toBeNull();
+    // O horário é só leitura aqui (A1): o campo saiu, o editor é o de Minha loja.
+    expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
     ).not.toBeNull();
@@ -189,9 +191,9 @@ describe("Atendimento — formulário direto (direção B)", () => {
       await esperar(50);
     });
 
+    // Sem `businessHours` no payload (A1): salvar aqui nunca toca o horário.
     expect(updateConfig).toHaveBeenCalledWith({
       whatsappNumber: null,
-      businessHours: null,
       shareText: "Confira [nome] por [preco]: [link]",
     });
   });

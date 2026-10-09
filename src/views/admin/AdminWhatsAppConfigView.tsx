@@ -3,6 +3,7 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import type { View } from "@/types";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -258,6 +259,14 @@ interface AdminWhatsAppConfigViewProps {
   active?: boolean;
   onSetDirty?: (dirty: boolean) => void;
   /**
+   * Leva o lojista a outra tela do painel — usado pelo botão "Alterar em
+   * Minha loja" do bloco de horário (A1, 09/10/2026): o horário deixou de ser
+   * editado aqui, o editor único é o BusinessHoursSection de Sobre a Loja.
+   * Opcional: sem ele (AdminArea.tsx ainda não o repassa) o bloco continua
+   * mostrando o horário, só sem o botão.
+   */
+  onNavigate?: (view: View) => void;
+  /**
    * Voltar do Android/AdminLayout com a folha de "Modelos prontos" aberta
    * (23/09, achado do Gabriel — folha presa): mesmo padrão de
    * AdminBannersView.tsx (onSetBackOverride/history.pushState com
@@ -336,6 +345,7 @@ function BlocoNumerado({
 export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   active,
   onSetDirty,
+  onNavigate,
   onSetBackOverride,
 }: Readonly<AdminWhatsAppConfigViewProps>) {
   const { config, isLoaded, updateConfig, refresh, products } = useStore();
@@ -347,7 +357,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
   // Form State
   const [formData, setFormData] = useState({
     whatsappNumber: "",
-    businessHours: "",
     shareText: "",
   });
 
@@ -506,10 +515,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
 
   const onChangeWhatsappNumber = useCallback((val: string) => {
     setFormData((prev) => ({ ...prev, whatsappNumber: val }));
-  }, []);
-
-  const onChangeBusinessHours = useCallback((val: string) => {
-    setFormData((prev) => ({ ...prev, businessHours: val }));
   }, []);
 
   const onChangeShareText = useCallback((val: string) => {
@@ -693,7 +698,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       const cleanPhone = getCleanPhone(config.whatsappNumber || "");
       const data = {
         whatsappNumber: cleanPhone,
-        businessHours: config.businessHours || "",
         shareText: config.shareText || "",
       };
       if (!hasInitialSyncRef.current) {
@@ -709,7 +713,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
         // Only update if not dirty to prevent overriding user input on sync
         const isDirty =
           getCleanPhone(formData.whatsappNumber) !== cleanPhone ||
-          formData.businessHours !== (config.businessHours || "") ||
           formData.shareText !== (config.shareText || "");
 
         if (!isDirty) {
@@ -746,7 +749,6 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
     !!config &&
     (getCleanPhone(formData.whatsappNumber) !==
       getCleanPhone(config.whatsappNumber || "") ||
-      formData.businessHours !== (config.businessHours || "") ||
       formData.shareText !== (config.shareText || ""));
 
   useEffect(() => {
@@ -789,10 +791,11 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
       // "atualizados com sucesso" sobre uma gravação que falhou — e o número de
       // WhatsApp é o único canal de fechamento de pedido da loja (ADMIN-010, #94).
       const salvou = await updateConfig({
-        // Vazio grava NULL — o mesmo contrato do campo de horário nos
-        // Ajustes: ausência honesta, nunca um valor que a loja não digitou.
+        // Vazio grava NULL: ausência honesta, nunca um valor que a loja não
+        // digitou. `businessHours` NÃO entra no payload (A1, 09/10/2026):
+        // regravar o horário que este formulário carregou na abertura apagava
+        // o que a lojista tinha salvo depois em Sobre a Loja.
         whatsappNumber: cleanWhatsApp || null,
-        businessHours: formData.businessHours.trim() || null,
         shareText: formData.shareText,
       });
       if (!salvou) return;
@@ -918,48 +921,37 @@ export const AdminWhatsAppConfigView = memo(function AdminWhatsAppConfigView({
           </div>
         </BlocoNumerado>
 
-        {/* ── Bloco 2: expediente em campo livre — o lojista escreve como
-            fala, com sugestões prontas ao lado. */}
+        {/* ── Bloco 2: o horário é só LEITURA aqui (A1, 09/10/2026). O editor
+            único é o de Sobre a Loja; editar nas duas telas fazia o "Salvar"
+            do WhatsApp regravar um horário velho por cima do novo. */}
         <BlocoNumerado
           numero="2"
           titulo="Horário de atendimento"
           descricao="Aparece na loja para os clientes saberem quando você responde."
         >
-          <div className="space-y-2">
-            <Label
-              htmlFor="settings-business-hours"
-              className="ml-1 text-[13px] font-bold text-white"
-            >
-              Quando a loja atende
-            </Label>
-            <div className="group relative">
-              <div className="pointer-events-none absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center border-r border-white/10 pr-2.5">
-                <Clock className="size-3.5 text-admin-gold" />
-              </div>
-              <LocalBufferedInput
-                id="settings-business-hours"
-                name="businessHours"
-                useShadcn
-                delay={350}
-                value={formData.businessHours}
-                onFlush={onChangeBusinessHours}
-                placeholder="Ex: Terça a sábado, 9h às 18h"
-                className="h-10 rounded-xl border-white/10 bg-black/40 pl-11 text-[13px] font-bold text-white transition-all placeholder:text-zinc-700 focus:bg-black/60 focus:ring-admin-gold/50"
-                autoComplete="off"
-                disabled={isOffline}
+          <div className="space-y-3">
+            <div className="flex items-start gap-2.5 rounded-xl border border-white/10 bg-black/40 px-3.5 py-3">
+              <Clock
+                aria-hidden="true"
+                className="mt-0.5 size-3.5 shrink-0 text-admin-gold"
               />
-            </div>
-            <div className="ml-1 space-y-1 pt-1">
-              <p className="text-[13px] leading-snug text-zinc-500">
-                Sugestões que os clientes entendem:
+              <p className="min-w-0 break-words text-[13px] font-bold leading-snug text-white">
+                {config?.businessHours?.trim() || (
+                  <span className="font-medium text-zinc-500">
+                    Nenhum horário definido
+                  </span>
+                )}
               </p>
-              <code className="block w-fit rounded-lg border border-white/5 bg-zinc-950/40 px-2.5 py-1 font-mono text-[13px] text-zinc-400">
-                Ter a Sáb: 9h às 18h
-              </code>
-              <code className="block w-fit rounded-lg border border-white/5 bg-zinc-950/40 px-2.5 py-1 font-mono text-[13px] text-zinc-400">
-                Seg a Sex: 8h às 18h | Sáb: 8h às 12h
-              </code>
             </div>
+            {onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate("admin-about-store")}
+                className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-admin-gold/20 bg-admin-bg px-4 text-[13px] font-bold text-zinc-300 transition-all hover:border-admin-gold/50 hover:bg-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/50 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-95"
+              >
+                Alterar em Minha loja
+              </button>
+            )}
           </div>
         </BlocoNumerado>
 
