@@ -4,6 +4,10 @@
 --   * `cupom__vaga_volta_em(...)`           o auxiliar (corpo da 20261206);
 --   * `vaga_do_cupom_presa(text)`           a RPC que a tela chama (corpo da 20261205);
 --   * `devolver_cupons_de_pedidos_mortos()` a varredura reescrita (corpo da 20261206).
+-- DEPOIS DA 20261210000000 (o cupom do PIX anulado volta em minutos) as TRES trocam de corpo e o
+-- auxiliar passa de 9 a 13 parametros: esta consulta aceita os DOIS estados, cada um INTEIRO (ver
+-- "OS DOIS ESTADOS" abaixo), para nunca ficar vermelha para sempre numa loja que recebeu o lote
+-- seguinte (16a/16b); com a loja servindo dois SHAs o portao exige a prova de TODO lote.
 -- E' a prova de objetos do lote `20261205000000` + `20261206000000` em
 -- scripts/frota/canais-de-backend.json: o portao (scripts/frota/publicar-release.mjs)
 -- so libera a release com esta consulta POSITIVA (ou, antes do apply, NEGATIVA com a
@@ -21,8 +25,9 @@
 --   * controle    -- o papel enxerga as funcoes de `public` (catalogo vazio, por
 --                    permissao, faria todo "AUSENTE" parecer erro).
 --   * o auxiliar  -- uma sobrecarga so, corpo (prosrc) com o sha256 da 20261206 (LF ou
---                    CRLF) e SEM EXECUTE para PUBLIC, anon, authenticated e service_role
---                    (so o dono e as funcoes SECURITY DEFINER que o chamam).
+--                    CRLF; ou o da 20261210, ver "OS DOIS ESTADOS") e SEM EXECUTE para PUBLIC,
+--                    anon, authenticated e service_role (so o dono e as funcoes SECURITY
+--                    DEFINER que o chamam).
 --   * a RPC       -- uma sobrecarga so, SECURITY DEFINER, `search_path=public`, plpgsql
 --                    que devolve jsonb, corpo com o sha256 da 20261205, EXECUTE SO para
 --                    authenticated (nao para PUBLIC, anon nem service_role).
@@ -56,11 +61,22 @@
 -- Se o papel nao tem sequer USAGE no schema cron, a consulta ERRA (SQLSTATE 42501) e o
 -- portao fica SEM EVIDENCIA, nunca positivo.
 --
+-- OS DOIS ESTADOS (A1 do desenho do PIX anulado, 09/10/2026). O estado e' decidido pelo AUXILIAR:
+-- se existe `cupom__vaga_volta_em` de 13 parametros (a 20261210000000), o estado e' "20261210";
+-- senao e' "20261206" (o de 9 parametros). Os tres corpos (auxiliar, RPC e varredura) tem de ser
+-- TODOS do estado decidido: o corpo da 20261210 da RPC ou da varredura com o auxiliar de 9
+-- parametros (ou o contrario) e' um banco que NAO funciona (a varredura chama o auxiliar com a
+-- assinatura do seu proprio corpo e falharia em todo ciclo), e reprova na linha do corpo. Nada mais
+-- foi afrouxado: sobrecargas, formas, ACLs, donos, dependencias e job valem iguais nos dois estados;
+-- a linha do auxiliar reprova se sobrar a de 9 (sobrecargas = 2). O `esperado` de cada linha de
+-- corpo e' o LF do estado decidido; o `vivo` repete o `esperado` quando o corpo e' o LF ou o CRLF.
+--
 -- sha256 = encode(sha256(convert_to(prosrc, 'UTF8')), 'hex'), a mesma conta dos
--- rollbacks-manuais. Cada hash aparece aqui uma vez em LF e uma em CRLF;
--- tests/ci_conferir_banco_test.ts recalcula os seis a partir dos arquivos das migrations
+-- rollbacks-manuais. Cada hash aparece aqui uma vez em LF e uma em CRLF (os doze: tres de
+-- 20261205/20261206 e tres de 20261210);
+-- tests/ci_conferir_banco_test.ts recalcula os doze a partir dos arquivos das migrations
 -- desta arvore, e tests/banco/cupom-preso-portao-viva.cjs roda esta consulta num
--- Postgres real (positivo depois do apply, e um negativo por linha).
+-- Postgres real (positivo depois do apply, nos dois estados, e um negativo por linha).
 --
 -- LIMITES: nao prova o COMPORTAMENTO (isso e' a prova viva das migrations, em
 -- tests/banco/cupom-preso-viva.cjs); prova que o objeto vivo e' o das migrations. Nao
@@ -80,12 +96,28 @@ WITH f AS (
          CASE WHEN to_regrole('service_role') IS NULL THEN NULL
               ELSE has_function_privilege('service_role', p.oid, 'EXECUTE') END AS exec_service
     FROM (VALUES
-           ('aux', 'public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer)'),
-           ('rpc', 'public.vaga_do_cupom_presa(text)'),
-           ('var', 'public.devolver_cupons_de_pedidos_mortos()')
-         ) AS x(chave, assinatura)
-    JOIN pg_proc p ON p.oid = to_regprocedure(x.assinatura)
+           ('aux', COALESCE(
+                     to_regprocedure('public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer,text,integer,text,text)'),
+                     to_regprocedure('public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer)'))),
+           ('rpc', to_regprocedure('public.vaga_do_cupom_presa(text)')),
+           ('var', to_regprocedure('public.devolver_cupons_de_pedidos_mortos()'))
+         ) AS x(chave, fn_oid_alvo)
+    JOIN pg_proc p ON p.oid = x.fn_oid_alvo
     JOIN pg_language l ON l.oid = p.prolang
+), est AS (
+  SELECT CASE WHEN to_regprocedure('public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer,text,integer,text,text)') IS NOT NULL
+              THEN '20261210' ELSE '20261206' END AS estado
+), hs AS (
+  SELECT h.chave, h.lf, h.crlf
+    FROM (VALUES
+           ('20261206', 'aux', 'aa8f0ef494f54dc952ed9f8fd7e95997a988086c278bfd0ebbdf0117f68c2363', '6fc3bb6775c34d5739516fa9841bbc4787ae2d3be87e647acca8d465c513f6b6'),
+           ('20261206', 'rpc', 'a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47', '49e0b6befb684756ed4f1fada1e30ed7162763dc903816f49f2f76ce61820593'),
+           ('20261206', 'var', 'f35db1e788fb8e0472dd6b8318c69be524c3f932d62c5f7b2856fe97d243eb4f', 'c7e38a04defe6b286519f2325c6d4d8ec727f57c4b0edbb5bc5831d936fbe9b8'),
+           ('20261210', 'aux', '0790c1962b526725c377344208392bfb7f15b1de20b0056e5bbb3002e40aa020', '8a8be76b9afd31e4e2c41f7bf559c472fbf33891cc1a771ff9116452b18afd5a'),
+           ('20261210', 'rpc', 'd752391f13d27a741c3401b20a375ef7a7952bda3dfb2f6c257b96f6128cc84d', '9c659b8c1b18a808719c908076e9ce8948c384dae788aa396c4059512b5c1001'),
+           ('20261210', 'var', '0e3fffedbd871c372ad000393b9f3c1abcda64a5703735a00cd5173f98bb35ae', 'a0c8175ce56857e24fb7ebab37d18e45386f3711506f3906013ed73036c7f6ad')
+         ) AS h(estado, chave, lf, crlf)
+   WHERE h.estado = (SELECT e.estado FROM est e)
 ), vis AS (
   SELECT count(*) AS n FROM cron.job
 ), rls AS (
@@ -105,12 +137,9 @@ WITH f AS (
            WHERE n.nspname = 'public' AND p.proname = 'cupom__vaga_volta_em')
   UNION ALL
   SELECT 'cupom__vaga_volta_em: corpo (sha256)',
-         'aa8f0ef494f54dc952ed9f8fd7e95997a988086c278bfd0ebbdf0117f68c2363',
-         COALESCE((SELECT CASE WHEN f.h IN ('aa8f0ef494f54dc952ed9f8fd7e95997a988086c278bfd0ebbdf0117f68c2363',
-                                            '6fc3bb6775c34d5739516fa9841bbc4787ae2d3be87e647acca8d465c513f6b6')
-                               THEN 'aa8f0ef494f54dc952ed9f8fd7e95997a988086c278bfd0ebbdf0117f68c2363'
-                               ELSE f.h END
-                     FROM f WHERE f.chave = 'aux'), 'AUSENTE')
+         (SELECT s.lf FROM hs s WHERE s.chave = 'aux'),
+         COALESCE((SELECT CASE WHEN f.h IN (s.lf, s.crlf) THEN s.lf ELSE f.h END
+                     FROM f JOIN hs s ON s.chave = f.chave WHERE f.chave = 'aux'), 'AUSENTE')
   UNION ALL
   SELECT 'cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role', 'nenhum',
          COALESCE((SELECT CASE WHEN array_length(q.quem, 1) IS NULL THEN 'nenhum'
@@ -139,12 +168,9 @@ WITH f AS (
          COALESCE((SELECT f.lanname || ' ' || f.retorno FROM f WHERE f.chave = 'rpc'), 'AUSENTE')
   UNION ALL
   SELECT 'vaga_do_cupom_presa: corpo (sha256)',
-         'a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47',
-         COALESCE((SELECT CASE WHEN f.h IN ('a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47',
-                                            '49e0b6befb684756ed4f1fada1e30ed7162763dc903816f49f2f76ce61820593')
-                               THEN 'a7db9046f7dbb296c0d92ada3b097ef79c68d3e76a76df2c9542ec11b2d76b47'
-                               ELSE f.h END
-                     FROM f WHERE f.chave = 'rpc'), 'AUSENTE')
+         (SELECT s.lf FROM hs s WHERE s.chave = 'rpc'),
+         COALESCE((SELECT CASE WHEN f.h IN (s.lf, s.crlf) THEN s.lf ELSE f.h END
+                     FROM f JOIN hs s ON s.chave = f.chave WHERE f.chave = 'rpc'), 'AUSENTE')
   UNION ALL
   SELECT 'vaga_do_cupom_presa: EXECUTE para PUBLIC', 'nao',
          COALESCE((SELECT CASE WHEN f.exec_public THEN 'sim' ELSE 'nao' END FROM f WHERE f.chave = 'rpc'), 'AUSENTE')
@@ -174,12 +200,9 @@ WITH f AS (
                      FROM f WHERE f.chave = 'var'), 'AUSENTE')
   UNION ALL
   SELECT 'devolver_cupons_de_pedidos_mortos: corpo (sha256)',
-         'f35db1e788fb8e0472dd6b8318c69be524c3f932d62c5f7b2856fe97d243eb4f',
-         COALESCE((SELECT CASE WHEN f.h IN ('f35db1e788fb8e0472dd6b8318c69be524c3f932d62c5f7b2856fe97d243eb4f',
-                                            'c7e38a04defe6b286519f2325c6d4d8ec727f57c4b0edbb5bc5831d936fbe9b8')
-                               THEN 'f35db1e788fb8e0472dd6b8318c69be524c3f932d62c5f7b2856fe97d243eb4f'
-                               ELSE f.h END
-                     FROM f WHERE f.chave = 'var'), 'AUSENTE')
+         (SELECT s.lf FROM hs s WHERE s.chave = 'var'),
+         COALESCE((SELECT CASE WHEN f.h IN (s.lf, s.crlf) THEN s.lf ELSE f.h END
+                     FROM f JOIN hs s ON s.chave = f.chave WHERE f.chave = 'var'), 'AUSENTE')
   UNION ALL
   SELECT 'devolver_cupons_de_pedidos_mortos: EXECUTE para PUBLIC', 'nao',
          COALESCE((SELECT CASE WHEN f.exec_public THEN 'sim' ELSE 'nao' END FROM f WHERE f.chave = 'var'), 'AUSENTE')

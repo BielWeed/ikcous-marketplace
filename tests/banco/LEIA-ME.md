@@ -183,6 +183,59 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   ignorava todo `pg_attrdef` e escondia uma coluna gerada que cita a coluna; a prova roda a
   consulta num Postgres real (base, coluna gerada, visão, índice) e o mutante que volta a
   excluir todo `pg_attrdef` reproduz o defeito.
+- **cupom do PIX anulado (`cupom-pix-anulado-viva.cjs`, via `rodar-isolado.cjs`)**: o cupom
+  preso depois de "cancelou com o PIX gerado" volta em minutos, nao em 24 h. O arquivo tem um
+  bloco por migration. **Bloco da foto (20261209000000)**: um gatilho grava, no instante em que
+  o pedido vira `cancelled`, a foto da cobranca (id na vaga, tentativas, metodo online,
+  `payment_status`) em `pedido_cobranca_ao_cancelar`, tabela fechada (RLS sem politica e sem
+  privilegio para PUBLIC/anon/authenticated/service_role). A prova cobre: a foto com os valores
+  do momento do cancelamento em todos os caminhos reais (edge `cancelar_pedido_com_cobranca`,
+  cliente, admin, expiracao, v23); recancelar nao grava foto nova; reativar e cancelar de novo
+  sobrescreve; nenhum acesso de fora; 2 cancelamentos simultaneos geram 1 foto; pedido cancelado
+  antes da migration segue sem foto; o envelope de producao (`REPEATABLE READ`, foto antes do
+  `LOCK`): a migration espera o pedido em andamento SEM parar o checkout (trava por `NOWAIT`,
+  nao por fila), recusa em 4 s sem gravar e nao causa deadlock com dois pedidos cruzados; ida e
+  volta (aplicar, rollback, reaplicar 2x; o catalogo volta exato); pre-voo, pos-voo e rollback
+  que recusam nomeando o problema; mutante por guarda. **Limite declarado:** Postgres 17 local,
+  nao o 15/17 da Supabase; o envelope e simulado em texto, nao pelo `aplicar-migrations.yml`.
+  **Bloco da vaga (20261210000000)**: a varredura do cupom, o auxiliar `cupom__vaga_volta_em`
+  (de 9 para 13 parametros: os 9 de sempre mais os 4 da foto) e a RPC do checkout
+  `vaga_do_cupom_presa` passam a ler a foto. O cupom de um pedido cancelado com o PIX gerado volta
+  no prazo do PIX (`expires_at`, ~45 min no maximo depois da criacao; nunca `-infinity`, para o
+  admin que reativa o pedido nao achar o cupom ja devolvido) SE E SOMENTE SE a foto prova que
+  nunca houve cartao (id de PIX na vaga, zero tentativas, metodo `pix`, `aguardando`) e agora o
+  pedido esta cancelado, `aguardando`, com a vaga vazia e exatamente uma tentativa. A prova
+  cobre: a tabela de 33 casos (cada condicao violada sozinha: o auxiliar, a varredura e a RPC
+  concordam caso a caso); o pagamento fantasma (`confirmar_pagamento` do PIX velho da
+  `divergente` e o uso do cupom nao muda); duas conexoes reais (varredura x
+  `confirmar_pagamento` nas duas ordens, x `liberar`, duas varreduras, varredura no meio da
+  aplicacao); o envelope `REPEATABLE READ` (a M2 nao pede trava de tabela: nunca 40P01); a
+  atomicidade (falha no meio, depois do `DROP`, devolve tudo); ida e volta byte a byte (o
+  rollback devolve os corpos da 1206 e da 1205 por sha256); pre-voo que recusa sem gravar (1 byte
+  a mais em cada corpo travado); a ordem de desfazer 1210, 1209, 1206, 1205; mutante por guarda.
+  **Limites declarados:** o `SET LOCAL lock_timeout` e cinto (sem trava de tabela nao ha espera
+  que ele limite); a varredura nao e executada dentro da migration (so pela prova); o caso de uma
+  instancia da varredura em voo no instante exato do COMMIT nao e provavel de forma
+  deterministica. O portao (consultas 16a/16b) e o item seguinte.
+- **portao do cupom do PIX anulado (`cupom-pix-anulado-portao-viva.cjs`, via
+  `rodar-isolado.cjs`)**: as consultas `16a-conferir-pix-anulado-aplicado` (DEPOIS do apply, 32
+  linhas) e `16b-antes-pix-anulado-foto-ausente` (ANTES, 14 linhas), a "prova de objetos" do lote
+  20261209000000 + 20261210000000 (as duas vao juntas e em ordem). 16b positiva em `pre` (sem as duas:
+  auxiliar de 9 parametros, sem foto), tambem com os corpos de 1205/1206 em CRLF, com papel minimo,
+  `search_path` vazio e objetos-isca em outro schema, e DEPOIS dos dois rollbacks manuais (a ida e
+  volta devolve a loja ao estado de antes); 16a positiva na arvore inteira, nos ARQUIVOS aplicados
+  sobre `pre` (resposta identica), em CRLF e depois de rollback seguido de novo apply. Um defeito
+  por vez reprovando a SUA linha (coluna, chave primaria e estrangeira, RLS, politica, privilegio
+  por tabela e por coluna, forma / corpo / sobrecarga / EXECUTE por papel das 4 funcoes, gatilho
+  desligado, REPLICA, BEFORE, sem OF, sem WHEN, outra funcao, o estado MISTURADO, so a 20261209
+  aplicada, os donos sem EXECUTE no auxiliar, job); mutantes do texto das consultas (cada linha e
+  cada clausula composta) deixam a prova vermelha; o `conferir-banco.cjs` de verdade e o lote real
+  fecham em APLICAR / NADA / PARAR; e a 12a (cupom preso) segue positiva no estado que o lote
+  deixa. **Limites declarados:** a linha de controle nao tem negativo local (o catalogo e legivel
+  por todo papel); o EXECUTE de PUBLIC nao tem mutante proprio (equivalente: PUBLIC alcanca os papeis
+  nomeados); a linha de EXECUTE da varredura nao cobre `service_role`; o papel
+  `supabase_read_only_user` real e o pg_cron real nao foram medidos. **Nao prova** a IKCOUS nem a
+  Savy.
 
 ## Como rodar
 

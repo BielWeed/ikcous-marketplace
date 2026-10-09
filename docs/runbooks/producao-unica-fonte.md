@@ -298,6 +298,10 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         ocupar a vaga, e `webhook-mercadopago` so adota cobranca para cartao (teste no
         `index_test.ts` do webhook). Se um dia o webhook passar a adotar PIX, essa pista precisa ser
         revista.
+      - **Depois do lote 16 (PIX anulado, item 14) a `12a` aceita TAMBEM o estado que ele deixa:** o
+        auxiliar de 13 parametros e os tres corpos da `20261210000000`, todos do mesmo estado (misturar
+        reprova). Sem isso a loja que recebesse o lote 16 ficaria com a prova deste lote vermelha para
+        sempre e o portao bloquearia a release.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
         rodar a `12a` e a `12b` DEPOIS da ultima mudanca nesses arquivos.
       - **Limites:** `tests/banco/cupom-preso-portao-viva.cjs` (Postgres 17 efemero, no
@@ -449,6 +453,95 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         ali. A `15a` nao le dado: nao prova que cupons antigos continuam `'codigo'` (quem garante e o
         `NOT NULL DEFAULT`). PK, chaves estrangeiras e MAINTAIN de `cupom_clientes` nao sao medidos.
         O passo-a-passo para o dono esta em [publicar-cupons-no-checkout.md](publicar-cupons-no-checkout.md).
+
+  14. **Lote de DUAS migrations, de apply normal: `20261209000000` (a foto da cobranca no
+      cancelamento) e `20261210000000` (a vaga do cupom do PIX anulado volta em minutos).** Sem
+      `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). As duas
+      vao JUNTAS e EM ORDEM (a segunda exige a foto da primeira); sao ADITIVAS (nenhuma tabela,
+      coluna ou linha de dado existente e apagada; a segunda so apaga a funcao de 9 parametros que
+      ela mesma recria com 13). A `20261209000000` CRIA a tabela `pedido_cobranca_ao_cancelar` (RLS
+      ligada, nenhuma politica, nenhum privilegio para PUBLIC/anon/authenticated/service_role), a
+      funcao `pedido__foto_da_cobranca_ao_cancelar()` (SECURITY DEFINER, sem EXECUTE para ninguem) e o
+      gatilho `tr_pedido_foto_da_cobranca_ao_cancelar` (AFTER UPDATE OF status, WHEN o pedido vira
+      `cancelled`): grava a foto da cobranca no instante do cancelamento. A `20261210000000` TROCA tres
+      funcoes para lerem a foto: o auxiliar `cupom__vaga_volta_em` (de 9 para 13 parametros), a RPC
+      `vaga_do_cupom_presa` e a varredura `devolver_cupons_de_pedidos_mortos`. Duas consultas, so
+      leitura e de ROL FECHADO (so valem com `rol=ok`):
+      - **`16a-conferir-pix-anulado-aplicado`** (a consulta do lote, 32 linhas) prova DEPOIS do apply:
+        a tabela da foto (colunas com tipo, NOT NULL e default; chave primaria; chave estrangeira com
+        CASCADE; RLS ligada; nenhuma politica; nenhum privilegio, de tabela ou de coluna, para os 4
+        papeis); a funcao da foto (sobrecargas, forma, corpo sha256, sem EXECUTE); o gatilho (existe,
+        AFTER UPDATE OF status por linha, habilitado, WHEN, funcao executada); o auxiliar so de 13
+        parametros (a de 9 sumiu); a RPC e a varredura com os corpos da `20261210000000` (sha256, LF e
+        CRLF), forma e EXECUTE; os donos da varredura e da RPC com EXECUTE no auxiliar;
+        `devolver_uso_cupom` e o job de 15 em 15 minutos ativo. Uma migration futura que troque o
+        corpo de uma dessas funcoes precisa atualizar os hashes da `16a`.
+      - **`16b-antes-pix-anulado-foto-ausente`** (`ausenciaConfirmadaPor`, 14 linhas) prova o ANTES,
+        as condicoes dos pre-voos: a tabela, a funcao (qualquer sobrecarga) e o gatilho da foto NAO
+        existem; as 12 colunas de `marketplace_orders` que as pecas leem existem (as seis da foto com
+        o tipo); o auxiliar e o de 9 parametros e a RPC e a varredura tem os corpos de
+        `20261205000000`/`20261206000000`, uma sobrecarga cada; `devolver_uso_cupom` existe e o job
+        esta ativo. **Por isso o lote so fecha depois que a `20261205`/`20261206` estao no banco da
+        loja** (senao a `16b` sai NEGATIVA e o portao PARA).
+      - **Caminho, uma loja por vez:** ledger sem as versoes e sem evidencia → `16a` (sai NEGATIVA: as
+        migrations ainda nao estao) → `16b` MAIS NOVA que a `16a` e POSITIVA → UM comando
+        `aplicar-migrations.yml` com os DOIS arquivos, `20261209000000_a_foto_da_cobranca_no_cancelamento.sql`
+        e `20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql`, nessa ordem (cada apply
+        grava o ledger na mesma transacao) → o ensaio pede a `16a` DE NOVO, que tem de sair POSITIVA.
+        `16b` NEGATIVA (a foto ja existe, so a `20261209` aplicada, corpo de uma funcao diferente):
+        **PARAR, e o dono decide** (nada e aplicado). `16a` POSITIVA com a versao fora do ledger:
+        PARAR (sem backfill). Banco com so a `20261209` aplicada (a segunda falhou ou nao rodou): as
+        duas consultas reprovam e e PARAR, para diagnostico.
+      - **A `12a` (lote do cupom preso) aceita os DOIS estados.** Com a loja servindo dois SHAs o
+        portao exige a prova de TODO lote; depois da `20261210000000` o auxiliar tem 13 parametros e
+        as tres funcoes trocam de corpo, e a `12a` antiga ficaria vermelha para sempre e bloquearia a
+        release. Agora a `12a` decide o estado pelo auxiliar (13 parametros = `20261210`, senao
+        `20261206`) e exige os tres corpos do MESMO estado; estado misturado reprova na linha do corpo
+        que destoa (nao funciona: a varredura chamaria o auxiliar com a assinatura errada). Provado em
+        `tests/banco/cupom-preso-portao-viva.cjs`.
+      - **MUDANCA DE COMPORTAMENTO (acontece no apply da `20261210`, nao no front):** o cupom de um
+        pedido cancelado com o PIX gerado volta quando o prazo do PIX acaba (`expires_at`, ate ~45 min
+        depois da criacao do pedido; nunca antes, porque o admin pode reativar um pedido cancelado) mais
+        o ciclo de 15 min da varredura, em vez de 24 h depois, SE E SOMENTE SE a foto prova que nunca
+        houve cartao (id de PIX na vaga, zero tentativas, metodo `pix`, `aguardando`) e agora o pedido
+        esta cancelado, `aguardando`, com a vaga vazia e exatamente uma tentativa. No instante do clique
+        NAO volta. Pedido cancelado ANTES da `20261209` nao tem foto e segue com o prazo de 24 h; pedido
+        pago, enviado ou ja devolvido nunca devolve.
+      - **PRE-CONDICAO DA PUBLICACAO (o banco NAO prova): medir a versao das FUNCTIONS no ar em CADA
+        loja (IKCOUS e Savy)**, nao so o `version.json` do front. A pista rapida so e segura porque
+        `criar-pagamento` nunca manda cartao ao Mercado Pago sem ocupar antes a vaga de cobranca
+        (reserva antes do POST, de 02/10/2026) e `webhook-mercadopago` so adota cobranca para cartao
+        (teste no ramo `test/pix-anulado-webhook-20261009`, `supabase/functions/webhook-mercadopago/index_test.ts`).
+        Se a data no ar for anterior a do SHA da release, publicar essas functions ANTES do apply do
+        banco. Como medir, passo a passo, em
+        [publicar-pix-anulado-devolve-cupom.md](publicar-pix-anulado-devolve-cupom.md). O portao nao
+        impoe esta ordem (banco → functions → front): e passo do operador.
+      - **Ordem:** o banco de CADA loja primeiro (IKCOUS, depois Savy, FORA DO HORARIO DE PICO), o
+        site logo depois. Banco novo com site velho nada muda para quem compra. A `20261209` pega
+        `marketplace_orders` em `SHARE ROW EXCLUSIVE` sem ficar na fila (tenta e dorme, ate 4 s): se um
+        pedido em andamento nao terminar, ela FALHA sem gravar (55P03) e basta repetir. A `20261210`
+        nao pede trava de tabela.
+      - **Desfazer (decisao do DONO, nunca automatica), nesta ordem:**
+        `rollback-manual-20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql` e DEPOIS
+        `rollback-manual-20261209000000_a_foto_da_cobranca_no_cancelamento.sql`, cada um pelo
+        `aplicar-migrations.yml` (secao Rollback > Banco: apaga a linha da versao do ledger na mesma
+        transacao). O da `20261210` devolve as tres funcoes aos corpos antigos byte a byte e NAO toca
+        dado (o cupom ja devolvido continua devolvido). O da `20261209` APAGA as fotos ja gravadas
+        (so servem para antecipar a vaga; nenhum pedido, cupom ou pagamento e tocado) e recusa
+        enquanto as funcoes da `20261210` citarem a tabela. Depois dos dois a `16b` volta a ser
+        POSITIVA e a `16a` NEGATIVA (provado em `tests/banco/cupom-pix-anulado-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
+        rodar a `16a` e a `16b` DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/cupom-pix-anulado-portao-viva.cjs` e
+        `tests/banco/cupom-pix-anulado-viva.cjs` (Postgres 17 efemero, no `rpc-ci.yml`) provam que as
+        consultas DECIDEM certo (cada defeito reprova a PROPRIA linha; mutantes do texto das consultas
+        ficam vermelhos; ida e volta pelos dois rollbacks) e que as migrations aplicam e desfazem como
+        descrito; nao provam que a IKCOUS ou a Savy estao no estado A ou B (so o run da consulta contra
+        o ref de cada loja diz). O `supabase_read_only_user` real, o pg_cron real e o Postgres 15 da
+        Supabase nao foram medidos ali. A linha de EXECUTE da varredura nao cobre `service_role` (como a
+        `12a`). A `16a`/`16b` nao leem dado: nao dizem se ha pedido com cupom, pedido cancelado ou foto.
+        O passo-a-passo para o dono esta em
+        [publicar-pix-anulado-devolve-cupom.md](publicar-pix-anulado-devolve-cupom.md).
 
 4. **Promover UM front e conferir a frota.**
 

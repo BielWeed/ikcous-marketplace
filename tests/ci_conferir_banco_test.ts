@@ -5092,6 +5092,9 @@ const MIGRACAO_206 = `${MIGRATIONS_DIR}/20261206000000_a_vaga_do_cupom_nunca_cob
 const ROLLBACK_205 = `${MIGRATIONS_DIR}/rollback-manual-20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql`;
 const ROLLBACK_206 = `${MIGRATIONS_DIR}/rollback-manual-20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql`;
 const MIGRACAO_970 = `${MIGRATIONS_DIR}/20260970000000_cancelamento_respeita_o_envio.sql`;
+// 20261209/20261210 (o PIX anulado): a 12a aceita o estado que elas deixam (A1) e a 16a/16b são o lote delas
+const MIGRACAO_FOTO = `${MIGRATIONS_DIR}/20261209000000_a_foto_da_cobranca_no_cancelamento.sql`;
+const MIGRACAO_PIX = `${MIGRATIONS_DIR}/20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql`;
 
 /** Os corpos (prosrc) das tres funcoes e os sha256 deles, recalculados dos ARQUIVOS. */
 async function hashesDoLote205() {
@@ -5110,10 +5113,34 @@ async function hashesDoLote205() {
   const m1 = await ler(MIGRACAO_205);
   const m2 = await ler(MIGRACAO_206);
   const m970 = await ler(MIGRACAO_970);
+  const m1210 = await ler(MIGRACAO_PIX);
   const par = (c: string) => ({ lf: sha(c), crlf: sha(crlf(c)) });
   return {
     m1,
     m2,
+    m1210,
+    // o estado 20261210 (A1): os três corpos novos
+    aux13: par(
+      corpoDe(
+        m1210,
+        "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(",
+        "$function$",
+      ),
+    ),
+    rpc13: par(
+      corpoDe(
+        m1210,
+        "CREATE OR REPLACE FUNCTION public.vaga_do_cupom_presa(",
+        "$function$",
+      ),
+    ),
+    varredura13: par(
+      corpoDe(
+        m1210,
+        "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()",
+        "$devolver_cupons_mortos$",
+      ),
+    ),
     aux: par(
       corpoDe(
         m2,
@@ -5201,6 +5228,8 @@ for (const [nome, nItens, rol] of [
           "cron.job",
           // CTEs desta consulta
           "f",
+          "est",
+          "hs",
           "tabelas",
           "colunas",
           "varredura",
@@ -5281,22 +5310,54 @@ Deno.test("12a/12b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       ),
     ].sort();
   await t.step(
-    "12a: só os 6 sha256 (auxiliar e varredura da 20261206, RPC da 20261205; LF e CRLF), cada LF como o esperado da sua linha",
+    "12a: só os 12 sha256 (auxiliar e varredura da 20261206, RPC da 20261205, e os três da 20261210; LF e CRLF), 12 distintos, cada LF na tabela do SEU estado",
     () => {
-      assertEquals(
-        hex64(sql12a),
-        [
-          h.aux.lf,
-          h.aux.crlf,
-          h.rpc.lf,
-          h.rpc.crlf,
-          h.varredura.lf,
-          h.varredura.crlf,
-        ].sort(),
-      );
+      const todos = [
+        h.aux,
+        h.rpc,
+        h.varredura,
+        h.aux13,
+        h.rpc13,
+        h.varredura13,
+      ].flatMap((x) => [x.lf, x.crlf]);
+      assertEquals(new Set(todos).size, 12);
+      assertEquals(hex64(sql12a), [...todos].sort());
       const limpo = sqlSemComentarios(sql12a);
-      for (const lf of [h.aux.lf, h.rpc.lf, h.varredura.lf])
-        assertStringIncludes(limpo, `'${lf}',`, "o LF tem de ser o esperado");
+      // a tabela `hs`: uma linha por (estado, função), com o LF e o CRLF
+      for (const [estado, chave, x] of [
+        ["20261206", "aux", h.aux],
+        ["20261206", "rpc", h.rpc],
+        ["20261206", "var", h.varredura],
+        ["20261210", "aux", h.aux13],
+        ["20261210", "rpc", h.rpc13],
+        ["20261210", "var", h.varredura13],
+      ] as Array<[string, string, { lf: string; crlf: string }]>)
+        assertStringIncludes(
+          limpo,
+          `('${estado}', '${chave}', '${x.lf}', '${x.crlf}')`,
+          `${estado}/${chave}: o LF e o CRLF da linha do estado`,
+        );
+      // o `esperado` de cada linha de corpo vem da tabela do estado decidido, nunca de um literal solto
+      for (const item of [
+        "cupom__vaga_volta_em: corpo (sha256)",
+        "vaga_do_cupom_presa: corpo (sha256)",
+        "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+      ]) {
+        const i = limpo.indexOf(`'${item}'`);
+        assert(i >= 0, `falta a linha ${item}`);
+        const linha = limpo.slice(i, limpo.indexOf("UNION ALL", i));
+        assert(
+          !/'[0-9a-f]{64}'/.test(linha),
+          `${item}: a linha não pode ter hash literal`,
+        );
+        assertStringIncludes(linha, "(SELECT s.lf FROM hs s WHERE s.chave = ");
+        assertStringIncludes(linha, "f.h IN (s.lf, s.crlf)");
+      }
+      // o estado é decidido pelo auxiliar de 13 parâmetros
+      assertStringIncludes(
+        limpo,
+        "THEN '20261210' ELSE '20261206' END AS estado",
+      );
     },
   );
   await t.step(
@@ -5332,6 +5393,23 @@ Deno.test("12a/12b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       const rb206 = await Deno.readTextFile(ROLLBACK_206);
       for (const x of [h.aux.lf, h.aux.crlf, h.varredura.lf, h.varredura.crlf])
         assertStringIncludes(rb206, `'${x}'`);
+    },
+  );
+  await t.step(
+    "os três hashes de 20261210 (LF e CRLF) são os que o pós-voo da própria 20261210000000 aceita; os de 20261205/20261206 são os que o pré-voo dela aceita (a 12a aceita os dois estados, cada um inteiro)",
+    () => {
+      const pos = h.m1210.slice(
+        h.m1210.indexOf("DO $posvoo_20261210$"),
+        h.m1210.indexOf("$posvoo_20261210$;"),
+      );
+      for (const x of [h.aux13, h.rpc13, h.varredura13])
+        for (const y of [x.lf, x.crlf]) assertStringIncludes(pos, `'${y}'`);
+      const pre = h.m1210.slice(
+        h.m1210.indexOf("DO $preflight_20261210$"),
+        h.m1210.indexOf("$preflight_20261210$;"),
+      );
+      for (const x of [h.aux, h.rpc, h.varredura])
+        for (const y of [x.lf, x.crlf]) assertStringIncludes(pre, `'${y}'`);
     },
   );
 });
@@ -6343,6 +6421,693 @@ Deno.test("15a/15b — o rpc-ci.yml roda a prova viva do portão dos cupons do c
       "scripts/publicacao/conferir-banco.cjs",
       `scripts/publicacao/consultas/${NOME_15A}.sql`,
       `scripts/publicacao/consultas/${NOME_15B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});
+
+// 16a/16b (09/10/2026) — a PROVA DE OBJETOS do lote das migrations 20261209000000 (a foto da
+// cobrança no cancelamento: tabela fechada, função e gatilho) e 20261210000000 (a vaga do cupom
+// do PIX anulado volta em minutos: o auxiliar passa de 9 a 13 parâmetros, a RPC do checkout e a
+// varredura leem a foto) em scripts/frota/canais-de-backend.json. A 16a é a consulta do lote
+// (DEPOIS do apply); a 16b é a de ausência (ANTES). As duas são de ROL FECHADO. Estes testes
+// medem o texto dos .sql contra as migrations DESTA árvore; a decisão de cada consulta num
+// Postgres real está em tests/banco/cupom-pix-anulado-portao-viva.cjs (rodado no rpc-ci.yml).
+const NOME_16A = "16a-conferir-pix-anulado-aplicado";
+const NOME_16B = "16b-antes-pix-anulado-foto-ausente";
+
+/** O que cada consulta de 16 pode ler: catálogo, o agendador e as CTEs da própria consulta. Nenhuma tabela de dados. */
+const PERMITIDOS_16A = [
+  "pg_attribute",
+  "pg_attrdef",
+  "pg_constraint",
+  "pg_class",
+  "pg_policy",
+  "pg_trigger",
+  "pg_proc",
+  "pg_namespace",
+  "pg_language",
+  "unnest",
+  "aclexplode",
+  "cron.job",
+  // CTEs desta consulta
+  "tab",
+  "col",
+  "pk",
+  "fk",
+  "rel",
+  "pol",
+  "priv",
+  "alvo",
+  "fn",
+  "gat",
+  "gat_x",
+  "vis",
+  "rls",
+  "agendado",
+  "itens",
+];
+const PERMITIDOS_16B = [
+  "pg_proc",
+  "pg_namespace",
+  "pg_attribute",
+  "pg_trigger",
+  "unnest",
+  "cron.job",
+  // CTEs desta consulta
+  "tab",
+  "faltam",
+  "alvo",
+  "fn",
+  "vis",
+  "rls",
+  "agendado",
+  "itens",
+];
+
+const { ROL_DA_16A, ROL_DA_16B } = require(SCRIPT);
+for (const [nome, nItens, rol, permitidos] of [
+  [NOME_16A, 32, ROL_DA_16A, PERMITIDOS_16A],
+  [NOME_16B, 14, ROL_DA_16B, PERMITIDOS_16B],
+] as Array<[string, number, string[], string[]]>) {
+  Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo (e o agendador, só jobname/schedule/active), saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+    await t.step("está no menu do workflow", async () => {
+      const yaml = await Deno.readTextFile(WORKFLOW);
+      const i = yaml.indexOf("consulta:");
+      assert(i >= 0, "não achei a entrada `consulta`");
+      assert(
+        yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+        `falta a opção ${nome} no workflow`,
+      );
+    });
+    await t.step(
+      "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com as reprovadas primeiro",
+      () => {
+        assertEquals(contarStatements(sql), 1);
+        assert(/^\s*WITH\b/i.test(limpo));
+        assert(
+          !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+            semTexto,
+          ),
+          "palavra de escrita fora de comentário/string",
+        );
+        assert(
+          !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+            semTexto,
+          ),
+          "SQL dinâmico (ou leitura de arquivo)",
+        );
+        assert(
+          /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+            limpo,
+          ),
+          "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+        );
+      },
+    );
+    await t.step(
+      "SÓ catálogo e cron.job: nenhuma tabela de dados (pedido, cupom, foto, cliente) e nenhuma coluna de cliente, de dinheiro ou do comando do job",
+      () => {
+        const ok = new Set(permitidos);
+        const alvos = [
+          ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+        ].map((m) => m[1].toLowerCase());
+        assert(alvos.length > 0);
+        for (const alvo of alvos)
+          assert(
+            ok.has(alvo),
+            `lê de "${alvo}", que não é catálogo, cron.job nem CTE`,
+          );
+        assert(
+          !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|amount|total|subtotal|discount|gateway_payment_id|payment_status|tentativas|metodo_online|paid_at|code|value|usage_count|command|username|database|nodename|jobid|return_message)\b/i.test(
+            semTexto,
+          ),
+          "a consulta citaria dado pessoal, financeiro, da foto ou o comando do job fora de um literal",
+        );
+        // do agendador, só as três colunas que a linha do job usa
+        const doJob = [...semTexto.matchAll(/\bj\.(\w+)/g)].map((m) => m[1]);
+        assertEquals([...new Set(doJob)].sort(), [
+          "active",
+          "jobname",
+          "schedule",
+        ]);
+      },
+    );
+    await t.step(
+      `o rol fechado do código tem ${nItens} itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)`,
+      () => {
+        assertEquals(rol.length, nItens);
+        assertEquals(new Set(rol).size, rol.length);
+        assertEquals(
+          Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+            ([n]) => n === nome,
+          )?.[1],
+          rol,
+        );
+        for (const item of rol)
+          assertStringIncludes(
+            limpo,
+            `'${item}'`,
+            `o item do rol "${item}" não existe no .sql`,
+          );
+        const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',/g)].map(
+          (m) => m[1],
+        );
+        assertEquals(
+          doSql.length,
+          nItens,
+          `o .sql monta ${nItens} linhas de resultado`,
+        );
+        for (const item of doSql)
+          assert(
+            rol.includes(item),
+            `o .sql monta "${item}" e o rol do código não o tem`,
+          );
+      },
+    );
+  });
+}
+
+/** Os corpos (prosrc) que as migrations 20261205/06 (o ANTES) e 20261209/10 (o DEPOIS) definem, recalculados dos ARQUIVOS: o sha256 de cada um, em LF e em CRLF. */
+async function hashesDoLote16() {
+  const { createHash } = require("node:crypto");
+  const sha = (s: string) =>
+    createHash("sha256").update(s, "utf8").digest("hex");
+  const crlf = (s: string) => s.replace(/\n/g, "\r\n");
+  const ler = async (a: string) =>
+    (await Deno.readTextFile(a)).replace(/\r\n/g, "\n");
+  const corpoDe = (texto: string, cabecalho: string, tag: string) => {
+    const ini = texto.indexOf(cabecalho);
+    assert(ini >= 0, `não achei ${cabecalho}`);
+    const abre = texto.indexOf(`AS ${tag}`, ini) + `AS ${tag}`.length;
+    const fim = texto.indexOf(`${tag};`, abre);
+    assert(fim > abre, `não achei o fim do corpo de ${cabecalho}`);
+    return texto.slice(abre, fim);
+  };
+  const par = (c: string) => ({ lf: sha(c), crlf: sha(crlf(c)) });
+  const foto = await ler(MIGRACAO_FOTO);
+  const pix = await ler(MIGRACAO_PIX);
+  const m205 = await ler(MIGRACAO_205);
+  const m206 = await ler(MIGRACAO_206);
+  const AUX = "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(";
+  const RPC = "CREATE OR REPLACE FUNCTION public.vaga_do_cupom_presa(";
+  const VAR =
+    "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()";
+  return {
+    foto,
+    pix,
+    m205,
+    m206,
+    // o DEPOIS
+    fotoFn: par(
+      corpoDe(
+        foto,
+        "CREATE OR REPLACE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar()",
+        "$foto_da_cobranca$",
+      ),
+    ),
+    auxNovo: par(corpoDe(pix, AUX, "$function$")),
+    rpcNovo: par(corpoDe(pix, RPC, "$function$")),
+    varNovo: par(corpoDe(pix, VAR, "$devolver_cupons_mortos$")),
+    // o ANTES (os corpos de 1205/1206)
+    aux1206: par(corpoDe(m206, AUX, "$function$")),
+    rpc1205: par(corpoDe(m205, RPC, "$function$")),
+    var1206: par(corpoDe(m206, VAR, "$devolver_cupons_mortos$")),
+  };
+}
+
+Deno.test("16a/16b — os hashes são EXATAMENTE os dos corpos que os arquivos das migrations definem: a 16a só os de 20261209/20261210 (a função da foto, o auxiliar de 13 parâmetros, a RPC e a varredura novos), a 16b só os de 20261205/20261206; o `esperado` é o LF", async (t) => {
+  const h = await hashesDoLote16();
+  const sql16a = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_16A}.sql`),
+  );
+  const sql16b = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_16B}.sql`),
+  );
+  const hex64 = (sql: string) => [
+    ...new Set([...sql.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1])),
+  ];
+  await t.step(
+    "16a: só os 8 sha256 do DEPOIS (LF e CRLF), 8 distintos, cada LF como o `esperado` da sua linha",
+    () => {
+      const todos = [h.fotoFn, h.auxNovo, h.rpcNovo, h.varNovo].flatMap((x) => [
+        x.lf,
+        x.crlf,
+      ]);
+      assertEquals(new Set(todos).size, 8);
+      assertEquals(hex64(sql16a).sort(), [...todos].sort());
+      for (const [nome, x] of [
+        ["pedido__foto_da_cobranca_ao_cancelar", h.fotoFn],
+        ["cupom__vaga_volta_em", h.auxNovo],
+        ["vaga_do_cupom_presa", h.rpcNovo],
+        ["devolver_cupons_de_pedidos_mortos", h.varNovo],
+      ] as Array<[string, { lf: string; crlf: string }]>) {
+        const i = sql16a.indexOf(`'${nome}: corpo (sha256)'`);
+        assert(i >= 0, `falta a linha do corpo de ${nome}`);
+        const linha = sql16a.slice(i, sql16a.indexOf("UNION ALL", i));
+        assertEquals(
+          [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+          [x.lf, x.lf, x.crlf, x.lf],
+          `${nome}: esperado LF, aceitos LF e CRLF, resultado LF`,
+        );
+      }
+    },
+  );
+  await t.step(
+    "16a: nenhum corpo do ANTES (1205/1206) é aceito (a consulta do DEPOIS reprova o estado de antes)",
+    () => {
+      for (const x of [h.aux1206, h.rpc1205, h.var1206])
+        for (const proibido of [x.lf, x.crlf])
+          assert(!sql16a.includes(proibido), `a 16a aceitaria ${proibido}`);
+    },
+  );
+  await t.step(
+    "16a: são os mesmos literais do pós-voo das migrations (a da foto: a função do gatilho; a de 20261210: as três funções)",
+    () => {
+      const posFoto = h.foto.slice(
+        h.foto.indexOf("DO $posvoo_20261209$"),
+        h.foto.indexOf("$posvoo_20261209$;"),
+      );
+      for (const x of [h.fotoFn.lf, h.fotoFn.crlf])
+        assertStringIncludes(posFoto, `'${x}'`);
+      const posPix = h.pix.slice(
+        h.pix.indexOf("DO $posvoo_20261210$"),
+        h.pix.indexOf("$posvoo_20261210$;"),
+      );
+      for (const x of [h.auxNovo, h.rpcNovo, h.varNovo])
+        for (const y of [x.lf, x.crlf]) assertStringIncludes(posPix, `'${y}'`);
+    },
+  );
+  await t.step(
+    "16b: só os 6 sha256 do ANTES (auxiliar e varredura da 20261206, RPC da 20261205; LF e CRLF), cada LF como o `esperado` da sua linha, os MESMOS que o pré-voo da 20261210 aceita; nenhum do DEPOIS",
+    () => {
+      const antes = [h.aux1206, h.rpc1205, h.var1206].flatMap((x) => [
+        x.lf,
+        x.crlf,
+      ]);
+      assertEquals(hex64(sql16b).sort(), [...antes].sort());
+      for (const [item, x] of [
+        [
+          "cupom__vaga_volta_em: corpo e o da 20261206000000 (sha256)",
+          h.aux1206,
+        ],
+        [
+          "vaga_do_cupom_presa: corpo e o da 20261205000000 (sha256)",
+          h.rpc1205,
+        ],
+        [
+          "devolver_cupons_de_pedidos_mortos: corpo e o da 20261206000000 (sha256)",
+          h.var1206,
+        ],
+      ] as Array<[string, { lf: string; crlf: string }]>) {
+        const i = sql16b.indexOf(`'${item}'`);
+        assert(i >= 0, `falta a linha ${item}`);
+        const linha = sql16b.slice(i, sql16b.indexOf("UNION ALL", i));
+        assertEquals(
+          [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+          [x.lf, x.lf, x.crlf, x.lf],
+          `${item}: esperado LF, aceitos LF e CRLF, resultado LF`,
+        );
+      }
+      for (const x of antes) assertStringIncludes(h.pix, `'${x}'`);
+      for (const x of [h.auxNovo, h.rpcNovo, h.varNovo, h.fotoFn])
+        for (const proibido of [x.lf, x.crlf])
+          assert(!sql16b.includes(proibido), `a 16b aceitaria ${proibido}`);
+    },
+  );
+});
+
+Deno.test("16b — espelha o PRÉ-VOO das migrations 20261209 e 20261210: as mesmas colunas (e os tipos que a da foto confere), o auxiliar de 9 parâmetros, as sobrecargas e a AUSÊNCIA de TUDO que a da foto cria (pelo nome que a migration usa)", async () => {
+  const h = await hashesDoLote16();
+  const sql = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_16B}.sql`),
+  );
+  const semComentario = (texto: string) =>
+    texto
+      .split("\n")
+      .filter((l) => !/^\s*--/.test(l))
+      .join("\n");
+  const foto = semComentario(h.foto);
+  const pix = semComentario(h.pix);
+  // as 6 colunas com tipo do pré-voo da foto
+  const m1 = [
+    ...foto
+      .match(
+        /\('id', 'uuid'\), \('status', 'text'\), \('gateway_payment_id', 'text'\),\s+\('tentativas_de_pagamento', 'integer'\), \('metodo_online', 'text'\),\s+\('payment_status', 'text'\)/,
+      )![0]
+      .matchAll(/\('([a-z_]+)', '([a-z]+)'\)/g),
+  ].map((m) => `${m[1]}:${m[2]}`);
+  assertEquals(m1, [
+    "id:uuid",
+    "status:text",
+    "gateway_payment_id:text",
+    "tentativas_de_pagamento:integer",
+    "metodo_online:text",
+    "payment_status:text",
+  ]);
+  // as 11 colunas (só existência) do pré-voo da 20261210
+  const m2 = [
+    ...pix
+      .match(
+        /SELECT \* FROM \(VALUES\s+\('id'\)([\s\S]*?)\) AS c\(coluna\)/,
+      )![0]
+      .matchAll(/\('([a-z_]+)'\)/g),
+  ].map((m) => m[1]);
+  assertEquals(m2.length, 11);
+  // a lista da 16b = a união (com o tipo onde a da foto confere)
+  const lista = [
+    ...sql
+      .match(/unnest\(ARRAY\[([\s\S]*?)\]\) AS v\(item\)/)![1]
+      .matchAll(/'([a-z_]+):([a-z]*)'/g),
+  ].map((m) => ({ coluna: m[1], tipo: m[2] }));
+  const esperadas = new Map<string, string>();
+  for (const x of m1) {
+    const [c, tipo] = x.split(":");
+    esperadas.set(c, tipo);
+  }
+  for (const c of m2) if (!esperadas.has(c)) esperadas.set(c, "");
+  assertEquals(
+    new Map(lista.map((x) => [x.coluna, x.tipo])),
+    esperadas,
+    "a 16b confere as colunas de AMBOS os pré-voos, com o tipo onde a migration da foto o confere",
+  );
+  assertEquals(lista.length, esperadas.size, "nenhuma coluna repetida");
+  // o auxiliar de 9 parâmetros: o mesmo que a 20261210 apaga e o pré-voo dela aceita
+  const nove =
+    "cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer)";
+  const treze =
+    "cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer,text,integer,text,text)";
+  assertStringIncludes(sql, `public.${nove}`);
+  assertStringIncludes(sql, `public.${treze}`);
+  assertStringIncludes(
+    pix.replace(/ /g, ""),
+    `DROPFUNCTIONIFEXISTSpublic.${nove}`.replace(/\s/g, ""),
+  );
+  // a ausência do que a migration da foto cria, pelo nome dela
+  for (const [naMig, naConsulta] of [
+    [
+      "CREATE TABLE IF NOT EXISTS public.pedido_cobranca_ao_cancelar",
+      "to_regclass('public.pedido_cobranca_ao_cancelar')",
+    ],
+    [
+      "CREATE OR REPLACE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar()",
+      "p.proname = 'pedido__foto_da_cobranca_ao_cancelar'",
+    ],
+    [
+      "CREATE OR REPLACE TRIGGER tr_pedido_foto_da_cobranca_ao_cancelar",
+      "t.tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'",
+    ],
+  ] as Array<[string, string]>) {
+    assertStringIncludes(foto, naMig);
+    assertStringIncludes(sql, naConsulta);
+  }
+  // o que a migration da foto cria é isto e só isto: nenhuma peça nova sem linha de ausência
+  const criados = [
+    ...foto.matchAll(
+      /CREATE (?:OR REPLACE )?(FUNCTION|TABLE|TRIGGER|INDEX)(?: IF NOT EXISTS)?(?: UNIQUE)? (?:public\.)?(\w+)/g,
+    ),
+  ]
+    .map((m) => `${m[1]} ${m[2]}`)
+    .sort();
+  assertEquals(criados, [
+    "FUNCTION pedido__foto_da_cobranca_ao_cancelar",
+    "TABLE pedido_cobranca_ao_cancelar",
+    "TRIGGER tr_pedido_foto_da_cobranca_ao_cancelar",
+  ]);
+  // o job da varredura (o mesmo nome da 12b e da 12a)
+  assertStringIncludes(sql, "j.jobname = 'devolver-cupons-de-pedidos-mortos'");
+});
+
+Deno.test("16a — o que a consulta ESPERA bate com o que as migrations 20261209 e 20261210 fazem (tabela, permissões, gatilho, WHEN, forma e ACL das funções): cada esperado nasce do arquivo, não de memória", async () => {
+  const h = await hashesDoLote16();
+  const sql = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_16A}.sql`),
+  );
+  const semComentario = (texto: string) =>
+    texto
+      .split("\n")
+      .filter((l) => !/^\s*--/.test(l))
+      .join("\n");
+  const foto = semComentario(h.foto);
+  const pix = semComentario(h.pix);
+  /** O cabeçalho (entre o nome e o `AS $`) da função cuja assinatura (texto puro) abre o CREATE OR REPLACE. */
+  const cabecalho = (mig: string, assinatura: string) => {
+    const ini = mig.indexOf(`CREATE OR REPLACE FUNCTION ${assinatura}`);
+    assert(ini >= 0, `não achei o cabeçalho de ${assinatura}`);
+    const fim = mig.indexOf("AS $", ini);
+    assert(fim > ini, `não achei o fim do cabeçalho de ${assinatura}`);
+    return mig.slice(ini, fim).replace(/\s+/g, " ");
+  };
+  // a tabela: a MESMA forma de colunas que o pré-voo da migration confere, e a chave e a FK
+  const formaColunas =
+    "order_id:uuid:true:,gateway_payment_id:text:false:,tentativas:integer:true:,metodo_online:text:false:,payment_status:text:false:,cancelado_em:timestamp with time zone:true:now()";
+  assertStringIncludes(foto, `'${formaColunas}'`);
+  assertStringIncludes(sql, `'${formaColunas}'`);
+  assertStringIncludes(
+    foto,
+    "order_id uuid PRIMARY KEY REFERENCES public.marketplace_orders (id) ON DELETE CASCADE",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido_cobranca_ao_cancelar: chave primaria', 'order_id'",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido_cobranca_ao_cancelar: chave estrangeira', 'order_id -> marketplace_orders, ON DELETE CASCADE'",
+  );
+  assertStringIncludes(
+    foto,
+    "ALTER TABLE public.pedido_cobranca_ao_cancelar ENABLE ROW LEVEL SECURITY;",
+  );
+  assertStringIncludes(
+    foto,
+    "REVOKE ALL ON TABLE public.pedido_cobranca_ao_cancelar FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assert(
+    !/CREATE POLICY/.test(foto),
+    "a tabela da foto nasce sem NENHUMA política",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido_cobranca_ao_cancelar: seguranca por linha (RLS) ligada', 'sim'",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido_cobranca_ao_cancelar: politicas', 'nenhuma'",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido_cobranca_ao_cancelar: privilegios de PUBLIC, anon, authenticated e service_role', 'nenhum'",
+  );
+  // a forma das quatro funções (linguagem, volatilidade, SECURITY, search_path e retorno, do CABEÇALHO na migration)
+  const formas: Array<[string, string, string, string[], string]> = [
+    [
+      "pedido__foto_da_cobranca_ao_cancelar: forma",
+      foto,
+      "public.pedido__foto_da_cobranca_ao_cancelar()",
+      [
+        "RETURNS trigger",
+        "LANGUAGE plpgsql",
+        "SECURITY DEFINER",
+        "SET search_path = public",
+      ],
+      "plpgsql VOLATILE SECURITY DEFINER search_path=public -> trigger",
+    ],
+    [
+      "cupom__vaga_volta_em: forma",
+      pix,
+      "public.cupom__vaga_volta_em(",
+      [
+        "RETURNS timestamptz",
+        "LANGUAGE sql",
+        "STABLE",
+        "SET search_path = public",
+      ],
+      "sql STABLE SECURITY INVOKER search_path=public -> timestamp with time zone",
+    ],
+    [
+      "vaga_do_cupom_presa: forma",
+      pix,
+      "public.vaga_do_cupom_presa(p_code text)",
+      [
+        "RETURNS jsonb",
+        "LANGUAGE plpgsql",
+        "SECURITY DEFINER",
+        "SET search_path = public",
+      ],
+      "plpgsql VOLATILE SECURITY DEFINER search_path=public -> jsonb",
+    ],
+    [
+      "devolver_cupons_de_pedidos_mortos: forma",
+      pix,
+      "public.devolver_cupons_de_pedidos_mortos()",
+      [
+        "RETURNS integer",
+        "LANGUAGE plpgsql",
+        "SECURITY DEFINER",
+        "SET search_path TO 'public'",
+      ],
+      "plpgsql VOLATILE SECURITY DEFINER search_path=public -> integer",
+    ],
+  ];
+  for (const [item, mig, assinatura, trechos, esperado] of formas) {
+    const cab = cabecalho(mig, assinatura);
+    for (const t of trechos) assertStringIncludes(cab, t, `${item}: ${t}`);
+    assertEquals(
+      cab.includes("STABLE"),
+      esperado.includes(" STABLE "),
+      `${item}: volatilidade`,
+    );
+    assertEquals(
+      cab.includes("SECURITY DEFINER"),
+      esperado.includes(" SECURITY DEFINER "),
+      `${item}: SECURITY`,
+    );
+    assertStringIncludes(sql, `'${item}', '${esperado}'`);
+  }
+  // permissões: o REVOKE/GRANT das migrations é a fonte do `esperado` de EXECUTE
+  assertStringIncludes(
+    foto,
+    "REVOKE ALL ON FUNCTION public.pedido__foto_da_cobranca_ao_cancelar() FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assert(
+    !/GRANT EXECUTE ON FUNCTION public\.pedido__foto_da_cobranca_ao_cancelar/.test(
+      foto,
+    ),
+    "a função do gatilho não recebe EXECUTE de ninguém",
+  );
+  assertStringIncludes(
+    sql,
+    "'pedido__foto_da_cobranca_ao_cancelar: EXECUTE para PUBLIC, anon, authenticated e service_role', 'nenhum'",
+  );
+  assertStringIncludes(
+    pix,
+    "REVOKE ALL ON FUNCTION public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamptz, boolean, timestamptz, text, integer, text, integer, text, text) FROM PUBLIC, anon, authenticated, service_role;",
+  );
+  assertStringIncludes(
+    sql,
+    "'cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role', 'nenhum'",
+  );
+  // a RPC mantém a ACL da 20261205 (CREATE OR REPLACE): só authenticated; a varredura, fechada para os três
+  assertStringIncludes(
+    pix,
+    "NOT has_function_privilege('authenticated', to_regprocedure('public.vaga_do_cupom_presa(text)'), 'EXECUTE')",
+  );
+  assertStringIncludes(
+    sql,
+    "'vaga_do_cupom_presa: EXECUTE', 'PUBLIC=nao anon=nao authenticated=sim service_role=nao'",
+  );
+  assertStringIncludes(
+    sql,
+    "'devolver_cupons_de_pedidos_mortos: EXECUTE', 'PUBLIC=nao anon=nao authenticated=nao'",
+  );
+  // o gatilho: tempo, evento, coluna, WHEN, função e habilitado (o mesmo texto do pós-voo da foto)
+  assertStringIncludes(
+    foto,
+    "AFTER UPDATE OF status ON public.marketplace_orders",
+  );
+  assertStringIncludes(foto, "FOR EACH ROW");
+  assertStringIncludes(
+    foto,
+    "WHEN (NEW.status = 'cancelled' AND OLD.status IS DISTINCT FROM 'cancelled')",
+  );
+  assertStringIncludes(
+    foto,
+    "EXECUTE FUNCTION public.pedido__foto_da_cobranca_ao_cancelar();",
+  );
+  assertStringIncludes(foto, "t.tgtype = 17 AND t.tgenabled = 'O'");
+  const quando =
+    "new.status=''cancelled''::textandold.statusisdistinctfrom''cancelled''::text";
+  assertStringIncludes(foto, `= '${quando}'`);
+  assertStringIncludes(sql, `= '${quando}'`);
+  assertStringIncludes(
+    sql,
+    "'AFTER UPDATE OF status FOR EACH ROW'",
+    "momento, evento e coluna",
+  );
+  assertStringIncludes(
+    sql,
+    "'new.status = ''cancelled'' AND old.status IS DISTINCT FROM ''cancelled'''",
+  );
+  assertStringIncludes(
+    sql,
+    "'public.pedido__foto_da_cobranca_ao_cancelar()'",
+    "função executada",
+  );
+  assertStringIncludes(
+    sql,
+    "t.tgname = 'tr_pedido_foto_da_cobranca_ao_cancelar'",
+  );
+  // o auxiliar de 13 parâmetros é o que a migration cria e o de 9 é o que ela apaga
+  assertStringIncludes(
+    pix,
+    "DROP FUNCTION IF EXISTS public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamptz, boolean, timestamptz, text, integer);",
+  );
+  assertStringIncludes(
+    sql,
+    "public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer,text,integer,text,text)",
+  );
+  assertStringIncludes(
+    sql,
+    "public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer)",
+  );
+  // o job da varredura: o mesmo nome e horário da 12a e da 20260901000000
+  assertStringIncludes(sql, "j.jobname = 'devolver-cupons-de-pedidos-mortos'");
+  assertStringIncludes(sql, "'ativo */15 * * * *'");
+});
+
+Deno.test("16a/16b — o rpc-ci.yml roda a prova viva do portão do PIX anulado no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const prova = "cupom-pix-anulado-portao-viva";
+  const linhas = bloqueante.split("\n");
+  const k = linhas.indexOf(
+    `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+  );
+  assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+  assertEquals(
+    linhas[k - 1],
+    "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+  );
+  assert(linhas[k - 2].startsWith("      - name: "));
+  assert(
+    bloqueante.indexOf(linhas.at(k) ?? "") > bloqueante.indexOf("id: aplica"),
+  );
+  assert(!yaml.slice(inicioInformacional).includes(prova));
+  // a prova do comportamento (foto, vaga, ida e volta) continua no mesmo job, e o portão roda uma vez só
+  assertStringIncludes(
+    bloqueante,
+    "tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-viva.cjs",
+  );
+  assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_16A}.sql`,
+      `scripts/publicacao/consultas/${NOME_16B}.sql`,
       "scripts/frota/canais-de-backend.json",
       "scripts/frota/publicar-release.mjs",
       "supabase/migrations/**",
