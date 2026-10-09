@@ -341,6 +341,13 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         Banco: ele apaga a linha da versao do ledger na mesma transacao), NUNCA por `psql` direto: a
         coluna voltaria com o ledger ainda dizendo "aplicada" e o portao PARARIA; ninguem tem
         credencial `psql` direta nas lojas.
+      - **Quanto tempo a tabela fica travada (aplicar FORA DO HORARIO DE PICO):** a trava exclusiva
+        do `DROP COLUMN` fica ate o `COMMIT`, e no envelope do workflow isso inclui a impressao digital
+        DEPOIS (md5 de 11 tabelas do dinheiro; `coupons` nao e uma delas, mas a trava segue ate o
+        `COMMIT` do mesmo jeito): validar cupom no checkout ESPERA todo esse tempo, nao so a fracao
+        de segundo do `DROP`. O `statement_timeout` de 30 s da migration vale
+        ate o fim da transacao e tambem limita cada comando seguinte do envelope: se algum passar
+        disso o apply FALHA sem gravar nada e basta repetir.
       - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
         rodar a `14a` e a `14b` DEPOIS da ultima mudanca nesses arquivos.
       - **Limites:** `tests/banco/contador-duplicado-portao-viva.cjs` e

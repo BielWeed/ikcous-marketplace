@@ -90,6 +90,15 @@
 -- O DROP e sem CASCADE de proposito: se algum dependente escapasse do pre-voo, o
 -- Postgres recusa em vez de apagar o objeto junto.
 --
+-- QUANTO TEMPO A TABELA FICA TRAVADA (leia antes de aplicar). A trava de ACCESS EXCLUSIVE
+-- do DROP nao termina com o comando: fica ate o COMMIT. No envelope do workflow isso
+-- inclui a impressao digital DEPOIS (md5 de 11 tabelas do dinheiro; `coupons` nao esta entre
+-- elas, mas a trava segue ate o COMMIT do mesmo jeito), entao o checkout validando cupom
+-- ESPERA todo esse tempo, nao so a fracao de segundo do DROP.
+-- O `SET LOCAL statement_timeout = '30s'` vale ate o fim da transacao, e portanto tambem
+-- limita cada comando seguinte do envelope: se algum passar de 30 s o apply FALHA sem gravar
+-- nada (e basta repetir). Aplicar FORA DO HORARIO DE PICO.
+--
 -- 6. IDEMPOTENCIA
 --
 -- Coluna ja ausente: o pre-voo volta sem recusar, o DROP COLUMN IF EXISTS nao faz
