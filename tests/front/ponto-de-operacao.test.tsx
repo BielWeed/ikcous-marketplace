@@ -80,7 +80,7 @@ describe("PontoDeOperacao", () => {
     expect(ponto.getAttribute("title")).toBe("Sincronizando dados...");
   });
 
-  it("conexão lenta fica âmbar e boa fica sky, com a latência no tooltip", () => {
+  it("conexão lenta fica âmbar e boa fica sky, com o tooltip em palavras (sem milissegundo)", () => {
     const lento = montar({
       isOffline: false,
       quality: "slow",
@@ -88,7 +88,9 @@ describe("PontoDeOperacao", () => {
       showSyncFlash: false,
     });
     expect(lento.className).toContain("bg-amber-500");
-    expect(lento.getAttribute("title")).toContain("lenta (900ms)");
+    expect(lento.getAttribute("title")).toBe(
+      "Tempo real ativo — conexão lenta",
+    );
 
     const bom = montar({
       isOffline: false,
@@ -97,7 +99,7 @@ describe("PontoDeOperacao", () => {
       showSyncFlash: false,
     });
     expect(bom.className).toContain("bg-sky-400");
-    expect(bom.getAttribute("title")).toBe("Tempo real ativo — latência 120ms");
+    expect(bom.getAttribute("title")).toBe("Tempo real ativo — conexão boa");
   });
 
   it("fora do provider não quebra: mede a conexão por conta própria", () => {
@@ -111,5 +113,19 @@ describe("PontoDeOperacao", () => {
     });
     const ponto = container.querySelector("[data-testid='ponto-de-operacao']")!;
     expect(ponto.className).toContain("bg-emerald-500");
+    expect(ponto.getAttribute("title")).toBe("Tempo real ativo — conexão boa");
+  });
+
+  it("nenhum estado mostra latência ou milissegundo ao lojista", () => {
+    for (const quality of ["excellent", "good", "slow"] as const) {
+      const ponto = montar({
+        isOffline: false,
+        quality,
+        latency: 345,
+        showSyncFlash: false,
+      });
+      expect(ponto.getAttribute("title")).not.toMatch(/lat[eê]ncia|\d\s*ms/i);
+      expect(ponto.getAttribute("aria-label")).not.toMatch(/\d\s*ms/i);
+    }
   });
 });
