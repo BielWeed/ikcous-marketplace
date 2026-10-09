@@ -25,17 +25,28 @@
  * `active` que o pg_cron real tem: as bases ganham a coluna (default true, como no
  * pg_cron real) antes de cada consulta — sem isso a consulta nem parseia aqui.
  *
+ * DOIS ESTADOS (A1 do desenho do PIX anulado, 09/10/2026): depois das migrations 20261209000000 e
+ * 20261210000000 as três funções trocam de corpo e o auxiliar passa de 9 a 13 parâmetros. A 12a aceita
+ * os DOIS estados, cada um INTEIRO (o auxiliar decide o estado; a RPC e a varredura têm de ser do mesmo),
+ * senão ficaria vermelha para sempre depois do lote 16 (com a loja servindo dois SHAs o portão exige a
+ * prova de TODO lote). Esta prova cobre os dois: os negativos por linha rodam no estado 20261206
+ * (`aplicado`), um bloco próprio roda no estado 20261210 (`m2`) e os estados MISTURADOS reprovam.
+ *
  * BASES (montadas aqui, pelos mesmos scripts do rpc-ci.yml):
- *   cheio     a árvore inteira de migrations (com as duas);
- *   pre       a árvore SEM as duas (o estado de uma loja antes do apply);
- *   aplicado  `pre` + os DOIS ARQUIVOS aplicados de verdade, em ordem (LF);
- *   crlf      `pre` + os dois arquivos com fim de linha CRLF (checkout Windows);
+ *   cheio     a árvore inteira de migrations (o estado 20261210: com as quatro, 1205, 1206, 1209 e 1210);
+ *   pre       a árvore SEM as quatro (o estado de uma loja antes do apply);
+ *   aplicado  `pre` + a 20261205000000 e a 20261206000000 aplicadas de verdade, em ordem (LF): o
+ *             estado 20261206;
+ *   crlf      `pre` + as duas com fim de linha CRLF (checkout Windows);
+ *   m2        `aplicado` + a 20261209000000 e a 20261210000000 aplicadas (LF): o estado 20261210, que
+ *             tem de ser INDISTINGUÍVEL de `cheio`;
+ *   m2crlf    `crlf` + as duas últimas em CRLF;
  *   parcial   `pre` + SÓ a 20261205000000 (a 20261206000000 falhou ou não rodou).
  *
  * CASOS (cada um com a LINHA exata que reprova; o veredito real, com rol=ok e o
  * ok_false esperado, é conferido em TODO caso):
- *  POSITIVOS  12b em `pre`; 12a em `cheio`, em `aplicado` (IGUAL linha a linha ao
- *             `cheio`) e em `crlf`; as duas com o papel mínimo e com search_path
+ *  POSITIVOS  12b em `pre`; 12a em `cheio` (estado 20261210), em `m2` (IGUAL linha a linha ao
+ *             `cheio`), em `m2crlf`, em `aplicado` (estado 20261206) e em `crlf`; as duas com o papel mínimo e com search_path
  *             trocado e objetos-isca de mesmo nome em outro schema; o dono da
  *             varredura OUTRO papel mas com EXECUTE no auxiliar (positivo: a linha
  *             mede o privilégio, não a igualdade de donos); o papel que sofre a RLS
@@ -134,6 +145,8 @@ const N_LINHAS = { [A]: 24, [B]: 10 };
 
 const SIG_AUX =
   "public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer)";
+const SIG_AUX13 =
+  "public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer,text,integer,text,text)";
 const SIG_RPC = "public.vaga_do_cupom_presa(text)";
 const SIG_VAR = "public.devolver_cupons_de_pedidos_mortos()";
 const SIG_USO = "public.devolver_uso_cupom(uuid)";
@@ -164,6 +177,22 @@ const CORPOS = {
   ),
   var: corpoDe(
     lerLF(ARQ2),
+    "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()",
+    "$devolver_cupons_mortos$",
+  ),
+  // os corpos do estado 20261210 (a migration 20261210000000)
+  aux13: corpoDe(
+    lerLF(ARQ_M3),
+    "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(",
+    "$function$",
+  ),
+  rpc13: corpoDe(
+    lerLF(ARQ_M3),
+    "CREATE OR REPLACE FUNCTION public.vaga_do_cupom_presa(",
+    "$function$",
+  ),
+  var13: corpoDe(
+    lerLF(ARQ_M3),
     "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()",
     "$devolver_cupons_mortos$",
   ),
@@ -750,8 +779,8 @@ async function main() {
     const sonda = await usar(MOLDE, async (c) => ({
       funcoes: (
         await c.query(
-          "SELECT to_regprocedure($1) IS NOT NULL AS a, to_regprocedure($2) IS NOT NULL AS r, to_regprocedure($3) IS NOT NULL AS v",
-          [SIG_AUX, SIG_RPC, SIG_VAR],
+          "SELECT to_regprocedure($1) IS NOT NULL AS a, to_regprocedure($2) IS NOT NULL AS r, to_regprocedure($3) IS NOT NULL AS v, to_regprocedure($4) IS NOT NULL AS a9",
+          [SIG_AUX13, SIG_RPC, SIG_VAR, SIG_AUX],
         )
       ).rows[0],
       eu: (
@@ -777,8 +806,8 @@ async function main() {
     }));
     assert.deepEqual(
       sonda.funcoes,
-      { a: true, r: true, v: true },
-      "precondição: a árvore inteira tem as três funções",
+      { a: true, r: true, v: true, a9: false },
+      "precondição: a árvore inteira tem as três funções NO ESTADO 20261210 (auxiliar de 13 parâmetros, o de 9 não existe)",
     );
     assert.equal(
       sonda.eu,
@@ -797,14 +826,35 @@ async function main() {
       "precondição: o stub do pg_cron local NÃO tem a coluna active (esta prova a acrescenta)",
     );
     // o que a 12a e a 12b aceitam é o que os ARQUIVOS das migrations definem
-    for (const h of [HASH.aux, HASH.rpc, HASH.var])
+    for (const h of [
+      HASH.aux,
+      HASH.rpc,
+      HASH.var,
+      HASH.aux13,
+      HASH.rpc13,
+      HASH.var13,
+    ])
       assert.ok(SQL[A].includes(`'${h.lf}'`) && SQL[A].includes(`'${h.crlf}'`));
+    assert.equal(
+      new Set(
+        [
+          HASH.aux,
+          HASH.rpc,
+          HASH.var,
+          HASH.aux13,
+          HASH.rpc13,
+          HASH.var13,
+        ].flatMap((h) => [h.lf, h.crlf]),
+      ).size,
+      12,
+      "os doze hashes que a 12a aceita são distintos",
+    );
     assert.ok(
       SQL[B].includes(`'${HASH.var970.lf}'`) &&
         SQL[B].includes(`'${HASH.var970.crlf}'`),
     );
     ok(
-      "precondição: banco migrado com a árvore inteira (as três funções presentes), vazio, conexão superusuário, 3 papéis de fábrica, stub do pg_cron sem `active`; os sha256 (LF e CRLF) que a 12a e a 12b aceitam são os dos ARQUIVOS das migrations",
+      "precondição: banco migrado com a árvore inteira (as três funções no estado 20261210, o auxiliar de 9 parâmetros não existe), vazio, conexão superusuário, 3 papéis de fábrica, stub do pg_cron sem `active`; os doze sha256 (LF e CRLF) que a 12a aceita (20261205/06 e 20261210) e os dois que a 12b aceita são os dos ARQUIVOS das migrations",
     );
   }
 
@@ -847,21 +897,77 @@ async function main() {
   aplicarMigracoes(crlf, [ARQ1, ARQ2], { crlf: true });
   const parcial = await clonar("parcial", pre);
   aplicarMigracoes(parcial, [ARQ1]);
+  // o estado 20261210: as duas migrations seguintes, aplicadas de verdade sobre o estado 20261206
+  const m2 = await clonar("m2", aplicado);
+  aplicarMigracoes(m2, [ARQ_FOTO, ARQ_M3]);
+  const m2crlf = await clonar("m2crlf", crlf);
+  aplicarMigracoes(m2crlf, [ARQ_FOTO, ARQ_M3], { crlf: true });
   ok(
-    "bases montadas: cheio (árvore inteira), pre (sem as duas: sem as funções novas, varredura da 20260970, job */15 ativo), aplicado (pre + os DOIS ARQUIVOS aplicados em ordem, LF), crlf (idem, arquivos em CRLF) e parcial (pre + só a 20261205000000)",
+    "bases montadas: cheio (árvore inteira = estado 20261210), pre (sem as quatro: sem as funções novas, varredura da 20260970, job */15 ativo), aplicado (pre + 20261205 e 20261206 aplicadas em ordem, LF = estado 20261206), crlf (idem, em CRLF), m2 (aplicado + 20261209 e 20261210 de verdade), m2crlf (crlf + as duas em CRLF) e parcial (pre + só a 20261205000000)",
   );
 
   // ----------------------------------------------------------- POSITIVOS
   const rowsCheio = await rodar(cheio, A);
-  await exigirPositiva(A, "12a em cheio", rowsCheio);
+  await exigirPositiva(A, "12a em cheio (estado 20261210)", rowsCheio);
+  {
+    // o estado 20261210 (A1): a árvore inteira, os ARQUIVOS aplicados sobre o estado 20261206 e os
+    // mesmos em CRLF; o `esperado` de cada linha de corpo é o LF DO ESTADO decidido pelo auxiliar
+    const rowsM2 = await rodar(m2, A);
+    await exigirPositiva(A, "12a em m2 (estado 20261210)", rowsM2);
+    assert.deepEqual(
+      rowsM2,
+      rowsCheio,
+      "o apply isolado dos ARQUIVOS (1209 e 1210) sobre o estado 20261206 é indistinguível da árvore inteira",
+    );
+    for (const [item, chave] of [
+      [L.auxHash, "aux13"],
+      [L.rpcHash, "rpc13"],
+      [L.varHash, "var13"],
+    ]) {
+      assert.equal(linha(rowsM2, item).vivo, HASH[chave].lf, item);
+      assert.equal(linha(rowsM2, item).esperado, HASH[chave].lf, item);
+    }
+    assert.equal(linha(rowsM2, L.auxSobre).vivo, "1");
+    assert.equal(linha(rowsM2, L.auxAcl).vivo, "nenhum");
+    assert.equal(linha(rowsM2, L.donos).vivo, "sim");
+    assert.equal(linha(rowsM2, L.job).vivo, "ativo */15 * * * *");
+    const rowsM2Crlf = await rodar(m2crlf, A);
+    await exigirPositiva(
+      A,
+      "12a em m2crlf (estado 20261210, CRLF)",
+      rowsM2Crlf,
+    );
+    for (const [item, chave] of [
+      [L.auxHash, "aux13"],
+      [L.rpcHash, "rpc13"],
+      [L.varHash, "var13"],
+    ])
+      assert.equal(linha(rowsM2Crlf, item).vivo, HASH[chave].lf, item);
+    await usar(m2crlf, async (c) => {
+      const h = (
+        await c.query(
+          `SELECT ${HASH_DE(SIG_AUX13)} AS a, ${HASH_DE(SIG_RPC)} AS r, ${HASH_DE(SIG_VAR)} AS v`,
+        )
+      ).rows[0];
+      assert.deepEqual(
+        h,
+        { a: HASH.aux13.crlf, r: HASH.rpc13.crlf, v: HASH.var13.crlf },
+        "guarda: os três corpos do estado 20261210 ficaram em CRLF no banco",
+      );
+    });
+    ok(
+      "12a POSITIVA no estado 20261210 (A1: auxiliar de 13 parâmetros e os três corpos novos): na árvore inteira, nos ARQUIVOS 1209 e 1210 aplicados sobre o estado 20261206 (resposta IDÊNTICA linha a linha à da árvore inteira) e com os arquivos em CRLF (corpos gravados em CRLF, hashes CRLF aceitos); o `esperado` das três linhas de corpo é o LF do estado novo",
+    );
+  }
   {
     const rowsAplicado = await rodar(aplicado, A);
-    await exigirPositiva(A, "12a em aplicado", rowsAplicado);
-    assert.deepEqual(
-      rowsAplicado,
-      rowsCheio,
-      "o apply isolado dos ARQUIVOS sobre a base pré é indistinguível da árvore inteira",
-    );
+    await exigirPositiva(A, "12a em aplicado (estado 20261206)", rowsAplicado);
+    for (const [item, chave] of [
+      [L.auxHash, "aux"],
+      [L.rpcHash, "rpc"],
+      [L.varHash, "var"],
+    ])
+      assert.equal(linha(rowsAplicado, item).esperado, HASH[chave].lf, item);
     assert.equal(linha(rowsAplicado, L.auxHash).vivo, HASH.aux.lf);
     assert.equal(linha(rowsAplicado, L.rpcHash).vivo, HASH.rpc.lf);
     assert.equal(linha(rowsAplicado, L.varHash).vivo, HASH.var.lf);
@@ -886,7 +992,7 @@ async function main() {
       );
     });
     ok(
-      "12a POSITIVA (24 linhas, rol=ok, portão POSITIVA) na árvore inteira, nos ARQUIVOS aplicados sobre a base pré (resposta IDÊNTICA linha a linha) e nos arquivos em CRLF (corpos gravados em CRLF, hashes CRLF aceitos)",
+      "12a POSITIVA (24 linhas, rol=ok, portão POSITIVA) no estado 20261206: nos ARQUIVOS 1205 e 1206 aplicados sobre a base pré (o `esperado` das linhas de corpo é o LF de 1205/1206) e nos arquivos em CRLF (corpos gravados em CRLF, hashes CRLF aceitos)",
     );
   }
   {
@@ -1010,7 +1116,7 @@ async function main() {
 
   // ----------------------------------------------------------- 12a: NEGATIVOS
   const db = {};
-  const novo = async (rotulo, sqlMut, guarda, de = cheio) => {
+  const novo = async (rotulo, sqlMut, guarda, de = aplicado) => {
     const nome = await clonar(rotulo, de);
     await mutar(nome, rotulo, sqlMut, guarda);
     return nome;
@@ -1344,7 +1450,7 @@ async function main() {
     L.donos,
   ]);
   // N10 dependências ausentes (renomeadas: sem arrastar quem as usa no catálogo)
-  const renomear = async (rotulo, sql, guarda, de = cheio) =>
+  const renomear = async (rotulo, sql, guarda, de = aplicado) =>
     novo(rotulo, sql, guarda, de);
   db.n10uso = await renomear(
     "n10uso",
@@ -1486,6 +1592,213 @@ async function main() {
       "papel sem USAGE no schema cron: a 12a e a 12b ERRAM (42501) — falha alta, nunca uma resposta positiva",
     );
   }
+
+  // ----------------------------------------------------------- 12a: o estado 20261210 (A1) e os MISTURADOS
+  // A12a decide o estado pelo AUXILIAR (a assinatura de 13 parâmetros) e exige os TRÊS corpos do mesmo
+  // estado. Os negativos acima rodam no estado 20261206; aqui, no 20261210, cada defeito reprova a SUA
+  // linha, e os estados misturados (que não funcionam: a varredura chama o auxiliar com a assinatura do
+  // próprio corpo) reprovam na linha do corpo que destoa.
+  const novoM2 = (rotulo, sqlMut, guarda) => novo(rotulo, sqlMut, guarda, m2);
+  const M2 = {};
+  // sem o auxiliar o estado cai no de 20261206: a RPC e a varredura de 20261210 também destoam
+  M2.aux = await novoM2(
+    "m2aux",
+    `DROP FUNCTION ${SIG_AUX13}`,
+    ausente(SIG_AUX13),
+  );
+  await negativo(A, "M2 auxiliar de 13 parâmetros ausente", M2.aux, [
+    ...AUX_TODAS,
+    L.donos,
+    L.rpcHash,
+    L.varHash,
+  ]);
+  M2.rpcAus = await novoM2(
+    "m2rpcaus",
+    `DROP FUNCTION ${SIG_RPC}`,
+    ausente(SIG_RPC),
+  );
+  await negativo(A, "M2 RPC ausente", M2.rpcAus, [...RPC_TODAS, L.donos]);
+  M2.varAus = await novoM2(
+    "m2varaus",
+    `DROP FUNCTION ${SIG_VAR}`,
+    ausente(SIG_VAR),
+  );
+  await negativo(A, "M2 varredura ausente", M2.varAus, [...VAR_TODAS, L.donos]);
+  // o auxiliar de 9 parâmetros que SOBRA ao lado do de 13 (o DROP da 1210 não valeu, ou alguém o recriou)
+  M2.sobra9 = await novoM2(
+    "m2sobra9",
+    `CREATE FUNCTION public.cupom__vaga_volta_em(uuid, text, text, boolean, timestamptz, boolean, timestamptz, text, integer) RETURNS timestamptz LANGUAGE sql AS $$ SELECT 'infinity'::timestamptz $$`,
+    `${nFuncoes(AUX)} = 2`,
+  );
+  await negativo(A, "M2 sobra o auxiliar de 9 parâmetros", M2.sobra9, [
+    L.auxSobre,
+  ]);
+  // corpo com 1 byte a mais e com um caractere trocado, nas três funções do estado 20261210
+  const m2Corpo = async (rotulo, sig, chave, troca) => {
+    const nome = await novoM2(rotulo, "SELECT 1", "true");
+    await reescreverCorpo(nome, sig, (c) => {
+      if (!troca) return `${c} `;
+      assert.ok(
+        c.includes(troca[0]),
+        `${rotulo}: o trecho ${troca[0]} não existe`,
+      );
+      return c.replace(troca[0], troca[1]);
+    });
+    await mutar(
+      nome,
+      `${rotulo} corpo`,
+      "SELECT 1",
+      `${HASH_DE(sig)} NOT IN ('${HASH[chave].lf}', '${HASH[chave].crlf}')`,
+    );
+    return nome;
+  };
+  M2.auxByte = await m2Corpo("m2auxb", SIG_AUX13, "aux13");
+  await negativo(A, "M2 auxiliar com 1 byte a mais", M2.auxByte, [L.auxHash]);
+  M2.rpcByte = await m2Corpo("m2rpcb", SIG_RPC, "rpc13");
+  await negativo(A, "M2 RPC com 1 byte a mais", M2.rpcByte, [L.rpcHash]);
+  M2.varByte = await m2Corpo("m2varb", SIG_VAR, "var13");
+  await negativo(A, "M2 varredura com 1 byte a mais", M2.varByte, [L.varHash]);
+  M2.auxTroca = await m2Corpo("m2auxt", SIG_AUX13, "aux13", [
+    "24 hours",
+    "25 hours",
+  ]);
+  await negativo(A, "M2 auxiliar com um caractere trocado", M2.auxTroca, [
+    L.auxHash,
+  ]);
+  M2.rpcTroca = await m2Corpo("m2rpct", SIG_RPC, "rpc13", ["+ 15;", "+ 16;"]);
+  await negativo(A, "M2 RPC com um caractere trocado", M2.rpcTroca, [
+    L.rpcHash,
+  ]);
+  M2.varTroca = await m2Corpo("m2vart", SIG_VAR, "var13", [
+    "coupon_usage_returned = TRUE",
+    "coupon_usage_returned = true",
+  ]);
+  await negativo(A, "M2 varredura com um caractere trocado", M2.varTroca, [
+    L.varHash,
+  ]);
+  // ACL, SECURITY e dono no estado 20261210
+  M2.auxPub = await novoM2(
+    "m2auxpub",
+    `GRANT EXECUTE ON FUNCTION ${SIG_AUX13} TO PUBLIC`,
+    acl(SIG_AUX13, 0),
+  );
+  {
+    const r = await negativo(
+      A,
+      "M2 auxiliar com EXECUTE para PUBLIC",
+      M2.auxPub,
+      [L.auxAcl],
+    );
+    assert.equal(
+      linha(r, L.auxAcl).vivo,
+      "PUBLIC,anon,authenticated,service_role",
+    );
+  }
+  M2.rpcAuth = await novoM2(
+    "m2rpcauth",
+    `REVOKE EXECUTE ON FUNCTION ${SIG_RPC} FROM authenticated`,
+    `NOT ${exec("authenticated", SIG_RPC)}`,
+  );
+  await negativo(A, "M2 RPC sem EXECUTE para authenticated", M2.rpcAuth, [
+    L.rpcAuth,
+  ]);
+  M2.varAuth = await novoM2(
+    "m2varauth",
+    `GRANT EXECUTE ON FUNCTION ${SIG_VAR} TO authenticated`,
+    exec("authenticated", SIG_VAR),
+  );
+  await negativo(A, "M2 varredura com EXECUTE para authenticated", M2.varAuth, [
+    L.varAuth,
+  ]);
+  M2.rpcInv = await novoM2(
+    "m2rpcinv",
+    `ALTER FUNCTION ${SIG_RPC} SECURITY INVOKER`,
+    `(SELECT NOT prosecdef FROM pg_proc WHERE oid = to_regprocedure('${SIG_RPC}'))`,
+  );
+  await negativo(A, "M2 RPC SECURITY INVOKER", M2.rpcInv, [L.rpcDef]);
+  M2.donoVar = await novoM2(
+    "m2donovar",
+    `GRANT CREATE ON SCHEMA public TO ${P.dono};
+     ALTER FUNCTION ${SIG_VAR} OWNER TO ${P.dono}`,
+    `(SELECT pg_get_userbyid(proowner) = '${P.dono}' FROM pg_proc WHERE oid = to_regprocedure('${SIG_VAR}'))`,
+  );
+  await negativo(
+    A,
+    "M2 dono da varredura sem EXECUTE no auxiliar de 13 parâmetros",
+    M2.donoVar,
+    [L.donos],
+  );
+  // OS ESTADOS MISTURADOS: nenhum funciona, e cada um reprova na linha do corpo que destoa do estado
+  // decidido pelo auxiliar (o `esperado` é o do estado, o `vivo` é o corpo de verdade)
+  const trocaCorpo = async (rotulo, de, sig, corpo, guardaHash) => {
+    const nome = await novo(rotulo, "SELECT 1", "true", de);
+    await reescreverCorpo(nome, sig, () => corpo);
+    await mutar(nome, `${rotulo} corpo trocado`, "SELECT 1", guardaHash);
+    return nome;
+  };
+  M2.mixVar = await trocaCorpo(
+    "m2mixvar",
+    m2,
+    SIG_VAR,
+    CORPOS.var,
+    `${HASH_DE(SIG_VAR)} = '${HASH.var.lf}'`,
+  );
+  {
+    const r = await negativo(
+      A,
+      "MISTURADO: auxiliar de 13 parâmetros com a varredura de 20261206",
+      M2.mixVar,
+      [L.varHash],
+    );
+    assert.equal(linha(r, L.varHash).vivo, HASH.var.lf);
+    assert.equal(linha(r, L.varHash).esperado, HASH.var13.lf);
+  }
+  M2.mixRpc = await trocaCorpo(
+    "m2mixrpc",
+    m2,
+    SIG_RPC,
+    CORPOS.rpc,
+    `${HASH_DE(SIG_RPC)} = '${HASH.rpc.lf}'`,
+  );
+  await negativo(
+    A,
+    "MISTURADO: auxiliar de 13 parâmetros com a RPC de 20261205",
+    M2.mixRpc,
+    [L.rpcHash],
+  );
+  M2.mixVar13 = await trocaCorpo(
+    "m2mixvar13",
+    aplicado,
+    SIG_VAR,
+    CORPOS.var13,
+    `${HASH_DE(SIG_VAR)} = '${HASH.var13.lf}'`,
+  );
+  {
+    const r = await negativo(
+      A,
+      "MISTURADO: auxiliar de 9 parâmetros com a varredura de 20261210",
+      M2.mixVar13,
+      [L.varHash],
+    );
+    assert.equal(linha(r, L.varHash).vivo, HASH.var13.lf);
+    assert.equal(linha(r, L.varHash).esperado, HASH.var.lf);
+  }
+  M2.mixRpc13 = await trocaCorpo(
+    "m2mixrpc13",
+    aplicado,
+    SIG_RPC,
+    CORPOS.rpc13,
+    `${HASH_DE(SIG_RPC)} = '${HASH.rpc13.lf}'`,
+  );
+  await negativo(
+    A,
+    "MISTURADO: auxiliar de 9 parâmetros com a RPC de 20261210",
+    M2.mixRpc13,
+    [L.rpcHash],
+  );
+  ok(
+    "12a no estado 20261210 (A1) reprova EXATAMENTE a linha que divergiu: auxiliar de 13 parâmetros ausente (as linhas dele, os donos, e a RPC e a varredura novas que destoam do estado que sobra), RPC ou varredura ausentes, o auxiliar de 9 parâmetros que sobra ao lado do de 13 (só as sobrecargas), 1 byte a mais e um caractere trocado nas três funções, EXECUTE indevido, SECURITY INVOKER e dono sem EXECUTE no auxiliar de 13; e os QUATRO estados misturados (13 parâmetros com a varredura ou a RPC de 1205/1206, e 9 parâmetros com a varredura ou a RPC de 1210) reprovam a linha do corpo que destoa",
+  );
 
   // ----------------------------------------------------------- 12b: NEGATIVOS
   const novoPre = (rotulo, sqlMut, guarda) => novo(rotulo, sqlMut, guarda, pre);
@@ -1845,6 +2158,98 @@ async function main() {
     cego,
     { papel: P.cego },
   );
+  // 12a no estado 20261210 (A1): as linhas de corpo e a COERÊNCIA entre os três corpos
+  await ml(
+    "A: auxiliar corpo ignorado (estado 20261210)",
+    A,
+    L.auxHash,
+    M2.auxByte,
+    [L.auxHash],
+  );
+  await ml(
+    "A: RPC corpo ignorado (estado 20261210)",
+    A,
+    L.rpcHash,
+    M2.rpcByte,
+    [L.rpcHash],
+  );
+  await ml(
+    "A: varredura corpo ignorado (estado 20261210)",
+    A,
+    L.varHash,
+    M2.varByte,
+    [L.varHash],
+  );
+  await ml(
+    "A: auxiliar sobrecargas ignorada (sobra o de 9 parâmetros)",
+    A,
+    L.auxSobre,
+    M2.sobra9,
+    [L.auxSobre],
+  );
+  const ACEITA = "f.h IN (s.lf, s.crlf)";
+  const aceitaOutroEstado = (item, outroLf) => {
+    const linhaTexto = textoDaLinha(A, item);
+    assert.ok(linhaTexto.includes(ACEITA), `a linha ${item} não tem ${ACEITA}`);
+    return [
+      [
+        linhaTexto,
+        linhaTexto.replace(ACEITA, `f.h IN (s.lf, s.crlf, '${outroLf}')`),
+      ],
+    ];
+  };
+  await m(
+    "A: a varredura aceita o corpo do OUTRO estado (estado misturado passaria: 13 parâmetros com a varredura de 1206)",
+    A,
+    aceitaOutroEstado(L.varHash, HASH.var.lf),
+    M2.mixVar,
+    [L.varHash],
+  );
+  await m(
+    "A: a varredura aceita o corpo do OUTRO estado (estado misturado passaria: 9 parâmetros com a varredura de 1210)",
+    A,
+    aceitaOutroEstado(L.varHash, HASH.var13.lf),
+    M2.mixVar13,
+    [L.varHash],
+  );
+  await m(
+    "A: a RPC aceita o corpo do OUTRO estado (13 parâmetros com a RPC de 1205)",
+    A,
+    aceitaOutroEstado(L.rpcHash, HASH.rpc.lf),
+    M2.mixRpc,
+    [L.rpcHash],
+  );
+  await m(
+    "A: a RPC aceita o corpo do OUTRO estado (9 parâmetros com a RPC de 1210)",
+    A,
+    aceitaOutroEstado(L.rpcHash, HASH.rpc13.lf),
+    M2.mixRpc13,
+    [L.rpcHash],
+  );
+  const ESTADO = "THEN '20261210' ELSE '20261206' END AS estado";
+  await mutantePositivoTemQueSerPego(
+    "A: o estado é sempre 20261210 (o estado 20261206 deixaria de ser positivo)",
+    A,
+    [[ESTADO, "THEN '20261210' ELSE '20261210' END AS estado"]],
+    aplicado,
+  );
+  await mutantePositivoTemQueSerPego(
+    "A: o estado é sempre 20261206 (o estado 20261210 deixaria de ser positivo)",
+    A,
+    [[ESTADO, "THEN '20261206' ELSE '20261206' END AS estado"]],
+    m2,
+  );
+  await mutantePositivoTemQueSerPego(
+    "A: o auxiliar só vale na assinatura de 9 parâmetros (o estado 20261210 deixaria de ser positivo)",
+    A,
+    [
+      [
+        "to_regprocedure('public.cupom__vaga_volta_em(uuid,text,text,boolean,timestamptz,boolean,timestamptz,text,integer,text,integer,text,text)'),\n                     to_regprocedure(",
+        "NULL::regprocedure,\n                     to_regprocedure(",
+      ],
+    ],
+    m2,
+  );
   // 12b: cada linha ignorada
   await ml("B: auxiliar ausente ignorado", B, LB.auxAus, db.b1aux, [LB.auxAus]);
   await ml("B: RPC ausente ignorada", B, LB.rpcAus, db.b1rpc, [LB.rpcAus]);
@@ -2075,6 +2480,15 @@ async function main() {
       assert.equal(l3.prova.estado, "POSITIVA");
       assert.equal(l3.decisao.acao, "PARAR", JSON.stringify(l3.decisao));
       assert.match(l3.decisao.motivo, /não declara backfillLedger/);
+      // L2b (A1): a MESMA loja depois do lote do PIX anulado (estado 20261210), ledger com as versões:
+      // a 12a segue POSITIVA → NADA (a loja nunca fica com o lote 12 vermelho por ter recebido o 16)
+      const l2b = await decidir(m2, { faltam: [], exigeProva: true });
+      assert.equal(l2b.prova.estado, "POSITIVA");
+      assert.equal(l2b.decisao.acao, "NADA", JSON.stringify(l2b.decisao));
+      // L2c: o estado MISTURADO (13 parâmetros com a varredura de 1206) com o ledger completo → PARAR
+      const l2c = await decidir(M2.mixVar, { faltam: [], exigeProva: true });
+      assert.equal(l2c.prova.estado, "NEGATIVA");
+      assert.equal(l2c.decisao.acao, "PARAR", JSON.stringify(l2c.decisao));
       // L4: ledger com as versões mas a varredura SECURITY INVOKER (12a e 12b negativas) → PARAR
       const l4 = await decidir(db.n4var, { faltam: [], exigeProva: true });
       assert.equal(l4.prova.estado, "NEGATIVA");
@@ -2098,7 +2512,7 @@ async function main() {
       assert.equal(l7.diag.estado, "NEGATIVA");
       assert.equal(l7.decisao.acao, "PARAR", JSON.stringify(l7.decisao));
       ok(
-        "ponta a ponta (conferir-banco.cjs de verdade, HTTP local, papel de leitura, canais-de-backend.json REAL): ANTES do apply 12a NEGATIVA + 12b POSITIVA → APLICAR [20261205000000, 20261206000000] em ordem; depois do apply 12a POSITIVA → NADA; objetos sem as versões no ledger → PARAR (sem backfill, sem apply); varredura SECURITY INVOKER → PARAR; só a 20261205 aplicada → PARAR; 12b negativa (varredura de outro corpo, ou funções novas já existentes com outro corpo) → PARAR; banco inexistente e papel sem USAGE em cron → saída 1, sem veredito, SEM_EVIDENCIA",
+        "ponta a ponta (conferir-banco.cjs de verdade, HTTP local, papel de leitura, canais-de-backend.json REAL): ANTES do apply 12a NEGATIVA + 12b POSITIVA → APLICAR [20261205000000, 20261206000000] em ordem; depois do apply 12a POSITIVA → NADA (nos DOIS estados: 20261206 e 20261210); estado misturado → PARAR; objetos sem as versões no ledger → PARAR (sem backfill, sem apply); varredura SECURITY INVOKER → PARAR; só a 20261205 aplicada → PARAR; 12b negativa (varredura de outro corpo, ou funções novas já existentes com outro corpo) → PARAR; banco inexistente e papel sem USAGE em cron → saída 1, sem veredito, SEM_EVIDENCIA",
       );
     } finally {
       await api.parar();

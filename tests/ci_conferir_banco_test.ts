@@ -5092,6 +5092,9 @@ const MIGRACAO_206 = `${MIGRATIONS_DIR}/20261206000000_a_vaga_do_cupom_nunca_cob
 const ROLLBACK_205 = `${MIGRATIONS_DIR}/rollback-manual-20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql`;
 const ROLLBACK_206 = `${MIGRATIONS_DIR}/rollback-manual-20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql`;
 const MIGRACAO_970 = `${MIGRATIONS_DIR}/20260970000000_cancelamento_respeita_o_envio.sql`;
+// 20261209/20261210 (o PIX anulado): a 12a aceita o estado que elas deixam (A1) e a 16a/16b são o lote delas
+const MIGRACAO_FOTO = `${MIGRATIONS_DIR}/20261209000000_a_foto_da_cobranca_no_cancelamento.sql`;
+const MIGRACAO_PIX = `${MIGRATIONS_DIR}/20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql`;
 
 /** Os corpos (prosrc) das tres funcoes e os sha256 deles, recalculados dos ARQUIVOS. */
 async function hashesDoLote205() {
@@ -5110,10 +5113,34 @@ async function hashesDoLote205() {
   const m1 = await ler(MIGRACAO_205);
   const m2 = await ler(MIGRACAO_206);
   const m970 = await ler(MIGRACAO_970);
+  const m1210 = await ler(MIGRACAO_PIX);
   const par = (c: string) => ({ lf: sha(c), crlf: sha(crlf(c)) });
   return {
     m1,
     m2,
+    m1210,
+    // o estado 20261210 (A1): os três corpos novos
+    aux13: par(
+      corpoDe(
+        m1210,
+        "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(",
+        "$function$",
+      ),
+    ),
+    rpc13: par(
+      corpoDe(
+        m1210,
+        "CREATE OR REPLACE FUNCTION public.vaga_do_cupom_presa(",
+        "$function$",
+      ),
+    ),
+    varredura13: par(
+      corpoDe(
+        m1210,
+        "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()",
+        "$devolver_cupons_mortos$",
+      ),
+    ),
     aux: par(
       corpoDe(
         m2,
@@ -5201,6 +5228,8 @@ for (const [nome, nItens, rol] of [
           "cron.job",
           // CTEs desta consulta
           "f",
+          "est",
+          "hs",
           "tabelas",
           "colunas",
           "varredura",
@@ -5281,22 +5310,54 @@ Deno.test("12a/12b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       ),
     ].sort();
   await t.step(
-    "12a: só os 6 sha256 (auxiliar e varredura da 20261206, RPC da 20261205; LF e CRLF), cada LF como o esperado da sua linha",
+    "12a: só os 12 sha256 (auxiliar e varredura da 20261206, RPC da 20261205, e os três da 20261210; LF e CRLF), 12 distintos, cada LF na tabela do SEU estado",
     () => {
-      assertEquals(
-        hex64(sql12a),
-        [
-          h.aux.lf,
-          h.aux.crlf,
-          h.rpc.lf,
-          h.rpc.crlf,
-          h.varredura.lf,
-          h.varredura.crlf,
-        ].sort(),
-      );
+      const todos = [
+        h.aux,
+        h.rpc,
+        h.varredura,
+        h.aux13,
+        h.rpc13,
+        h.varredura13,
+      ].flatMap((x) => [x.lf, x.crlf]);
+      assertEquals(new Set(todos).size, 12);
+      assertEquals(hex64(sql12a), [...todos].sort());
       const limpo = sqlSemComentarios(sql12a);
-      for (const lf of [h.aux.lf, h.rpc.lf, h.varredura.lf])
-        assertStringIncludes(limpo, `'${lf}',`, "o LF tem de ser o esperado");
+      // a tabela `hs`: uma linha por (estado, função), com o LF e o CRLF
+      for (const [estado, chave, x] of [
+        ["20261206", "aux", h.aux],
+        ["20261206", "rpc", h.rpc],
+        ["20261206", "var", h.varredura],
+        ["20261210", "aux", h.aux13],
+        ["20261210", "rpc", h.rpc13],
+        ["20261210", "var", h.varredura13],
+      ] as Array<[string, string, { lf: string; crlf: string }]>)
+        assertStringIncludes(
+          limpo,
+          `('${estado}', '${chave}', '${x.lf}', '${x.crlf}')`,
+          `${estado}/${chave}: o LF e o CRLF da linha do estado`,
+        );
+      // o `esperado` de cada linha de corpo vem da tabela do estado decidido, nunca de um literal solto
+      for (const item of [
+        "cupom__vaga_volta_em: corpo (sha256)",
+        "vaga_do_cupom_presa: corpo (sha256)",
+        "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+      ]) {
+        const i = limpo.indexOf(`'${item}'`);
+        assert(i >= 0, `falta a linha ${item}`);
+        const linha = limpo.slice(i, limpo.indexOf("UNION ALL", i));
+        assert(
+          !/'[0-9a-f]{64}'/.test(linha),
+          `${item}: a linha não pode ter hash literal`,
+        );
+        assertStringIncludes(linha, "(SELECT s.lf FROM hs s WHERE s.chave = ");
+        assertStringIncludes(linha, "f.h IN (s.lf, s.crlf)");
+      }
+      // o estado é decidido pelo auxiliar de 13 parâmetros
+      assertStringIncludes(
+        limpo,
+        "THEN '20261210' ELSE '20261206' END AS estado",
+      );
     },
   );
   await t.step(
@@ -5332,6 +5393,23 @@ Deno.test("12a/12b — os hashes são EXATAMENTE os dos corpos que os arquivos d
       const rb206 = await Deno.readTextFile(ROLLBACK_206);
       for (const x of [h.aux.lf, h.aux.crlf, h.varredura.lf, h.varredura.crlf])
         assertStringIncludes(rb206, `'${x}'`);
+    },
+  );
+  await t.step(
+    "os três hashes de 20261210 (LF e CRLF) são os que o pós-voo da própria 20261210000000 aceita; os de 20261205/20261206 são os que o pré-voo dela aceita (a 12a aceita os dois estados, cada um inteiro)",
+    () => {
+      const pos = h.m1210.slice(
+        h.m1210.indexOf("DO $posvoo_20261210$"),
+        h.m1210.indexOf("$posvoo_20261210$;"),
+      );
+      for (const x of [h.aux13, h.rpc13, h.varredura13])
+        for (const y of [x.lf, x.crlf]) assertStringIncludes(pos, `'${y}'`);
+      const pre = h.m1210.slice(
+        h.m1210.indexOf("DO $preflight_20261210$"),
+        h.m1210.indexOf("$preflight_20261210$;"),
+      );
+      for (const x of [h.aux, h.rpc, h.varredura])
+        for (const y of [x.lf, x.crlf]) assertStringIncludes(pre, `'${y}'`);
     },
   );
 });
@@ -6365,8 +6443,6 @@ Deno.test("15a/15b — o rpc-ci.yml roda a prova viva do portão dos cupons do c
 // Postgres real está em tests/banco/cupom-pix-anulado-portao-viva.cjs (rodado no rpc-ci.yml).
 const NOME_16A = "16a-conferir-pix-anulado-aplicado";
 const NOME_16B = "16b-antes-pix-anulado-foto-ausente";
-const MIGRACAO_FOTO = `${MIGRATIONS_DIR}/20261209000000_a_foto_da_cobranca_no_cancelamento.sql`;
-const MIGRACAO_PIX = `${MIGRATIONS_DIR}/20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql`;
 
 /** O que cada consulta de 16 pode ler: catálogo, o agendador e as CTEs da própria consulta. Nenhuma tabela de dados. */
 const PERMITIDOS_16A = [
