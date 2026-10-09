@@ -12,8 +12,10 @@
 import { Button } from "@/components/ui/button";
 import type { ResultadoDaAnulacao } from "@/hooks/useAnularVendaDoBalcao";
 import {
+  FRASE_MOTIVO_OBRIGATORIO,
   MOTIVO_MAXIMO_DA_ANULACAO,
   mensagemDaFalhaDaAnulacao,
+  motivoTemTexto,
   orientacaoDeDevolucao,
 } from "@/lib/anulacao-do-balcao";
 import { formatCurrency } from "@/lib/utils";
@@ -123,6 +125,11 @@ export function AnularVendaDoBalcao({
   async function confirmar(): Promise<void> {
     const texto = motivo.trim();
     if (texto === "" || emVoo.current) return;
+    // Só invisíveis (ex.: espaço de largura zero) não é motivo; o banco também recusa.
+    if (!motivoTemTexto(texto)) {
+      setErro(FRASE_MOTIVO_OBRIGATORIO);
+      return;
+    }
     emVoo.current = true;
     setEnviando(true);
     setErro(null);

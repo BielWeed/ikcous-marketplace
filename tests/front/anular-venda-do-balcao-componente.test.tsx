@@ -124,6 +124,23 @@ describe("AnularVendaDoBalcao", () => {
     expect(aoAnular).not.toHaveBeenCalled();
   });
 
+  it("motivo só de caractere invisível (espaço de largura zero): o botão habilita, mas confirmar NÃO chama a RPC e mostra a mesma frase do motivo vazio", async () => {
+    const aoAnular = vi.fn();
+    await montar(aoAnular);
+    await abrir();
+    await act(async () => digitarMotivo(String.fromCharCode(0x200b).repeat(3)));
+    await confirmar();
+    expect(aoAnular).not.toHaveBeenCalled();
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toBe(
+      "Informe o motivo para anular a venda.",
+    );
+    // escrever um motivo de verdade limpa o impedimento
+    await act(async () => digitarMotivo("engano"));
+    aoAnular.mockResolvedValue({ orderId: "p1", jaAnulada: false });
+    await confirmar();
+    expect(aoAnular).toHaveBeenCalledWith("engano");
+  });
+
   it("o campo do motivo aceita no máximo 500 caracteres (o teto da RPC)", async () => {
     await montar(vi.fn());
     await abrir();

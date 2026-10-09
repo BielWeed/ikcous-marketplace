@@ -18,6 +18,14 @@ import type { Order } from "@/types";
 /** O teto do motivo na RPC (`char_length(v_motivo) > 500` → 22023). */
 export const MOTIVO_MAXIMO_DA_ANULACAO = 500;
 
+export const FRASE_MOTIVO_OBRIGATORIO = "Informe o motivo para anular a venda.";
+
+/** Espelha o banco: o motivo precisa de ao menos uma letra ou um número (um
+ * espaço de largura zero passa no `trim` e não é motivo). */
+export function motivoTemTexto(motivo: string): boolean {
+  return /[\p{L}\p{N}]/u.test(motivo);
+}
+
 /** Só o que a regra do botão lê de um pedido. */
 type VendaAnulavel = Pick<
   Order,

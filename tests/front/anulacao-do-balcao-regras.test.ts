@@ -5,6 +5,7 @@
 import {
   MOTIVO_MAXIMO_DA_ANULACAO,
   mensagemDaFalhaDaAnulacao,
+  motivoTemTexto,
   orientacaoDeDevolucao,
   podeAnularVendaDoBalcao,
 } from "@/lib/anulacao-do-balcao";
@@ -153,6 +154,10 @@ describe("mensagemDaFalhaDaAnulacao — português do lojista, sem código nem j
       ["22023", "Esta venda não pode ser anulada aqui."],
       ["22023", "Esta venda tem devolução registrada; resolva pela devolução."],
       ["22023", "Informe o motivo para anular a venda."],
+      [
+        "22023",
+        "O recebimento desta venda foi desfeito e refeito hoje; por segurança ela não pode ser anulada aqui. Registre uma devolução.",
+      ],
       ["42501", "Acesso negado: só a loja anula venda do balcão."],
     ]) {
       expect(mensagemDaFalhaDaAnulacao({ code, message })).toBe(message);
@@ -208,6 +213,28 @@ describe("orientacaoDeDevolucao — o app não devolve o dinheiro, e a tela diz 
     expect(orientacaoDeDevolucao("cash", Number.NaN)).toBe(
       "A venda não tinha valor: não há dinheiro a devolver.",
     );
+  });
+});
+
+describe("motivoTemTexto — espelha o banco: ao menos uma letra ou número", () => {
+  it("aceita letras (inclusive só acentuadas), números e texto com emoji", () => {
+    for (const m of ["engano", "çãé", "ÇÃO", "123", "a😀", "erro no caixa"]) {
+      expect(motivoTemTexto(m)).toBe(true);
+    }
+  });
+
+  it("recusa vazio, pontuação, emoji e caracteres invisíveis", () => {
+    for (const m of [
+      "",
+      "?!... --",
+      "😀😀",
+      String.fromCharCode(0x200b).repeat(3),
+      String.fromCharCode(0xfeff),
+      String.fromCharCode(0x2800),
+      ` ${String.fromCharCode(0x200b)} `,
+    ]) {
+      expect(motivoTemTexto(m)).toBe(false);
+    }
   });
 });
 
