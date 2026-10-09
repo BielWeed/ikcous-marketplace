@@ -40,7 +40,10 @@ import { useProducts } from "@/hooks/useProducts";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
-import { precisaDeReposicao } from "@/utils/avisos-do-lojista";
+import {
+  LIMIAR_PADRAO_DE_ESTOQUE,
+  precisaDeReposicao,
+} from "@/utils/avisos-do-lojista";
 import { haptic } from "@/utils/haptic";
 import { motion } from "framer-motion";
 import {
@@ -1143,16 +1146,16 @@ export const AdminProductsView = memo(function AdminProductsView({
                           </p>
                         </div>
                         <p className="text-[10px] font-medium leading-relaxed text-zinc-500">
-                          Quantidade física disponível. Caso o estoque caia para
-                          5 unidades ou menos, um alerta crítico pisca no
-                          painel.
+                          Quantidade física disponível. Quando o estoque chega
+                          ao mínimo do produto ({LIMIAR_PADRAO_DE_ESTOQUE} se
+                          ele não tiver um), um alerta crítico pisca no painel.
                         </p>
                         <div className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[9px] text-zinc-500">
                           <span className="text-[8px] font-bold uppercase text-zinc-600">
                             Regra:
                           </span>
                           <span className="font-black text-amber-400">
-                            Estoque ≤ 5 ➜ Indicador Crítico
+                            Estoque ≤ mínimo ➜ Indicador Crítico
                           </span>
                         </div>
                       </div>

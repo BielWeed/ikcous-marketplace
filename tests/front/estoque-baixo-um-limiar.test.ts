@@ -15,10 +15,11 @@
 //     de propósito (nome do plano): sem JSX, os mocks usam createElement.
 //
 // Fora da varredura, de propósito: PhoneSimulator.tsx. Ele imita a LOJA da
-// cliente (`<= 3` = "Últimas unidades"), não é um aviso ao lojista; mudar
-// aquele número mudaria o que a cliente vê.
+// cliente (`<= 3` = "Só restam N"), não é um aviso ao lojista; mudar aquele
+// número mudaria o que a cliente vê. A exceção é explícita mesmo que a regex
+// talvez nem o pegasse (não atravessa o `)` de `Number.parseInt(...)`).
 import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { act, createElement } from "react";
 import type { ReactNode } from "react";
 import { type Root, createRoot } from "react-dom/client";
@@ -45,15 +46,16 @@ function arquivosDe(pasta: string): string[] {
     if (entrada.isDirectory()) {
       saida.push(...arquivosDe(join(pasta, nome)));
     } else if (/\.tsx?$/.test(nome) && !FORA_DA_VARREDURA.has(nome)) {
-      saida.push(join(pasta, nome));
+      saida.push(join(pasta, nome).split(sep).join("/"));
     }
   }
   return saida;
 }
 
-// `product.stock <= 5`, `estoque < 3`, `p.stock<=5` ... e `.lte("estoque", 5`.
+// `product.stock <= 5`, `estoque < 3`, `p.stock<=5`, `Estoque ≤ 5` (texto da
+// ajuda), `5 unidades` (idem) e `.lte("estoque", 5`.
 const LITERAL_DE_ESTOQUE_BAIXO =
-  /(stock|estoque)[\w.]*\s*<=?\s*[1-9]|lte\(\s*["']estoque["']\s*,\s*\d/;
+  /(stock|estoque)[\w.]*\s*(<=?|≤)\s*[1-9]|\b[1-9]\d* unidades\b|lte\(\s*["']estoque["']\s*,\s*\d/i;
 
 describe("estoque baixo: uma regra só (varredura de fonte)", () => {
   const arquivos = [
@@ -87,6 +89,14 @@ describe("estoque baixo: uma regra só (varredura de fonte)", () => {
     const hook = lerDoRepo("src/hooks/useProducts.ts");
     expect(view).toContain("precisaDeReposicao");
     expect(hook).toContain("LIMIAR_PADRAO_DE_ESTOQUE");
+  });
+
+  it("a ajuda da tela diz a regra real: o mínimo do produto, não um 5 fixo", () => {
+    const view = lerDoRepo("src/views/admin/AdminProductsView.tsx");
+    expect(view).toContain("mínimo do produto");
+    expect(view).toContain("{LIMIAR_PADRAO_DE_ESTOQUE}");
+    expect(view).not.toMatch(/Estoque\s*≤\s*\d/);
+    expect(view).not.toMatch(/\d+ unidades ou menos/);
   });
 });
 
@@ -298,7 +308,7 @@ describe.each(["compact", "detailed"] as const)(
       esperado(true);
     });
 
-    it("estoque 4 e mínimo 0: o lojista disse 'não me avise', sem selo", async () => {
+    it("estoque 4 e mínimo 0: não me avise antes de acabar, sem selo", async () => {
       montarProduto({ stock: 4, estoqueMinimo: 0 });
       await montar();
       esperado(false);
