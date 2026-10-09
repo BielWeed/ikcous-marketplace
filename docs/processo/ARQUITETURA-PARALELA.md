@@ -243,7 +243,9 @@ O Gabriel pediu uma revisão na sessão local (reproduzida no Windows) e eu pedi
 | `commitar` após `git rm`; `liberados` de não-compartilhado; `Skill` no agente; `git commit -- <novo>` impossível; hook que não carrega abre para a frente | Corrigidos, cada um com teste (mutação conferida). |
 | B7/B8 (caixa da letra do disco e de `Supabase/Migrations`), B9 (`criar --base --force` cru ao git) | Corrigidos. |
 
-**O que continua sendo decisão do Gabriel (eu não resolvi sozinho):**
+**Decisões do Gabriel — aprovadas em 09/10/2026** (as três primeiras ficam como estão; a quarta é uma
+limitação conhecida, não uma decisão). Para reverter: o `baseRef` é a chave `worktree` e as permissões são as
+linhas `Bash(node scripts/paralelo/frente.mjs …)` do `allow`, ambas em `.claude/settings.json`.
 
 - **M4 — `worktree.baseRef: "head"`** vale para todo worktree do projeto, não só as frentes. É o que faz as
   frentes enxergarem este sistema; sem ele elas nascem da branch padrão do remoto (medido). Se preferir não
