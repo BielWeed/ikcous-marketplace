@@ -54,6 +54,8 @@ on:
       - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
       - "scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql"
       - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
+      - "scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql"
+      - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -76,6 +78,8 @@ on:
       - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
       - "scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql"
       - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
+      - "scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql"
+      - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -370,6 +374,19 @@ jobs:
       - name: Prova viva dos cupons do checkout (migration 20261208000000)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-viva.cjs
+      # Portao da release para a migration 20261208000000: as consultas 15a (DEPOIS, 37 linhas) e
+      # 15b (ANTES, 15 linhas) do lote em scripts/frota/canais-de-backend.json, executadas num
+      # Postgres real como papel de leitura. 15b positiva na base SEM a migration (tambem com o
+      # baseline em CRLF e depois do rollback manual); 15a positiva depois do apply real (LF,
+      # CRLF e ida-volta-ida). Cada defeito (coluna, CHECK, RLS, politica, privilegio, forma e
+      # corpo de cada uma das 5 funcoes, gatilho e a ORDEM dele, indice, meia migration)
+      # reprova a SUA linha e leva o portao a NEGATIVA, nunca a POSITIVA; mutantes da consulta
+      # ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o conferir-banco.cjs
+      # e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA loja depende dela.
+      # CLONE proprio.
+      - name: Prova viva do portao dos cupons do checkout (consultas 15a e 15b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-portao-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
