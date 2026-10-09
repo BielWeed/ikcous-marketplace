@@ -521,5 +521,7 @@ describe("Contrato da tela de Frete v2 (direção D)", () => {
 
     expect(textoDaFaixa()).toMatch(/Parado/i);
     expect(textoDaFaixa()).toMatch(/falta o CEP da loja/i);
+    // A nota aponta para Minha loja (onde o CEP se cadastra), não para "abaixo".
+    expect(textoDaFaixa()).toMatch(/Minha loja/);
   });
 });

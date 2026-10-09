@@ -12,7 +12,7 @@
 //      retirada, calculada do config ATUAL; salvar outra regra não envia a
 //      lista;
 //   3. sem endereço da loja a chave NÃO liga e a tela manda cadastrar em
-//      Admin → Sobre a Loja;
+//      Minha loja (com o botão "Cadastrar endereço em Minha loja");
 //   4. Ajustes → Transportadoras preserva `store-pickup` no save, mesmo
 //      quando a retirada foi ligada DEPOIS que a seção sincronizou.
 import { act } from "react";
@@ -166,12 +166,18 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     });
   }
 
-  async function renderizarFrete() {
+  async function renderizarFrete(onNavigate?: (view: string) => void) {
     const { AdminShippingView } = await import(
       "@/views/admin/AdminShippingView"
     );
     await act(async () => {
-      raiz.render(<AdminShippingView active onSetDirty={vi.fn()} />);
+      raiz.render(
+        <AdminShippingView
+          active
+          onSetDirty={vi.fn()}
+          onNavigate={onNavigate}
+        />,
+      );
     });
     await drenar();
   }
@@ -259,7 +265,7 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     );
   });
 
-  it("sem endereço da loja a chave NÃO liga e manda cadastrar em Admin → Sobre a Loja", async () => {
+  it("sem endereço da loja a chave NÃO liga e manda cadastrar em Minha loja", async () => {
     estadoDaLoja.atual = {
       originCep: "38500-000",
       enabledShippingMethods: ["sedex", "pac"],
@@ -270,12 +276,54 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
 
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("false");
     const alerta = hospedeiro.querySelector('[role="alert"]');
-    expect(alerta?.textContent).toContain("Sobre a Loja");
+    expect(alerta?.textContent).toContain("Minha loja");
+    expect(alerta?.textContent).not.toContain("Sobre a Loja");
     // Nada pendente para salvar: a chave não mudou (T4 unificação, o botão
     // nunca some — mostra "Salvo" desabilitado quando não há alteração).
     expect(botaoSalvar()?.textContent?.trim()).toBe("Salvo");
     expect(botaoSalvar()?.disabled).toBe(true);
     expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("sem endereço: a chave explica e oferece 'Cadastrar endereço em Minha loja' (leva a admin-about-store)", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      enabledShippingMethods: ["sedex", "pac"],
+      storeAddress: null,
+    };
+    const onNavigate = vi.fn();
+    await renderizarFrete(onNavigate);
+
+    // A explicação está na linha da chave, sem precisar tentar ligar.
+    expect(hospedeiro.textContent).toContain(
+      "cadastre o endereço da loja em Minha loja",
+    );
+    const cadastrar = [...hospedeiro.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Cadastrar endereço em Minha loja",
+    );
+    expect(cadastrar).toBeDefined();
+    await clicar(cadastrar);
+    expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
+  });
+
+  it("com endereço: mostra o endereço só para leitura (sem campo, sem botão de cadastrar)", async () => {
+    estadoDaLoja.atual = {
+      originCep: "38500-000",
+      enabledShippingMethods: ["sedex", "pac"],
+      storeAddress: ENDERECO_FICTICIO,
+    };
+    await renderizarFrete(vi.fn());
+
+    expect(hospedeiro.textContent).toContain(ENDERECO_FICTICIO);
+    const campos = [...hospedeiro.querySelectorAll("input")].filter(
+      (i) => i.value === ENDERECO_FICTICIO,
+    );
+    expect(campos).toHaveLength(0);
+    expect(
+      [...hospedeiro.querySelectorAll("button")].some((b) =>
+        /Cadastrar endereço em Minha loja/.test(b.textContent || ""),
+      ),
+    ).toBe(false);
   });
 
   it("retirada já ligada e endereço apagado: a tela AVISA que a cliente não vê a opção", async () => {
@@ -288,6 +336,9 @@ describe("Painel — chave 'Permitir retirada na loja' e a seção de Transporta
     expect(chaveDaRetirada().getAttribute("aria-checked")).toBe("true");
     expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
       "não aparece para a cliente",
+    );
+    expect(hospedeiro.querySelector('[role="alert"]')?.textContent).toContain(
+      "Minha loja",
     );
   });
 

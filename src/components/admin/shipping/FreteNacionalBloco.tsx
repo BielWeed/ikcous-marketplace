@@ -49,8 +49,8 @@ const ROTULO_DO_ESTADO: Readonly<Record<EstadoConexaoProvedor, string>> = {
 };
 
 export const FreteNacionalBloco = memo(function FreteNacionalBloco({
-  originCep,
-  onOriginCep,
+  cepDaLoja,
+  onAbrirMinhaLoja,
   provedores,
   erroNaLeitura,
   onAbrirAjustes,
@@ -60,8 +60,13 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
   onAbrirEstrategiasNacionais,
   mostrarCabecalho = true,
 }: {
-  readonly originCep: string;
-  readonly onOriginCep: (cep: string) => void;
+  /** CEP de Minha loja — SÓ LEITURA. É de onde saem as entregas (P2: um CEP
+   * só); esta tela nunca o edita nem o grava. Ausente/vazio = a loja ainda
+   * não cadastrou. */
+  readonly cepDaLoja?: string | null;
+  /** Abre Minha loja (`admin-about-store`), onde o CEP se define. Ausente
+   * quando a view não recebeu `onNavigate` — sem botão morto. */
+  readonly onAbrirMinhaLoja?: () => void;
   /** Estado de CADA um dos três provedores — sempre os três, na ordem de
    * exibição (Melhor Envio, SuperFrete, Frenet). */
   readonly provedores: readonly ProvedorNacional[];
@@ -89,6 +94,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
     return `${clean.slice(0, 5)}-${clean.slice(5, 8)}`;
   };
 
+  const temCep = (cepDaLoja ?? "").trim() !== "";
   const algumLigado = provedores.some((p) => p.estado === "ligado");
   const ligados = provedores.filter((p) => p.estado === "ligado");
 
@@ -234,28 +240,53 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
         </p>
       )}
 
-      {/* CEP da loja — a única tela onde ele se define. Campo abre VAZIO
-          quando a loja não configurou (nada de CEP inventado parecendo
-          configuração pronta — trava herdada da auditoria 26/08). */}
-      <Linha nome="CEP de origem" dica="De onde as entregas saem">
-        <input
-          id="origin-cep"
-          type="text"
-          maxLength={9}
-          value={originCep}
-          onChange={(e) => onOriginCep(formatCEP(e.target.value))}
-          placeholder="00000-000"
-          disabled={desabilitado}
-          className="h-10 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 text-center font-mono text-[13px] font-semibold text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-40"
-        />
+      {/* CEP da loja — LIDO de Minha loja, nunca editado aqui (P2: um CEP
+          só). Sem CEP, nada de CEP inventado parecendo configuração pronta
+          (trava herdada da auditoria 26/08): o aviso diz a consequência e o
+          botão leva a quem resolve. */}
+      <Linha
+        nome="CEP da loja"
+        dica={
+          temCep ? (
+            <>
+              Entregas saem de:{" "}
+              <b className="font-semibold text-zinc-300">
+                CEP {formatCEP(cepDaLoja ?? "")}
+              </b>
+            </>
+          ) : (
+            "A loja ainda não tem CEP cadastrado."
+          )
+        }
+      >
+        {temCep && onAbrirMinhaLoja && (
+          <button
+            type="button"
+            onClick={onAbrirMinhaLoja}
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+          >
+            Alterar em Minha loja
+          </button>
+        )}
       </Linha>
 
-      {!originCep && (
-        <p className="-mt-2 flex items-start gap-2 pb-4 text-[12px] font-bold leading-snug text-amber-300 duration-200 animate-in fade-in">
+      {!temCep && (
+        <p className="-mt-2 flex flex-wrap items-start gap-2 pb-4 text-[12px] font-bold leading-snug text-amber-300 duration-200 animate-in fade-in">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é calculado
-          e o botão "Finalizar Pedido" fica bloqueado para todo cliente.
-          Preencha e salve para abrir as vendas.
+          <span>
+            SEM ISSO A LOJA NÃO VENDE: sem o CEP da loja nenhum frete é
+            calculado e o botão "Finalizar Pedido" fica bloqueado para todo
+            cliente. Cadastre o CEP em Minha loja para abrir as vendas.
+          </span>
+          {onAbrirMinhaLoja && (
+            <button
+              type="button"
+              onClick={onAbrirMinhaLoja}
+              className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-3 py-1 text-[12px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+            >
+              Cadastrar CEP em Minha loja
+            </button>
+          )}
         </p>
       )}
 

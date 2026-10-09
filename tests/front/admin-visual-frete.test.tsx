@@ -5,7 +5,8 @@
 // divisão NÃO mudou):
 //
 //   Tela de FRETE (AdminShippingView) ── dona das REGRAS:
-//     presets de frete grátis, CEP de origem, cobertura, entrega local.
+//     presets de frete grátis, cobertura, entrega local. (O CEP de origem
+//     saiu daqui: é o CEP de Minha loja, a tela de Frete só o LÊ.)
 //   Ajustes > TRANSPORTADORAS (TransportadorasSection) ── dona da API:
 //     `shippingProvider`, `enabledShippingMethods`, credenciais, teste.
 //   Ajustes > HISTÓRICO (HistoricoCotacoesSection) ── dona do diagnóstico.
@@ -160,10 +161,10 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
     });
 
     // Torna o formulário sujo (senão o botão nem habilita).
-    const campoCep = hospedeiro.querySelector(
-      "#origin-cep",
+    const campoValor = hospedeiro.querySelector(
+      "#local-delivery-fee",
     ) as HTMLInputElement;
-    await digitarNoCampo(campoCep, "11111000");
+    await digitarNoCampo(campoValor, "7");
 
     const botaoSalvar = [...hospedeiro.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Salvar"),
@@ -176,7 +177,9 @@ describe("A divisão Frete (regras) × Ajustes (transportadoras)", () => {
 
     expect(updateConfig).toHaveBeenCalledTimes(1);
     const payload = updateConfig.mock.calls[0][0];
-    expect(payload).toHaveProperty("originCep", "11111-000");
+    expect(payload).toHaveProperty("localDeliveryFee", 7);
+    // O CEP da loja é de Minha loja (P2): o Salvar do Frete não o grava.
+    expect(payload).not.toHaveProperty("originCep");
     // O coração do teste: estes campos são DA SEÇÃO DE TRANSPORTADORAS.
     expect(payload).not.toHaveProperty("shippingProvider");
     expect(payload).not.toHaveProperty("enabledShippingMethods");
