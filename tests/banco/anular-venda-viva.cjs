@@ -82,7 +82,8 @@ const MSG_NEGADO = "Acesso negado: só a loja anula venda do balcão.";
 const INI_FN = SQL_MIGRATION.indexOf(
   "CREATE OR REPLACE FUNCTION public.anular_venda_presencial",
 );
-const FIM_FN = SQL_MIGRATION.indexOf("$function$;", INI_FN) + "$function$;".length;
+const FIM_FN =
+  SQL_MIGRATION.indexOf("$function$;", INI_FN) + "$function$;".length;
 const SQL_FUNCAO = SQL_MIGRATION.slice(INI_FN, FIM_FN);
 assert.ok(INI_FN > 0 && FIM_FN > INI_FN, "bloco da função não achado");
 
@@ -103,7 +104,7 @@ const claims = (uid, papel) =>
     app_metadata: papel ? { role: papel } : {},
   });
 
-const QUEM = {
+const QUEM_POR_NOME = {
   anon: { papel: "anon", uid: "", jwt: "" },
   cliente: {
     papel: "authenticated",
@@ -137,12 +138,14 @@ const QUEM = {
   },
   service: { papel: "service_role", uid: "", jwt: "" },
 };
+// Map em vez de indexação dinâmica (security/detect-object-injection).
+const QUEM = new Map(Object.entries(QUEM_POR_NOME));
 
 // ---------------------------------------------------------------- utilitários
 
 /** Roda `sql` COMO `quem` dentro da transação aberta; um erro não aborta a transação. */
 async function como(c, quem, sql, params = []) {
-  const q = QUEM[quem];
+  const q = QUEM.get(quem);
   await c.query("SAVEPOINT sp_como");
   try {
     await c.query(`SET LOCAL ROLE ${q.papel}`);
@@ -163,7 +166,11 @@ async function como(c, quem, sql, params = []) {
 }
 
 /** Uma transação que SEMPRE desfaz (ou commita, se pedido), com fuso fixo. */
-async function emTx(c, corpo, { commit = false, tz = "America/Sao_Paulo" } = {}) {
+async function emTx(
+  c,
+  corpo,
+  { commit = false, tz = "America/Sao_Paulo" } = {},
+) {
   await c.query("BEGIN");
   try {
     await c.query(`SET LOCAL TIME ZONE '${tz}'`);
@@ -220,9 +227,8 @@ const contar = async (c, tabela, id) =>
   );
 
 const pedido = async (c, id) =>
-  (
-    await c.query("SELECT * FROM public.marketplace_orders WHERE id = $1", [id])
-  ).rows[0];
+  (await c.query("SELECT * FROM public.marketplace_orders WHERE id = $1", [id]))
+    .rows[0];
 
 /** Venda REAL do balcão, pelo caminho de produção (admin atual). */
 async function vender(c, o = {}) {
@@ -503,7 +509,11 @@ async function caminhoFeliz(c) {
       "pagamento_recebido_em NÃO é apagado",
     );
     assert.equal(Number(ped.total), 90, "total intacto");
-    assert.equal(Number(ped.valor_estornado || 0), 0, "valor_estornado intacto");
+    assert.equal(
+      Number(ped.valor_estornado || 0),
+      0,
+      "valor_estornado intacto",
+    );
 
     // Os dois históricos, com motivo e quem anulou.
     const h = (
@@ -513,12 +523,15 @@ async function caminhoFeliz(c) {
       )
     ).rows;
     assert.equal(h.length, 2, "nascimento + anulação");
-    assert.deepEqual(h.find((l) => l.new_status === "cancelled"), {
-      old_status: "delivered",
-      new_status: "cancelled",
-      notes: "Venda do balcão anulada: cliente desistiu na hora",
-      por: U_ADMIN,
-    });
+    assert.deepEqual(
+      h.find((l) => l.new_status === "cancelled"),
+      {
+        old_status: "delivered",
+        new_status: "cancelled",
+        notes: "Venda do balcão anulada: cliente desistiu na hora",
+        por: U_ADMIN,
+      },
+    );
     const hp = (
       await c.query(
         "SELECT acao, payment_status_antes, payment_status_depois, created_by::text AS por FROM public.marketplace_order_payment_history WHERE order_id = $1",
@@ -526,12 +539,15 @@ async function caminhoFeliz(c) {
       )
     ).rows;
     assert.equal(hp.length, 2);
-    assert.deepEqual(hp.find((l) => l.acao === "desfeito"), {
-      acao: "desfeito",
-      payment_status_antes: "recebido_na_entrega",
-      payment_status_depois: "estornado",
-      por: U_ADMIN,
-    });
+    assert.deepEqual(
+      hp.find((l) => l.acao === "desfeito"),
+      {
+        acao: "desfeito",
+        payment_status_antes: "recebido_na_entrega",
+        payment_status_depois: "estornado",
+        por: U_ADMIN,
+      },
+    );
 
     // Financeiro: entrada da venda + saída do estorno, mesmo valor, mesmo dia.
     const fin = await financeiro(c, id);
@@ -543,9 +559,17 @@ async function caminhoFeliz(c) {
         ["venda_balcao", "entrada", 90],
       ],
     );
-    assert.equal(fin.linhas[0].data, fin.linhas[1].data, "mesmo dia no extrato");
+    assert.equal(
+      fin.linhas[0].data,
+      fin.linhas[1].data,
+      "mesmo dia no extrato",
+    );
     // Caixa: o esperado volta ao de antes da venda.
-    assert.equal(await esperado(), esperado0, "caixa fecha como antes da venda");
+    assert.equal(
+      await esperado(),
+      esperado0,
+      "caixa fecha como antes da venda",
+    );
     // Nada no ledger de estornos do app; o alerta de dinheiro em cancelado não acende.
     assert.equal(await contar(c, "order_refunds", id), 0);
     const paga = (
@@ -564,18 +588,24 @@ async function caminhoFeliz(c) {
     assert.ok(av.rows.some((l) => l.titulo === "Pedido cancelado"));
   });
 }
-prova("(2) caminho feliz: venda real anulada (estoque, histórico, Financeiro, caixa)", caminhoFeliz);
+prova(
+  "(2) caminho feliz: venda real anulada (estoque, histórico, Financeiro, caixa)",
+  caminhoFeliz,
+);
 
-prova("(2b) PIX e maquininha anulam e fecham em zero no Financeiro", async (c) => {
-  for (const forma of ["pix", "card"]) {
-    await emTx(c, async () => {
-      const id = await vender(c, { pagamento: forma });
-      const a = await anular(c, "admin", id);
-      assert.ok(a.ok, `${forma}: ${a.message}`);
-      assert.equal((await financeiro(c, id)).liquido, 0, forma);
-    });
-  }
-});
+prova(
+  "(2b) PIX e maquininha anulam e fecham em zero no Financeiro",
+  async (c) => {
+    for (const forma of ["pix", "card"]) {
+      await emTx(c, async () => {
+        const id = await vender(c, { pagamento: forma });
+        const a = await anular(c, "admin", id);
+        assert.ok(a.ok, `${forma}: ${a.message}`);
+        assert.equal((await financeiro(c, id)).liquido, 0, forma);
+      });
+    }
+  },
+);
 
 async function permissao(c) {
   for (const quem of ["rebPerfil", "rebAuth", "rebAmbos", "soAuth"]) {
@@ -600,14 +630,21 @@ async function permissao(c) {
     assert.equal(await foto(c, id), antes);
   });
 }
-prova("(3) permissão: rebaixados (JWT ainda admin), cliente, anon e service_role recusados sem escrever", permissao);
+prova(
+  "(3) permissão: rebaixados (JWT ainda admin), cliente, anon e service_role recusados sem escrever",
+  permissao,
+);
 
 async function escopo(c) {
   await emTx(c, async () => {
     const online = await pedidoDireto(c, { canal: "online" });
     const antes = await foto(c, online);
     const a = await anular(c, "admin", online);
-    assert.equal(a.ok, false, "pedido do site entregue em dinheiro foi anulado");
+    assert.equal(
+      a.ok,
+      false,
+      "pedido do site entregue em dinheiro foi anulado",
+    );
     assert.equal(a.code, "22023");
     assert.equal(a.message, "Só venda do balcão se anula aqui.");
     assert.equal(await foto(c, online), antes);
@@ -648,14 +685,21 @@ async function escopo(c) {
     assert.equal(n.message, "Venda não encontrada.");
   });
 }
-prova("(4) escopo: só canal presencial, só delivered+recebido, método válido, sem gateway/estorno", escopo);
+prova(
+  "(4) escopo: só canal presencial, só delivered+recebido, método válido, sem gateway/estorno",
+  escopo,
+);
 
 async function mesmoDia(c) {
   const casos = [
     ["1 s antes da virada do dia", "- interval '1 second'", false],
     ["na virada do dia", "+ interval '0 seconds'", true],
     ["1 s depois da virada", "+ interval '1 second'", true],
-    ["1 s antes da virada seguinte", "+ interval '1 day' - interval '1 second'", true],
+    [
+      "1 s antes da virada seguinte",
+      "+ interval '1 day' - interval '1 second'",
+      true,
+    ],
     ["na virada seguinte", "+ interval '1 day'", false],
     ["ontem ao meio-dia", "- interval '12 hours'", false],
     ["ontem 23:30 (mesma data em UTC)", "- interval '30 minutes'", false],
@@ -674,7 +718,10 @@ async function mesmoDia(c) {
           } else {
             assert.equal(a.ok, false, `[${tz}] ${rotulo} devia recusar`);
             assert.equal(a.code, "22023");
-            assert.match(a.message, /^Só dá para anular no mesmo dia da venda\./);
+            assert.match(
+              a.message,
+              /^Só dá para anular no mesmo dia da venda\./,
+            );
           }
         },
         { tz },
@@ -707,82 +754,88 @@ async function mesmoDia(c) {
     assert.equal(await foto(c, id), antes);
   });
 }
-prova("(5) mesmo dia: bordas da virada, fusos de sessão, desfazer+refazer", mesmoDia);
+prova(
+  "(5) mesmo dia: bordas da virada, fusos de sessão, desfazer+refazer",
+  mesmoDia,
+);
 
-prova("(6) devolução e estorno do app: quem cuida do dinheiro é o outro caminho", async (c) => {
-  const devolucao = async (id, status) => {
-    const item = (
+prova(
+  "(6) devolução e estorno do app: quem cuida do dinheiro é o outro caminho",
+  async (c) => {
+    const devolucao = async (id, status) => {
+      const item = (
+        await c.query(
+          "SELECT id FROM public.marketplace_order_items WHERE order_id = $1 LIMIT 1",
+          [id],
+        )
+      ).rows[0].id;
+      const d = crypto.randomUUID();
       await c.query(
-        "SELECT id FROM public.marketplace_order_items WHERE order_id = $1 LIMIT 1",
-        [id],
-      )
-    ).rows[0].id;
-    const d = crypto.randomUUID();
-    await c.query(
-      `INSERT INTO public.devolucoes
+        `INSERT INTO public.devolucoes
          (id, protocolo, order_id, user_id, tipo, motivo, resolucao_desejada, modalidade,
           metodo_retorno, status, valor_itens, prazo_ate, politica)
        VALUES ($1, $2, $3, $4, 'arrependimento', 'desisti', 'troca', 'local',
                'entrega_na_loja', $5, 30, current_date + 7, '{}'::jsonb)`,
-      [d, `ANU-${d.slice(0, 8)}`, id, U_CLIENTE, status],
-    );
-    await c.query(
-      `INSERT INTO public.devolucao_itens (devolucao_id, order_item_id, product_id, product_name, quantidade, valor_unitario)
-       VALUES ($1, $2, $3, 'Item', 1, 15)`,
-      [d, item, P_SIMPLES],
-    );
-  };
-  for (const [status, aceita] of [
-    ["solicitada", false],
-    ["aprovada", false],
-    ["em_transito", false],
-    ["recebida", false],
-    ["concluida", false],
-    ["recusada", true],
-    ["cancelada", true],
-    ["reprovada", true],
-  ]) {
-    await emTx(c, async () => {
-      const id = await vender(c);
-      await devolucao(id, status);
-      const antes = await foto(c, id);
-      const a = await anular(c, "admin", id);
-      if (aceita) assert.ok(a.ok, `devolução ${status}: ${a.message}`);
-      else {
-        assert.equal(a.ok, false, `devolução ${status} devia recusar`);
-        assert.equal(
-          a.message,
-          "Esta venda tem devolução registrada; resolva pela devolução.",
-        );
-        assert.equal(await foto(c, id), antes);
-      }
-    });
-  }
-  for (const [status, aceita] of [
-    ["solicitado", false],
-    ["em_processamento", false],
-    ["concluido", false],
-    ["recusado", true],
-    ["falhou", true],
-  ]) {
-    await emTx(c, async () => {
-      const id = await vender(c);
-      await c.query(
-        `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status)
-         VALUES ($1, 30, 'lojista', $2)`,
-        [id, status],
+        [d, `ANU-${d.slice(0, 8)}`, id, U_CLIENTE, status],
       );
-      const antes = await foto(c, id);
-      const a = await anular(c, "admin", id);
-      if (aceita) assert.ok(a.ok, `refund ${status}: ${a.message}`);
-      else {
-        assert.equal(a.ok, false, `refund ${status} devia recusar`);
-        assert.match(a.message, /dinheiro devolvido pelo app/);
-        assert.equal(await foto(c, id), antes);
-      }
-    });
-  }
-});
+      await c.query(
+        `INSERT INTO public.devolucao_itens (devolucao_id, order_item_id, product_id, product_name, quantidade, valor_unitario)
+       VALUES ($1, $2, $3, 'Item', 1, 15)`,
+        [d, item, P_SIMPLES],
+      );
+    };
+    for (const [status, aceita] of [
+      ["solicitada", false],
+      ["aprovada", false],
+      ["em_transito", false],
+      ["recebida", false],
+      ["concluida", false],
+      ["recusada", true],
+      ["cancelada", true],
+      ["reprovada", true],
+    ]) {
+      await emTx(c, async () => {
+        const id = await vender(c);
+        await devolucao(id, status);
+        const antes = await foto(c, id);
+        const a = await anular(c, "admin", id);
+        if (aceita) assert.ok(a.ok, `devolução ${status}: ${a.message}`);
+        else {
+          assert.equal(a.ok, false, `devolução ${status} devia recusar`);
+          assert.equal(
+            a.message,
+            "Esta venda tem devolução registrada; resolva pela devolução.",
+          );
+          assert.equal(await foto(c, id), antes);
+        }
+      });
+    }
+    for (const [status, aceita] of [
+      ["solicitado", false],
+      ["em_processamento", false],
+      ["concluido", false],
+      ["recusado", true],
+      ["falhou", true],
+    ]) {
+      await emTx(c, async () => {
+        const id = await vender(c);
+        await c.query(
+          `INSERT INTO public.order_refunds (order_id, amount, solicitado_por, status)
+         VALUES ($1, 30, 'lojista', $2)`,
+          [id, status],
+        );
+        const antes = await foto(c, id);
+        const a = await anular(c, "admin", id);
+        if (aceita) assert.ok(a.ok, `refund ${status}: ${a.message}`);
+        else {
+          assert.equal(a.ok, false, `refund ${status} devia recusar`);
+          assert.match(a.message, /dinheiro devolvido pelo app/);
+          assert.equal(await foto(c, id), antes);
+        }
+      });
+    }
+  },
+);
 
 async function motivo(c) {
   const invalidos = [
@@ -870,7 +923,9 @@ async function idempotencia(c) {
       "admin",
       `SELECT public.registrar_venda_presencial($1::jsonb, 'cash', NULL, NULL, NULL, 0, NULL, $2::uuid) AS r`,
       [
-        JSON.stringify([{ product_id: P_SIMPLES, variant_id: null, quantity: 2 }]),
+        JSON.stringify([
+          { product_id: P_SIMPLES, variant_id: null, quantity: 2 },
+        ]),
         chave,
       ],
     );
@@ -880,26 +935,32 @@ async function idempotencia(c) {
     assert.deepEqual(await estoque(c), est0, "reenviar não baixa de novo");
   });
 }
-prova("(8) idempotência: 2º toque, depois da virada, reenvio da mesma venda", idempotencia);
+prova(
+  "(8) idempotência: 2º toque, depois da virada, reenvio da mesma venda",
+  idempotencia,
+);
 
-prova("(9) total R$0: anula, devolve o estoque, não cria linha de estorno", async (c) => {
-  await emTx(c, async () => {
-    const est0 = await estoque(c);
-    const id = await vender(c, {
-      desconto: 30,
-      obs: "cortesia da casa",
+prova(
+  "(9) total R$0: anula, devolve o estoque, não cria linha de estorno",
+  async (c) => {
+    await emTx(c, async () => {
+      const est0 = await estoque(c);
+      const id = await vender(c, {
+        desconto: 30,
+        obs: "cortesia da casa",
+      });
+      assert.equal(Number((await pedido(c, id)).total), 0);
+      assert.equal((await estoque(c)).simples, est0.simples - 2);
+      const a = await anular(c, "admin", id, "cortesia lançada por engano");
+      assert.ok(a.ok, a.message);
+      assert.deepEqual(await estoque(c), est0);
+      const fin = await financeiro(c, id);
+      assert.equal(fin.linhas.filter((l) => l.tipo === "saida").length, 0);
+      assert.equal(fin.liquido, 0);
+      assert.equal(await contar(c, "order_refunds", id), 0);
     });
-    assert.equal(Number((await pedido(c, id)).total), 0);
-    assert.equal((await estoque(c)).simples, est0.simples - 2);
-    const a = await anular(c, "admin", id, "cortesia lançada por engano");
-    assert.ok(a.ok, a.message);
-    assert.deepEqual(await estoque(c), est0);
-    const fin = await financeiro(c, id);
-    assert.equal(fin.linhas.filter((l) => l.tipo === "saida").length, 0);
-    assert.equal(fin.liquido, 0);
-    assert.equal(await contar(c, "order_refunds", id), 0);
-  });
-});
+  },
+);
 
 // ------------------------------------------------------------- concorrência
 
@@ -924,7 +985,7 @@ async function vendaCommitada(c, o = {}) {
 }
 
 async function comoNaConexao(cl, quem, sql, params = []) {
-  const q = QUEM[quem];
+  const q = QUEM.get(quem);
   await cl.query(`SET LOCAL ROLE ${q.papel}`);
   await cl.query(
     "SELECT set_config('app.rpc.user_id', $1, true), set_config('request.jwt.claims', $2, true)",
@@ -963,7 +1024,11 @@ async function duasAnulacoes(c) {
     await A.query("COMMIT");
     const resB = await pb;
     assert.ok(resB.ok, `B: ${resB.e?.message}`);
-    assert.equal(resB.r.ja_anulada, true, "a 2ª simultânea vê a venda já anulada");
+    assert.equal(
+      resB.r.ja_anulada,
+      true,
+      "a 2ª simultânea vê a venda já anulada",
+    );
     await B.query("COMMIT");
   } finally {
     await A.query("ROLLBACK").catch(() => {});
@@ -980,9 +1045,15 @@ async function duasAnulacoes(c) {
   );
   assert.equal(await contar(c, "marketplace_order_history", id), 2);
   assert.equal(await contar(c, "marketplace_order_payment_history", id), 2);
-  assert.equal((await financeiro(c, id)).linhas.filter((l) => l.tipo === "saida").length, 1);
+  assert.equal(
+    (await financeiro(c, id)).linhas.filter((l) => l.tipo === "saida").length,
+    1,
+  );
 }
-prova("(10a) duas anulações simultâneas (2 conexões, COMMIT real): estoque uma vez só", duasAnulacoes);
+prova(
+  "(10a) duas anulações simultâneas (2 conexões, COMMIT real): estoque uma vez só",
+  duasAnulacoes,
+);
 
 async function travaDoPedido(c) {
   const id = await vendaCommitada(c);
@@ -991,7 +1062,10 @@ async function travaDoPedido(c) {
   const B = await novoCliente();
   try {
     await A.query("BEGIN");
-    await A.query("SELECT 1 FROM public.marketplace_orders WHERE id = $1 FOR UPDATE", [id]);
+    await A.query(
+      "SELECT 1 FROM public.marketplace_orders WHERE id = $1 FOR UPDATE",
+      [id],
+    );
     await B.query("BEGIN");
     await B.query("SET LOCAL lock_timeout = '300ms'");
     let erro = null;
@@ -1017,7 +1091,10 @@ async function travaDoPedido(c) {
   }
   assert.equal(await foto(c, id), antes, "a recusa por trava escreveu algo");
 }
-prova("(10b) pedido travado por outra conexão: 55P03 com lock_timeout, nada gravado", travaDoPedido);
+prova(
+  "(10b) pedido travado por outra conexão: 55P03 com lock_timeout, nada gravado",
+  travaDoPedido,
+);
 
 async function ordemDasTravas(c) {
   const id = await vendaCommitada(c, { refundRecusado: true });
@@ -1072,7 +1149,10 @@ async function ordemDasTravas(c) {
     await M.end();
   }
 }
-prova("(10c) ordem global das travas: a linha de order_refunds ANTES do pedido", ordemDasTravas);
+prova(
+  "(10c) ordem global das travas: a linha de order_refunds ANTES do pedido",
+  ordemDasTravas,
+);
 
 // ------------------------------------------------------------------ migration
 
@@ -1112,28 +1192,67 @@ async function tentarSql(c, sql) {
   }
 }
 
-prova("(11a) reaplicar a migration é idempotente (mesma função, mesma ACL)", async (c) => {
-  const antes = await defDaFuncao(c);
-  assert.ok(antes);
-  await emTx(c, async () => {
-    await c.query(SQL_MIGRATION);
-    await c.query(SQL_MIGRATION);
+prova(
+  "(11a) reaplicar a migration é idempotente (mesma função, mesma ACL)",
+  async (c) => {
+    const antes = await defDaFuncao(c);
+    assert.ok(antes);
+    await emTx(c, async () => {
+      await c.query(SQL_MIGRATION);
+      await c.query(SQL_MIGRATION);
+      assert.deepEqual(await defDaFuncao(c), antes);
+    });
     assert.deepEqual(await defDaFuncao(c), antes);
-  });
-  assert.deepEqual(await defDaFuncao(c), antes);
-});
+  },
+);
 
 prova("(11b) pré-voo recusa SEM gravar, com o nome do que falta", async (c) => {
   const quebras = [
-    ["devolver_estoque", "ALTER FUNCTION public.devolver_estoque(uuid) RENAME TO devolver_estoque_x", /devolver_estoque/],
-    ["fin__dia", "ALTER FUNCTION public.fin__dia(timestamptz) RENAME TO fin__dia_x", /fin__dia/],
-    ["fin__hoje", "ALTER FUNCTION public.fin__hoje() RENAME TO fin__hoje_x", /fin__hoje/],
-    ["is_admin_atual", "ALTER FUNCTION public.is_admin_atual() RENAME TO is_admin_atual_x", /is_admin_atual/],
-    ["pedido__mudar_status", "ALTER FUNCTION public.pedido__mudar_status(uuid, text, text, uuid, boolean, boolean) RENAME TO pedido__mudar_status_x", /pedido__mudar_status/],
-    ["tabela devolucoes", "ALTER TABLE public.devolucoes RENAME TO devolucoes_x", /public\.devolucoes/],
-    ["tabela payment_history", "ALTER TABLE public.marketplace_order_payment_history RENAME TO mophx", /marketplace_order_payment_history/],
-    ["coluna order_refunds.status", "ALTER TABLE public.order_refunds RENAME COLUMN status TO st", /order_refunds\.status/],
-    ["coluna gateway_payment_id", "ALTER TABLE public.marketplace_orders RENAME COLUMN gateway_payment_id TO gpi", /gateway_payment_id/],
+    [
+      "devolver_estoque",
+      "ALTER FUNCTION public.devolver_estoque(uuid) RENAME TO devolver_estoque_x",
+      /devolver_estoque/,
+    ],
+    [
+      "fin__dia",
+      "ALTER FUNCTION public.fin__dia(timestamptz) RENAME TO fin__dia_x",
+      /fin__dia/,
+    ],
+    [
+      "fin__hoje",
+      "ALTER FUNCTION public.fin__hoje() RENAME TO fin__hoje_x",
+      /fin__hoje/,
+    ],
+    [
+      "is_admin_atual",
+      "ALTER FUNCTION public.is_admin_atual() RENAME TO is_admin_atual_x",
+      /is_admin_atual/,
+    ],
+    [
+      "pedido__mudar_status",
+      "ALTER FUNCTION public.pedido__mudar_status(uuid, text, text, uuid, boolean, boolean) RENAME TO pedido__mudar_status_x",
+      /pedido__mudar_status/,
+    ],
+    [
+      "tabela devolucoes",
+      "ALTER TABLE public.devolucoes RENAME TO devolucoes_x",
+      /public\.devolucoes/,
+    ],
+    [
+      "tabela payment_history",
+      "ALTER TABLE public.marketplace_order_payment_history RENAME TO mophx",
+      /marketplace_order_payment_history/,
+    ],
+    [
+      "coluna order_refunds.status",
+      "ALTER TABLE public.order_refunds RENAME COLUMN status TO st",
+      /order_refunds\.status/,
+    ],
+    [
+      "coluna gateway_payment_id",
+      "ALTER TABLE public.marketplace_orders RENAME COLUMN gateway_payment_id TO gpi",
+      /gateway_payment_id/,
+    ],
   ];
   for (const [rotulo, quebra, esperado] of quebras) {
     await emTx(c, async () => {
@@ -1171,46 +1290,69 @@ prova("(11b) pré-voo recusa SEM gravar, com o nome do que falta", async (c) => 
   });
 });
 
-prova("(11c) rollback: derruba só a função, vendas anuladas continuam, aplicar -> desfazer -> aplicar volta idêntico", async (c) => {
-  await emTx(c, async () => {
-    const id = await vender(c);
-    assert.ok((await anular(c, "admin", id)).ok);
-    const pedidoAntes = await foto(c, id);
-    const finAntes = await financeiro(c, id);
-    const def0 = await defDaFuncao(c);
-    const f0 = await impressao(c);
+prova(
+  "(11c) rollback: derruba só a função, vendas anuladas continuam, aplicar -> desfazer -> aplicar volta idêntico",
+  async (c) => {
+    await emTx(c, async () => {
+      const id = await vender(c);
+      assert.ok((await anular(c, "admin", id)).ok);
+      const pedidoAntes = await foto(c, id);
+      const finAntes = await financeiro(c, id);
+      const def0 = await defDaFuncao(c);
+      const f0 = await impressao(c);
 
-    await c.query(SQL_ROLLBACK);
-    assert.equal(await defDaFuncao(c), null, "a função continua depois do rollback");
-    assert.deepEqual(await impressao(c), f0, "o rollback mexeu em outra função");
-    assert.equal(await foto(c, id), pedidoAntes, "a venda anulada mudou");
-    assert.deepEqual(await financeiro(c, id), finAntes, "o Financeiro mudou");
+      await c.query(SQL_ROLLBACK);
+      assert.equal(
+        await defDaFuncao(c),
+        null,
+        "a função continua depois do rollback",
+      );
+      assert.deepEqual(
+        await impressao(c),
+        f0,
+        "o rollback mexeu em outra função",
+      );
+      assert.equal(await foto(c, id), pedidoAntes, "a venda anulada mudou");
+      assert.deepEqual(await financeiro(c, id), finAntes, "o Financeiro mudou");
 
-    // Rollback repetido é idempotente.
-    await c.query(SQL_ROLLBACK);
-    assert.equal(await defDaFuncao(c), null);
+      // Rollback repetido é idempotente.
+      await c.query(SQL_ROLLBACK);
+      assert.equal(await defDaFuncao(c), null);
 
-    await c.query(SQL_MIGRATION);
-    assert.deepEqual(await defDaFuncao(c), def0, "reaplicar não voltou ao estado idêntico");
-    assert.deepEqual(await impressao(c), f0);
+      await c.query(SQL_MIGRATION);
+      assert.deepEqual(
+        await defDaFuncao(c),
+        def0,
+        "reaplicar não voltou ao estado idêntico",
+      );
+      assert.deepEqual(await impressao(c), f0);
 
-    // A ACL do estado anterior à migration: sem a função, nada a conferir; com ela, só authenticated.
-    const acl = (await defDaFuncao(c)).acl;
-    assert.ok(/authenticated=X/.test(acl) && !/anon=/.test(acl) && !/service_role=/.test(acl), acl);
-  });
-});
+      // A ACL do estado anterior à migration: sem a função, nada a conferir; com ela, só authenticated.
+      const acl = (await defDaFuncao(c)).acl;
+      assert.ok(
+        /authenticated=X/.test(acl) &&
+          !/anon=/.test(acl) &&
+          !/service_role=/.test(acl),
+        acl,
+      );
+    });
+  },
+);
 
-prova("(11d) rollback recusa corpo de OUTRA migration e não derruba", async (c) => {
-  await emTx(c, async () => {
-    await c.query(
-      `CREATE OR REPLACE FUNCTION public.anular_venda_presencial(p_order_id uuid, p_motivo text) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$ SELECT '{"posterior":true}'::jsonb $$`,
-    );
-    const r = await tentarSql(c, SQL_ROLLBACK);
-    assert.equal(r.ok, false);
-    assert.match(r.message, /migration posterior/);
-    assert.ok(await defDaFuncao(c), "derrubou o corpo de outra migration");
-  });
-});
+prova(
+  "(11d) rollback recusa corpo de OUTRA migration e não derruba",
+  async (c) => {
+    await emTx(c, async () => {
+      await c.query(
+        `CREATE OR REPLACE FUNCTION public.anular_venda_presencial(p_order_id uuid, p_motivo text) RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$ SELECT '{"posterior":true}'::jsonb $$`,
+      );
+      const r = await tentarSql(c, SQL_ROLLBACK);
+      assert.equal(r.ok, false);
+      assert.match(r.message, /migration posterior/);
+      assert.ok(await defDaFuncao(c), "derrubou o corpo de outra migration");
+    });
+  },
+);
 
 // ------------------------------------------------------------------- mutantes
 
@@ -1250,77 +1392,203 @@ const GUARDA_ATUAL = `    IF public.is_admin_atual() IS DISTINCT FROM true THEN
     END IF;
 `;
 
-prova("(12) mutantes: tirar cada guarda deixa a prova certa vermelha", async (c) => {
-  const antes = (await defDaFuncao(c)).def;
-  await mutar(c, "sem a guarda is_admin_atual()", GUARDA_ATUAL, "", [permissao]);
-  // A brecha de verdade: sem a guarda E o cancelamento recebendo "é admin".
-  const semGuardaEPassaTrue = SQL_FUNCAO.replace(GUARDA_ATUAL, "").replace(
-    "v_usuario, public.is_admin_atual(), false",
-    "v_usuario, true, false",
-  );
-  assert.notEqual(semGuardaEPassaTrue, SQL_FUNCAO);
-  await c.query(semGuardaEPassaTrue);
-  try {
-    let morreu = false;
+prova(
+  "(12) mutantes: tirar cada guarda deixa a prova certa vermelha",
+  async (c) => {
+    const antes = (await defDaFuncao(c)).def;
+    await mutar(c, "sem a guarda is_admin_atual()", GUARDA_ATUAL, "", [
+      permissao,
+    ]);
+    // A brecha de verdade: sem a guarda E o cancelamento recebendo "é admin".
+    const semGuardaEPassaTrue = SQL_FUNCAO.replace(GUARDA_ATUAL, "").replace(
+      "v_usuario, public.is_admin_atual(), false",
+      "v_usuario, true, false",
+    );
+    assert.notEqual(semGuardaEPassaTrue, SQL_FUNCAO);
+    await c.query(semGuardaEPassaTrue);
     try {
-      await permissao(c);
-    } catch (e) {
-      assert.ok(e.code === "ERR_ASSERTION", e.message);
-      morreu = true;
+      let morreu = false;
+      try {
+        await permissao(c);
+      } catch (e) {
+        assert.ok(e.code === "ERR_ASSERTION", e.message);
+        morreu = true;
+      }
+      // E, mais forte: o rebaixado REALMENTE consegue anular nesse mutante.
+      await emTx(c, async () => {
+        const id = await vender(c);
+        const a = await anular(c, "rebPerfil", id);
+        assert.ok(
+          a.ok,
+          "o controle sem a guarda devia anular (a brecha existe sem ela)",
+        );
+      });
+      assert.ok(morreu, "mutante sem guarda + true sobreviveu");
+      console.log(
+        "      mutante morto: sem a guarda e com 'é admin' fixo (a brecha real: o rebaixado anula)",
+      );
+    } finally {
+      await c.query(SQL_FUNCAO);
     }
-    // E, mais forte: o rebaixado REALMENTE consegue anular nesse mutante.
-    await emTx(c, async () => {
-      const id = await vender(c);
-      const a = await anular(c, "rebPerfil", id);
-      assert.ok(a.ok, "o controle sem a guarda devia anular (a brecha existe sem ela)");
-    });
-    assert.ok(morreu, "mutante sem guarda + true sobreviveu");
-    console.log("      mutante morto: sem a guarda e com 'é admin' fixo (a brecha real: o rebaixado anula)");
-  } finally {
-    await c.query(SQL_FUNCAO);
-  }
 
-  await mutar(c, "sem a trava FOR UPDATE do pedido", `     WHERE o.id = p_order_id
-       FOR UPDATE;`, `     WHERE o.id = p_order_id;`, [duasAnulacoes]);
-  await mutar(c, "sem a trava das linhas de order_refunds (ordem pedido -> ledger)", `    PERFORM 1
+    await mutar(
+      c,
+      "sem a trava FOR UPDATE do pedido",
+      `     WHERE o.id = p_order_id
+       FOR UPDATE;`,
+      `     WHERE o.id = p_order_id;`,
+      [duasAnulacoes],
+    );
+    await mutar(
+      c,
+      "sem a trava das linhas de order_refunds (ordem pedido -> ledger)",
+      `    PERFORM 1
        FROM public.order_refunds r
       WHERE r.order_id = p_order_id
       ORDER BY r.id
         FOR UPDATE;
-`, "", [ordemDasTravas]);
-  await mutar(c, "sem a checagem de canal", `IF v_pedido.canal IS DISTINCT FROM 'presencial' THEN`, "IF false THEN", [escopo]);
-  await mutar(c, "payment_method NOT IN sem COALESCE (NULL passa)", `COALESCE(v_pedido.payment_method, '') NOT IN ('cash', 'pix', 'card')`, `v_pedido.payment_method NOT IN ('cash', 'pix', 'card')`, [escopo]);
-  await mutar(c, "sem recusar cobrança no gateway", `       OR v_pedido.gateway_payment_id IS NOT NULL
-`, "", [escopo]);
-  await mutar(c, "sem recusar valor_estornado", `       OR COALESCE(v_pedido.valor_estornado, 0) <> 0
-`, "", [escopo]);
-  await mutar(c, "sem recusar estorno já carimbado", `       OR v_pedido.estorno_manual_registrado_em IS NOT NULL THEN`, `       OR false THEN`, [escopo]);
-  await mutar(c, "sem a regra do mesmo dia", `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()
-       OR EXISTS (`, `IF false
-       OR EXISTS (`, [mesmoDia]);
-  await mutar(c, "dia pelo UTC em vez do fuso da loja", `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()`, `IF (v_pedido.pagamento_recebido_em AT TIME ZONE 'UTC')::date IS DISTINCT FROM (now() AT TIME ZONE 'UTC')::date`, [mesmoDia]);
-  await mutar(c, "dia pelo fuso da SESSÃO", `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()`, `IF v_pedido.pagamento_recebido_em::date IS DISTINCT FROM now()::date`, [mesmoDia]);
-  await mutar(c, "sem a marca de pagamento desfeito e refeito", `       OR EXISTS (
+`,
+      "",
+      [ordemDasTravas],
+    );
+    await mutar(
+      c,
+      "sem a checagem de canal",
+      `IF v_pedido.canal IS DISTINCT FROM 'presencial' THEN`,
+      "IF false THEN",
+      [escopo],
+    );
+    await mutar(
+      c,
+      "payment_method NOT IN sem COALESCE (NULL passa)",
+      `COALESCE(v_pedido.payment_method, '') NOT IN ('cash', 'pix', 'card')`,
+      `v_pedido.payment_method NOT IN ('cash', 'pix', 'card')`,
+      [escopo],
+    );
+    await mutar(
+      c,
+      "sem recusar cobrança no gateway",
+      `       OR v_pedido.gateway_payment_id IS NOT NULL
+`,
+      "",
+      [escopo],
+    );
+    await mutar(
+      c,
+      "sem recusar valor_estornado",
+      `       OR COALESCE(v_pedido.valor_estornado, 0) <> 0
+`,
+      "",
+      [escopo],
+    );
+    await mutar(
+      c,
+      "sem recusar estorno já carimbado",
+      `       OR v_pedido.estorno_manual_registrado_em IS NOT NULL THEN`,
+      `       OR false THEN`,
+      [escopo],
+    );
+    await mutar(
+      c,
+      "sem a regra do mesmo dia",
+      `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()
+       OR EXISTS (`,
+      `IF false
+       OR EXISTS (`,
+      [mesmoDia],
+    );
+    await mutar(
+      c,
+      "dia pelo UTC em vez do fuso da loja",
+      `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()`,
+      `IF (v_pedido.pagamento_recebido_em AT TIME ZONE 'UTC')::date IS DISTINCT FROM (now() AT TIME ZONE 'UTC')::date`,
+      [mesmoDia],
+    );
+    await mutar(
+      c,
+      "dia pelo fuso da SESSÃO",
+      `IF public.fin__dia(v_pedido.pagamento_recebido_em) IS DISTINCT FROM public.fin__hoje()`,
+      `IF v_pedido.pagamento_recebido_em::date IS DISTINCT FROM now()::date`,
+      [mesmoDia],
+    );
+    await mutar(
+      c,
+      "sem a marca de pagamento desfeito e refeito",
+      `       OR EXISTS (
             SELECT 1 FROM public.marketplace_order_payment_history h
              WHERE h.order_id = p_order_id AND h.acao = 'desfeito'
-          ) THEN`, ` THEN`, [mesmoDia]);
-  await mutar(c, "sem recusar devolução viva", `AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')`, "AND false", [async (cc) => {
-    // reaproveita o corpo da prova (6) só para devolução
-    await PROVAS.find((p) => p.nome.startsWith("(6)")).corpo(cc);
-  }]);
-  await mutar(c, "sem recusar linha viva do ledger de estornos", `r.status IN ('solicitado', 'em_processamento', 'concluido')`, "false", [async (cc) => {
-    await PROVAS.find((p) => p.nome.startsWith("(6)")).corpo(cc);
-  }]);
-  await mutar(c, "motivo vazio aceito", `IF v_motivo IS NULL THEN`, "IF false THEN", [motivo]);
-  await mutar(c, "teto de 500 caracteres solto", `IF char_length(v_motivo) > 500 THEN`, "IF false THEN", [motivo]);
-  await mutar(c, "trim só de espaços (tab, quebra de linha e NBSP viram motivo)", `btrim(COALESCE(p_motivo, ''), E' \\t\\r\\n\\f\\x0b\\u00a0')`, `btrim(COALESCE(p_motivo, ''))`, [motivo]);
-  await mutar(c, "sem o atalho do segundo toque (ja_anulada)", `IF v_pedido.status = 'cancelled' AND v_pedido.payment_status = 'estornado' THEN`, "IF false THEN", [idempotencia]);
-  await mutar(c, "dinheiro não marcado (fica recebido_na_entrega)", `       SET payment_status = 'estornado',
-`, `       SET payment_status = payment_status,
-`, [caminhoFeliz]);
+          ) THEN`,
+      ` THEN`,
+      [mesmoDia],
+    );
+    await mutar(
+      c,
+      "sem recusar devolução viva",
+      `AND d.status NOT IN ('recusada', 'cancelada', 'reprovada')`,
+      "AND false",
+      [
+        async (cc) => {
+          // reaproveita o corpo da prova (6) só para devolução
+          await PROVAS.find((p) => p.nome.startsWith("(6)")).corpo(cc);
+        },
+      ],
+    );
+    await mutar(
+      c,
+      "sem recusar linha viva do ledger de estornos",
+      `r.status IN ('solicitado', 'em_processamento', 'concluido')`,
+      "false",
+      [
+        async (cc) => {
+          await PROVAS.find((p) => p.nome.startsWith("(6)")).corpo(cc);
+        },
+      ],
+    );
+    await mutar(
+      c,
+      "motivo vazio aceito",
+      `IF v_motivo IS NULL THEN`,
+      "IF false THEN",
+      [motivo],
+    );
+    await mutar(
+      c,
+      "teto de 500 caracteres solto",
+      `IF char_length(v_motivo) > 500 THEN`,
+      "IF false THEN",
+      [motivo],
+    );
+    await mutar(
+      c,
+      "trim só de espaços (tab, quebra de linha e NBSP viram motivo)",
+      `btrim(COALESCE(p_motivo, ''), E' \\t\\r\\n\\f\\x0b\\u00a0')`,
+      `btrim(COALESCE(p_motivo, ''))`,
+      [motivo],
+    );
+    await mutar(
+      c,
+      "sem o atalho do segundo toque (ja_anulada)",
+      `IF v_pedido.status = 'cancelled' AND v_pedido.payment_status = 'estornado' THEN`,
+      "IF false THEN",
+      [idempotencia],
+    );
+    await mutar(
+      c,
+      "dinheiro não marcado (fica recebido_na_entrega)",
+      `       SET payment_status = 'estornado',
+`,
+      `       SET payment_status = payment_status,
+`,
+      [caminhoFeliz],
+    );
 
-  assert.equal((await defDaFuncao(c)).def, antes, "a função não foi restaurada");
-});
+    assert.equal(
+      (await defDaFuncao(c)).def,
+      antes,
+      "a função não foi restaurada",
+    );
+  },
+);
 
 // -------------------------------------------------------------------- runner
 
@@ -1332,7 +1600,10 @@ async function main() {
   try {
     const existe = await c.query("SELECT to_regprocedure($1) AS f", [FN]);
     if (!existe.rows[0].f) {
-      falhar("FALHOU", `${FN} não existe: a migration 20261204000000 não foi aplicada.`);
+      falhar(
+        "FALHOU",
+        `${FN} não existe: a migration 20261204000000 não foi aplicada.`,
+      );
     }
     for (const { nome, corpo } of PROVAS) {
       const t0 = Date.now();
