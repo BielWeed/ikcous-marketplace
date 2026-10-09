@@ -485,6 +485,14 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           <PontoDeOperacao sincronizando={loading} />
         </AdminPageHeader>
       </div>
+      {/* De onde vem a lista: esta tela só tem contas do app
+          (`get_admin_customers_paged`); quem comprou só no balcão está em
+          Relatórios › Clientes (`crm_clientes`). O `AdminPageHeader` não tem
+          subtítulo e é de todas as telas — a frase mora aqui. */}
+      <p className="px-6 pb-2 text-xs text-zinc-400">
+        Clientes com conta no app. Quem comprou só no balcão aparece em{" "}
+        {NOMES_DO_PAINEL["admin-crm"]} › Clientes.
+      </p>
 
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Support & Engagement Banners */}
