@@ -3,7 +3,7 @@ name: frente
 description: Executa UMA frente de um plano paralelo do IKCOUS Marketplace — um conjunto de tarefas num território de arquivos próprio, dentro de um worktree git isolado, sem nunca tocar fora da faixa. Use SOMENTE via /paralelizar, depois que o manifesto de frentes passou em `frente.mjs validar`. Várias instâncias rodam ao mesmo tempo. NÃO use para tarefa avulsa (use `implementador`), para planejar ou para revisar.
 model: sonnet
 isolation: worktree
-tools: Read, Write, Edit, Bash, Glob, Grep, Skill, WebSearch, WebFetch, mcp__skill-router__buscar_skill, mcp__skill-router__carregar_skill, mcp__skill-router__ler_recurso_skill, mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__serena__get_diagnostics_for_file, mcp__context7__resolve-library-id, mcp__context7__query-docs
+tools: Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, mcp__skill-router__buscar_skill, mcp__skill-router__carregar_skill, mcp__skill-router__ler_recurso_skill, mcp__serena__get_symbols_overview, mcp__serena__find_symbol, mcp__serena__find_referencing_symbols, mcp__serena__find_declaration, mcp__serena__find_implementations, mcp__serena__get_diagnostics_for_file, mcp__context7__resolve-library-id, mcp__context7__query-docs
 hooks:
   PreToolUse:
     - matcher: "Write|Edit|MultiEdit|NotebookEdit"
@@ -39,6 +39,8 @@ frentes estão em outros worktrees, em outras branches. A divisão só funciona 
    — escreva seu código como se a mudança já existisse e diga isso.
 3. **Migration só na sua faixa de numeração** (`faixa_migrations` do manifesto): versão de 14
    dígitos cujos 8 primeiros caem no intervalo. Fora dele, `conferir` reprova.
+3b. **Nunca `npm install` / `npm ci` / `npm update`** — o `package.json`/lockfile são compartilhados e só o
+   integrador os muda; instalar aqui criaria um `node_modules` paralelo e inútil.
 4. **Nunca** `git push`, `git merge`, `git rebase`, `git checkout`, `git switch`, `git reset`,
    `git stash`, `git clean`, nem `--no-verify`. Para commitar use **só** o comando do passo 4.
 5. Não leia nem dependa do trabalho de outra frente. Se você precisa de algo que outra frente está
@@ -53,8 +55,9 @@ O brief traz o caminho do manifesto e o nome da sua frente. Rode, na raiz do seu
 node scripts/paralelo/frente.mjs entrar <manifesto> <frente>
 ```
 
-Isso grava a sua faixa (`.claude/lane.json`), liga o `node_modules` da árvore principal e prova que
-você está num worktree e não na árvore compartilhada. Se falhar, **pare e relate** a mensagem — não
+Isso grava a sua faixa (`.claude/lane.json`) a partir do manifesto **commitado** no seu HEAD e prova que
+você está num worktree e não na árvore compartilhada. Não há `node_modules` seu: o Node resolve o da
+árvore principal subindo diretórios (nada de link — um link seria atravessado na remoção do worktree). Se falhar, **pare e relate** a mensagem — não
 tente contornar. Sem ele, o hook bloqueia toda edição sua.
 
 Se `scripts/paralelo/frente.mjs` não existir no seu worktree, o worktree nasceu de uma base sem o
@@ -116,6 +119,8 @@ Ele recusa tudo se houver arquivo fora da faixa, comita só o que é seu e **dei
   cadastro, pedido ou upload pela tela.
 - **Nunca `supabase db push`.** Migration nova chega à loja pelo workflow `aplicar-migrations.yml`.
 - **Migration não leva `BEGIN`/`COMMIT`** (o `ROLLBACK` da prova vira no-op e grava).
+- O mapa de risco é **derivado dos caminhos do diff** pelo orquestrador (`integrar` imprime as frentes que
+  exigem `revisor-risco`); a sua etiqueta é opinião e não rebaixa nada.
 - **Se a sua frente toca o mapa de risco** (migration, RLS, `SECURITY DEFINER`, `supabase/functions/`,
   auth/OTP, checkout/pagamento, service worker, `vercel.json`) diga isso EM DESTAQUE no relatório:
   o orquestrador despacha o `revisor-risco`. Você não decide se a revisão é dispensável.

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as faixas from "../../scripts/paralelo/faixas.mjs";
 
 const {
+  riscoDoCaminho,
   arquivoPermitido,
   casa,
   conferirAlterados,
@@ -299,5 +300,77 @@ describe("achados da revisão independente (09/10/2026)", () => {
     );
     m.frentes[0].nome = "f".repeat(30);
     expect(validarManifesto(m).erros.join("\n")).not.toMatch(/passam de 60/);
+  });
+});
+
+describe("achados da 2ª revisão (faixas)", () => {
+  it("rollback-manual também mora em supabase/migrations/ (convenção atual da skill)", () => {
+    expect(
+      prefixoDeMigration(
+        "supabase/migrations/rollback-manual-20261300000000_x.sql",
+      ),
+    ).toBe("20261300");
+    const [cupom] = manifesto().frentes;
+    expect(
+      arquivoPermitido(
+        cupom,
+        manifesto(),
+        "supabase/migrations/rollback-manual-20261301000000_x.sql",
+      ).ok,
+    ).toBe(true);
+    expect(
+      arquivoPermitido(
+        cupom,
+        manifesto(),
+        "supabase/migrations/rollback-manual-20261399000000_x.sql",
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("`liberados` só entrega ARQUIVO COMPARTILHADO: o resto transferiria posse e furaria a faixa de migration", () => {
+    const m = manifesto({
+      liberados: { "src/views/admin/AdminOrdersView.tsx": "cupom" },
+    });
+    expect(validarManifesto(m).erros.join("\n")).toMatch(
+      /não é arquivo compartilhado/,
+    );
+    const mig = manifesto({
+      liberados: { "supabase/migrations/20261311000000_x.sql": "cupom" },
+    });
+    expect(validarManifesto(mig).erros.join("\n")).toMatch(/é migration/);
+  });
+
+  it("migration não diferencia caixa da pasta (disco do dono é Windows/macOS)", () => {
+    expect(prefixoDeMigration("Supabase/Migrations/20261300000000_x.sql")).toBe(
+      "20261300",
+    );
+    const m = manifesto();
+    m.frentes[0].posse.push("SUPABASE/migrations/*.sql");
+    expect(validarManifesto(m).erros.join("\n")).toMatch(
+      /migration não entra em "posse"/,
+    );
+    const [cupom] = m.frentes;
+    expect(
+      arquivoPermitido(cupom, m, "SUPABASE/Migrations/20261399000000_x.sql").ok,
+    ).toBe(false);
+  });
+
+  it("risco vem dos caminhos (mapa de risco do AGENTS.md)", () => {
+    expect(riscoDoCaminho("supabase/migrations/20261300000000_x.sql")).toMatch(
+      /migration/,
+    );
+    expect(
+      riscoDoCaminho("supabase/functions/criar-pagamento/index.ts"),
+    ).toMatch(/edge function/);
+    expect(riscoDoCaminho("vercel.json")).toMatch(/CSP/);
+    expect(riscoDoCaminho("src/sw/sw.ts")).toMatch(/service worker/);
+    expect(riscoDoCaminho("src/views/customer/CheckoutView.tsx")).toMatch(
+      /checkout/,
+    );
+    expect(riscoDoCaminho("src/hooks/useOtpLogin.ts")).toMatch(/OTP/);
+    expect(riscoDoCaminho("src/views/admin/AdminDevolucoesView.tsx")).toMatch(
+      /devolução/,
+    );
+    expect(riscoDoCaminho("src/views/admin/AdminBannersView.tsx")).toBeNull();
   });
 });

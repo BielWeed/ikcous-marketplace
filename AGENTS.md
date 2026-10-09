@@ -219,7 +219,7 @@ oficializado pelo dono em 02/09/2026 — Missão 05.2):
 
 O brief de subagente é SEMPRE autocontido — objetivo, arquivos, travas relevantes e o
 que trazer de volta: subagente não vê a sessão. Valem em toda camada as regras de cima:
-escrita serial; quem escreveu não revisa; decisão de produto sobe ao Gabriel com a conta feita.
+escrita serial (salvo a exceção do `/paralelizar`, acima); quem escreveu não revisa; decisão de produto sobe ao Gabriel com a conta feita.
 
 ## Banco de dados — regras que não se negociam
 

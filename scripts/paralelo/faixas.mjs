@@ -178,16 +178,20 @@ function sobrepoe(sa, i, sb, j) {
 
 /** `20261206000000_nome.sql` ou `rollback-manual-20261206000000_nome.sql` → 8 dígitos. */
 export function prefixoDeMigration(caminho) {
-  const n = normalizar(caminho);
+  // Minúsculas: `Supabase/Migrations/…` é a MESMA pasta no disco do dono (Windows/macOS).
+  const n = normalizar(caminho).toLowerCase();
+  // O rollback manual mora na RAIZ (histórico) e em supabase/migrations/ (convenção atual da
+  // skill nova-migration): as duas formas valem, senão a frente de banco não commita o próprio rollback.
   const m =
     /^supabase\/migrations\/(\d{14})_[^/]+\.sql$/.exec(n) ??
+    /^supabase\/migrations\/rollback-manual-(\d{14})_[^/]+\.sql$/.exec(n) ??
     /^rollback-manual-(\d{14})_[^/]+\.sql$/.exec(n);
   return m ? m[1].slice(0, 8) : null;
 }
 
 /** O caminho é de migration (ou do seu rollback manual)? */
 export function ehMigration(caminho) {
-  const n = normalizar(caminho);
+  const n = normalizar(caminho).toLowerCase();
   return n.startsWith("supabase/migrations/") || /^rollback-manual-/.test(n);
 }
 
@@ -337,8 +341,14 @@ export function validarManifesto(
       erros.push(`liberados: "${arq}" é glob — só caminho exato`);
     if (!nomes.has(dono))
       erros.push(`liberados: "${arq}" entregue a frente inexistente "${dono}"`);
+    if (ehMigration(arq))
+      erros.push(`liberados: "${arq}" é migration — use "faixa_migrations"`);
+    // Era só um aviso ("entrada inútil"), mas `liberados` TRANSFERE a posse: liberar um caminho
+    // que não é compartilhado fura a posse de outra frente e o `faixa_migrations`.
     if (!compartilhados.some((c) => globsSeSobrepoem(c, arq))) {
-      avisos.push(`liberados: "${arq}" nem era compartilhado — entrada inútil`);
+      erros.push(
+        `liberados: "${arq}" não é arquivo compartilhado — só se libera compartilhado (o resto vai em "posse")`,
+      );
     }
   }
   for (const f of frentes) {
@@ -412,6 +422,34 @@ export function conferirAlterados(frente, manifesto, caminhos) {
     if (!r.ok) violacoes.push({ caminho: normalizar(c), motivo: r.motivo });
   }
   return violacoes;
+}
+
+/**
+ * Mapa de risco do AGENTS.md, DERIVADO DOS CAMINHOS do diff — nunca da palavra da frente ou do
+ * planejador (que poderiam rebaixar o risco). Acertar por caminho é conservador: um falso alarme
+ * custa um `revisor-risco` a mais; um falso "rotina" custa dinheiro/segurança sem segunda revisão.
+ */
+export const RISCO_PADROES = Object.freeze([
+  ["supabase/migrations/**", "migration / RLS / SECURITY DEFINER"],
+  ["rollback-manual-*", "rollback de migration"],
+  ["supabase/functions/**", "edge function"],
+  ["vercel.json", "CSP / cabeçalhos"],
+  ["src/sw/**", "service worker"],
+  ["scripts/portaoDividido.ts", "fronteira do portão de tamanho"],
+  ["**/*checkout*", "checkout / pagamento"],
+  ["**/*pagamento*", "checkout / pagamento"],
+  ["**/*otp*", "auth / OTP"],
+  ["**/*auth*", "auth / OTP"],
+  ["**/*devolu*", "devolução / reembolso"],
+  ["**/*reembolso*", "devolução / reembolso"],
+  ["**/*estorno*", "devolução / reembolso"],
+]);
+
+/** Motivo do mapa de risco para este caminho, ou `null` (rotina). */
+export function riscoDoCaminho(caminho) {
+  const n = normalizar(caminho);
+  const achado = RISCO_PADROES.find(([g]) => casaSemCaixa(g, n));
+  return achado ? achado[1] : null;
 }
 
 /** Maior prefixo de 8 dígitos entre nomes de migration reais. */

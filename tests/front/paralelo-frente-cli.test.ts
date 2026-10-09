@@ -5,12 +5,12 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -106,17 +106,21 @@ describe("frente.mjs — ciclo completo", () => {
 
     expect(frente(repo, "validar", M).status).toBe(0);
 
-    // criar → worktree + branch + faixa registrada + node_modules ligado
+    // criar → worktree + branch + faixa registrada. NENHUM link de node_modules: um link
+    // (junction no Windows) é atravessado por `git worktree remove --force` e esvazia a principal.
+    // O Node resolve o pacote SUBINDO diretórios até o node_modules da árvore principal.
     for (const n of ["a", "b"]) {
       const r = frente(repo, "criar", M, n);
       expect(r.status, r.out).toBe(0);
       expect(existsSync(join(wt(repo, n), ".claude/lane.json"))).toBe(true);
-      expect(
-        lstatSync(join(wt(repo, n), "node_modules")).isSymbolicLink(),
-      ).toBe(true);
-      expect(existsSync(join(wt(repo, n), "node_modules/pkg/index.js"))).toBe(
-        true,
+      expect(existsSync(join(wt(repo, n), "node_modules"))).toBe(false);
+      const resolvido = sh(
+        process.execPath,
+        ["-e", "console.log(require.resolve('pkg'))"],
+        wt(repo, n),
       );
+      expect(resolvido.status, resolvido.out).toBe(0);
+      expect(resolvido.out).toMatch(/node_modules[\\/]pkg[\\/]index\.js$/);
     }
     expect(git(repo, "worktree", "list").out).toContain("paralelo/t/a");
 
@@ -436,5 +440,213 @@ describe("achados da revisão independente — CLI e guarda", () => {
         "",
       ),
     ).toBe("");
+  }, 60_000);
+});
+
+describe("achados da 2ª revisão e do comentário do dono no PR", () => {
+  const faixaDe = (wtPath: string) => join(wtPath, ".claude/lane.json");
+
+  it("entrar só aceita manifesto COMMITADO de docs/superpowers/lanes/ e não troca a faixa", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+
+    // 1. manifesto fora de docs/superpowers/lanes/ (a frente o escreveu na própria posse)
+    escrever(
+      A,
+      "src/a/m2.json",
+      JSON.stringify({ ...MANIFESTO, liberados: { "package.json": "a" } }),
+    );
+    const fora = frente(A, "entrar", "src/a/m2.json", "a");
+    expect(fora.status).toBe(1);
+    expect(fora.out).toMatch(
+      /tem que ser um \.json de docs\/superpowers\/lanes\//,
+    );
+
+    // 2. no lugar certo, mas NÃO commitado
+    escrever(
+      A,
+      "docs/superpowers/lanes/forjado.json",
+      JSON.stringify(MANIFESTO),
+    );
+    const solto = frente(
+      A,
+      "entrar",
+      "docs/superpowers/lanes/forjado.json",
+      "a",
+    );
+    expect(solto.status).toBe(1);
+    expect(solto.out).toMatch(/não está commitado no HEAD/);
+
+    // 3. a faixa se registra UMA vez: nem trocar por outra frente, nem refazer a mesma
+    const troca = frente(A, "entrar", M, "b");
+    expect(troca.status).toBe(1);
+    expect(troca.out).toMatch(/já tem uma faixa registrada/);
+    const refaz = frente(A, "entrar", M, "a");
+    expect(refaz.status).toBe(1);
+    expect(refaz.out).toMatch(/já tem uma faixa registrada/);
+  }, 60_000);
+
+  it("faixa adulterada no lane.json é recusada por conferir, commitar e pelo hook", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    const lane = JSON.parse(readFileSync(faixaDe(A), "utf8"));
+    lane.manifesto.liberados = { "package.json": "a" };
+    lane.manifesto.frentes[0].posse.push("package.json");
+    writeFileSync(faixaDe(A), JSON.stringify(lane)); // o que um `echo >` por Bash faria
+
+    escrever(A, "src/a/x.ts", "export const a = 9;\n");
+    const conf = frente(A, "conferir");
+    expect(conf.status).toBe(1);
+    expect(conf.out).toMatch(/faixa não confiável: faixa adulterada/);
+    expect(frente(A, "commitar", "-m", "feat(ui): a").status).toBe(1);
+    const hook = guarda(A, [], join(A, "package.json"), "Write", "frente");
+    expect(hook.status).toBe(2);
+    expect(hook.out).toMatch(/faixa não confiável/);
+    // lane.json que aponta para um manifesto fora da pasta também é recusado
+    lane.manifesto = MANIFESTO;
+    lane.origem = "src/a/m2.json";
+    writeFileSync(faixaDe(A), JSON.stringify(lane));
+    expect(frente(A, "conferir").out).toMatch(
+      /origem fora de docs\/superpowers\/lanes\//,
+    );
+  }, 60_000);
+
+  it("integrar roda num worktree de INTEGRAÇÃO (sem trocar de ramo na principal) e não no de uma frente", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(wt(repo, "a"), "src/a/x.ts", "export const a = 7;\n");
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(ui): a").status).toBe(
+      0,
+    );
+
+    const recusa = frente(wt(repo, "a"), "integrar", M);
+    expect(recusa.status).toBe(1);
+    expect(recusa.out).toMatch(/não roda dentro do worktree de uma frente/);
+
+    const integracao = join(repo, ".worktrees", "integracao");
+    expect(
+      git(repo, "worktree", "add", "-q", "-b", "integracao", integracao).status,
+    ).toBe(0);
+    const principalAntes = git(repo, "rev-parse", "main").out;
+    const r = frente(integracao, "integrar", M);
+    expect(r.status, r.out).toBe(0);
+    expect(readFileSync(join(integracao, "src/a/x.ts"), "utf8")).toContain(
+      "a = 7",
+    );
+    expect(git(repo, "rev-parse", "main").out).toBe(principalAntes); // a principal não se mexeu
+  }, 60_000);
+
+  it("commitar funciona depois de um `git rm` (a deleção já está no índice)", () => {
+    const repo = novoRepo();
+    expect(frente(repo, "criar", M, "a").status).toBe(0);
+    const A = wt(repo, "a");
+    expect(git(A, "rm", "-q", "src/a/x.ts").status).toBe(0);
+    const r = frente(A, "commitar", "-m", "feat(ui): remove x");
+    expect(r.status, r.out).toBe(0);
+    expect(git(A, "show", "--name-status", "--format=", "HEAD").out).toMatch(
+      /^D\s+src\/a\/x\.ts/m,
+    );
+  }, 60_000);
+
+  it("integrar merge o SHA conferido: commit feito na frente DEPOIS da conferência não entra", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(wt(repo, "a"), "src/a/x.ts", "export const a = 8;\n");
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(ui): a").status).toBe(
+      0,
+    );
+    escrever(wt(repo, "b"), "src/b/y.ts", "export const b = 8;\n");
+    expect(frente(wt(repo, "b"), "commitar", "-m", "feat(ui): b").status).toBe(
+      0,
+    );
+    // durante o merge da frente A, a frente B (ainda viva) commita um arquivo COMPARTILHADO
+    const hook = join(repo, ".git/hooks/commit-msg");
+    writeFileSync(
+      hook,
+      `#!/bin/sh
+grep -q "integra a (t)" "$1" || exit 0
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_EXEC_PATH
+cd "${wt(repo, "b")}" || exit 0
+echo '{"burlou":true}' > package.json
+git add package.json
+git commit -q -m "feat(ui): b burla depois da conferencia"
+exit 0
+`,
+      { mode: 0o755 },
+    );
+    const r = frente(repo, "integrar", M);
+    expect(r.status, r.out).toBe(0);
+    expect(git(repo, "show", "paralelo/t/b:package.json").out).toContain(
+      "burlou",
+    ); // a burla aconteceu
+    expect(git(repo, "show", "HEAD:package.json").out).not.toContain("burlou"); // e NÃO entrou
+  }, 60_000);
+
+  it("o mapa de risco sai dos CAMINHOS do diff, não da palavra da frente", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(wt(repo, "a"), "src/a/checkout-cupom.ts", "export const c = 1;\n");
+    escrever(
+      wt(repo, "a"),
+      "supabase/migrations/20261300000000_a.sql",
+      "select 1;\n",
+    );
+    escrever(wt(repo, "b"), "src/b/y.ts", "export const b = 9;\n");
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(db): a").status).toBe(
+      0,
+    );
+    expect(frente(wt(repo, "b"), "commitar", "-m", "feat(ui): b").status).toBe(
+      0,
+    );
+    const r = frente(repo, "integrar", M, "--so-conferir");
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/revisor-risco. é OBRIGATÓRIO/);
+    expect(r.out).toMatch(/checkout-cupom\.ts {2}\(checkout \/ pagamento\)/);
+    expect(r.out).toMatch(/20261300000000_a\.sql {2}\(migration/);
+    expect(r.out).not.toMatch(/y\.ts {2}\(/); // a frente b é rotina
+  }, 60_000);
+
+  it("guarda: symlink dentro da posse que aponta para o worktree de outra frente é resolvido", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    const A = wt(repo, "a");
+    symlinkSync(join(wt(repo, "b"), "src/b/y.ts"), join(A, "src/a/link.ts"));
+    const r = guarda(A, [], join(A, "src/a/link.ts"), "Write", "frente");
+    expect(r.status).toBe(2);
+    expect(r.out).toMatch(/fora do worktree da frente "a"/);
+  }, 60_000);
+
+  it("guarda: módulo que não carrega FECHA para a frente (exit 1 deixaria passar) e abre para sessão normal", () => {
+    const solto = realpathSync(mkdtempSync(join(tmpdir(), "guarda-solta-")));
+    temporarios.push(solto);
+    const copia = join(solto, "guarda-de-faixa.mjs");
+    writeFileSync(copia, readFileSync(GUARDA, "utf8")); // sem faixas.mjs nem integridade.mjs ao lado
+    const entrada = (agente?: string) =>
+      JSON.stringify({
+        tool_name: "Write",
+        cwd: solto,
+        tool_input: { file_path: join(solto, "x.ts") },
+        ...(agente ? { agent_type: agente } : {}),
+      });
+    expect(sh(process.execPath, [copia], solto, entrada("frente")).status).toBe(
+      2,
+    );
+    expect(sh(process.execPath, [copia], solto, entrada()).status).toBe(0);
+  }, 60_000);
+
+  it("criar --base não aceita valor que o git leria como OPÇÃO (--force, --detach)", () => {
+    const repo = novoRepo();
+    for (const base of ["--force", "--detach", "nao-existe"]) {
+      const r = frente(repo, "criar", M, "a", "--base", base);
+      expect(r.status, base).toBe(1);
+      expect(r.out, base).toMatch(/--base inválido/);
+    }
+    expect(existsSync(join(repo, ".worktrees"))).toBe(false);
   }, 60_000);
 });

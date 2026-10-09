@@ -29,19 +29,25 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   conferirAlterados,
   maiorPrefixoDeMigration,
+  riscoDoCaminho,
   validarManifesto,
 } from "./faixas.mjs";
+import {
+  PASTA_DE_MANIFESTOS,
+  origemValida,
+  verificarFaixa,
+} from "./integridade.mjs";
 
 const LANE_FILE = join(".claude", "lane.json");
 
@@ -110,9 +116,15 @@ export function ehWorktreeLigado(cwd) {
 
 export function carregarManifesto(arg, cwd) {
   if (!arg) falhar("faltou o caminho do manifesto");
+  // Primeiro o worktree ATUAL (o que está commitado nele), depois a principal: um arquivo velho
+  // de mesmo nome na principal não pode vencer o manifesto do worktree em que se trabalha.
   const candidatos = isAbsolute(arg)
     ? [arg]
-    : [join(raizPrincipal(cwd), arg), join(cwd, arg)];
+    : [
+        join(raizDoWorktree(cwd), arg),
+        join(raizPrincipal(cwd), arg),
+        join(cwd, arg),
+      ];
   const achado = candidatos.find((c) => existsSync(c));
   if (!achado) falhar(`manifesto não encontrado: ${arg}`);
   try {
@@ -193,16 +205,22 @@ const pastaDoWorktree = (cwd, manifesto, frente) =>
   join(raizPrincipal(cwd), ".worktrees", `${manifesto.plano}-${frente}`);
 
 /**
- * Artefatos que `entrar` coloca no worktree e que não são trabalho da frente:
- * o `node_modules` (SYMLINK — a regra `node_modules/` do .gitignore, com barra,
- * não casa symlink, então o git o vê como arquivo novo) e a própria faixa
- * (`.claude/lane.json`). Filtrar aqui vale também para base antiga sem a regra
- * `/node_modules`, ou para repo que não ignora `.claude/`.
+ * Artefatos que não são trabalho da frente: a própria faixa (`.claude/lane.json`) e o
+ * `node_modules` (as ferramentas criam ali só cache — `.vite`, `.tmp/*.tsbuildinfo` —; ele é
+ * um diretório REAL e próprio do worktree, nunca um link para a principal). Filtrar aqui vale
+ * também para repo que não ignora `.claude/`.
  */
 const ehArtefatoDaFrente = (c) =>
   c === "node_modules" ||
   c.startsWith("node_modules/") ||
   c === ".claude/lane.json";
+
+/** Arquivos do mapa de risco entre os alterados, DERIVADOS DOS CAMINHOS (ver faixas.mjs). */
+function riscosDe(arquivos) {
+  return arquivos
+    .map((c) => [c, riscoDoCaminho(c)])
+    .filter(([, motivo]) => motivo !== null);
+}
 
 /** Arquivos alterados vs `base`: commitados + modificados + novos (não ignorados). */
 export function alteradosDesde(base, cwd) {
@@ -229,7 +247,17 @@ function lerLane(cwd) {
       `este worktree não tem faixa registrada (${LANE_FILE}). Rode antes:\n  node scripts/paralelo/frente.mjs entrar <manifesto> <frente>`,
     );
   }
-  const lane = JSON.parse(readFileSync(arq, "utf8"));
+  let lane;
+  try {
+    lane = JSON.parse(readFileSync(arq, "utf8"));
+  } catch (e) {
+    falhar(
+      `lane.json ilegível (${e.message}) — a faixa foi adulterada ou corrompida`,
+    );
+  }
+  // A faixa só vale se o manifesto embutido for o COMMITADO em `base` (ver integridade.mjs).
+  const motivo = verificarFaixa(raiz, lane);
+  if (motivo) falhar(`faixa não confiável: ${motivo}`);
   return { raiz, lane };
 }
 
@@ -262,36 +290,61 @@ function cmdValidar([arg]) {
 function cmdEntrar([arg, nome]) {
   const cwd = process.cwd();
   exigirWorktreeLigado(cwd, "entrar");
-  const { manifesto, caminho } = carregarManifesto(arg, cwd);
-  validarOuSair(manifesto, cwd, { piso: false });
-  acharFrente(manifesto, nome);
   const raiz = raizDoWorktree(cwd);
+  if (!arg) falhar("faltou o caminho do manifesto");
+  // Caminho do manifesto RELATIVO À RAIZ e só de docs/superpowers/lanes/: um manifesto forjado
+  // (ex.: um .json que a frente escreveu na própria posse) não pode virar a faixa dela.
+  const rel = (isAbsolute(arg) ? relative(raiz, arg) : arg)
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "");
+  if (!origemValida(rel)) {
+    falhar(
+      `o manifesto de \`entrar\` tem que ser um .json de ${PASTA_DE_MANIFESTOS} (recebi "${arg}")`,
+    );
+  }
+  // E tem que estar COMMITADO no HEAD deste worktree: a fonte é o blob do git, nunca o arquivo
+  // do disco (que a frente poderia ter editado).
   const head = git(["rev-parse", "HEAD"], raiz);
   if (!head.ok) falhar(`git rev-parse HEAD falhou: ${head.err}`);
+  const blob = git(["show", `HEAD:${rel}`], raiz);
+  if (!blob.ok) {
+    falhar(
+      `o manifesto ${rel} não está commitado no HEAD deste worktree — o orquestrador precisa commitá-lo ANTES de despachar as frentes`,
+    );
+  }
+  let manifesto;
+  try {
+    manifesto = JSON.parse(blob.out);
+  } catch (e) {
+    return falhar(`manifesto commitado não é JSON válido: ${e.message}`);
+  }
+  validarOuSair(manifesto, cwd, { piso: false });
+  acharFrente(manifesto, nome);
+  const arqLane = join(raiz, LANE_FILE);
+  // Recusa se JÁ existe faixa — a mesma ou outra, legível ou não: a faixa de um worktree se
+  // registra UMA vez (por `criar` ou pelo agente, ao nascer) e nunca se refaz nem se troca.
+  if (existsSync(arqLane)) {
+    falhar(
+      "este worktree já tem uma faixa registrada — ela se registra uma vez só e não se refaz nem se troca",
+    );
+  }
   mkdirSync(join(raiz, ".claude"), { recursive: true });
   writeFileSync(
-    join(raiz, LANE_FILE),
-    `${JSON.stringify({ plano: manifesto.plano, frente: nome, base: head.out, origem: caminho, manifesto }, null, 2)}\n`,
+    arqLane,
+    `${JSON.stringify({ plano: manifesto.plano, frente: nome, base: head.out, origem: rel, manifesto }, null, 2)}\n`,
   );
-  // node_modules do worktree = o da árvore principal (um `npm ci` por frente
-  // custaria minutos e GB; o lockfile é compartilhado e só o integrador o muda).
+  // node_modules: SEM link. O Node (e tsc, vite, vitest, eslint, biome, `npm run`) resolve
+  // `node_modules` SUBINDO diretórios, e o worktree mora dentro do repo (.worktrees/ ou
+  // .claude/worktrees/) — então já enxerga o node_modules da principal. Um link (junction no
+  // Windows) é perigoso: `git worktree remove --force` o atravessa e esvazia a árvore principal.
   const principal = raizPrincipal(raiz);
-  const destino = join(raiz, "node_modules");
-  const origem = join(principal, "node_modules");
-  let nm = "node_modules: já existe";
-  if (!existsSync(destino)) {
-    if (existsSync(origem)) {
-      symlinkSync(origem, destino, "junction");
-      nm = `node_modules: ligado a ${origem}`;
-    } else {
-      nm =
-        "node_modules: AUSENTE na árvore principal — rode `npm ci` lá antes de verificar";
-    }
-  }
+  const nm = existsSync(join(principal, "node_modules"))
+    ? "node_modules: o da principal, resolvido pelo Node subindo diretórios (sem link)"
+    : "node_modules: AUSENTE na árvore principal — rode `npm ci` lá antes de verificar";
   console.log(`✓ frente "${nome}" registrada em ${raiz}`);
   console.log(`  base: ${head.out.slice(0, 8)} · ${nm}`);
   console.log(
-    "  só escreva dentro da posse; compartilhado vira PEDIDO ao integrador, não edição.",
+    "  só escreva dentro da posse; compartilhado vira PEDIDO ao integrador. NUNCA `npm install`/`npm ci` aqui.",
   );
 }
 
@@ -302,6 +355,15 @@ function cmdCriar([arg, nome, ...resto]) {
   acharFrente(manifesto, nome);
   const i = resto.indexOf("--base");
   const base = i >= 0 ? resto[i + 1] : "HEAD";
+  // `--base` vai para `git worktree add -b <branch> <pasta> <base>`: um valor que começa com `-`
+  // (`--force`, `--detach`) seria lido como OPÇÃO do git. Tem que ser uma referência de commit.
+  if (
+    !base ||
+    base.startsWith("-") ||
+    !git(["rev-parse", "--verify", "--quiet", `${base}^{commit}`], cwd).ok
+  ) {
+    falhar(`--base inválido: "${base}" não é uma referência de commit`);
+  }
   const pasta = pastaDoWorktree(cwd, manifesto, nome);
   const branch = nomeDaBranch(manifesto, nome);
   if (existsSync(pasta))
@@ -371,8 +433,21 @@ function cmdCommitar(args) {
     );
     process.exit(1);
   }
-  const add = git(["add", "--all", "--", ...alterados], raiz);
-  if (!add.ok) falhar(`git add falhou: ${add.err}`);
+  // `git add` só nos que EXISTEM: depois de um `git rm` a deleção já está no índice e
+  // `git add -- <caminho apagado>` morre com "pathspec did not match" — e a frente não pode
+  // desfazer isso (reset/restore são proibidos). `git commit -- <caminhos>` grava a deleção.
+  const existentes = alterados.filter((c) => {
+    try {
+      lstatSync(join(raiz, c));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (existentes.length > 0) {
+    const add = git(["add", "--all", "--", ...existentes], raiz);
+    if (!add.ok) falhar(`git add falhou: ${add.err}`);
+  }
   // Hooks (secretlint, commitlint) rodam — sem --no-verify, nunca.
   const c = spawnSync("git", ["commit", "-m", mensagem, "--", ...alterados], {
     cwd: raiz,
@@ -417,11 +492,29 @@ function cmdStatus([arg, ...resto]) {
       continue;
     }
     const viol = conferirAlterados(f, manifesto, dif.nomes).length;
+    const risco = riscosDe(dif.nomes);
     linhas.push(
-      `${f.nome.padEnd(28)} commits+${String(aMais).padEnd(3)} sujo:${String(sujo).padEnd(3)} fora-da-faixa:${viol}`,
+      `${f.nome.padEnd(28)} commits+${String(aMais).padEnd(3)} sujo:${String(sujo).padEnd(3)} fora-da-faixa:${viol}${risco.length ? `  RISCO:${risco.length}` : ""}`,
     );
   }
   console.log(linhas.join("\n"));
+}
+
+/**
+ * Frentes que tocam o mapa de risco, pelos CAMINHOS do diff. Cada uma EXIGE `revisor-risco`:
+ * a etiqueta que a frente ou o planejador deram ao próprio trabalho não rebaixa isto.
+ */
+function imprimirRiscos(plano) {
+  const comRisco = plano.filter((p) => p.riscos.length > 0);
+  if (comRisco.length === 0) return;
+  console.log(
+    "\n⚠ MAPA DE RISCO — `revisor-risco` é OBRIGATÓRIO nestas frentes:",
+  );
+  for (const p of comRisco) {
+    console.log(`  - ${p.frente}`);
+    for (const [arq, motivo] of p.riscos)
+      console.log(`      ${arq}  (${motivo})`);
+  }
 }
 
 function cmdIntegrar(args) {
@@ -429,8 +522,11 @@ function cmdIntegrar(args) {
   const [arg, ...resto] = args;
   const { manifesto } = carregarManifesto(arg, cwd);
   validarOuSair(manifesto, cwd, { piso: false });
-  if (ehWorktreeLigado(cwd))
-    falhar("`integrar` roda na árvore PRINCIPAL, na branch de integração");
+  // Roda na árvore principal OU num worktree de integração (limpo, em branch própria) — assim o
+  // integrador não precisa trocar de ramo na árvore compartilhada (AGENTS.md: nunca `checkout` lá).
+  // Nunca dentro do worktree de uma FRENTE: ela não integra o trabalho das outras.
+  if (existsSync(join(raizDoWorktree(cwd), LANE_FILE)))
+    falhar("`integrar` não roda dentro do worktree de uma frente");
   const escopoIdx = resto.indexOf("--escopo");
   const escopo = escopoIdx >= 0 ? resto[escopoIdx + 1] : "tooling";
   const soConferir = resto.includes("--so-conferir");
@@ -454,16 +550,22 @@ function cmdIntegrar(args) {
   let reprovado = false;
   for (const f of manifesto.frentes) {
     const branch = mapa.get(f.nome) ?? nomeDaBranch(manifesto, f.nome);
-    if (
-      !git(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], cwd).ok
-    ) {
+    // SHA conferido = SHA mesclado. Mesclar pelo NOME da branch deixaria um commit feito na
+    // frente DEPOIS da conferência (frente ainda viva, ou um hook durante o merge) entrar sem ter
+    // sido provado nem revisado — inclusive arquivo compartilhado.
+    const resolvido = git(
+      ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`],
+      cwd,
+    );
+    if (!resolvido.ok) {
       console.error(`✗ ${f.nome}: branch ${branch} não existe`);
       reprovado = true;
       continue;
     }
-    const base = git(["merge-base", "HEAD", branch], cwd).out;
+    const sha = resolvido.out;
+    const base = git(["merge-base", "HEAD", sha], cwd).out;
     const dif = nomesZ(
-      ["diff", "-z", "--name-only", "--no-renames", base, branch],
+      ["diff", "-z", "--name-only", "--no-renames", base, sha],
       cwd,
     );
     if (!dif.ok) {
@@ -479,7 +581,13 @@ function cmdIntegrar(args) {
       console.error(`✗ ${f.nome}: ${viol.length} arquivo(s) fora da faixa`);
       for (const v of viol) console.error(`    - ${v.caminho}  (${v.motivo})`);
     }
-    plano.push({ frente: f.nome, branch, arquivos: alterados.length });
+    plano.push({
+      frente: f.nome,
+      branch,
+      sha,
+      arquivos: alterados.length,
+      riscos: riscosDe(alterados),
+    });
   }
   if (reprovado) falhar("nada foi integrado — corrija as frentes acima");
   if (soConferir) {
@@ -488,6 +596,7 @@ function cmdIntegrar(args) {
     );
     for (const p of plano)
       console.log(`  - ${p.frente}: ${p.arquivos} arquivo(s) em ${p.branch}`);
+    imprimirRiscos(plano);
     return;
   }
 
@@ -511,10 +620,7 @@ function cmdIntegrar(args) {
       console.log(`- ${p.frente}: sem alterações, pulada`);
       continue;
     }
-    const m = git(
-      ["merge", "--no-ff", "-m", cabecalho(p.frente), p.branch],
-      cwd,
-    );
+    const m = git(["merge", "--no-ff", "-m", cabecalho(p.frente), p.sha], cwd);
     if (!m.ok) {
       // Arquivo não mesclado (índice com estágio ≥1) = conflito de verdade. Sem isso, o merge foi
       // RECUSADO por hook (commit-msg) ou erro do git — e dizer "decomposição errada" seria falso.
@@ -537,6 +643,7 @@ function cmdIntegrar(args) {
     feitas.push(p.frente);
     console.log(`✓ ${p.frente} (${p.arquivos} arquivo(s))`);
   }
+  imprimirRiscos(plano);
   console.log(
     `\nIntegradas: ${feitas.length}/${plano.length} em ${atual}. Falta: o integrador aplicar os PEDIDOS de arquivos compartilhados e rodar /checar uma vez.`,
   );
@@ -546,11 +653,13 @@ function cmdLimpar([arg]) {
   const cwd = process.cwd();
   const { manifesto } = carregarManifesto(arg, cwd);
   validarOuSair(manifesto, cwd, { piso: false });
-  if (ehWorktreeLigado(cwd)) falhar("`limpar` roda na árvore principal");
+  if (existsSync(join(raizDoWorktree(cwd), LANE_FILE)))
+    falhar("`limpar` não roda dentro do worktree de uma frente");
   for (const f of manifesto.frentes ?? []) {
     const branch = nomeDaBranch(manifesto, f.nome);
     const pasta = pastaDoWorktree(cwd, manifesto, f.nome);
     if (!existsSync(pasta)) continue;
+    if (resolve(pasta) === raizDoWorktree(cwd)) continue; // nunca remove o worktree em que está
     const limpo = alteradosDesde("HEAD", pasta).length === 0;
     const integrada = git(
       ["merge-base", "--is-ancestor", branch, "HEAD"],
@@ -562,7 +671,9 @@ function cmdLimpar([arg]) {
       );
       continue;
     }
-    // O node_modules do worktree é um link: remova o link, não a pasta de verdade.
+    // Sem `--force` desnecessário seria mais fraco: o worktree já foi provado limpo e integrado.
+    // (O worktree não tem NENHUM link para a principal — ver `entrar` — então a remoção não
+    // atravessa nada.)
     const rm = git(["worktree", "remove", "--force", pasta], cwd);
     if (!rm.ok) {
       console.log(`- ${f.nome}: MANTIDO (${rm.err})`);

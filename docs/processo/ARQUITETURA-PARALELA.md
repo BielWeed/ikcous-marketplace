@@ -126,8 +126,11 @@ não tocou o `node_modules` real.
 
 Outras coisas medidas na sonda: `$CLAUDE_PROJECT_DIR` **não** existe no ambiente do `Bash` (só nos
 hooks, onde a doc o define) — por isso os comandos dos agentes usam caminho relativo, e só o hook usa
-a variável; o worktree não tem `node_modules` — `frente.mjs entrar` o liga por symlink (junction no
-Windows) à árvore principal, evitando um `npm ci` por frente.
+a variável; o worktree não tem `node_modules` próprio e **não precisa**: o Node, tsc, vite, vitest, eslint, biome e
+`npm run` resolvem subindo diretórios, e o worktree mora dentro do repo. Medido: `vitest`, `eslint`,
+`biome`, `npm run` e `tsc -b --force` passam num worktree sem `node_modules` e sem link (as ferramentas só
+criam ali um diretório REAL de cache). A primeira versão ligava o `node_modules` por symlink/junction — e
+isso era o perigo (ver "Revisão do dono" abaixo).
 
 ## Como operar
 
@@ -223,6 +226,47 @@ inicial: **não passa**. Corrigido neste PR, cada item com teste que falha sem a
 
 Pendente de verificação (o revisor não conseguiu): junction do Windows sob `git worktree remove
 --force`; checkout em disco case-insensitive; qual projeto o Serena considera ativo num worktree.
+
+## Revisão do dono (Windows) e 2ª revisão independente — 09/10/2026
+
+O Gabriel pediu uma revisão na sessão local (reproduzida no Windows) e eu pedi uma segunda, às cegas, a um
+`revisor` novo. Elas convergiram nos dois pontos graves. Estado após `79a4070e` → este commit:
+
+| Achado | O que mudou |
+| --- | --- |
+| **B1 — a faxina apagava o `node_modules` da principal** (junction + `git worktree remove --force`, medido no Windows; há relatos públicos do mesmo acidente) | **Eliminado na raiz: não existe mais link nenhum.** Medido: `vitest`, `eslint`, `biome`, `npm run` e `tsc -b --force` passam num worktree sem `node_modules`, porque o Node resolve subindo diretórios até o da principal. As ferramentas criam ali só cache, num diretório real. `frente.md` proíbe `npm install/ci`. Teste: nenhum `node_modules` no worktree **e** `require.resolve` ainda acha o pacote. |
+| **A2 — a frente forjava a própria faixa** (manifesto escrito na própria posse + `entrar` auto-aprovado ⇒ editava `scripts/paralelo/` ⇒ código dela rodava sem confirmação) | `entrar` só aceita manifesto de `docs/superpowers/lanes/` **commitado no HEAD** (a fonte é o blob do git) e **recusa se já existe `lane.json`**. Hook, `conferir` e `commitar` exigem que o manifesto embutido seja idêntico ao commitado na `base` (`integridade.mjs`). Hook também resolve symlink. |
+| **A3 — `integrar`/`limpar` só na árvore principal** (obrigava a trocar de ramo lá) | Rodam também num **worktree de integração** limpo, nunca no de uma frente. O manifesto resolve primeiro pelo worktree atual (arquivo velho na principal não vence). |
+| **M5 — risco dependia da palavra da frente** | `integrar`/`status` derivam o **mapa de risco dos caminhos do diff** e imprimem as frentes que EXIGEM `revisor-risco`; o commit dos PEDIDOS em arquivo de risco também passa por ele. `AGENTS.md` ganhou a exceção na linha que ainda dizia "escrita serial". |
+| TOCTOU no `integrar` (2ª revisão) | O SHA conferido é o SHA mesclado: commit feito na frente *depois* da conferência não entra. |
+| Rollback em `supabase/migrations/` (2ª revisão, bloqueio funcional) | A convenção atual da skill `nova-migration` agora é aceita; antes a frente de banco não commitava o próprio rollback. |
+| `commitar` após `git rm`; `liberados` de não-compartilhado; `Skill` no agente; `git commit -- <novo>` impossível; hook que não carrega abre para a frente | Corrigidos, cada um com teste (mutação conferida). |
+| B7/B8 (caixa da letra do disco e de `Supabase/Migrations`), B9 (`criar --base --force` cru ao git) | Corrigidos. |
+
+**O que continua sendo decisão do Gabriel (eu não resolvi sozinho):**
+
+- **M4 — `worktree.baseRef: "head"`** vale para todo worktree do projeto, não só as frentes. É o que faz as
+  frentes enxergarem este sistema; sem ele elas nascem da branch padrão do remoto (medido). Se preferir não
+  alterar o comportamento de `claude --worktree` para a equipe, a alternativa é remover a chave e usar só
+  `frente.mjs criar` (worktrees em `.worktrees/` a partir do HEAD) — perde o isolamento nativo do harness.
+- **Permissões auto-aprovadas** (`entrar`, `commitar`, `conferir`, `status`, `validar`, `criar`): com a faixa
+  íntegra, forjar exige um commit forjado (git pede confirmação). Mesmo assim, qualquer comando auto-aprovado
+  que roda código do repositório dá ao agente uma superfície a mais. Tirar `entrar`/`commitar` do `allow`
+  custa um prompt por frente (e prompts de subagente em segundo plano travam o paralelismo).
+- **B6 — o hook global é "fail-open" fora do que eu consigo fechar:** se o `node` nem for executado (por
+  exemplo, `${CLAUDE_PROJECT_DIR}` não expandir em PowerShell sem Git Bash) o Claude Code só bloqueia com
+  exit 2 e a escrita passa; o hook do frontmatter só roda com workspace confiável e nunca em `-p`. A garantia
+  que **não depende de hook** é `integrar` (lê o manifesto da árvore do integrador e reprova antes de
+  qualquer merge) mais a revisão.
+- **Contra um agente HOSTIL com `Bash` livre nada em processo é garantia absoluta** (ele escreve no disco do
+  mesmo jeito que o integrador). A defesa real é o conjunto: nada auto-integra, o diff é conferido contra o
+  manifesto canônico, e o risco sai dos caminhos.
+
+**Não verificado (nenhuma das duas revisões nem eu conseguimos):** o teste de ponta a ponta **não rodou no
+Windows** — a causa do B1 (junction) deixou de existir, então não há o que testar lá além de "nenhum link é
+criado", que é independente de sistema e está coberto; caixa de disco no NTFS; `agent_type`/`cwd` no app
+desktop; se a limpeza automática de worktrees nativos do Claude Code atravessa junctions (não há mais
+junction).
 
 ### Efeito colateral de `worktree.baseRef: "head"` para a equipe
 

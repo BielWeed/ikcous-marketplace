@@ -56,10 +56,6 @@ lighthouse-report*.json
 # Cache
 *.tsbuildinfo
 node_modules/
-# `node_modules/` (com barra) só casa diretório. O worktree de uma frente
-# paralela (scripts/paralelo/frente.mjs entrar) liga o node_modules da árvore
-# principal por SYMLINK, e symlink não é diretório para o git.
-/node_modules
 .env*.local
 .agents/
 

@@ -18,21 +18,55 @@
  *   bloqueia. É o que impede a frente de editar a árvore principal ou o worktree
  *   de outra frente.
  *
+ * A faixa só vale se for ÍNTEGRA (integridade.mjs): o `lane.json` é regravável pela própria
+ * frente por `Bash`, então o manifesto embutido é comparado ao COMMITADO na base.
+ * Symlink é resolvido (`realpath`) antes de decidir: um link dentro da posse que aponta para
+ * o worktree de outra frente não pode contar como escrita "dentro da faixa".
+ *
+ * Fecha para a frente também quando um módulo (`faixas.mjs`, `integridade.mjs`) não carrega:
+ * os imports são dinâmicos e ficam DENTRO do try. O Claude Code só bloqueia com exit 2 —
+ * exit 1 (módulo ausente, sintaxe) e 127 deixam a escrita passar.
+ *
  * O que o hook NÃO cobre: escrita por Bash (`sed -i`, `>`, `cp`). Quem fecha
  * esse buraco é `frente.mjs conferir`/`commitar` (diff contra a base) e a
  * passada de `integrar`, que reprovam qualquer arquivo fora da faixa. O hook é
  * o aviso imediato; o diff é a garantia.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { arquivoPermitido, normalizar } from "./faixas.mjs";
 
 const estrito = process.argv.includes("--estrito");
 
 function bloquear(motivo) {
   process.stderr.write(`[guarda-de-faixa] ${motivo}\n`);
   process.exit(2);
+}
+
+/** `realpath` do maior ancestral que existe + o resto do caminho (o alvo pode ainda não existir). */
+export function resolverReal(caminho) {
+  const alvo = resolve(caminho);
+  let atual = alvo;
+  const resto = [];
+  for (;;) {
+    try {
+      // `.native` devolve a CAIXA canônica do disco (`C:\\` × `c:\\` no Windows); o `realpathSync`
+      // puro mantém a que foi digitada e gera comparação falsa entre o cwd e o alvo.
+      return join(realpathSync.native(atual), ...[...resto].reverse());
+    } catch {
+      const pai = dirname(atual);
+      if (pai === atual) return alvo;
+      resto.push(basename(atual));
+      atual = pai;
+    }
+  }
+}
+
+/** Mesmo caminho? Windows e macOS (disco do dono) não diferenciam maiúscula de minúscula. */
+function mesmoCaminho(a, b) {
+  return process.platform === "linux"
+    ? a === b
+    : a.toLowerCase() === b.toLowerCase();
 }
 
 /** Sobe a partir de `inicio` até achar `.claude/lane.json`; para na raiz do repo. */
@@ -49,20 +83,32 @@ export function acharLane(inicio) {
   }
 }
 
-/** Decisão pura, testável: devolve `null` (deixa passar) ou o motivo do bloqueio. */
-export function decidir({ alvo, cwd, estritoAtivo }) {
-  const abs = resolve(cwd, alvo);
+/**
+ * Decisão, testável: devolve `null` (deixa passar) ou o motivo do bloqueio.
+ * `deps` traz as funções de faixas.mjs/integridade.mjs (carregadas por import dinâmico).
+ */
+export function decidir(
+  { alvo, cwd, estritoAtivo },
+  { arquivoPermitido, normalizar, verificarFaixa },
+) {
+  const cwdReal = resolverReal(cwd);
+  const abs = resolverReal(resolve(cwdReal, alvo));
   const doAlvo = acharLane(dirname(abs));
-  const doCwd = acharLane(cwd);
+  const doCwd = acharLane(cwdReal);
+  for (const l of [doCwd, doAlvo]) {
+    if (!l) continue;
+    const motivo = verificarFaixa(l.raiz, l.lane);
+    if (motivo) return `faixa não confiável em ${l.raiz}: ${motivo}.`;
+  }
   if (estritoAtivo) {
     if (!doCwd) {
       return (
         "esta frente não tem faixa registrada neste worktree. Rode primeiro:\n" +
-        '  node "$CLAUDE_PROJECT_DIR/scripts/paralelo/frente.mjs" entrar <manifesto> <frente>\n' +
+        "  node scripts/paralelo/frente.mjs entrar <manifesto> <frente>\n" +
         "e edite só dentro do worktree isolado, nunca na árvore principal."
       );
     }
-    if (!doAlvo || doAlvo.raiz !== doCwd.raiz) {
+    if (!doAlvo || !mesmoCaminho(doAlvo.raiz, doCwd.raiz)) {
       return `"${alvo}" está fora do worktree da frente "${doCwd.lane.frente}" (${doCwd.raiz}).`;
     }
   }
@@ -100,11 +146,21 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     const alvo =
       entrada?.tool_input?.file_path ?? entrada?.tool_input?.notebook_path;
     if (!alvo) process.exit(0);
-    const motivo = decidir({
-      alvo,
-      cwd: entrada.cwd ?? process.cwd(),
-      estritoAtivo: estrito || ehFrente,
-    });
+    // Dinâmico e DENTRO do try: módulo que não carrega vira catch → fecha para a frente.
+    const faixas = await import("./faixas.mjs");
+    const integridade = await import("./integridade.mjs");
+    const motivo = decidir(
+      {
+        alvo,
+        cwd: entrada.cwd ?? process.cwd(),
+        estritoAtivo: estrito || ehFrente,
+      },
+      {
+        arquivoPermitido: faixas.arquivoPermitido,
+        normalizar: faixas.normalizar,
+        verificarFaixa: integridade.verificarFaixa,
+      },
+    );
     if (motivo) bloquear(motivo);
   } catch (e) {
     if (estrito || ehFrente)

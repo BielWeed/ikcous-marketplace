@@ -91,8 +91,12 @@ Reprovou → devolva ao `planejador` com a saída; repita até `✓`. **Não des
 reprovado** — é a única garantia de que o merge não vai conflitar. Pergunta ao dono pendente
 (produto/dinheiro/público/irreversível)? Pare e suba com a recomendação.
 
-Commite spec, plano e manifesto (`git commit -- <caminhos>`): os worktrees nascem do HEAD e as
-frentes precisam ler o próprio plano.
+Commite spec, plano e manifesto — arquivos NOVOS, então `git add -N <caminhos>` (intenção de adicionar;
+não troca o índice dos outros) e `git commit -- <caminhos>` (`git commit -- <novo>` sozinho falha com
+"pathspec did not match"). **O manifesto tem que estar commitado**: os worktrees nascem do HEAD, as
+frentes leem o próprio plano e `frente.mjs entrar` só aceita um manifesto de `docs/superpowers/lanes/`
+presente no HEAD (um manifesto solto ou fora dessa pasta é recusado — é o que impede a frente de
+forjar a própria faixa).
 
 ## Fase 3 — despachar TUDO numa única mensagem
 
@@ -137,7 +141,10 @@ Para cada relatório: anote branch e worktree. Em seguida, **a prova do orquestr
 node scripts/paralelo/frente.mjs integrar <manifesto> <frente>=<branch> … --so-conferir
 ```
 
-(`--so-conferir` não mescla nada; reprova se qualquer frente tocou arquivo fora da faixa. Frente
+(`--so-conferir` não mescla nada; reprova se qualquer frente tocou arquivo fora da faixa **e imprime o
+MAPA DE RISCO derivado dos caminhos do diff** — migration, edge function, checkout/pagamento, OTP/auth,
+service worker, `vercel.json`, devolução. Frente listada ali EXIGE `revisor-risco`: a etiqueta que o
+planejador ou a frente deram ao próprio trabalho não rebaixa isso. Frente
 rodada pelo worktree nativo tem branch `worktree-agent-<id>`, por isso o mapa `frente=branch`.)
 
 Depois, **numa única mensagem**, revisão em contexto limpo — quem escreveu não revisa:
@@ -150,12 +157,17 @@ Depois, **numa única mensagem**, revisão em contexto limpo — quem escreveu n
 Achado que bloqueia volta à **mesma** frente (`SendMessage` ao agente dela, que mantém o worktree e o
 contexto) até 3 rodadas; na quarta, `frente` novo com `model: "opus"`.
 
-## Fase 6 — integrar (serial, na árvore principal) e checar uma vez
+## Fase 6 — integrar (serial, num worktree de integração) e checar uma vez
 
+0. Integre num **worktree de integração** limpo e em branch própria
+   (`git worktree add -b <branch-de-integração> .worktrees/integracao`), não trocando de ramo na árvore
+   compartilhada. `integrar` também roda na principal, mas **nunca** dentro do worktree de uma frente.
 1. `node scripts/paralelo/frente.mjs integrar <manifesto> <frente>=<branch> …` — prova todas as
    faixas de novo e só então faz um `merge --no-ff` por frente, na ordem do manifesto. Faixas
    disjuntas ⇒ sem conflito; se houver, ele aborta e a decomposição estava errada: reabra a Fase 2.
-2. **Pedidos compartilhados, de uma vez, em UM commit** (você ou um `implementador`): some os
+2. **Pedidos compartilhados, de uma vez, em UM commit.** Se esse commit toca o mapa de risco
+   (`vercel.json`, workflows, `database.types.ts`, qualquer caminho que `integrar` marcou), ele também
+   passa pelo `revisor-risco` antes do push — o `revisor` genérico do fim não basta. (você ou um `implementador`): some os
    PEDIDOS das frentes; `package-lock.json` e `src/types/database.types.ts` se **regeneram** com a
    ferramenta do repo (`npm install`/`supabase gen types`), nunca à mão; roteador pela skill
    `nova-tela`.
