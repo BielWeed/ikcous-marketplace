@@ -237,6 +237,25 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `supabase_read_only_user` real e o pg_cron real nao foram medidos. **Nao prova** a IKCOUS nem a
   Savy.
 
+- **estoque baixo numa régua só (`estoque-baixo-uma-regra-viva.cjs`, via `rodar-isolado.cjs`)**:
+  as migrations `20261212000000` (Início) e `20261213000000` (filtro "low" de `get_admin_products_paged`). Nove
+  produtos (A–I) separam a soma das variações da coluna, a borda `<= 5`, o mínimo 0 e o NULL;
+  `painel_inicio`, `get_admin_analytics_v2`, o filtro e a conta do front dão o mesmo número (+4), com
+  controle pelo corpo antigo (Início +3; filtro A, B, E, F). Cobre também a porta (42501), reaplicar 2x,
+  preflight divergente sem escrever e o rollback. Roda sobre `sucessoras-da-99.cjs`.
+- **valor do estoque só com custo (`inventario-so-com-custo-viva.cjs`)**: a migration `20261214000000`
+  (`totalValue` só soma produto com custo; `totalCost`, alertas e chaves do JSON iguais), com controle pelo
+  corpo antigo (390 contra 90).
+- **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: SÓ LEITURA, nenhuma migration. Seis
+  pedidos pelos caminhos reais comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
+  imprime os achados A (venda estornada) e B (pago depois de expirar) com valor exato. Falha só em divergência
+  NÃO prevista. Não corrige nada.
+- **estoque mínimo editável (`estoque-minimo-editavel-viva.cjs`)**: SÓ LEITURA de grants/RLS/view — o admin grava
+  `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
+- **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
+  `20261199000000` (20261212, 20261214) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  reprova se aparecer uma sucessora que não esteja na lista.
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do

@@ -2,7 +2,8 @@
  * "Para preparar" — UMA regra só no painel (onda F do painel simples, F1).
  *
  * Espelho literal de `pendencias.pedidos_para_preparar` em `painel_inicio`
- * (`supabase/migrations/20261199000000_portas_do_painel_exigem_admin_atual.sql`):
+ * (`supabase/migrations/20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql`,
+ * a definição mais nova; o trecho dos pedidos é o da 20261199000000):
  *
  *   status IN ('new','pending','processing')
  *   AND COALESCE(payment_status,'') NOT IN ('aguardando','expirado','recusado','estornado')

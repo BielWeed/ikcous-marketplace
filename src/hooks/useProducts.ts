@@ -706,11 +706,11 @@ export function useProducts({ autoFetch = true } = {}) {
           if (filters?.stock === "low") {
             // PostgREST não compara coluna com coluna: aqui só cabe o limiar
             // padrão, sem o `estoque_minimo` do produto. Hoje NENHUM chamador
-            // passa `stock: "low"` (ramo morto nos dois lados): a RPC admin
-            // `get_admin_products_paged` também usa `p.estoque <= 5` fixo, sem
-            // `estoque_minimo` nem variantes. Se um filtro "Estoque baixo" for
-            // exposto, a RPC deve usar `estoque_efetivo <= COALESCE(estoque_minimo, 5)`
-            // (Onda I).
+            // passa `stock: "low"` (ramo morto aqui): a RPC admin
+            // `get_admin_products_paged` já filtra "low" pela regra única
+            // `estoque_efetivo <= COALESCE(estoque_minimo, 5)` (migration
+            // 20261213000000). Se um filtro "Estoque baixo" for exposto na loja
+            // por este caminho, ele também precisa dessa regra.
             query = query.lte("estoque", LIMIAR_PADRAO_DE_ESTOQUE);
           }
 
