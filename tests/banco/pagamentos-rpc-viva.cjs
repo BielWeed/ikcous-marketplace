@@ -1669,6 +1669,10 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // devolve tudo. Cada uma só é desfeita se estiver no ar.
 const POSTERIORES_A_97 = [
   {
+    nome: "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql",
+    noAr: `SELECT to_regprocedure('public.anular_venda_presencial(uuid,text)') IS NOT NULL AS sim`,
+  },
+  {
     nome: "20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql",
     noAr: `SELECT EXISTS (
        SELECT 1 FROM pg_policy

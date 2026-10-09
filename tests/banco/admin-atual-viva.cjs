@@ -268,6 +268,12 @@ const POSTERIORES_A_97 = [
     nome: "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
     noAr: `SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim`,
   },
+  // 20261204000000: anular_venda_presencial usa is_admin_atual(). No FIM da
+  // lista de proposito: as provas abaixo enderecam 202/200/99/98 por indice.
+  {
+    nome: "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql",
+    noAr: `SELECT to_regprocedure('public.anular_venda_presencial(uuid,text)') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {
@@ -1533,7 +1539,7 @@ PROVAS.push({
     //     fora da recomendada (98, 99, 200, 202) também passa.
     await cliente.query("BEGIN");
     try {
-      for (const i of [3, 2, 1, 0]) {
+      for (const i of [4, 3, 2, 1, 0]) {
         if (await noAr(i)) await desfazer(i);
       }
       await cliente.query(rollback);
