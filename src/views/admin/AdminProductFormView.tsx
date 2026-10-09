@@ -37,6 +37,7 @@ import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
+import { formComVariacoes } from "@/utils/estoque-das-variacoes";
 import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
@@ -1503,24 +1504,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       imageUrl: variantFormData.imageUrl || undefined,
     };
 
+    // A lista passa por `formComVariacoes`: desligar a última variação ligada
+    // zera o estoque do produto (uma vez), em vez de deixar a soma velha no
+    // campo que acaba de destravar. Ver `estoque-das-variacoes.ts`.
     if (editingVariant) {
-      setFormData((prev) => ({
-        ...prev,
-        variants: prev.variants.map((v) =>
-          v.id === editingVariant.id ? { ...v, ...vData } : v,
+      setFormData((prev) =>
+        formComVariacoes(
+          prev,
+          prev.variants.map((v) =>
+            v.id === editingVariant.id ? { ...v, ...vData } : v,
+          ),
         ),
-      }));
+      );
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        variants: [
+      setFormData((prev) =>
+        formComVariacoes(prev, [
           ...prev.variants,
           {
             ...vData,
             id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           } as any,
-        ],
-      }));
+        ]),
+      );
     }
 
     setShowVariantForm(false);
@@ -1569,10 +1574,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (!variantToDelete.startsWith("temp-")) {
       setDeletedVariantIds((prev) => [...prev, variantToDelete]);
     }
-    setFormData((prev) => ({
-      ...prev,
-      variants: prev.variants.filter((v) => v.id !== variantToDelete),
-    }));
+    setFormData((prev) =>
+      formComVariacoes(
+        prev,
+        prev.variants.filter((v) => v.id !== variantToDelete),
+      ),
+    );
     setVariantToDelete(null);
   };
 
