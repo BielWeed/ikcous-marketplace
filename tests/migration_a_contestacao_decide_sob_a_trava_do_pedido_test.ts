@@ -410,6 +410,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/anular-venda-viva.cjs",
     // 20261204000000: o portão da release (consultas 11a e 11b do lote) decide certo.
     "tests/banco/anular-venda-portao-viva.cjs",
+    // 20261205000000 e 20261206000000: o cupom preso diz quando a vaga volta, e a vaga do pedido nunca cobrado volta em 1 h.
+    "tests/banco/cupom-preso-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

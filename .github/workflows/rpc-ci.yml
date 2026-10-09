@@ -289,6 +289,19 @@ jobs:
       - name: Prova viva do portão de anular a venda do balcão (consultas 11a e 11b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/anular-venda-portao-viva.cjs
+      # Cupom preso (migrations 20261205000000 e 20261206000000, issues #210 e
+      # #116, 09/10/2026): a RPC vaga_do_cupom_presa só LÊ e só responde ao DONO
+      # do pedido cancelado (outro usuário, outro código, cupom inativo, sem
+      # sessão e anon recebem nada); pedidos criados pelos caminhos REAIS
+      # (v23/v24, cancelamento do cliente, da borda e do lojista, pagamento
+      # tardio, expiração, envio e retorno) provam que o auxiliar diz "volta"
+      # SE E SOMENTE SE a varredura devolve; a vaga volta de verdade (a validação
+      # do cupom aceita depois); pré-voo recusa SEM gravar (inclusive 1 byte a mais
+      # no corpo da varredura), rollbacks byte a byte e cada guarda tirada
+      # (mutante) deixa a prova vermelha. CLONE próprio.
+      - name: Prova viva do cupom preso (migrations 20261205000000 e 20261206000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs
