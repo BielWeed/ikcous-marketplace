@@ -93,7 +93,18 @@ Deno.test("rotuloDoPagamento: venda de BALCAO diz a forma real paga na loja, sem
 Deno.test("rotuloDoPagamento: pedido do SITE nao muda de texto (nao-regressao do D3)", () => {
   // Sem canal (chamadores antigos, cache), com canal 'online' e com lixo no
   // canal: tudo isso e' o caminho de sempre.
-  for (const canal of [undefined, null, "", "online", "balcao", "PRESENCIAL "]) {
+  // "nao-presencial" e "presencial-x" contem a palavra e NAO sao o valor exato:
+  // so a igualdade estrita muda o texto (um `includes` os confundiria).
+  for (const canal of [
+    undefined,
+    null,
+    "",
+    "online",
+    "balcao",
+    "PRESENCIAL ",
+    "nao-presencial",
+    "presencial-x",
+  ]) {
     assertEquals(rotuloDoPagamento("pix", null, canal), "PIX na entrega");
     assertEquals(rotuloDoPagamento("card", null, canal), "Cartao na entrega");
     assertEquals(rotuloDoPagamento("cash", null, canal), "Dinheiro na entrega");
