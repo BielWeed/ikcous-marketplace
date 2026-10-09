@@ -620,6 +620,10 @@ describe("formatadores", () => {
     expect(mensagemDeErroDoPainel(new Error("boom"), "carregar o CRM")).toBe(
       "Não foi possível carregar o CRM agora. Tente de novo em instantes.",
     );
+    // A regra completa mora em erro-do-painel.test.ts; aqui só a reexportação.
+    expect(
+      mensagemDeErroDoPainel(new TypeError("Failed to fetch"), "carregar"),
+    ).toBe("Sem conexão — confira a internet e tente de novo.");
   });
 });
 
