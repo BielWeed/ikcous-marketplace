@@ -120,8 +120,17 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       automatico. Precisa de uma consulta de prova propria antes de entrar num lote.
    6. Banco pronto, entao `publicar-functions.yml` com o `projeto` da loja e as functions que o
       passo 2 apontou (o comando so aparece com o banco pronto: banco → functions → front). Por
-      `ikcous-publicada` e `savy` so saem as cinco financeiras (`functionsPublicaveis` em
-      `canais-de-backend.json`, o que o workflow aceita). **Se a release mudar outra function**
+      `ikcous-publicada` e `savy` saem as cinco financeiras mais a `send-order-confirmation`
+      (desde 09/10/2026: o comprovante do balcao divide `_shared/pedido.ts` e `comprovante.ts`
+      com `criar-pagamento`, `webhook-mercadopago`, `reconciliar-pagamentos` e a propria
+      `send-order-confirmation`, entao a release travaria se esses arquivos mudassem sem poder
+      publicar a function do e-mail). Essa lista e `functionsPublicaveis` em
+      `canais-de-backend.json`, o que o workflow aceita (um teste exige que as duas concordem).
+      **Desfazer a `send-order-confirmation`:** NAO e disparar o workflow no SHA antigo (o
+      workflow daquele commit recusa a function nas duas lojas). E `git revert` dos commits do
+      texto num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal. So a
+      IKCOUS guarda o retrato "ANTES"; na Savy, anote a versao no ar antes de publicar.
+      **Se a release mudar outra function**
       (ex.: `send-otp-email`), a loja fica PARADA pelo nome, sem comando: o caminho central nao a
       publica, e como seguir (canal novo no workflow ou publicacao separada) e decisao do dono.
    7. Passo 2 de novo. So segue com PRONTO.
@@ -504,8 +513,9 @@ BLOQUEIA com o nome dela. O cadastro de UMA vez, na entrada do cliente:
 | Savy | `gnjsrucsmjkajijrakzr` | `projeto=savy` (segredo `SUPABASE_ACCESS_TOKEN_SAVY`), banco e functions |
 | Almeida, Brand Meliz, Space | — | lojas de teste: banco e functions nao se mexem |
 
-`ikcous-publicada` e `savy` aceitam nas functions so as cinco financeiras e exigem `expected_sha`
-igual ao SHA do run. O destino `loja` das functions (`dekxabvqdsuukijblazl`) e o projeto antigo
+`ikcous-publicada` e `savy` aceitam nas functions as cinco financeiras mais a
+`send-order-confirmation` (desde 09/10/2026; a Almeida e o apelido `cobranca` seguem so nas
+cinco) e exigem `expected_sha` igual ao SHA do run. O destino `loja` das functions (`dekxabvqdsuukijblazl`) e o projeto antigo
 da principal; nos workflows de banco `loja` aponta para a CAF sem as travas da CAF explicita
 (achado registrado, fora deste escopo).
 

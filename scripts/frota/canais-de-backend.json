@@ -73,7 +73,7 @@
       "_comentario": "Lote de UMA migration (o checkout mostra os cupons da cliente: coupons.alcance, a tabela cupom_clientes, cupons_do_checkout, as duas funcoes do painel, o gatilho do exclusivo e a nova validate_coupon_secure_v2), de APPLY NORMAL: sem backfillLedger e sem nuncaAplicar. Valem as duas lojas assinantes (IKCOUS e Savy). Caminho: a 15a (so leitura, 37 linhas) prova DEPOIS do apply a coluna alcance (text NOT NULL DEFAULT 'codigo') e o CHECK dela, a tabela cupom_clientes (seguranca por linha ligada, UMA politica que exige o admin ATUAL, authenticated so le, anon e PUBLIC nada), as 4 funcoes novas (forma, corpo com o sha256 da migration e ACL), o gatilho do exclusivo (BEFORE INSERT habilitado, WHEN, funcao e a ORDEM depois do gatilho da 20261203), o indice unico da chave de compra e o corpo novo da validate_coupon_secure_v2; NEGATIVA = a migration ainda nao esta no banco, e entao o portao pede a 15b (ausenciaConfirmadaPor, so leitura, 15 linhas): nenhuma peca nova existe, as 16 colunas de que a migration depende existem, is_admin/is_admin_atual/rls_admin_atual existem, o gatilho da 20261203 esta ATIVO, o indice unico da chave de compra existe e o corpo vivo da validate_coupon_secure_v2 e o da 20261203. So com a 15b POSITIVA (da mesma janela ou mais nova que a 15a negativa, e dentro da validade) imprime o apply do arquivo 20261208000000; o apply grava o ledger na mesma transacao e o ensaio seguinte pede a 15a de novo, que tem de ser POSITIVA. 15b NEGATIVA (meia migration, gatilho da 20261203 ausente, corpo da validacao fora do da 20261203) e PARAR: o dono decide, nada e aplicado. 15a POSITIVA com o ledger sem a versao e PARAR (sem backfillLedger: registrar a versao a mao e decisao do dono). As duas consultas sao de ROL FECHADO (37 e 15 linhas): so valem com rol=ok no veredito. A migration e ADITIVA: nenhuma linha de cupom, pedido ou cliente e lida nem reescrita (todo cupom que ja existe nasce 'codigo', secreto, como era; a unica diferenca visivel num cupom antigo e o texto da recusa por minimo, que passa a dizer quanto falta, e o instante em que ele vence). O pre-voo da propria migration refaz as condicoes dentro da transacao e trava coupons, profiles e marketplace_orders com lock_timeout de 5 s: um pedido em andamento faz a migration FALHAR sem gravar nada, e basta repetir; aplicar fora do horario de pico. Depende da 20261197 (admin atual) e da 20261203 (cupons desligados, #777): o lote so fecha POSITIVO depois que a 20261203 esta no banco da loja (a 15b exige o gatilho dela), e a 10a continua POSITIVA depois da 208 (aceita o corpo novo como sucessora). Rollback manual (rollback-manual-20261208000000_*) APAGA a lista de clientes e a coluna e DESATIVA os cupons exclusivos: decisao do dono, nunca automatica. ORDEM: o banco de CADA loja primeiro e o site novo (front) logo depois; NAO marcar 'Clientes escolhidos' no painel antes do site novo estar no ar (o painel antigo nao mostra nem preserva a lista). Com o banco novo e o front velho nada muda para quem compra: todo cupom continua so valendo para quem tem o codigo."
     }
   ],
-  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = so as cinco financeiras); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
+  "_comentarioCanais": "projetosNoMesmoBanco: outros alvos dos workflows de banco que atingem o MESMO projeto Supabase (um apply por eles vence a evidencia desta loja; `loja` aponta para a CAF). functionsPublicaveis: o que publicar-functions.yml aceita por este canal (loja cliente = as cinco financeiras; IKCOUS e Savy aceitam tambem a send-order-confirmation desde 09/10/2026, porque o comprovante do balcao divide _shared/pedido.ts e comprovante.ts com as financeiras; o teste tests/ci_publicar_functions_test.ts exige que esta lista e o workflow concordem, function por function); function fora da lista que mudar na release fica PARADA pelo nome, sem comando.",
   "canais": {
     "cafkrminfnokvgjqtkle": {
       "nome": "IKCOUS",
@@ -85,7 +85,8 @@
         "webhook-mercadopago",
         "reconciliar-pagamentos",
         "estornar-pagamento",
-        "credenciais-mercado-pago"
+        "credenciais-mercado-pago",
+        "send-order-confirmation"
       ]
     },
     "gnjsrucsmjkajijrakzr": {
@@ -98,7 +99,8 @@
         "webhook-mercadopago",
         "reconciliar-pagamentos",
         "estornar-pagamento",
-        "credenciais-mercado-pago"
+        "credenciais-mercado-pago",
+        "send-order-confirmation"
       ]
     }
   }

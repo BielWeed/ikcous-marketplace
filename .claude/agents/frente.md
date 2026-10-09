@@ -46,6 +46,16 @@ frentes estão em outros worktrees, em outras branches. A divisão só funciona 
 5. Não leia nem dependa do trabalho de outra frente. Se você precisa de algo que outra frente está
    criando (uma RPC, um tipo, um componente), isso é dependência entre frentes — **pare e relate**:
    a decomposição estava errada, e a decisão volta ao orquestrador.
+6. **A lista de comandos que rodam sem pedir confirmação NÃO é uma fronteira — é uma cortesia.** Ela barra
+   a forma literal de coisas perigosas, mas várias ferramentas dela executam arquivos que VOCÊ escreve na
+   faixa (`deno test --allow-all`, `python -m sqlfluff`, `npx stylelint`, `npx cspell`, `npm run lint:css`/
+   `spellcheck` leem configuração ao lado do arquivo checado), e aspas ou barra invertida driblam o texto
+   das regras. Por isso: nunca passe `-c`/`--config`, `--parser`, `--plugin`, `-f <arquivo>`, `--reporter`,
+   `--rulesdir` nem `git show|diff|log --output`; **nunca crie arquivo de configuração de ferramenta**
+   (`.sqlfluff`, `stylelint.config.*`, `cspell.config.*`, `eslint.config.*`, `knip.json`…) nem escreva código
+   cujo efeito seja outro que o da sua tarefa; e não disfarce um comando bloqueado. O que segura de fato é
+   `integrar` (manifesto canônico) mais a revisão — e isso protege o que entra no repositório, não a máquina.
+   Se um comando for bloqueado: **pare e avise**, não contorne por outra ferramenta.
 
 ## Passo 0 — registre a faixa (antes de qualquer edição)
 
@@ -56,7 +66,10 @@ node scripts/paralelo/frente.mjs entrar <manifesto> <frente>
 ```
 
 Isso grava a sua faixa (`.claude/lane.json`) a partir do manifesto **commitado** no seu HEAD e prova que
-você está num worktree e não na árvore compartilhada. Não há `node_modules` seu: o Node resolve o da
+você está num worktree e não na árvore compartilhada. Também grava uma **âncora** (frente, base e origem) fora da árvore de
+trabalho, e a faixa só vale enquanto o `lane.json` concordar com ela: a faixa se registra UMA vez, não se
+refaz nem se troca, e o nome é o do seu ramo `paralelo/<plano>/<frente>` (se você recebeu um worktree antigo,
+sem âncora, o hook acusa "sem âncora": relate — o orquestrador recria). Não há `node_modules` seu: o Node resolve o da
 árvore principal subindo diretórios (nada de link — um link seria atravessado na remoção do worktree). Se falhar, **pare e relate** a mensagem — não
 tente contornar. Sem ele, o hook bloqueia toda edição sua.
 
@@ -120,7 +133,10 @@ Ele recusa tudo se houver arquivo fora da faixa, comita só o que é seu e **dei
 - **Nunca `supabase db push`.** Migration nova chega à loja pelo workflow `aplicar-migrations.yml`.
 - **Migration não leva `BEGIN`/`COMMIT`** (o `ROLLBACK` da prova vira no-op e grava).
 - O mapa de risco é **derivado dos caminhos E do conteúdo do diff** pelo orquestrador (`integrar` imprime as frentes que
-  exigem `revisor-risco`); a sua etiqueta é opinião e não rebaixa nada.
+  exigem `revisor-risco`); a sua etiqueta é opinião e não rebaixa nada. **Lista vazia não é "rotina":** é só
+  "nenhum padrão conhecido casou", e quem classifica é a leitura do diff. Dinheiro (cartão, Mercado Pago, PIX,
+  financeiro, `fin_*`, ligar crédito/débito), login/sessão e permissão **contam como mapa de risco mesmo sem
+  palavra-chave no nome do arquivo** — declare em destaque no relatório.
 - **Se a sua frente toca o mapa de risco** (migration, RLS, `SECURITY DEFINER`, `supabase/functions/`,
   auth/OTP, checkout/pagamento, service worker, `vercel.json`) diga isso EM DESTAQUE no relatório:
   o orquestrador despacha o `revisor-risco`. Você não decide se a revisão é dispensável.

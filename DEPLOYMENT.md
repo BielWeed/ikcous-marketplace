@@ -489,7 +489,14 @@ escolher a **branch** (o que sobe é o código daquele commit) e preencher:
 
 Nos destinos `ikcous-publicada`, `savy` e `almeida`, o campo `functions` aceita somente as cinco
 Functions financeiras do apelido `cobranca`, juntas ou individualmente. Outros nomes são
-recusados antes do deploy. As outras lojas clientes (Brand Meliz e Space Loja do Kit) ficam em
+recusados antes do deploy. **Exceção desde 09/10/2026:** `ikcous-publicada` e `savy` (as lojas
+reais, e só elas) aceitam também `send-order-confirmation`, pelo nome; a `almeida` continua nas
+cinco, e o apelido `cobranca` continua sendo só as cinco. Motivo: o comprovante da venda de
+balcão compartilha `_shared/pedido.ts` e `_shared/comprovante.ts` com `criar-pagamento`,
+`webhook-mercadopago`, `reconciliar-pagamentos` e `send-order-confirmation`; sem poder publicar
+esta última, a release travaria sempre que esses arquivos mudassem. A lista que a release
+enxerga é `functionsPublicaveis` em `scripts/frota/canais-de-backend.json`, e o teste
+`tests/ci_publicar_functions_test.ts` exige que ela concorde com o workflow. As outras lojas clientes (Brand Meliz e Space Loja do Kit) ficam em
 projetos de contas sem acesso deste token e **não têm rota** neste workflow.
 
 O log imprime projeto e nomes antes de publicar e termina com o `supabase functions list` do

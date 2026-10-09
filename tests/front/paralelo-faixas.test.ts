@@ -8,6 +8,7 @@ const {
   arquivoPermitido,
   casa,
   conferirAlterados,
+  ehMigration,
   globsSeSobrepoem,
   maiorPrefixoDeMigration,
   prefixoDeMigration,
@@ -438,5 +439,117 @@ describe("achados da 2ª revisão (faixas)", () => {
     expect(
       riscoDoConteudo("src/x.ts", "--- a/fin_x.ts\n+++ b/fin_x.ts"),
     ).toEqual([]);
+  });
+
+  // Falsos negativos medidos na re-revisão independente do #782 (achado M2): cada um era "rotina".
+  it("risco por caminho: cartão, Mercado Pago, PIX, login/sessão, financeiro e payment (M2a)", () => {
+    // Ligar crédito/débito é decisão de dinheiro do dono (AGENTS.md, mapa de risco).
+    for (const caminho of [
+      "src/hooks/useConfigDoCartao.ts",
+      "src/lib/config-do-cartao.ts",
+      "src/components/checkout/PagamentoComCartao.tsx",
+      "src/components/admin/settings/MercadoPagoSection.tsx",
+      "src/components/checkout/sdk-mercado-pago.ts",
+      "src/lib/pix-configurado-no-build.ts",
+      "src/views/admin/StatusPagamentoPix.tsx",
+      "src/views/admin/AdminLoginView.tsx",
+      "src/lib/destinoPosLogin.ts",
+      "src/lib/sessao-do-admin.ts",
+      "src/hooks/useAdminSession.ts",
+      "src/views/admin/AdminFinanceiroView.tsx",
+      "src/lib/financeiro.ts",
+      "src/components/ui/custom/CustomerPaymentBadge.tsx",
+      "src/hooks/usePaymentStatus.ts",
+      "src/lib/webhook-do-gateway.ts",
+      "src/lib/password-policy.ts",
+      "src/lib/senha-forte.ts",
+      // Dinheiro do checkout que o nome denuncia (re-revisão Opus do conserto, R2)
+      "src/hooks/useOrders.ts",
+      "src/hooks/useCart.ts",
+      "src/lib/cupomPreso.ts",
+      "src/lib/estrategias-de-frete.ts",
+      "src/lib/preco-vendido.ts",
+      "src/lib/reconferirCarrinho.ts",
+    ]) {
+      expect(riscoDoCaminho(caminho), caminho).not.toBeNull();
+    }
+    // o que continua sendo rotina (o mapa não pode virar "tudo é risco")
+    for (const caminho of [
+      "src/views/admin/AdminBannersView.tsx",
+      "src/components/admin/BannerCard.tsx",
+      "src/lib/formata-data.ts",
+    ]) {
+      expect(riscoDoCaminho(caminho), caminho).toBeNull();
+    }
+  });
+
+  it("risco semântico pega `fin_${...}` em template e não confunde palavra que só termina em fin (M2b)", () => {
+    const diff = (...l: string[]) =>
+      ["--- a/x", "+++ b/x", "@@ -1 +1 @@", ...l].join("\n");
+    for (const linha of [
+      "+  supabase.rpc(`fin_${acao}`)",
+      '+  supabase.rpc("fin_" + acao)',
+      "+  const rpc = `fin_${nome}_do_caixa`;",
+      "-  .rpc('fin_saldo')",
+    ]) {
+      expect(
+        riscoDoConteudo("src/hooks/useX.ts", diff(linha)),
+        linha,
+      ).toContain("RPC/tabela fin_* (dinheiro)");
+    }
+    for (const linha of [
+      "+  const define_x = 1;",
+      "+  const refin_total = 2;",
+      "+  // o fim_de_semana nao e dinheiro",
+    ]) {
+      expect(riscoDoConteudo("src/hooks/useX.ts", diff(linha)), linha).toEqual(
+        [],
+      );
+    }
+  });
+
+  it("só `tests/` na RAIZ e sufixos .test/_test/.spec são 'teste'; pasta tests sob src/ é código (M2c)", () => {
+    const diff = (...l: string[]) =>
+      ["--- a/x", "+++ b/x", "@@ -1 +1 @@", ...l].join("\n");
+    const perigo = diff("+  create function f() security definer");
+    // código de produto escondido numa pasta `tests/` ou `test/` sob src/ era pulado
+    for (const caminho of [
+      "src/tests/helper.ts",
+      "src/lib/tests/pagar.ts",
+      "src/lib/test/pagar.ts",
+      "supabase/functions/x/tests/ajuda.ts",
+      "src/lib/contests/x.ts",
+    ]) {
+      expect(riscoDoConteudo(caminho, perigo), caminho).toContain(
+        "SECURITY DEFINER",
+      );
+    }
+    // o que continua sendo teste ou documentação
+    for (const caminho of [
+      "tests/front/x.test.ts",
+      "tests/banco/cupom.sql",
+      "TESTS/front/x.ts",
+      "src/lib/x.test.tsx",
+      "src/lib/x.spec.ts",
+      "supabase/functions/x/index_test.ts",
+      "supabase/tests/database_verification_test.sql",
+      "docs/x.md",
+    ]) {
+      expect(riscoDoConteudo(caminho, perigo), caminho).toEqual([]);
+    }
+  });
+
+  it("migration não diferencia caixa no validar nem no risco (M2d — já estava certo, fica travado)", () => {
+    expect(ehMigration("Supabase/migrations/20261300000000_x.sql")).toBe(true);
+    expect(ehMigration("SUPABASE/MIGRATIONS/x.sql")).toBe(true);
+    expect(ehMigration("Rollback-Manual-20261300000000_x.sql")).toBe(true);
+    const m = manifesto();
+    m.frentes[0].posse.push("Supabase/migrations/**");
+    expect(validarManifesto(m).erros.join("\n")).toMatch(
+      /migration não entra em "posse"/,
+    );
+    expect(riscoDoCaminho("Supabase/Migrations/20261300000000_x.sql")).toMatch(
+      /migration/,
+    );
   });
 });
