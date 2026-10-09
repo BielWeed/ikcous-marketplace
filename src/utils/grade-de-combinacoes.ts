@@ -38,6 +38,17 @@ export const MAX_ATRIBUTOS_DA_GRADE = 3;
 /** Teto aprovado de linhas POR PRODUTO (existentes + novas da grade). */
 export const MAX_LINHAS_DA_GRADE = 60;
 
+/**
+ * O recado do teto de linhas por produto, para QUALQUER porta de entrada de
+ * variação nova (o "+ Novo" unitário também): `null` se ainda cabe uma, ou a
+ * frase pronta para o toast. Desligar uma variação não abre espaço — a linha
+ * desligada continua existindo —, por isso o recado manda apagar.
+ */
+export function recadoDoTetoDeVariacoes(quantasJaTem: number): string | null {
+  if (quantasJaTem < MAX_LINHAS_DA_GRADE) return null;
+  return `Este produto já tem ${quantasJaTem} variações — o máximo é ${MAX_LINHAS_DA_GRADE}. Apague alguma que você não vende mais para abrir espaço.`;
+}
+
 /** Um atributo digitado no passo 1 do modal: "Tamanho" + ["PP","P","M"]. */
 export interface AtributoDaGrade {
   name: string;

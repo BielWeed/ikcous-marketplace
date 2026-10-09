@@ -17,6 +17,7 @@ import {
   MAX_LINHAS_DA_GRADE,
   gerarGrade,
   primeiroSkuEmColisao,
+  recadoDoTetoDeVariacoes,
   skusDaGrade,
 } from "@/utils/grade-de-combinacoes";
 import { SEPARADOR_DE_ATRIBUTOS } from "@/utils/variante-composta";
@@ -345,5 +346,22 @@ describe("gerarGrade — a chave de combinação não tem ambiguidade", () => {
     );
     expect(erro).toBeNull();
     expect(linhas).toEqual([]);
+  });
+});
+
+describe("recadoDoTetoDeVariacoes — o teto vale para qualquer porta de entrada", () => {
+  it("até 59 variações ainda cabe mais uma: sem recado", () => {
+    expect(recadoDoTetoDeVariacoes(0)).toBeNull();
+    expect(recadoDoTetoDeVariacoes(59)).toBeNull();
+  });
+
+  it("com 60 não cabe mais: o recado diz o limite e manda apagar (desligar não abre espaço)", () => {
+    const recado = recadoDoTetoDeVariacoes(60);
+    expect(recado).toContain("60");
+    expect(recado).toMatch(/apague/i);
+  });
+
+  it("produto antigo já acima do teto também recebe o recado, com a conta real", () => {
+    expect(recadoDoTetoDeVariacoes(75)).toContain("75");
   });
 });

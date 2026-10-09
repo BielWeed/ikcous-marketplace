@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
 import { formComVariacoes } from "@/utils/estoque-das-variacoes";
+import { recadoDoTetoDeVariacoes } from "@/utils/grade-de-combinacoes";
 import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
@@ -3205,6 +3206,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <button
               type="button"
               onClick={() => {
+                // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
+                // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
+                const recadoDoTeto = recadoDoTetoDeVariacoes(
+                  formData.variants.length,
+                );
+                if (recadoDoTeto) {
+                  toast.error(recadoDoTeto);
+                  return;
+                }
                 setEditingVariant(null);
                 // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
                 // ter escrito erro/aviso de duplicidade no estado do modal
