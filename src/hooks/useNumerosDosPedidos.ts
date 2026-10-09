@@ -25,6 +25,7 @@ export interface NumerosDosPedidos {
   paraPreparar: number | null;
   aguardandoPagamento: number | null;
   aCaminho: number | null;
+  /** Recarrega já. */
   recarregar: () => Promise<void>;
 }
 
@@ -94,6 +95,9 @@ export function useNumerosDosPedidos(ativo: boolean): NumerosDosPedidos {
     setContagens({ paraPreparar, aguardandoPagamento, aCaminho });
   }, []);
 
+  // O ÚNICO disparo automático: ao ficar ativa. Troca de filtro, busca ou
+  // página NÃO recarrega — as contagens não dependem deles. Depois disso só
+  // `recarregar` (tempo real, ação na tela, volta da conexão).
   useEffect(() => {
     if (ativo) void recarregar();
   }, [ativo, recarregar]);

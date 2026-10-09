@@ -106,16 +106,28 @@ vi.mock("@/contexts/StoreContext", () => ({
 }));
 
 const mockOrders: Order[] = [];
+// `loadOrders` espionado prova que a LISTA recarregou (troca de filtro) sem
+// que as contagens do topo voltassem a bater no banco; `eventoDeTempoReal`
+// é o `onRealtimeEvent` que a view entrega ao `useOrders`.
+const { loadOrdersEspiao } = vi.hoisted(() => ({ loadOrdersEspiao: vi.fn() }));
+let eventoDeTempoReal: ((payload: unknown) => void) | null = null;
 
 vi.mock("@/hooks/useOrders", () => ({
-  useOrders: () => ({
-    orders: mockOrders,
-    loadOrders: vi.fn(),
-    updateOrderStatus: vi.fn(),
-    totalOrders: 0,
-    isLoaded: true,
-    loading: false,
-  }),
+  useOrders: (
+    _ativo: boolean,
+    _admin: boolean,
+    opcoes?: { onRealtimeEvent?: (payload: unknown) => void },
+  ) => {
+    eventoDeTempoReal = opcoes?.onRealtimeEvent ?? null;
+    return {
+      orders: mockOrders,
+      loadOrders: loadOrdersEspiao,
+      updateOrderStatus: vi.fn(),
+      totalOrders: 0,
+      isLoaded: true,
+      loading: false,
+    };
+  },
 }));
 
 let mockAnalyticsStats: unknown = null;
@@ -189,6 +201,8 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
 
   beforeEach(() => {
     cadeias = [];
+    loadOrdersEspiao.mockClear();
+    eventoDeTempoReal = null;
     contagensFalham = false;
     construcaoLanca = false;
     mockAnalyticsStats = statsFake();
@@ -289,6 +303,75 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     // Os valores que esses cartões mostravam também não aparecem.
     expect(hospedeiro.textContent).not.toContain("1.234,50");
     expect(hospedeiro.textContent).not.toContain("87,65");
+  });
+
+  /**
+   * Quantas contagens DO TOPO já foram montadas: `head: true` COM filtro de
+   * status. Fica de fora a medição "a loja tem pedido nenhum?" da lista
+   * vazia (`totalAbsolutoNaLoja`, um COUNT sem filtro, uma vez por vida).
+   */
+  const contagensFeitas = () =>
+    cadeias.filter(
+      (c) =>
+        c.includes("select:exact:true") &&
+        c.some((passo) => /^(in|eq):status:/.test(passo)),
+    ).length;
+
+  /** Deixa passar o carregamento da lista (`loadAllData`, ~320 ms). */
+  async function deixarALista() {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+  }
+
+  it("uma ativação faz exatamente 3 contagens — o carregamento da lista não repete", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
+    );
+    await deixarALista();
+
+    // A lista carregou (loadAllData rodou) e as contagens não vieram junto.
+    expect(loadOrdersEspiao).toHaveBeenCalled();
+    expect(contagensFeitas()).toBe(3);
+  });
+
+  it("trocar o filtro de status recarrega a lista, mas não as contagens do topo", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
+    );
+    await deixarALista();
+    const contagensAntes = contagensFeitas();
+    const listasAntes = loadOrdersEspiao.mock.calls.length;
+
+    const chip = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Em Trânsito",
+    );
+    expect(chip).toBeTruthy();
+    await act(async () => {
+      chip!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await deixarALista();
+
+    expect(loadOrdersEspiao.mock.calls.length).toBeGreaterThan(listasAntes);
+    expect(contagensFeitas()).toBe(contagensAntes);
+  });
+
+  it("um evento de tempo real recarrega as contagens do topo", async () => {
+    await montar();
+    await esperarAte(
+      () => valorDoCartao("Para preparar") === String(PARA_PREPARAR),
+    );
+    await deixarALista();
+    expect(eventoDeTempoReal).toBeTruthy();
+    const contagensAntes = contagensFeitas();
+
+    await act(async () => {
+      eventoDeTempoReal!({ eventType: "DELETE", new: {}, old: { id: "p1" } });
+    });
+    await esperarAte(() => contagensFeitas() === contagensAntes + 3);
+    expect(contagensFeitas()).toBe(contagensAntes + 3);
   });
 
   it("consulta que devolve erro mostra '—', nunca '0'", async () => {

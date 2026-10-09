@@ -305,7 +305,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
-  // Os três números do fluxo no topo (onda F, F3); `null` = "—".
+  // Os três números do fluxo no topo (onda F, F3); `null` = "—". O hook
+  // carrega sozinho ao ficar ativo; daqui só se pede recarga por tempo
+  // real, ação na tela ou volta da conexão — nunca por filtro.
   const {
     paraPreparar,
     aguardandoPagamento,
@@ -573,8 +575,8 @@ export const AdminOrdersView = memo(function AdminOrdersView({
   );
 
   const loadStats = useCallback(async () => {
-    await Promise.all([fetchExecutiveSummary(true), recarregarNumerosDoTopo()]);
-  }, [fetchExecutiveSummary, recarregarNumerosDoTopo]);
+    await fetchExecutiveSummary(true);
+  }, [fetchExecutiveSummary]);
 
   const handleSelectOrder = useCallback(
     (order: Order) => {
@@ -1023,9 +1025,11 @@ export const AdminOrdersView = memo(function AdminOrdersView({
         icon: "⚡",
       });
       loadAllData(currentPage);
+      // Eventos perdidos enquanto estava sem conexão: confere o topo de novo.
+      void recarregarNumerosDoTopo();
     }
     wasOfflineRef.current = isOffline;
-  }, [isOffline, active, currentPage, loadAllData]);
+  }, [isOffline, active, currentPage, loadAllData, recarregarNumerosDoTopo]);
 
   useEffect(() => {
     onRealtimeEventRef.current = (payload) => {
@@ -1078,8 +1082,9 @@ export const AdminOrdersView = memo(function AdminOrdersView({
 
       // Atualiza apenas os KPIs (listagem já é atualizada reativamente em memória)
       loadStats();
+      void recarregarNumerosDoTopo();
     };
-  }, [loadStats, handleSelectOrder, selectedOrderId]);
+  }, [loadStats, recarregarNumerosDoTopo, handleSelectOrder, selectedOrderId]);
 
   const totalPages = Math.ceil(totalOrders / itemsPerPage);
   const paginatedOrders = useMemo(
@@ -1261,6 +1266,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       );
 
       loadStats();
+      void recarregarNumerosDoTopo();
     } catch (err: any) {
       haptic.error();
       console.error("[handleStatusChange] Erro ao avançar status:", err);
