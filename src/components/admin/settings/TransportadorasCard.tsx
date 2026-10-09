@@ -272,7 +272,7 @@ function resumoDoCartao(
           !emailDeContatoValido(salvo?.contato_email)
         ? "Sem e-mail de contato"
         : sandbox
-          ? "Modo de testes"
+          ? "Modo de teste"
           : ligado
             ? "Ligado"
             : "Chave salva, desligado";
@@ -1099,7 +1099,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         <button
           type="button"
           onClick={() => carregar()}
-          className="self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
+          className="self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
         >
           Tentar de novo
         </button>
@@ -1109,7 +1109,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
 
   return (
     <div className="flex flex-col gap-4 text-zinc-200">
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
         Como sua loja envia
       </p>
       <p className="text-xs leading-relaxed text-zinc-400">
@@ -1132,7 +1132,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               resultadoTeste: null,
             })
           }
-          onSandboxMudou={(v) =>
+          onModoDeTesteMudou={(v) =>
             atualizarRascunho(provider, { sandboxEscolhido: v })
           }
           onEmailMudou={(v) =>
@@ -1147,20 +1147,20 @@ export const TransportadorasSection = memo(function TransportadorasSection({
 
       {/* Bloco separado (R2-1): liga/desliga não mexe em nenhuma credencial. */}
       <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/60 p-3.5">
-        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+        <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
           <ShieldCheck className="size-3.5 text-admin-gold" />
           <span>Provedores ligados na loja</span>
         </div>
         <p className="text-[11px] leading-snug text-zinc-400">
           Marque quem cota frete de verdade para as suas clientes. Só é possível
-          ligar um provedor com chave salva, fora do modo de testes.
+          ligar um provedor com chave salva, fora do modo de teste.
         </p>
         <div className="space-y-1.5">
           {ORDEM_DOS_PROVEDORES.map((provider) => {
             const salvo = provedoresSalvos.get(provider);
             const temChave = salvo?.tem_chave ?? false;
-            const emSandbox = sandboxAtual(provider);
-            const podeLigar = temChave && !emSandbox;
+            const emModoDeTeste = sandboxAtual(provider);
+            const podeLigar = temChave && !emModoDeTeste;
             const marcado = ligadosEscolhidos.has(provider);
             // Revisão Opus (achado 1): a caixa SEMPRE deixa DESMARCAR —
             // um provedor que perdeu a chave ou caiu em sandbox depois de
@@ -1187,8 +1187,8 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               ? "sem chave salva"
               : semEmailQueEssePedeParaSalvar
                 ? "sem e-mail de contato"
-                : emSandbox
-                  ? "em modo de testes — não pode ligar"
+                : emModoDeTeste
+                  ? "em modo de teste — não pode ligar"
                   : estaSalvo && marcado
                     ? "ligado"
                     : estaSalvo && !marcado
@@ -1217,7 +1217,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                     {nomeDoProvedor(provider)}
                   </span>
                 </span>
-                <span className="text-[10px] text-zinc-500">{rotulo}</span>
+                <span className="text-[11px] text-zinc-500">{rotulo}</span>
               </label>
             );
           })}
@@ -1230,7 +1230,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               (modo === "multi" || ligadosEscolhidos.size === 0))
           }
           onClick={salvarLigados}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
         >
           {salvandoLigados ? (
             <RefreshCw className="size-3 animate-spin" />
@@ -1256,7 +1256,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
           </div>
         )}
         {modo === "legado" && (
-          <p className="text-[10px] leading-snug text-zinc-500">
+          <p className="text-[11px] leading-snug text-zinc-500">
             Sua loja ainda está no modo antigo (um provedor só). Salvar aqui
             liga o modo novo, com vários provedores ao mesmo tempo.
           </p>
@@ -1274,7 +1274,7 @@ function CartaoDoProvedor({
   sandboxAtual,
   logo,
   onTokenMudou,
-  onSandboxMudou,
+  onModoDeTesteMudou,
   onEmailMudou,
   onCarregarServicos,
   onAlternarServico,
@@ -1295,7 +1295,7 @@ function CartaoDoProvedor({
    * `data-slot="logo-provedor"` abaixo, fácil de substituir por busca. */
   readonly logo?: ReactNode;
   readonly onTokenMudou: (v: string) => void;
-  readonly onSandboxMudou: (v: boolean) => void;
+  readonly onModoDeTesteMudou: (v: boolean) => void;
   readonly onEmailMudou: (v: string) => void;
   readonly onCarregarServicos: () => void;
   readonly onAlternarServico: (codigo: string) => void;
@@ -1337,7 +1337,7 @@ function CartaoDoProvedor({
         <span className="flex min-w-0 items-center gap-2.5">
           {logo ?? <LogoDoProvedor provider={provider} />}
           <span className="flex min-w-0 flex-col items-start gap-0.5">
-            <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <span className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               <Lock className="size-3.5 text-admin-gold" />
               <span>Chave de acesso — {nomeDoProvedor(provider)}</span>
             </span>
@@ -1356,9 +1356,7 @@ function CartaoDoProvedor({
       <div id={idCorpo} hidden={!aberto} className="space-y-3 px-3.5 pb-3.5">
         {PROVEDORES_COM_SANDBOX.has(provider) && (
           <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-zinc-400">
-              Modo de testes (Sandbox)
-            </span>
+            <span className="text-xs text-zinc-400">Modo de teste</span>
             <Switch
               checked={sandboxAtual}
               // Revisão Opus (achado 1, R3-8): a trava é só para LIGAR o
@@ -1369,8 +1367,8 @@ function CartaoDoProvedor({
               // sandbox, e não dá para desligar a transportadora com o
               // sandbox ligado (a edge também recusaria — acoes.ts §R3-8).
               disabled={ligado && !sandboxAtual}
-              aria-label={`Modo de testes (Sandbox) — ${nomeDoProvedor(provider)}`}
-              onCheckedChange={(checked) => onSandboxMudou(checked)}
+              aria-label={`Modo de teste — ${nomeDoProvedor(provider)}`}
+              onCheckedChange={(checked) => onModoDeTesteMudou(checked)}
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
           </div>
@@ -1378,7 +1376,7 @@ function CartaoDoProvedor({
 
         {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
           <p className="text-[11px] leading-snug text-zinc-500">
-            Desligue esta transportadora antes de usar o modo de testes.
+            Desligue esta transportadora antes de usar o modo de teste.
           </p>
         )}
 
@@ -1441,7 +1439,7 @@ function CartaoDoProvedor({
           <div className="space-y-1.5">
             <label
               htmlFor={`email-contato-${provider}`}
-              className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+              className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
             >
               <Mail className="size-3.5 text-admin-gold" />
               <span>E-mail de contato</span>
@@ -1526,15 +1524,19 @@ function CartaoDoProvedor({
               rascunho.resultadoTeste.servicosTestados.length > 0 && (
                 <ul className="ml-6 list-disc space-y-0.5 text-[11px] text-zinc-300">
                   {rascunho.resultadoTeste.servicosTestados.map((s) => {
-                    // ANOTADO (revisão Opus): o nome do serviço junto do
-                    // código — "PAC" ao lado de "1", não só o código cru.
-                    const nomeDoServico = rascunho.servicosCarregados?.find(
+                    // Painel simples (G6): a lojista lê o NOME do serviço
+                    // ("PAC"), que vem de `list_services` (a API; sem tabela
+                    // fixa aqui). Sem a lista carregada fica "Serviço 1" —
+                    // nada de nome inventado. O código vai para o `title`.
+                    const servicoDaLista = rascunho.servicosCarregados?.find(
                       (sc) => sc.codigo === s.codigo,
-                    )?.servico;
+                    );
                     return (
-                      <li key={s.codigo}>
-                        {s.codigo}
-                        {nomeDoServico ? ` (${nomeDoServico})` : ""}:{" "}
+                      <li key={s.codigo} title={`Código ${s.codigo}`}>
+                        {servicoDaLista
+                          ? nomeCompletoDoServico(servicoDaLista)
+                          : `Serviço ${s.codigo}`}
+                        :{" "}
                         {s.ok
                           ? "cotou certo"
                           : s.motivo === "erro_do_servico"
@@ -1550,7 +1552,7 @@ function CartaoDoProvedor({
 
         <div className="space-y-1.5 pt-1">
           <div className="flex items-center justify-between">
-            <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            <span className="block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Serviços da conta
             </span>
             <button
@@ -1561,7 +1563,7 @@ function CartaoDoProvedor({
                 rascunho.testando ||
                 (!temChave && !rascunho.tokenDigitado.trim())
               }
-              className="flex items-center gap-1 text-[10px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+              className="flex items-center gap-1 text-[11px] font-bold text-admin-gold hover:underline disabled:opacity-40"
             >
               <RefreshCw
                 className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
@@ -1627,7 +1629,7 @@ function CartaoDoProvedor({
                         />
                       </span>
                       {servico.ausenteDaListaDaApi && (
-                        <span className="ml-6 text-[10.5px] font-semibold text-amber-300">
+                        <span className="ml-6 text-[11px] font-semibold text-amber-300">
                           A Frenet não listou este serviço para esta chave.
                           Aparecer no app de etiquetas não garante a cotação no
                           checkout: marque J&T, toque em Testar e só salve se
@@ -1635,7 +1637,7 @@ function CartaoDoProvedor({
                         </span>
                       )}
                       {exigeAgencia && (
-                        <span className="ml-6 flex items-start gap-1 text-[10.5px] font-semibold text-amber-300">
+                        <span className="ml-6 flex items-start gap-1 text-[11px] font-semibold text-amber-300">
                           <AlertCircle className="mt-px size-3 shrink-0" />
                           {AVISO_ID_EXIGE_AGENCIA}
                         </span>
@@ -1652,7 +1654,7 @@ function CartaoDoProvedor({
             type="button"
             disabled={rascunho.salvando || rascunho.testando}
             onClick={onSalvar}
-            className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[9px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
           >
             {rascunho.salvando ? (
               <RefreshCw className="size-3 animate-spin text-admin-gold" />
@@ -1686,7 +1688,7 @@ function LogoDoProvedor({ provider }: { readonly provider: ProvedorFrete }) {
       <span
         data-slot="logo-provedor"
         aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[9px] font-black uppercase text-zinc-500"
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-[11px] font-black uppercase text-zinc-500"
       >
         {nomeDoProvedor(provider).slice(0, 2)}
       </span>
@@ -1709,6 +1711,18 @@ function LogoDoProvedor({ provider }: { readonly provider: ProvedorFrete }) {
       />
     </span>
   );
+}
+
+// "Transportadora — Serviço" no mesmo texto da lista da conta (sem o logo),
+// para o resultado do "Testar" não dizer só "Standard" sem a J&T/Frenet.
+function nomeCompletoDoServico(item: ServicoDoProvedor): string {
+  const marca = marcaDoFrete({
+    transportadora: item.transportadora,
+    servico: item.servico,
+  });
+  const nome = marca.transportadora?.nome ?? item.transportadora;
+  const servicoLimpo = marca.servico ?? item.servico;
+  return servicoLimpo ? `${nome} — ${servicoLimpo}` : nome;
 }
 
 // Serviço na lista do provedor com o NOME NORMALIZADO (pedido do dono,
