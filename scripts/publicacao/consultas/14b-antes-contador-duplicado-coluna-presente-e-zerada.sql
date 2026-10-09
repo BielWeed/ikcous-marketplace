@@ -53,8 +53,9 @@
 -- LIMITES: nao le valor de cupom, so conta. Evidencia LOCAL nao prova a IKCOUS nem a
 -- Savy: so o run desta consulta contra o ref de cada loja. A resposta vale como
 -- evidencia so com rol=ok no veredito. Uma gravacao em used_count DEPOIS desta consulta
--- e ANTES do apply nao e' vista aqui: o pre-voo da migration a trava a partir do LOCK
--- (SHARE ROW EXCLUSIVE). No envelope REPEATABLE READ do aplicar-migrations.yml a foto da
+-- e ANTES do apply nao e' vista aqui: o pre-voo da migration trava a tabela a partir do
+-- LOCK (ACCESS EXCLUSIVE, ate o COMMIT: a leitura de cupom tambem espera; com lock_timeout de
+-- 5 s, se um pedido segurar a linha mais que isso a migration falha 55P03 sem gravar). No envelope REPEATABLE READ do aplicar-migrations.yml a foto da
 -- impressao digital e' tirada ANTES do LOCK: um UPDATE depois da foto faz o pre-voo
 -- RECUSAR (40001; o workflow mostra ESTADO DESCONHECIDO; e' so repetir). Um INSERT com
 -- used_count explicito diferente de zero nos segundos entre a foto e o LOCK nao e' visto:

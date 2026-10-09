@@ -41,6 +41,11 @@
  *             nova (so o LOCK da tabela a segura; e' o que o mutante "sem LOCK" prova).
  *   timeout   uma transacao segurando `coupons` por mais de 5 s: a migration falha com
  *             lock_timeout (55P03), sem gravar nada.
+ *   pedido    um PEDIDO em andamento (FOR UPDATE na linha do cupom antes da trava da migration, soma
+ *             usage_count depois, como create_marketplace_order_v23/v24) e DOIS pedidos no mesmo cupom,
+ *             no envelope REPEATABLE READ: sem ACCESS EXCLUSIVE no inicio do pre-voo havia DEADLOCK
+ *             (40P01) e o Postgres derrubava um dos dois (o pedido, em F). Com ele, o(s) pedido(s) dao
+ *             COMMIT e a migration recusa com 40001, sem gravar nada.
  *   rr        o ENVELOPE de producao (aplicar-migrations.yml): BEGIN ISOLATION LEVEL REPEATABLE
  *             READ, uma leitura de `coupons` (a foto da impressao digital, ANTES do LOCK), a
  *             migration, COMMIT. Sem concorrente aplica. Com um UPDATE used_count = 7
@@ -297,7 +302,8 @@ function semRaise(sql, inicio) {
   return sql.replace(re, "NULL;");
 }
 const T = {
-  lock: "  LOCK TABLE public.coupons IN SHARE ROW EXCLUSIVE MODE;\n",
+  lock: "  LOCK TABLE public.coupons IN ACCESS EXCLUSIVE MODE;\n",
+  lockFraco: "  LOCK TABLE public.coupons IN SHARE ROW EXCLUSIVE MODE;\n",
   lockTimeout: "SET LOCAL lock_timeout = '5s';\n",
   forShare: "  PERFORM 1 FROM public.coupons FOR SHARE;\n",
   retorno:
@@ -688,8 +694,8 @@ async function casoCrlf(sql = MIG) {
   assert.equal((await fotografia(db)).usedExiste, false);
 }
 
-/** `pg_stat_activity`: espera ate `ms` por UMA sessao bloqueada em trava neste banco. */
-async function esperarBloqueio(db, ms) {
+/** `pg_stat_activity`: espera ate `ms` por `n` sessoes bloqueadas em trava neste banco. */
+async function esperarBloqueio(db, ms, n = 1) {
   const fim = Date.now() + ms;
   for (;;) {
     const bloqueada = await usar(
@@ -703,7 +709,7 @@ async function esperarBloqueio(db, ms) {
           )
         ).rows[0].n,
     );
-    if (bloqueada > 0) return;
+    if (bloqueada >= n) return;
     if (Date.now() > fim)
       throw new assert.AssertionError({
         message: "a migration nao chegou a esperar a trava",
@@ -793,6 +799,97 @@ async function casoCorridaInsert(sql = MIG) {
     "o 7 do INSERT continua la",
   );
 }
+/** PEDIDO EM ANDAMENTO (create_marketplace_order_v23/v24): segura a LINHA do cupom
+ * (FOR UPDATE) e so DEPOIS grava nela (usage_count + 1) e commita. Com a trava da tabela
+ * mais fraca que ACCESS EXCLUSIVE, a migration segura a TABELA e espera a LINHA enquanto o
+ * pedido segura a linha e espera a tabela: DEADLOCK (40P01) e o Postgres derruba um dos dois.
+ * Com ACCESS EXCLUSIVE no inicio do pre-voo, quem ja segura a tabela passa na frente de quem
+ * espera a trava exclusiva: o(s) pedido(s) dao COMMIT e a migration recusa com 40001 (as
+ * linhas mudaram depois da foto do envelope), sem gravar nada.
+ * `dois`: dois pedidos no mesmo cupom (o segundo espera a linha do primeiro). */
+async function casoPedidoEmAndamento(sql = MIG, dois = false) {
+  const db = await clonar(dois ? "pedidosF" : "pedidoE");
+  await semear(db);
+  const clientes = [];
+  const novo = async () => {
+    const c = new Client({ connectionString: urlDe(db) });
+    await c.connect();
+    clientes.push(c);
+    return c;
+  };
+  const gravaECommita = async (c, rotulo) => {
+    try {
+      await c.query(
+        `UPDATE public.coupons SET usage_count = usage_count + 1 WHERE code = 'CJ1'`,
+      );
+      await c.query("COMMIT");
+    } catch (e) {
+      throw new assert.AssertionError({
+        message: `${rotulo}: o PEDIDO morreu (${e.code} ${e.message}); devia dar COMMIT`,
+      });
+    }
+  };
+  try {
+    const p1 = await novo();
+    await p1.query("BEGIN");
+    await p1.query(
+      `SELECT id FROM public.coupons WHERE code = 'CJ1' FOR UPDATE`,
+    );
+    let p2 = null;
+    let p2Linha = null;
+    if (dois) {
+      p2 = await novo();
+      await p2.query("BEGIN");
+      p2Linha = p2
+        .query(`SELECT id FROM public.coupons WHERE code = 'CJ1' FOR UPDATE`)
+        .then(
+          () => ({ ok: true }),
+          (erro) => ({ erro }),
+        );
+      await esperarBloqueio(db, 4000, 1); // o pedido 2 espera a linha do pedido 1
+    }
+    // a migration no envelope do workflow (foto, trava, pre-voo); fica esperando
+    const emM = emEnvelopeRR(db, sql);
+    await esperarBloqueio(db, 4000, dois ? 2 : 1);
+    await gravaECommita(p1, "pedido 1");
+    if (dois) {
+      const l2 = await p2Linha;
+      if (l2.erro)
+        throw new assert.AssertionError({
+          message: `pedido 2: o PEDIDO morreu ao pegar a linha (${l2.erro.code} ${l2.erro.message})`,
+        });
+      await gravaECommita(p2, "pedido 2");
+    }
+    const r = await emM;
+    assert.ok(
+      r.erro,
+      "pedido em andamento: a migration devia RECUSAR (os pedidos gravaram depois da foto) e aplicou",
+    );
+    assert.equal(
+      r.erro.code,
+      "40001",
+      `pedido em andamento: esperava 40001 (could not serialize), veio ${r.erro.code} ${r.erro.message}`,
+    );
+  } finally {
+    for (const c of clientes) {
+      await c.query("ROLLBACK").catch(() => {});
+      await c.end().catch(() => {});
+    }
+  }
+  const depois = await fotografia(db);
+  assert.equal(depois.usedExiste, true, "pedido em andamento: coluna apagada");
+  assert.equal(
+    depois.usage,
+    dois ? "CJ1=7,CJ2=0,CJ3=2" : "CJ1=6,CJ2=0,CJ3=2",
+    "os pedidos tem de ter gravado o uso do cupom",
+  );
+}
+async function casoPedidoUm(sql = MIG) {
+  return casoPedidoEmAndamento(sql, false);
+}
+async function casoPedidosDois(sql = MIG) {
+  return casoPedidoEmAndamento(sql, true);
+}
 async function casoTimeout(sql = MIG) {
   const db = await clonar("timeout");
   await semear(db);
@@ -880,6 +977,21 @@ async function casoRepeatableRead(sql = MIG) {
     "7",
     "RR: o 7 continua la",
   );
+  // (3) um pedido soma usage_count depois da foto (cenario C): tambem recusa, e o uso fica
+  const dbC = await clonar("rrC");
+  await semear(dbC);
+  const rC = await emEnvelopeRR(dbC, sql, () =>
+    usar(dbC, (c) =>
+      c.query(
+        `UPDATE public.coupons SET usage_count = usage_count + 1 WHERE code = 'CJ1'`,
+      ),
+    ),
+  );
+  assert.ok(rC.erro, "RR (usage_count): devia RECUSAR e aplicou");
+  assert.equal(rC.erro.code, "40001", `RR (usage_count): ${rC.erro.message}`);
+  const depoisC = await fotografia(dbC);
+  assert.equal(depoisC.usedExiste, true, "RR (usage_count): coluna apagada");
+  assert.equal(depoisC.usage, "CJ1=6,CJ2=0,CJ3=2", "RR (usage_count)");
 }
 
 /** Rollback: devolve a coluna IDENTICA a do baseline. */
@@ -1039,6 +1151,14 @@ async function main() {
   ok(
     "corrida com INSERT: linha nova com used_count = 7 em transacao aberta (o FOR SHARE nao a alcanca); a migration ESPERA a trava da tabela, ve o 7 depois do COMMIT e RECUSA; o 7 continua la",
   );
+  await casoPedidoUm();
+  ok(
+    "pedido em andamento (cenario E: FOR UPDATE do cupom antes da trava da migration, soma usage_count depois, envelope REPEATABLE READ): o PEDIDO da COMMIT e a migration recusa com 40001 sem gravar; a coluna e o uso do cupom (CJ1=6) ficam",
+  );
+  await casoPedidosDois();
+  ok(
+    "dois pedidos em andamento (cenario F: o segundo espera a linha do primeiro): os DOIS pedidos dao COMMIT (CJ1=7) e a migration recusa com 40001 sem gravar",
+  );
   await casoTimeout();
   ok(
     "timeout: tabela presa por outra transacao -> falha com lock_timeout (55P03) em ~5 s, NADA gravado",
@@ -1069,6 +1189,16 @@ async function main() {
     "sem LOCK da tabela (corrida com INSERT)",
     casoCorridaInsert,
     trocar(MIG, T.lock, ""),
+  );
+  await mutante(
+    "LOCK SHARE ROW EXCLUSIVE no lugar de ACCESS EXCLUSIVE (deadlock com o pedido em andamento)",
+    casoPedidoUm,
+    trocar(MIG, T.lock, T.lockFraco),
+  );
+  await mutante(
+    "LOCK SHARE ROW EXCLUSIVE no lugar de ACCESS EXCLUSIVE (dois pedidos em andamento)",
+    casoPedidosDois,
+    trocar(MIG, T.lock, T.lockFraco),
   );
   await mutante(
     "sem lock_timeout",

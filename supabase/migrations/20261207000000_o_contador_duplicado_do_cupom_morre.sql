@@ -66,13 +66,24 @@
 --
 -- 5. ORDEM, TRAVAS E CONCORRENCIA
 --
--- A primeira coisa do pre-voo e travar `coupons` em SHARE ROW EXCLUSIVE: a partir do
--- LOCK ninguem grava no cupom (nem em `used_count`) ate o DROP, e a leitura (o checkout
--- validando cupom) continua. Sem essa trava, uma gravacao que terminasse DEPOIS da
--- contagem e ANTES do DROP sumiria junto com a coluna. O DROP sobe a trava para ACCESS
--- EXCLUSIVE. `lock_timeout` de 5 s: se alguem segura a tabela por mais que isso, a
--- migration FALHA (55P03) sem gravar nada, em vez de enfileirar o checkout atras dela; e
--- so repetir.
+-- A primeira coisa do pre-voo e travar `coupons` em ACCESS EXCLUSIVE, ate o COMMIT: a
+-- partir do LOCK ninguem le nem grava no cupom (nem em `used_count`). Sem trava, uma
+-- gravacao que terminasse DEPOIS da contagem e ANTES do DROP sumiria junto com a coluna.
+-- `lock_timeout` de 5 s: se alguem segura a tabela por mais que isso (um pedido que
+-- pegou a linha do cupom e demora), a migration FALHA (55P03) sem gravar nada, em vez de
+-- enfileirar o checkout atras dela; e so repetir.
+--
+-- POR QUE ACCESS EXCLUSIVE E NAO SHARE ROW EXCLUSIVE (deadlock com pedido em andamento).
+-- create_marketplace_order_v23/v24 pegam a LINHA do cupom (FOR UPDATE) e so DEPOIS gravam
+-- nela (usage_count + 1), o que pede a tabela em ROW EXCLUSIVE. Com SHARE ROW EXCLUSIVE a
+-- migration segurava a TABELA e pedia a LINHA (o FOR SHARE abaixo) enquanto o pedido segurava
+-- a linha e pedia a tabela: um esperava o outro e o Postgres derrubava (40P01) quem estava
+-- mais adiantado -- o PEDIDO, se houvesse dois em andamento. Com ACCESS EXCLUSIVE logo no
+-- inicio, quem JA segura a tabela (o pedido, com ROW SHARE do FOR UPDATE) passa na frente de
+-- quem espera a trava exclusiva: o pedido da COMMIT e a migration recusa com 40001 (a linha
+-- mudou depois da foto), sem gravar nada. Custo: a LEITURA de cupom (validar cupom no
+-- checkout) tambem espera durante o pre-voo (milissegundos) -- e ja esperava do DROP ate o
+-- COMMIT.
 --
 -- A TRAVA SO PROTEGE DO LOCK EM DIANTE. O que o workflow aplicar-migrations.yml faz: a
 -- transacao e REPEATABLE READ e a impressao digital ANTES tira a foto do banco ANTES do
@@ -90,8 +101,8 @@
 -- O DROP e sem CASCADE de proposito: se algum dependente escapasse do pre-voo, o
 -- Postgres recusa em vez de apagar o objeto junto.
 --
--- QUANTO TEMPO A TABELA FICA TRAVADA (leia antes de aplicar). A trava de ACCESS EXCLUSIVE
--- do DROP nao termina com o comando: fica ate o COMMIT. No envelope do workflow isso
+-- QUANTO TEMPO A TABELA FICA TRAVADA (leia antes de aplicar). A trava ACCESS EXCLUSIVE,
+-- pedida no inicio do pre-voo, nao termina com o DROP: fica ate o COMMIT. No envelope do workflow isso
 -- inclui a impressao digital DEPOIS (md5 de 11 tabelas do dinheiro; `coupons` nao esta entre
 -- elas, mas a trava segue ate o COMMIT do mesmo jeito), entao o checkout validando cupom
 -- ESPERA todo esse tempo, nao so a fracao de segundo do DROP.
@@ -136,8 +147,9 @@ BEGIN
   END IF;
 
   -- A trava vem ANTES de qualquer leitura que decida: o que for conferido abaixo
-  -- continua verdadeiro ate o DROP.
-  LOCK TABLE public.coupons IN SHARE ROW EXCLUSIVE MODE;
+  -- continua verdadeiro ate o DROP. ACCESS EXCLUSIVE (e nao SHARE ROW EXCLUSIVE): ver o item 5,
+  -- deadlock com um pedido que ja segura a linha do cupom.
+  LOCK TABLE public.coupons IN ACCESS EXCLUSIVE MODE;
 
   SELECT a.attnum INTO v_attnum
     FROM pg_attribute a

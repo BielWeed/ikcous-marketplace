@@ -332,9 +332,12 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         quebra (o front le `coupons` com `select *`); o front desta release so deixa de ter a coluna
         nos tipos gerados.
       - **O que o apply faz e nao faz:** APAGA UMA COLUNA; nenhuma linha de `coupons` muda e nenhum
-        `usage_count` e tocado. A migration trava a tabela (`SHARE ROW EXCLUSIVE`, leitura continua)
-        antes de conferir e usa `lock_timeout` de 5 s: se alguem segurar a tabela por mais que isso
-        ela FALHA sem gravar (erro 55P03) e basta repetir. Sem `CASCADE`. Desfazer:
+        `usage_count` e tocado. A migration trava a tabela em `ACCESS EXCLUSIVE` ANTES de conferir e
+        ate o `COMMIT` (a leitura de cupom no checkout espera; e `ACCESS EXCLUSIVE`, e nao
+        `SHARE ROW EXCLUSIVE`, porque um pedido em andamento segura a linha do cupom e so depois grava
+        nela: com a trava mais fraca havia deadlock e o pedido podia morrer) e usa `lock_timeout` de
+        5 s: se alguem, por exemplo um pedido que pegou a linha do cupom, segurar a tabela por mais
+        que isso ela FALHA sem gravar (erro 55P03) e basta repetir. Sem `CASCADE`. Desfazer:
         `rollback-manual-20261207000000_o_contador_duplicado_do_cupom_morre.sql` recria a coluna
         igual a do baseline com 0 em todas as linhas (e como so apagou com tudo 0, e o estado exato
         de antes); executar pelo WORKFLOW `aplicar-migrations.yml` com esse arquivo (secao Rollback >
@@ -354,8 +357,8 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `tests/banco/contador-duplicado-viva.cjs` (Postgres 17 efemero, no `rpc-ci.yml`) provam que as
         consultas DECIDEM certo e que a migration recusa/aplica como descrito, nao que a IKCOUS ou a
         Savy estao no estado A ou B. Uma gravacao em `used_count` entre a `14b` e o apply nao e vista
-        pela `14b`: quem a fecha e o pre-voo da migration, assim: a trava (`SHARE ROW EXCLUSIVE`)
-        impede quem grava DEPOIS do `LOCK`; o workflow aplica em transacao `REPEATABLE READ` e tira a
+        pela `14b`: quem a fecha e o pre-voo da migration, assim: a trava (`ACCESS EXCLUSIVE`)
+        impede quem le ou grava DEPOIS do `LOCK`; o workflow aplica em transacao `REPEATABLE READ` e tira a
         foto da impressao digital ANTES do `LOCK`, entao o pre-voo faz `FOR SHARE` nas linhas, e sob
         esse nivel QUALQUER `UPDATE` posterior a foto faz a migration RECUSAR (erro `40001`, o
         workflow mostra `ESTADO DESCONHECIDO`; nada e gravado e basta repetir). **Risco residual

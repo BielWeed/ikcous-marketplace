@@ -82,7 +82,7 @@ Deno.test("207: a ordem e trava de tempo -> trava da tabela -> pre-voo -> UM DRO
     "SET LOCAL lock_timeout",
     "SET LOCAL statement_timeout",
     "DO $preflight_20261207$",
-    "LOCK TABLE public.coupons IN SHARE ROW EXCLUSIVE MODE",
+    "LOCK TABLE public.coupons IN ACCESS EXCLUSIVE MODE",
     "ALTER TABLE public.coupons DROP COLUMN IF EXISTS used_count",
     "DO $posvoo_20261207$",
   ].map((t) => c.indexOf(t));
@@ -106,6 +106,31 @@ Deno.test("207: a ordem e trava de tempo -> trava da tabela -> pre-voo -> UM DRO
   ])
     assert(pre.indexOf(leitura) > iLock, `${leitura} antes da trava`);
   assertEquals(c.match(/\bLOCK TABLE\b/g).length, 1);
+});
+
+Deno.test("207: a trava e ACCESS EXCLUSIVE no inicio do pre-voo (SHARE ROW EXCLUSIVE dava deadlock com o pedido que ja segura a linha do cupom)", () => {
+  const c = semComentarios(migration);
+  assertEquals(
+    c.match(/LOCK TABLE public\.coupons IN ([A-Z ]+) MODE;/)[1],
+    "ACCESS EXCLUSIVE",
+  );
+  assert(
+    !/SHARE ROW EXCLUSIVE/.test(c),
+    "a trava mais fraca reabre o deadlock",
+  );
+  // o LOCK e o primeiro comando do pre-voo depois de ver se a tabela existe
+  const pre = c.slice(c.indexOf("DO $preflight_20261207$"));
+  assert(
+    pre.indexOf("LOCK TABLE") < pre.indexOf("pg_attribute"),
+    "o LOCK vem antes de qualquer leitura",
+  );
+  for (const frase of [
+    "deadlock",
+    "create_marketplace_order_v23/v24",
+    "ACCESS EXCLUSIVE",
+    "55P03",
+  ])
+    assertStringIncludes(migration, frase);
 });
 
 Deno.test("207: o FOR SHARE vem DEPOIS da trava e ANTES da contagem (envelope REPEATABLE READ: a foto e anterior ao LOCK)", () => {
