@@ -530,7 +530,7 @@ function ComparativoDoFechamento({
       aria-label="Esperado, contado e diferença"
     >
       <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-        <dt className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+        <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
           Esperado
         </dt>
         <dd className="mt-1 text-sm font-black text-white">
@@ -538,7 +538,7 @@ function ComparativoDoFechamento({
         </dd>
       </div>
       <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-        <dt className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+        <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
           Contado
         </dt>
         <dd className="mt-1 text-sm font-black text-white">
@@ -554,7 +554,7 @@ function ComparativoDoFechamento({
           situacao === null && "border-white/5 bg-white/[0.02]",
         )}
       >
-        <dt className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+        <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
           {rotuloDiferenca}
         </dt>
         <dd
