@@ -230,9 +230,8 @@ const textoDaTela = () => hospedeiro.textContent ?? "";
 
 // ── Parte 2: Canais de Atendimento (AdminWhatsAppConfigView) ──────────────
 async function abrirCanais(aoSujar?: (dirty: boolean) => void) {
-  const { AdminWhatsAppConfigView } = await import(
-    "@/views/admin/AdminWhatsAppConfigView"
-  );
+  const { AdminWhatsAppConfigView } =
+    await import("@/views/admin/AdminWhatsAppConfigView");
   await act(async () => {
     raiz.render(
       <AdminWhatsAppConfigView active={true} onSetDirty={aoSujar ?? vi.fn()} />,
@@ -255,9 +254,12 @@ describe("Canais de Atendimento — o formulário direto guarda o morador", () =
       0,
     );
 
-    // Os três blocos à vista de uma vez — nada nasce escondido.
+    // Os três blocos à vista de uma vez — nada nasce escondido. O bloco 2
+    // (horário) virou leitura (A1, 09/10): sem campo, só o texto e o botão
+    // que leva a Minha loja.
     expect(hospedeiro.querySelector("#settings-whatsapp")).not.toBeNull();
-    expect(hospedeiro.querySelector("#settings-business-hours")).not.toBeNull();
+    expect(hospedeiro.querySelector("#settings-business-hours")).toBeNull();
+    expect(textoDaTela()).toContain("Horário de atendimento");
     expect(
       hospedeiro.querySelector("#settings-share-message-editor"),
     ).not.toBeNull();
