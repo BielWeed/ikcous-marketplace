@@ -6,6 +6,7 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import {
   type LinhaProntaDaGrade,
   ModalVarianteGrade,
@@ -84,7 +85,6 @@ import {
   Trash2,
   TrendingDown,
   TrendingUp,
-  Truck,
   X,
 } from "lucide-react";
 import React, {
@@ -475,6 +475,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [variantToDelete, setVariantToDelete] = useState<string | null>(null);
   const [isPromoActive, setIsPromoActive] = useState(false);
+  // `key` da seção "Variações": muda UMA vez quando um RASCUNHO com variações
+  // é aplicado depois da montagem (o `abertaInicial` da seção só vale na
+  // montagem, e o rascunho chega por efeito/toast, já com o corpo montado).
+  // Sai no mesmo lote do `setFormData` do rascunho; edições normais não mexem.
+  const [chaveDasVariacoes, setChaveDasVariacoes] = useState(0);
 
   const [skuError, setSkuError] = useState("");
   // C5.2 — três estados para o código de barras do PRODUTO: `ErroLocal`
@@ -810,6 +815,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           setFormData(draftFields);
           setInitialData(draftFields);
           setIsPromoActive(!!parsed.originalPrice);
+          if (draftFields.variants.length > 0) {
+            setChaveDasVariacoes((chave) => chave + 1);
+          }
 
           toast.success("Rascunho recuperado automaticamente!", {
             description:
@@ -910,6 +918,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 onClick: () => {
                   setFormData(draftFields);
                   setIsPromoActive(!!draftFields.originalPrice);
+                  if (draftFields.variants.length > 0) {
+                    setChaveDasVariacoes((chave) => chave + 1);
+                  }
                   toast.success("Rascunho restaurado!");
                 },
               },
@@ -952,7 +963,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (formData.sku) {
       const hasSpecialChars = /[^A-Z0-9-]/i.test(formData.sku);
       if (hasSpecialChars) {
-        setSkuError("O SKU deve conter apenas letras, números e hífens.");
+        setSkuError(
+          "O código interno deve conter apenas letras, números e hífens.",
+        );
       } else {
         setSkuError("");
       }
@@ -1511,10 +1524,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       );
       if (dona) {
         toast.error(
-          `O SKU "${sanitizedVarSku}" já está em outra variação deste produto (${dona.name}: ${dona.value}).`,
+          `O código interno "${sanitizedVarSku}" já está em outra variação deste produto (${dona.name}: ${dona.value}).`,
           {
             description:
-              "Cada variação precisa de um SKU diferente — ou deixe o SKU em branco.",
+              "Cada variação precisa de um código interno diferente — ou deixe o código interno em branco.",
             duration: 8000,
           },
         );
@@ -1687,6 +1700,41 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setVariantToDelete(null);
   };
 
+  // Primeiro campo com erro que BLOQUEIA o salvar, na ordem em que a tela os
+  // mostra (básico, depois "Custo e lucro", depois "Avançado"). O AVISO de
+  // custo maior que o preço não entra: não bloqueia. Mesma lista do `isValid`.
+  const idDoPrimeiroCampoComErro = (): string | null => {
+    if (priceError) return "product-sale-price";
+    if (stockError) return "product-stock";
+    if (costError && !costError.startsWith("Aviso"))
+      return "product-cost-price";
+    if (originalPriceError) return "product-original-price";
+    if (skuError) return "product-sku";
+    if (codigoBarrasError) return "product-codigo-barras";
+    return null;
+  };
+
+  // Mostra o campo e põe o foco nele. Se está dentro de uma SecaoRecolhivel
+  // que a lojista FECHOU com o erro lá dentro, o `temErro` dela já era
+  // verdadeiro (não muda, então não reabre sozinha): a gente aperta o
+  // cabeçalho dela, o mesmo gesto da lojista. Nada desmonta. O foco vai depois
+  // do commit (`requestAnimationFrame`), quando a seção já saiu do `hidden`.
+  const mostrarEFocarCampo = (id: string) => {
+    const painel = document
+      .getElementById(id)
+      ?.closest<HTMLElement>("[hidden]");
+    if (painel?.id) {
+      for (const cabecalho of document.querySelectorAll<HTMLButtonElement>(
+        "button[aria-controls]",
+      )) {
+        if (cabecalho.getAttribute("aria-controls") === painel.id) {
+          cabecalho.click();
+        }
+      }
+    }
+    requestAnimationFrame(() => document.getElementById(id)?.focus());
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     // #98 (ADMIN-060): showSuccess também bloqueia reentrada. Entre o
@@ -1696,6 +1744,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     if (isSubmitting || showSuccess) return;
     if (isOffline) {
       toast.error("Não é possível salvar alterações em modo offline.");
+      return;
+    }
+    // Rede de segurança: com erro bloqueante num campo não grava e leva até ele
+    // (abre a seção recolhida, se for o caso). Pela tela este ponto não é
+    // alcançável — o botão de salvar fica desligado nesse estado e o <form>
+    // não tem botão de envio; quem leva a lojista ao campo é o motivo do
+    // bloqueio, que vira botão (acima). Vale para um submit sintético.
+    const campoComErro = idDoPrimeiroCampoComErro();
+    if (campoComErro) {
+      mostrarEFocarCampo(campoComErro);
       return;
     }
     setIsSubmitting(true);
@@ -2450,7 +2508,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           htmlFor="variant-sku"
                           className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
                         >
-                          Código SKU
+                          Código interno (SKU)
                         </label>
                         <LocalBufferedInput
                           id="variant-sku"
@@ -2467,7 +2525,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             }))
                           }
                           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          placeholder="Ex: SKU-COR-TAM"
+                          placeholder="Ex: COR-TAM"
                         />
                       </div>
                       <div className="space-y-2">
@@ -2475,7 +2533,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           htmlFor="variant-status"
                           className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
                         >
-                          Status no Catálogo
+                          Aparece na loja?
                         </label>
                         <button
                           id="variant-status"
@@ -2517,7 +2575,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         htmlFor="variant-codigo-barras"
                         className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
                       >
-                        Código de Barras
+                        Código de barras
                       </label>
                       <div className="flex gap-2">
                         <LocalBufferedInput
@@ -2541,7 +2599,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             )
                           }
                           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          placeholder="EAN, UPC ou GTIN — 7891234567890"
+                          placeholder="Ex: 7891234567890"
                         />
                         {/* C5.3 — some sem câmera: o leitor físico USB digita
                             direto no campo acima, sem precisar deste botão. */}
@@ -2605,7 +2663,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           htmlFor="variant-price"
                           className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
                         >
-                          Sobrescrever R$
+                          Preço diferente nesta variação
                         </label>
                         <div className="relative flex items-center">
                           <span className="absolute left-5 text-xs font-black text-zinc-600">
@@ -2755,9 +2813,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       }}
                       className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
                     >
-                      {editingVariant
-                        ? "Salvar Protocolo"
-                        : "Efetivar Variante"}
+                      {editingVariant ? "Salvar" : "Salvar variação"}
                     </button>
                   </div>
                 </motion.div>
@@ -2892,7 +2948,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             className="flex items-start gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs font-bold text-amber-300"
           >
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
-            <span>{motivoDoBloqueio}</span>
+            {/* Com erro num CAMPO (e não foto subindo), o motivo vira um botão
+                de texto que leva até o campo — abre a seção recolhida onde o
+                erro ficou escondido e põe o foco nele. O botão de salvar
+                continua desligado; isto só mostra o caminho. */}
+            {!isImageUploading && idDoPrimeiroCampoComErro() ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const id = idDoPrimeiroCampoComErro();
+                  if (id) mostrarEFocarCampo(id);
+                }}
+                className="min-h-11 text-left font-bold underline underline-offset-2"
+              >
+                {motivoDoBloqueio}
+              </button>
+            ) : (
+              <span>{motivoDoBloqueio}</span>
+            )}
           </p>
         )}
         {/* Visual Media Section */}
@@ -3297,194 +3370,6 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           )}
         </AnimatePresence>
 
-        {/* Product Variants Section */}
-        <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                <Layers className="size-5 text-emerald-500" />
-              </div>
-              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                Variações do Produto
-              </h3>
-              <button
-                type="button"
-                onClick={() => toggleHelp("productVariants")}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                  expandedHelp.productVariants
-                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                )}
-                title="Ajuda / Guia de Variações"
-              >
-                ?
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
-                // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
-                const recadoDoTeto = recadoDoTetoDeVariacoes(
-                  formData.variants.length,
-                );
-                if (recadoDoTeto) {
-                  toast.error(recadoDoTeto);
-                  return;
-                }
-                setEditingVariant(null);
-                // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
-                // ter escrito erro/aviso de duplicidade no estado do modal
-                // com ele FECHADO (a checagem das variações no submit). O
-                // reset do form abaixo não dispara o efeito limpador quando
-                // o código já estava vazio — limpar aqui garante que uma
-                // variação nova e inocente nunca abra bloqueada.
-                setVariantCodigoBarrasError("");
-                setVariantCodigoBarrasAvisoRede("");
-                setVariantFormData({
-                  pares: [parNovo()],
-                  sku: "",
-                  codigoBarras: "",
-                  stockIncrement: "0",
-                  priceOverride: "",
-                  active: true,
-                  imageUrl: "",
-                });
-                setShowVariantForm(true);
-              }}
-              className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
-            >
-              + Novo
-            </button>
-            {/* Grade de combinações: gera Cor × Tamanho (até 3 camadas) de uma
-                vez, reaproveitando os valores já usados. O "+ Novo" de uma
-                combinação só continua ao lado, intacto. */}
-            <button
-              type="button"
-              data-testid="abrir-grade"
-              onClick={() => setShowGradeForm(true)}
-              className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
-            >
-              + Grade
-            </button>
-          </div>
-
-          {/* O produto ja esta no estado que mente: dois grupos de variacao.
-              A trava impede chegar aqui, mas produto antigo pode ja estar --
-              e nesse caso o numero de estoque na tela acima esta errado. Dizer
-              isso e' melhor que somar em silencio. */}
-          {produtoTemGrupoDemais && (
-            <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-              <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
-                Este produto tem tipos de variação demais
-              </p>
-              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
-                Cada produto aceita <b>um tipo só</b> de variação. Com mais de
-                um, o estoque mostrado acima soma as opções em dobro e o pedido
-                do cliente guarda só metade da escolha — quem pedir um P e um M
-                recebe dois P.
-              </p>
-              <p className="text-[10px] font-medium leading-relaxed text-amber-200/80">
-                Para consertar, edite as variações abaixo e junte tudo num tipo
-                só, com as opções combinadas (ex: <i>Rosa P</i>, <i>Rosa M</i>).
-              </p>
-            </div>
-          )}
-
-          {/* Variants Guide Section */}
-          <AnimatePresence>
-            {expandedHelp.productVariants && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="w-full space-y-3 border-b border-white/5 pb-4"
-              >
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <BookOpen className="size-4 text-emerald-400" />
-                  Como usar as Variações
-                </h3>
-                <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
-                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                    Variações permitem vender o mesmo produto com diferentes
-                    opções — cor, tamanho, voltagem. Cada produto aceita{" "}
-                    <b className="text-zinc-350">um tipo só</b>: para vender cor
-                    e tamanho juntos, combine os dois no valor da opção (ex:
-                    Nome: <i>Modelo</i>, Valores: <i>Rosa P</i>, <i>Rosa M</i>).
-                  </p>
-                  <ul className="list-none space-y-2 pl-0 text-[10px] font-medium text-zinc-500">
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Atributo (Nome e Valor):
-                        </b>{" "}
-                        Defina a característica (ex: Nome: <i>Tamanho</i>,
-                        Valor: <i>G</i>; ou Nome: <i>Cor</i>, Valor: <i>Azul</i>
-                        ).
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Ajuste de Preço (Opcional):
-                        </b>{" "}
-                        Se uma variante custar mais caro (ex: tamanho especial
-                        ou material premium), preencha o campo de preço
-                        substituto. Se deixar em branco, o preço principal do
-                        produto será usado.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Estoque da Variação:</b>{" "}
-                        Informe o estoque físico real desta variação — não é um
-                        extra somado ao estoque do produto. Assim que qualquer
-                        variação estiver ativa, o estoque do produto acima passa
-                        a ser a <b>soma</b> de todas as variações ativas, e o
-                        campo dele fica travado enquanto isso.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Foto da Variante:</b>{" "}
-                        Vincule uma foto específica da variação. Quando o
-                        comprador selecioná-la na página do produto, o carrossel
-                        exibirá automaticamente a foto correspondente.
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="space-y-3">
-            {formData.variants.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-700">
-                  Nenhuma Variação Adicionada
-                </p>
-              </div>
-            ) : (
-              formData.variants.map((v) => (
-                <VariantItem
-                  key={v.id}
-                  variant={v}
-                  onEdit={handleEditVariant}
-                  onDelete={handleDeleteVariant}
-                  onToggleActive={handleToggleVariantActive}
-                />
-              ))
-            )}
-          </div>
-        </section>
-
         {/* Content Section */}
         <section className="space-y-4 border-t border-white/5 pt-6 md:space-y-8 md:pt-12">
           <div className="flex items-center gap-3">
@@ -3560,23 +3445,24 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
-                        <b className="text-zinc-350">Código SKU:</b> Referência
-                        interna sua (Stock Keeping Unit), livre de repetir —
-                        útil para controle e identificação ágil. Quem precisa
-                        ser único é o SKU de cada variação.
+                        <b className="text-zinc-350">Código interno:</b>{" "}
+                        Referência sua, livre de repetir — útil para controle e
+                        identificação ágil (fica em Avançado). Quem precisa ser
+                        único é o código interno de cada variação.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
                         <b className="text-zinc-350">Código de Barras:</b>{" "}
-                        Opcional — é o código impresso na EMBALAGEM física
-                        (EAN/UPC/GTIN ou Code 128/39), diferente do SKU (que é
-                        uso interno seu). Precisa ser único no catálogo inteiro:
-                        o mesmo código não pode estar em outro produto ou
-                        variação. É o que o leitor do PDV bipa no balcão. Se o
-                        produto tem variações, cadastre o código em CADA
-                        variação — a caixa da PP é diferente da caixa da M.
+                        Opcional — é o código impresso na EMBALAGEM física (o
+                        dos produtos de mercado ou o do seu fornecedor),
+                        diferente do código interno (que é uso interno seu).
+                        Precisa ser único no catálogo inteiro: o mesmo código
+                        não pode estar em outro produto ou variação. É o que o
+                        leitor do PDV bipa no balcão. Se o produto tem
+                        variações, cadastre o código em CADA variação — a caixa
+                        da PP é diferente da caixa da M.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
@@ -3636,7 +3522,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               />
             </div>
 
-            <div className="space-y-1.5 md:space-y-3">
+            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
               <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
                 Setor / Categoria *
               </span>
@@ -3685,97 +3571,39 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               </div>
             </div>
 
+            {/* Preço de venda: sobe da antiga "Precificação" para o básico —
+                é o que toda lojista preenche. Só mudou de lugar no JSX; o
+                estado, o `id` e a validação (`priceError`) são os de sempre. */}
             <div className="space-y-1.5 md:space-y-3">
               <label
-                htmlFor="product-sku"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                htmlFor="product-sale-price"
+                className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
-                Código SKU
+                Preço de Venda *
               </label>
               <div className="group relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50 sm:left-6">
+                  R$
+                </span>
                 <LocalBufferedInput
-                  id="product-sku"
-                  name="product-sku"
-                  type="text"
-                  value={formData.sku}
+                  id="product-sale-price"
+                  name="price"
+                  mask="currency"
+                  value={formData.price}
                   onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
-                    }))
+                    setFormData((prev) => ({ ...prev, price: val }))
                   }
-                  placeholder="Ex: SKU-PROD-BASE"
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                  className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                 />
-                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
-                  <Layers className="size-5" />
-                </div>
               </div>
-              {skuError && (
-                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                  {skuError}
+              {priceError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {priceError}
                 </span>
               )}
             </div>
 
             <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-codigo-barras"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Código de Barras
-              </label>
-              <div className="flex gap-2">
-                <LocalBufferedInput
-                  id="product-codigo-barras"
-                  name="product-codigo-barras"
-                  type="text"
-                  inputMode="numeric"
-                  data-testid="codigo-barras-produto"
-                  value={formData.codigoBarras}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      codigoBarras: normalizarCodigoBarras(val),
-                    }))
-                  }
-                  onBlur={(e) =>
-                    aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
-                  }
-                  placeholder="EAN, UPC ou GTIN — 7891234567890"
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
-                />
-                {/* C5.3 — some sem câmera: o leitor físico USB digita direto
-                    no campo acima, sem precisar deste botão. */}
-                {temCameraDisponivel() && (
-                  <button
-                    type="button"
-                    onClick={() => setLeitorAberto("produto")}
-                    className="flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
-                    title="Ler com a câmera"
-                  >
-                    <Camera className="size-4" />
-                    Ler com a câmera
-                  </button>
-                )}
-              </div>
-              <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
-                Opcional. É o código impresso na embalagem; o PDV lê ele pela
-                câmera.
-              </span>
-              {codigoBarrasError && (
-                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                  {codigoBarrasError}
-                </span>
-              )}
-              {!codigoBarrasError && codigoBarrasAvisoRede && (
-                <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500">
-                  {codigoBarrasAvisoRede}
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-1.5 md:col-span-2 md:space-y-3">
               <label
                 htmlFor="product-stock"
                 className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
@@ -3814,485 +3642,785 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
             </div>
 
-            {/* Peso e Dimensões de Envio (Logística) */}
-            {!isLocalShipping && (
-              <div className="space-y-3 border-t border-white/5 pt-5 md:col-span-2">
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <Truck className="size-4 animate-pulse text-zinc-500" />
-                  Dimensões e Logística (Frete)
-                </h3>
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-weight"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
+            {/* Variações (H1): MONTADA e FECHADA — o conteúdo nunca desmonta
+                (SecaoRecolhivel só aplica `hidden`), então estado e botões
+                seguem vivos com a seção fechada. `abertaInicial` só vale na
+                montagem, e aqui basta: com `productId` o formulário mostra o
+                esqueleto (`isLoading`, mais abaixo) e só monta este corpo
+                DEPOIS que o produto chegou — `formData.variants` já está
+                cheio na primeira montagem. Produto com variações abre
+                expandido; sem variações, fechado. */}
+            <div className="md:col-span-2">
+              <SecaoRecolhivel
+                key={chaveDasVariacoes}
+                titulo="Variações"
+                resumo={
+                  formData.variants.length === 0
+                    ? "Cor, tamanho ou voltagem — opcional"
+                    : `${formData.variants.length} ${
+                        formData.variants.length === 1
+                          ? "variação"
+                          : "variações"
+                      }`
+                }
+                abertaInicial={formData.variants.length > 0}
+              >
+                <div className="relative space-y-4">
+                  <div className="flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => toggleHelp("productVariants")}
+                      className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
+                        expandedHelp.productVariants
+                          ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                          : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                      )}
+                      title="Ajuda / Guia de Variações"
                     >
-                      Peso (kg)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-weight"
-                      name="weightKg"
-                      type="number"
-                      step="0.001"
-                      min="0"
-                      placeholder="Ex: 0.350"
-                      value={formData.weightKg}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, weightKg: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
+                      ?
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
+                        // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
+                        const recadoDoTeto = recadoDoTetoDeVariacoes(
+                          formData.variants.length,
+                        );
+                        if (recadoDoTeto) {
+                          toast.error(recadoDoTeto);
+                          return;
+                        }
+                        setEditingVariant(null);
+                        // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
+                        // ter escrito erro/aviso de duplicidade no estado do modal
+                        // com ele FECHADO (a checagem das variações no submit). O
+                        // reset do form abaixo não dispara o efeito limpador quando
+                        // o código já estava vazio — limpar aqui garante que uma
+                        // variação nova e inocente nunca abra bloqueada.
+                        setVariantCodigoBarrasError("");
+                        setVariantCodigoBarrasAvisoRede("");
+                        setVariantFormData({
+                          pares: [parNovo()],
+                          sku: "",
+                          codigoBarras: "",
+                          stockIncrement: "0",
+                          priceOverride: "",
+                          active: true,
+                          imageUrl: "",
+                        });
+                        setShowVariantForm(true);
+                      }}
+                      className="ml-auto mr-2 min-h-11 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                    >
+                      + Novo
+                    </button>
+                    {/* Grade de combinações: gera Cor × Tamanho (até 3 camadas) de uma
+                        vez, reaproveitando os valores já usados. O "+ Novo" de uma
+                        combinação só continua ao lado, intacto. */}
+                    <button
+                      type="button"
+                      data-testid="abrir-grade"
+                      onClick={() => setShowGradeForm(true)}
+                      className="min-h-11 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                    >
+                      + Grade
+                    </button>
                   </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-width"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Largura (cm)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-width"
-                      name="widthCm"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 15"
-                      value={formData.widthCm}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, widthCm: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-height"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Altura (cm)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-height"
-                      name="heightCm"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 15"
-                      value={formData.heightCm}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, heightCm: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="product-length"
-                      className="ml-1 block cursor-pointer text-[9px] font-black uppercase tracking-wider text-zinc-500"
-                    >
-                      Comprimento (cm)
-                    </label>
-                    <LocalBufferedInput
-                      id="product-length"
-                      name="lengthCm"
-                      type="number"
-                      min="0"
-                      placeholder="Ex: 15"
-                      value={formData.lengthCm}
-                      onFlush={(val) =>
-                        setFormData((prev) => ({ ...prev, lengthCm: val }))
-                      }
-                      className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
-                    />
+
+                  {/* O produto ja esta no estado que mente: dois grupos de variacao.
+                      A trava impede chegar aqui, mas produto antigo pode ja estar --
+                      e nesse caso o numero de estoque na tela acima esta errado. Dizer
+                      isso e' melhor que somar em silencio. */}
+                  {produtoTemGrupoDemais && (
+                    <div className="space-y-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                      <p className="text-[11px] font-black uppercase tracking-widest text-amber-400">
+                        Este produto tem tipos de variação demais
+                      </p>
+                      <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
+                        Cada produto aceita <b>um tipo só</b> de variação. Com
+                        mais de um, o estoque mostrado acima soma as opções em
+                        dobro e o pedido do cliente guarda só metade da escolha
+                        — quem pedir um P e um M recebe dois P.
+                      </p>
+                      <p className="text-[11px] font-medium leading-relaxed text-amber-200/80">
+                        Para consertar, edite as variações abaixo e junte tudo
+                        num tipo só, com as opções combinadas (ex: <i>Rosa P</i>
+                        , <i>Rosa M</i>).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Variants Guide Section */}
+                  <AnimatePresence>
+                    {expandedHelp.productVariants && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.2 }}
+                        className="w-full space-y-3 border-b border-white/5 pb-4"
+                      >
+                        <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                          <BookOpen className="size-4 text-emerald-400" />
+                          Como usar as Variações
+                        </h3>
+                        <div className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4">
+                          <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
+                            Variações permitem vender o mesmo produto com
+                            diferentes opções — cor, tamanho, voltagem. Cada
+                            produto aceita{" "}
+                            <b className="text-zinc-350">um tipo só</b>: para
+                            vender cor e tamanho juntos, combine os dois no
+                            valor da opção (ex: Nome: <i>Modelo</i>, Valores:{" "}
+                            <i>Rosa P</i>, <i>Rosa M</i>).
+                          </p>
+                          <ul className="list-none space-y-2 pl-0 text-[11px] font-medium text-zinc-500">
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Atributo (Nome e Valor):
+                                </b>{" "}
+                                Defina a característica (ex: Nome:{" "}
+                                <i>Tamanho</i>, Valor: <i>G</i>; ou Nome:{" "}
+                                <i>Cor</i>, Valor: <i>Azul</i>).
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Ajuste de Preço (Opcional):
+                                </b>{" "}
+                                Se uma variante custar mais caro (ex: tamanho
+                                especial ou material premium), preencha o campo
+                                de preço substituto. Se deixar em branco, o
+                                preço principal do produto será usado.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Estoque da Variação:
+                                </b>{" "}
+                                Informe o estoque físico real desta variação —
+                                não é um extra somado ao estoque do produto.
+                                Assim que qualquer variação estiver ativa, o
+                                estoque do produto acima passa a ser a{" "}
+                                <b>soma</b> de todas as variações ativas, e o
+                                campo dele fica travado enquanto isso.
+                              </span>
+                            </li>
+                            <li className="flex items-start gap-2.5">
+                              <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                              <span>
+                                <b className="text-zinc-350">
+                                  Foto da Variante:
+                                </b>{" "}
+                                Vincule uma foto específica da variação. Quando
+                                o comprador selecioná-la na página do produto, o
+                                carrossel exibirá automaticamente a foto
+                                correspondente.
+                              </span>
+                            </li>
+                          </ul>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="space-y-3">
+                    {formData.variants.length === 0 ? (
+                      <div className="rounded-3xl border border-dashed border-white/5 bg-zinc-900 p-8 text-center">
+                        <p className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-600">
+                          Nenhuma Variação Adicionada
+                        </p>
+                      </div>
+                    ) : (
+                      formData.variants.map((v) => (
+                        <VariantItem
+                          key={v.id}
+                          variant={v}
+                          onEdit={handleEditVariant}
+                          onDelete={handleDeleteVariant}
+                          onToggleActive={handleToggleVariantActive}
+                        />
+                      ))
+                    )}
                   </div>
                 </div>
-                <span className="text-zinc-455 block text-[8px] font-medium leading-normal">
-                  * O peso e as dimensões da embalagem individual são utilizados
-                  para a cotação de frete automática (Correios/Melhor
-                  Envio/Frenet). Se não informados, o sistema utilizará valores
-                  padrão (0.3 kg e 15x15x15 cm).
-                </span>
+              </SecaoRecolhivel>
+            </div>
+
+            {/* Peso e medidas (H1): MONTADA e FECHADA. Com entrega local a
+                seção nem existe — como o campo já não existia. */}
+            {!isLocalShipping && (
+              <div className="md:col-span-2">
+                <SecaoRecolhivel
+                  titulo="Peso e medidas"
+                  resumo="Usados para calcular o frete"
+                >
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-weight"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Peso (kg)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-weight"
+                          name="weightKg"
+                          type="number"
+                          step="0.001"
+                          min="0"
+                          placeholder="Ex: 0.350"
+                          value={formData.weightKg}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, weightKg: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-width"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Largura (cm)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-width"
+                          name="widthCm"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={formData.widthCm}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, widthCm: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-height"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Altura (cm)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-height"
+                          name="heightCm"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={formData.heightCm}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, heightCm: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="product-length"
+                          className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        >
+                          Comprimento (cm)
+                        </label>
+                        <LocalBufferedInput
+                          id="product-length"
+                          name="lengthCm"
+                          type="number"
+                          min="0"
+                          placeholder="Ex: 15"
+                          value={formData.lengthCm}
+                          onFlush={(val) =>
+                            setFormData((prev) => ({ ...prev, lengthCm: val }))
+                          }
+                          className="w-full rounded-lg border border-white/5 bg-zinc-950/50 px-3 py-2.5 text-xs font-bold text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-xl sm:px-4 sm:py-3.5"
+                        />
+                      </div>
+                    </div>
+                    <span className="block text-[11px] font-medium leading-normal text-zinc-400">
+                      * O peso e as dimensões da embalagem individual são
+                      utilizados para a cotação de frete automática
+                      (Correios/Melhor Envio/Frenet). Se não informados, o
+                      sistema utilizará valores padrão (0.3 kg e 15x15x15 cm).
+                    </span>
+                  </div>
+                </SecaoRecolhivel>
               </div>
             )}
           </div>
         </section>
 
-        {/* Pricing Section */}
-        <section className="relative space-y-4 border-t border-white/5 pt-6 md:pt-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10">
-                <DollarSign className="size-5 text-emerald-500" />
+        {/* Custo e lucro (H1): o Preço de venda subiu para o básico; aqui
+            ficam o custo, o preço "de" e a análise de lucro. MONTADA e
+            FECHADA; um erro de validação dentro dela a abre sozinha. O AVISO
+            de custo maior que o preço não é erro (não bloqueia o salvar), por
+            isso não força a abertura. */}
+        <SecaoRecolhivel
+          titulo="Custo e lucro"
+          resumo="Quanto custou, preço “de” e margem"
+          temErro={
+            (!!costError && !costError.startsWith("Aviso")) ||
+            !!originalPriceError
+          }
+        >
+          <div className="relative space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => toggleHelp("productPricing")}
+                  className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
+                    expandedHelp.productPricing
+                      ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                      : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                  )}
+                  title="Ajuda / Guia de Precificação"
+                >
+                  ?
+                </button>
               </div>
-              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">
-                Precificação do Produto
-              </h3>
-              <button
-                type="button"
-                onClick={() => toggleHelp("productPricing")}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                  expandedHelp.productPricing
-                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                )}
-                title="Ajuda / Guia de Precificação"
-              >
-                ?
-              </button>
-            </div>
 
-            {priceVal > 0 && (
-              <div className="flex gap-3">
-                <div className="flex flex-col items-end">
-                  <span className="mb-1 text-right text-[8px] font-black uppercase tracking-widest text-zinc-600">
-                    Margem Líquida
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{
-                          width: `${Math.min(100, Math.max(0, marginPct))}%`,
-                        }}
-                        className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
-                      />
-                    </div>
-                    <span
-                      className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
-                    >
-                      {marginPct.toFixed(1)}%
+              {priceVal > 0 && (
+                <div className="flex gap-3">
+                  <div className="flex flex-col items-end">
+                    <span className="mb-1 text-right text-[11px] font-black uppercase tracking-widest text-zinc-500">
+                      Margem Líquida
                     </span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1 w-16 overflow-hidden rounded-full bg-zinc-800">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{
+                            width: `${Math.min(100, Math.max(0, marginPct))}%`,
+                          }}
+                          className={`h-full ${marginPct > 30 ? "bg-emerald-500" : "bg-orange-500"}`}
+                        />
+                      </div>
+                      <span
+                        className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
+                      >
+                        {marginPct.toFixed(1)}%
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Pricing Guide Section */}
-          <AnimatePresence>
-            {expandedHelp.productPricing && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
-                className="space-y-4 border-b border-white/5 pb-4"
-              >
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <BookOpen className="size-4 text-emerald-400" />
-                  Guia de Custos e Margens
-                </h3>
-                <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
-                    Configure os preços de forma estratégica. O sistema calcula
-                    a lucratividade automaticamente em tempo real.
-                  </p>
-                  <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Preço de Custo (Opcional):
-                        </b>{" "}
-                        O valor total que você pagou para adquirir ou fabricar o
-                        produto. Esse dado é estritamente confidencial e é usado
-                        apenas pelo sistema para calcular a margem de lucro e o
-                        retorno sobre investimento (ROI) exibidos abaixo.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Preço de Venda:</b> O preço
-                        final cobrado do cliente. Pense em embutir custos fixos,
-                        impostos e taxas para manter sua operação saudável.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">Produto em Promoção:</b>{" "}
-                        Ative para indicar um preço promocional riscado (ex: De:
-                        R$ 100,00 por R$ 79,90). No aplicativo do cliente, isso
-                        criará etiquetas com o percentual de desconto (ex: 20%
-                        OFF), incentivando a compra impulsiva.
-                      </span>
-                    </li>
-                    <li className="flex items-start gap-2.5">
-                      <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <span>
-                        <b className="text-zinc-350">
-                          Painel de Lucratividade:
-                        </b>{" "}
-                        O sistema analisa a diferença entre o preço de venda e o
-                        preço de custo. É recomendada uma margem de lucro
-                        líquida de pelo menos 30%. O sistema emitirá um alerta
-                        caso a margem esteja zerada ou negativa.
-                      </span>
-                    </li>
-                  </ul>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-cost-price"
-                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Preço de Custo
-              </label>
-              <div className="group relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                  R$
-                </span>
-                <LocalBufferedInput
-                  id="product-cost-price"
-                  name="costPrice"
-                  mask="currency"
-                  value={formData.costPrice}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, costPrice: val }))
-                  }
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                />
-              </div>
-              {costError && (
-                <span
-                  className={cn(
-                    "text-[10px] font-bold mt-1 ml-1 block",
-                    costError.includes("Aviso")
-                      ? "text-amber-500"
-                      : "text-red-500",
-                  )}
+            {/* Pricing Guide Section */}
+            <AnimatePresence>
+              {expandedHelp.productPricing && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4 border-b border-white/5 pb-4"
                 >
-                  {costError}
-                </span>
+                  <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                    <BookOpen className="size-4 text-emerald-400" />
+                    Guia de Custos e Margens
+                  </h3>
+                  <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
+                    <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                      Configure os preços de forma estratégica. O sistema
+                      calcula a lucratividade automaticamente em tempo real.
+                    </p>
+                    <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">
+                            Preço de Custo (Opcional):
+                          </b>{" "}
+                          O valor total que você pagou para adquirir ou fabricar
+                          o produto. Esse dado é estritamente confidencial e é
+                          usado apenas pelo sistema para calcular a margem de
+                          lucro e o retorno sobre investimento (ROI) exibidos
+                          abaixo.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">Preço de Venda:</b> O
+                          preço final cobrado do cliente. Pense em embutir
+                          custos fixos, impostos e taxas para manter sua
+                          operação saudável.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">Produto em Promoção:</b>{" "}
+                          Ative para indicar um preço promocional riscado (ex:
+                          De: R$ 100,00 por R$ 79,90). No aplicativo do cliente,
+                          isso criará etiquetas com o percentual de desconto
+                          (ex: 20% OFF), incentivando a compra impulsiva.
+                        </span>
+                      </li>
+                      <li className="flex items-start gap-2.5">
+                        <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span>
+                          <b className="text-zinc-350">
+                            Painel de Lucratividade:
+                          </b>{" "}
+                          O sistema analisa a diferença entre o preço de venda e
+                          o preço de custo. É recomendada uma margem de lucro
+                          líquida de pelo menos 30%. O sistema emitirá um alerta
+                          caso a margem esteja zerada ou negativa.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
 
-            <div className="space-y-1.5 md:space-y-3">
-              <label
-                htmlFor="product-sale-price"
-                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
-              >
-                Preço de Venda
-              </label>
-              <div className="group relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-500/50 sm:left-6">
-                  R$
-                </span>
-                <LocalBufferedInput
-                  id="product-sale-price"
-                  name="price"
-                  mask="currency"
-                  value={formData.price}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, price: val }))
-                  }
-                  className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                />
-              </div>
-              {priceError && (
-                <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                  {priceError}
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-3.5">
-              <label
-                htmlFor="product-promo-active"
-                className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
-              >
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
-                    Produto em Promoção
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-1.5 md:space-y-3">
+                <label
+                  htmlFor="product-cost-price"
+                  className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                >
+                  Preço de Custo
+                </label>
+                <div className="group relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                    R$
                   </span>
-                  <span className="block text-[8px] font-medium uppercase tracking-wider text-zinc-500">
-                    Ativar preço cortado (De/Por)
-                  </span>
-                </div>
-                <input
-                  id="product-promo-active"
-                  name="isPromoActive"
-                  type="checkbox"
-                  aria-label="Produto em Promoção"
-                  checked={isPromoActive}
-                  onChange={(e) => {
-                    setIsPromoActive(e.target.checked);
-                    if (!e.target.checked) {
-                      setFormData((prev) => ({
-                        ...prev,
-                        originalPrice: "",
-                      }));
+                  <LocalBufferedInput
+                    id="product-cost-price"
+                    name="costPrice"
+                    mask="currency"
+                    value={formData.costPrice}
+                    onFlush={(val) =>
+                      setFormData((prev) => ({ ...prev, costPrice: val }))
                     }
-                  }}
-                  className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
-                />
-              </label>
-
-              {isPromoActive && (
-                <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
-                  <label
-                    htmlFor="product-original-price"
-                    className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                    className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-white transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                  />
+                </div>
+                {costError && (
+                  <span
+                    className={cn(
+                      "text-[10px] font-bold mt-1 ml-1 block",
+                      costError.includes("Aviso")
+                        ? "text-amber-500"
+                        : "text-red-500",
+                    )}
                   >
-                    Preço Original ("De:")
-                  </label>
-                  <div className="group relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
-                      R$
+                    {costError}
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-3.5">
+                <label
+                  htmlFor="product-promo-active"
+                  className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
+                >
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
+                      Produto em Promoção
                     </span>
-                    <LocalBufferedInput
-                      id="product-original-price"
-                      name="originalPrice"
-                      mask="currency"
-                      value={formData.originalPrice}
-                      onFlush={(val) =>
+                    <span className="block text-[8px] font-medium uppercase tracking-wider text-zinc-500">
+                      Ativar preço cortado (De/Por)
+                    </span>
+                  </div>
+                  <input
+                    id="product-promo-active"
+                    name="isPromoActive"
+                    type="checkbox"
+                    aria-label="Produto em Promoção"
+                    checked={isPromoActive}
+                    onChange={(e) => {
+                      setIsPromoActive(e.target.checked);
+                      if (!e.target.checked) {
                         setFormData((prev) => ({
                           ...prev,
-                          originalPrice: val,
-                        }))
+                          originalPrice: "",
+                        }));
                       }
-                      placeholder="Ex: 99.90"
-                      className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
-                    />
+                    }}
+                    className="size-5 cursor-pointer rounded border-white/10 bg-zinc-950 text-emerald-500 transition-all focus:ring-emerald-500/20"
+                  />
+                </label>
+
+                {isPromoActive && (
+                  <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
+                    <label
+                      htmlFor="product-original-price"
+                      className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                    >
+                      Preço Original ("De:")
+                    </label>
+                    <div className="group relative">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-zinc-600 sm:left-6">
+                        R$
+                      </span>
+                      <LocalBufferedInput
+                        id="product-original-price"
+                        name="originalPrice"
+                        mask="currency"
+                        value={formData.originalPrice}
+                        onFlush={(val) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            originalPrice: val,
+                          }))
+                        }
+                        placeholder="Ex: 99.90"
+                        className="w-full rounded-xl border border-white/5 bg-zinc-950/50 py-3 pl-11 pr-4 text-base font-black tabular-nums text-zinc-600 transition-all focus:outline-none sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
+                      />
+                    </div>
+                    {originalPriceError && (
+                      <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                        {originalPriceError}
+                      </span>
+                    )}
                   </div>
-                  {originalPriceError && (
-                    <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
-                      {originalPriceError}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {priceVal > 0 && costPriceVal > 0 && (
-            <div className="group/roi relative mt-4">
-              {/* Glassmorphism Background with animated border logic */}
-              <div
-                className={cn(
-                  "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
-                  marginPct <= 0
-                    ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
-                    : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
                 )}
-              />
+              </div>
+            </div>
 
-              <div className="relative flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 p-4 backdrop-blur-3xl sm:rounded-[2rem] sm:p-7 md:flex-row md:gap-6">
-                {/* Animated Glow Decor */}
+            {priceVal > 0 && costPriceVal > 0 && (
+              <div className="group/roi relative mt-4">
+                {/* Glassmorphism Background with animated border logic */}
                 <div
                   className={cn(
-                    "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
+                    "absolute -inset-[1px] rounded-[2rem] blur-[2px] opacity-50 group-hover/roi:opacity-100 transition-opacity duration-500",
                     marginPct <= 0
-                      ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
-                      : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
+                      ? "bg-gradient-to-r from-rose-500/20 via-rose-400/40 to-rose-500/20"
+                      : "bg-gradient-to-r from-emerald-500/20 via-emerald-400/40 to-emerald-500/20",
                   )}
                 />
 
-                <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
-                  <div className="relative">
-                    <div
-                      className={cn(
-                        "absolute inset-0 blur-xl rounded-2xl transition-all",
-                        marginPct <= 0
-                          ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
-                          : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
-                      )}
-                    />
-                    <div
-                      className={cn(
-                        "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
-                        marginPct <= 0
-                          ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
-                          : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
-                      )}
-                    >
-                      {marginPct <= 0 ? (
-                        <TrendingDown className="size-6 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)] sm:size-8" />
-                      ) : (
-                        <TrendingUp className="size-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] sm:size-8" />
-                      )}
-                    </div>
-                  </div>
+                <div className="relative flex flex-col items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950/40 p-4 backdrop-blur-3xl sm:rounded-[2rem] sm:p-7 md:flex-row md:gap-6">
+                  {/* Animated Glow Decor */}
+                  <div
+                    className={cn(
+                      "absolute top-0 right-0 w-32 h-32 blur-[50px] rounded-full pointer-events-none transition-all duration-700",
+                      marginPct <= 0
+                        ? "bg-rose-500/10 group-hover/roi:bg-rose-500/20"
+                        : "bg-emerald-500/10 group-hover/roi:bg-emerald-500/20",
+                    )}
+                  />
 
-                  <div className="flex flex-col">
-                    <p
-                      className={cn(
-                        "text-[10px] font-black uppercase tracking-[0.3em] mb-1.5 opacity-80",
-                        marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
-                      )}
-                    >
-                      {marginPct <= 0 ? "Alerta de Margem" : "Análise de Lucro"}
-                    </p>
-                    <div className="flex items-baseline gap-2.5">
-                      <span className="text-xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm sm:text-2xl md:text-3xl">
-                        R${" "}
-                        {(priceVal - costPriceVal).toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
-                      </span>
-                      <span
-                        className={cn(
-                          "text-[10px] font-black uppercase tracking-widest italic",
-                          marginPct <= 0
-                            ? "text-rose-500/40"
-                            : "text-emerald-500/40",
-                        )}
-                      >
-                        / por unidade
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
-                  <div className="flex flex-col items-center md:items-end">
-                    <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Análise do Sistema
-                    </span>
-                    <div className="group/badge relative">
+                  <div className="flex w-full items-center gap-4 sm:gap-6 md:w-auto">
+                    <div className="relative">
                       <div
                         className={cn(
-                          "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
+                          "absolute inset-0 blur-xl rounded-2xl transition-all",
                           marginPct <= 0
-                            ? "bg-rose-500/40"
-                            : "bg-emerald-500/40",
+                            ? "bg-rose-500/20 group-hover/roi:bg-rose-500/40"
+                            : "bg-emerald-500/20 group-hover/roi:bg-emerald-500/40",
                         )}
                       />
                       <div
                         className={cn(
-                          "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
+                          "relative w-12 h-12 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl flex items-center justify-center border transition-transform duration-500 shadow-lg",
                           marginPct <= 0
-                            ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
-                            : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
+                            ? "bg-gradient-to-br from-rose-500/20 to-rose-600/10 border-rose-500/30 group-hover/roi:scale-110 shadow-rose-500/10 text-rose-400"
+                            : "bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 group-hover/roi:scale-110 shadow-emerald-500/10 text-emerald-400",
                         )}
                       >
                         {marginPct <= 0 ? (
-                          <>
-                            <AlertTriangle className="size-3.5" />
-                            Margem Negativa
-                          </>
+                          <TrendingDown className="size-6 text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)] sm:size-8" />
                         ) : (
-                          <>
-                            <Check className="size-3.5" />
-                            Alta Performance
-                          </>
+                          <TrendingUp className="size-6 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] sm:size-8" />
                         )}
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* Interactive background lines */}
-                <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
+                    <div className="flex flex-col">
+                      <p
+                        className={cn(
+                          "text-[10px] font-black uppercase tracking-[0.3em] mb-1.5 opacity-80",
+                          marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
+                        )}
+                      >
+                        {marginPct <= 0
+                          ? "Alerta de Margem"
+                          : "Análise de Lucro"}
+                      </p>
+                      <div className="flex items-baseline gap-2.5">
+                        <span className="text-xl font-black tabular-nums tracking-tighter text-white drop-shadow-sm sm:text-2xl md:text-3xl">
+                          R${" "}
+                          {(priceVal - costPriceVal).toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[10px] font-black uppercase tracking-widest italic",
+                            marginPct <= 0
+                              ? "text-rose-500/40"
+                              : "text-emerald-500/40",
+                          )}
+                        >
+                          / por unidade
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
+                    <div className="flex flex-col items-center md:items-end">
+                      <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                        Análise do Sistema
+                      </span>
+                      <div className="group/badge relative">
+                        <div
+                          className={cn(
+                            "absolute inset-0 blur-md rounded-xl opacity-0 group-hover/roi:opacity-100 transition-opacity",
+                            marginPct <= 0
+                              ? "bg-rose-500/40"
+                              : "bg-emerald-500/40",
+                          )}
+                        />
+                        <div
+                          className={cn(
+                            "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
+                            marginPct <= 0
+                              ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
+                              : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
+                          )}
+                        >
+                          {marginPct <= 0 ? (
+                            <>
+                              <AlertTriangle className="size-3.5" />
+                              Margem Negativa
+                            </>
+                          ) : (
+                            <>
+                              <Check className="size-3.5" />
+                              Alta Performance
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Interactive background lines */}
+                  <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent opacity-20" />
+                </div>
               </div>
+            )}
+          </div>
+        </SecaoRecolhivel>
+
+        {/* Avançado (H1): código interno e código de barras — raros no dia a
+            dia, mas nada se apaga. MONTADA e FECHADA; erro de formato ou de
+            duplicidade em qualquer um dos dois a abre sozinha. */}
+        <SecaoRecolhivel
+          titulo="Avançado"
+          resumo="Código interno e código de barras"
+          temErro={!!skuError || !!codigoBarrasError}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-sku"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Código interno (SKU)
+              </label>
+              <div className="group relative">
+                <LocalBufferedInput
+                  id="product-sku"
+                  name="product-sku"
+                  type="text"
+                  value={formData.sku}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      sku: val.trim().toUpperCase().replace(/\s+/g, "-"),
+                    }))
+                  }
+                  placeholder="Ex: CAMISETA-BASE"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                <div className="pointer-events-none absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600">
+                  <Layers className="size-5" />
+                </div>
+              </div>
+              {skuError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {skuError}
+                </span>
+              )}
             </div>
-          )}
-        </section>
+
+            <div className="space-y-1.5 md:space-y-3">
+              <label
+                htmlFor="product-codigo-barras"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
+              >
+                Código de barras
+              </label>
+              <div className="flex gap-2">
+                <LocalBufferedInput
+                  id="product-codigo-barras"
+                  name="product-codigo-barras"
+                  type="text"
+                  inputMode="numeric"
+                  data-testid="codigo-barras-produto"
+                  value={formData.codigoBarras}
+                  onFlush={(val) =>
+                    setFormData((prev) => ({
+                      ...prev,
+                      codigoBarras: normalizarCodigoBarras(val),
+                    }))
+                  }
+                  onBlur={(e) =>
+                    aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
+                  }
+                  placeholder="Ex: 7891234567890"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                />
+                {/* C5.3 — some sem câmera: o leitor físico USB digita direto
+                    no campo acima, sem precisar deste botão. */}
+                {temCameraDisponivel() && (
+                  <button
+                    type="button"
+                    onClick={() => setLeitorAberto("produto")}
+                    className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
+                    title="Ler com a câmera"
+                  >
+                    <Camera className="size-4" />
+                    Ler com a câmera
+                  </button>
+                )}
+              </div>
+              <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
+                Opcional. É o código impresso na embalagem; o PDV lê ele pela
+                câmera.
+              </span>
+              {codigoBarrasError && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                  {codigoBarrasError}
+                </span>
+              )}
+              {!codigoBarrasError && codigoBarrasAvisoRede && (
+                <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
+                  {codigoBarrasAvisoRede}
+                </span>
+              )}
+            </div>
+          </div>
+        </SecaoRecolhivel>
       </motion.form>
 
       {/* Image Cropper Modal */}
@@ -4376,12 +4504,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="space-y-1 rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white">
                   <Package className="size-4 text-emerald-500" />
-                  Informações Básicas & SKU
+                  Informações Básicas & Código interno
                 </div>
                 <p className="text-xs text-zinc-400">
                   Nome do produto, descrição detalhada e o{" "}
-                  <strong className="text-white">SKU</strong> (referência
-                  interna livre; só o SKU de cada variação precisa ser único). O{" "}
+                  <strong className="text-white">Código interno</strong>{" "}
+                  (referência livre, em Avançado; só o código interno de cada
+                  variação precisa ser único). O{" "}
                   <strong className="text-white">Código de Barras</strong> é
                   opcional, identifica a embalagem física, precisa ser único no
                   catálogo inteiro e é o que o leitor do PDV bipa no balcão.
@@ -4439,18 +4568,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 materiais e políticas de garantia.
               </li>
               <li>
-                O SKU do produto é livre — a loja não te impede de repetir (é só
-                uma referência sua). Já o SKU de cada VARIAÇÃO precisa ser
-                único: o sistema recusa salvar um que já exista em qualquer
-                outra variação já cadastrada (inclusive de produtos excluídos).
+                O código interno do produto é livre — a loja não te impede de
+                repetir (é só uma referência sua). Já o código interno de cada
+                VARIAÇÃO precisa ser único: o sistema recusa salvar um que já
+                exista em qualquer outra variação já cadastrada (inclusive de
+                produtos excluídos).
               </li>
               <li>
                 O Código de Barras (opcional) identifica a EMBALAGEM física do
-                produto — diferente do SKU, que é uso interno seu. Ele precisa
-                ser único no catálogo inteiro (o mesmo código não pode estar em
-                outro produto ou variação) e é o que o leitor do PDV lê no
-                balcão. Se o produto tem variações, cadastre o código em CADA
-                variação: a caixa da PP tem um código diferente da caixa da M.
+                produto — diferente do código interno, que é uso interno seu.
+                Ele precisa ser único no catálogo inteiro (o mesmo código não
+                pode estar em outro produto ou variação) e é o que o leitor do
+                PDV lê no balcão. Se o produto tem variações, cadastre o código
+                em CADA variação: a caixa da PP tem um código diferente da caixa
+                da M.
               </li>
             </ul>
           </div>

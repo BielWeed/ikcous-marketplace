@@ -176,9 +176,10 @@ describe("AdminProductFormView — guia diz a regra real do estoque de variaçã
     // produtos.codigo não tem UNIQUE na baseline do schema -- só
     // product_variants.sku tem (`product_variants_sku_key`).
     expect(texto).not.toMatch(/SKU cadastrado é único na loja/i);
+    expect(texto).not.toMatch(/c[óo]digo interno cadastrado é único na loja/i);
   });
 
-  it("a ajuda geral (modal) diz que é o SKU da VARIAÇÃO que é único, não o do produto", async () => {
+  it("a ajuda geral (modal) diz que é o código interno da VARIAÇÃO que é único, não o do produto", async () => {
     await montar();
 
     await act(async () => {
@@ -187,5 +188,8 @@ describe("AdminProductFormView — guia diz a regra real do estoque de variaçã
 
     const texto = textoDaTela();
     expect(texto).toMatch(/varia[cç][aã]o[^.]*[uú]nic/i);
+    expect(texto).toMatch(
+      /c[óo]digo interno de cada\s+varia[cç][aã]o\s+precisa ser [uú]nico/i,
+    );
   });
 });
