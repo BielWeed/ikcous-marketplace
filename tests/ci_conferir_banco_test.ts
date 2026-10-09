@@ -5045,3 +5045,308 @@ Deno.test("11a/11b — o rpc-ci.yml roda a prova viva do portão de anular a ven
       );
   }
 });
+
+// 12a/12b (09/10/2026) — a PROVA DE OBJETOS do lote das migrations 20261205000000 e
+// 20261206000000 (o cupom preso diz quando a vaga volta; a vaga do pedido nunca
+// cobrado volta em 1 h) em scripts/frota/canais-de-backend.json. A 12a é a consulta
+// do lote (DEPOIS do apply, 24 linhas); a 12b é a de ausência (ANTES, 10 linhas). As
+// duas são de ROL FECHADO. Estes testes medem o texto dos .sql contra as migrations
+// DESTA árvore; a decisão de cada consulta num Postgres real está em
+// tests/banco/cupom-preso-portao-viva.cjs (rodado no rpc-ci.yml).
+const NOME_12A = "12a-conferir-cupom-preso-aplicado";
+const NOME_12B = "12b-antes-cupom-preso-funcoes-ausentes";
+const MIGRACAO_205 = `${MIGRATIONS_DIR}/20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql`;
+const MIGRACAO_206 = `${MIGRATIONS_DIR}/20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql`;
+const ROLLBACK_205 = `${MIGRATIONS_DIR}/rollback-manual-20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql`;
+const ROLLBACK_206 = `${MIGRATIONS_DIR}/rollback-manual-20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql`;
+const MIGRACAO_970 = `${MIGRATIONS_DIR}/20260970000000_cancelamento_respeita_o_envio.sql`;
+
+/** Os corpos (prosrc) das tres funcoes e os sha256 deles, recalculados dos ARQUIVOS. */
+async function hashesDoLote205() {
+  const { createHash } = require("node:crypto");
+  const sha = (s: string) =>
+    createHash("sha256").update(s, "utf8").digest("hex");
+  const crlf = (s: string) => s.replace(/\n/g, "\r\n");
+  const ler = async (a: string) =>
+    (await Deno.readTextFile(a)).replace(/\r\n/g, "\n");
+  const corpoDe = (texto: string, cabecalho: string, tag: string) => {
+    const ini = texto.indexOf(cabecalho);
+    assert(ini >= 0, `não achei ${cabecalho}`);
+    const abre = texto.indexOf(`AS ${tag}`, ini) + `AS ${tag}`.length;
+    return texto.slice(abre, texto.indexOf(`${tag};`, abre));
+  };
+  const m1 = await ler(MIGRACAO_205);
+  const m2 = await ler(MIGRACAO_206);
+  const m970 = await ler(MIGRACAO_970);
+  const par = (c: string) => ({ lf: sha(c), crlf: sha(crlf(c)) });
+  return {
+    m1,
+    m2,
+    aux: par(
+      corpoDe(
+        m2,
+        "CREATE OR REPLACE FUNCTION public.cupom__vaga_volta_em(",
+        "$function$",
+      ),
+    ),
+    rpc: par(
+      corpoDe(
+        m1,
+        "CREATE OR REPLACE FUNCTION public.vaga_do_cupom_presa(",
+        "$function$",
+      ),
+    ),
+    varredura: par(
+      corpoDe(
+        m2,
+        "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()",
+        "$devolver_cupons_mortos$",
+      ),
+    ),
+    varredura970: par(
+      corpoDe(
+        m970,
+        "CREATE OR REPLACE FUNCTION public.devolver_cupons_de_pedidos_mortos()",
+        "$devolver_cupons_mortos$",
+      ),
+    ),
+  };
+}
+
+const { ROL_DA_12A, ROL_DA_12B } = require(SCRIPT);
+for (const [nome, nItens, rol] of [
+  [NOME_12A, 24, ROL_DA_12A],
+  [NOME_12B, 10, ROL_DA_12B],
+] as Array<[string, number, string[]]>) {
+  Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo (e o agendador, só jobname/schedule/active), saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+    await t.step("está no menu do workflow", async () => {
+      const yaml = await Deno.readTextFile(WORKFLOW);
+      const i = yaml.indexOf("consulta:");
+      assert(i >= 0, "não achei a entrada `consulta`");
+      assert(
+        yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+        `falta a opção ${nome} no workflow`,
+      );
+    });
+    await t.step(
+      "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com as reprovadas primeiro",
+      () => {
+        assertEquals(contarStatements(sql), 1);
+        assert(/^\s*WITH\b/i.test(limpo));
+        assert(
+          !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT)\b/i.test(
+            semTexto,
+          ),
+          "palavra de escrita fora de comentário/string",
+        );
+        assert(
+          !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+            semTexto,
+          ),
+          "SQL dinâmico (ou leitura de arquivo)",
+        );
+        assert(
+          /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+            limpo,
+          ),
+          "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+        );
+      },
+    );
+    await t.step(
+      "SÓ catálogo e cron.job: nenhuma tabela de dados (pedido, cupom, cliente) e nenhuma coluna de cliente, de dinheiro ou do comando do job",
+      () => {
+        const permitidos = new Set([
+          "pg_proc",
+          "pg_namespace",
+          "pg_language",
+          "pg_attribute",
+          "aclexplode",
+          "cron.job",
+          // CTEs desta consulta
+          "f",
+          "tabelas",
+          "colunas",
+          "varredura",
+          "vis",
+          "agendado",
+          "itens",
+        ]);
+        const alvos = [
+          ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+        ].map((m) => m[1].toLowerCase());
+        assert(alvos.length > 0);
+        for (const alvo of alvos)
+          assert(
+            permitidos.has(alvo),
+            `lê de "${alvo}", que não é catálogo, cron.job nem CTE`,
+          );
+        assert(
+          !/\b(customer_name|customer_data|user_id|email|telefone|phone|endereco|address|cpf|full_name|amount|total|subtotal|discount|gateway_payment_id|payment_status|paid_at|code|command|username|database|nodename|jobid|return_message)\b/i.test(
+            semTexto,
+          ),
+          "a consulta citaria dado pessoal, financeiro ou o comando do job",
+        );
+        // do agendador, so as tres colunas que a linha do job usa
+        const doJob = [...semTexto.matchAll(/\bj\.(\w+)/g)].map((m) => m[1]);
+        assertEquals([...new Set(doJob)].sort(), [
+          "active",
+          "jobname",
+          "schedule",
+        ]);
+      },
+    );
+    await t.step(
+      `o rol fechado do código tem ${nItens} itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)`,
+      () => {
+        assertEquals(rol.length, nItens);
+        assertEquals(new Set(rol).size, rol.length);
+        assertEquals(
+          Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+            ([n]) => n === nome,
+          )?.[1],
+          rol,
+        );
+        for (const item of rol)
+          assertStringIncludes(
+            limpo,
+            `'${item}'`,
+            `o item do rol "${item}" não existe no .sql`,
+          );
+        const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',/g)].map(
+          (m) => m[1],
+        );
+        assertEquals(
+          doSql.length,
+          nItens,
+          `o .sql monta ${nItens} linhas de resultado`,
+        );
+        for (const item of doSql)
+          assert(
+            rol.includes(item),
+            `o .sql monta "${item}" e o rol do código não o tem`,
+          );
+      },
+    );
+  });
+}
+
+Deno.test("12a/12b — os hashes são EXATAMENTE os dos corpos que os arquivos das migrations 20261205000000 e 20261206000000 definem, e os que os pré-voos e os rollbacks aceitam", async (t) => {
+  const h = await hashesDoLote205();
+  const sql12a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_12A}.sql`);
+  const sql12b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_12B}.sql`);
+  const hex64 = (sql: string) =>
+    [
+      ...new Set(
+        [...sqlSemComentarios(sql).matchAll(/'([0-9a-f]{64})'/g)].map(
+          (m) => m[1],
+        ),
+      ),
+    ].sort();
+  await t.step(
+    "12a: só os 6 sha256 (auxiliar e varredura da 20261206, RPC da 20261205; LF e CRLF), cada LF como o esperado da sua linha",
+    () => {
+      assertEquals(
+        hex64(sql12a),
+        [
+          h.aux.lf,
+          h.aux.crlf,
+          h.rpc.lf,
+          h.rpc.crlf,
+          h.varredura.lf,
+          h.varredura.crlf,
+        ].sort(),
+      );
+      const limpo = sqlSemComentarios(sql12a);
+      for (const lf of [h.aux.lf, h.rpc.lf, h.varredura.lf])
+        assertStringIncludes(limpo, `'${lf}',`, "o LF tem de ser o esperado");
+    },
+  );
+  await t.step(
+    "12b: só os 2 sha256 do corpo da varredura da 20260970 (LF e CRLF), os MESMOS do pré-voo da 20261205 e da 20261206",
+    () => {
+      assertEquals(
+        hex64(sql12b),
+        [h.varredura970.lf, h.varredura970.crlf].sort(),
+      );
+      assertStringIncludes(
+        sqlSemComentarios(sql12b),
+        `'${h.varredura970.lf}',`,
+      );
+      for (const m of [h.m1, h.m2])
+        for (const x of [h.varredura970.lf, h.varredura970.crlf])
+          assertStringIncludes(m, `'${x}'`);
+    },
+  );
+  await t.step(
+    "os hashes da 12a são os que o pós-voo da 20261206 e o pré-voo/rollback da 20261205 aceitam",
+    async () => {
+      const pos = h.m2.slice(
+        h.m2.indexOf("DO $posvoo_20261206$"),
+        h.m2.indexOf("$posvoo_20261206$;"),
+      );
+      for (const x of [h.aux.lf, h.aux.crlf, h.varredura.lf, h.varredura.crlf])
+        assertStringIncludes(pos, `'${x}'`);
+      const rb205 = await Deno.readTextFile(ROLLBACK_205);
+      for (const x of [h.rpc.lf, h.rpc.crlf]) {
+        assertStringIncludes(h.m1, `'${x}'`);
+        assertStringIncludes(rb205, `'${x}'`);
+      }
+      const rb206 = await Deno.readTextFile(ROLLBACK_206);
+      for (const x of [h.aux.lf, h.aux.crlf, h.varredura.lf, h.varredura.crlf])
+        assertStringIncludes(rb206, `'${x}'`);
+    },
+  );
+});
+
+Deno.test("12a/12b — o rpc-ci.yml roda a prova viva do portão do cupom preso no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  for (const prova of ["cupom-preso-viva", "cupom-preso-portao-viva"]) {
+    const linhas = bloqueante.split("\n");
+    const k = linhas.indexOf(
+      `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+    );
+    assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+    assertEquals(
+      linhas[k - 1],
+      "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+    );
+    assert(linhas[k - 2].startsWith("      - name: "));
+    assert(
+      bloqueante.indexOf(linhas.at(k) ?? "") > bloqueante.indexOf("id: aplica"),
+    );
+    assert(!yaml.slice(inicioInformacional).includes(prova));
+  }
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_12A}.sql`,
+      `scripts/publicacao/consultas/${NOME_12B}.sql`,
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

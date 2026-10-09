@@ -84,6 +84,33 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   duplicada tem `rol=invalido`; erro de SQL nunca vira positivo; o
   `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR.
   **Não prova** a IKCOUS nem a Savy (só o run da consulta contra o ref de cada loja).
+- **cupom preso (`cupom-preso-viva.cjs`, via `rodar-isolado.cjs`)**: as migrations
+  20261205000000 (a RPC `vaga_do_cupom_presa` e o auxiliar `cupom__vaga_volta_em`) e
+  20261206000000 (a vaga do pedido NUNCA cobrado volta 45 min depois de `expires_at`, em
+  vez de 24 h). A RPC só lê e só responde ao DONO do pedido cancelado (outro usuário,
+  outro código, cupom inativo, sem sessão e anon recebem a resposta de "não preso");
+  pedidos criados pelos caminhos REAIS provam que o auxiliar diz "volta" SE E SOMENTE SE
+  a varredura devolve; a vaga volta de verdade; o cenário do pagamento fantasma prova que
+  a pista rápida é segura porque a vaga de cobrança vazia faz `confirmar_pagamento`
+  devolver `divergente`; pré-voo recusa sem gravar, rollbacks byte a byte e cada guarda
+  tirada (mutante) deixa a prova vermelha.
+- **portão do cupom preso (`cupom-preso-portao-viva.cjs`, via `rodar-isolado.cjs`)**:
+  as consultas `12a-conferir-cupom-preso-aplicado` (DEPOIS do apply, 24 linhas) e
+  `12b-antes-cupom-preso-funcoes-ausentes` (ANTES, 10 linhas), a "prova de objetos" do
+  lote 20261205000000 + 20261206000000 em `scripts/frota/canais-de-backend.json`, no mesmo
+  molde da prova da anulação do balcão: 12b positiva na base SEM as migrations, 12a
+  positiva depois do apply real das DUAS (LF e CRLF, igual à árvore inteira); um defeito
+  por vez (função ausente ou sobrecarga extra, SECURITY INVOKER, `search_path`, corpo com
+  1 byte a mais, `EXECUTE` indevido, o dono da varredura ou da RPC sem `EXECUTE` no
+  auxiliar, dependência ausente, job do cron ausente, inativo ou fora de 15 em 15 min)
+  reprovando a SUA linha; o apply só da primeira migration leva a PARAR; cada linha e cada
+  cláusula composta ignorada (mutante) deixa a prova vermelha; resposta parcial ou
+  duplicada tem `rol=invalido`; erro de SQL e papel sem acesso ao schema `cron` nunca viram
+  positivo; o `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR (as duas, em
+  ordem) / NADA / PARAR. **Limite declarado:** a linha do job só é estrita quando o papel
+  vê algum job; sem isso (RLS do pg_cron) ela diz `NAO VERIFICAVEL` e é `ok` — o job se
+  confere então no painel. **Não prova** a IKCOUS nem a Savy, nem o código das edge
+  functions de que a pista rápida depende.
 
 ## Como rodar
 
