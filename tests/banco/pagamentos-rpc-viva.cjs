@@ -79,6 +79,7 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1668,6 +1669,11 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // DENTRO da transação, na ordem inversa da aplicação; o ROLLBACK do fim
 // devolve tudo. Cada uma só é desfeita se estiver no ar.
 const POSTERIORES_A_97 = [
+  // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
+  // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
+  // qualquer uma no ar, o rollback da 99 abaixo recusa. "No ar" = o corpo vivo
+  // é exatamente o que ela deixa.
+  ...[...SUCESSORAS_DA_99].reverse().map(({ nome, noAr }) => ({ nome, noAr })),
   {
     nome: "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql",
     noAr: `SELECT to_regprocedure('public.anular_venda_presencial(uuid,text)') IS NOT NULL AS sim`,

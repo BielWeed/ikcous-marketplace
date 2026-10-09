@@ -50,6 +50,10 @@
  *       rollback recusa sem escrever; reaplicar a migration volta ao estado
  *       dela, e reaplicar por cima de si mesma não muda nada; preflight
  *       recusa corpo vivo divergente e gatilho divergente sem escrever.
+ *   (4) as SUCESSORAS (migrations posteriores que redefinem um dos 42 —
+ *       tests/banco/sucessoras-da-99.cjs) são desfeitas no começo, no clone
+ *       (prova (0b)), para medir a 99 isolada; reaplicá-las por cima volta
+ *       exatamente ao estado da árvore.
  *
  * Toda chamada de RPC roda numa transação DESFEITA no fim: a recusa é a
  * exceção (que já desfaz o que veio antes dela); a prova de "antes de
@@ -67,6 +71,11 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const {
+  SUCESSORAS_DA_99,
+  desfazerSucessorasDa99,
+  reaplicarSucessorasDa99,
+} = require("./sucessoras-da-99.cjs");
 
 const NOME_MIGRATION = "20261199000000_portas_do_painel_exigem_admin_atual.sql";
 const DIR_MIGRATIONS = path.join(
@@ -419,6 +428,25 @@ PROVAS.push({
     fx.lancamento = lanc.rows[0].r.ids[0];
     fx.identidade = ident.rows[0].r;
     assert.ok(fx.lancamento && fx.identidade.revision !== undefined);
+  },
+});
+
+// As migrations POSTERIORES que redefinem um dos 42 corpos (20261212, 20261214
+// — tests/banco/sucessoras-da-99.cjs) tiram a 99 do ar para aquele corpo: o
+// hash dela não está vivo, o rollback dela recusa. Esta prova mede a 99
+// ISOLADA: no CLONE (rodar-isolado.cjs), as sucessoras são desfeitas aqui, uma
+// vez, pelo rollback-manual de cada uma; a prova (4) reaplica por cima e
+// confere que volta ao estado da árvore.
+PROVAS.push({
+  nome: "(0b) o clone volta ao estado da 99: as sucessoras são desfeitas pelo rollback-manual de cada uma, na ordem inversa",
+  corpo: async (c) => {
+    fx.digitalDaArvore = await digital(c);
+    const desfeitas = await desfazerSucessorasDa99(c);
+    assert.deepEqual(
+      desfeitas,
+      SUCESSORAS_DA_99.map((s) => s.nome).reverse(),
+      "toda sucessora da árvore tinha de estar no ar",
+    );
   },
 });
 
@@ -1280,6 +1308,27 @@ PROVAS.push({
       } finally {
         await c.query("ROLLBACK");
       }
+    }
+  },
+});
+
+PROVAS.push({
+  nome: "(4) reaplicar as sucessoras da 99 por cima (na ordem da aplicação) volta exatamente ao estado da árvore",
+  corpo: async (c) => {
+    assert.ok(
+      fx.digitalDaArvore,
+      "a prova (0b) não guardou o estado da árvore",
+    );
+    await c.query("BEGIN");
+    try {
+      await reaplicarSucessorasDa99(c);
+      assert.deepEqual(
+        await digital(c),
+        fx.digitalDaArvore,
+        "99 + sucessoras reaplicadas não é o estado da árvore",
+      );
+    } finally {
+      await c.query("ROLLBACK");
     }
   },
 });
