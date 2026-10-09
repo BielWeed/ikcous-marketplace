@@ -10,8 +10,10 @@
 //      Início, Pedidos, Produtos, Clientes, Ajustes (aria-label).
 //   2. O rótulo visível NUNCA leva a classe `hidden` — aparece sempre, a
 //      ~11px, e cabe porque a aba é `flex-1` (o Vender segue `shrink-0`).
-//   3. O selo de pedidos entra no NOME ("Pedidos, 3 para preparar") e o selo
+//   3. O selo de pedidos entra no NOME ("Pedidos, 3 pendentes") e o selo
 //      visual fica `aria-hidden`, para o leitor não ler "Pedidos 3 3".
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -182,13 +184,59 @@ describe("AdminLayout — a barra inferior do celular tem nome acessível", () =
       ),
     );
     const pedidos = botaoDaAba(nav, "Pedidos")!;
+    // Texto neutro ("pendentes"): o selo conta pending+new+processing, o que
+    // inclui PIX ainda não pago, e o "Para preparar" do Início não conta esse
+    // pedido. Até a Onda F unificar a contagem, o nome não promete mais que o número.
     expect(pedidos.getAttribute("aria-label")).toBe(
-      `Pedidos, ${PEDIDOS_PARA_PREPARAR} para preparar`,
+      `Pedidos, ${PEDIDOS_PARA_PREPARAR} pendentes`,
     );
     const selo = Array.from(pedidos.querySelectorAll("span")).find(
       (s) => s.textContent?.trim() === String(PEDIDOS_PARA_PREPARAR),
     );
     expect(selo).toBeTruthy();
     expect(selo!.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("no singular o nome diz '1 pendente'", async () => {
+    const { supabase } = await import("@/lib/supabase");
+    (supabase.from as any).mockImplementation(() => {
+      const builder: any = {};
+      builder.select = vi.fn(() => builder);
+      builder.eq = vi.fn(() => builder);
+      builder.in = vi.fn(() => builder);
+      builder.is = vi.fn(() => builder);
+      // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
+      builder.then = (resolve: any, reject?: any) =>
+        Promise.resolve({ count: 1, error: null }).then(resolve, reject);
+      return builder;
+    });
+    const nav = await montar();
+    await esperarAte(
+      () =>
+        botaoDaAba(nav, "Pedidos")?.getAttribute("aria-label") ===
+        "Pedidos, 1 pendente",
+    );
+    expect(botaoDaAba(nav, "Pedidos")!.getAttribute("aria-label")).toBe(
+      "Pedidos, 1 pendente",
+    );
+  });
+});
+
+// O rótulo visível deixou a barra mais alta (~81px em vez de ~68px abaixo de
+// 640px). A folga de baixo do conteúdo no PWA instalado tinha 5.5rem (88px) e
+// a barra ocupa 12+81=93px: sobravam 5px do último elemento sob a barra.
+// Os dois modos usam a mesma folga base de 6.25rem.
+describe("AdminLayout — folga de baixo comporta a barra com rótulo", () => {
+  it("o --admin-tab-pb do PWA instalado usa 6.25rem, igual ao do navegador", () => {
+    const fonte = readFileSync(
+      resolve(__dirname, "../../src/components/layouts/AdminLayout.tsx"),
+      "utf8",
+    );
+    const bloco = fonte.slice(
+      fonte.indexOf('"--admin-tab-pb"'),
+      fonte.indexOf('"--admin-tab-pb"') + 400,
+    );
+    expect(bloco).not.toContain("5.5rem");
+    expect(bloco.match(/6\.25rem/g)?.length).toBe(2);
   });
 });

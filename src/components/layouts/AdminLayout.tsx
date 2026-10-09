@@ -740,7 +740,7 @@ export function AdminLayout({
       style={
         {
           "--admin-tab-pb": isStandalone
-            ? "calc(5.5rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
+            ? "calc(6.25rem + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))"
             : `calc(6.25rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)))`,
         } as React.CSSProperties
       }
@@ -1257,10 +1257,12 @@ export function AdminLayout({
                   <button
                     key={idx}
                     // Nome acessível da aba; o selo de pedidos entra nele
-                    // ("Pedidos, 3 para preparar") e o selo visual é aria-hidden.
+                    // ("Pedidos, 3 pendentes") e o selo visual é aria-hidden.
+                    // Texto neutro: o selo conta pending+new+processing (inclui
+                    // PIX ainda não pago), diferente do "Para preparar" do Início.
                     aria-label={
                       item.view === "admin-orders" && pendingOrdersCount > 0
-                        ? `${item.label}, ${pendingOrdersCount} para preparar`
+                        ? `${item.label}, ${pendingOrdersCount} ${pendingOrdersCount === 1 ? "pendente" : "pendentes"}`
                         : item.label
                     }
                     onClick={() => {
@@ -1321,7 +1323,7 @@ export function AdminLayout({
                     {/* Rótulo SEMPRE visível (painel simples, A2): a 11px e em
                         caixa normal — em 360px cada aba tem ~53px (nav de
                         328px, menos o padding e o Vender de 44px, dividido em
-                        5) e "CLIENTES" em maiúscula pesada não cabe. */}
+                        5) e "PRODUTOS" em maiúscula pesada (~57,6px) não cabe. */}
                     <span
                       className={cn(
                         "text-[11px] font-bold leading-none transition-all",
