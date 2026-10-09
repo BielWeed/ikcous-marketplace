@@ -177,14 +177,20 @@
     "(PR #785, ondas G e H, lote 2: 'eslint warnings 409 / teto 410 / baixou -1'); a",
     "medição local bateu com a do CI nas duas quedas anteriores desta série (410 e 14).",
     "A queda veio do PR: o acordeão de Transportadoras saiu de Ajustes (um warning de",
-    "classe h-8.5 junto). Baixado depois do CI verde (12/12) no commit b1bf2ba1."
+    "classe h-8.5 junto). Baixado depois do CI verde (12/12) no commit b1bf2ba1.",
+    "",
+    "09/10/2026 — erros do Biome de 14 para 13. Medido com a catraca local (PR #785,",
+    "onda F: 'biome errors 13 / teto 14 / baixou -1'), nas duas rodadas da integração. A",
+    "queda veio do PR: o teste admin-layout-cracha-pedidos-pendentes tinha um erro de",
+    "formatação do Biome na base e foi reescrito. Baixado depois do CI verde (12/12) no",
+    "commit ac85a98c."
   ],
   "eslint": {
     "errors": 0,
     "warnings": 409
   },
   "biome": {
-    "errors": 14,
+    "errors": 13,
     "warnings": 1
   }
 }
