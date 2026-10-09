@@ -805,6 +805,27 @@ interface OrderFinanceCardProps {
   registrandoPagamento?: boolean;
 }
 
+// F7 do painel simples — venda do balcão não se CANCELA (nasce entregue, e
+// "Cancelar pedido" não existe para entregue): o caminho é ANULAR, e só no
+// mesmo dia. A 1ª frase é a da recusa do banco (migration 20261204000000,
+// `anular_venda_presencial`); a 2ª da recusa ("registre uma devolução") NÃO
+// vale aqui: o lojista não abre devolução de balcão no painel
+// (`solicitar_devolucao` exige o cliente logado).
+const FRASE_ANULAR_SO_NO_MESMO_DIA = "Só dá para anular no mesmo dia da venda.";
+
+/** A venda do balcão que só não se anula mais porque o dia passou: a MESMA
+ * regra do botão, com o recebimento trazido para hoje. Não decide nada — só
+ * escolhe a frase; quem decide é o banco. */
+function anulacaoDoBalcaoPassouDoDia(order: Order): boolean {
+  if (!order.pagamentoRecebidoEm || podeAnularVendaDoBalcao(order)) {
+    return false;
+  }
+  return podeAnularVendaDoBalcao({
+    ...order,
+    pagamentoRecebidoEm: new Date().toISOString(),
+  });
+}
+
 // Bloco do dinheiro ("Pagamento"), logo depois da trilha: a forma de pagamento
 // ao lado do título, o total grande, UMA frase com a situação (e o selo, uma
 // vez só) e, por último, o botão de recebimento. A conta (subtotal, desconto, frete) foi
@@ -943,6 +964,12 @@ function OrderFinanceCard({
         anulandoId === order.id ||
         podeAnularVendaDoBalcao(order)) && (
         <div className="border-t border-white/5 pt-4">
+          {podeAnularVendaDoBalcao(order) && (
+            <p className="mb-3 text-xs leading-relaxed text-zinc-400">
+              Venda do balcão não se cancela: se foi engano, anule hoje — o
+              estoque volta e o Financeiro desconta.
+            </p>
+          )}
           <AnularVendaDoBalcao
             key={order.id}
             total={order.total}
@@ -951,6 +978,13 @@ function OrderFinanceCard({
             aoAnular={anularEstePedido}
           />
         </div>
+      )}
+
+      {anulacaoDoBalcaoPassouDoDia(order) && (
+        <p className="border-t border-white/5 pt-4 text-xs leading-relaxed text-zinc-400">
+          {FRASE_ANULAR_SO_NO_MESMO_DIA} Depois disso, a devolução só pode ser
+          pedida pelo cliente que tem conta no app.
+        </p>
       )}
     </section>
   );
