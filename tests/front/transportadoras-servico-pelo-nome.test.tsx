@@ -2,7 +2,7 @@
 //
 // Painel simples (G6): a lojista lê o NOME do serviço, não o código.
 //   - (Frenet é o terceiro cartão: ME e SuperFrete pedem e-mail para testar)
-//   - o resultado do "Testar" mostra "PAC: cotou certo"; o código cru vai
+//   - o resultado do "Testar" mostra "Correios — PAC: cotou certo"; o código cru vai
 //     para o `title` (detalhe), nunca é o texto da linha;
 //   - o nome vem de `list_services` (a API); não há tabela fixa de nomes. Se
 //     a lista não foi carregada, o texto honesto é "Serviço 1" — o código
@@ -129,7 +129,7 @@ describe("TransportadorasSection — serviço pelo nome, modo de teste sem jarg�
       re.test(li.textContent ?? ""),
     );
 
-  it("com a lista da conta carregada, o Testar mostra 'PAC: cotou certo' e o código só no title", async () => {
+  it("com a lista da conta carregada, o Testar mostra 'Correios — PAC: cotou certo' e o código só no title", async () => {
     await abrir([
       { codigo: "1", transportadora: "Correios", servico: "PAC" },
       { codigo: "2", transportadora: "Correios", servico: "SEDEX" },
@@ -138,10 +138,10 @@ describe("TransportadorasSection — serviço pelo nome, modo de teste sem jarg�
     await clicar(botoes(/^Testar$/)[2]);
 
     const pac = linha(/cotou certo/);
-    expect(pac?.textContent).toBe("PAC: cotou certo");
+    expect(pac?.textContent).toBe("Correios — PAC: cotou certo");
     expect(pac?.getAttribute("title")).toBe("Código 1");
     const sedex = linha(/não cotou/);
-    expect(sedex?.textContent).toBe("SEDEX: não cotou (dimensões)");
+    expect(sedex?.textContent).toBe("Correios — SEDEX: não cotou (dimensões)");
     expect(sedex?.getAttribute("title")).toBe("Código 2");
   });
 
@@ -161,6 +161,8 @@ describe("TransportadorasSection — serviço pelo nome, modo de teste sem jarg�
     await abrir(null);
 
     expect(hospedeiro.textContent).not.toMatch(/Sandbox/);
+    // Um nome só: "Modo de teste" (singular) em toda a seção.
+    expect(hospedeiro.textContent).not.toMatch(/modo de testes/i);
     const interruptor = [
       ...hospedeiro.querySelectorAll('button[role="switch"]'),
     ].find((el) => /Modo de teste/.test(el.getAttribute("aria-label") ?? ""));

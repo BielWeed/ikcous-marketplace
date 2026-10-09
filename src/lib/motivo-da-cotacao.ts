@@ -30,6 +30,14 @@ const API_RETORNOU = /\bAPI retornou (\d{3})\b/;
 // Corpo que é JSON ou HTML, não frase.
 const CORPO_CRU = /^\s*(?:[{[<])|<\s*\/?\s*(?:html|body|!doctype)\b/i;
 
+// Mesmas três classes que a edge separa em `provedores.ts` (linhas 277-279):
+// 401/403 = chave recusada; 422 com `cep_destino` = CEP inválido; o resto =
+// transportadora indisponível. Cada uma pede uma ação diferente da lojista,
+// então não pode virar a mesma frase.
+const FRASE_CHAVE_RECUSADA =
+  "A transportadora recusou a chave de acesso. Confira a chave em Transportadoras e toque em Testar.";
+const FRASE_CEP_RECUSADO = "A transportadora não aceitou o CEP do cliente.";
+
 function frase(status: string | null): string {
   return status === null
     ? `${NAO_RESPONDEU_DIREITO}. ${TENTE_DE_NOVO}`
@@ -38,7 +46,14 @@ function frase(status: string | null): string {
 
 function traduzirCorpo(texto: string): string {
   const retornou = API_RETORNOU.exec(texto);
-  if (retornou) return frase(retornou[1] ?? null);
+  if (retornou) {
+    const status = retornou[1] ?? null;
+    if (status === "401" || status === "403") return FRASE_CHAVE_RECUSADA;
+    if (status === "422" && texto.includes("cep_destino")) {
+      return FRASE_CEP_RECUSADO;
+    }
+    return frase(status);
+  }
   if (CORPO_CRU.test(texto)) return frase(null);
   return texto;
 }
@@ -76,7 +91,10 @@ export function motivoDaCotacao(
       const comPrefixo = PREFIXO_DE_PROVEDOR.exec(parte);
       const nome = comPrefixo?.[1] ? nomeDe?.(comPrefixo[1]) : null;
       if (comPrefixo && nome) {
-        return `${nome}: ${traduzirCorpo(comPrefixo[2] ?? "")}`;
+        const corpo = traduzirCorpo(comPrefixo[2] ?? "");
+        // A edge às vezes já escreve o nome no corpo ("Melhor Envio: resposta
+        // inesperada."): repetir o prefixo daria "Melhor Envio: Melhor Envio: …".
+        return corpo.startsWith(nome) ? corpo : `${nome}: ${corpo}`;
       }
       return traduzirCorpo(parte);
     })

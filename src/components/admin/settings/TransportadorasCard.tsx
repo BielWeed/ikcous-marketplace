@@ -272,7 +272,7 @@ function resumoDoCartao(
           !emailDeContatoValido(salvo?.contato_email)
         ? "Sem e-mail de contato"
         : sandbox
-          ? "Modo de testes"
+          ? "Modo de teste"
           : ligado
             ? "Ligado"
             : "Chave salva, desligado";
@@ -1153,7 +1153,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         </div>
         <p className="text-[11px] leading-snug text-zinc-400">
           Marque quem cota frete de verdade para as suas clientes. Só é possível
-          ligar um provedor com chave salva, fora do modo de testes.
+          ligar um provedor com chave salva, fora do modo de teste.
         </p>
         <div className="space-y-1.5">
           {ORDEM_DOS_PROVEDORES.map((provider) => {
@@ -1188,7 +1188,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
               : semEmailQueEssePedeParaSalvar
                 ? "sem e-mail de contato"
                 : emModoDeTeste
-                  ? "em modo de testes — não pode ligar"
+                  ? "em modo de teste — não pode ligar"
                   : estaSalvo && marcado
                     ? "ligado"
                     : estaSalvo && !marcado
@@ -1376,7 +1376,7 @@ function CartaoDoProvedor({
 
         {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
           <p className="text-[11px] leading-snug text-zinc-500">
-            Desligue esta transportadora antes de usar o modo de testes.
+            Desligue esta transportadora antes de usar o modo de teste.
           </p>
         )}
 
@@ -1528,12 +1528,15 @@ function CartaoDoProvedor({
                     // ("PAC"), que vem de `list_services` (a API; sem tabela
                     // fixa aqui). Sem a lista carregada fica "Serviço 1" —
                     // nada de nome inventado. O código vai para o `title`.
-                    const nomeDoServico = rascunho.servicosCarregados?.find(
+                    const servicoDaLista = rascunho.servicosCarregados?.find(
                       (sc) => sc.codigo === s.codigo,
-                    )?.servico;
+                    );
                     return (
                       <li key={s.codigo} title={`Código ${s.codigo}`}>
-                        {nomeDoServico ?? `Serviço ${s.codigo}`}:{" "}
+                        {servicoDaLista
+                          ? nomeCompletoDoServico(servicoDaLista)
+                          : `Serviço ${s.codigo}`}
+                        :{" "}
                         {s.ok
                           ? "cotou certo"
                           : s.motivo === "erro_do_servico"
@@ -1708,6 +1711,18 @@ function LogoDoProvedor({ provider }: { readonly provider: ProvedorFrete }) {
       />
     </span>
   );
+}
+
+// "Transportadora — Serviço" no mesmo texto da lista da conta (sem o logo),
+// para o resultado do "Testar" não dizer só "Standard" sem a J&T/Frenet.
+function nomeCompletoDoServico(item: ServicoDoProvedor): string {
+  const marca = marcaDoFrete({
+    transportadora: item.transportadora,
+    servico: item.servico,
+  });
+  const nome = marca.transportadora?.nome ?? item.transportadora;
+  const servicoLimpo = marca.servico ?? item.servico;
+  return servicoLimpo ? `${nome} — ${servicoLimpo}` : nome;
 }
 
 // Serviço na lista do provedor com o NOME NORMALIZADO (pedido do dono,

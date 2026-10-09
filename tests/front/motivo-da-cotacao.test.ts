@@ -11,6 +11,9 @@ import { describe, expect, it } from "vitest";
 
 const FRASE =
   "A transportadora não respondeu direito (erro 422). Tente de novo mais tarde.";
+const CHAVE_RECUSADA =
+  "A transportadora recusou a chave de acesso. Confira a chave em Transportadoras e toque em Testar.";
+const CEP_RECUSADO = "A transportadora não aceitou o CEP do cliente.";
 
 describe("motivoDaCotacao", () => {
   it("frase em português que a edge escreveu passa igual", () => {
@@ -22,15 +25,31 @@ describe("motivoDaCotacao", () => {
     );
   });
 
-  it("'API retornou N: {json}' vira a frase com o número do erro", () => {
+  it("401 e 403 = chave recusada: a lojista troca a chave, não espera", () => {
+    for (const status of ["401", "403"]) {
+      expect(
+        motivoDaCotacao(`Melhor Envio API retornou ${status}: {"message":"x"}`),
+      ).toBe(CHAVE_RECUSADA);
+    }
+  });
+
+  it("422 com cep_destino no corpo = o CEP do cliente não foi aceito", () => {
     expect(
       motivoDaCotacao(
-        'Melhor Envio API retornou 422: {"errors":{"postal_code":["inválido"]}}',
+        'Melhor Envio API retornou 422: {"errors":{"postal_code":["O campo cep_destino está invalido"]}}',
+      ),
+    ).toBe(CEP_RECUSADO);
+  });
+
+  it("422 SEM cep_destino é a frase genérica, com o número", () => {
+    expect(
+      motivoDaCotacao(
+        'Melhor Envio API retornou 422: {"errors":{"weight":["inválido"]}}',
       ),
     ).toBe(FRASE);
   });
 
-  it("'API retornou N: texto solto' também vira a frase (o corpo é da transportadora, não nosso)", () => {
+  it("outro status (500) é a frase genérica com o número; o texto solto do corpo não vaza", () => {
     expect(
       motivoDaCotacao("Frenet API retornou 500: Internal Server Error"),
     ).toBe(
@@ -64,6 +83,17 @@ describe("motivoDaCotacao", () => {
     ).toBe(
       'Melhor Envio: A transportadora não respondeu direito (erro 502). Tente de novo mais tarde. | Frenet: Sem credencial cadastrada para o provedor "frenet".',
     );
+  });
+
+  it("se o corpo já começa com o nome da transportadora, o prefixo não repete", () => {
+    const nomeDe = (id: string) =>
+      id === "melhor_envio" ? "Melhor Envio" : null;
+    expect(
+      motivoDaCotacao(
+        "melhor_envio: Melhor Envio: resposta inesperada.",
+        nomeDe,
+      ),
+    ).toBe("Melhor Envio: resposta inesperada.");
   });
 
   it("vazio ou nulo devolve vazio (linha com campo nulo não derruba a seção)", () => {

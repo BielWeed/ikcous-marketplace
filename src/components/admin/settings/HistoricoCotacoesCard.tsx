@@ -13,8 +13,10 @@ import { Boxes, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
 
 // O histórico guarda o id da transportadora (`melhor_envio`); a lojista lê o
-// nome ("Melhor Envio"). `NOME_DO_PROVEDOR` é um Map, então `.get` aceita o
-// texto solto da coluna sem cast.
+// nome ("Melhor Envio"). A coluna é texto solto, mas `NOME_DO_PROVEDOR` é
+// indexado pela união fechada `ProvedorFrete`: o cast só deixa o `.get`
+// compilar, e um id desconhecido devolve `undefined` (o texto cai no
+// fallback de `nomeDoProvedorNoHistorico`/`motivoDaCotacao`).
 const nomeDaTransportadora = (id: string) =>
   NOME_DO_PROVEDOR.get(id as ProvedorFrete);
 

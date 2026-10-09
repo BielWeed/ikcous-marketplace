@@ -135,22 +135,57 @@ describe("HistoricoCotacoesSection — leitura de lojista", () => {
     expect(texto()).not.toContain("_");
   });
 
-  it("corpo bruto da API vira frase; o texto inteiro fica no title", async () => {
-    logsState.data = [
-      log({ status: "error", response_time_ms: 0, error_message: CORPO_BRUTO }),
-    ];
-    await abrirSecao();
-
-    expect(texto()).toContain(
+  const CASOS_DE_CORPO_BRUTO: [string, string, string][] = [
+    [
+      "422 com cep_destino: a frase do CEP",
+      CORPO_BRUTO,
+      "A transportadora não aceitou o CEP do cliente.",
+    ],
+    [
+      "401: a frase da chave recusada",
+      'Melhor Envio API retornou 401: {"message":"Unauthenticated."}',
+      "A transportadora recusou a chave de acesso. Confira a chave em Transportadoras e toque em Testar.",
+    ],
+    [
+      "403: a frase da chave recusada",
+      "Frenet API retornou 403: <html>Forbidden</html>",
+      "A transportadora recusou a chave de acesso. Confira a chave em Transportadoras e toque em Testar.",
+    ],
+    [
+      "422 sem cep_destino: a frase genérica com o número",
+      'Melhor Envio API retornou 422: {"errors":{"weight":["inválido"]}}',
       "A transportadora não respondeu direito (erro 422). Tente de novo mais tarde.",
-    );
-    expect(texto()).not.toContain("postal_code");
-    expect(texto()).not.toContain("{");
-    const celula = [...hospedeiro.querySelectorAll("[title]")].find(
-      (el) => el.getAttribute("title") === CORPO_BRUTO,
-    );
-    expect(celula).toBeTruthy();
-  });
+    ],
+    [
+      "500: a frase genérica com o número",
+      'Melhor Envio API retornou 500: {"message":"Server Error"}',
+      "A transportadora não respondeu direito (erro 500). Tente de novo mais tarde.",
+    ],
+    [
+      "corpo sem número: a frase genérica sem número",
+      '{"message":"Server Error"}',
+      "A transportadora não respondeu direito. Tente de novo mais tarde.",
+    ],
+  ];
+
+  it.each(CASOS_DE_CORPO_BRUTO)(
+    "corpo bruto da API vira frase (%s); o texto inteiro fica no title",
+    async (_nome, bruto, esperada) => {
+      logsState.data = [
+        log({ status: "error", response_time_ms: 0, error_message: bruto }),
+      ];
+      await abrirSecao();
+
+      expect(texto()).toContain(esperada);
+      expect(texto()).not.toContain("postal_code");
+      expect(texto()).not.toContain("{");
+      expect(texto()).not.toContain("<html>");
+      const celula = [...hospedeiro.querySelectorAll("[title]")].find(
+        (el) => el.getAttribute("title") === bruto,
+      );
+      expect(celula).toBeTruthy();
+    },
+  );
 
   it("o motivo em português que a edge escreveu continua igual", async () => {
     const motivo =
