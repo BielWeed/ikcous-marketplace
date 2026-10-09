@@ -988,6 +988,17 @@ describe("Voltar do aparelho no PDV: a camada aberta vem antes do gate de dirty"
       expect(confirmar).not.toHaveBeenCalled();
     });
 
+    it("recarregar (F5) ou abrir o link direto reabre a ficha pelo ?id= da URL, mesmo sem memória no histórico", async () => {
+      prova.telaReal = true;
+      // Link direto/aba nova: o histórico não traz `state` nenhum, só a URL.
+      globalThis.history.replaceState(null, "", "/admin-devolucoes?id=d-1");
+
+      await montar(() => ficha() !== null);
+
+      expect(ficha()).not.toBeNull();
+      expect(rota()).toBe("/admin-devolucoes?id=d-1");
+    });
+
     it("com a ficha SUJA, Permanecer mantém a ficha, a URL e a escolha — e o próximo Voltar pergunta de novo", async () => {
       const confirmar = await abrirFichaSuja();
 
