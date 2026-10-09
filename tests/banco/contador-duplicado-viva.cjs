@@ -30,7 +30,9 @@
  *   mora no pg_attrdef da OUTRA coluna: so o default da PROPRIA coluna e' ignorado);
  *   forma     tipo, default ou NOT NULL diferentes do baseline;  rls  seguranca por linha
  *   valendo para o papel que aplica (a contagem so veria as linhas visiveis a ele);
- *   usage     `usage_count` ausente;  usageForma  `usage_count` em outra forma (bigint, sem
+ *   acl       permissao propria por coluna (GRANT SELECT (used_count)) e  comentario  COMMENT ON
+ *   COLUMN: o DROP COLUMN apaga os dois e o rollback so recria a coluna, entao a migration recusa
+ *   com o nome do que existe;  usage     `usage_count` ausente;  usageForma  `usage_count` em outra forma (bigint, sem
  *   default, NOT NULL): e o contador que FICA, e a consulta 14a cobra a mesma forma depois do apply.
  *  CONCORRENCIA (duas conexoes reais)
  *   corrida   uma gravacao em used_count (valor 7) em transacao ABERTA, a migration espera a
@@ -46,7 +48,7 @@
  *             do pre-voo) e a coluna e o 7 continuam la (a prova `corrida`, em READ
  *             COMMITTED, nao enxerga isso: la a contagem ja le o dado novo).
  *  MUTANTES (cada guarda retirada do texto da migration/rollback deixa um caso VERMELHO; a
- *   saida vermelha de cada um e' impressa): sem LOCK (corrida com INSERT); sem lock_timeout; sem (a) usage_count; sem (a') forma do usage_count;
+ *   saida vermelha de cada um e' impressa): sem LOCK (corrida com INSERT); sem lock_timeout; sem (a) usage_count; sem (a') forma do usage_count; sem (b') permissao por coluna; sem (b') comentario;
  *   sem o FOR SHARE (envelope REPEATABLE READ); sem (b) forma; sem (c) RLS; sem (d) dependentes; (d) voltando a ignorar todo pg_attrdef;
  *   (d) sem ignorar o default da propria coluna; sem (e) funcoes; sem (f) valores; (f) com
  *   COALESCE (NULL vira 0); sem o RETURN da coluna ja ausente; sem o pos-voo; rollback sem a
@@ -218,6 +220,11 @@ async function fotografia(db) {
             AND p.proname IN ('validate_coupon_secure_v2', 'devolver_cupons_de_pedidos_mortos')
           ORDER BY p.proname`,
       ),
+      comentarios: await q(
+        `SELECT objsubid, description FROM pg_description
+          WHERE classoid = 'pg_class'::regclass AND objoid = 'public.coupons'::regclass
+          ORDER BY objsubid`,
+      ),
       politicas: await q(
         `SELECT polname, polcmd, polroles::regrole[]::text AS roles,
                 pg_get_expr(polqual, polrelid) AS q, pg_get_expr(polwithcheck, polrelid) AS w
@@ -309,6 +316,8 @@ const T = {
 const MSG = {
   usage: "PREFLIGHT_20261207: public.coupons.usage_count nao existe",
   usageForma: "PREFLIGHT_20261207: public.coupons.usage_count nao tem a forma",
+  acl: "PREFLIGHT_20261207: public.coupons.used_count tem permissao propria",
+  cmt: "PREFLIGHT_20261207: public.coupons.used_count tem comentario proprio",
   forma: "PREFLIGHT_20261207: public.coupons.used_count nao tem a forma",
   rls: "PREFLIGHT_20261207: a seguranca por linha vale",
   dep: "PREFLIGHT_20261207: % objeto(s) dependem",
@@ -526,6 +535,34 @@ async function casoUsageForma(sql = MIG) {
     const antes = await fotografia(db);
     const r = await aplicar(db, sql);
     recusou(r, /usage_count nao tem a forma do baseline/, rotulo);
+    await nadaGravado(db, antes, rotulo);
+  }
+}
+/** O DROP COLUMN apaga a permissao por coluna (attacl) e o comentario da coluna; o rollback so
+ * recria a coluna. A migration recusa, com o nome do que existe, e nada e gravado. */
+async function casoAclComentario(sql = MIG) {
+  for (const [rotulo, ddl, trecho] of [
+    [
+      "permissao propria por coluna",
+      `GRANT SELECT (used_count) ON public.coupons TO authenticated`,
+      /used_count tem permissao propria por coluna \(attacl\)/,
+    ],
+    [
+      "comentario da coluna",
+      `COMMENT ON COLUMN public.coupons.used_count IS 'contador antigo'`,
+      /used_count tem comentario proprio \(pg_description\)/,
+    ],
+  ]) {
+    const db = await clonar("aclcmt");
+    await semear(db);
+    await usar(db, (c) => c.query(ddl));
+    const antes = await fotografia(db);
+    assert.ok(
+      antes.usedShape.acl !== null || antes.comentarios.some((c) => c.objsubid > 0),
+      `${rotulo}: o preparo nao deixou ACL nem comentario`,
+    );
+    const r = await aplicar(db, sql);
+    recusou(r, trecho, rotulo);
     await nadaGravado(db, antes, rotulo);
   }
 }
@@ -798,6 +835,9 @@ async function main() {
   await casoUsageForma();
   ok("recusa com usage_count em outra forma (bigint, sem default, NOT NULL): o contador que fica tem de ser o do baseline, e a coluna duplicada NAO e apagada");
 
+  await casoAclComentario();
+  ok("recusa com permissao propria por coluna (attacl) ou comentario na used_count: o DROP os apagaria e o rollback nao os recria; NADA gravado");
+
   // ----------------------------------------------------------- concorrencia
   await casoCorrida();
   ok("corrida: gravacao de used_count = 7 em transacao aberta; a migration ESPERA a trava, ve o 7 depois do COMMIT e RECUSA; o 7 continua la");
@@ -824,6 +864,8 @@ async function main() {
   await mutante("sem o FOR SHARE (envelope REPEATABLE READ)", casoRepeatableRead, trocar(MIG, T.forShare, ""));
   await mutante("sem (a) usage_count", casoUsage, semRaise(MIG, MSG.usage));
   await mutante("sem (a') forma do usage_count", casoUsageForma, semRaise(MIG, MSG.usageForma));
+  await mutante("sem (b') permissao propria por coluna", casoAclComentario, semRaise(MIG, MSG.acl));
+  await mutante("sem (b') comentario da coluna", casoAclComentario, semRaise(MIG, MSG.cmt));
   await mutante("sem (b) forma do baseline", casoForma, semRaise(MIG, MSG.forma));
   await mutante("sem (c) RLS", casoRls, semRaise(MIG, MSG.rls));
   await mutante("sem (d) dependentes (visao)", casoVisao, semRaise(MIG, MSG.dep));

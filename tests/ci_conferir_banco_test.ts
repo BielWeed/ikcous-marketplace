@@ -5355,7 +5355,7 @@ Deno.test("12a/12b — o rpc-ci.yml roda a prova viva do portão do cupom preso 
 // 14a/14b (09/10/2026) — a PROVA DE OBJETOS do lote da migration 20261207000000 (a
 // coluna duplicada de contagem de uso do cupom e apagada) em
 // scripts/frota/canais-de-backend.json. A 14a é a consulta do lote (DEPOIS do apply, 4
-// linhas); a 14b é a do ANTES (11 linhas) e confirma o CONTRÁRIO do precedente 12b: a
+// linhas); a 14b é a do ANTES (13 linhas) e confirma o CONTRÁRIO do precedente 12b: a
 // coluna PRESENTE e zerada, sem dependentes. As duas são de ROL FECHADO. Estes testes
 // medem o texto dos .sql contra as migrations DESTA árvore; a decisão de cada consulta
 // num Postgres real está em tests/banco/contador-duplicado-portao-viva.cjs (rpc-ci.yml).
@@ -5380,6 +5380,7 @@ const PERMITIDOS_14B = [
   "pg_attribute",
   "pg_attrdef",
   "pg_depend",
+  "pg_description",
   "pg_proc",
   "pg_namespace",
   "pg_policies",
@@ -5388,6 +5389,7 @@ const PERMITIDOS_14B = [
   "public.coupons",
   "tab",
   "col",
+  "acl",
   "uso",
   "dep",
   "fn",
@@ -5395,7 +5397,7 @@ const PERMITIDOS_14B = [
 ];
 for (const [nome, nItens, rol] of [
   [NOME_14A, 4, ROL_DA_14A],
-  [NOME_14B, 11, ROL_DA_14B],
+  [NOME_14B, 13, ROL_DA_14B],
 ] as Array<[string, number, string[]]>) {
   Deno.test(`${nome} — no menu, UM SELECT só leitura (catálogo${nome === NOME_14B ? " e uma CONTAGEM em public.coupons" : ""}), saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
     const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);

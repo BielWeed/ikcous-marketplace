@@ -309,14 +309,15 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         nao toca funcao nenhuma, e a `10a` e a `12a` ja travam o corpo de `validate_coupon_secure_v2`
         e de `devolver_cupons_de_pedidos_mortos` nos lotes delas (travar o mesmo hash aqui deixaria
         este lote vermelho a cada migration futura que mudasse essas funcoes).
-      - **`14b-antes-contador-duplicado-coluna-presente-e-zerada`** (`ausenciaConfirmadaPor`, 11
+      - **`14b-antes-contador-duplicado-coluna-presente-e-zerada`** (`ausenciaConfirmadaPor`, 13
         linhas) prova o ANTES, as mesmas condicoes do pre-voo da migration. **Atencao: aqui o "antes"
         e o CONTRARIO do item 11 (12b):** a coluna tem de estar PRESENTE (nao ausente), na forma do
         baseline (integer, aceita NULL, DEFAULT 0), `usage_count` na MESMA forma (e o contador que
         fica e o que a `14a` cobra depois: sem isso a loja passaria na `14b`, apagaria e a `14a` sairia
         NEGATIVA), com ZERO linhas de valor diferente de 0 (NULL conta), a seguranca por linha sem esconder cupom do papel que mede, ZERO dependentes da
         coluna (visao, politica, gatilho, indice, constraint, coluna GERADA que a cita; so o DEFAULT
-        da propria coluna fica de fora) e nenhuma funcao, politica, gatilho ou visao de `public` que a
+        da propria coluna fica de fora), a coluna SEM permissao propria por coluna e SEM comentario
+        (o `DROP COLUMN` apaga os dois e o rollback so recria a coluna: por isso a recusa) e nenhuma funcao, politica, gatilho ou visao de `public` que a
         cite. O portao so exige que a consulta do antes seja POSITIVA (da mesma janela ou mais nova
         que a do lote NEGATIVA); nao interpreta o que ela mede.
       - **Caminho, uma loja por vez, e ordem com o front:** ledger sem a versao e sem evidencia →

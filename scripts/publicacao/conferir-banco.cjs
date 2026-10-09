@@ -1143,7 +1143,7 @@ const ROL_DA_14A = [
   "coupons.used_count: coluna",
   "public.coupons: tabela",
 ];
-/** O rol da 14b (a consulta do ANTES do mesmo lote, `ausenciaConfirmadaPor`): as 11
+/** O rol da 14b (a consulta do ANTES do mesmo lote, `ausenciaConfirmadaPor`): as 13
  * linhas que scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql
  * devolve — a condição em que o dono aprovou apagar (coluna PRESENTE e zerada, nada
  * dependendo dela), lida ANTES de aplicar. Aqui o "antes" é o contrário da 10b/11b/12b:
@@ -1152,9 +1152,11 @@ const ROL_DA_14B = [
   "controle: funcoes de public visiveis a este papel",
   "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   "coupons.used_count: coluna presente",
+  "coupons.used_count: comentario proprio",
   "coupons.used_count: dependentes (fora o default da propria coluna)",
   "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
+  "coupons.used_count: permissao propria por coluna (attacl)",
   "funcoes de public que citam used_count",
   "gatilhos que citam used_count",
   "politicas de public que citam used_count",

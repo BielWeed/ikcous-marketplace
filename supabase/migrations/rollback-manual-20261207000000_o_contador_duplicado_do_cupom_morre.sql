@@ -11,6 +11,11 @@
 -- O QUE VOLTA A VALER: a coluna duplicada de volta, sem ninguem que a leia ou a
 -- escreva (e o que o banco era antes). `usage_count` nao e tocado.
 --
+-- O QUE ESTE ROLLBACK NAO RECRIA: permissao propria por coluna (attacl) e comentario da
+-- coluna (pg_description). O DROP COLUMN os apaga e este arquivo so recria a coluna. Por
+-- isso o pre-voo da migration RECUSA apagar uma `used_count` que tenha um dos dois: o
+-- rollback so devolve o estado exato de antes quando nao havia nenhum deles.
+--
 -- GUARDA: ADD COLUMN IF NOT EXISTS nao faz nada quando a coluna ja existe -- e um
 -- rollback que "passa" com a coluna errada seria silencioso. Por isso, depois do
 -- ALTER, a forma da coluna e conferida (integer, aceita NULL, DEFAULT 0, nem gerada

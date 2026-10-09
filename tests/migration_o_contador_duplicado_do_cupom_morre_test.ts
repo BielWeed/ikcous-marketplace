@@ -133,6 +133,8 @@ Deno.test("207: o pre-voo recusa por cada condicao, com o NOME do motivo e dizen
     "PREFLIGHT_20261207: falta a tabela public.coupons",
     "PREFLIGHT_20261207: public.coupons.usage_count nao existe",
     "PREFLIGHT_20261207: public.coupons.used_count nao tem a forma do baseline",
+    "PREFLIGHT_20261207: public.coupons.used_count tem permissao propria por coluna (attacl)",
+    "PREFLIGHT_20261207: public.coupons.used_count tem comentario proprio (pg_description)",
     "PREFLIGHT_20261207: a seguranca por linha vale para este papel",
     "PREFLIGHT_20261207: % objeto(s) dependem de public.coupons.used_count",
     "PREFLIGHT_20261207: % funcao(oes) de public citam used_count",

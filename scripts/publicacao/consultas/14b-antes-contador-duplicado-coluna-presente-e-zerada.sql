@@ -5,13 +5,13 @@
 -- o CONTRARIO do precedente 12b -- a coluna tem de estar PRESENTE e zerada, e nada
 -- pode depender dela. So com a 14a NEGATIVA e esta POSITIVA (da mesma janela ou mais
 -- nova) o portao (scripts/frota/publicar-release.mjs) imprime o apply.
--- SO LEITURA, um unico SELECT: catalogo (pg_attribute, pg_attrdef, pg_depend, pg_proc,
--- pg_namespace, pg_policies, pg_trigger, pg_views) e UMA contagem sobre `public.coupons`
+-- SO LEITURA, um unico SELECT: catalogo (pg_attribute, pg_attrdef, pg_depend, pg_description,
+-- pg_proc, pg_namespace, pg_policies, pg_trigger, pg_views) e UMA contagem sobre `public.coupons`
 -- (`to_jsonb(c)` para a linha, so para contar: nenhum valor, codigo de cupom, pedido,
 -- cliente ou dinheiro e' lido nem devolvido).
 --
 -- Saida: item | esperado | vivo | ok, com as linhas ok = false primeiro. Rol FECHADO
--- de 11 linhas, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE`
+-- de 13 linhas, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE`
 -- na propria linha, nunca some uma linha). Tudo `true` = a migration pode ser aplicada;
 -- um `false` nomeia o que impede. Sao as MESMAS condicoes do pre-voo
 -- `PREFLIGHT_20261207` da migration, lidas antes de gravar qualquer coisa.
@@ -28,6 +28,9 @@
 --                        o pre-voo da migration exige e que a 14a cobra depois do apply. Sem
 --                        isso a loja passaria aqui, apagaria, e a 14a sairia NEGATIVA com a
 --                        coluna ja apagada.
+--   * permissao propria -- `used_count` nao tem permissao por coluna (pg_attribute.attacl
+--                        nulo): o DROP COLUMN a apagaria e o rollback nao a recria.
+--   * comentario proprio -- `used_count` nao tem comentario (pg_description): idem.
 --   * seguranca por linha -- `row_security_active('public.coupons')` e' falso para este
 --                        papel: sem isso a contagem de baixo so veria as linhas que o
 --                        papel enxerga e "tudo zero" nao valeria nada.
@@ -60,6 +63,11 @@ WITH tab AS (
                    AND pg_get_expr(ad.adbin, ad.adrelid) IS NOT DISTINCT FROM '0' AS forma_ok
     FROM pg_attribute a
     LEFT JOIN pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+   WHERE a.attrelid = (SELECT oid FROM tab)
+     AND a.attname = 'used_count' AND a.attnum > 0 AND NOT a.attisdropped
+), acl AS (
+  SELECT a.attacl IS NOT NULL AS tem
+    FROM pg_attribute a
    WHERE a.attrelid = (SELECT oid FROM tab)
      AND a.attname = 'used_count' AND a.attnum > 0 AND NOT a.attisdropped
 ), uso AS (
@@ -102,6 +110,17 @@ WITH tab AS (
   UNION ALL
   SELECT 'coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)', 'sim',
          COALESCE((SELECT CASE WHEN u.forma_ok THEN 'sim' ELSE 'nao' END FROM uso u), 'AUSENTE')
+  UNION ALL
+  SELECT 'coupons.used_count: permissao propria por coluna (attacl)', 'nenhuma',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'
+              WHEN (SELECT tem FROM acl) THEN 'tem' ELSE 'nenhuma' END
+  UNION ALL
+  SELECT 'coupons.used_count: comentario proprio', 'nenhum',
+         CASE WHEN NOT EXISTS (SELECT 1 FROM col) THEN 'AUSENTE'
+              WHEN EXISTS (SELECT 1 FROM pg_description d
+                            WHERE d.classoid = 'pg_class'::regclass
+                              AND d.objoid = (SELECT oid FROM tab)
+                              AND d.objsubid = (SELECT attnum FROM col)) THEN 'tem' ELSE 'nenhum' END
   UNION ALL
   SELECT 'public.coupons: a seguranca por linha vale para este papel', 'nao',
          CASE WHEN (SELECT oid FROM tab) IS NULL THEN 'AUSENTE'

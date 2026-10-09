@@ -39,6 +39,10 @@
 --   (b) `used_count` tem a forma do baseline (integer, aceita NULL, DEFAULT 0, nem
 --       gerada nem identidade): e o que o rollback recria, e e o que a medicao
 --       confirmou. Forma diferente e coluna que alguem mexeu: o dono decide;
+--   (b') `used_count` NAO tem permissao propria por coluna (pg_attribute.attacl nulo) nem
+--       comentario proprio (pg_description): o DROP COLUMN apaga os dois e o rollback nao os
+--       recria (so recria a coluna). Por isso a recusa, com o nome do que existe: o rollback
+--       so devolve o estado exato de antes quando nao havia nenhum dos dois;
 --   (c) a seguranca por linha nao esconde nenhum cupom DESTE papel
 --       (row_security_active falso): sem isso o "tudo zero" contaria so as linhas
 --       que o papel enxerga;
@@ -168,6 +172,21 @@ BEGIN
    WHERE a.attrelid = 'public.coupons'::regclass AND a.attnum = v_attnum;
   IF NOT COALESCE(v_forma_ok, false) THEN
     RAISE EXCEPTION 'PREFLIGHT_20261207: public.coupons.used_count nao tem a forma do baseline (integer, aceita NULL, DEFAULT 0, nem gerada nem identidade) -- alguem a alterou; o rollback nao a reproduziria; nada foi apagado.';
+  END IF;
+
+  -- (b') nada proprio da coluna que o rollback nao recriaria: permissao por coluna e comentario.
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute a
+     WHERE a.attrelid = 'public.coupons'::regclass AND a.attnum = v_attnum AND a.attacl IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261207: public.coupons.used_count tem permissao propria por coluna (attacl) -- o DROP a apagaria e o rollback nao a recria; nada foi apagado.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_description d
+     WHERE d.classoid = 'pg_class'::regclass
+       AND d.objoid = 'public.coupons'::regclass AND d.objsubid = v_attnum
+  ) THEN
+    RAISE EXCEPTION 'PREFLIGHT_20261207: public.coupons.used_count tem comentario proprio (pg_description) -- o DROP o apagaria e o rollback nao o recria; nada foi apagado.';
   END IF;
 
   -- (c) a seguranca por linha nao esconde cupom deste papel.

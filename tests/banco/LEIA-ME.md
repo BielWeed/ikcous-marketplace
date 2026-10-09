@@ -126,7 +126,7 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   item dos dependentes o `DROP COLUMN` sem `CASCADE` ainda recusa a coluna gerada.
 - **portão do contador duplicado (`contador-duplicado-portao-viva.cjs`, via
   `rodar-isolado.cjs`)**: as consultas `14a-conferir-contador-duplicado-apagado` (DEPOIS do
-  apply, 4 linhas) e `14b-antes-contador-duplicado-coluna-presente-e-zerada` (ANTES, 11
+  apply, 4 linhas) e `14b-antes-contador-duplicado-coluna-presente-e-zerada` (ANTES, 13
   linhas), a "prova de objetos" do lote 20261207000000. **Aqui o ANTES é o contrário do
   precedente 12b:** a coluna PRESENTE e zerada, sem dependentes. 14b positiva em `pre`
   (inclusive com o papel mínimo e com `search_path` vazio), 14a positiva depois do apply

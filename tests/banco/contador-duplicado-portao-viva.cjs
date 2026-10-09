@@ -5,7 +5,7 @@
  * coluna duplicada de contagem de uso do cupom, `coupons.used_count`, e apagada), num
  * Postgres EFEMERO local -- nada de rede, nada de loja:
  *   14a-conferir-contador-duplicado-apagado.sql                       (DEPOIS do apply: 4 linhas)
- *   14b-antes-contador-duplicado-coluna-presente-e-zerada.sql         (ANTES do apply: 11 linhas)
+ *   14b-antes-contador-duplicado-coluna-presente-e-zerada.sql         (ANTES do apply: 13 linhas)
  * Elas sao a "prova de objetos" do lote 20261207000000 em scripts/frota/canais-de-backend.json:
  * sem elas o portao (scripts/frota/publicar-release.mjs) bloqueia a release com esta migration
  * nova. Esta prova diz que cada consulta DECIDE certo -- nao que a IKCOUS ou a Savy estao no
@@ -104,7 +104,7 @@ const SQL = {
   [B]: fs.readFileSync(path.join(CONSULTAS, `${B}.sql`), "utf8"),
 };
 const ROL = { [A]: CONF.ROL_DA_14A, [B]: CONF.ROL_DA_14B };
-const N_LINHAS = { [A]: 4, [B]: 11 };
+const N_LINHAS = { [A]: 4, [B]: 13 };
 const SIG_VAL = "public.validate_coupon_secure_v2(text,numeric)";
 
 // Os nomes das linhas (o rol fechado do codigo tem os mesmos).
@@ -122,6 +122,8 @@ const LB = {
   forma: "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
   usage: USAGE_FORMA,
   rls: "public.coupons: a seguranca por linha vale para este papel",
+  acl: "coupons.used_count: permissao propria por coluna (attacl)",
+  cmt: "coupons.used_count: comentario proprio",
   linhas: "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
   dep: "coupons.used_count: dependentes (fora o default da propria coluna)",
   fn: "funcoes de public que citam used_count",
@@ -642,6 +644,8 @@ async function main() {
   await variante("usageTipo", `ALTER TABLE public.coupons ALTER COLUMN usage_count TYPE bigint`);
   await variante("usageDefault", `ALTER TABLE public.coupons ALTER COLUMN usage_count DROP DEFAULT`);
   await variante("usageNotNull", `ALTER TABLE public.coupons ALTER COLUMN usage_count SET NOT NULL`);
+  await variante("acl", `GRANT SELECT (used_count) ON public.coupons TO authenticated`);
+  await variante("comentario", `COMMENT ON COLUMN public.coupons.used_count IS 'contador antigo'`);
   await variante("cego", `UPDATE public.coupons SET used_count = 3 WHERE code = 'CP1'`);
   const casos14b = [
     ["valor 3 em uma linha", nb.valor, [LB.linhas]],
@@ -657,6 +661,8 @@ async function main() {
     ["usage_count bigint", nb.usageTipo, [LB.usage]],
     ["usage_count sem default", nb.usageDefault, [LB.usage]],
     ["usage_count NOT NULL", nb.usageNotNull, [LB.usage]],
+    ["permissao propria por coluna (o DROP a apagaria e o rollback nao a recria)", nb.acl, [LB.acl]],
+    ["comentario da coluna (idem)", nb.comentario, [LB.cmt]],
   ];
   for (const [rotulo, db, esperadas] of casos14b)
     await negativo(B, `14b ${rotulo}`, db, esperadas);
@@ -673,11 +679,11 @@ async function main() {
   // a coluna JA apagada: as linhas dizem AUSENTE, nunca "todas as linhas"
   {
     const rows = await rodar(aplicado, B);
-    await exigirReprovadas(B, "14b com a coluna ja apagada", rows, [LB.presente, LB.forma, LB.linhas, LB.dep]);
-    for (const item of [LB.presente, LB.forma, LB.linhas, LB.dep])
+    await exigirReprovadas(B, "14b com a coluna ja apagada", rows, [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep]);
+    for (const item of [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep])
       assert.equal(linha(rows, item).vivo, "AUSENTE", item);
   }
-  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
+  ok("14b NEGATIVA, UMA linha certa por defeito: valor 3 e NULL (linhas), coluna GERADA e indice (dependentes), visao/politica/gatilho (dependentes + a linha do texto), funcao (so a das funcoes), forma bigint, usage_count ausente ou em outra forma (bigint, sem default, NOT NULL), permissao propria por coluna e comentario da coluna (o DROP os apaga e o rollback nao os recria); o papel que sofre a RLS reprova a linha da RLS (e o que atravessa a RLS ve o 3); coluna ja apagada diz AUSENTE em cada linha, nunca 'todas as linhas'");
 
   // ----------------------------------------------------------- 14a POSITIVOS
   {
@@ -728,11 +734,13 @@ async function main() {
   // ----------------------------------------------------------- MUTANTES
   console.log("\n  --- MUTANTES do texto das consultas (cada um tem de deixar um caso PASSAR) ---");
   // 14b: cada linha ignorada
-  await mutanteDaLinha("14b sem a linha 'coluna presente'", B, LB.presente, aplicado, [LB.presente, LB.forma, LB.linhas, LB.dep]);
+  await mutanteDaLinha("14b sem a linha 'coluna presente'", B, LB.presente, aplicado, [LB.presente, LB.forma, LB.acl, LB.cmt, LB.linhas, LB.dep]);
   await mutanteDaLinha("14b sem a linha 'forma'", B, LB.forma, nb.forma, [LB.forma]);
   await mutanteDaLinha("14b sem a linha 'usage_count' (ausente)", B, LB.usage, nb.usage, [LB.usage]);
   await mutanteDaLinha("14b sem a linha 'usage_count' (bigint)", B, LB.usage, nb.usageTipo, [LB.usage]);
   await mutanteDaLinha("14b sem a linha 'usage_count' (NOT NULL)", B, LB.usage, nb.usageNotNull, [LB.usage]);
+  await mutanteDaLinha("14b sem a linha da permissao por coluna", B, LB.acl, nb.acl, [LB.acl]);
+  await mutanteDaLinha("14b sem a linha do comentario", B, LB.cmt, nb.comentario, [LB.cmt]);
   await mutanteDaLinha("14b sem a linha da RLS", B, LB.rls, nb.cego, [LB.rls], { papel: P.cego });
   await mutanteDaLinha("14b sem a linha das linhas diferentes de 0", B, LB.linhas, nb.valor, [LB.linhas]);
   await mutanteDaLinha("14b sem a linha dos dependentes", B, LB.dep, nb.gerada, [LB.dep]);
@@ -884,7 +892,7 @@ async function main() {
       assert.equal(e1.codigo, 0, e1.saida);
       assert.deepEqual(PORTAO.lerVeredicto(e1.saida, A), { ref: REF_SAVY, sha: SHA40, linhas: 4, okFalse: 0, naoBooleano: 0, rol: "ok" });
       const e1b = await executar(pre, B);
-      assert.deepEqual(PORTAO.lerVeredicto(e1b.saida, B), { ref: REF_SAVY, sha: SHA40, linhas: 11, okFalse: 0, naoBooleano: 0, rol: "ok" });
+      assert.deepEqual(PORTAO.lerVeredicto(e1b.saida, B), { ref: REF_SAVY, sha: SHA40, linhas: 13, okFalse: 0, naoBooleano: 0, rol: "ok" });
       // E2: banco inexistente -> HTTP 400, saida 1, NENHUM veredito, SEM_EVIDENCIA
       const e2 = await executar("cdp_banco_que_nao_existe", A);
       assert.equal(e2.codigo, 1, e2.saida);

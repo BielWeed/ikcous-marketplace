@@ -3177,7 +3177,7 @@ function evidenciasDoLote207(a: Estado203, b: Estado203) {
   for (const [ref, projeto] of LOJAS_203) {
     for (const [consulta, st, linhas] of [
       [A14, a, 4],
-      [B14, b, 11],
+      [B14, b, 13],
     ] as Array<[string, Estado203, number]>) {
       if (!st) continue;
       id += 1;
@@ -3243,7 +3243,7 @@ Deno.test("lote 20261207 — o canais-de-backend.json real o declara como lote d
   assertEquals(ROL_FECHADO_POR_CONSULTA[A14], ROL_DA_14A);
   assertEquals(ROL_FECHADO_POR_CONSULTA[B14], ROL_DA_14B);
   assertEquals(ROL_DA_14A.length, 4);
-  assertEquals(ROL_DA_14B.length, 11);
+  assertEquals(ROL_DA_14B.length, 13);
 });
 
 Deno.test("lote 20261207 — SEM evidência: o único comando por loja é a 14a (só leitura); nenhum apply", async () => {
