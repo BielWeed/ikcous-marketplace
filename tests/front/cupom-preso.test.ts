@@ -222,10 +222,15 @@ BEGIN
 END;
 $$;`;
 
-    it("pega a definição mais nova, não a primeira", () => {
+    // A MAIS NOVA entra PRIMEIRO no objeto de montagem, de propósito: sem a
+    // ordenação por nome o extrator pegaria a última da ordem de inserção (a
+    // antiga) e estes dois testes ficariam vermelhos. Com a nova por último,
+    // a ordem de inserção já coincidiria com a de versão e o `.sort` poderia
+    // sumir sem ninguém ver.
+    it("pega a definição mais nova, não a última da ordem de montagem", () => {
       const achada = corpoDaValidateMaisNova({
-        "/supabase/migrations/20260806000000_a.sql": definicao("frase antiga"),
         "/supabase/migrations/20261203000000_b.sql": definicao("frase nova"),
+        "/supabase/migrations/20260806000000_a.sql": definicao("frase antiga"),
       });
       expect(achada?.nome).toBe("20261203000000_b.sql");
       expect(achada?.corpo).toContain("frase nova");
@@ -233,12 +238,13 @@ $$;`;
 
     it("uma migration mais nova que REESCREVE a frase deixa a âncora vermelha", () => {
       const achada = corpoDaValidateMaisNova({
+        "/supabase/migrations/20261300000000_c.sql":
+          definicao("Limite atingido."),
         "/supabase/migrations/20261203000000_b.sql": definicao(
           FRASE_DE_LIMITE_DE_USO,
         ),
-        "/supabase/migrations/20261300000000_c.sql":
-          definicao("Limite atingido."),
       });
+      expect(achada?.nome).toBe("20261300000000_c.sql");
       expect(achada?.corpo.includes(FRASE_DE_LIMITE_DE_USO)).toBe(false);
     });
 
