@@ -200,7 +200,7 @@ function GradeDeSegmentos({
   aoSelecionar: (segmento: SegmentoCrm | null) => void;
   /**
    * Total já filtrado pela busca (`lista.total`) — substitui o bruto do
-   * segmento quando há um termo digitado, senão "Mostrando: Em risco · 14"
+   * segmento quando há um termo digitado, senão "Mostrando: Podem não voltar · 14"
    * continuava mostrando o total do segmento inteiro mesmo com a lista
    * abaixo filtrada para 1 ou 2 nomes. `undefined` quando não há busca
    * ativa (usa o bruto do segmento, comportamento de sempre).
@@ -576,7 +576,7 @@ export function ClientesDoCrm({
   const nomeDoSegmento = segmento ? infoDoSegmento(segmento).rotulo : null;
   // Com busca ativa e a lista já carregada, "Mostrando" usa o total JÁ
   // filtrado (busca + segmento) — o bruto do segmento (crm_visao) ignora a
-  // busca e mentia ("Mostrando: Em risco · 14" com a lista abaixo mostrando
+  // busca e mentia ("Mostrando: Podem não voltar · 14" com a lista abaixo mostrando
   // só 1 nome).
   const contagemFiltradaPelaBusca =
     busca.trim() !== "" && lista ? total : undefined;

@@ -188,7 +188,7 @@ export function VisaoGeralDoCrm({
                 onClick={() => aoVerSegmento("em_risco")}
                 className="-my-2 inline-flex min-h-8 items-center gap-1 font-bold text-amber-300 underline-offset-2 hover:underline"
               >
-                Ver clientes em risco
+                Ver quem pode não voltar
                 <ArrowRight className="size-3" aria-hidden="true" />
               </button>
             }

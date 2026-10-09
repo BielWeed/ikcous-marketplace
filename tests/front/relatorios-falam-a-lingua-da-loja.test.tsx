@@ -213,6 +213,17 @@ describe("Relatórios — telas sem jargão", () => {
     const texto = hospedeiro.textContent ?? "";
     expect(texto).toContain("Valor médio por venda");
     expect(texto).not.toMatch(JARGAO_DO_CRM);
+
+    // O rótulo do resumo (3 colunas, ~100px no celular) quebra em até 2
+    // linhas em vez de cortar em "VALOR MÉD…": sem `truncate`, com
+    // `leading-tight` (mesmo padrão do TileDeKpi). jsdom não mede largura,
+    // então a prova é a classe.
+    const rotuloDoResumo = Array.from(hospedeiro.querySelectorAll("p")).find(
+      (p) => p.textContent === "Valor médio por venda",
+    );
+    expect(rotuloDoResumo).toBeTruthy();
+    expect(rotuloDoResumo?.classList.contains("truncate")).toBe(false);
+    expect(rotuloDoResumo?.classList.contains("leading-tight")).toBe(true);
   });
 
   it("Início: 'valor médio por venda' no resumo do mês", async () => {

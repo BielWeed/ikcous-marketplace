@@ -109,7 +109,7 @@ function ItemDoResumo({
 }>) {
   return (
     <div className="min-w-0 px-2 first:pl-0 last:pr-0 sm:px-4">
-      <p className="truncate text-[11px] font-black uppercase tracking-widest text-zinc-400">
+      <p className="text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-400">
         {rotulo}
       </p>
       <p className="truncate text-lg font-black tabular-nums text-white sm:text-xl">

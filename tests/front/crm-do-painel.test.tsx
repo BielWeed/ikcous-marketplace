@@ -431,10 +431,14 @@ describe("Dashboard CRM", () => {
     expect(spanCurto(periodo90Dias!)).toBeNull();
   });
 
-  it("'Ver clientes em risco' na Visão geral abre Clientes já filtrado", async () => {
+  it("'Ver quem pode não voltar' na Visão geral abre Clientes já filtrado", async () => {
     await montar();
-    await esperarAte(() => texto(hospedeiro).includes("Ver clientes em risco"));
-    await act(async () => botao(hospedeiro, "Ver clientes em risco").click());
+    await esperarAte(() =>
+      texto(hospedeiro).includes("Ver quem pode não voltar"),
+    );
+    await act(async () =>
+      botao(hospedeiro, "Ver quem pode não voltar").click(),
+    );
     await esperarAte(() => chamadasDe("crm_clientes").length >= 1);
     expect(chamadasDe("crm_clientes").at(-1)).toMatchObject({
       p_segmento: "em_risco",
