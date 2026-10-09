@@ -431,9 +431,17 @@ function traduzirRecusaConhecida(error: unknown): string | null {
  * Variação sem SKU nunca colide (NULL não conta como repetido) e nem gera
  * consulta. Falha da consulta NÃO bloqueia (sem veredito, o cadastro segue —
  * a colisão real que escapar vira o 23505 traduzido acima).
+ *
+ * Na EDIÇÃO (`ignorarProdutoId` = o produto que está sendo editado) as
+ * variações que este mesmo lote vai REGRAVAR já têm o SKU delas no banco, e não
+ * podem ser recusadas por isso — sem a exceção, todo produto com SKU recusaria
+ * a si mesmo. A exceção é só para as linhas do próprio produto que o lote
+ * regrava (mesmo `id`): uma irmã do mesmo produto que fica de fora do lote
+ * continua dona do SKU depois do salvar, então segue contando como colisão.
  */
 async function conferirSkusDasVariacoes(
-  variantes: ReadonlyArray<{ sku?: string | null }>,
+  variantes: ReadonlyArray<{ id?: string | null; sku?: string | null }>,
+  ignorarProdutoId?: string,
 ): Promise<string | null> {
   const skus = variantes
     .map((v) => (typeof v.sku === "string" ? v.sku.trim() : ""))
@@ -451,11 +459,26 @@ async function conferirSkusDasVariacoes(
   try {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("sku, product_id, produtos(nome, deleted_at)" as any)
+      .select("id, sku, product_id, produtos(nome, deleted_at)" as any)
       .in("sku", skus);
     if (error) throw error;
 
-    const linha = ((data ?? []) as any[])[0];
+    const idsRegravados = new Set(
+      variantes
+        .map((v) => v.id)
+        .filter(
+          (id): id is string =>
+            typeof id === "string" && id !== "" && !id.startsWith("temp-"),
+        ),
+    );
+    const linha = ((data ?? []) as any[]).find(
+      (l) =>
+        !(
+          ignorarProdutoId !== undefined &&
+          l.product_id === ignorarProdutoId &&
+          idsRegravados.has(l.id)
+        ),
+    );
     if (!linha) return null;
 
     const dono = Array.isArray(linha.produtos)
@@ -1838,6 +1861,13 @@ export function useProducts({ autoFetch = true } = {}) {
         for (const variant of variants) {
           TruthGate.verifyVariantAxiom(variant, { costPrice: parentCost });
         }
+
+        // SKU de variação é único na loja inteira: conferir ANTES de gravar
+        // qualquer linha, para a lojista ler qual SKU e de quem é, em vez da
+        // frase genérica do banco no fim do salvar. As variações deste produto
+        // que o lote regrava não contam contra si mesmas.
+        const recusaDeSku = await conferirSkusDasVariacoes(variants, productId);
+        if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
 
         const dbVariants = variants.map((v) => {
           const item: any = {
