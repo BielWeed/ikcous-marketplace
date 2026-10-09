@@ -7280,3 +7280,711 @@ Deno.test("16a/16b — o rpc-ci.yml roda a prova viva do portão do PIX anulado 
       );
   }
 });
+
+// 17a/17b (09/10/2026) — a PROVA DE OBJETOS do lote das migrations 20261212000000 (o Início conta
+// estoque baixo pela regra da loja: `painel_inicio`), 20261213000000 (o filtro de estoque baixo do
+// admin: `get_admin_products_paged`) e 20261214000000 (o lucro do estoque só conta produto com
+// custo: `get_admin_analytics_v2`) em scripts/frota/canais-de-backend.json. Cada uma só troca o
+// CORPO de UMA função. A 17a é a consulta do lote (DEPOIS do apply); a 17b é a de ausência (ANTES).
+// As duas são de ROL FECHADO. Estes testes medem o texto dos .sql contra as migrations DESTA
+// árvore; a decisão de cada consulta num Postgres real fica com
+// tests/banco/estoque-do-painel-portao-viva.cjs (rodado no rpc-ci.yml).
+const NOME_17A = "17a-conferir-estoque-do-painel-aplicado";
+const NOME_17B = "17b-antes-estoque-do-painel-corpos-vigentes";
+const MIGRACAO_199 = `${MIGRATIONS_DIR}/20261199000000_portas_do_painel_exigem_admin_atual.sql`;
+const MIGRACAO_BASELINE = `${MIGRATIONS_DIR}/20260806000000_baseline_do_schema_vivo.sql`;
+const MIGRACAO_212 = `${MIGRATIONS_DIR}/20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql`;
+const MIGRACAO_213 = `${MIGRATIONS_DIR}/20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql`;
+const MIGRACAO_214 = `${MIGRATIONS_DIR}/20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`;
+const rollbackDe = (migracao: string) =>
+  migracao.replace(
+    "/supabase/migrations/",
+    "/supabase/migrations/rollback-manual-",
+  );
+
+/** As três funções do lote, na ordem das linhas das consultas (analytics, products_paged, painel_inicio). */
+const FUNCOES_17: Array<{
+  nome: string;
+  assinatura: string;
+  antes: string;
+  versaoAntes: string;
+  cabecalhoAntes: string;
+  depois: string;
+  versaoDepois: string;
+}> = [
+  {
+    nome: "get_admin_analytics_v2",
+    assinatura: "public.get_admin_analytics_v2(integer)",
+    antes: MIGRACAO_199,
+    versaoAntes: "20261199000000",
+    cabecalhoAntes:
+      "CREATE OR REPLACE FUNCTION public.get_admin_analytics_v2(p_limit_days integer DEFAULT 90)",
+    depois: MIGRACAO_214,
+    versaoDepois: "20261214000000",
+  },
+  {
+    nome: "get_admin_products_paged",
+    assinatura:
+      "public.get_admin_products_paged(text,text,text,text,integer,integer)",
+    antes: MIGRACAO_BASELINE,
+    versaoAntes: "20260806000000",
+    cabecalhoAntes: "CREATE FUNCTION public.get_admin_products_paged(",
+    depois: MIGRACAO_213,
+    versaoDepois: "20261213000000",
+  },
+  {
+    nome: "painel_inicio",
+    assinatura: "public.painel_inicio()",
+    antes: MIGRACAO_199,
+    versaoAntes: "20261199000000",
+    cabecalhoAntes: "CREATE OR REPLACE FUNCTION public.painel_inicio()",
+    depois: MIGRACAO_212,
+    versaoDepois: "20261212000000",
+  },
+];
+/** O cabeçalho do CREATE OR REPLACE da função na migration do DEPOIS e no rollback dela. */
+const cabecalhoDepois17 = (nome: string) =>
+  `CREATE OR REPLACE FUNCTION public.${nome}(`;
+
+/** O que cada consulta de 17 pode ler: SÓ catálogo e as CTEs da própria consulta. Nenhuma tabela de dados. */
+const PERMITIDOS_17B = [
+  "pg_proc",
+  "pg_namespace",
+  "pg_attribute",
+  "unnest",
+  "aclexplode",
+  // CTEs desta consulta
+  "alvo",
+  "fn",
+  "faltam",
+  "itens",
+];
+const PERMITIDOS_17A = [...PERMITIDOS_17B, "pg_language"];
+
+const { ROL_DA_17A, ROL_DA_17B } = require(SCRIPT);
+for (const [nome, nItens, rol, permitidos] of [
+  [NOME_17A, 14, ROL_DA_17A, PERMITIDOS_17A],
+  [NOME_17B, 11, ROL_DA_17B, PERMITIDOS_17B],
+] as Array<[string, number, string[], string[]]>) {
+  Deno.test(`${nome} — no menu, UM SELECT só leitura sobre o catálogo, saída item/esperado/vivo/ok e rol fechado de ${nItens} itens`, async (t) => {
+    const { contarStatements, ROL_FECHADO_POR_CONSULTA } = require(SCRIPT);
+    const sql = await Deno.readTextFile(`${CONSULTAS_DIR}/${nome}.sql`);
+    const limpo = sqlSemComentarios(sql);
+    const semTexto = limpo.replace(/'(?:[^']|'')*'/g, "''");
+    await t.step("está no menu do workflow", async () => {
+      const yaml = await Deno.readTextFile(WORKFLOW);
+      const i = yaml.indexOf("consulta:");
+      assert(i >= 0, "não achei a entrada `consulta`");
+      assert(
+        yaml.indexOf(`\n          - ${nome}\n`, i) > i,
+        `falta a opção ${nome} no workflow`,
+      );
+    });
+    await t.step(
+      "um statement, começa por WITH, sem palavra de escrita nem SQL dinâmico, saída item/esperado/vivo/ok com as reprovadas primeiro",
+      () => {
+        assertEquals(contarStatements(sql), 1);
+        assert(/^\s*WITH\b/i.test(limpo));
+        assert(
+          !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|CALL|DO|SET|BEGIN|COMMIT|LOCK)\b/i.test(
+            semTexto,
+          ),
+          "palavra de escrita fora de comentário/string",
+        );
+        assert(
+          !/\b(EXECUTE|query_to_xml\w*|dblink\w*|format|pg_read_file|lo_import)\b/i.test(
+            semTexto,
+          ),
+          "SQL dinâmico (ou leitura de arquivo)",
+        );
+        assert(
+          /SELECT item, esperado, vivo, COALESCE\(vivo = esperado, false\) AS ok\s+FROM itens\s+ORDER BY ok, item;/.test(
+            limpo,
+          ),
+          "a saída final tem de ser item, esperado, vivo, ok, reprovadas primeiro",
+        );
+      },
+    );
+    await t.step(
+      "SÓ catálogo: nenhum FROM/JOIN em produtos, product_variants ou outra tabela de dados, e nenhuma coluna de produto fora de um literal",
+      () => {
+        const ok = new Set(permitidos);
+        const alvos = [
+          ...semTexto.matchAll(/\b(?:FROM|JOIN)\s+([a-z_][\w.]*)/gi),
+        ].map((m) => m[1].toLowerCase());
+        assert(alvos.length > 0);
+        for (const alvo of alvos)
+          assert(ok.has(alvo), `lê de "${alvo}", que não é catálogo nem CTE`);
+        assert(
+          !alvos.some((a) => /produtos|product_variants/.test(a)),
+          "lê a tabela de produtos",
+        );
+        assert(
+          !/\b(produtos|product_variants|estoque|estoque_minimo|custo|preco_venda|stock_increment|ativo|active|deleted_at)\b/i.test(
+            semTexto,
+          ),
+          "a consulta citaria uma tabela ou coluna de produto fora de um literal",
+        );
+        if (!permitidos.includes("pg_language"))
+          assert(!/pg_language/.test(semTexto), "a 17b não lê pg_language");
+      },
+    );
+    await t.step(
+      `o rol fechado do código tem ${nItens} itens, sem repetição, é o contrato desta consulta, e CADA item aparece como literal no .sql (e só eles)`,
+      () => {
+        assertEquals(rol.length, nItens);
+        assertEquals(new Set(rol).size, rol.length);
+        assertEquals(
+          Object.entries(ROL_FECHADO_POR_CONSULTA).find(
+            ([n]) => n === nome,
+          )?.[1],
+          rol,
+        );
+        for (const item of rol)
+          assertStringIncludes(
+            limpo,
+            `'${item}'`,
+            `o item do rol "${item}" não existe no .sql`,
+          );
+        const doSql = [...limpo.matchAll(/SELECT\s+'([^']+)',/g)].map(
+          (m) => m[1],
+        );
+        assertEquals(
+          doSql.length,
+          nItens,
+          `o .sql monta ${nItens} linhas de resultado`,
+        );
+        for (const item of doSql)
+          assert(
+            rol.includes(item),
+            `o .sql monta "${item}" e o rol do código não o tem`,
+          );
+        // as linhas por função vêm na ordem analytics, products_paged, painel_inicio
+        const primeira = FUNCOES_17.map((f) =>
+          doSql.findIndex((i) => i.startsWith(`${f.nome}: `)),
+        );
+        assert(
+          primeira.every((x, k) => x > 0 && (k === 0 || x > primeira[k - 1])),
+          `ordem das funções no .sql: ${primeira.join(", ")}`,
+        );
+        // por função: sobrecargas, EXECUTE, corpo (e forma, só na 17a)
+        const porFuncao = nItens === 14 ? 4 : 3;
+        for (const f of FUNCOES_17)
+          assertEquals(
+            rol.filter((i) => i.startsWith(`${f.nome}: `)).length,
+            porFuncao,
+            f.nome,
+          );
+      },
+    );
+  });
+}
+
+/** Os corpos (prosrc) que o lote 17 troca, recalculados dos ARQUIVOS: o ANTES (20261199 e a baseline), o DEPOIS
+ * (20261212/13/14) e o que cada rollback-manual devolve; de cada um o sha256 em LF e em CRLF e o md5 do LF. */
+async function hashesDoLote17() {
+  const { createHash } = require("node:crypto");
+  const sha = (s: string) =>
+    createHash("sha256").update(s, "utf8").digest("hex");
+  const md5 = (s: string) =>
+    createHash("md5").update(s.replace(/\r/g, "")).digest("hex");
+  const crlf = (s: string) => s.replace(/\n/g, "\r\n");
+  const ler = async (a: string) =>
+    (await Deno.readTextFile(a)).replace(/\r\n/g, "\n");
+  /** O texto entre o `AS $$` e o `$$;` da função cujo cabeçalho abre o CREATE. */
+  const corpoDe = (texto: string, cabecalho: string) => {
+    const ini = texto.indexOf(cabecalho);
+    assert(ini >= 0, `não achei ${cabecalho}`);
+    assertEquals(
+      texto.indexOf(cabecalho, ini + 1),
+      -1,
+      `${cabecalho} definida duas vezes no mesmo arquivo`,
+    );
+    const abre = texto.indexOf("AS $$", ini) + "AS $$".length;
+    const fim = texto.indexOf("$$;", abre);
+    assert(fim > abre, `não achei o fim do corpo de ${cabecalho}`);
+    return texto.slice(abre, fim);
+  };
+  const tres = (c: string) => ({
+    lf: sha(c),
+    crlf: sha(crlf(c)),
+    md5: md5(c),
+    corpo: c,
+  });
+  const porFuncao = new Map<
+    string,
+    {
+      antes: ReturnType<typeof tres>;
+      depois: ReturnType<typeof tres>;
+      rollback: ReturnType<typeof tres>;
+      textoDepois: string;
+      textoRollback: string;
+    }
+  >();
+  for (const f of FUNCOES_17) {
+    const textoDepois = await ler(f.depois);
+    const textoRollback = await ler(rollbackDe(f.depois));
+    porFuncao.set(f.nome, {
+      antes: tres(corpoDe(await ler(f.antes), f.cabecalhoAntes)),
+      depois: tres(corpoDe(textoDepois, cabecalhoDepois17(f.nome))),
+      rollback: tres(corpoDe(textoRollback, cabecalhoDepois17(f.nome))),
+      textoDepois,
+      textoRollback,
+    });
+  }
+  return porFuncao;
+}
+
+/** O lado (ANTES ou DEPOIS) dos hashes de uma função. */
+const doLado = <T>(x: { antes: T; depois: T }, lado: "antes" | "depois") =>
+  lado === "depois" ? x.depois : x.antes;
+
+/** A linha do .sql (do literal do item até o próximo UNION ALL ou o fim do `itens`). */
+function linhaDoItem(sql: string, item: string): string {
+  const i = sql.indexOf(`'${item}'`);
+  assert(i >= 0, `falta a linha ${item}`);
+  const fim = sql.indexOf("UNION ALL", i);
+  return sql.slice(i, fim > i ? fim : sql.indexOf("\n)\nSELECT item", i));
+}
+
+Deno.test("17a/17b — os hashes são EXATAMENTE os dos corpos que os arquivos definem: a 17a só os do DEPOIS (20261212/13/14), a 17b só os do ANTES (20261199 e a baseline); o `esperado` é o LF; e cruzam com os pré-voos, os rollbacks e a 8e", async (t) => {
+  const h = await hashesDoLote17();
+  const sql17a = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_17A}.sql`),
+  );
+  const sql17b = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_17B}.sql`),
+  );
+  const hex64 = (sql: string) => [
+    ...new Set([...sql.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1])),
+  ];
+  // o pino do que foi medido em 09/10/2026 (a tabela do plano do lote 17)
+  await t.step("os md5 são os medidos no plano", () => {
+    assertEquals(
+      FUNCOES_17.map((f) => [
+        f.nome,
+        h.get(f.nome)?.antes.md5,
+        h.get(f.nome)?.depois.md5,
+      ]),
+      [
+        [
+          "get_admin_analytics_v2",
+          "6abc7e44b0aae3b2e542e87daf055451",
+          "0a5f8c75bbeeda3777a6a7326a0e281c",
+        ],
+        [
+          "get_admin_products_paged",
+          "1d5a5544dd55c78ba4dc729755916754",
+          "d3a111d95dabb52efe7af6f3ce66fb7e",
+        ],
+        [
+          "painel_inicio",
+          "ebcafff0ad5efbb70391a2cc93a14247",
+          "f11d22d076c59ab54d1beb280954dd15",
+        ],
+      ],
+    );
+  });
+  for (const [nome, sql, lado, outro, rotulo] of [
+    [NOME_17A, sql17a, "depois", "antes", "do DEPOIS"],
+    [NOME_17B, sql17b, "antes", "depois", "do ANTES"],
+  ] as Array<[string, string, "antes" | "depois", "antes" | "depois", string]>)
+    await t.step(
+      `${nome}: só os 6 sha256 ${rotulo} (LF e CRLF), 6 distintos, cada linha [LF esperado, LF e CRLF aceitos, LF no vivo]; nenhum do outro lado`,
+      () => {
+        const todos = FUNCOES_17.flatMap((f) => {
+          const x = doLado(h.get(f.nome)!, lado);
+          return [x.lf, x.crlf];
+        });
+        assertEquals(new Set(todos).size, 6);
+        assertEquals(hex64(sql).sort(), [...todos].sort());
+        for (const f of FUNCOES_17) {
+          const x = doLado(h.get(f.nome)!, lado);
+          const versao = lado === "depois" ? f.versaoDepois : f.versaoAntes;
+          const linha = linhaDoItem(
+            sql,
+            `${f.nome}: corpo e o da ${versao} (sha256)`,
+          );
+          assertEquals(
+            [...linha.matchAll(/'([0-9a-f]{64})'/g)].map((m) => m[1]),
+            [x.lf, x.lf, x.crlf, x.lf],
+            `${f.nome}: esperado LF, aceitos LF e CRLF, resultado LF`,
+          );
+          assertStringIncludes(
+            linha,
+            `FROM fn f WHERE f.nome = '${f.nome}'), 'AUSENTE')`,
+            `${f.nome}: a linha do corpo lê a SUA função e diz AUSENTE se ela sumir`,
+          );
+          const y = doLado(h.get(f.nome)!, outro);
+          for (const proibido of [y.lf, y.crlf])
+            assert(!sql.includes(proibido), `${nome} aceitaria ${proibido}`);
+        }
+      },
+    );
+  await t.step(
+    "cada migration do lote: o pré-voo cita (assinatura, md5 do ANTES, md5 do DEPOIS); o rollback exige o md5 do DEPOIS e devolve o corpo do ANTES (o mesmo sha256 que a 17b espera)",
+    () => {
+      for (const f of FUNCOES_17) {
+        const x = h.get(f.nome)!;
+        assertStringIncludes(
+          x.textoDepois,
+          `('${f.assinatura}', '${x.antes.md5}', '${x.depois.md5}')`,
+          `${f.nome}: o pré-voo não cita (vigente, desta)`,
+        );
+        assertStringIncludes(
+          x.textoDepois,
+          "AS esperado(assinatura, hash_vigente, hash_desta)",
+        );
+        assertStringIncludes(
+          x.textoRollback,
+          `('${f.assinatura}', '${x.depois.md5}')`,
+          `${f.nome}: o pré-voo do rollback não exige o corpo desta`,
+        );
+        assertEquals(x.rollback.corpo, x.antes.corpo, `${f.nome}: rollback`);
+        assertEquals(x.rollback.lf, x.antes.lf);
+        assertStringIncludes(
+          linhaDoItem(
+            sql17b,
+            `${f.nome}: corpo e o da ${f.versaoAntes} (sha256)`,
+          ),
+          `'${x.rollback.lf}'`,
+        );
+        assert(x.antes.md5 !== x.depois.md5, `${f.nome}: o corpo não muda`);
+      }
+    },
+  );
+  await t.step(
+    "o md5 do DEPOIS de painel_inicio e de get_admin_analytics_v2 é o do CTE `sucessoras` da 8e (a 8e segue POSITIVA depois do lote)",
+    async () => {
+      const sql8e = await Deno.readTextFile(
+        `${CONSULTAS_DIR}/8e-conferir-92-a-202-aplicado.sql`,
+      );
+      for (const f of FUNCOES_17.filter(
+        (x) => x.nome !== "get_admin_products_paged",
+      )) {
+        assertStringIncludes(
+          sql8e,
+          `('${f.nome}', '${h.get(f.nome)!.depois.md5}', '${f.versaoDepois}')`,
+        );
+        assertStringIncludes(
+          sql8e,
+          `('${f.nome}', '${h.get(f.nome)!.antes.md5}')`,
+          `${f.nome}: o final da 8e é o corpo da 99`,
+        );
+      }
+      assert(
+        !sql8e.includes("get_admin_products_paged"),
+        "a 8e não conhece get_admin_products_paged (fora das 61)",
+      );
+    },
+  );
+});
+
+Deno.test("17a/17b — o que as consultas ESPERAM nasce dos arquivos: forma pelo cabeçalho, nenhuma permissão mexida pelo lote, EXECUTE pelas migrations que fixam a ACL, assinaturas dos pré-voos e as colunas que os trechos novos leem", async (t) => {
+  const h = await hashesDoLote17();
+  const sql17a = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_17A}.sql`),
+  );
+  const sql17b = sqlSemComentarios(
+    await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_17B}.sql`),
+  );
+  const semComentario = (texto: string) =>
+    texto
+      .split("\n")
+      .filter((l) => !/^\s*--/.test(l))
+      .join("\n");
+  /** O cabeçalho (do CREATE até o `AS $`) da função. */
+  const cabecalho = (mig: string, abre: string) => {
+    const ini = mig.indexOf(abre);
+    assert(ini >= 0, `não achei o cabeçalho de ${abre}`);
+    const fim = mig.indexOf("AS $", ini);
+    assert(fim > ini, `não achei o fim do cabeçalho de ${abre}`);
+    return mig.slice(ini, fim).replace(/\s+/g, " ");
+  };
+  /** A forma que a consulta imprime (linguagem, volatilidade, SECURITY, search_path e retorno), lida do cabeçalho. */
+  const formaDoCabecalho = (cab: string) => {
+    const lang = /\bLANGUAGE (\w+)/.exec(cab)?.[1];
+    const ret = /\bRETURNS "?(\w+)"?/.exec(cab)?.[1];
+    const sp = /\bSET search_path TO (.+?) ?$/.exec(cab)?.[1];
+    assert(lang && ret && sp, `cabeçalho incompleto: ${cab}`);
+    const vol = /\bIMMUTABLE\b/.test(cab)
+      ? "IMMUTABLE"
+      : /\bSTABLE\b/.test(cab)
+        ? "STABLE"
+        : "VOLATILE";
+    const sec = /\bSECURITY DEFINER\b/.test(cab)
+      ? "SECURITY DEFINER"
+      : "SECURITY INVOKER";
+    const caminho = sp
+      .split(",")
+      .map((s) => s.trim().replace(/^'(.*)'$/, "$1"))
+      .join(", ");
+    return `${lang} ${vol} ${sec} search_path=${caminho} -> ${ret}`;
+  };
+  await t.step(
+    "17a: a forma de cada função é a do cabeçalho do DEPOIS, igual à do ANTES (o lote só troca o corpo)",
+    async () => {
+      const medidas: string[] = [];
+      for (const f of FUNCOES_17) {
+        const depois = formaDoCabecalho(
+          cabecalho(h.get(f.nome)!.textoDepois, cabecalhoDepois17(f.nome)),
+        );
+        const antes = formaDoCabecalho(
+          cabecalho(
+            (await Deno.readTextFile(f.antes)).replace(/\r\n/g, "\n"),
+            f.cabecalhoAntes,
+          ),
+        );
+        assertEquals(depois, antes, `${f.nome}: a forma muda no lote`);
+        const rb = formaDoCabecalho(
+          cabecalho(h.get(f.nome)!.textoRollback, cabecalhoDepois17(f.nome)),
+        );
+        assertEquals(rb, antes, `${f.nome}: a forma muda no rollback`);
+        assertStringIncludes(
+          sql17a,
+          `SELECT '${f.nome}: forma', '${depois}',`,
+          `${f.nome}: forma`,
+        );
+        medidas.push(depois);
+      }
+      // o pino do que foi medido em 09/10/2026
+      assertEquals(medidas, [
+        "plpgsql VOLATILE SECURITY DEFINER search_path=public -> json",
+        "plpgsql VOLATILE SECURITY DEFINER search_path=public, extensions -> jsonb",
+        "plpgsql STABLE SECURITY DEFINER search_path=public -> jsonb",
+      ]);
+      assert(!sql17b.includes(": forma'"), "a 17b não tem linha de forma");
+    },
+  );
+  await t.step(
+    "as migrations do lote e os rollbacks NÃO têm GRANT, REVOKE nem OWNER (CREATE OR REPLACE preserva dono e ACL)",
+    () => {
+      for (const f of FUNCOES_17) {
+        const x = h.get(f.nome)!;
+        for (const [arq, texto] of [
+          [f.depois, x.textoDepois],
+          [rollbackDe(f.depois), x.textoRollback],
+        ]) {
+          const codigo = semComentario(texto);
+          assert(
+            !/\b(GRANT|REVOKE)\b|OWNER TO|SECURITY INVOKER|DROP FUNCTION/i.test(
+              codigo,
+            ),
+            `${arq} mexe em permissão, dono, SECURITY ou recria a função`,
+          );
+          assertEquals(
+            [...codigo.matchAll(/CREATE OR REPLACE FUNCTION/g)].length,
+            1,
+            `${arq}: uma função só`,
+          );
+        }
+      }
+    },
+  );
+  await t.step(
+    "EXECUTE `PUBLIC=nao anon=nao authenticated=sim` nas três: painel_inicio pela 20261178, analytics e products_paged pela 20261090500000 e pelo ALVO de db-prove-grants-convergem.cjs; nenhuma migration depois mexe na ACL delas",
+    async () => {
+      const m178 = semComentario(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261178000000_o_crm_e_o_inicio_leem_a_loja.sql`,
+        ),
+      );
+      const bloco = m178.slice(
+        m178.indexOf("DO $grants$"),
+        m178.indexOf("$grants$;"),
+      );
+      assertStringIncludes(bloco, "'public.painel_inicio()'");
+      assertStringIncludes(
+        bloco,
+        "EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC, anon', v_sig);",
+      );
+      assertStringIncludes(
+        bloco,
+        "EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO authenticated', v_sig);",
+      );
+      const m905 = semComentario(
+        await Deno.readTextFile(
+          `${MIGRATIONS_DIR}/20261090500000_a_loja_clonada_nasce_com_os_mesmos_grants.sql`,
+        ),
+      );
+      for (const assinatura of [
+        "public.get_admin_analytics_v2(integer)",
+        "public.get_admin_products_paged(text,text,text,text,integer,integer)",
+      ]) {
+        assertStringIncludes(
+          m905,
+          `REVOKE EXECUTE ON FUNCTION ${assinatura} FROM PUBLIC, anon;`,
+        );
+      }
+      const prova = await Deno.readTextFile(
+        `${RAIZ}/scripts/db-prove-grants-convergem.cjs`,
+      );
+      const alvo = prova.slice(
+        prova.indexOf("const ALVO = {"),
+        prova.indexOf("\n};", prova.indexOf("const ALVO = {")),
+      );
+      for (const chave of [
+        "get_admin_analytics_v2(integer)",
+        "get_admin_products_paged(text,text,text,text,integer,integer)",
+      ])
+        assertStringIncludes(
+          alvo.replace(/\s+/g, " "),
+          `"${chave}": { PUBLIC: false, anon: false, authenticated: true, }`,
+        );
+      // depois das âncoras, nenhuma migration (fora rollback) concede, revoga ou recria
+      const ancora: Record<string, string> = {
+        painel_inicio: "20261178000000",
+        get_admin_analytics_v2: "20261090500000",
+        get_admin_products_paged: "20261090500000",
+      };
+      for await (const e of Deno.readDir(MIGRATIONS_DIR)) {
+        if (!e.isFile || !/^\d{14}_.*\.sql$/.test(e.name)) continue;
+        const texto = semComentario(
+          await Deno.readTextFile(`${MIGRATIONS_DIR}/${e.name}`),
+        );
+        for (const f of FUNCOES_17) {
+          if (e.name.slice(0, 14) <= ancora[f.nome]) continue;
+          // por statement: GRANT/REVOKE/DROP que cite a função, direto ou no laço de assinaturas (como o da 20261178)
+          const mexe = texto
+            .split(";")
+            .some(
+              (st) =>
+                /\b(GRANT|REVOKE|DROP FUNCTION)\b/i.test(st) &&
+                [...st.matchAll(/\b[a-z_0-9]+\b/g)].some(
+                  (m) => m[0] === f.nome,
+                ),
+            );
+          assert(!mexe, `${e.name} mexe na ACL de ${f.nome}`);
+        }
+      }
+      for (const sql of [sql17a, sql17b])
+        for (const f of FUNCOES_17)
+          assertStringIncludes(
+            sql,
+            `SELECT '${f.nome}: EXECUTE', 'PUBLIC=nao anon=nao authenticated=sim',`,
+          );
+    },
+  );
+  await t.step(
+    "as assinaturas do CTE `alvo` são EXATAMENTE as dos pré-voos; sobrecargas contadas por nome em public, esperado 1",
+    () => {
+      for (const sql of [sql17a, sql17b]) {
+        const alvo = sql.slice(sql.indexOf("alvo(nome, assinatura) AS ("));
+        const pares = [
+          ...alvo
+            .slice(0, alvo.indexOf("\n), "))
+            .matchAll(/\('([a-z_0-9]+)', '([^']+)'\)/g),
+        ].map((m) => [m[1], m[2]]);
+        assertEquals(
+          pares,
+          FUNCOES_17.map((f) => [f.nome, f.assinatura]),
+        );
+        for (const f of FUNCOES_17) {
+          assertStringIncludes(
+            h.get(f.nome)!.textoDepois,
+            `('${f.assinatura}', '`,
+          );
+          assertStringIncludes(sql, `SELECT '${f.nome}: sobrecargas', '1',`);
+        }
+        assertStringIncludes(
+          sql,
+          "LEFT JOIN pg_proc p ON p.oid = to_regprocedure(t.assinatura)",
+        );
+        assertStringIncludes(
+          sql,
+          "WHERE n.nspname = 'public' AND q.proname = t.nome",
+        );
+      }
+    },
+  );
+  await t.step(
+    "as 10 colunas da linha de colunas são EXATAMENTE as que as linhas que mudam nos corpos leem (produtos e product_variants)",
+    () => {
+      const lidas = new Set<string>();
+      for (const f of FUNCOES_17) {
+        const x = h.get(f.nome)!;
+        const antes = new Set(x.antes.corpo.split("\n"));
+        const novas = x.depois.corpo
+          .split("\n")
+          .filter((l) => !antes.has(l) && !/^\s*--/.test(l));
+        assert(novas.length > 0, `${f.nome}: nenhuma linha muda`);
+        for (const l of novas) {
+          for (const m of l.matchAll(/\bpv\.(\w+)/g))
+            lidas.add(`product_variants.${m[1]}`);
+          for (const m of l.matchAll(/\bp\.(\w+)/g))
+            lidas.add(`produtos.${m[1]}`);
+        }
+        if (f.nome === "get_admin_analytics_v2") {
+          // a linha nova lê o CTE `estoque_efetivo`, que tira cada coluna de produtos (o estoque é o efetivo)
+          assertEquals(novas.length, 1, novas.join("\n"));
+          const nomes = [...novas[0].matchAll(/\b([a-z_]+)\b/g)].map(
+            (m) => m[1],
+          );
+          assertEquals(nomes, ["preco_venda", "estoque", "custo"]);
+          const cte = x.depois.corpo.slice(
+            x.depois.corpo.indexOf("WITH estoque_efetivo AS ("),
+          );
+          const fonte = cte.slice(0, cte.indexOf("\n    )\n"));
+          assertStringIncludes(fonte, "FROM public.produtos p");
+          for (const c of nomes) {
+            assert(
+              [...fonte.matchAll(/\bp\.(\w+)/g)].some((m) => m[1] === c),
+              `estoque_efetivo não tira ${c} de produtos`,
+            );
+            lidas.add(`produtos.${c}`);
+          }
+        }
+      }
+      const esperadas = [
+        "product_variants.active",
+        "product_variants.product_id",
+        "product_variants.stock_increment",
+        "produtos.ativo",
+        "produtos.custo",
+        "produtos.deleted_at",
+        "produtos.estoque",
+        "produtos.estoque_minimo",
+        "produtos.id",
+        "produtos.preco_venda",
+      ];
+      assertEquals([...lidas].sort(), esperadas);
+      for (const sql of [sql17a, sql17b]) {
+        const lista = [
+          ...sql
+            .match(/unnest\(ARRAY\[([\s\S]*?)\]\) AS v\(item\)/)![1]
+            .matchAll(/'([a-z_]+\.[a-z_]+)'/g),
+        ].map((m) => m[1]);
+        assertEquals([...lista].sort(), esperadas);
+        assertEquals(lista.length, 10, "nenhuma coluna repetida");
+        assertStringIncludes(
+          sql,
+          "SELECT 'produtos e product_variants: colunas que os corpos novos leem', 'EXISTEM',",
+        );
+        assertStringIncludes(sql, "AND a.attnum > 0 AND NOT a.attisdropped");
+        assertStringIncludes(
+          sql,
+          "to_regclass('public.' || split_part(v.item, '.', 1))",
+        );
+      }
+    },
+  );
+  await t.step(
+    "os cabeçalhos citam a prova viva e este teste; a 17a avisa da cadeia futura e a 17b é a de ausência",
+    async () => {
+      const a = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_17A}.sql`);
+      const b = await Deno.readTextFile(`${CONSULTAS_DIR}/${NOME_17B}.sql`);
+      for (const txt of [a, b]) {
+        assertStringIncludes(
+          txt,
+          "tests/banco/estoque-do-painel-portao-viva.cjs",
+        );
+        assertStringIncludes(txt, "tests/ci_conferir_banco_test.ts");
+        assertStringIncludes(txt, "scripts/frota/canais-de-backend.json");
+        assertStringIncludes(txt, "LIMITES");
+      }
+      assertStringIncludes(a, "CADEIA FUTURA");
+      assertStringIncludes(a, "atualiza a 17a");
+      assertStringIncludes(b, "ausenciaConfirmadaPor");
+    },
+  );
+});
