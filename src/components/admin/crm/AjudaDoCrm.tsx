@@ -1,8 +1,9 @@
 import { AdminHelpModal } from "@/components/admin/AdminHelpModal";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 
 /**
- * "Central de Inteligência & KPIs" — a ajuda que era do Dashboard, agora do
- * Dashboard CRM. A ajuda antiga já chegou a documentar três KPIs que a tela
+ * "Como ler os relatórios" — a ajuda que era do Dashboard, agora dos
+ * Relatórios (`admin-crm`). A ajuda antiga já chegou a documentar três KPIs que a tela
  * nunca teve (teste ajuda-do-dashboard-descreve-os-kpis-da-tela) — por isso
  * "Histórico completo (Visão geral)" abaixo descreve EXATAMENTE os blocos
  * que sobraram lá (Performance, Inteligência por categoria, Produtos mais
@@ -19,15 +20,16 @@ export function AjudaDoCrm({
     <AdminHelpModal
       isOpen={isOpen}
       onClose={onClose}
-      title="Central de Inteligência & KPIs"
+      title="Como ler os relatórios"
     >
       <div className="space-y-4">
         <p className="text-xs leading-relaxed text-zinc-400">
-          O Dashboard CRM junta o app e a loja física numa visão só: escolha o
-          período no topo (Hoje, 7, 30 ou 90 dias, Mês ou Ano) e os números do
-          período passam a contar aquele intervalo, comparados com o intervalo
-          anterior. A lista de clientes e o histórico completo olham a vida
-          inteira da loja. Só entra dinheiro que entrou de verdade.
+          A tela {NOMES_DO_PAINEL["admin-crm"]} junta o app e a loja física numa
+          visão só: escolha o período no topo (Hoje, 7, 30 ou 90 dias, Mês ou
+          Ano) e os números do período passam a contar aquele intervalo,
+          comparados com o intervalo anterior. A lista de clientes e o histórico
+          completo olham a vida inteira da loja. Só entra dinheiro que entrou de
+          verdade.
         </p>
 
         <div className="space-y-3">

@@ -4,7 +4,7 @@
 // (Vender, Pedidos, Devoluções) saiu do Início — "Vender e Pedidos já estão
 // na barra de baixo; Devoluções tem que estar na tela de Pedidos, não ali"
 // (porta em AdminOrdersView.tsx via `BotaoDevolucoes`). Sobram só os dois
-// botões grandes (Dashboard CRM e Financeiro). Mesmo casco de
+// botões grandes (Relatórios e Financeiro). Mesmo casco de
 // admin-page-header.test.tsx: createRoot + act, sem mocks (componente puro).
 import { AtalhosDoInicio } from "@/components/admin/inicio/AtalhosDoInicio";
 import { type ReactNode, act } from "react";
@@ -34,14 +34,14 @@ afterEach(() => {
 });
 
 describe("AtalhosDoInicio — só os dois botões grandes", () => {
-  it("mostra Dashboard CRM e Financeiro, sem Vender/Pedidos/Devoluções", () => {
+  it("mostra Relatórios e Financeiro, sem Vender/Pedidos/Devoluções", () => {
     const onNavigate = vi.fn();
     const tela = montar(<AtalhosDoInicio onNavigate={onNavigate} />);
 
     const rotulos = Array.from(tela.querySelectorAll("button")).map(
       (b) => b.textContent,
     );
-    expect(rotulos.some((r) => r?.includes("Dashboard CRM"))).toBe(true);
+    expect(rotulos.some((r) => r?.includes("Relatórios"))).toBe(true);
     expect(rotulos.some((r) => r?.includes("Financeiro"))).toBe(true);
     expect(rotulos).toHaveLength(2);
 
@@ -50,13 +50,13 @@ describe("AtalhosDoInicio — só os dois botões grandes", () => {
     expect(tela.textContent).not.toContain("Devoluções");
   });
 
-  it("clicar em Dashboard CRM e Financeiro navega para os destinos certos", async () => {
+  it("clicar em Relatórios e Financeiro navega para os destinos certos", async () => {
     const onNavigate = vi.fn();
     const tela = montar(<AtalhosDoInicio onNavigate={onNavigate} />);
     const botoes = Array.from(tela.querySelectorAll("button"));
 
     await act(async () => {
-      botoes.find((b) => b.textContent?.includes("Dashboard CRM"))!.click();
+      botoes.find((b) => b.textContent?.includes("Relatórios"))!.click();
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-crm");
 

@@ -369,9 +369,7 @@ describe("Avisar clientes — a casca nova guarda o morador", () => {
   it("nasce no título padrão, com composição e histórico visíveis na árvore", async () => {
     await abrirAvisar();
 
-    expect(hospedeiro.querySelector("h1")?.textContent).toBe(
-      "Enviar Notificações",
-    );
+    expect(hospedeiro.querySelector("h1")?.textContent).toBe("Avisar clientes");
 
     // A composição é cartão FIXO: zero controle de colapso para ela — o
     // conteúdo (os campos, logo abaixo) está na árvore sem interação

@@ -49,6 +49,7 @@ import type {
 } from "@/components/admin/financeiro/navegacao";
 import { ContextoValoresOcultos } from "@/components/admin/financeiro/partes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import {
   ContextoDoCacheFinanceiro,
   useCategoriasFinanceiras,
@@ -297,7 +298,7 @@ export function AdminFinanceiroView({
         <div className="pb-admin h-auto bg-[#09090b] text-white lg:pb-12">
           <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
             <AdminPageHeader
-              titulo="Financeiro"
+              titulo={NOMES_DO_PAINEL["admin-financeiro"]}
               acoes={
                 <>
                   <button

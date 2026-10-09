@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -981,7 +982,7 @@ export const AdminPushView = memo(function AdminPushView({
               cabe, em vez de mudar o componente para todo mundo. */}
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5">
             <AdminPageHeader
-              titulo="Enviar Notificações"
+              titulo={NOMES_DO_PAINEL["admin-push"]}
               acoes={
                 <>
                   {/* Indicadores no Topbar (os mesmos de antes) */}

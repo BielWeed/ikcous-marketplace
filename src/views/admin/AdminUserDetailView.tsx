@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
@@ -569,12 +570,12 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               fórmula própria (text-xl sm:text-2xl) — agora nasce do
               AdminPageHeader, igual ao resto do painel (PR #413). O botão de
               ajuda continua dentro da linha do título, como em Cupons. */}
-          <AdminPageHeader titulo="Perfil do Cliente">
+          <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-user-detail"]}>
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
               className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
-              title="Guia do Perfil do Cliente e Ajuda"
+              title="Guia da ficha do cliente e ajuda"
             >
               <HelpCircle className="size-4.5" />
             </button>

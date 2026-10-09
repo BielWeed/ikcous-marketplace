@@ -12,6 +12,7 @@ import { SerieDe14Dias } from "@/components/admin/inicio/SerieDe14Dias";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
 import { buildIdentity } from "@/config/buildIdentity";
 import { chavePublicaMercadoPago } from "@/config/configuracaoDaLoja";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -157,7 +158,7 @@ export const AdminDashboardView = memo(function AdminDashboardView({
     >
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Início"
+          titulo={NOMES_DO_PAINEL["admin-dashboard"]}
           acoes={
             <button
               type="button"
@@ -328,7 +329,10 @@ export const AdminDashboardView = memo(function AdminDashboardView({
           </ul>
           <p>
             As métricas completas (o antigo Dashboard, clientes, canais e funil)
-            ficam no botão <strong className="text-white">Dashboard CRM</strong>
+            ficam no botão{" "}
+            <strong className="text-white">
+              {NOMES_DO_PAINEL["admin-crm"]}
+            </strong>
             .
           </p>
         </div>

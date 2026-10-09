@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -2666,7 +2667,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     AdminPageHeader, igual ao formulário de cupom; o botão de
                     ajuda segue dentro da linha do título. */}
                 <AdminPageHeader
-                  titulo={productId ? "Editar Produto" : "Novo Produto"}
+                  titulo={`${productId ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-product-form"].toLowerCase()}`}
                 >
                   <button
                     type="button"
@@ -4212,7 +4213,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Engenharia & Cadastro de Produtos"
+        title="Como cadastrar um produto"
       >
         <div className="space-y-4">
           <p className="text-xs leading-relaxed text-zinc-400">

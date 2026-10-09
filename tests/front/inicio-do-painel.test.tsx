@@ -252,12 +252,12 @@ describe("Início do painel", () => {
     ).not.toBeNull();
   });
 
-  it("os botões grandes levam ao Dashboard CRM e ao Financeiro", async () => {
+  it("os botões grandes levam aos Relatórios e ao Financeiro", async () => {
     h.respostas.set("painel_inicio", { data: PAINEL, error: null });
     await montar();
 
     await act(async () => {
-      botaoPorTexto(hospedeiro, "Dashboard CRM").click();
+      botaoPorTexto(hospedeiro, "Relatórios").click();
     });
     expect(onNavigate).toHaveBeenLastCalledWith("admin-crm");
 
