@@ -87,14 +87,19 @@ function conferirLista() {
       .split("\n")
       .map((l) => l.replace(/--.*$/, ""))
       .join("\n");
+    // Toda grafia que o Postgres aceita para a mesma função: `public.f(`,
+    // `"public"."f"(`, `f(` sem esquema (search_path) e espaço antes do `(`.
+    // O nome inteiro até o `(` (com ou sem aspas e esquema), normalizado
+    // depois: sem aspas, minúsculo, sem o `public.`; outro esquema não conta.
     const criadas = [
       ...semComentarios.matchAll(
-        /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.([a-z_0-9]+)\(/gi,
+        /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+([^\s(]+)\s*\(/gi,
       ),
-      ...semComentarios.matchAll(
-        /CREATE\s+FUNCTION\s+public\.([a-z_0-9]+)\(/gi,
-      ),
-    ].map((m) => m[1].toLowerCase());
+      ...semComentarios.matchAll(/CREATE\s+FUNCTION\s+([^\s(]+)\s*\(/gi),
+    ]
+      .map((m) => m[1].replace(/"/g, "").toLowerCase())
+      .map((n) => (n.startsWith("public.") ? n.slice("public.".length) : n))
+      .filter((n) => !n.includes("."));
     const redefine = nomes42.filter((n) => criadas.includes(n));
     if (redefine.length > 0 && !NOMES.includes(arquivo)) {
       foraDaLista.push(`${arquivo} (${redefine.join(", ")})`);

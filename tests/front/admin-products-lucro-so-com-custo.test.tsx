@@ -5,9 +5,11 @@
 // venda contava TODO produto e o custo só os que têm custo — a venda inteira
 // de quem não tem custo virava lucro. O banco passou a somar o valor só de
 // produto COM custo; a tela tem de dizer isso: o cartão "Dinheiro parado em
-// estoque" diz "Pelo custo cadastrado" (não "Capital Líquido"), o "Lucro se
-// vender tudo" diz "Só produtos com custo" (não "Margem Bruta"), e a ajuda
-// dos dois avisa que produto sem custo fica de fora.
+// estoque" diz "Pelo custo" (não "Capital Líquido"), o "Lucro se vender tudo"
+// diz "Só com custo" (não "Margem Bruta") — rótulos curtos, que cabem no
+// celular de 360 px — e a ajuda dos dois, em língua de lojista, diz que a
+// conta só considera produto com custo cadastrado (sem "todas as unidades",
+// que contradizia a conta, nem "capital líquido imobilizado").
 //
 // Monta `AdminProductsView` de verdade (createRoot + act do React puro),
 // mesmo molde de admin-products-margem-sem-custo.test.tsx. O rótulo só é
@@ -92,7 +94,15 @@ class ObserverStub {
 // admin-products-margem-sem-custo.test.tsx.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const AVISO_SEM_CUSTO = "Produtos sem custo cadastrado ficam de fora da conta.";
+const AVISO_SO_COM_CUSTO =
+  "A conta só considera produtos com custo cadastrado.";
+
+/** Os elementos sem filho cujo texto é exatamente `texto`. */
+function folhasComTexto(raiz: ParentNode, texto: string): Element[] {
+  return [...raiz.querySelectorAll("*")].filter(
+    (el) => el.children.length === 0 && el.textContent?.trim() === texto,
+  );
+}
 
 describe("Produtos: o lucro do estoque diz que só conta produto com custo", () => {
   let raiz: Root;
@@ -140,13 +150,15 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     });
   }
 
-  it("os cartões dizem 'Pelo custo cadastrado' e 'Só produtos com custo' — nada de 'Capital Líquido' nem 'Margem Bruta'", async () => {
+  it("os cartões dizem 'Pelo custo' e 'Só com custo' (curtos) — nada de 'Capital Líquido' nem 'Margem Bruta'", async () => {
     await montar();
     const tela = hospedeiro.textContent ?? "";
     expect(tela).toContain("Dinheiro parado em estoque");
-    expect(tela).toContain("Pelo custo cadastrado");
     expect(tela).toContain("Lucro se vender tudo");
-    expect(tela).toContain("Só produtos com custo");
+    expect(folhasComTexto(hospedeiro, "Pelo custo")).toHaveLength(1);
+    expect(folhasComTexto(hospedeiro, "Só com custo")).toHaveLength(1);
+    expect(tela).not.toContain("Pelo custo cadastrado");
+    expect(tela).not.toContain("Só produtos com custo");
     expect(tela).not.toContain("Capital Líquido");
     expect(tela).not.toContain("Margem Bruta");
   });
@@ -158,7 +170,7 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     expect(tela).toContain("R$ 60,00");
   });
 
-  it("a ajuda dos dois cartões avisa que produto sem custo fica de fora", async () => {
+  it("a ajuda dos dois cartões fala a língua da loja e diz que a conta só considera produto com custo", async () => {
     await montar();
     // A ajuda (dicionário) só monta com o guia aberto — o botão do cabeçalho.
     const botao = hospedeiro.querySelector<HTMLButtonElement>(
@@ -171,7 +183,15 @@ describe("Produtos: o lucro do estoque diz que só conta produto com custo", () 
     // O modal pode ir por portal para o body: mede a página inteira.
     const pagina = document.body.textContent ?? "";
     expect(pagina).toContain("Indicadores Financeiros Globais");
-    expect(pagina.split(AVISO_SEM_CUSTO).length - 1).toBe(2);
+    expect(pagina.split(AVISO_SO_COM_CUSTO).length - 1).toBe(2);
+    expect(pagina).toContain(
+      "o dinheiro que está parado no estoque, pelo preço de custo",
+    );
+    // Jargão e a contradição com a conta (que deixa de fora quem não tem custo).
+    expect(pagina).not.toContain("capital líquido imobilizado");
+    expect(pagina).not.toContain("todas as unidades");
+    expect(pagina).not.toContain("todos os produtos em estoque");
+    expect(pagina).not.toContain("Produtos sem custo cadastrado ficam de fora");
   });
 });
 

@@ -11,6 +11,9 @@
 --
 -- ORDEM: este rollback vem ANTES do rollback da 20261199000000 (o dela recusa
 -- enquanto uma redefinição posterior de painel_inicio estiver no ar).
+-- Aplicar numa loja SÓ depois do backfill 92-202 (consulta 8e positiva): a 8e
+-- fixa o corpo final de painel_inicio da 20261199; desfeita a 20261212, ela
+-- volta a dar 'tudo true' para esta função (Onda I-b).
 --
 -- DADOS: a migration não gravou nada em linha nenhuma; não há dado a desfazer.
 --

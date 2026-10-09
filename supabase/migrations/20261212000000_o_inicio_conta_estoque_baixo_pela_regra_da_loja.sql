@@ -63,6 +63,9 @@
 -- Este rollback vem ANTES do rollback da 20261199000000: o da 99 recusa
 -- enquanto houver redefinição posterior no ar
 -- (rollback-manual-20261199000000…:93) — é o comportamento certo.
+-- Aplicar numa loja SÓ depois do backfill 92-202 (consulta 8e positiva): a 8e
+-- fixa o corpo final de painel_inicio da 20261199 e, depois desta migration,
+-- deixa de dar 'tudo true' até a 8e aceitar o hash sucessor (Onda I-b).
 --
 -- 8. FICHA DE VERIFICAÇÃO
 --

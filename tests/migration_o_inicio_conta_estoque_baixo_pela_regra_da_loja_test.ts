@@ -255,6 +255,17 @@ Deno.test("os cabeçalhos dizem a ordem do rollback (ANTES do da 20261199000000)
     assert.match(sql, /ANTES do rollback da 20261199000000/);
   }
   assert.ok(migration.includes("tests/banco/estoque-baixo-uma-regra-viva.cjs"));
+  // M1 da revisão de risco: a consulta 8e fixa o corpo da 99; aplicar antes
+  // do backfill 92-202 deixaria a 8e sem "tudo true" sem ninguém avisar.
+  for (const sql of [migration, rollback]) {
+    assert.ok(
+      sql.includes(
+        "-- Aplicar numa loja SÓ depois do backfill 92-202 (consulta 8e positiva)",
+      ),
+      "o cabeçalho não declara a ordem com a consulta 8e",
+    );
+  }
+  assert.ok(migration.includes("painel_inicio da 20261199"));
   assert.ok(
     migration.includes(`rollback-manual-${NOME}`),
     "o cabeçalho nomeia o rollback",
