@@ -119,6 +119,16 @@ verificação colada, PEDIDOS, risco, bloqueios).
 A linha "vizinhas" é o que o vencedor do padrão usa no lugar de comunicação entre agentes: cada
 frente sabe **onde não pisar**, e só. Elas não conversam entre si.
 
+**O que segura, dito sem enfeite.** As permissões do `settings.json` (o `allow`) não são fronteira: várias
+ferramentas liberadas executam arquivos que a frente escreve na própria faixa (`deno test --allow-all`,
+`sqlfluff`, `stylelint`, `cspell`), e aspas ou barra invertida driblam o texto das regras — medido em
+`docs/processo/ARQUITETURA-PARALELA.md`, seção "O que o `allow` não garante". O que segura de fato é: nada
+se integra sozinho, `integrar` prova a faixa contra o manifesto **canônico** e a revisão lê o diff. Isso
+protege o que entra no repositório; **não protege a máquina** de um código que já rodou (no Windows nativo
+não existe sandbox). As medidas que fechariam mais do que resta (guarda de nome de arquivo de configuração,
+hook de `Bash`, tirar `WebFetch`/`WebSearch` do agente, WSL2 com sandbox) estão listadas lá como decisão
+pendente — **não estão feitas**.
+
 Não rode `npm test` inteiro em várias frentes ao mesmo tempo (o teto de 4 trabalhadores do Vitest é
 de memória): cada frente roda teste escopado; a suíte cheia roda uma vez, na Fase 6.
 
@@ -144,7 +154,7 @@ node scripts/paralelo/frente.mjs integrar <manifesto> <frente>=<branch> … --so
 (`--so-conferir` não mescla nada; reprova se qualquer frente tocou arquivo fora da faixa **e imprime o
 MAPA DE RISCO derivado dos caminhos E do conteúdo do diff** — migration, edge function, checkout/pagamento, OTP/auth,
 service worker, `vercel.json`, devolução. Frente listada ali EXIGE `revisor-risco`: a etiqueta que o
-planejador ou a frente deram ao próprio trabalho não rebaixa isso. É heurística (caminho + palavras no diff: `fin_*`, `SECURITY DEFINER`, `export` de função/tipo alterado ou removido…): ela só ACRESCENTA frentes ao revisor-risco, nunca dispensa uma — e não vê o que não tem essas marcas, então decisão de risco duvidosa continua escalando para revisão cara (AGENTS.md: "na dúvida, revisão cara"). Frente
+planejador ou a frente deram ao próprio trabalho não rebaixa isso. É heurística (caminho + palavras no diff: `fin_*`, `SECURITY DEFINER`, `export` de função/tipo alterado ou removido, cartão, Mercado Pago, PIX, login/sessão…): ela só ACRESCENTA frentes ao revisor-risco, nunca dispensa uma — e não vê o que não tem essas marcas, então decisão de risco duvidosa continua escalando para revisão cara (AGENTS.md: "na dúvida, revisão cara"). **Lista vazia NÃO significa "rotina"**: significa "nenhum padrão conhecido casou"; quem decide que é rotina é a leitura do diff (a saída de `integrar` diz isso). Frente
 rodada pelo worktree nativo tem branch `worktree-agent-<id>`, por isso o mapa `frente=branch`.)
 
 Depois, **numa única mensagem**, revisão em contexto limpo — quem escreveu não revisa:

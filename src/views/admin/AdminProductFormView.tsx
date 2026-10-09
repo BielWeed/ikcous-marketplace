@@ -7,6 +7,10 @@ import {
 } from "@/components/admin/LocalBufferedInput";
 import { PhoneSimulator } from "@/components/admin/PhoneSimulator";
 import {
+  type LinhaProntaDaGrade,
+  ModalVarianteGrade,
+} from "@/components/admin/products/ModalVarianteGrade";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -38,11 +42,20 @@ import { descartarFotosDoProduto } from "@/lib/descartar-fotos-do-produto";
 import { cn } from "@/lib/utils";
 import type { ProductVariant, View } from "@/types";
 import { PrazoEsgotado, comPrazo } from "@/utils/com-prazo";
+import { formComVariacoes } from "@/utils/estoque-das-variacoes";
+import {
+  chaveDaIdentidade,
+  recadoDoTetoDeVariacoes,
+} from "@/utils/grade-de-combinacoes";
 import {
   motivoDoBloqueioDoProduto,
   motivoDoEnvioDeFotos,
 } from "@/utils/motivo-do-bloqueio-do-produto";
-import { temGrupoDemais, travaDeUmGrupoSo } from "@/utils/um-grupo-de-variacao";
+import {
+  gruposDeVariacao,
+  temGrupoDemais,
+  travaDeUmGrupoSo,
+} from "@/utils/um-grupo-de-variacao";
 import {
   type ParDeAtributo,
   dividirEmAtributos,
@@ -64,6 +77,7 @@ import {
   Loader2,
   Package,
   Plus,
+  Power,
   Scissors,
   ShieldCheck,
   Smartphone,
@@ -77,6 +91,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   useRef,
   lazy,
   Suspense,
@@ -355,7 +370,23 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     deleteVariants,
     uploadProductImages,
     fetchProduct,
+    // `= []`: consumidor que não expõe a lista (testes de contrato da tela)
+    // deixa a checagem de SKU global degenerar para o produto atual.
+    products = [],
   } = useProducts({ autoFetch: false });
+
+  // O SKU da variação é UNIQUE na loja INTEIRA, não por produto. A grade gera
+  // códigos previsíveis (base reaproveitada, sufixo por valor), então a
+  // checagem do modal precisa enxergar a loja, não só este produto. Melhor
+  // esforço: se a lista de produtos ainda não carregou, a checagem degenera
+  // para o produto atual — e o salvar confere de novo (`upsertVariants`).
+  const skusDaLoja = useMemo(
+    () =>
+      products.flatMap((p: { variants?: ProductVariant[] }) =>
+        (p.variants ?? []).map((v) => v.sku ?? ""),
+      ),
+    [products],
+  );
   const { categories: dbCategories, addCategory } = useCategories();
   const isOffline = useOnlineStatus();
   const { config } = useStore();
@@ -412,6 +443,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [showSuccess, setShowSuccess] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
   const [showVariantForm, setShowVariantForm] = useState(false);
+  // Grade de combinações: o modal de lote ao lado do unitário.
+  const [showGradeForm, setShowGradeForm] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -603,13 +636,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
   // Lock body scroll when variant or category forms are open
   useEffect(() => {
-    if (showVariantForm || showCategoryForm) {
+    if (showVariantForm || showCategoryForm || showGradeForm) {
       document.body.classList.add("admin-modal-open");
       return () => {
         document.body.classList.remove("admin-modal-open");
       };
     }
-  }, [showVariantForm, showCategoryForm]);
+  }, [showVariantForm, showCategoryForm, showGradeForm]);
 
   const openAdjuster = (url: string, index: number) => {
     setAdjustingImgUrl(url);
@@ -1504,24 +1537,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       imageUrl: variantFormData.imageUrl || undefined,
     };
 
+    // A lista passa por `formComVariacoes`: desligar a última variação ligada
+    // zera o estoque do produto (uma vez), em vez de deixar a soma velha no
+    // campo que acaba de destravar. Ver `estoque-das-variacoes.ts`.
     if (editingVariant) {
-      setFormData((prev) => ({
-        ...prev,
-        variants: prev.variants.map((v) =>
-          v.id === editingVariant.id ? { ...v, ...vData } : v,
+      setFormData((prev) =>
+        formComVariacoes(
+          prev,
+          prev.variants.map((v) =>
+            v.id === editingVariant.id ? { ...v, ...vData } : v,
+          ),
         ),
-      }));
+      );
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        variants: [
+      setFormData((prev) =>
+        formComVariacoes(prev, [
           ...prev.variants,
           {
             ...vData,
             id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           } as any,
-        ],
-      }));
+        ]),
+      );
     }
 
     setShowVariantForm(false);
@@ -1565,15 +1602,88 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setShowVariantForm(true);
   }, []);
 
+  /**
+   * Grade: as linhas que o modal entregou entram na lista como variantes
+   * comuns com id `temp-` — o MESMO caminho da variante unitária. A gravação
+   * em lote é o `upsertVariants` de sempre, no salvar do produto; nada de
+   * caminho novo de persistência. A trava de um grupo é conferida AQUI de
+   * novo (o modal já bloqueou no "Gerar") porque o estado do formulário é
+   * dono deste lado da parede.
+   */
+  const handleEfetivarGrade = (linhas: LinhaProntaDaGrade[]): boolean => {
+    if (linhas.length === 0) return false;
+
+    const trava = travaDeUmGrupoSo(formData.variants, null, linhas[0].name);
+    if (trava.bloqueia) {
+      toast.error(`Este produto já usa "${trava.grupoEmUso}"`, {
+        description:
+          "Cada produto aceita um tipo de variação só. A grade precisa usar " +
+          "o atributo que o produto já tem.",
+        duration: 10000,
+      });
+      return false;
+    }
+
+    // Defesa em profundidade contra o mesmo lote entregue duas vezes: só
+    // entra a combinação que a lista, NO MOMENTO de gravar o estado, ainda
+    // não tem (comparada pela chave da grade, não pelo texto).
+    setFormData((prev) => {
+      const jaTem = new Set(prev.variants.map((v) => chaveDaIdentidade(v)));
+      const novas = linhas.filter(
+        (linha) => !jaTem.has(chaveDaIdentidade(linha)),
+      );
+      return formComVariacoes(prev, [
+        ...prev.variants,
+        ...novas.map(
+          (linha) =>
+            ({
+              ...linha,
+              id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            }) as any,
+        ),
+      ]);
+    });
+    setShowGradeForm(false);
+    toast.success(
+      linhas.length === 1
+        ? "Variante da grade criada — ela entra na loja quando o produto for salvo."
+        : `${linhas.length} variantes da grade criadas — elas entram na loja quando o produto for salvo.`,
+    );
+    return true;
+  };
+
+  // Desligar/religar na própria linha: a variação segue existindo (SKU,
+  // estoque e cadastro guardados) mas some da loja enquanto estiver desligada.
+  // O aviso só vem ao DESLIGAR, e diz o que acontece com quem compra. A lista
+  // passa por `formComVariacoes`: desligar a última ligada zera o estoque do
+  // produto (ver `estoque-das-variacoes.ts`). Nada vai para `deletedVariantIds`.
+  const handleToggleVariantActive = useCallback((v: ProductVariant) => {
+    setFormData((prev) =>
+      formComVariacoes(
+        prev,
+        prev.variants.map((x) =>
+          x.id === v.id ? { ...x, active: !x.active } : x,
+        ),
+      ),
+    );
+    if (v.active) {
+      toast.info(
+        `${v.name}: ${v.value} desligada. Ela deixa de aparecer na loja depois que você salvar o produto e volta quando você religar.`,
+      );
+    }
+  }, []);
+
   const confirmDeleteVariant = () => {
     if (!variantToDelete) return;
     if (!variantToDelete.startsWith("temp-")) {
       setDeletedVariantIds((prev) => [...prev, variantToDelete]);
     }
-    setFormData((prev) => ({
-      ...prev,
-      variants: prev.variants.filter((v) => v.id !== variantToDelete),
-    }));
+    setFormData((prev) =>
+      formComVariacoes(
+        prev,
+        prev.variants.filter((v) => v.id !== variantToDelete),
+      ),
+    );
     setVariantToDelete(null);
   };
 
@@ -2657,6 +2767,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           document.body,
         )}
 
+      {/* Modal da grade de combinações. Ele não grava nada: efetivar entrega
+          as linhas e elas entram na lista de variantes abaixo, gravadas pelo
+          upsertVariants de sempre no salvar. Ele mesmo se põe no body. */}
+      <ModalVarianteGrade
+        aberto={showGradeForm}
+        onFechar={() => setShowGradeForm(false)}
+        variantesExistentes={formData.variants}
+        sugestoesDeAtributo={suggestedAttributes.filter(
+          (attr) => !attr.includes("/"),
+        )}
+        grupoUnicoEmUso={gruposDeVariacao(formData.variants).at(0) ?? null}
+        skusDaLoja={skusDaLoja}
+        onEfetivar={handleEfetivarGrade}
+      />
+
       <header className="sticky top-0 z-30 border-b border-white/5 bg-zinc-950/80 px-4 py-3 backdrop-blur-md md:px-6 md:py-4">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex items-center gap-3 md:gap-4">
@@ -3199,6 +3324,15 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <button
               type="button"
               onClick={() => {
+                // O mesmo teto de 60 da grade vale para o "+ Novo": sem isto
+                // o 61º chegava por clique avulso. Ver `grade-de-combinacoes.ts`.
+                const recadoDoTeto = recadoDoTetoDeVariacoes(
+                  formData.variants.length,
+                );
+                if (recadoDoTeto) {
+                  toast.error(recadoDoTeto);
+                  return;
+                }
                 setEditingVariant(null);
                 // Achado ANTES DE CRESCER da revisão: o gate do SALVAR pode
                 // ter escrito erro/aviso de duplicidade no estado do modal
@@ -3222,6 +3356,17 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
             >
               + Novo
+            </button>
+            {/* Grade de combinações: gera Cor × Tamanho (até 3 camadas) de uma
+                vez, reaproveitando os valores já usados. O "+ Novo" de uma
+                combinação só continua ao lado, intacto. */}
+            <button
+              type="button"
+              data-testid="abrir-grade"
+              onClick={() => setShowGradeForm(true)}
+              className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+            >
+              + Grade
             </button>
           </div>
 
@@ -3333,6 +3478,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   variant={v}
                   onEdit={handleEditVariant}
                   onDelete={handleDeleteVariant}
+                  onToggleActive={handleToggleVariantActive}
                 />
               ))
             )}
@@ -4388,12 +4534,14 @@ interface VariantItemProps {
   readonly variant: ProductVariant;
   readonly onEdit: (v: ProductVariant) => void;
   readonly onDelete: (id: string) => void;
+  readonly onToggleActive: (v: ProductVariant) => void;
 }
 
 const VariantItem = React.memo(function VariantItem({
   variant,
   onEdit,
   onDelete,
+  onToggleActive,
 }: VariantItemProps) {
   return (
     <div className="group flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-900 p-4 transition-all hover:border-emerald-500/30">
@@ -4444,6 +4592,24 @@ const VariantItem = React.memo(function VariantItem({
           className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
         >
           <Edit2 className="size-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onToggleActive(variant)}
+          aria-label={`${variant.active ? "Desligar" : "Religar"} variação ${variant.value}`}
+          title={
+            variant.active
+              ? "Desligar: deixa de aparecer na loja, volta quando religar"
+              : "Religar: volta a aparecer na loja"
+          }
+          className={cn(
+            "flex size-8 items-center justify-center rounded-lg transition-all hover:bg-white/5",
+            variant.active
+              ? "text-emerald-500 hover:text-emerald-400"
+              : "text-zinc-600 hover:text-white",
+          )}
+        >
+          <Power className="size-3.5" />
         </button>
         <button
           type="button"

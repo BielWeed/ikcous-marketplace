@@ -46,7 +46,10 @@ import {
 } from "./faixas.mjs";
 import {
   PASTA_DE_MANIFESTOS,
+  caminhoDaAncora,
+  gravarAncora,
   origemValida,
+  ramoDaFrente,
   verificarFaixa,
 } from "./integridade.mjs";
 
@@ -344,6 +347,33 @@ function cmdEntrar([arg, nome]) {
       "este worktree já tem uma faixa registrada — ela se registra uma vez só e não se refaz nem se troca",
     );
   }
+  // A ÂNCORA (no gitdir do worktree, fora da árvore de trabalho) persiste mesmo que a frente apague o
+  // lane.json: sem esta recusa, `rm .claude/lane.json` + `entrar <outra frente>` refaria a faixa.
+  const arqAncora = caminhoDaAncora(raiz);
+  if (arqAncora && existsSync(arqAncora)) {
+    falhar(
+      "este worktree já foi registrado (a âncora dele persiste mesmo sem o lane.json) — a faixa não se refaz; recrie o worktree com `limpar` e `criar`",
+    );
+  }
+  // Worktree de `criar`: o ramo `paralelo/<plano>/<frente>` já diz de quem ele é.
+  const ramo = ramoDaFrente(raiz);
+  if (ramo && (ramo.plano !== manifesto.plano || ramo.frente !== nome)) {
+    falhar(
+      `este worktree é da frente "${ramo.plano}/${ramo.frente}" (ramo ${ramo.nome}) e não pode entrar como "${manifesto.plano}/${nome}"`,
+    );
+  }
+  // Âncora primeiro, faixa depois: se algo falhar no meio, sobra um worktree SEM faixa (o hook estrito
+  // fecha tudo), nunca uma faixa sem âncora que a verificação aceitasse.
+  try {
+    gravarAncora(raiz, {
+      plano: manifesto.plano,
+      frente: nome,
+      base: head.out,
+      origem: rel,
+    });
+  } catch (e) {
+    falhar(`não consegui gravar a âncora do worktree: ${e.message}`);
+  }
   mkdirSync(join(raiz, ".claude"), { recursive: true });
   writeFileSync(
     arqLane,
@@ -522,7 +552,15 @@ function cmdStatus([arg, ...resto]) {
  */
 function imprimirRiscos(plano) {
   const comRisco = plano.filter((p) => p.riscos.length > 0);
-  if (comRisco.length === 0) return;
+  if (comRisco.length === 0) {
+    // Lista vazia NÃO é um atestado de "rotina": o mapa é heurística de caminho + palavras do diff e
+    // só ACRESCENTA frentes ao `revisor-risco`; o que não tem essas marcas passa batido (re-revisão
+    // do #782, M2). Quem decide que algo é rotina é a leitura do diff, não o silêncio desta lista.
+    console.log(
+      '\nMAPA DE RISCO: nenhum padrão conhecido casou nos caminhos nem no conteúdo do diff. Isso NÃO significa "rotina" — a heurística só acrescenta frentes ao `revisor-risco`, nunca dispensa uma; classifique o risco lendo o diff (AGENTS.md: na dúvida, revisão cara).',
+    );
+    return;
+  }
   console.log(
     "\n⚠ MAPA DE RISCO — `revisor-risco` é OBRIGATÓRIO nestas frentes:",
   );
