@@ -438,8 +438,22 @@ export const RISCO_PADROES = Object.freeze([
   ["scripts/portaoDividido.ts", "fronteira do portão de tamanho"],
   ["**/*checkout*", "checkout / pagamento"],
   ["**/*pagamento*", "checkout / pagamento"],
+  ["**/*payment*", "checkout / pagamento"],
+  // Cartão: ligar crédito/débito em `config_pagamento_cartao` é decisão de dinheiro do dono
+  // (AGENTS.md, "Mapa de risco"); `useConfigDoCartao.ts` e `MercadoPagoSection.tsx` não tinham
+  // palavra-chave no nome e ficavam como "rotina" (re-revisão do #782, achado M2).
+  ["**/*cartao*", "cartão / crédito (decisão de dinheiro do dono)"],
+  ["**/*mercado*", "Mercado Pago / gateway de pagamento"],
+  ["**/*pix*", "PIX / pagamento"],
+  ["**/*webhook*", "webhook de gateway / pagamento"],
+  ["**/*financ*", "financeiro (dinheiro)"],
   ["**/*otp*", "auth / OTP"],
   ["**/*auth*", "auth / OTP"],
+  ["**/*login*", "auth / sessão"],
+  ["**/*sessao*", "auth / sessão"],
+  ["**/*session*", "auth / sessão"],
+  ["**/*password*", "auth / senha"],
+  ["**/*senha*", "auth / senha"],
   ["**/*devolu*", "devolução / reembolso"],
   ["**/*reembolso*", "devolução / reembolso"],
   ["**/*estorno*", "devolução / reembolso"],
@@ -463,7 +477,9 @@ export function riscoDoCaminho(caminho) {
  */
 export const RISCO_CONTEUDO = Object.freeze([
   [/SECURITY\s+DEFINER/i, "SECURITY DEFINER"],
-  [/\bfin_[a-z_]+/i, "RPC/tabela fin_* (dinheiro)"],
+  // `\bfin_` sozinho: `fin_${acao}` e `"fin_" + acao` montam o nome da RPC em tempo de execução e a
+  // letra depois do `_` não está no texto (a versão com `[a-z_]+` deixava esses escaparem).
+  [/\bfin_/i, "RPC/tabela fin_* (dinheiro)"],
   [
     /\b(confirmar_pagamento|liberar_cobranca_do_pedido|registrar_pagamento_recebido|order_refunds|devolucao_itens|devolucoes|payment_status|gateway_payment_id|config_pagamento_cartao|marketplace_orders)\b/,
     "dinheiro / pedido",
@@ -485,10 +501,15 @@ const EXPORT_CONST_FUNCAO =
   // eslint-disable-next-line security/detect-unsafe-regex -- aplicada a UMA linha de diff por vez; âncora `^` e `[^=]+` seguido de `=` literal: tempo linear (medido: 1 ms em 200 mil caracteres).
   /^-\s*export\s+(const|let)\s+[\w$]+\s*(:[^=]+)?=\s*(async\s*)?(\(|function\b|[\w$]+\s*=>)/;
 
-/** Arquivo de teste ou documentação: fora da leitura de conteúdo. */
+/**
+ * Arquivo de teste ou documentação: fora da leitura de conteúdo. "É teste" é só a pasta `tests/` na
+ * RAIZ do repo ou o sufixo `.test` / `_test` / `.spec` (qualquer extensão: `index_test.ts`,
+ * `database_verification_test.sql`). Uma pasta `tests/` ou `test/` sob `src/` é CÓDIGO: tratá-la
+ * como teste deixava código de produto escondido ali fora da leitura do diff (achado M2c).
+ */
 const ehTesteOuDoc = (n) =>
-  /(^|\/)tests?\//i.test(n) ||
-  /(_test|\.test|\.spec)\.[cm]?[jt]sx?$/i.test(n) ||
+  /^tests\//i.test(n) ||
+  /(_test|\.test|\.spec)\.[a-z0-9]+$/i.test(n) ||
   /\.(md|mdx|txt)$/i.test(n);
 
 /**

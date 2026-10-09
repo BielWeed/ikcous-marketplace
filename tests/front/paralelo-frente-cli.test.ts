@@ -654,10 +654,10 @@ exit 0
     const repo = novoRepo();
     for (const n of ["a", "b"])
       expect(frente(repo, "criar", M, n).status).toBe(0);
-    // `useFinanceiro.ts` não casa nenhum padrão de caminho, mas chama as RPCs de dinheiro
+    // `useCaixaDoMes.ts` não casa nenhum padrão de caminho (desde o M2 o nome `useFinanceiro.ts` casa `financ`), mas chama as RPCs de dinheiro
     escrever(
       wt(repo, "a"),
-      "src/a/useFinanceiro.ts",
+      "src/a/useCaixaDoMes.ts",
       'export const x = () => supabase.rpc("fin_saldo");\n',
     );
     // a frente b só muda o VALOR de um export literal e acrescenta um símbolo novo: rotina
@@ -675,8 +675,38 @@ exit 0
     const r = frente(repo, "integrar", M, "--so-conferir");
     expect(r.status, r.out).toBe(0);
     expect(r.out).toMatch(
-      /useFinanceiro\.ts {2}\(RPC\/tabela fin_\* \(dinheiro\)\)/,
+      /useCaixaDoMes\.ts {2}\(RPC\/tabela fin_\* \(dinheiro\)\)/,
     );
     expect(r.out).not.toMatch(/y\.ts {2}\(/);
+  }, 60_000);
+
+  it("lista de risco VAZIA não diz 'rotina': diz que nenhum padrão conhecido casou (M2)", () => {
+    const repo = novoRepo();
+    for (const n of ["a", "b"])
+      expect(frente(repo, "criar", M, n).status).toBe(0);
+    escrever(wt(repo, "a"), "src/a/x.ts", "export const a = 2;\n");
+    escrever(wt(repo, "b"), "src/b/y.ts", "export const b = 2;\n");
+    for (const n of ["a", "b"])
+      expect(
+        frente(wt(repo, n), "commitar", "-m", `feat(ui): ${n}`).status,
+      ).toBe(0);
+    const r = frente(repo, "integrar", M, "--so-conferir");
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/nenhum padrão conhecido casou/);
+    expect(r.out).toMatch(/NÃO significa .rotina./);
+    expect(r.out).not.toMatch(/revisor-risco. é OBRIGATÓRIO/);
+    // e quando há risco, a frase do "nada casou" não aparece junto da lista
+    escrever(
+      wt(repo, "a"),
+      "src/a/useConfigDoCartao.ts",
+      "export const c = 1;\n",
+    );
+    expect(frente(wt(repo, "a"), "commitar", "-m", "feat(ui): a2").status).toBe(
+      0,
+    );
+    const r2 = frente(repo, "integrar", M, "--so-conferir");
+    expect(r2.out).toMatch(/revisor-risco. é OBRIGATÓRIO/);
+    expect(r2.out).toMatch(/useConfigDoCartao\.ts {2}\(/);
+    expect(r2.out).not.toMatch(/nenhum padrão conhecido casou/);
   }, 60_000);
 });

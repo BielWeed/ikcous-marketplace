@@ -522,7 +522,15 @@ function cmdStatus([arg, ...resto]) {
  */
 function imprimirRiscos(plano) {
   const comRisco = plano.filter((p) => p.riscos.length > 0);
-  if (comRisco.length === 0) return;
+  if (comRisco.length === 0) {
+    // Lista vazia NÃO é um atestado de "rotina": o mapa é heurística de caminho + palavras do diff e
+    // só ACRESCENTA frentes ao `revisor-risco`; o que não tem essas marcas passa batido (re-revisão
+    // do #782, M2). Quem decide que algo é rotina é a leitura do diff, não o silêncio desta lista.
+    console.log(
+      '\nMAPA DE RISCO: nenhum padrão conhecido casou nos caminhos nem no conteúdo do diff. Isso NÃO significa "rotina" — a heurística só acrescenta frentes ao `revisor-risco`, nunca dispensa uma; classifique o risco lendo o diff (AGENTS.md: na dúvida, revisão cara).',
+    );
+    return;
+  }
   console.log(
     "\n⚠ MAPA DE RISCO — `revisor-risco` é OBRIGATÓRIO nestas frentes:",
   );
