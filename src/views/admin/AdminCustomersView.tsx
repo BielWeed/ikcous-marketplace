@@ -7,7 +7,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
-import { CustomerBanners } from "@/components/admin/dashboard/CustomerBanners";
+import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
@@ -467,7 +468,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
     >
       {/* Header Elite */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
-        <AdminPageHeader titulo="Clientes">
+        <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-customers"]}>
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
@@ -487,7 +488,7 @@ export const AdminCustomersView = memo(function AdminCustomersView({
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Support & Engagement Banners */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <CustomerBanners onNavigate={handleLocalNavigate} />
+          <AtalhosDaAba aba="clientes" onNavigate={handleLocalNavigate} />
         </div>
         {/* Control Bar para Carrossel/Grid de Métricas */}
         <div className="space-y-4">

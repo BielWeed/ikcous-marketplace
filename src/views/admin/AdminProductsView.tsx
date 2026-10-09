@@ -9,7 +9,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
-import { ProductBanners } from "@/components/admin/dashboard/ProductBanners";
+import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAnalytics } from "@/hooks/useAnalytics";
 import { useCategories } from "@/hooks/useCategories";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
@@ -642,7 +643,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       {/* Header & Main Actions */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Produtos"
+          titulo={NOMES_DO_PAINEL["admin-products"]}
           acoes={
             <>
               <Button
@@ -688,7 +689,7 @@ export const AdminProductsView = memo(function AdminProductsView({
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Shortcuts Section */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <ProductBanners onNavigate={handleLocalNavigate} />
+          <AtalhosDaAba aba="produtos" onNavigate={handleLocalNavigate} />
         </div>
 
         <div className="space-y-4">

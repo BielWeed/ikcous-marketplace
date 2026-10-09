@@ -7,8 +7,6 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { PaginacaoAdmin } from "@/components/admin/PaginacaoAdmin";
 import { PontoDeOperacao } from "@/components/admin/PontoDeOperacao";
-import { SupportBanners } from "@/components/admin/dashboard/SupportBanners";
-import { BotaoDevolucoes } from "@/components/admin/devolucoes/BotaoDevolucoes";
 import {
   AdminOrderCard,
   AdminOrderCardSkeleton,
@@ -21,6 +19,7 @@ import {
   paymentStatusKey,
   statusConfig,
 } from "@/components/admin/orders/OrderStatusBadge";
+import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { LocalErrorBoundary } from "@/components/ui/custom/LocalErrorBoundary";
@@ -31,8 +30,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { branding } from "@/config/branding";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useAnalytics } from "@/hooks/useAnalytics";
+import { useDevolucoesAbertas } from "@/hooks/useDevolucoesAdmin";
 import {
   type EstornoEmCurso,
   useEstornosEmCursoDosPedidos,
@@ -304,6 +305,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     onRealtimeEvent: (payload) => onRealtimeEventRef.current(payload),
   });
   const { stats: analyticsStats, fetchExecutiveSummary } = useAnalytics();
+  const { abertas: devolucoesAbertas } = useDevolucoesAbertas(active);
 
   const [searchQuery, setSearchQuery] = useLocalStorage<string>(
     "admin_orders_search_query",
@@ -1515,43 +1517,31 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       className="h-auto bg-admin-bg pb-admin lg:pb-12 font-sans text-white duration-200 animate-in fade-in selection:bg-admin-gold/30"
     >
       {/* Header Elite */}
+      {/* Botão de alerta + dropdown no canto direito da linha do título (sem
+          pendência e lista completa, ele nem nasce). A porta de Devoluções NÃO
+          mora aqui: é a da faixa de atalhos da aba, com o contador. */}
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Pedidos"
-          acoes={
-            // Botão de alerta + dropdown (pedido do Gabriel, 02/09 à tarde:
-            // a pílula amarela virou botão com ícone de alerta no canto
-            // direito da linha do título; os detalhes descem dele). Sem
-            // pendência e lista completa, ele nem nasce. (1.19.0 — só trocou
-            // de container: a marcação interna é a mesma de antes.)
-            // Devoluções (plano 2026-09-26): a porta da tela de devolução de
-            // produto mora ao lado, com quantas estão em andamento.
-            <>
-              <BotaoDevolucoes
-                onAbrir={() => abrirDevolucoes()}
-                ativo={active}
-              />
-              <AlertasCancelados
-                pagoCanceladoCount={paidOnCancelledCount}
-                avisoPagoAposCancelado={avisoPagoAposCancelado}
-                pedidosEsperandoRetorno={pedidosEsperandoRetorno}
-                pedidosParaDevolverAgora={pedidosParaDevolverAgora}
-                estornosEmCurso={estornosEmCurso}
-                incompleto={pedidosCanceladosIncompleto}
-                foraDaJanela={canceladosForaDaJanela}
-                onIncluirAntigos={() => {
-                  void buscarTambemCanceladosAntigos();
-                }}
-                confirmandoRetornoId={confirmandoRetornoId}
-                onConfirmarRetorno={handleConfirmarRetorno}
-                estornandoId={estornandoId}
-                conferindoEstornoId={conferindoEstornoId}
-                onAbrir={estornos.recarregar}
-                onRegistrarEstorno={registrarEstornoFeito}
-                onVerPedidos={irParaPedidosCancelados}
-              />
-            </>
-          }
+          titulo={NOMES_DO_PAINEL["admin-orders"]}
+          acoes=<AlertasCancelados
+            pagoCanceladoCount={paidOnCancelledCount}
+            avisoPagoAposCancelado={avisoPagoAposCancelado}
+            pedidosEsperandoRetorno={pedidosEsperandoRetorno}
+            pedidosParaDevolverAgora={pedidosParaDevolverAgora}
+            estornosEmCurso={estornosEmCurso}
+            incompleto={pedidosCanceladosIncompleto}
+            foraDaJanela={canceladosForaDaJanela}
+            onIncluirAntigos={() => {
+              void buscarTambemCanceladosAntigos();
+            }}
+            confirmandoRetornoId={confirmandoRetornoId}
+            onConfirmarRetorno={handleConfirmarRetorno}
+            estornandoId={estornandoId}
+            conferindoEstornoId={conferindoEstornoId}
+            onAbrir={estornos.recarregar}
+            onRegistrarEstorno={registrarEstornoFeito}
+            onVerPedidos={irParaPedidosCancelados}
+          />
         >
           <button
             type="button"
@@ -1575,7 +1565,16 @@ export const AdminOrdersView = memo(function AdminOrdersView({
       <div className="space-y-8 p-4 sm:p-6 lg:p-8">
         {/* Support Section */}
         <div className="duration-300 animate-in fade-in slide-in-from-bottom-2">
-          <SupportBanners onNavigate={onNavigate} />
+          <AtalhosDaAba
+            aba="pedidos"
+            onNavigate={onNavigate}
+            contadores={{
+              "admin-devolucoes": {
+                valor: devolucoesAbertas ?? 0,
+                legenda: "em andamento",
+              },
+            }}
+          />
         </div>
 
         {active && (

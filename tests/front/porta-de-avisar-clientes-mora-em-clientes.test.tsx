@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
 //
 // DECISÃO DO GABRIEL (30/08/2026, com print na mão): a porta "Avisar
-// clientes" mora na tela de CLIENTES, ao lado de "Canais de Atendimento" —
-// não em Ajustes, onde ela tinha renascido por acaso (era a última porta
-// visível no celular desde 24/08, quando o cartão duplicado saiu daqui e o
-// sino ainda abria admin-push).
+// clientes" mora na tela de CLIENTES — não em Ajustes, onde ela tinha
+// renascido por acaso (era a última porta visível no celular desde 24/08,
+// quando o cartão duplicado saiu daqui e o sino ainda abria admin-push).
+// Painel simples (C3): a faixa de Clientes passou a ser o AtalhosDaAba, com
+// duas portas só — "Perguntas e avaliações" e "Avisar clientes". "Canais de
+// Atendimento" saiu (Minha loja cuida do contato).
 //
 // O contrato agora tem dois lados:
 //   1. Ajustes NÃO tem mais porta para admin-push (a seção "Clientes &
 //      Avisos" saiu de lá). O teste antigo, que exigia a porta em Ajustes,
 //      foi invertido com a decisão.
-//   2. CustomerBanners (a faixa de cartões da tela de Clientes) TEM a
-//      porta: clicar em "Avisar clientes" navega para admin-push — e o
-//      Voltar de admin-push é sensível à origem, então volta para Clientes.
-// O teste mede a PORTA, não o texto: clica nos cartões e olha o destino.
+//   2. As portas de Clientes (AtalhosDaAba aba="clientes") TÊM a porta:
+//      clicar em "Avisar clientes" navega para admin-push — e o Voltar de
+//      admin-push é sensível à origem, então volta para Clientes. A tela de
+//      Clientes montada de verdade tem prova própria em
+//      portas-das-abas-nas-telas.test.tsx.
+// O teste mede a PORTA, não o texto: clica nos botões e olha o destino.
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,7 +48,7 @@ vi.mock("@/components/admin/AdminHelpModal", () => ({
   AdminHelpModal: () => null,
 }));
 
-import { CustomerBanners } from "@/components/admin/dashboard/CustomerBanners";
+import { AtalhosDaAba } from "@/components/admin/primitivos/AtalhosDaAba";
 import type { View } from "@/types";
 import { AdminSettingsView } from "@/views/admin/AdminSettingsView";
 
@@ -94,7 +98,7 @@ describe("Ajustes NÃO tem mais a porta de Avisar clientes", () => {
   });
 });
 
-describe("Clientes tem a porta de Avisar clientes (CustomerBanners)", () => {
+describe("Clientes tem a porta de Avisar clientes (AtalhosDaAba)", () => {
   let container: HTMLDivElement;
   let root: Root;
   let idas: View[];
@@ -106,7 +110,10 @@ describe("Clientes tem a porta de Avisar clientes (CustomerBanners)", () => {
     root = createRoot(container);
     act(() => {
       root.render(
-        <CustomerBanners onNavigate={(view: View) => idas.push(view)} />,
+        <AtalhosDaAba
+          aba="clientes"
+          onNavigate={(view: View) => idas.push(view)}
+        />,
       );
     });
   });
@@ -118,25 +125,35 @@ describe("Clientes tem a porta de Avisar clientes (CustomerBanners)", () => {
     container.remove();
   });
 
-  it("o cartão 'Avisar clientes' leva para admin-push", () => {
-    const cartao = [...container.querySelectorAll('[role="button"]')].find(
-      (b) => b.textContent?.includes("Avisar clientes"),
+  function porta(nome: string): HTMLButtonElement {
+    const achada = [...container.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === nome,
     );
-    expect(cartao).toBeDefined();
+    expect(achada, `sem a porta "${nome}"`).toBeDefined();
+    return achada as HTMLButtonElement;
+  }
+
+  it("a porta 'Avisar clientes' leva para admin-push", () => {
     act(() => {
-      cartao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      porta("Avisar clientes").click();
     });
-    expect(idas).toContain("admin-push");
+    expect(idas).toEqual(["admin-push"]);
   });
 
-  it("o cartão 'Canais de Atendimento' continua levando ao Atendimento", () => {
-    const cartao = [...container.querySelectorAll('[role="button"]')].find(
-      (b) => b.textContent?.includes("Canais de Atendimento"),
-    );
-    expect(cartao).toBeDefined();
+  it("a porta 'Perguntas e avaliações' leva para admin-qa", () => {
     act(() => {
-      cartao!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      porta("Perguntas e avaliações").click();
     });
-    expect(idas).toContain("admin-whatsapp-config");
+    expect(idas).toEqual(["admin-qa"]);
+  });
+
+  it("não há porta para admin-whatsapp-config em Clientes", () => {
+    for (const botao of container.querySelectorAll("button")) {
+      act(() => {
+        botao.click();
+      });
+    }
+    expect(idas).not.toContain("admin-whatsapp-config");
+    expect(container.textContent).not.toContain("Canais de Atendimento");
   });
 });
