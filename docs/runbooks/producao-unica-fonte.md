@@ -126,6 +126,10 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
       `send-order-confirmation`, entao a release travaria se esses arquivos mudassem sem poder
       publicar a function do e-mail). Essa lista e `functionsPublicaveis` em
       `canais-de-backend.json`, o que o workflow aceita (um teste exige que as duas concordem).
+      **Desfazer a `send-order-confirmation`:** NAO e disparar o workflow no SHA antigo (o
+      workflow daquele commit recusa a function nas duas lojas). E `git revert` dos commits do
+      texto num commit NOVO do ramo principal e publicar esse SHA pelo caminho normal. So a
+      IKCOUS guarda o retrato "ANTES"; na Savy, anote a versao no ar antes de publicar.
       **Se a release mudar outra function**
       (ex.: `send-otp-email`), a loja fica PARADA pelo nome, sem comando: o caminho central nao a
       publica, e como seguir (canal novo no workflow ou publicacao separada) e decisao do dono.

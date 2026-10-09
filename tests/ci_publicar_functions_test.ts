@@ -971,6 +971,8 @@ Deno.test("publicar-functions: o JSON dos canais e o workflow concordam, functio
         publicaveis.has(nome),
         `${canal.nome} (${ref}): o workflow ${r.codigo === 0 ? "ACEITA" : "RECUSA"} "${nome}", mas o JSON ${publicaveis.has(nome) ? "a lista como publicável" : "não a lista"}`,
       );
+      // O apelido do canal tem de resolver para a MESMA loja da chave do JSON.
+      if (r.codigo === 0) assertEquals(r.outputs.ref, ref);
     }
   }
 });
