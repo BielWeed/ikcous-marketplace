@@ -16,6 +16,7 @@
  * @module realtimeSyncEngine
  */
 
+import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { DataVault, type StoreName } from "@/lib/dataVault";
 import { mapProductFromDB, mapVariantFromDB } from "@/lib/mappers";
 import { supabase } from "@/lib/supabase";
@@ -190,22 +191,8 @@ export const TABLE_CONFIGS: TableConfig[] = [
   {
     table: "coupons",
     store: "coupons",
-    mapRecord: (raw: any) => ({
-      id: raw.id,
-      code: raw.code,
-      type: raw.type,
-      value: raw.value,
-      minPurchase: raw.min_purchase ?? undefined,
-      usageLimit: raw.usage_limit ?? undefined,
-      // PAINEL-12: a coluna que o schema incrementa é `usage_count`
-      // (baseline:422, 688) — `used_count` existe na tabela, mas nenhum
-      // código escreve nela. Alinhado com useCoupons.ts: uma leitura só,
-      // `?? 0` (zero real continua zero) — e `used_count` presente numa
-      // linha não vence mais a contagem verdadeira.
-      usageCount: raw.usage_count ?? 0,
-      validUntil: raw.valid_until ?? undefined,
-      active: raw.active ?? true,
-    }),
+    // PAINEL-12 + frente B: o mapeador único (usage_count só, alcance).
+    mapRecord: (raw: any) => cupomDoBanco(raw),
   },
   {
     table: "product_variants",

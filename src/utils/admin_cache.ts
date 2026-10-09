@@ -1,3 +1,4 @@
+import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import { supabase } from "@/lib/supabase";
 
 export interface Customer {
@@ -102,17 +103,8 @@ export async function prefetchCouponsData() {
       .order("created_at", { ascending: false });
 
     if (!error && data) {
-      cachedCouponsData = data.map((c) => ({
-        id: c.id,
-        code: c.code,
-        type: c.type,
-        value: c.value,
-        minPurchase: c.min_purchase ?? undefined,
-        usageLimit: c.usage_limit ?? undefined,
-        usageCount: c.usage_count ?? 0, // PAINEL-12: alinhado com o hook
-        validUntil: c.valid_until ?? undefined,
-        active: c.active ?? true,
-      }));
+      // PAINEL-12 + frente B: o mapeador único do cupom.
+      cachedCouponsData = data.map((c) => cupomDoBanco(c));
     }
   } catch (e) {
     console.error("Prefetch coupons failed:", e);

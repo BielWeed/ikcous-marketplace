@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/useAuth";
+import { cupomDoBanco } from "@/lib/cupom-do-banco";
 import {
   ehRecusaPorLimiteDeUso,
   mensagemDeVagaPresa,
@@ -63,21 +64,10 @@ export function useCoupons(autoFetch = false) {
         throw error;
       }
 
+      // PAINEL-12 + frente B: o mapeador único do cupom (usage_count só, `?? 0`;
+      // alcance: banco sem a coluna = secreto).
       const formattedCoupons: Coupon[] =
-        data?.map((c) => ({
-          id: c.id,
-          code: c.code,
-          type: c.type as "percentage" | "fixed",
-          value: c.value,
-          minPurchase: c.min_purchase ?? undefined,
-          usageLimit: c.usage_limit ?? undefined,
-          // PAINEL-12: schema so tem usage_count (baseline:423/689) — o
-          // used_count era codigo morto. `?? 0` em vez de `|| 0`: 0 real
-          // continua 0, null (coluna nao veio) nao vira 0 falso.
-          usageCount: c.usage_count ?? 0,
-          validUntil: c.valid_until ?? undefined,
-          active: c.active ?? true,
-        })) || [];
+        data?.map((c) => cupomDoBanco(c)) || [];
 
       setCachedCouponsData(formattedCoupons);
       setCoupons(formattedCoupons);
