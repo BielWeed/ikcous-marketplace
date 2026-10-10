@@ -160,7 +160,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onAbrirTransportadoras}
-            className="flex shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
+            className="flex min-h-11 shrink-0 items-center rounded-lg bg-admin-accent px-4 py-2 text-[12px] font-extrabold text-zinc-950 transition-all hover:opacity-90 active:scale-95"
           >
             Conectar transportadora
           </button>
@@ -169,7 +169,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onTentarDeNovo}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-4 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
             <RefreshCw className="size-3.5" />
             Tentar de novo
@@ -220,7 +220,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
                   <button
                     type="button"
                     onClick={onAbrirTransportadoras}
-                    className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
+                    className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95"
                   >
                     Preencher em Transportadoras
                   </button>
@@ -296,7 +296,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
           <button
             type="button"
             onClick={onAbrirTransportadoras}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
           >
             Abrir Transportadoras
             <ChevronRight className="size-3.5 text-admin-accent" />
@@ -323,7 +323,7 @@ export const FreteNacionalBloco = memo(function FreteNacionalBloco({
             type="button"
             onClick={onAbrirEstrategiasNacionais}
             disabled={desabilitado}
-            className="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+            className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-50"
           >
             Estratégias do frete nacional
             <ChevronRight className="size-3.5 text-admin-accent" />

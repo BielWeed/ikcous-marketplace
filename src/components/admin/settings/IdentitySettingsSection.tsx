@@ -84,6 +84,7 @@ export function IdentitySettingsSection({
         {editor.phase === "error" && (
           <Button
             type="button"
+            className="min-h-11"
             disabled={!active}
             onClick={() => void editor.read()}
           >
@@ -295,6 +296,7 @@ export function IdentitySettingsSection({
                   <Button
                     type="button"
                     variant="outline"
+                    className="min-h-11"
                     disabled={
                       editor.locked || draft.assets.originals.length === 1
                     }
@@ -328,6 +330,7 @@ export function IdentitySettingsSection({
                       key={role}
                       type="button"
                       variant="outline"
+                      className="min-h-11"
                       disabled={
                         editor.locked ||
                         draft.assets.originals.length === 8 ||
@@ -367,7 +370,12 @@ export function IdentitySettingsSection({
               confirmados
             </p>
           )}
-          <Button type="button" variant="outline" onClick={editor.cancelUpload}>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            onClick={editor.cancelUpload}
+          >
             Cancelar envio
           </Button>
         </div>
@@ -381,6 +389,7 @@ export function IdentitySettingsSection({
         <div className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4">
           <Button
             type="button"
+            className="min-h-11"
             disabled={!active || editor.busy}
             onClick={() => void editor.read()}
           >
@@ -424,6 +433,7 @@ export function IdentitySettingsSection({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
+                  className="min-h-11"
                   disabled={!active}
                   onClick={() => editor.resolveConflict(true)}
                 >
@@ -432,6 +442,7 @@ export function IdentitySettingsSection({
                 <Button
                   type="button"
                   variant="outline"
+                  className="min-h-11"
                   disabled={!active}
                   onClick={() => editor.resolveConflict(false)}
                 >
@@ -445,6 +456,7 @@ export function IdentitySettingsSection({
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
+          className="min-h-11"
           disabled={editor.locked || !editor.dirty}
           onClick={() => void editor.save()}
         >
@@ -456,6 +468,7 @@ export function IdentitySettingsSection({
           <Button
             type="button"
             variant="outline"
+            className="min-h-11"
             disabled={editor.locked || !editor.dirty}
             onClick={() => setDiscardRequested(true)}
           >
@@ -476,6 +489,7 @@ export function IdentitySettingsSection({
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
+              className="min-h-11"
               disabled={editor.locked}
               onClick={() => {
                 editor.discard();
@@ -487,6 +501,7 @@ export function IdentitySettingsSection({
             <Button
               type="button"
               variant="outline"
+              className="min-h-11"
               onClick={() => setDiscardRequested(false)}
             >
               Continuar editando
