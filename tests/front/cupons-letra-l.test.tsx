@@ -156,6 +156,25 @@ describe("cupons — mini-caixas do bilhete no desenho novo do cartão de métri
     }
   });
 
+  it("a mini-grade Desconto/Mínimo empilha de lg a xl (3 bilhetes + sidebar) e volta a par em 2xl", () => {
+    // Medido no Chromium a 1024px: com 3 bilhetes por linha e a sidebar w-64
+    // sobram ~42px úteis por caixa; "R$ 1.500,00" (nowrap, 18px) era cortado
+    // pela borda do bilhete. Em coluna única sobram >=127px.
+    const posRotulo = fonte.search(/<p className="[^"]*">\s*Desconto\s*<\/p>/);
+    expect(posRotulo).toBeGreaterThan(-1);
+    const antes = fonte.slice(0, posRotulo);
+    // A mini-grade é o <div> com `grid-cols-2` que antecede a caixa Desconto.
+    const grade = antes.slice(antes.lastIndexOf('<div className="mb-4 grid'));
+    const classes = /^<div className="([^"]*)"/.exec(grade)?.[1] ?? "";
+    expect(classes.split(/\s+/)).toEqual(
+      expect.arrayContaining([
+        "grid-cols-2",
+        "lg:grid-cols-1",
+        "2xl:grid-cols-2",
+      ]),
+    );
+  });
+
   it("o dinheiro das caixas nunca parte no meio do número (whitespace-nowrap, 18px)", () => {
     for (const ancora of ["% OFF`", "formatCurrency(coupon.minPurchase"]) {
       const antes = fonte.slice(0, fonte.indexOf(ancora));

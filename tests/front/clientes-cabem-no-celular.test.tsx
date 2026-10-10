@@ -361,6 +361,26 @@ describe("Clientes no celular (J4)", () => {
     }
   });
 
+  it("(b3) de lg a xl (com a sidebar) o rodapé empilha: o valor em dinheiro não encosta em 'Pedidos'", async () => {
+    h.modo = "compact";
+    await abrirLista();
+
+    const rotuloTotal = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Total já comprado",
+    );
+    expect(rotuloTotal).toBeDefined();
+    const linha = rotuloTotal!.parentElement?.parentElement;
+    // Medido no Chromium: com a sidebar w-64, de 1024 a ~1535px a coluna do
+    // valor (`whitespace-nowrap`, sem como ceder) passa da coluna `1fr` e
+    // sobrepõe "Pedidos". Nessa faixa o par vira uma coluna só; a partir de
+    // 2xl sobra largura e ele volta a ficar lado a lado.
+    const classes = (linha?.className ?? "").split(/\s+/);
+    expect(classes).toContain("lg:grid-cols-1");
+    expect(classes).toContain("lg:items-start");
+    expect(classes).toContain("2xl:grid-cols-[minmax(0,1fr)_auto]");
+    expect(classes).toContain("2xl:items-end");
+  });
+
   it("o menu diz 'Ver ficha do cliente' e não mais 'Ver Perfil Elite'", async () => {
     h.modo = "compact";
     await abrirLista();

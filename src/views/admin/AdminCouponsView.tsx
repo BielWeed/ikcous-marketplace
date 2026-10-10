@@ -642,10 +642,16 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                       {/* Lower Section */}
                       <div className="mt-4 flex flex-1 flex-col justify-between pt-6">
                         <div>
-                          <div className="mb-4 grid grid-cols-2 gap-4">
+                          <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-1 2xl:grid-cols-2">
                             {/* Mini-caixas no desenho do KpiCard (10/10/2026):
                                 casca com brilho no topo, rótulo em frase
-                                normal 12px cinza 300, valor branco tabular. */}
+                                normal 12px cinza 300, valor branco tabular.
+                                De lg a xl são 3 bilhetes por linha COM a
+                                sidebar w-64: sobram ~42px úteis por caixa e
+                                o dinheiro (`whitespace-nowrap`, 18px) era
+                                cortado pela borda do bilhete; por isso a
+                                grade vira coluna única nessa faixa e volta
+                                a par em 2xl. */}
                             <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5">
                               <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Desconto

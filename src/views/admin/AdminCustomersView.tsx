@@ -1147,9 +1147,14 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
           brilho no topo, rótulo em frase normal 12px cinza 300, números
           brancos e tabulares. Dinheiro NUNCA parte no meio do número: o valor
           é `whitespace-nowrap` em 12px (com 16px e `break-words` o número
-          se partia a 390px e em todo notebook de 1024–1440px). Quem cede é o
-          rótulo (`min-w-0 break-words`); a grade empilha abaixo de 480px. */}
-      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.04] bg-gradient-to-b from-white/[0.06] to-transparent px-2 py-2.5 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
+          se partia a 390px e em todo notebook de 1024–1440px). Como o valor
+          não cede, a largura é decidida pela grade: abaixo de 480px e de lg
+          a xl (1024–1535px, onde a sidebar w-64 come a tela e o valor de
+          milhões, "R$ 1.312.456,78", passava da coluna `1fr` e ficava em
+          cima de "Pedidos") o par empilha; de xs a md e a partir de 2xl ele
+          fica lado a lado. O rótulo só cede (`min-w-0 break-words`) quando o
+          par está lado a lado. */}
+      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.04] bg-gradient-to-b from-white/[0.06] to-transparent px-2 py-2.5 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end lg:grid-cols-1 lg:items-start 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-end">
         <div className="flex min-w-0 flex-col">
           <span className="min-w-0 break-words text-xs font-semibold tracking-wide text-zinc-300">
             Total já comprado
