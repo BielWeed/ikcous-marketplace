@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency } from "@/lib/utils";
@@ -661,7 +662,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <Badge
                   className={`mt-2 rounded border px-2 py-0.5 text-[11px] font-black uppercase tracking-[0.15em] ${profile?.role === "admin" ? "border-admin-gold/50 bg-admin-gold text-black" : "border-zinc-800 bg-black text-zinc-500"}`}
                 >
-                  {profile?.role || "Cliente"}
+                  {rotuloDoPapel(profile?.role)}
                 </Badge>
               </div>
 
@@ -1037,19 +1038,19 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                     <div className="relative z-10 flex flex-col justify-between gap-3 border-b border-zinc-800/50 bg-zinc-900/50 p-5 sm:flex-row sm:items-center">
                       <div>
                         <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-white">
-                          Auditoria de Carrinho
+                          Carrinho do cliente
                           <span className="relative ml-1 flex size-2">
                             <span className="absolute inline-flex size-full animate-ping rounded-full bg-green-400 opacity-75" />
                             <span className="relative inline-flex size-2 rounded-full bg-green-500" />
                           </span>
                         </h2>
                         <p className="mt-1 text-[11px] uppercase tracking-widest text-zinc-500">
-                          Produtos retidos na estrutura de checkout
+                          O que está no carrinho agora
                         </p>
                         {cartItems.length > 0 && (
                           <div className="mt-2 flex items-center gap-2">
                             <Badge className="border-none bg-green-500 text-[11px] font-black text-black shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                              {cartItems.length} Elementos
+                              {cartItems.length} itens
                             </Badge>
                             <Button
                               variant="ghost"
