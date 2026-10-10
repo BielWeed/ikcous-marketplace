@@ -375,8 +375,8 @@ describe("Clientes no celular (J4)", () => {
 
   it("(c) a aba do carrinho fala 'carrinho' e conta produtos, no singular", async () => {
     h.papelDaFicha = "customer";
-    // Uma linha com quantidade 3: a aba diz "1 produto" (linhas); o resumo do
-    // topo é quem conta unidades ("3 itens").
+    // Uma linha com quantidade 3: o selo, a aba e o resumo do topo contam a
+    // mesma coisa, produtos diferentes ("1 produto"), nunca unidades (J2-D).
     h.linhasDoCarrinho = [{ product_id: "p-1", quantity: 3 }];
     await abrirFicha();
     await abrirAbaCarrinho();
