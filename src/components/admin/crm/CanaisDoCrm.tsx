@@ -2,7 +2,6 @@ import { ChipDeVariacao } from "@/components/admin/crm/ChipDeVariacao";
 import {
   CartaoDoCrm,
   EstadoVazioDoCrm,
-  SUPERFICIE_DO_CRM,
 } from "@/components/admin/crm/PecasDoCrm";
 import {
   formatarInteiro,
@@ -90,6 +89,16 @@ function estiloDaForma(forma: string): { cor: string; icone: LucideIcon } {
 }
 
 /**
+ * Casca dos cartões de métrica desta aba (redesenho de 10/10/2026): a mesma
+ * do `KpiCard` de `AdminKpiCarousel`. Local — `SUPERFICIE_DO_CRM` é
+ * compartilhada com o Dashboard e não muda. Aplicada por template, nunca por
+ * `cn`: o tailwind-merge 3 lê `bg-gradient-to-b` como cor de fundo e
+ * descartaria o `bg-zinc-900/70`.
+ */
+const CASCA_DE_METRICA =
+  "rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+
+/**
  * Um número do resumo do período: rótulo pequeno, valor grande e — só
  * quando há base — a variação. Compacto de propósito: no celular, o antigo
  * `TileDeKpi` empilhado 3× virava três cartões altos e vazios só para 3
@@ -109,10 +118,10 @@ function ItemDoResumo({
 }>) {
   return (
     <div className="min-w-0 px-2 first:pl-0 last:pr-0 sm:px-4">
-      <p className="text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-400">
+      <p className="break-words text-xs font-semibold leading-tight text-zinc-300">
         {rotulo}
       </p>
-      <p className="truncate text-lg font-black tabular-nums text-white sm:text-xl">
+      <p className="mt-1.5 truncate text-lg font-black tabular-nums leading-tight text-white sm:text-xl sm:leading-tight">
         {valorCompacto && valorCompacto !== valor ? (
           <>
             <span className="sm:hidden">{valorCompacto}</span>
@@ -157,11 +166,7 @@ function BlocoDeCanal({
       : null;
 
   return (
-    <div
-      className={cn(
-        "space-y-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-4",
-      )}
-    >
+    <div className={`${CASCA_DE_METRICA} space-y-3 p-4`}>
       <div className="flex items-center justify-between gap-2">
         <span
           className={cn(
@@ -176,7 +181,7 @@ function BlocoDeCanal({
           {rotuloDoCanal(canal.canal)}
         </span>
         {!zerado && fatiaReceita != null ? (
-          <span className="text-[11px] font-bold tabular-nums text-zinc-400">
+          <span className="text-xs font-semibold tabular-nums text-zinc-400">
             {formatarPercentual(fatiaReceita, 0)} da receita
           </span>
         ) : null}
@@ -194,12 +199,12 @@ function BlocoDeCanal({
         </p>
       ) : (
         <>
-          <p className="text-2xl font-black tracking-tight text-white">
+          <p className="truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
             {formatarMoeda(canal.receita)}
           </p>
           <dl className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-400">
+              <dt className="text-xs font-semibold leading-tight text-zinc-300">
                 Pedidos
               </dt>
               <dd className="font-bold tabular-nums text-white">
@@ -212,7 +217,7 @@ function BlocoDeCanal({
               </dd>
             </div>
             <div>
-              <dt className="text-[11px] uppercase tracking-wider text-zinc-400">
+              <dt className="text-xs font-semibold leading-tight text-zinc-300">
                 Valor médio por venda
               </dt>
               <dd className="font-bold tabular-nums text-white">
@@ -221,7 +226,7 @@ function BlocoDeCanal({
             </div>
           </dl>
           {diffTicket != null && diffTicket !== 0 ? (
-            <p className="text-[11px] text-zinc-400">
+            <p className="text-xs font-medium text-zinc-400">
               Valor médio por venda{" "}
               <strong
                 className={cn(
@@ -432,10 +437,7 @@ export function CanaisDoCrm({
           Resumo do período
         </h2>
         <div
-          className={cn(
-            SUPERFICIE_DO_CRM,
-            "grid grid-cols-3 divide-x divide-white/[0.06] p-3 sm:p-4",
-          )}
+          className={`${CASCA_DE_METRICA} grid grid-cols-3 divide-x divide-white/[0.06] p-3 sm:p-4`}
         >
           <ItemDoResumo
             rotulo="Total vendido"

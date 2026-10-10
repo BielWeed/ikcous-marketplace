@@ -1,0 +1,87 @@
+{
+  "plano": "redesenho-cartoes-e-portas",
+  "frentes": [
+    {
+      "nome": "crm-kpis",
+      "descricao": "cartoes de KPI do CRM (TileDeKpi, CanaisDoCrm) no desenho novo",
+      "posse": [
+        "src/components/admin/crm/TileDeKpi.tsx",
+        "src/components/admin/crm/CanaisDoCrm.tsx",
+        "tests/front/tile-de-kpi-superficie.test.tsx",
+        "tests/front/crm-contraste-aa.test.tsx",
+        "tests/front/canais-do-crm-cores-das-formas.test.tsx",
+        "tests/front/crm-do-painel.test.tsx",
+        "tests/front/crm-visao-geral-sem-rolagem-lateral.test.tsx"
+      ]
+    },
+    {
+      "nome": "financeiro",
+      "descricao": "BlocoKpi, esqueleto e mini-cartoes do Financeiro",
+      "posse": [
+        "src/components/admin/financeiro/**",
+        "tests/front/financeiro-*.test.tsx",
+        "tests/front/admin-financeiro-*.test.tsx"
+      ]
+    },
+    {
+      "nome": "ajustes-porta",
+      "descricao": "PortaDeAjustes no desenho de botao-linha novo",
+      "posse": [
+        "src/views/admin/AdminSettingsView.tsx",
+        "tests/front/ajustes-grupos-e-portas.test.tsx",
+        "tests/front/ajustes-alvos-de-toque-l.test.tsx",
+        "tests/front/admin-ajustes-salao-e-porao.test.tsx"
+      ]
+    },
+    {
+      "nome": "produtos-indicadores",
+      "descricao": "caixas do simulador e metricas do detalhe de Produtos",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "tests/front/produtos-letra-e-toque.test.tsx",
+        "tests/front/produtos-guia-letra-e-toque-l.test.tsx",
+        "tests/front/produtos-cabem-no-celular.test.tsx",
+        "tests/front/admin-products-lucro-so-com-custo.test.tsx",
+        "tests/front/admin-products-margem-sem-custo.test.tsx",
+        "tests/front/produtos-detalhado-nao-esconde-o-preco.test.tsx"
+      ]
+    },
+    {
+      "nome": "cupons-clientes",
+      "descricao": "mini-caixas do cupom e KPIs do cartao de cliente",
+      "posse": [
+        "src/views/admin/AdminCouponsView.tsx",
+        "src/views/admin/AdminCustomersView.tsx",
+        "tests/front/cupons-letra-l.test.tsx",
+        "tests/front/clientes-cabem-no-celular.test.tsx",
+        "tests/front/admin-coupons-view-minimo-com-centavos.test.tsx",
+        "tests/front/admin-customers-ordenacao-ltv-e-ajuda-honesta.test.tsx"
+      ]
+    },
+    {
+      "nome": "qa-avaliacoes",
+      "descricao": "linhas de estado e cartoes de Perguntas e Avaliacoes",
+      "posse": [
+        "src/views/admin/AdminQAView.tsx",
+        "src/views/admin/AdminReviewsView.tsx",
+        "tests/front/avaliacoes-e-avisos-letra-l.test.tsx",
+        "tests/front/admin-qa-view-erro-nao-e-fila-limpa.test.tsx",
+        "tests/front/qa-stats-erro-nao-e-fila-vazia.test.tsx",
+        "tests/front/moderacao-ativa-e-real.test.tsx",
+        "tests/front/admin-reviews-fila-vem-do-banco.test.tsx"
+      ]
+    },
+    {
+      "nome": "inicio-avisos",
+      "descricao": "botoes e cartoes do Inicio e AvisoCard das Notificacoes",
+      "posse": [
+        "src/components/admin/inicio/**",
+        "src/views/admin/AdminNotificationsView.tsx",
+        "tests/front/atalhos-do-inicio-so-dois-botoes-grandes.test.tsx",
+        "tests/front/inicio-do-painel.test.tsx",
+        "tests/front/inicio-diz-a-janela-de-cada-numero.test.tsx",
+        "tests/front/admin-notifications-view.test.tsx"
+      ]
+    }
+  ]
+}

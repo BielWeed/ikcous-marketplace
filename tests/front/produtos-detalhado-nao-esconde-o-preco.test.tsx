@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-regexp --
+   padrões construídos só de constantes do próprio teste (breakpoints fixos), nunca de entrada externa */
 // @vitest-environment jsdom
 //
 // PAINEL SIMPLES, onda J2, frente J2-A ("produtos-detalhado-sem-corte").
@@ -110,9 +112,13 @@ const ALTURA_FIXA = /(^|:)!?(max-)?h-(\d[\d.]*|\[\d[\d.]*(px|rem|em)\])$/;
 
 /** Reserva do `content-visibility` e altura do esqueleto: pixels por breakpoint. */
 const RESERVA_NO_CELULAR = /^!\[contain-intrinsic-size:auto_(\d+)px\]$/;
-const RESERVA_NO_XL = /^xl:!\[contain-intrinsic-size:auto_(\d+)px\]$/;
 const ESQUELETO_NO_CELULAR = /^h-\[(\d+)px\]$/;
-const ESQUELETO_NO_XL = /^xl:h-\[(\d+)px\]$/;
+/** Breakpoints em que a altura do cartão muda (colunas da grade e caixas das
+ * métricas mudam de largura): md 2 colunas, lg 3, 2xl 4 com 280px. */
+const BREAKPOINTS_DA_RESERVA = ["md", "lg", "2xl"] as const;
+const reservaNo = (bp: string) =>
+  new RegExp(`^${bp}:!\\[contain-intrinsic-size:auto_(\\d+)px\\]$`);
+const esqueletoNo = (bp: string) => new RegExp(`^${bp}:h-\\[(\\d+)px\\]$`);
 
 /** Primeiro número (px) da primeira classe que casa, ou undefined. */
 function pxDaClasse(classes: string[], padrao: RegExp): number | undefined {
@@ -360,16 +366,30 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
 
       const classes = classesDe(cartao());
       const celular = pxDaClasse(classes, RESERVA_NO_CELULAR);
-      const xl = pxDaClasse(classes, RESERVA_NO_XL);
       expect(celular, "reserva do celular ausente").toBeDefined();
-      expect(xl, "reserva do xl ausente").toBeDefined();
-      // O cartão real mede 459 a 718px: a reserva não pode ficar nos 440 antigos.
+      // O cartão real mede de ~490 a ~830px: a reserva não pode ficar nos 440
+      // antigos em nenhum breakpoint.
       expect(celular).toBeGreaterThan(440);
-      expect(xl as number).toBeGreaterThan(celular as number);
+      for (const bp of BREAKPOINTS_DA_RESERVA) {
+        const reserva = pxDaClasse(classes, reservaNo(bp));
+        expect(reserva, `reserva do ${bp} ausente`).toBeDefined();
+        expect(reserva as number).toBeGreaterThan(440);
+      }
+      // De lg em diante a grade tem 3-4 colunas estreitas e as 2 caixas de
+      // métrica empilham: o cartão fica mais alto que no celular e no md.
+      expect(pxDaClasse(classes, reservaNo("lg")) as number).toBeGreaterThan(
+        pxDaClasse(classes, reservaNo("md")) as number,
+      );
+      expect(pxDaClasse(classes, reservaNo("md")) as number).toBeGreaterThan(
+        celular as number,
+      );
+      // nenhum resto da reserva antiga de xl (660px, de antes das caixas
+      // empilharem), que deixava 1280-1535px com ~150px a menos
+      expect(classes.some((c) => c.startsWith("xl:!["))).toBe(false);
       expect(classes).toContain("content-visibility-detailed-card");
     });
 
-    it("o esqueleto de carregamento tem a mesma altura da reserva, no celular e no xl", async () => {
+    it("o esqueleto de carregamento tem a mesma altura da reserva, no celular, md, lg e 2xl", async () => {
       carregandoMock = true;
       produtosMock = [];
       await montar();
@@ -405,9 +425,12 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       expect(pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR)).toBe(
         pxDaClasse(classesDoCartao, RESERVA_NO_CELULAR),
       );
-      expect(pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_XL)).toBe(
-        pxDaClasse(classesDoCartao, RESERVA_NO_XL),
-      );
+      for (const bp of BREAKPOINTS_DA_RESERVA) {
+        expect(pxDaClasse(classesDoEsqueleto, esqueletoNo(bp))).toBe(
+          pxDaClasse(classesDoCartao, reservaNo(bp)),
+        );
+        expect(pxDaClasse(classesDoEsqueleto, esqueletoNo(bp))).toBeDefined();
+      }
       expect(
         pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR),
       ).toBeDefined();

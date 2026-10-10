@@ -302,12 +302,48 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
       const textos = [
         ...cartao("detailed").querySelectorAll(
-          "span.text-lg.font-black.tracking-tighter",
+          "span.font-black.tracking-tighter.tabular-nums",
         ),
       ].map((el) => el.textContent);
       expect(textos).toEqual(["33,3%", "50,0%"]);
+      // percentual nunca é partido no meio: uma linha só, sem break-words
+      for (const valor of cartao("detailed").querySelectorAll(
+        "span.font-black.tracking-tighter.tabular-nums",
+      )) {
+        expect(valor.className).toContain("whitespace-nowrap");
+        expect(valor.className).not.toContain("break-words");
+      }
       expect(cartao("detailed").textContent).toContain("Lucro sobre o custo");
       expect(cartao("detailed").textContent).not.toMatch(JARGAO);
+    });
+
+    it("as 2 caixas empilham de lg em diante e o valor não cresce nem encolhe por breakpoint largo", async () => {
+      montarProduto({ price: 15, costPrice: 10 });
+      await montar("detailed");
+
+      const valores = [
+        ...cartao("detailed").querySelectorAll(
+          "span.font-black.tracking-tighter.tabular-nums",
+        ),
+      ];
+      expect(valores).toHaveLength(2);
+      // a grade das 2 caixas: lado a lado no celular, 1 coluna de lg em diante
+      // (selo no canto + valor precisam de >= 113px úteis; em 3-4 colunas do
+      // cartão a caixa sobra com 34-67px e o rótulo ficava por baixo do selo)
+      const grade = valores[0].closest("div.grid");
+      expect(grade?.className).toContain("grid-cols-2");
+      expect(grade?.className).toContain("lg:grid-cols-1");
+      for (const valor of valores) {
+        expect(valor.className).toContain("text-lg");
+        expect(valor.className).toContain("sm:text-[22px]");
+        // a 768px (md) são 2 produtos por linha com as caixas lado a lado:
+        // "1.150,0%" a 22px sobra 2,1px; em 20px (md:text-xl) sobram ~10,9px.
+        // De lg em diante a coluna é única e os 22px voltam.
+        expect(valor.className).toContain("md:text-xl");
+        expect(valor.className).toContain("lg:text-[22px]");
+        expect(valor.className).not.toContain("lg:text-[15px]");
+        expect(valor.className).not.toContain("2xl:text-[22px]");
+      }
     });
 
     it("o nome inteiro em 2 linhas, sem ficar embaixo do menu ⋮", async () => {
@@ -426,6 +462,45 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         expect(classes).toContain("min-h-20");
         expect(classes).not.toContain("h-20");
       }
+    });
+
+    it("as 4 caixas do simulador usam o desenho novo de cartão de métrica", async () => {
+      montarProduto({});
+      await montar();
+      await abrirGuia();
+      await act(async () => {
+        botaoDoGuia("Simulador").click();
+        await esperarMicrotarefas();
+      });
+
+      const rotulo = [...document.querySelectorAll("p")].find(
+        (el) => el.textContent === "Lucro sobre o custo (por unidade)",
+      );
+      const grade = rotulo?.parentElement?.parentElement as HTMLElement;
+      expect(grade.children).toHaveLength(4);
+      for (const caixa of [...grade.children] as HTMLElement[]) {
+        const classes = caixa.className.split(/\s+/);
+        expect(classes).toContain("rounded-2xl");
+        expect(classes).toContain("bg-zinc-900/70");
+        expect(classes).toContain("bg-gradient-to-b");
+        const [rotuloDaCaixa, valorDaCaixa] = [...caixa.children];
+        // rótulo em frase normal, cinza 300; valor grande e tabular
+        expect(rotuloDaCaixa.className).toContain("text-xs");
+        expect(rotuloDaCaixa.className).toContain("text-zinc-300");
+        expect(rotuloDaCaixa.className).not.toContain("uppercase");
+        // abaixo de `sm` no máximo 18px; 22px de `sm` em diante; o número
+        // nunca é partido no meio (nowrap no valor ou no <span> do número)
+        expect(valorDaCaixa.className).toContain("sm:text-[22px]");
+        expect(valorDaCaixa.className).not.toMatch(/(?:^|\s)text-(?:xl|2xl)/);
+        expect(valorDaCaixa.className).toContain("tabular-nums");
+        expect(valorDaCaixa.className).not.toContain("break-words");
+        const numero = valorDaCaixa.querySelector("span") ?? valorDaCaixa;
+        expect(numero.className).toContain("whitespace-nowrap");
+      }
+      // a borda de "Margem de Lucro" segue colorida pela saúde da margem
+      expect(grade.children[0].className).toMatch(
+        /border-(emerald|teal|amber|rose)-500\/20/,
+      );
     });
   });
 });

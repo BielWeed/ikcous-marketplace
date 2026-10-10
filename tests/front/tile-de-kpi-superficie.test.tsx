@@ -42,19 +42,65 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
     hospedeiro.remove();
   });
 
-  it("padrão (sem prop): mantém SUPERFICIE_DO_CRM — o que VisaoGeralDoCrm usa", async () => {
+  it("padrão (sem prop): desenho novo do cartão de métrica (borda 10%, zinc-900/70 + gradiente)", async () => {
     const { TileDeKpi } = await import("@/components/admin/crm/TileDeKpi");
 
     await act(async () => {
       raiz.render(
-        <TileDeKpi rotulo="Receita" valor="R$ 100,00" icone={TrendingUp} />,
+        <TileDeKpi
+          rotulo="Receita"
+          valor="R$ 100,00"
+          icone={TrendingUp}
+          rodape="vs. mês anterior"
+        />,
       );
     });
 
     const cartao = hospedeiro.firstElementChild as HTMLElement;
-    expect(cartao.classList.contains("bg-zinc-900/60")).toBe(true);
+    // Mesmo desenho do KpiCard de AdminKpiCarousel (redesenho de 10/10/2026).
+    expect(cartao.classList.contains("border-white/10")).toBe(true);
+    expect(cartao.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(cartao.classList.contains("bg-gradient-to-b")).toBe(true);
+    expect(cartao.classList.contains("from-white/[0.06]")).toBe(true);
+    // O desenho antigo (SUPERFICIE_DO_CRM) saiu do tile.
+    expect(cartao.classList.contains("bg-zinc-900/60")).toBe(false);
     expect(cartao.classList.contains("admin-glass")).toBe(false);
     expect(cartao.classList.contains("rounded-2xl")).toBe(true);
+
+    // Rótulo em frase normal (não caixa-alta miúda), contraste AA.
+    const rotulo = Array.from(cartao.querySelectorAll("p")).find(
+      (p) => p.textContent === "Receita",
+    )!;
+    expect(rotulo.classList.contains("text-xs")).toBe(true);
+    expect(rotulo.classList.contains("font-semibold")).toBe(true);
+    expect(rotulo.classList.contains("text-zinc-300")).toBe(true);
+    expect(rotulo.classList.contains("uppercase")).toBe(false);
+
+    // Valor grande e branco.
+    const valor = Array.from(cartao.querySelectorAll("p")).find(
+      (p) => p.textContent === "R$ 100,00",
+    )!;
+    expect(valor.classList.contains("text-white")).toBe(true);
+    expect(valor.classList.contains("font-black")).toBe(true);
+    // Dinheiro não pode cortar a 360px: 18px no celular, 24px de sm em diante.
+    expect(valor.classList.contains("text-lg")).toBe(true);
+    expect(valor.classList.contains("sm:text-2xl")).toBe(true);
+    expect(valor.classList.contains("text-[22px]")).toBe(false);
+
+    // Subtítulo 12px, zinc-400 (mínimo de contraste).
+    const rodape = Array.from(cartao.querySelectorAll("div")).find(
+      (d) => d.textContent === "vs. mês anterior",
+    )!;
+    expect(rodape.classList.contains("text-xs")).toBe(true);
+    expect(rodape.classList.contains("text-zinc-400")).toBe(true);
+    expect(rodape.className).not.toMatch(/text-\[11px\]/);
+
+    // Ícone em selo.
+    const selo = cartao.querySelector("svg")!.parentElement as HTMLElement;
+    expect(selo.classList.contains("size-8")).toBe(true);
+    expect(selo.classList.contains("rounded-xl")).toBe(true);
+    expect(selo.classList.contains("border-white/10")).toBe(true);
+    expect(selo.classList.contains("bg-white/[0.06]")).toBe(true);
   });
 
   it('superficie="admin-glass": o cartão troca para a linguagem do Início', async () => {
@@ -73,6 +119,7 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
 
     const cartao = hospedeiro.firstElementChild as HTMLElement;
     expect(cartao.classList.contains("admin-glass")).toBe(true);
+    expect(cartao.classList.contains("bg-zinc-900/70")).toBe(false);
     expect(cartao.classList.contains("bg-zinc-900/60")).toBe(false);
     // N1: admin-glass (src/index.css) não tem rounded-* nenhum — sem o
     // rounded-2xl fixo no corpo do TileDeKpi, este cartão perde o canto.

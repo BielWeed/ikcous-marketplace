@@ -66,6 +66,14 @@ function botaoPeloNome(nome: string): HTMLButtonElement {
   return achado;
 }
 
+// O selo numérico é o único aria-hidden com texto (o ícone da porta é aria-hidden
+// também, mas não tem texto).
+function seloDoContador(botao: HTMLButtonElement): string | undefined {
+  return Array.from(botao.querySelectorAll("[aria-hidden='true']")).find((el) =>
+    el.textContent?.trim(),
+  )?.textContent as string | undefined;
+}
+
 describe("AtalhosDaAba", () => {
   it("em Clientes mostra 'Perguntas e avaliações' e 'Avisar clientes', com os nomes de NOMES_DO_PAINEL", () => {
     renderizar(<AtalhosDaAba aba="clientes" onNavigate={vi.fn()} />);
@@ -162,8 +170,7 @@ describe("AtalhosDaAba", () => {
       />,
     );
     const perguntas = botaoPeloNome("Perguntas e avaliações, 3 sem resposta");
-    const selo = perguntas.querySelector("[aria-hidden='true']");
-    expect(selo?.textContent).toBe("3");
+    expect(seloDoContador(perguntas)).toBe("3");
     // contador zero não aparece: o nome continua só o da tela
     expect(botaoPeloNome("Avisar clientes")).toBeTruthy();
   });
@@ -180,7 +187,7 @@ describe("AtalhosDaAba", () => {
       />,
     );
     const porta = botaoPeloNome("Perguntas e avaliações, 5 novas");
-    expect(porta.querySelector("[aria-hidden='true']")?.textContent).toBe("5");
+    expect(seloDoContador(porta)).toBe("5");
 
     // só Avaliações com contador: a porta fundida não pode perdê-lo
     renderizar(

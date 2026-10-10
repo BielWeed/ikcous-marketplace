@@ -187,6 +187,26 @@ describe("Início: cada número diz o conceito e a janela", () => {
     expect(onNavigate).toHaveBeenCalledWith("admin-financeiro");
   });
 
+  it("(b2) 'A pagar em 7 dias' é um botão-linha novo (rounded-2xl, gradiente, min-h-11)", () => {
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      texto(b).includes("A pagar em 7 dias"),
+    );
+    expect(botao).toBeTruthy();
+    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+      expect(botao?.classList.contains(classe)).toBe(true);
+    }
+    expect(
+      botao?.querySelector("svg.lucide-chevron-right.size-5"),
+    ).not.toBeNull();
+  });
+
+  it("(b3) o resumo do mês não usa cinza 500 em texto", () => {
+    const mes = hospedeiro.querySelector(
+      '[aria-labelledby="inicio-mes-titulo"]',
+    );
+    expect(mes?.querySelector("p.text-zinc-500")).toBeNull();
+  });
+
   it("(c) a legenda da série e a ajuda usam as mesmas palavras", async () => {
     const serie = hospedeiro.querySelector(
       '[aria-labelledby="inicio-serie-titulo"]',
