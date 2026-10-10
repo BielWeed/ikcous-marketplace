@@ -64,26 +64,6 @@ const EXCECOES: Excecao[] = [
     motivo:
       "login é mapa de risco (caminho *login*), fora da onda K; o border-b perdido fica para a onda L",
   },
-  // PROVISÓRIAS: corrigidas pela frente produtos-acabamento. O integrador apaga estas
-  // três depois de integrar as duas frentes (a guarda acusa "exceção que não casa mais").
-  {
-    arquivo: "src/views/admin/AdminProductsView.tsx",
-    classe: "shadow-[0_20px_50px_rgba(0,0,0,0.3)]",
-    motivo:
-      "corrigida pela frente produtos-acabamento; o integrador apaga esta exceção depois de integrar as duas",
-  },
-  {
-    arquivo: "src/views/admin/AdminProductsView.tsx",
-    classe: "shadow-lg",
-    motivo:
-      "corrigida pela frente produtos-acabamento; o integrador apaga esta exceção depois de integrar as duas",
-  },
-  {
-    arquivo: "src/views/admin/AdminProductsView.tsx",
-    classe: "border-y",
-    motivo:
-      "corrigida pela frente produtos-acabamento; o integrador apaga esta exceção depois de integrar as duas",
-  },
 ];
 
 function arquivosDe(pasta: string): string[] {

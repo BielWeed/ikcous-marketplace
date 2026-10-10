@@ -455,8 +455,9 @@ describe("Dashboard CRM", () => {
     const sincronizar = botao(hospedeiro, "Sincronizar");
     expect(sincronizar.className).toContain("border-solid");
 
+    // K-F: o botão de ajuda é só a área de toque de 44px; a borda mora no círculo interno.
     const ajuda = hospedeiro.querySelector(
-      'button[aria-label="Guia de Ajuda e Informações"]',
+      'button[aria-label="Guia de Ajuda e Informações"] > span[aria-hidden="true"]',
     );
     expect(ajuda?.className).toContain("border-solid");
 
