@@ -183,11 +183,17 @@
     "onda F: 'biome errors 13 / teto 14 / baixou -1'), nas duas rodadas da integração. A",
     "queda veio do PR: o teste admin-layout-cracha-pedidos-pendentes tinha um erro de",
     "formatação do Biome na base e foi reescrito. Baixado depois do CI verde (12/12) no",
-    "commit ac85a98c."
+    "commit ac85a98c.",
+    "",
+    "10/10/2026 — warnings de eslint de 409 para 408. Medido na catraca local e no CI",
+    "(PR #785, onda K: 'eslint warnings 408 / teto 409 / baixou -1', job 114155536560, CI",
+    "15/15 verde no commit 1502ef0a). A queda veio do PR: o cabeçalho móvel do painel",
+    "trocou a cor literal e o blur por bg-zinc-950, e a classe fora de ordem saiu junto.",
+    "Baixado depois do CI verde."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 409
+    "warnings": 408
   },
   "biome": {
     "errors": 13,
