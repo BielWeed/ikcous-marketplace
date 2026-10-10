@@ -72,7 +72,10 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
    2. **Prova verde** = os objetos ja estao no banco e falta so o REGISTRO: o unico comando e o
       backfill protegido do ledger (`gravar_ledger=92-202`, `confirmar=GRAVAR`; a pre-checagem da
       8e roda antes de gravar; so `ikcous-publicada` e `savy`). Nenhuma migration e reaplicada. E
-      o caso da IKCOUS (CAF), que recebeu 92..202 sem registro. Limite conhecido: a pre-checagem e
+      o caso da IKCOUS (CAF), que recebeu 92..202 sem registro. A `8e` aceita, funcao por funcao, o
+      corpo da `20261199000000` OU o das sucessoras dela (`20261212000000` em `painel_inicio`,
+      `20261214000000` em `get_admin_analytics_v2`, do lote 17, item 15): a loja que ja recebeu o
+      lote 17 segue com a `8e` POSITIVA e o backfill nao trava. Limite conhecido: a pre-checagem e
       o INSERT sao duas requisicoes; o job divide o grupo `banco-da-loja` com o apply, mas escrita
       FORA dos workflows nessa janela nao e vista.
    3. **Prova com `ok=false`** = diagnostico antes de qualquer apply: `8a`, `8b`, `8k` (so
@@ -542,6 +545,76 @@ negam ao agente `vercel deploy/promote/rollback/alias` e `supabase db push`.)
         `12a`). A `16a`/`16b` nao leem dado: nao dizem se ha pedido com cupom, pedido cancelado ou foto.
         O passo-a-passo para o dono esta em
         [publicar-pix-anulado-devolve-cupom.md](publicar-pix-anulado-devolve-cupom.md).
+
+  15. **Lote de TRES migrations INDEPENDENTES, de apply normal: `20261212000000` (o Inicio conta
+      estoque baixo pela regra da loja), `20261213000000` (o filtro de estoque baixo do admin segue a
+      regra) e `20261214000000` (o lucro do estoque so conta produto com custo).** Sem
+      `backfillLedger` e sem `nuncaAplicar`; valem as duas lojas assinantes (IKCOUS e Savy). Cada uma
+      so troca o CORPO de UMA funcao (`CREATE OR REPLACE` atras do pre-voo `B1_BASELINE_DIVERGENT`):
+      a `20261212000000` o de `painel_inicio()`, a `20261213000000` o de
+      `get_admin_products_paged(text,text,text,text,integer,integer)` e a `20261214000000` o de
+      `get_admin_analytics_v2(integer)`. Dono, ACL, assinatura, SECURITY DEFINER e search_path ficam
+      iguais; nenhuma linha de dado e lida ou reescrita ao aplicar; nenhuma trava de tabela; nenhuma
+      edge function depende delas. Duas consultas, so leitura, so catalogo e de ROL FECHADO (so valem
+      com `rol=ok`):
+      - **`17a-conferir-estoque-do-painel-aplicado`** (a consulta do lote, 14 linhas) prova DEPOIS do
+        apply, funcao por funcao: UMA sobrecarga, a forma (linguagem, volatilidade, SECURITY DEFINER,
+        search_path e retorno), o corpo do lote (sha256, LF ou CRLF) e o EXECUTE `PUBLIC=nao anon=nao
+        authenticated=sim`, mais as 10 colunas de `produtos` e `product_variants` que os trechos novos
+        leem. A proxima migration que redefinir uma dessas tres funcoes precisa atualizar a `17a`
+        (senao, depois do apply dela, a `17a` fica NEGATIVA e o portao PARA).
+      - **`17b-antes-estoque-do-painel-corpos-vigentes`** (`ausenciaConfirmadaPor`, 11 linhas) prova
+        o ANTES, as condicoes dos pre-voos: os tres corpos VIGENTES (o da `20261199000000` para
+        `painel_inicio` e `get_admin_analytics_v2`, o da baseline para `get_admin_products_paged`),
+        UMA sobrecarga, o mesmo EXECUTE (o `CREATE OR REPLACE` preserva a ACL: loja fora dele PARA
+        aqui, antes de escrever) e as mesmas colunas.
+      - **Caminho, uma loja por vez:** ledger sem as versoes e sem evidencia → `17a` (sai NEGATIVA:
+        as migrations ainda nao estao) → `17b` MAIS NOVA que a `17a` e POSITIVA → UM comando
+        `aplicar-migrations.yml` com os TRES arquivos,
+        `20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql`,
+        `20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql` e
+        `20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`, na ordem 12, 13, 14 (sao
+        independentes: a ordem nao muda o resultado; cada apply grava o ledger na mesma transacao) →
+        o ensaio pede a `17a` DE NOVO, que tem de sair POSITIVA. `17a` POSITIVA com as versoes fora do
+        ledger: PARAR (sem backfill; registrar a versao a mao e decisao do dono).
+      - **ESTADO PARCIAL** (so parte das tres no banco ou no ledger): a `17a` reprova o corpo das que
+        faltam e a `17b` o das que entraram, e o portao PARA (nunca reaplica pela metade). As duas
+        saidas, com o dono: (a) o rollback-manual do que entrou e o lote inteiro de novo; ou (b)
+        aplicar a mao as que faltam pelo `aplicar-migrations.yml` e rodar a `17a`.
+      - **A `8e` (lote 92-202) aceita os DOIS estados.** Funcao por funcao, a `8e` aceita o corpo da
+        `20261199000000` OU o da sucessora (`20261212000000` para `painel_inicio`, `20261214000000`
+        para `get_admin_analytics_v2`; `get_admin_products_paged` nao e das 61): ela segue POSITIVA
+        antes, durante e depois deste lote, e a frase das migrations "Aplicar numa loja SO depois do
+        backfill 92-202" vira precaucao. Provado em `tests/banco/portao-8e-aceita-sucessoras-viva.cjs`
+        e, em todos os estados deste lote (inclusive os mistos e o CRLF), em
+        `tests/banco/estoque-do-painel-portao-viva.cjs`.
+      - **Ordem:** o banco de CADA loja primeiro (IKCOUS, depois Savy, fora do horario de pico) e o
+        front desta release logo depois. Banco novo com front velho: os numeros ja saem pela regra da
+        loja (o estoque baixo do Inicio e do filtro, e o lucro do estoque menor e honesto), so o rotulo
+        de `AdminProductsView` ainda nao diz "So com custo". Front novo com banco velho:
+        `AdminProductsView` diz "So com custo" mas o banco ainda soma o valor de venda de produto sem
+        custo (o lucro sai inflado), por isso o banco vem antes.
+      - **Desfazer (decisao do DONO, nunca automatica):** os tres rollback-manual
+        (`rollback-manual-20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql`,
+        `rollback-manual-20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql` e
+        `rollback-manual-20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql`), cada um
+        pelo `aplicar-migrations.yml` (secao Rollback > Banco: apaga a linha da versao do ledger na
+        mesma transacao). Sao independentes entre si (qualquer ordem), devolvem cada corpo ao de antes
+        byte a byte e nao tocam dado. TODOS vem ANTES do rollback da `20261199000000` (que recusa
+        enquanto houver redefinicao posterior no ar). Depois deles a `17b` volta a ser POSITIVA e a
+        `17a` NEGATIVA (provado em `tests/banco/estoque-do-painel-portao-viva.cjs`).
+      - **Depois do merge:** mudar `conferir-banco.cjs` ou o workflow invalida a evidencia antiga:
+        rodar a `17a` e a `17b` DE NOVO, DEPOIS da ultima mudanca nesses arquivos.
+      - **Limites:** `tests/banco/estoque-do-painel-portao-viva.cjs` (Postgres 17 efemero, no
+        `rpc-ci.yml`) prova que as consultas DECIDEM certo (cada defeito reprova a PROPRIA linha;
+        mutantes do texto das consultas ficam vermelhos; ida e volta pelos tres rollbacks; ponta a
+        ponta com o lote real); `tests/banco/estoque-baixo-uma-regra-viva.cjs` e
+        `tests/banco/inventario-so-com-custo-viva.cjs` provam o comportamento das migrations. Nao
+        provam que a IKCOUS ou a Savy estao no estado de antes ou de depois (so o run da consulta
+        contra o ref de cada loja diz). O `supabase_read_only_user` real, a ACL real das lojas e o
+        Postgres 15 da Supabase nao foram medidos ali. As consultas nao conferem o dono das funcoes nem
+        o EXECUTE de `service_role` (nenhuma migration do lote os muda), e nao leem dado: nao dizem
+        quantos produtos estao com estoque baixo.
 
 4. **Promover UM front e conferir a frota.**
 
