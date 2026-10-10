@@ -153,8 +153,7 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
       "Mostrar o grupo 3 de 3",
     ]);
     for (const ponto of pontos) {
-      expect(ponto.className).toContain("h-11");
-      expect(ponto.className).toContain("w-6");
+      expect(ponto.className).toContain("size-11");
       expect(ponto.hasAttribute("title")).toBe(false);
     }
     expect(pontos[0].getAttribute("aria-current")).toBe("true");
@@ -345,7 +344,7 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
       );
       expect(pontos.length).toBe(quantos);
       // Alvo de toque de 44px preservado.
-      for (const ponto of pontos) expect(ponto.className).toContain("h-11");
+      for (const ponto of pontos) expect(ponto.className).toContain("size-11");
 
       const expandir = Array.from(hospedeiro.querySelectorAll("button")).find(
         (b) => b.textContent?.includes("Expandir"),
