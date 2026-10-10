@@ -129,6 +129,18 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
     }
   });
 
+  it("o fundo do cartão chega ao DOM inteiro: cor E gradiente (o cn() descartaria a cor)", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    const classes = hospedeiro
+      .querySelector("h3")!
+      .closest(".group")!
+      .className.split(/\s+/);
+    expect(classes).toContain("bg-zinc-900/70");
+    expect(classes).toContain("bg-gradient-to-b");
+  });
+
   it("o ícone aparece em toda largura, em selo no canto, sem tomar a largura do valor", async () => {
     const AdminKpiCarousel = await carregarCarrossel();
     await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);

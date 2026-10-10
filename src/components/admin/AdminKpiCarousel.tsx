@@ -39,6 +39,15 @@ interface AdminKpiCarouselProps {
 const ALTURA_MINIMA_DO_CARTAO = "min-h-[100px] sm:min-h-24";
 
 /**
+ * Fundo do cartão FORA do `cn()`: o `tailwind-merge` deste projeto trata
+ * `bg-gradient-to-*` como cor de fundo e descarta o `bg-zinc-900/70` quando os
+ * dois passam juntos pelo `cn` (medido: `twMerge("bg-zinc-900/70 bg-gradient-to-b")`
+ * devolve só o gradiente). Concatenado depois do `cn`, os dois chegam ao DOM.
+ */
+const SUPERFICIE_DO_CARTAO =
+  "bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent";
+
+/**
  * Setas do carrossel: só no computador (`hidden sm:flex` — abaixo de 640px elas
  * nem existem, então não há foco invisível no Tab; o celular tem pontos, swipe
  * e "Expandir"). O reveal (hover da faixa ou foco dentro dela) só é aplicado
@@ -78,12 +87,12 @@ const KpiCard = memo(function KpiCard({
 
   return (
     <div
-      className={cn(
-        "group relative flex select-none flex-col justify-center overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 shadow-lg transition-colors duration-300 sm:py-3",
+      className={`${cn(
+        "group relative flex select-none flex-col justify-center overflow-hidden rounded-2xl border border-white/10 p-3.5 shadow-lg transition-colors duration-300 sm:py-3",
         "h-full",
         ALTURA_MINIMA_DO_CARTAO,
         stat.hoverBorder || "hover:border-admin-gold/30",
-      )}
+      )} ${SUPERFICIE_DO_CARTAO}`}
     >
       <div
         className={cn(
