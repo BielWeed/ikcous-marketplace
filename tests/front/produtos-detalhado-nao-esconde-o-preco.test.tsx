@@ -106,7 +106,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 /** Altura fixa, com ou sem variante (`sm:`, `xl:`) e com ou sem `!`: `h-[440px]`,
  * `h-[27rem]`, `h-96`, `h-2.5`, `max-h-[300px]`, `max-h-96`. Não casa `h-full`,
  * `min-h-*`, `flex-1` nem `size-*`. */
-const ALTURA_FIXA = /(^|:)!?(max-)?h-(\d+(\.\d+)?|\[\d+(\.\d+)?(px|rem|em)\])$/;
+const ALTURA_FIXA = /(^|:)!?(max-)?h-(\d[\d.]*|\[\d[\d.]*(px|rem|em)\])$/;
 
 /** Reserva do `content-visibility` e altura do esqueleto: pixels por breakpoint. */
 const RESERVA_NO_CELULAR = /^!\[contain-intrinsic-size:auto_(\d+)px\]$/;
