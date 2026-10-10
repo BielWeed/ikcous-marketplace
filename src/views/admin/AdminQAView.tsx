@@ -481,7 +481,7 @@ export const AdminQAView = memo(function AdminQAView({
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="animate-pulse space-y-4 rounded-[2rem] border border-white/5 bg-white/[0.02] p-6"
+          className="animate-pulse space-y-4 rounded-2xl border border-white/10 bg-zinc-900/70 p-6"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -815,7 +815,7 @@ export const AdminQAView = memo(function AdminQAView({
 
                       <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
                         <Calendar className="size-3.5 text-zinc-400" />
-                        <span className="mt-0.5 text-xs font-semibold leading-none tabular-nums text-zinc-300">
+                        <span className="mt-0.5 text-xs font-semibold tabular-nums leading-none text-zinc-300">
                           {new Date(q.createdAt).toLocaleDateString("pt-BR")}
                         </span>
                       </div>

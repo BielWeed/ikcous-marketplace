@@ -933,7 +933,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="group/reply relative mb-8 overflow-hidden rounded-[2rem] border border-admin-gold/10 bg-admin-gold/[0.02] p-6 shadow-inner lg:p-8"
+                        className="group/reply relative mb-8 overflow-hidden rounded-2xl border border-admin-gold/10 bg-admin-gold/[0.02] p-6 shadow-inner lg:p-8"
                       >
                         <div className="absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover/reply:opacity-10">
                           <MessageSquare className="size-16 text-admin-gold" />
@@ -1033,7 +1033,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                           exit={{ opacity: 0, height: 0, marginTop: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-white/5">
+                          <div className="space-y-6 rounded-2xl border border-white/5 bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-white/5">
                             <div className="flex items-center gap-3">
                               <div className="flex size-8 items-center justify-center rounded-full bg-admin-gold/10">
                                 <MessageSquare className="size-4 text-admin-gold" />
