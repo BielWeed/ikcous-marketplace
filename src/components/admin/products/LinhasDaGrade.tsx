@@ -10,7 +10,10 @@ import { LocalBufferedInput } from "@/components/admin/LocalBufferedInput";
  * É só a tela do passo: o estado (as linhas, o SKU base, o que foi digitado
  * em "aplicar") mora no modal, que é quem efetiva. Preço por combinação é o
  * que existe aqui — sem campo a mais: vazio quer dizer "usa o preço padrão do
- * produto" (o "Auto" do modal de uma variante).
+ * produto" (o "Auto" do modal de uma variante). Produto sem preço ainda: o
+ * preço digitado aqui vira o Preço de Venda dele (`preco-da-grade.ts` decide);
+ * produto que já tem preço: ele aparece de sugestão e o que se digita vale só
+ * para estas combinações novas.
  */
 
 /** Uma combinação do passo 2, com o que o lojista digitou para ela. */
@@ -26,6 +29,9 @@ interface LinhasDaGradeProps {
   /** Quantas variantes o produto já tem (ativas e desligadas): só informa
    *  que elas não são tocadas. */
   quantasExistentes: number;
+  /** O Preço de Venda que o produto já tem (maior que zero), ou `undefined`
+   *  quando o campo ainda está vazio — muda a sugestão e a frase do bloco. */
+  precoDoProduto: number | undefined;
   /** O SKU previsto de cada linha, na mesma ordem (vazio = "sem SKU"). */
   skusPrevistos: string[];
   skuBase: string;
@@ -46,6 +52,7 @@ interface LinhasDaGradeProps {
 export function LinhasDaGrade({
   linhas,
   quantasExistentes,
+  precoDoProduto,
   skusPrevistos,
   skuBase,
   onSkuBase,
@@ -56,6 +63,13 @@ export function LinhasDaGrade({
   onAplicarParaTodas,
   onMudarLinha,
 }: LinhasDaGradeProps) {
+  const precoDoProdutoEmReais =
+    precoDoProduto === undefined
+      ? null
+      : precoDoProduto.toLocaleString("pt-BR", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
   return (
     <>
       <div className="space-y-2 rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-4">
@@ -85,7 +99,7 @@ export function LinhasDaGrade({
               value={aplicarPreco}
               onFlush={onAplicarPreco}
               className="w-full rounded-2xl border border-white/5 bg-zinc-950 py-3.5 pl-10 pr-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-              placeholder="preço"
+              placeholder={precoDoProdutoEmReais ?? "preço"}
             />
           </div>
         </div>
@@ -96,10 +110,27 @@ export function LinhasDaGrade({
         >
           Aplicar para todas
         </button>
-        <p className="ml-1 text-[11px] leading-tight text-zinc-500">
-          Deixa o preço vazio para todas usarem o preço padrão do produto — o
-          mesmo "Auto" do modal de uma variante.
-        </p>
+        {precoDoProdutoEmReais === null ? (
+          <p
+            className="ml-1 text-[11px] leading-tight text-zinc-500"
+            data-testid="preco-do-produto-na-grade"
+          >
+            O produto ainda não tem Preço de Venda: o preço que você digitar
+            para todas as linhas vira o dele (se forem diferentes, vale o
+            menor). Se só algumas linhas tiverem preço, você ainda informa o
+            Preço de Venda no formulário.
+          </p>
+        ) : (
+          <p
+            className="ml-1 text-[11px] leading-tight text-zinc-500"
+            data-testid="preco-do-produto-na-grade"
+          >
+            O preço do produto é R$ {precoDoProdutoEmReais}. Deixe o preço vazio
+            para a variação usar esse mesmo preço ("Auto"); um valor digitado
+            aqui vale só para estas combinações novas e não muda o preço do
+            produto.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

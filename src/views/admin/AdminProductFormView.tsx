@@ -491,6 +491,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
   const [showVariantForm, setShowVariantForm] = useState(false);
   // Grade de combinações: o modal de lote ao lado do unitário.
   const [showGradeForm, setShowGradeForm] = useState(false);
+  // O Preço de Venda que a grade preencheu (campo estava vazio): a frase "veio
+  // da grade" fica sob o campo até a lojista mudar o valor. Não vai para o
+  // rascunho — é só um recado da tela, o preço em si fica no `formData`.
+  const [precoVeioDaGrade, setPrecoVeioDaGrade] = useState(false);
   const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(
     null,
   );
@@ -1677,7 +1681,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
    * novo (o modal já bloqueou no "Gerar") porque o estado do formulário é
    * dono deste lado da parede.
    */
-  const handleEfetivarGrade = (linhas: LinhaProntaDaGrade[]): boolean => {
+  const handleEfetivarGrade = (
+    linhas: LinhaProntaDaGrade[],
+    precoDaGrade?: number,
+  ): boolean => {
     if (linhas.length === 0) return false;
 
     const trava = travaDeUmGrupoSo(formData.variants, null, linhas[0].name);
@@ -1694,12 +1701,20 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // Defesa em profundidade contra o mesmo lote entregue duas vezes: só
     // entra a combinação que a lista, NO MOMENTO de gravar o estado, ainda
     // não tem (comparada pela chave da grade, não pelo texto).
+    //
+    // O Preço de Venda que a grade deu ao produto entra NA MESMA atualização das
+    // linhas (as iguais a ele já vêm em Auto) e só se o campo ainda estiver
+    // vazio: o lote entregue de novo, ou um preço digitado no meio, nunca é
+    // sobrescrito. A trava de cima já recusou antes de chegar aqui, então
+    // recusa não deixa preço pela metade.
+    const aplicaPrecoDaGrade =
+      precoDaGrade !== undefined && formData.price.trim() === "";
     setFormData((prev) => {
       const jaTem = new Set(prev.variants.map((v) => chaveDaIdentidade(v)));
       const novas = linhas.filter(
         (linha) => !jaTem.has(chaveDaIdentidade(linha)),
       );
-      return formComVariacoes(prev, [
+      const comVariacoes = formComVariacoes(prev, [
         ...prev.variants,
         ...novas.map(
           (linha) =>
@@ -1709,7 +1724,13 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             }) as any,
         ),
       ]);
+      return aplicaPrecoDaGrade &&
+        precoDaGrade !== undefined &&
+        prev.price.trim() === ""
+        ? { ...comVariacoes, price: precoDaGrade.toFixed(2) }
+        : comVariacoes;
     });
+    if (aplicaPrecoDaGrade) setPrecoVeioDaGrade(true);
     setShowGradeForm(false);
     toast.success(
       linhas.length === 1
@@ -2901,6 +2922,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         )}
         grupoUnicoEmUso={gruposDeVariacao(formData.variants).at(0) ?? null}
         skusDaLoja={skusDaLoja}
+        precoDoProduto={formData.price}
         onEfetivar={handleEfetivarGrade}
       />
 
@@ -3674,9 +3696,12 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   name="price"
                   mask="currency"
                   value={formData.price}
-                  onFlush={(val) =>
-                    setFormData((prev) => ({ ...prev, price: val }))
-                  }
+                  onFlush={(val) => {
+                    // Sair do campo sem mexer também chama o onFlush: só
+                    // um valor DIFERENTE tira a frase "veio da grade".
+                    if (val !== formData.price) setPrecoVeioDaGrade(false);
+                    setFormData((prev) => ({ ...prev, price: val }));
+                  }}
                   className="w-full rounded-xl border border-emerald-500/20 bg-zinc-950 py-3 pl-11 pr-4 text-base font-black tabular-nums text-emerald-500 shadow-inner transition-all focus:outline-none focus:ring-4 focus:ring-emerald-500/10 sm:rounded-2xl sm:py-5 sm:pl-14 sm:pr-6 sm:text-lg"
                 />
               </div>
@@ -3685,6 +3710,28 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   {priceError}
                 </span>
               )}
+              {!priceError &&
+                precoVeioDaGrade &&
+                formData.price.trim() !== "" &&
+                formData.variants.length > 0 && (
+                  <span
+                    data-testid="preco-veio-da-grade"
+                    className="ml-1 mt-1 block text-[11px] font-bold text-emerald-500"
+                  >
+                    Este preço veio da grade — as variações sem preço próprio
+                    usam ele.
+                  </span>
+                )}
+              {!priceError &&
+                formData.price.trim() === "" &&
+                formData.variants.some((v) => v.priceOverride == null) && (
+                  <span
+                    data-testid="preco-das-variacoes-sem-preco"
+                    className="ml-1 mt-1 block text-[11px] font-bold text-amber-500"
+                  >
+                    As variações sem preço usam este.
+                  </span>
+                )}
             </div>
 
             <div className="space-y-1.5 md:space-y-3">
