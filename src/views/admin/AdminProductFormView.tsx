@@ -1335,14 +1335,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         return;
       }
 
-      const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12MB
-      const MAX_TOTAL_SIZE = 30 * 1024 * 1024; // 30MB
+      const MAX_SINGLE_SIZE = 12 * 1024 * 1024; // 12 MB
+      const MAX_TOTAL_SIZE = 30 * 1024 * 1024; // 30 MB
       let totalSize = 0;
 
       for (const file of files) {
         if (file.size > MAX_SINGLE_SIZE) {
           toast.error(
-            `O arquivo "${file.name}" excede o tamanho limite de 12MB. Envie uma imagem menor.`,
+            `O arquivo "${file.name}" excede o tamanho limite de 12 MB. Envie uma imagem menor.`,
           );
           return;
         }
@@ -1351,7 +1351,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
       if (totalSize > MAX_TOTAL_SIZE) {
         toast.error(
-          `O tamanho total das imagens selecionadas (${(totalSize / (1024 * 1024)).toFixed(1)}MB) excede o limite de 30MB por envio.`,
+          `O tamanho total das imagens selecionadas (${(totalSize / (1024 * 1024)).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB) excede o limite de 30 MB por envio.`,
         );
         return;
       }
@@ -2329,7 +2329,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <div className="space-y-2">
                       <label
                         htmlFor="cat-name"
-                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                       >
                         Nome do Setor / Categoria
                       </label>
@@ -2445,7 +2445,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           <>
                             <label
                               htmlFor="variant-name"
-                              className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                              className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                             >
                               Atributo (ex: Cor, Tamanho)
                             </label>
@@ -2487,7 +2487,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             )}
                             <label
                               htmlFor="variant-value"
-                              className="ml-1 pt-2 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                              className="ml-1 pt-2 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                             >
                               Valor do Atributo
                             </label>
@@ -2570,7 +2570,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-sku"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
                           Código interno (SKU)
                         </label>
@@ -2595,7 +2595,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-status"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
                           Aparece na loja?
                         </label>
@@ -2637,7 +2637,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <div className="space-y-2">
                       <label
                         htmlFor="variant-codigo-barras"
-                        className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                        className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                       >
                         Código de barras
                       </label>
@@ -2681,18 +2681,18 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           </button>
                         )}
                       </div>
-                      <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                      <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                         Opcional. É o código impresso na embalagem desta
                         variação; a tela Vender lê ele pela câmera.
                       </span>
                       {variantCodigoBarrasError && (
-                        <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                        <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
                           {variantCodigoBarrasError}
                         </span>
                       )}
                       {!variantCodigoBarrasError &&
                         variantCodigoBarrasAvisoRede && (
-                          <span className="ml-1 mt-1 block text-[10px] font-bold text-amber-500">
+                          <span className="ml-1 mt-1 block text-[11px] font-bold text-amber-500">
                             {variantCodigoBarrasAvisoRede}
                           </span>
                         )}
@@ -2703,7 +2703,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-stock"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
                           Quantidade em Estoque
                         </label>
@@ -2720,14 +2720,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           }
                           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 text-sm font-black transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                         />
-                        <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                        <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Estoque físico real para esta variação específica.
                         </span>
                       </div>
                       <div className="space-y-2">
                         <label
                           htmlFor="variant-price"
-                          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
                         >
                           Preço diferente nesta variação
                         </label>
@@ -2750,7 +2750,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                             placeholder="Auto"
                           />
                         </div>
-                        <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
+                        <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-500">
                           Deixe em branco para usar o preço padrão.
                         </span>
                       </div>
@@ -2761,7 +2761,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         a imagem já foi enviada quando o produto a recebeu, a
                         variante só referencia a URL). */}
                     <div className="space-y-2">
-                      <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                      <span className="ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                         Imagem da Variante (Opcional)
                       </span>
                       {formData.images.length === 0 &&
@@ -2842,7 +2842,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           })}
                         </div>
                       )}
-                      <span className="ml-1 block text-[10px] leading-tight text-zinc-500">
+                      <span className="ml-1 block text-[11px] leading-tight text-zinc-500">
                         Aponta para uma das imagens do produto — nada é enviado
                         de novo. Facilita a visualização do produto na tela de
                         checkout e na seleção de atributos.
@@ -2919,10 +2919,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <button
                     type="button"
                     onClick={() => setShowHelpModal(true)}
-                    className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+                    className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
                     title="Guia de Cadastro e Ajuda"
                   >
-                    <HelpCircle className="size-3.5" />
+                    {/* O botão é a área de toque de 44px; o círculo de 28px é só o desenho. */}
+                    <span
+                      aria-hidden="true"
+                      className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+                    >
+                      <HelpCircle className="size-3.5" />
+                    </span>
                   </button>
                 </AdminPageHeader>
               </div>
@@ -3051,15 +3057,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <button
                 type="button"
                 onClick={() => setShowPhotoGuide((prev) => !prev)}
-                className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                  showPhotoGuide
-                    ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                )}
+                className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
                 title="Ajuda / Guia de Fotos"
               >
-                ?
+                {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                    showPhotoGuide
+                      ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                      : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                  )}
+                >
+                  ?
+                </span>
               </button>
             </div>
 
@@ -3345,7 +3357,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </div>
 
                 {formData.images.length > 1 && (
-                  <span className="ml-1 mt-1 block text-[9px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
+                  <span className="ml-1 mt-1 block text-[11px] font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1.5 animate-pulse select-none">
                     ↔ Deslize para o lado para ver mais fotos
                   </span>
                 )}
@@ -3448,15 +3460,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <button
               type="button"
               onClick={() => toggleHelp("productData")}
-              className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                expandedHelp.productData
-                  ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
-                  : "bg-zinc-950/50 border-white/10 text-zinc-400",
-              )}
+              className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
               title="Ajuda / Guia de Dados do Produto"
             >
-              ?
+              {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                  expandedHelp.productData
+                    ? "bg-blue-500 border-blue-400 text-blue-950 shadow-md shadow-blue-500/10 scale-110"
+                    : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                )}
+              >
+                ?
+              </span>
             </button>
           </div>
 
@@ -3551,7 +3569,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <div className="space-y-1.5 md:col-span-2 md:space-y-3">
               <label
                 htmlFor="product-name"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Nome do Produto *
               </label>
@@ -3571,7 +3589,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <div className="space-y-1.5 md:col-span-2 md:space-y-3">
               <label
                 htmlFor="product-description"
-                className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="ml-1 text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Descrição do Produto *
               </label>
@@ -3589,7 +3607,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </div>
 
             <div className="space-y-1.5 md:col-span-2 md:space-y-3">
-              <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-zinc-500">
+              <span className="ml-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                 Setor / Categoria *
               </span>
               <div className="group relative">
@@ -3672,7 +3690,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             <div className="space-y-1.5 md:space-y-3">
               <label
                 htmlFor="product-stock"
-                className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
               >
                 Quantidade em Estoque *
               </label>
@@ -3694,14 +3712,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 </div>
               </div>
               {hasActiveVariants ? (
-                <span className="ml-1 mt-1 block flex items-center gap-1.5 text-[10px] font-bold text-amber-500">
+                <span className="ml-1 mt-1 block flex items-center gap-1.5 text-[11px] font-bold text-amber-500">
                   <Info className="size-3.5 shrink-0" />
                   Estoque gerenciado pelas variantes ativas ({formData.stock}{" "}
                   un).
                 </span>
               ) : (
                 stockError && (
-                  <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                  <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
                     {stockError}
                   </span>
                 )
@@ -3736,15 +3754,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <button
                       type="button"
                       onClick={() => toggleHelp("productVariants")}
-                      className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                        expandedHelp.productVariants
-                          ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                          : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                      )}
+                      className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
                       title="Ajuda / Guia de Variações"
                     >
-                      ?
+                      {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                          expandedHelp.productVariants
+                            ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                            : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                        )}
+                      >
+                        ?
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -4045,15 +4069,21 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <button
                   type="button"
                   onClick={() => toggleHelp("productPricing")}
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black border transition-all shrink-0 active:scale-95 select-none touch-manipulation",
-                    expandedHelp.productPricing
-                      ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
-                      : "bg-zinc-950/50 border-white/10 text-zinc-400",
-                  )}
+                  className="flex min-h-11 min-w-11 shrink-0 touch-manipulation select-none items-center justify-center rounded-full active:scale-95"
                   title="Ajuda / Guia de Precificação"
                 >
-                  ?
+                  {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "flex size-8 items-center justify-center rounded-full border text-xs font-black transition-all",
+                      expandedHelp.productPricing
+                        ? "bg-emerald-500 border-emerald-400 text-emerald-950 shadow-md shadow-emerald-500/10 scale-110"
+                        : "bg-zinc-950/50 border-white/10 text-zinc-400",
+                    )}
+                  >
+                    ?
+                  </span>
                 </button>
               </div>
 
@@ -4157,7 +4187,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               <div className="space-y-1.5 md:space-y-3">
                 <label
                   htmlFor="product-cost-price"
-                  className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                  className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                 >
                   Preço de Custo
                 </label>
@@ -4179,7 +4209,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 {costError && (
                   <span
                     className={cn(
-                      "text-[10px] font-bold mt-1 ml-1 block",
+                      "text-[11px] font-bold mt-1 ml-1 block",
                       costError.includes("Aviso")
                         ? "text-amber-500"
                         : "text-red-500",
@@ -4196,10 +4226,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   className="flex cursor-pointer select-none items-center justify-between rounded-xl border border-white/5 bg-zinc-900/40 p-2.5 transition-all hover:border-emerald-500/10 sm:rounded-2xl sm:p-3.5"
                 >
                   <div className="space-y-0.5">
-                    <span className="text-[10px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
+                    <span className="text-[11px] font-black uppercase italic tracking-tight text-white transition-colors group-hover:text-emerald-400">
                       Produto em Promoção
                     </span>
-                    <span className="block text-[8px] font-medium uppercase tracking-wider text-zinc-500">
+                    <span className="block text-[11px] font-medium uppercase tracking-wider text-zinc-500">
                       Ativar preço cortado (De/Por)
                     </span>
                   </div>
@@ -4226,7 +4256,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <div className="space-y-1.5 duration-300 animate-in fade-in slide-in-from-top-2 md:space-y-3">
                     <label
                       htmlFor="product-original-price"
-                      className="ml-1 block cursor-pointer text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                      className="ml-1 block cursor-pointer text-[11px] font-black uppercase tracking-widest text-zinc-500"
                     >
                       Preço Original ("De:")
                     </label>
@@ -4250,7 +4280,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       />
                     </div>
                     {originalPriceError && (
-                      <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
+                      <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
                         {originalPriceError}
                       </span>
                     )}
@@ -4507,13 +4537,25 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   setFormData((prev) => ({ ...prev, estoqueMinimo: val }))
                 }
                 placeholder="Ex: 5"
+                aria-invalid={estoqueMinimoError ? true : undefined}
+                aria-describedby={
+                  estoqueMinimoError
+                    ? "product-estoque-minimo-dica product-estoque-minimo-erro"
+                    : "product-estoque-minimo-dica"
+                }
                 className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
               />
-              <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
+              <span
+                id="product-estoque-minimo-dica"
+                className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400"
+              >
                 Vazio usa o padrão (5). Com variações, vale para a soma.
               </span>
               {estoqueMinimoError && (
-                <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
+                <span
+                  id="product-estoque-minimo-erro"
+                  className="ml-1 mt-1 block text-[11px] font-bold text-red-500"
+                >
                   {estoqueMinimoError}
                 </span>
               )}
