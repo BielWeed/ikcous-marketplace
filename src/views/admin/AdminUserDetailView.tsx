@@ -603,7 +603,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             </span>
             <button
               onClick={() => handleCopy(userId, "id")}
-              className="group flex items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
+              className="group flex min-h-11 items-center gap-1.5 rounded border border-zinc-800 bg-zinc-900/60 px-2 py-0.5 font-mono text-[11px] text-zinc-400 transition-all hover:border-zinc-700 hover:bg-zinc-800/80 hover:text-white"
             >
               <span className="blur-[0.3px] transition-all group-hover:blur-none">
                 {userId}
@@ -709,8 +709,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </div>
                   {profile?.email && (
                     <button
+                      type="button"
+                      aria-label="Copiar e-mail"
                       onClick={() => handleCopy(profile.email!, "email")}
-                      className="shrink-0 rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
                       title="Copiar e-mail"
                     >
                       {copiedField === "email" ? (
@@ -739,8 +741,10 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </div>
                   {profile?.whatsapp && (
                     <button
+                      type="button"
+                      aria-label="Copiar telefone"
                       onClick={() => handleCopy(profile.whatsapp!, "whatsapp")}
-                      className="shrink-0 rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
+                      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-1.5 text-zinc-500 opacity-100 transition-all hover:bg-zinc-800 hover:text-white hover-hover:opacity-0 hover-hover:group-hover/item:opacity-100"
                       title="Copiar telefone"
                     >
                       {copiedField === "whatsapp" ? (
@@ -895,7 +899,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                 <TabsList className="mb-4 grid h-auto w-full grid-cols-2 rounded-2xl border border-zinc-800/50 bg-zinc-950/80 p-1.5 shadow-inner sm:grid-cols-4">
                   <TabsTrigger
                     value="orders"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
                   >
                     <Package className="size-3.5" />
                     <span className="hidden sm:inline">Pedidos</span>
@@ -906,7 +910,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="cart"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:border data-[state=active]:border-admin-gold/20 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold sm:text-xs"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:border data-[state=active]:border-admin-gold/20 data-[state=active]:bg-admin-gold/10 data-[state=active]:text-admin-gold sm:text-xs"
                   >
                     <ShoppingCart className="size-3.5" />
                     <span className="hidden sm:inline">Carrinho</span>
@@ -917,7 +921,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="addresses"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
                   >
                     <MapPin className="size-3.5" />
                     <span className="hidden sm:inline">Endereços</span>
@@ -928,7 +932,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                   </TabsTrigger>
                   <TabsTrigger
                     value="voz"
-                    className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
+                    className="flex min-h-11 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[11px] font-black uppercase tracking-wider text-zinc-500 transition-all data-[state=active]:bg-zinc-800 data-[state=active]:text-white data-[state=active]:shadow sm:text-xs"
                   >
                     <Star className="size-3.5" />
                     <span className="hidden sm:inline">Voz do Cliente</span>
