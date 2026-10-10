@@ -371,7 +371,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               <AdminPageHeader
                 titulo={`${isEditing ? "Editar" : "Novo"} ${NOMES_DO_PAINEL["admin-coupon-form"].toLowerCase()}`}
               />
-              <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">
                 Configure os detalhes do seu cupom de desconto
               </p>
             </div>
@@ -389,10 +389,10 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
           <div className="text-red-450 flex select-none items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 duration-300 animate-in fade-in slide-in-from-top">
             <AlertTriangle className="size-5 shrink-0 text-red-400" />
             <div className="text-left">
-              <p className="text-[10px] font-black uppercase tracking-wider text-red-400">
+              <p className="text-[11px] font-black uppercase tracking-wider text-red-400">
                 Modo Offline Ativo
               </p>
-              <p className="mt-1 text-[9px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+              <p className="mt-1 text-[11px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                 Criação e edição de cupons estão temporariamente desabilitadas.
               </p>
             </div>
@@ -425,7 +425,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                 </div>
                 <div
                   className={cn(
-                    "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[6px] font-black uppercase tracking-widest",
+                    "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-black uppercase tracking-wider",
                     formData.active
                       ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
                       : "border-zinc-500/20 bg-zinc-500/10 text-zinc-500",
@@ -438,7 +438,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               {/* Preview Lower Section */}
               <div className="flex items-end justify-between pt-2">
                 <div>
-                  <p className="mb-0.5 text-[7px] font-black uppercase tracking-widest text-zinc-500">
+                  <p className="mb-0.5 text-[11px] font-black uppercase tracking-wider text-zinc-500">
                     Desconto
                   </p>
                   <p className="text-base font-black italic text-white leading-none">
@@ -448,7 +448,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="mb-0.5 text-[7px] font-black uppercase tracking-widest text-zinc-500">
+                  <p className="mb-0.5 text-[11px] font-black uppercase tracking-wider text-zinc-500">
                     Mínimo Compra
                   </p>
                   <p className="text-xs font-bold text-zinc-400 leading-none">
@@ -460,7 +460,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                 </div>
               </div>
             </div>
-            <p className="text-[9px] font-medium tracking-wide text-zinc-500 text-center select-none uppercase">
+            <p className="text-[11px] font-medium tracking-wide text-zinc-500 text-center select-none uppercase">
               Visualização em tempo real do cupom
             </p>
           </div>
@@ -472,7 +472,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                 <div className="flex items-center justify-between">
                   <Label
                     htmlFor="coupon-code"
-                    className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                    className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
                   >
                     Código do Cupom
                   </Label>
@@ -480,7 +480,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                     type="button"
                     onClick={gerarCodigo}
                     disabled={isOffline || isSubmitting}
-                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 hover:bg-white/5 disabled:opacity-50"
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-400 hover:bg-white/5 disabled:opacity-50"
                   >
                     <Shuffle aria-hidden="true" className="size-3" />
                     Gerar
@@ -506,7 +506,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               <div className="w-[100px] space-y-1.5 shrink-0">
                 <Label
                   htmlFor="coupon-active"
-                  className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 block text-center"
+                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 block text-center"
                 >
                   Ativar?
                 </Label>
@@ -527,7 +527,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
             {/* Type & Value */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500 block">
+                <span className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 block">
                   Tipo de Desconto
                 </span>
                 <div className="relative flex h-11 w-full overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] p-1 select-none">
@@ -540,7 +540,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                     }
                     disabled={isOffline || isSubmitting}
                     className={cn(
-                      "relative z-10 flex flex-1 items-center justify-center rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-50",
+                      "relative z-10 flex flex-1 items-center justify-center rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all disabled:opacity-50",
                       formData.type === "percentage"
                         ? "font-extrabold text-black"
                         : "font-bold text-zinc-400 hover:text-white",
@@ -557,7 +557,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
                     }
                     disabled={isOffline || isSubmitting}
                     className={cn(
-                      "relative z-10 flex flex-1 items-center justify-center rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all disabled:opacity-50",
+                      "relative z-10 flex flex-1 items-center justify-center rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all disabled:opacity-50",
                       formData.type === "fixed"
                         ? "font-extrabold text-black"
                         : "font-bold text-zinc-400 hover:text-white",
@@ -580,7 +580,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               <div className="space-y-1.5">
                 <Label
                   htmlFor="coupon-value"
-                  className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   {formData.type === "percentage" ? "Valor (%)" : "Valor (R$)"}
                 </Label>
@@ -608,7 +608,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               <div className="space-y-1.5">
                 <Label
                   htmlFor="coupon-min-purchase"
-                  className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   Mínimo de Compra
                 </Label>
@@ -634,7 +634,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               <div className="space-y-1.5">
                 <Label
                   htmlFor="coupon-usage-limit"
-                  className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                  className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
                 >
                   Limite de Uso
                 </Label>
@@ -685,7 +685,7 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
             <div className="space-y-1.5">
               <Label
                 htmlFor="coupon-valid-until"
-                className="ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+                className="ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500"
               >
                 Validade (Opcional)
               </Label>
@@ -722,14 +722,14 @@ export const AdminCouponFormView = memo(function AdminCouponFormView({
               variant="outline"
               onClick={handleCancel}
               disabled={isSubmitting}
-              className="h-11 flex-1 rounded-xl border-white/10 bg-white/5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 hover:bg-white/10"
+              className="h-11 flex-1 rounded-xl border-white/10 bg-white/5 text-[11px] font-bold uppercase tracking-wider text-zinc-400 hover:bg-white/10"
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSubmit}
               disabled={isOffline || isSubmitting}
-              className="h-11 flex-[1.5] rounded-xl bg-white text-[10px] font-bold uppercase tracking-wider text-black shadow-lg hover:scale-[1.01] active:scale-98 transition-all disabled:opacity-50"
+              className="h-11 flex-[1.5] rounded-xl bg-white text-[11px] font-bold uppercase tracking-wider text-black shadow-lg hover:scale-[1.01] active:scale-98 transition-all disabled:opacity-50"
             >
               {isSubmitting ? "Salvando..." : "Salvar Cupom"}
             </Button>
