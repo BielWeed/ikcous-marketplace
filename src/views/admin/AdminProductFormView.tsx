@@ -2189,16 +2189,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             />
           </svg>
         </div>
-        <p className="mt-6 text-[10px] font-black uppercase tracking-[0.2em] text-red-400">
+        <p className="mt-6 text-[11px] font-black uppercase tracking-[0.2em] text-red-400">
           Não foi possível carregar este produto
         </p>
-        <p className="mt-1 text-[9px] text-zinc-500">
+        <p className="mt-1 text-[11px] text-zinc-500">
           Verifique a conexão — o formulário fica bloqueado para proteger os
           dados
         </p>
         <button
           onClick={() => window.location.reload()}
-          className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+          className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
         >
           Recarregar
         </button>
@@ -2319,7 +2319,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <h3 className="text-xl font-black tracking-tight">
                         Nova Categoria
                       </h3>
-                      <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                      <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                         Classificação de Estoque
                       </p>
                     </div>
@@ -2428,7 +2428,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <h3 className="text-xl font-black tracking-tight">
                         {editingVariant ? "Editar Variante" : "Nova Variante"}
                       </h3>
-                      <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                      <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                         Grade de Produto
                       </p>
                     </div>
@@ -2474,7 +2474,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                       )
                                     }
                                     className={cn(
-                                      "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
+                                      "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                       par.name === attr
                                         ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
                                         : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
@@ -2560,7 +2560,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           pares: [...p.pares, parNovo()],
                         }))
                       }
-                      className="w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                      className="min-h-11 w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
                     >
                       + Atributo
                     </button>
@@ -2766,7 +2766,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </span>
                       {formData.images.length === 0 &&
                       !variantFormData.imageUrl ? (
-                        <p className="rounded-2xl border border-white/5 bg-zinc-950/60 px-4 py-3 text-[10px] font-bold leading-relaxed text-zinc-500">
+                        <p className="rounded-2xl border border-white/5 bg-zinc-950/60 px-4 py-3 text-[11px] font-bold leading-relaxed text-zinc-500">
                           Adicione imagens ao produto primeiro — a variante
                           aponta para uma delas em vez de enviar arquivo novo.
                         </p>
@@ -2789,14 +2789,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                     imageUrl: "",
                                   }))
                                 }
-                                className="relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-emerald-500 ring-2 ring-emerald-500/40 transition-all"
+                                className="relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border-2 border-emerald-500 ring-2 ring-emerald-500/40 transition-all"
                               >
                                 <img
                                   src={variantFormData.imageUrl}
                                   alt=""
                                   className="size-full object-cover"
                                 />
-                                <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[8px] font-black uppercase tracking-widest text-black">
+                                <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[11px] font-black text-black">
                                   Atual
                                 </span>
                               </button>
@@ -2821,7 +2821,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   }))
                                 }
                                 className={cn(
-                                  "relative size-16 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
+                                  "relative size-20 shrink-0 snap-start overflow-hidden rounded-2xl border transition-all",
                                   selecionada
                                     ? "border-2 border-emerald-500 ring-2 ring-emerald-500/40"
                                     : "border-white/10 hover:border-emerald-500/50",
@@ -2833,7 +2833,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                   className="size-full object-cover"
                                 />
                                 {selecionada && (
-                                  <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[8px] font-black uppercase tracking-widest text-black">
+                                  <span className="absolute inset-x-0 bottom-0 bg-emerald-500/90 py-0.5 text-center text-[11px] font-black text-black">
                                     Selecionada
                                   </span>
                                 )}
@@ -2932,7 +2932,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </button>
                 </AdminPageHeader>
               </div>
-              <p className="mt-0.5 hidden items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-zinc-500 sm:flex md:text-[10px]">
+              <p className="mt-0.5 hidden items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500 sm:flex">
                 <ShieldCheck className="size-3 shrink-0 text-emerald-500" />
                 Ambiente de Gerenciamento Unificado
               </p>
@@ -2941,7 +2941,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
           <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden flex-col items-end md:flex">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+              <span className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
                 ID do Sistema
               </span>
               <span className="font-mono text-xs font-bold text-zinc-300">
@@ -2950,7 +2950,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
             </div>
 
             {isOffline && (
-              <span className="mr-1 animate-pulse rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-wider text-rose-500">
+              <span className="mr-1 animate-pulse rounded-lg border border-rose-500/20 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider text-rose-500">
                 Sem Conexão
               </span>
             )}
@@ -3084,7 +3084,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-capture"
                   className={cn(
-                    "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    "flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
@@ -3105,7 +3105,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-upload"
                   className={cn(
-                    "flex size-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
+                    "flex size-11 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-500 cursor-pointer transition-all duration-300 hover:bg-emerald-500 hover:text-emerald-950 hover:scale-105 active:scale-95 shadow-md shadow-emerald-500/10",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
@@ -3208,7 +3208,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <label
                   htmlFor="product-image-capture"
                   className={cn(
-                    "mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
+                    "mt-3 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-zinc-900/30 px-4 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-300 cursor-pointer transition-all duration-300 hover:bg-emerald-500/5 hover:border-emerald-500/30 hover:text-emerald-400",
                     (isSubmitting || isImageUploading) &&
                       "opacity-40 pointer-events-none",
                   )}
@@ -3289,7 +3289,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 }`}
                               >
                                 <span
-                                  className={`flex size-4.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[8px] font-black shadow-lg ${
+                                  className={`flex size-4.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[11px] font-black shadow-lg ${
                                     meta.status === "excellent"
                                       ? "bg-emerald-500 text-emerald-950"
                                       : meta.status === "warning_aspect"
@@ -3307,7 +3307,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                         ? "⚠"
                                         : "i"}
                                 </span>
-                                <div className="pointer-events-none absolute bottom-6 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[8px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
+                                <div className="pointer-events-none absolute bottom-6 right-0 z-30 w-36 rounded-xl border border-white/10 bg-zinc-950 p-2.5 text-[11px] font-black uppercase leading-normal tracking-wider text-white opacity-0 shadow-2xl transition-opacity group-hover/tooltip:opacity-100">
                                   <span className="mb-0.5 block text-emerald-400">
                                     Dim: {meta.width}x{meta.height}
                                   </span>
@@ -3346,7 +3346,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         className="relative flex aspect-[4/5] w-40 sm:w-48 shrink-0 snap-start animate-pulse flex-col items-center justify-center space-y-2 overflow-hidden rounded-2xl border border-white/10 bg-white/5"
                       >
                         <Loader2 className="size-5 animate-spin text-emerald-400" />
-                        <span className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                           {imageUploadStep === "compressing"
                             ? "Comprimindo..."
                             : "Enviando..."}
@@ -3379,14 +3379,14 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         type="button"
                         onClick={() => void tentarFotoDeNovo(falha.id)}
                         disabled={isImageUploading || isOffline}
-                        className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-950 disabled:opacity-40"
+                        className="min-h-11 rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-950 disabled:opacity-40"
                       >
                         Tentar de novo
                       </button>
                       <button
                         type="button"
                         onClick={() => descartarFotoComFalha(falha.id)}
-                        className="rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-300"
+                        className="min-h-11 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-300"
                       >
                         Remover
                       </button>
@@ -3408,16 +3408,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               transition={{ duration: 0.2 }}
               className="space-y-4 border-t border-white/5 pt-6"
             >
-              <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 <BookOpen className="size-4 text-emerald-400" />
                 Guia de Fotos do Produto
               </h3>
               <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                   Imagens de alta qualidade aumentam a conversão de vendas. Siga
                   as orientações recomendadas:
                 </p>
-                <ul className="list-disc space-y-2 pl-4 text-[10px] font-medium text-zinc-500">
+                <ul className="list-disc space-y-2 pl-4 text-[11px] font-medium text-zinc-500">
                   <li>
                     <b className="text-zinc-350">Proporção 4:5 (Card):</b>{" "}
                     Essencial para que os produtos caibam no card da vitrine sem
@@ -3439,7 +3439,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     detalhes e transmitem profissionalismo.
                   </li>
                 </ul>
-                <div className="flex items-center justify-between border-t border-white/5 pt-3 text-[9px] font-black uppercase tracking-widest text-emerald-400">
+                <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
                   <span>Proporção ideal: 4:5 ou 1:1</span>
                   <span>Res: &gt; 800px</span>
                 </div>
@@ -3488,16 +3488,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 transition={{ duration: 0.2 }}
                 className="space-y-4 border-b border-white/5 pb-6 pt-2"
               >
-                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                   <BookOpen className="size-4 text-blue-400" />
                   Guia de Cadastro e Informações
                 </h3>
                 <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                  <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                  <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                     O preenchimento correto dos dados melhora a indexação do
                     produto e facilita a decisão do cliente.
                   </p>
-                  <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
+                  <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
                     <li className="flex items-start gap-2.5">
                       <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-blue-500" />
                       <span>
@@ -3624,7 +3624,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 >
                   <SelectTrigger
                     id="product-category"
-                    className="h-auto w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
+                    className="h-auto min-h-11 w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all hover:border-white/10 hover:bg-zinc-900/50 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5 [&>svg]:opacity-50"
                   >
                     <SelectValue placeholder="Selecionar Setor" />
                   </SelectTrigger>
@@ -4124,16 +4124,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   transition={{ duration: 0.2 }}
                   className="space-y-4 border-b border-white/5 pb-4"
                 >
-                  <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                  <h3 className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                     <BookOpen className="size-4 text-emerald-400" />
                     Guia de Custos e Margens
                   </h3>
                   <div className="space-y-4 rounded-2xl border border-white/5 bg-zinc-950/40 p-5">
-                    <p className="text-[10px] font-medium leading-relaxed text-zinc-400">
+                    <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                       Configure os preços de forma estratégica. O sistema
                       calcula a lucratividade automaticamente em tempo real.
                     </p>
-                    <ul className="list-none space-y-3 pl-0 text-[10px] font-medium text-zinc-500">
+                    <ul className="list-none space-y-3 pl-0 text-[11px] font-medium text-zinc-500">
                       <li className="flex items-start gap-2.5">
                         <div className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                         <span>
@@ -4341,7 +4341,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     <div className="flex flex-col">
                       <p
                         className={cn(
-                          "text-[10px] font-black uppercase tracking-[0.3em] mb-1.5 opacity-80",
+                          "text-[11px] font-black uppercase tracking-[0.2em] mb-1.5 opacity-80",
                           marginPct <= 0 ? "text-rose-400" : "text-emerald-400",
                         )}
                       >
@@ -4358,7 +4358,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         </span>
                         <span
                           className={cn(
-                            "text-[10px] font-black uppercase tracking-widest italic",
+                            "text-[11px] font-black uppercase tracking-widest italic",
                             marginPct <= 0
                               ? "text-rose-500/40"
                               : "text-emerald-500/40",
@@ -4372,7 +4372,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
 
                   <div className="flex w-full flex-col items-center gap-2 border-t border-white/5 pt-3 sm:gap-3 md:w-auto md:items-end md:border-t-0 md:pt-0">
                     <div className="flex flex-col items-center md:items-end">
-                      <span className="mb-1.5 text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                      <span className="mb-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                         Análise do Sistema
                       </span>
                       <div className="group/badge relative">
@@ -4386,7 +4386,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         />
                         <div
                           className={cn(
-                            "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[9px] sm:text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
+                            "px-3 py-1.5 sm:px-5 sm:py-2.5 rounded-lg sm:rounded-xl font-black text-[11px] uppercase tracking-wider relative z-10 flex items-center gap-2 group-hover/roi:scale-105 transition-transform duration-500",
                             marginPct <= 0
                               ? "bg-rose-500 text-rose-950 shadow-[0_10px_20px_rgba(244,63,94,0.3)]"
                               : "bg-emerald-500 text-emerald-950 shadow-[0_10px_20px_rgba(16,185,129,0.3)]",
@@ -4599,7 +4599,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 <span className="relative inline-flex size-2.5 rounded-full bg-emerald-500" />
               </div>
               <Smartphone className="size-4 text-zinc-400 transition-colors group-hover:text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-wider">
+              <span className="text-[11px] font-black uppercase tracking-wider">
                 Visualizar App
               </span>
             </button>
@@ -4638,7 +4638,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Estrutura do Formulário
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -4696,7 +4696,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
           </div>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Dicas para um Cadastro de Sucesso
             </h4>
             <ul className="list-inside list-disc space-y-2 text-xs text-zinc-400">
@@ -4836,12 +4836,12 @@ const VariantItem = React.memo(function VariantItem({
               {variant.name}: {variant.value}
             </span>
             {!variant.active && (
-              <span className="rounded border border-white/5 bg-zinc-800 px-1.5 py-0.5 text-[7px] font-black uppercase text-zinc-500">
+              <span className="rounded border border-white/5 bg-zinc-800 px-1.5 py-0.5 text-[11px] font-black uppercase text-zinc-500">
                 Offline
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4 text-[9px] font-black uppercase tracking-tighter text-zinc-500">
+          <div className="flex items-center gap-4 text-[11px] font-black uppercase tracking-tighter text-zinc-500">
             <span className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
@@ -4857,11 +4857,11 @@ const VariantItem = React.memo(function VariantItem({
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1">
         <button
           type="button"
           onClick={() => onEdit(variant)}
-          className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
+          className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
         >
           <Edit2 className="size-3.5" />
         </button>
@@ -4875,7 +4875,7 @@ const VariantItem = React.memo(function VariantItem({
               : "Religar: volta a aparecer na loja"
           }
           className={cn(
-            "flex size-8 items-center justify-center rounded-lg transition-all hover:bg-white/5",
+            "flex size-11 items-center justify-center rounded-lg transition-all hover:bg-white/5",
             variant.active
               ? "text-emerald-500 hover:text-emerald-400"
               : "text-zinc-600 hover:text-white",
@@ -4886,7 +4886,7 @@ const VariantItem = React.memo(function VariantItem({
         <button
           type="button"
           onClick={() => onDelete(variant.id)}
-          className="flex size-8 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/5 hover:text-red-500"
+          className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/5 hover:text-red-500"
         >
           <Trash2 className="size-3.5" />
         </button>
