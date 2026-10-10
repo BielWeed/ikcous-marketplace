@@ -96,6 +96,62 @@ describe("motivoDaCotacao", () => {
     ).toBe("Melhor Envio: resposta inesperada.");
   });
 
+  // Frases reais da edge (provedores.ts `chamarComTempo` e `lerJson`): o texto
+  // depois de "tempo esgotado: " / "falha de rede: " é a mensagem do runtime
+  // ("The signal has been aborted", "error sending request…") — inglês técnico
+  // que a lojista não lê.
+  const DEMOROU =
+    "A transportadora demorou demais para responder. Tente de novo mais tarde.";
+  const SEM_CONEXAO =
+    "Não deu para falar com a transportadora (sem conexão). Tente de novo mais tarde.";
+  const SEM_NUMERO =
+    "A transportadora não respondeu direito. Tente de novo mais tarde.";
+
+  it("'tempo esgotado: …' vira a frase de demora e o texto técnico não vaza", () => {
+    expect(motivoDaCotacao("tempo esgotado: The signal has been aborted")).toBe(
+      DEMOROU,
+    );
+  });
+
+  it("'falha de rede: …' vira a frase de conexão e o texto técnico não vaza", () => {
+    expect(
+      motivoDaCotacao(
+        "falha de rede: error sending request for url (https://x.test/)",
+      ),
+    ).toBe(SEM_CONEXAO);
+  });
+
+  it("'resposta não é JSON válido' vira a frase sem número, com ou sem o nome na frente", () => {
+    expect(motivoDaCotacao("Melhor Envio: resposta não é JSON válido.")).toBe(
+      SEM_NUMERO,
+    );
+  });
+
+  it("com vários provedores, o id vira o nome e cada parte é traduzida", () => {
+    const nomeDe = (id: string) =>
+      id === "superfrete"
+        ? "SuperFrete"
+        : id === "frenet"
+          ? "Frenet"
+          : id === "melhor_envio"
+            ? "Melhor Envio"
+            : null;
+    expect(
+      motivoDaCotacao(
+        "superfrete: tempo esgotado: The signal has been aborted | frenet: falha de rede: dns error | melhor_envio: Melhor Envio: resposta não é JSON válido.",
+        nomeDe,
+      ),
+    ).toBe(
+      `SuperFrete: ${DEMOROU} | Frenet: ${SEM_CONEXAO} | Melhor Envio: ${SEM_NUMERO}`,
+    );
+  });
+
+  it("a frase em português da edge sobre o corpo ilegível passa igual", () => {
+    const lido =
+      "o corpo da resposta não pôde ser lido (tempo esgotado ou conexão caiu).";
+    expect(motivoDaCotacao(lido)).toBe(lido);
+  });
+
   it("vazio ou nulo devolve vazio (linha com campo nulo não derruba a seção)", () => {
     expect(motivoDaCotacao("")).toBe("");
     expect(motivoDaCotacao(null)).toBe("");
