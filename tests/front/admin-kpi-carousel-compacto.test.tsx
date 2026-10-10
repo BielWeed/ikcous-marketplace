@@ -145,10 +145,10 @@ describe("AdminKpiCarousel — carrossel compacto de métricas", () => {
     );
     await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
 
-    // O card estica até a altura do slide (h-full) com piso de 64px
-    // (min-h-16) e overflow escondido: nenhuma tela fica mais alta que a
+    // O card estica até a altura do slide (h-full) com o piso do esqueleto
+    // (min-h-[100px] no celular, sm:min-h-24 no computador) e overflow escondido: nenhuma tela fica mais alta que a
     // outra, e a altura não é travada (travada, cortava o texto no celular).
-    const card = hospedeiro.querySelector('[class*="min-h-16"]');
+    const card = hospedeiro.querySelector('[class*="min-h-[100px]"]');
     expect(card).toBeTruthy();
     expect(card!.className).toContain("h-full");
     expect(card!.className).toContain("overflow-hidden");

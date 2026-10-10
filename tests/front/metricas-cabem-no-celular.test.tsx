@@ -204,9 +204,36 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
     const cartao = hospedeiro.querySelector("h3")!.closest(".group")!;
     const classes = cartao.className.split(/\s+/);
     expect(classes).toContain("sm:py-2");
-    expect(classes).toContain("min-h-16");
-    expect(classes).toContain("sm:min-h-[68px]");
+    // J2-B rodada 1: o piso do cartão real é o MESMO do esqueleto (100px no
+    // celular, 96px de 640px em diante) — o cartão nunca é menor que o
+    // esqueleto e o conteúdo abaixo não sobe quando os números chegam.
+    expect(classes).toContain("min-h-[100px]");
+    expect(classes).toContain("sm:min-h-24");
+    expect(classes).not.toContain("min-h-16");
+    expect(classes).not.toContain("sm:min-h-[68px]");
     expect(classes.some((c) => /^(sm:)?h-(16|\[68px\])$/.test(c))).toBe(false);
+  });
+
+  it("o cartão real e o esqueleto usam EXATAMENTE a mesma altura mínima por breakpoint", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    const pisos = (el: Element) =>
+      el.className
+        .split(/\s+/)
+        .filter((c) => /(^|:)min-h-/.test(c))
+        .sort();
+
+    await montar(
+      <AdminKpiCarousel cards={cardsFake} title="Métricas" loading={true} />,
+    );
+    const esqueleto =
+      hospedeiro.querySelector("div.animate-pulse")!.parentElement!;
+    const pisosDoEsqueleto = pisos(esqueleto);
+
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+    const cartao = hospedeiro.querySelector("h3")!.closest(".group")!;
+
+    expect(pisosDoEsqueleto.length).toBe(2);
+    expect(pisos(cartao)).toEqual(pisosDoEsqueleto);
   });
 
   it("o esqueleto tem a altura mínima de um cartão real (o conteúdo abaixo não pula)", async () => {
@@ -363,5 +390,46 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
       vi.advanceTimersByTime(12_000);
     });
     expect(emblaFalso.api.scrollNext).toHaveBeenCalled();
+  });
+
+  it("só as setas que podem rolar ganham o reveal do hover/foco; a desabilitada nunca aparece nem aceita clique", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    // O dublê do Embla: canScrollPrev=false, canScrollNext=true.
+    const anterior = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Anterior"]',
+    )!;
+    const proximo = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Próximo"]',
+    )!;
+    expect(anterior.disabled).toBe(true);
+    const reveal = (el: Element) =>
+      el.className
+        .split(/\s+/)
+        .filter((c) => c.startsWith("sm:group-") && /opacity|pointer/.test(c));
+    // A variante `sm:group-hover:*` vence `opacity-0` de base: a desabilitada
+    // não pode carregar nenhuma delas.
+    expect(reveal(anterior)).toEqual([]);
+    expect(reveal(proximo).length).toBeGreaterThan(0);
+  });
+
+  it("abaixo de 640px as setas nem existem no layout (sem foco invisível no Tab); de sm: em diante voltam, com nome", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    for (const [titulo, nome] of [
+      ["Anterior", "Anterior"],
+      ["Próximo", "Próximo"],
+    ]) {
+      const seta = hospedeiro.querySelector<HTMLButtonElement>(
+        `button[title="${titulo}"]`,
+      )!;
+      const classes = seta.className.split(/\s+/);
+      expect(classes).toContain("hidden");
+      expect(classes).toContain("sm:flex");
+      expect(classes).not.toContain("flex");
+      expect(seta.getAttribute("aria-label")).toBe(nome);
+    }
   });
 });
