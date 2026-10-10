@@ -7,8 +7,8 @@
 //      Fora disto fica o `HelpCircle` dentro de um `<label>` (não é botão).
 //  (b) O Início e a tela de Vitrines não têm texto abaixo de 11px (a régua do
 //      painel: `text-[6px]` … `text-[10.5px]`), fora de comentário.
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection --
-   lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário) */
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-object-injection, security/detect-unsafe-regex --
+   lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes, sem backtracking sobre entrada externa */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
