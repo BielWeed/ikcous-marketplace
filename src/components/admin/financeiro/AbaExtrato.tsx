@@ -22,6 +22,8 @@ import type { AbrirFolha } from "./navegacao";
 import {
   CLASSE_BOTAO_PRIMARIO,
   CLASSE_CAMPO,
+  CLASSE_CASCA_DO_CARTAO,
+  CLASSE_ROTULO_DO_CARTAO,
   CartaoSecao,
   Dinheiro,
   EsqueletoDeLista,
@@ -269,29 +271,23 @@ export function AbaExtrato({
           />
         </div>
         <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-            <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Entrou
-            </dt>
-            <dd className="text-sm font-black text-emerald-300">
+          <div className={`p-2.5 ${CLASSE_CASCA_DO_CARTAO}`}>
+            <dt className={CLASSE_ROTULO_DO_CARTAO}>Entrou</dt>
+            <dd className="mt-1 text-sm font-black text-emerald-300">
               <Dinheiro valor={totais.entradas} sentido={1} />
             </dd>
           </div>
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-            <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Saiu
-            </dt>
-            <dd className="text-sm font-black text-red-300">
+          <div className={`p-2.5 ${CLASSE_CASCA_DO_CARTAO}`}>
+            <dt className={CLASSE_ROTULO_DO_CARTAO}>Saiu</dt>
+            <dd className="mt-1 text-sm font-black text-red-300">
               <Dinheiro valor={totais.saidas} sentido={-1} />
             </dd>
           </div>
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-            <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Resultado
-            </dt>
+          <div className={`p-2.5 ${CLASSE_CASCA_DO_CARTAO}`}>
+            <dt className={CLASSE_ROTULO_DO_CARTAO}>Resultado</dt>
             <dd
               className={cn(
-                "text-sm font-black",
+                "mt-1 text-sm font-black",
                 corDoValor(totais.entradas - totais.saidas),
               )}
             >

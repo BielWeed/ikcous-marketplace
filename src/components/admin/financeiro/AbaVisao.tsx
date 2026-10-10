@@ -36,6 +36,8 @@ import type { AbaDoFinanceiro, LadoDosPrevistos } from "./navegacao";
 import {
   BlocoKpi,
   CLASSE_BOTAO_SECUNDARIO,
+  CLASSE_CASCA_DO_CARTAO,
+  CLASSE_ROTULO_DO_CARTAO,
   CLASSE_TITULO_SECAO,
   CartaoSecao,
   Dinheiro,
@@ -84,16 +86,13 @@ function CartaoDePrevistos({
       />
       <dl className="mt-4 grid grid-cols-2 gap-2">
         <div
-          className={cn(
-            "rounded-xl border p-3",
+          className={
             temVencido
-              ? "border-red-500/30 bg-red-500/10"
-              : "border-white/5 bg-white/[0.02]",
-          )}
+              ? "rounded-2xl border border-red-500/30 bg-red-500/10 p-3"
+              : `p-3 ${CLASSE_CASCA_DO_CARTAO}`
+          }
         >
-          <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-            Vencido
-          </dt>
+          <dt className={CLASSE_ROTULO_DO_CARTAO}>Vencido</dt>
           <dd
             className={cn(
               "mt-1 text-sm font-black",
@@ -103,10 +102,8 @@ function CartaoDePrevistos({
             <Dinheiro valor={totais.vencido} />
           </dd>
         </div>
-        <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-          <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-            Próximos 7 dias
-          </dt>
+        <div className={`p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
+          <dt className={CLASSE_ROTULO_DO_CARTAO}>Próximos 7 dias</dt>
           <dd className="mt-1 text-sm font-black text-zinc-100">
             <Dinheiro valor={totais.proximos7Dias} />
           </dd>
@@ -336,9 +333,14 @@ export function AbaVisao({
                 return (
                   <li
                     key={conta.id}
-                    className="flex min-w-0 flex-col gap-1 rounded-xl border border-white/5 bg-black/20 p-3 lg:min-w-[150px]"
+                    className={`flex min-w-0 flex-col gap-1 p-3 lg:min-w-[150px] ${CLASSE_CASCA_DO_CARTAO}`}
                   >
-                    <span className="flex items-center gap-1.5 text-[11px] font-bold text-zinc-400">
+                    <span
+                      className={cn(
+                        "flex items-center gap-1.5",
+                        CLASSE_ROTULO_DO_CARTAO,
+                      )}
+                    >
                       <IconeDoTipoDeConta
                         tipo={conta.tipo}
                         className="size-4 shrink-0"
@@ -397,7 +399,7 @@ export function AbaVisao({
         <BlocoKpi
           rotulo="Caixa da loja"
           icone={caixa ? LockOpen : Lock}
-          destaque={caixa ? "text-emerald-400" : "text-zinc-500"}
+          destaque={caixa ? "text-emerald-400" : "text-zinc-400"}
           detalhe={
             <button
               type="button"
@@ -413,7 +415,7 @@ export function AbaVisao({
             {caixa ? "Aberto" : "Fechado"}
           </span>
           {caixa ? (
-            <span className="block text-[11px] font-bold text-zinc-500">
+            <span className="block text-xs font-medium text-zinc-400">
               desde {formatarHora(caixa.abertoEm)}
             </span>
           ) : null}
