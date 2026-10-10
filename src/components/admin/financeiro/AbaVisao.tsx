@@ -91,7 +91,7 @@ function CartaoDePrevistos({
               : "border-white/5 bg-white/[0.02]",
           )}
         >
-          <dt className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
             Vencido
           </dt>
           <dd
@@ -104,7 +104,7 @@ function CartaoDePrevistos({
           </dd>
         </div>
         <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-          <dt className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
             Próximos 7 dias
           </dt>
           <dd className="mt-1 text-sm font-black text-zinc-100">
@@ -202,7 +202,7 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
           </div>
           <dl className="grid grid-cols-2 gap-3">
             <div>
-              <dt className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <dt className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 <span
                   className="size-2 rounded-sm"
                   style={{ background: COR_APP }}
@@ -217,7 +217,7 @@ function AppVersusLoja({ resumo }: { readonly resumo: ResumoFinanceiro }) {
               </dd>
             </div>
             <div>
-              <dt className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <dt className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 <span
                   className="size-2 rounded-sm"
                   style={{ background: COR_LOJA }}

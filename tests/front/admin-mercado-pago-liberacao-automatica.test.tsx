@@ -9,8 +9,9 @@
 // mostra o ESTADO que o servidor devolveu, nunca um palpite do clique.
 //
 // O que ESTE arquivo prova (a edge é DUBLÊ; as chaves são FALSAS de mentira):
-//   A1  "Pix liberado no app" + botão "Pausar", e nenhum
-//       interruptor na tela;
+//   A1  recebendo: botão "Pausar", e nenhum interruptor na tela (desde H6 o
+//       bloco não repete "Pix liberado no app": o status do PIX é o
+//       termômetro do topo de Pagamentos, que recebe o eco);
 //   A2  Pausar chama a edge (`desligar_pix`), a tela vira "Pausado por você" +
 //       "Retomar", avisa a vitrine (até 1 minuto) e ecoa para o painel;
 //   A3  Retomar chama `ligar_pix` e volta a "Recebendo";
@@ -147,6 +148,8 @@ async function abrirExpansor(texto: string) {
     ...document.body.querySelectorAll("button[aria-expanded]"),
   ].find((b) => b.textContent?.includes(texto));
   if (!cabecalho) throw new Error(`Expansor "${texto}" não está na tela.`);
+  // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+  if (cabecalho.getAttribute("aria-expanded") === "true") return;
   await clique(cabecalho as HTMLButtonElement);
 }
 
@@ -160,8 +163,9 @@ async function montarSecaoComChavesAbertas(
     raiz.render(<MercadoPagoSection onPixAlternado={onPixAlternado} />);
   });
   await assentar();
-  // O bloco do estado vive na camada "Suas chaves", logo abaixo do teste de
-  // conexão — e a camada nasce FECHADA (desenho da peça 20).
+  // O formulário vive na camada "Suas chaves" (dentro de "Avançado: chaves
+  // do Mercado Pago" desde H6) — e a camada nasce FECHADA (desenho da peça
+  // 20). O bloco do estado (Pausar/Retomar, o que falta) fica fora, à vista.
   await abrirExpansor("Suas chaves");
   return raiz;
 }
@@ -183,6 +187,19 @@ function estadoDoRecebimento(): HTMLElement {
   if (!alvo)
     throw new Error("O bloco de estado do recebimento não está na tela.");
   return alvo as HTMLElement;
+}
+
+/**
+ * Recebendo pelo app = o estado que o SERVIDOR devolveu (`pix_ligado`). Desde
+ * H6 (painel simples) o bloco não ESCREVE "Pix liberado no app" — o status
+ * do PIX é só o termômetro do topo de Pagamentos, que recebe o eco por
+ * `onPixAlternado` —, então a prova lê o estado do atributo do bloco e
+ * confere que a frase repetida não voltou.
+ */
+function recebendo(): boolean {
+  const bloco = estadoDoRecebimento();
+  expect(bloco.textContent).not.toContain("Pix liberado");
+  return bloco.getAttribute("data-estado-recebimento") === "recebendo";
 }
 
 const CONECTADO = {
@@ -245,7 +262,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     cenario.salvo = { ...RECEBENDO };
     raiz = await montarSecaoComChavesAbertas();
 
-    expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     expect(temBotao("Pausar")).toBe(true);
     expect(temBotao("Retomar")).toBe(false);
     expect(document.body.textContent).not.toContain("Falta para receber");
@@ -253,7 +270,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(document.body.querySelector('[role="switch"]')).toBeNull();
   });
 
-  it("A1b — o rótulo só diz o que é verdade: Pix liberado; cartão NÃO é afirmado (tem interruptor próprio em Formas de pagamento)", async () => {
+  it("A1b — o texto só diz o que é verdade: cartão NÃO é afirmado (tem interruptor próprio em Formas de pagamento)", async () => {
     // O `pagamento_online` liga o Pix, mas o cartão depende de
     // `config_pagamento_cartao` (crédito/débito), que na IKCOUS está
     // desligado e faz o `criar-pagamento` recusar cartão. A seção não tem essa
@@ -263,7 +280,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     raiz = await montarSecaoComChavesAbertas();
 
     const estado = estadoDoRecebimento().textContent ?? "";
-    expect(estado).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     expect(estado).toContain(
       "Cartão pelo app: ligue ou desligue em Formas de pagamento",
     );
@@ -314,7 +331,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     await clique(botaoPorTexto("Retomar"));
 
     expect(chamadas.some((c) => c.corpo.acao === "ligar_pix")).toBe(true);
-    expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     expect(document.body.textContent).toContain(
       "Chave de TESTE: o PIX não vai receber dinheiro de verdade",
     );
@@ -353,11 +370,14 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain("Falta para receber pelo app:");
-    expect(estado).toContain("colar a Chave de notificações");
+    expect(estado).toContain("colar a senha dos avisos");
     expect(estado).toContain("testar a conexão");
     // O que já está pronto NÃO aparece como falta.
     expect(estado).not.toContain("Public Key");
     expect(estado).not.toContain("Access Token");
+    // Os nomes da loja (G4): sem estas duas, a prova acima ficava sem efeito.
+    expect(estado).not.toContain("colar a chave pública");
+    expect(estado).not.toContain("colar a chave secreta");
     expect(temBotao("Pausar")).toBe(false);
     expect(temBotao("Retomar")).toBe(false);
     expect(document.body.querySelector('[role="switch"]')).toBeNull();
@@ -374,9 +394,13 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     };
     raiz = await montarSecaoComChavesAbertas();
 
-    expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     expect(document.body.textContent).toContain("ainda falta");
     expect(document.body.textContent).toContain("testar a conexão");
+    // As três chaves já estão salvas: nenhuma delas aparece como falta.
+    expect(document.body.textContent).not.toContain("colar a chave pública");
+    expect(document.body.textContent).not.toContain("colar a chave secreta");
+    expect(document.body.textContent).not.toContain("colar a senha dos avisos");
     // O conserto (testar) tem de estar ao alcance da mão, não em outra camada.
     const testes = [...document.body.querySelectorAll("button")].filter((b) =>
       b.textContent?.includes("Testar conexão"),
@@ -429,7 +453,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     // O TESTE é do servidor (não sai `testar` daqui): a resposta do salvar já
     // traz o resultado e o estado.
     expect(chamadas.some((c) => c.corpo.acao === "testar")).toBe(false);
-    expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     expect(document.body.textContent).toContain("Conectado! Conta");
     expect(onPixAlternado).toHaveBeenCalledWith(true, true);
     // O toast conta que liberou (e não manda "teste a conexão" à mão).
@@ -477,14 +501,12 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     // é o que prova que o painel de Ajustes (fora daqui) FICOU SABENDO.
     const onPixAlternado = vi.fn();
     raiz = await montarSecaoComChavesAbertas(onPixAlternado);
-    expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     onPixAlternado.mockClear();
 
     await clique(botaoPorTexto("Salvar chaves"));
 
-    expect(estadoDoRecebimento().textContent).not.toContain(
-      "Pix liberado no app",
-    );
+    expect(recebendo()).toBe(false);
     expect(document.body.textContent).toContain(
       "Desliguei o pagamento pelo app",
     );
@@ -511,7 +533,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     await clique(botaoPorTexto("Testar conexão"));
 
     expect(chamadas.some((c) => c.corpo.acao === "testar")).toBe(true);
-    expect(estadoDoRecebimento().textContent).toContain("Pix liberado no app");
+    expect(recebendo()).toBe(true);
     expect(onPixAlternado).toHaveBeenCalledWith(true, true);
 
     // Agora o teste falha e o servidor desliga.
@@ -548,7 +570,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
 
     const texto = document.body.textContent ?? "";
     expect(texto).toContain(
-      "Chave de notificações (obrigatória para receber pelo app)",
+      "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
     );
     expect(texto).not.toContain("obrigatória para Pix");
     expect(texto.toLowerCase()).not.toContain("interruptor");
@@ -578,7 +600,7 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     raiz = await montarSecaoComChavesAbertas();
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain("Pausado por você");
-    expect(estado).toContain("colar a Chave de notificações");
+    expect(estado).toContain("colar a senha dos avisos");
   });
 
   it("A15 — edge ANTIGA (sem `faltando`): a tela não mente 'Tudo preenchido', não oferece Pausar/Retomar e diz que o sistema está sendo atualizado", async () => {
@@ -592,7 +614,8 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
       pix_ligado: false,
       public_key_na_loja: true,
     };
-    raiz = await montarSecaoComChavesAbertas();
+    const onPixAlternado = vi.fn();
+    raiz = await montarSecaoComChavesAbertas(onPixAlternado);
     const estado = estadoDoRecebimento().textContent ?? "";
     expect(estado).toContain(
       "O sistema de pagamentos desta loja ainda não foi atualizado. Enquanto isso, o Pix segue como está; fale com o suporte para atualizar.",
@@ -606,8 +629,10 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     expect(estado).not.toContain("Pausado por você");
     expect(temBotao("Pausar")).toBe(false);
     expect(temBotao("Retomar")).toBe(false);
-    // O estado REAL que a edge antiga devolveu continua à vista.
-    expect(estado).toContain("Pagamento pelo app desligado");
+    // O estado REAL que a edge antiga devolveu continua chegando ao status
+    // do PIX (o termômetro de Pagamentos, desde H6) pelo eco do `ler`.
+    expect(onPixAlternado).toHaveBeenCalledWith(false, true);
+    expect(estado).not.toContain("Pix liberado");
   });
 
   it("A15b — edge antiga, desligado com teste conectado: o botão Ligar do comportamento antigo segue possível e mostra o estado real depois", async () => {
@@ -623,13 +648,18 @@ describe("MercadoPagoSection — liberação automática do pagamento pelo app",
     };
     // A edge antiga responde só { pix_ligado, quando }.
     cenario.respostaRetomar = { pix_ligado: true, quando: "x" };
-    raiz = await montarSecaoComChavesAbertas();
+    const onPixAlternado = vi.fn();
+    raiz = await montarSecaoComChavesAbertas(onPixAlternado);
+    onPixAlternado.mockClear();
 
     await clique(botaoPorTexto("Ligar"));
 
     expect(chamadas.some((c) => c.corpo.acao === "ligar_pix")).toBe(true);
     const estado = estadoDoRecebimento().textContent ?? "";
-    expect(estado).toContain("Pix liberado no app");
+    // O estado real (ligado) vai para o status do PIX pelo eco; o bloco só
+    // troca a ação para "Desligar".
+    expect(onPixAlternado).toHaveBeenCalledWith(true);
+    expect(estado).not.toContain("Pix liberado");
     expect(estado).toContain("ainda não foi atualizado");
     expect(temBotao("Desligar")).toBe(true);
     expect(temBotao("Pausar")).toBe(false);

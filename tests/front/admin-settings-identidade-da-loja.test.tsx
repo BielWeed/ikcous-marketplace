@@ -264,11 +264,11 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     const { toast } = await import("sonner");
     expect(toast.success).not.toHaveBeenCalled();
   });
-  it("mostra nome, cidade e estado da fotografia administrativa", async () => {
+  it("mostra o nome da fotografia administrativa; cidade e UF não são campos da marca (moram no Endereço)", async () => {
     await render();
     expect(input("store-name").value).toBe("Loja Teste");
-    expect(input("store-city").value).toBe("Uberlândia");
-    expect(input("store-state").value).toBe("MG");
+    expect(document.querySelector("#store-city")).toBeNull();
+    expect(document.querySelector("#store-state")).toBeNull();
   });
   it("preserva nome e cor digitados ao atualizar apenas config de horário/frete", async () => {
     await render();
@@ -283,16 +283,16 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
     expect(input("store-color-hex").value).toBe("#0");
     expect(h.update).not.toHaveBeenCalled();
   });
-  it("grava pacote único com nome/local, sem updateConfig e sem inventar nome vazio", async () => {
+  it("grava pacote único com nome e a cidade/UF que a loja já tem, sem updateConfig e sem inventar nome vazio", async () => {
     await render();
     await type("store-name", "Minha Loja");
-    await type("store-city", "Patos de Minas");
-    await type("store-state", "mg");
     await click("Salvar identidade");
     expect(h.save).toHaveBeenCalledTimes(1);
+    // cidade e UF seguem no pacote (a RPC recusa pacote incompleto), com o
+    // valor da fotografia: quem os muda é o Endereço, não a marca
     expect(h.save.mock.calls[0][0].desired).toMatchObject({
       store_name: "Minha Loja",
-      store_city: "Patos de Minas",
+      store_city: "Uberlândia",
       store_state: "MG",
     });
     expect(h.update).not.toHaveBeenCalled();
@@ -312,13 +312,11 @@ describe("Sobre a Loja — identidade da loja pela RPC protegida", () => {
   });
   it("imagens avançadas ficam sob título de gente, com todos os uploads alcançáveis", async () => {
     await render();
-    expect(host.textContent).toContain(
-      "Mais imagens da loja (favicon, ícones, compartilhamento)",
-    );
+    expect(host.textContent).toContain("Ícones do app (avançado)");
     expect(host.textContent).not.toContain("Ajustes avançados de imagens");
     // Renomear não pode esconder nada: as entradas de arquivo continuam na
-    // árvore, inclusive a de adicionar fonte (jsdom mantém o conteúdo do
-    // <details> na árvore esteja ele aberto ou fechado).
+    // árvore, inclusive a de adicionar fonte (a SecaoRecolhivel fechada só
+    // aplica `hidden`, não desmonta).
     expect(
       host.querySelector('input[id="identity-upload-Adicionar%20fonte"]'),
     ).not.toBeNull();

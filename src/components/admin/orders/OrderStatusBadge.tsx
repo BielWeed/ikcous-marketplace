@@ -59,10 +59,10 @@ export const statusConfig: Record<
 };
 
 /**
- * "padrao" é o selo de sempre (9px, usado na ficha e nas filas). "cartao" é
- * a escala do card de pedido da lista (AdminOrderCard): 10px com menos
- * espaçamento entre letras, mais respiro e um ponto de cor na frente — o
- * selo antigo ficava ilegível ao lado do valor em tela de celular.
+ * "padrao" é o selo de sempre (usado na ficha e nas filas). "cartao" é
+ * a escala do card de pedido da lista (AdminOrderCard): mais respiro e um
+ * ponto de cor na frente — o selo antigo ficava ilegível ao lado do valor em
+ * tela de celular. Os dois têm o rótulo em 11px (piso do painel).
  */
 type TamanhoDoSelo = "padrao" | "cartao";
 
@@ -95,8 +95,8 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
       <span
         className={`uppercase ${
           cartao
-            ? "text-[10px] font-bold tracking-wider"
-            : "text-[9px] font-black tracking-widest"
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
         } ${cfg.color}`}
       >
         {cfg.label}
@@ -377,8 +377,8 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
       <span
         className={`truncate uppercase ${
           tamanho === "cartao"
-            ? "text-[10px] font-bold tracking-wider"
-            : "text-[9px] font-black tracking-widest"
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
         } ${cfg.color}`}
       >
         {compact ? (cfg.shortLabel ?? label) : label}

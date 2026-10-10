@@ -24,6 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useProducts } from "@/hooks/useProducts";
@@ -526,7 +527,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
         <div>
           <div className="flex items-center justify-between gap-3">
             <AdminPageHeader
-              titulo="Vitrines"
+              titulo={NOMES_DO_PAINEL["admin-carousels"]}
               acoes={
                 <>
                   <button
@@ -534,9 +535,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                     onClick={() => setShowHelpModal(true)}
                     aria-label="Ajuda"
                     title="Ajuda"
-                    className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
+                    className="group flex min-h-11 min-w-11 items-center justify-center rounded-[12px]"
                   >
-                    <HelpCircle className="size-[17px]" />
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors group-hover:text-white"
+                    >
+                      <HelpCircle className="size-[17px]" />
+                    </span>
                   </button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -779,7 +785,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
       <AdminHelpModal
         isOpen={showHelpModal}
         onClose={() => setShowHelpModal(false)}
-        title="Guia do Gerenciador de Vitrines (Carrosséis)"
+        title={`Como usar as ${NOMES_DO_PAINEL["admin-carousels"]}`}
       >
         <div className="space-y-3 text-xs leading-relaxed text-zinc-400">
           <p>
@@ -787,7 +793,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             página inicial do aplicativo. Toque em uma vitrine para editar.
           </p>
           <div className="space-y-2">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-wider text-white">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-wider text-white">
               Recursos Avançados
             </h4>
             <ul className="list-disc space-y-1 pl-4 text-zinc-400">

@@ -7,11 +7,9 @@ import {
   formatarPercentual,
   variacaoPercentual,
 } from "@/lib/crm";
-import { cn } from "@/lib/utils";
 import type { View } from "@/types";
 import type { PainelInicio } from "@/types/painel";
 import {
-  AlertTriangle,
   ArrowDownToLine,
   ChevronRight,
   Landmark,
@@ -21,8 +19,8 @@ import {
 
 /**
  * Os quatro números do mês no Início (grade 2×2 no celular, 4 lado a lado
- * no computador) + a linha de apoio "a pagar em 7 dias · contas vencidas",
- * que leva ao Financeiro.
+ * no computador) + a linha de apoio "a pagar em 7 dias", que leva ao
+ * Financeiro. "Contas vencidas" mora só no "Para fazer" (um número, um lugar).
  */
 export function NumerosDoMes({
   painel,
@@ -35,7 +33,6 @@ export function NumerosDoMes({
 }>) {
   const esqueleto = carregando && !painel;
   const mes = painel?.mes;
-  const vencidas = painel?.contasVencidas ?? null;
   const margem =
     mes?.lucroEstimado != null && mes.receita != null && mes.receita > 0
       ? (mes.lucroEstimado / mes.receita) * 100
@@ -50,7 +47,7 @@ export function NumerosDoMes({
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2
           id="inicio-mes-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
         >
           Este mês
         </h2>
@@ -59,7 +56,7 @@ export function NumerosDoMes({
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarInteiro(mes.pedidos)}
             </strong>{" "}
-            {mes.pedidos === 1 ? "pedido" : "pedidos"} · ticket médio{" "}
+            {mes.pedidos === 1 ? "venda" : "vendas"} · valor médio por venda{" "}
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarMoeda(mes.ticketMedio)}
             </strong>
@@ -70,7 +67,7 @@ export function NumerosDoMes({
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
         <TileDeKpi
           superficie="admin-glass"
-          rotulo="Receita do mês"
+          rotulo="Vendas pagas no mês"
           icone={TrendingUp}
           corDoIcone="text-emerald-400"
           carregando={esqueleto}
@@ -93,7 +90,7 @@ export function NumerosDoMes({
           valorCompacto={formatarMoedaCompacta(mes?.lucroEstimado)}
           rodape={
             margem == null
-              ? "Receita menos o custo dos produtos"
+              ? "Do Financeiro: vendas menos devoluções, custo dos produtos e despesas do mês"
               : `Margem estimada de ${formatarPercentual(margem, 0)}`
           }
         />
@@ -129,20 +126,6 @@ export function NumerosDoMes({
             A pagar em 7 dias{" "}
             <strong className="font-bold tabular-nums text-white">
               {esqueleto ? "…" : formatarMoeda(painel?.aPagar7d)}
-            </strong>
-          </span>
-          <span
-            className={cn(
-              "inline-flex items-center gap-1",
-              vencidas && vencidas > 0 ? "text-rose-300" : "text-zinc-400",
-            )}
-          >
-            {vencidas && vencidas > 0 ? (
-              <AlertTriangle className="size-3.5" aria-hidden="true" />
-            ) : null}
-            Contas vencidas{" "}
-            <strong className="font-bold tabular-nums">
-              {esqueleto ? "…" : formatarInteiro(vencidas)}
             </strong>
           </span>
         </span>

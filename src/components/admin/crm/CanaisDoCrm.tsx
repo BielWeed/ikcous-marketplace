@@ -109,7 +109,7 @@ function ItemDoResumo({
 }>) {
   return (
     <div className="min-w-0 px-2 first:pl-0 last:pr-0 sm:px-4">
-      <p className="truncate text-[10px] font-black uppercase tracking-widest text-zinc-400">
+      <p className="text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-400">
         {rotulo}
       </p>
       <p className="truncate text-lg font-black tabular-nums text-white sm:text-xl">
@@ -199,7 +199,7 @@ function BlocoDeCanal({
           </p>
           <dl className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <dt className="text-[10px] uppercase tracking-wider text-zinc-400">
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-400">
                 Pedidos
               </dt>
               <dd className="font-bold tabular-nums text-white">
@@ -212,8 +212,8 @@ function BlocoDeCanal({
               </dd>
             </div>
             <div>
-              <dt className="text-[10px] uppercase tracking-wider text-zinc-400">
-                Ticket médio
+              <dt className="text-[11px] uppercase tracking-wider text-zinc-400">
+                Valor médio por venda
               </dt>
               <dd className="font-bold tabular-nums text-white">
                 {formatarMoeda(canal.ticketMedio)}
@@ -222,7 +222,7 @@ function BlocoDeCanal({
           </dl>
           {diffTicket != null && diffTicket !== 0 ? (
             <p className="text-[11px] text-zinc-400">
-              Ticket{" "}
+              Valor médio por venda{" "}
               <strong
                 className={cn(
                   "font-bold",
@@ -233,7 +233,7 @@ function BlocoDeCanal({
                   ? `${diffTicket}% acima`
                   : `${Math.abs(diffTicket)}% abaixo`}
               </strong>{" "}
-              do ticket geral do período.
+              do valor médio geral do período.
             </p>
           ) : null}
         </>
@@ -342,7 +342,7 @@ function CartaoDeFormas({
                     {ticket != null ? (
                       <span className="text-zinc-400">
                         {" "}
-                        · ticket {formatarMoeda(ticket)}
+                        · {formatarMoeda(ticket)} por venda
                       </span>
                     ) : null}
                   </span>
@@ -416,7 +416,7 @@ export function CanaisDoCrm({
           <button
             type="button"
             onClick={() => onNavigate("admin-pdv")}
-            className="min-h-11 rounded-xl bg-admin-gold px-4 text-[10px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90"
+            className="min-h-11 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90"
           >
             Vender no balcão
           </button>
@@ -449,7 +449,7 @@ export function CanaisDoCrm({
             variacao={variacaoPedidos}
           />
           <ItemDoResumo
-            rotulo="Ticket médio"
+            rotulo="Valor médio por venda"
             valor={formatarMoeda(k.ticketMedio)}
             valorCompacto={formatarMoedaCompacta(k.ticketMedio)}
             variacao={variacaoTicket}

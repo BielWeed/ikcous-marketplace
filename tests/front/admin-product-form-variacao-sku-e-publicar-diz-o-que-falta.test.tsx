@@ -188,7 +188,7 @@ describe("AdminProductFormView — variação e botão Publicar dizem o que est�
       await esperarDebounce();
     });
     await act(async () => {
-      clicarObrigatorio("Efetivar Variante");
+      clicarObrigatorio("Salvar variação");
     });
   }
 

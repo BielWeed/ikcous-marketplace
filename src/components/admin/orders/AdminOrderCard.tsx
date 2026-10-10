@@ -163,7 +163,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
             {order.canal === "presencial" && (
               <span
                 data-testid="selo-canal"
-                className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-300"
+                className="flex items-center rounded-full border border-zinc-700 bg-zinc-800/60 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-300"
               >
                 Balcão
               </span>
@@ -203,7 +203,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                 </div>
               )}
               {itens.length > 1 && (
-                <div className="absolute -right-1.5 -top-1.5 flex min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold px-1 text-[10px] font-black leading-5 text-black shadow-lg">
+                <div className="absolute -right-1.5 -top-1.5 flex min-w-5 items-center justify-center rounded-full border border-zinc-900 bg-admin-gold px-1 text-[11px] font-black leading-5 text-black shadow-lg">
                   +{itens.length - 1}
                 </div>
               )}
@@ -291,7 +291,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   e.stopPropagation();
                   onWhatsApp(order);
                 }}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-300 active:scale-90"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-300 active:scale-90"
               >
                 <MessageCircle className="size-[18px]" />
               </button>
@@ -320,7 +320,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                       onRegistrarPagamento(order.id, false);
                     }}
                     disabled={registrandoPagamento}
-                    className="h-10 shrink-0 rounded-xl border border-zinc-700/60 bg-zinc-800/50 px-3.5 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
+                    className="h-11 shrink-0 rounded-xl border border-zinc-700/60 bg-zinc-800/50 px-3.5 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-700 hover:text-white disabled:opacity-50"
                   >
                     Desfazer
                   </button>
@@ -333,7 +333,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                     onRegistrarPagamento(order.id, true);
                   }}
                   disabled={registrandoPagamento}
-                  className="flex h-10 min-w-0 max-w-60 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-300 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
+                  className="flex h-11 min-w-0 max-w-60 flex-1 items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 text-xs font-bold text-emerald-300 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60"
                 >
                   <Check className="size-4 shrink-0" />
                   {registrandoPagamento

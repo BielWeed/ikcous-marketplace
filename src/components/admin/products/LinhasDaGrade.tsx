@@ -59,7 +59,7 @@ export function LinhasDaGrade({
   return (
     <>
       <div className="space-y-2 rounded-2xl border border-dashed border-amber-500/30 bg-amber-500/5 p-4">
-        <span className="ml-1 block text-[10px] font-black uppercase tracking-widest text-amber-400">
+        <span className="ml-1 block text-[11px] font-black uppercase tracking-wider text-amber-400">
           Aplicar para todas
         </span>
         <div className="grid grid-cols-2 gap-3">
@@ -92,11 +92,11 @@ export function LinhasDaGrade({
         <button
           type="button"
           onClick={onAplicarParaTodas}
-          className="w-full rounded-2xl border border-white/10 bg-zinc-950/60 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:border-emerald-500/30 active:scale-95"
+          className="min-h-11 w-full rounded-2xl border border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:border-emerald-500/30 active:scale-95"
         >
           Aplicar para todas
         </button>
-        <p className="ml-1 text-[10px] leading-tight text-zinc-500">
+        <p className="ml-1 text-[11px] leading-tight text-zinc-500">
           Deixa o preço vazio para todas usarem o preço padrão do produto — o
           mesmo "Auto" do modal de uma variante.
         </p>
@@ -105,9 +105,9 @@ export function LinhasDaGrade({
       <div className="space-y-2">
         <label
           htmlFor="grade-sku-base"
-          className="ml-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+          className="ml-1 text-[11px] font-black uppercase tracking-wider text-zinc-500"
         >
-          SKU base (o sufixo por valor é automático)
+          Código interno base (o sufixo por valor é automático)
         </label>
         <LocalBufferedInput
           id="grade-sku-base"
@@ -116,12 +116,12 @@ export function LinhasDaGrade({
           value={skuBase}
           onFlush={onSkuBase}
           className="w-full rounded-2xl border border-white/5 bg-zinc-950 px-5 py-4 font-mono text-sm font-bold uppercase transition-all focus:border-emerald-500/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-          placeholder="Ex: BLU — vazio nasce sem SKU"
+          placeholder="Ex: BLU — vazio nasce sem código"
         />
       </div>
 
       <p
-        className="ml-1 text-[10px] font-black uppercase tracking-widest text-emerald-500"
+        className="ml-1 text-[11px] font-black uppercase tracking-wider text-emerald-500"
         data-testid="contador-da-grade"
       >
         Só as {linhas.length} novas — as {quantasExistentes} existentes não são
@@ -166,10 +166,10 @@ export function LinhasDaGrade({
             </div>
           </div>
           <span
-            className="block font-mono text-[10px] text-zinc-500"
+            className="block font-mono text-[11px] text-zinc-500"
             data-testid="sku-da-linha"
           >
-            {skusPrevistos.at(i) || "sem SKU"}
+            {skusPrevistos.at(i) || "sem código"}
           </span>
         </div>
       ))}

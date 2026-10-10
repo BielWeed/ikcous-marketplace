@@ -66,21 +66,21 @@ const GUIA_POR_PROVEDOR: ReadonlyMap<ProvedorFrete, GuiaDoProvedor> = new Map([
       urlOficial:
         "https://centraldeajuda.melhorenvio.com.br/hc/pt-br/articles/31220417726228-Integra%C3%A7%C3%A3o-Magento-1-Inser%C3%A7%C3%A3o-do-Token",
       rotuloLink: "Ver a instrução oficial do Melhor Envio",
-      nota: 'Com o "Modo de testes" ligado aqui, gere o token no Melhor Envio de testes ("sandbox.melhorenvio.com.br"). Um token do ambiente errado não funciona.',
+      nota: 'Com o "Modo de teste" ligado aqui, gere o token no Melhor Envio de testes ("sandbox.melhorenvio.com.br"). Um token do ambiente errado não funciona.',
     },
   ],
   [
     "superfrete",
     {
       passos: [
-        'Faça login na SuperFrete e abra a página de integrações: "web.superfrete.com/#/integrations" (com o Modo de testes ligado: "sandbox.superfrete.com/#/integrations").',
+        'Faça login na SuperFrete e abra a página de integrações: "web.superfrete.com/#/integrations" (com o Modo de teste ligado: "sandbox.superfrete.com/#/integrations").',
         'Clique em "Integrar em Desenvolvedores".',
         "Confirme a ação quando a tela pedir.",
         "Copie o token mostrado e cole aqui embaixo.",
       ],
       urlOficial: "https://superfrete.readme.io/reference/primeiros-passos",
       rotuloLink: "Ver a documentação oficial da SuperFrete",
-      nota: 'Produção e Sandbox usam tokens DIFERENTES — gere o token no mesmo ambiente que está marcado no "Modo de testes" acima. Um token do ambiente errado não cota.',
+      nota: 'Produção e modo de teste usam tokens DIFERENTES — gere o token no mesmo ambiente que está marcado em "Modo de teste" acima. Um token do ambiente errado não cota.',
     },
   ],
   [
@@ -141,7 +141,7 @@ export function GuiaDaChaveDoProvedor({
           ))}
         </ol>
         {guia.nota && (
-          <p className="text-[10.5px] leading-snug text-amber-300/90">
+          <p className="text-[11px] leading-snug text-amber-300/90">
             {guia.nota}
           </p>
         )}

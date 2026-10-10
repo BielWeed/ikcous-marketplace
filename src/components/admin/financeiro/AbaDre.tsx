@@ -95,7 +95,7 @@ function TabelaDoPeriodo({
         sobre a receita líquida
       </caption>
       <thead>
-        <tr className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+        <tr className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
           <th scope="col" className="py-2 text-left font-black">
             Linha
           </th>
@@ -199,7 +199,7 @@ function TabelaMensal({
           Demonstração do resultado mês a mês
         </caption>
         <thead>
-          <tr className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+          <tr className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">
             <th scope="col" className={cn(colunaFixa, "py-2 font-black")}>
               Linha
             </th>
@@ -311,9 +311,9 @@ function TabelaMensal({
 }
 
 /**
- * Aba "DRE": a demonstração do resultado simplificada, por competência
- * (spec §4). Cada linha mostra o % da receita líquida (análise vertical);
- * subtotais em destaque; linhas com categorias abrem por baixo. Período com
+ * Aba "Resultado" (a DRE): a demonstração do resultado simplificada, por
+ * competência — na tela, "mês de referência" (spec §4). Cada linha mostra
+ * o % da receita líquida (análise vertical); subtotais em destaque; linhas com categorias abrem por baixo. Período com
  * mais de um mês ganha a visão mês a mês — as colunas dos meses são a ÚNICA
  * coisa da tela que rola de lado no celular.
  */
@@ -392,7 +392,7 @@ export function AbaDre({
           />
         </BlocoKpi>
         <BlocoKpi
-          rotulo="Margem de contribuição"
+          rotulo="Sobra depois dos custos da venda"
           detalhe={formatarPercentual(
             percentualDaReceita(dados.margemContribuicao, dados.receitaLiquida),
           )}
@@ -415,11 +415,11 @@ export function AbaDre({
 
       <CartaoSecao
         titulo="Demonstração do resultado"
-        subtitulo={`${rotuloDoPeriodo} · por competência`}
+        subtitulo={`${rotuloDoPeriodo} · pelo mês de referência`}
         acao={
           podeMensal ? (
             <Segmentado<ModoDaDre>
-              rotulo="Visão da DRE"
+              rotulo="Visão do resultado"
               valor={modo}
               aoMudar={setModo}
               opcoes={[
@@ -439,7 +439,7 @@ export function AbaDre({
           <EstadoVazio
             icone={FileText}
             titulo="Nada no período ainda"
-            texto="Assim que houver venda paga ou despesa lançada com competência neste período, a DRE se monta sozinha."
+            texto="Assim que houver venda paga ou despesa lançada com mês de referência neste período, o resultado se monta sozinho."
           />
         ) : mensal ? (
           porMes.erro && !porMes.dados ? (
@@ -468,7 +468,7 @@ export function AbaDre({
         <p className="mt-4 flex items-start gap-2 text-[11px] text-zinc-500">
           <Info aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
           Transferências entre contas, compra de mercadoria para estoque e
-          aporte ou retirada do dono ficam fora da DRE: não são lucro nem
+          aporte ou retirada do dono ficam fora do resultado: não são lucro nem
           prejuízo.
         </p>
       </CartaoSecao>

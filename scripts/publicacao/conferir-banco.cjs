@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -1304,6 +1304,55 @@ const ROL_DA_16B = [
   "vaga_do_cupom_presa: corpo e o da 20261205000000 (sha256)",
   "vaga_do_cupom_presa: sobrecargas",
 ];
+/** O rol da 17a (a prova de objetos do lote das migrations 20261212000000, 20261213000000 e
+ * 20261214000000, o estoque do painel segue UMA regra: cada uma só troca o CORPO de UMA função): as 14
+ * linhas que scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql devolve, cada uma
+ * UMA vez, as mesmas em qualquer estado do banco (função ausente vira `AUSENTE` na própria linha, nunca
+ * some uma linha) — por função (`get_admin_analytics_v2`, `get_admin_products_paged`, `painel_inicio`)
+ * sobrecargas, forma, corpo e EXECUTE, mais o controle e as colunas. Como a 10a/11a/12a/14a/15a/16a, NÃO
+ * serve de pré-checagem de ledger (o lote não tem backfill: é de apply normal): o portão a lê como
+ * `consulta` do lote e só a aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/estoque-do-painel-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_17A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: EXECUTE",
+  "get_admin_analytics_v2: corpo e o da 20261214000000 (sha256)",
+  "get_admin_analytics_v2: forma",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_products_paged: EXECUTE",
+  "get_admin_products_paged: corpo e o da 20261213000000 (sha256)",
+  "get_admin_products_paged: forma",
+  "get_admin_products_paged: sobrecargas",
+  "painel_inicio: EXECUTE",
+  "painel_inicio: corpo e o da 20261212000000 (sha256)",
+  "painel_inicio: forma",
+  "painel_inicio: sobrecargas",
+  "produtos e product_variants: colunas que os corpos novos leem",
+];
+/** O rol da 17b (a consulta de AUSÊNCIA do lote das migrations 20261212000000, 20261213000000 e
+ * 20261214000000, o estoque do painel segue UMA regra; `ausenciaConfirmadaPor`): as 11 linhas que
+ * scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql devolve — o que os
+ * pré-voos das três migrations exigem (o corpo VIGENTE de antes de `get_admin_analytics_v2` e
+ * `painel_inicio`, o da 20261199000000, e de `get_admin_products_paged`, o da baseline; UMA sobrecarga
+ * cada), o EXECUTE que o CREATE OR REPLACE preserva (só authenticated) e as colunas de `produtos` e
+ * `product_variants` que os trechos novos leem, lidos ANTES de aplicar. Ao contrário da 10b/11b/12b/15b/16b,
+ * o "antes" aqui não é a ausência de objeto novo: é o corpo velho de cada função (o lote só troca corpos).
+ * tests/banco/estoque-do-painel-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_17B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: EXECUTE",
+  "get_admin_analytics_v2: corpo e o da 20261199000000 (sha256)",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_products_paged: EXECUTE",
+  "get_admin_products_paged: corpo e o da 20260806000000 (sha256)",
+  "get_admin_products_paged: sobrecargas",
+  "painel_inicio: EXECUTE",
+  "painel_inicio: corpo e o da 20261199000000 (sha256)",
+  "painel_inicio: sobrecargas",
+  "produtos e product_variants: colunas que os corpos novos leem",
+];
 
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
@@ -1325,6 +1374,8 @@ const ROL_FECHADO_POR_CONSULTA = {
   "15b-antes-cupons-do-checkout-pecas-ausentes": ROL_DA_15B,
   "16a-conferir-pix-anulado-aplicado": ROL_DA_16A,
   "16b-antes-pix-anulado-foto-ausente": ROL_DA_16B,
+  "17a-conferir-estoque-do-painel-aplicado": ROL_DA_17A,
+  "17b-antes-estoque-do-painel-corpos-vigentes": ROL_DA_17B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1883,6 +1934,8 @@ module.exports = {
   ROL_DA_15B,
   ROL_DA_16A,
   ROL_DA_16B,
+  ROL_DA_17A,
+  ROL_DA_17B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

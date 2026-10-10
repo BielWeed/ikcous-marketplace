@@ -32,6 +32,7 @@ function builderOrders() {
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) => {
@@ -46,6 +47,7 @@ function builderSemContador() {
   builder.select = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase
   builder.then = (resolve: any, reject?: any) =>

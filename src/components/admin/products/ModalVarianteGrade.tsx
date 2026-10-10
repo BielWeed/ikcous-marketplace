@@ -345,10 +345,10 @@ export function ModalVarianteGrade({
       ...variantesExistentes.map((v) => v.sku ?? ""),
     ]);
     if (colisao) {
-      toast.error(`O SKU "${colisao}" já existe na loja`, {
+      toast.error(`O código interno "${colisao}" já existe na loja`, {
         description:
-          "SKU é único em TODA a loja, não só neste produto. Ajuste o SKU " +
-          "base para a grade nascer com códigos livres.",
+          "O código interno é único em TODA a loja, não só neste produto. " +
+          "Ajuste o código interno base para a grade nascer com códigos livres.",
       });
       return;
     }
@@ -401,7 +401,7 @@ export function ModalVarianteGrade({
               </div>
               <div>
                 <h3 className="text-xl font-black tracking-tight">{titulo}</h3>
-                <p className="mt-1 text-[10px] font-bold uppercase leading-none tracking-widest text-zinc-500">
+                <p className="mt-1 text-[11px] font-bold uppercase leading-none tracking-wider text-zinc-500">
                   {passo === 1
                     ? "passo 1 de 2 — escolha os valores de cada atributo"
                     : `passo 2 de 2 — estoque e preço das ${linhas.length} combinações novas`}
@@ -418,7 +418,7 @@ export function ModalVarianteGrade({
                       <div className="flex items-center gap-2">
                         <label
                           htmlFor={`grade-nome-${indice}`}
-                          className="ml-1 flex-1 text-[10px] font-black uppercase tracking-widest text-zinc-500"
+                          className="ml-1 flex-1 text-[11px] font-black uppercase tracking-wider text-zinc-500"
                         >
                           Atributo {indice + 1} (ex: Cor, Tamanho)
                         </label>
@@ -458,7 +458,7 @@ export function ModalVarianteGrade({
                                 atualizarGrupo(grupo.chave, { nome: attr })
                               }
                               className={cn(
-                                "px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-all active:scale-95",
+                                "min-h-11 px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-all active:scale-95",
                                 grupo.nome === attr
                                   ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
                                   : "bg-zinc-950 border-white/5 text-zinc-500 hover:text-zinc-300 hover:border-white/10",
@@ -492,7 +492,7 @@ export function ModalVarianteGrade({
                               >
                                 {chip.valor}
                                 {chip.usado && !selecionado && (
-                                  <span className="ml-1.5 text-[8px] font-black uppercase tracking-widest text-zinc-600">
+                                  <span className="ml-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-600">
                                     já usado
                                   </span>
                                 )}
@@ -531,14 +531,14 @@ export function ModalVarianteGrade({
                 <button
                   type="button"
                   onClick={() => setGrupos((prev) => [...prev, grupoNovo()])}
-                  className="w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
+                  className="min-h-11 w-full rounded-2xl border border-dashed border-white/10 bg-zinc-950/60 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:border-emerald-500/30 hover:text-emerald-500 active:scale-95"
                 >
                   + Atributo
                 </button>
               )}
 
               {passo === 1 && (
-                <p className="ml-1 text-[10px] font-medium leading-relaxed text-zinc-500">
+                <p className="ml-1 text-[11px] font-medium leading-relaxed text-zinc-500">
                   Toque nos valores que entram na grade — os marcados
                   <span className="mx-1 font-black uppercase tracking-widest text-zinc-400">
                     já usado
@@ -598,8 +598,8 @@ export function ModalVarianteGrade({
                   onClick={efetivar}
                   className="flex-[2] rounded-2xl bg-emerald-500 py-4 text-xs font-black uppercase tracking-widest text-emerald-950 shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all hover:scale-105 active:scale-95"
                 >
-                  Efetivar {linhas.length}{" "}
-                  {linhas.length === 1 ? "variante" : "variantes"}
+                  Salvar {linhas.length}{" "}
+                  {linhas.length === 1 ? "variação" : "variações"}
                 </button>
               )}
             </div>

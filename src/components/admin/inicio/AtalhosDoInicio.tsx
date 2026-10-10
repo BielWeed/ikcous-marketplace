@@ -1,3 +1,4 @@
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import type { View } from "@/types";
 import { ArrowRight, BarChart3, Landmark, type LucideIcon } from "lucide-react";
 
@@ -11,13 +12,13 @@ interface BotaoGrande {
 const BOTOES_GRANDES: readonly BotaoGrande[] = [
   {
     destino: "admin-crm",
-    titulo: "Dashboard CRM",
+    titulo: NOMES_DO_PAINEL["admin-crm"],
     descricao: "Clientes, canais, funil e todas as métricas",
     icone: BarChart3,
   },
   {
     destino: "admin-financeiro",
-    titulo: "Financeiro",
+    titulo: NOMES_DO_PAINEL["admin-financeiro"],
     descricao: "Caixa, extrato, contas a pagar e receber",
     icone: Landmark,
   },
@@ -29,7 +30,7 @@ const BOTOES_GRANDES: readonly BotaoGrande[] = [
  * clique. A fileira de ações rápidas (Vender, Pedidos, Devoluções) saiu —
  * pedido do Gabriel (27/09/2026): Vender e Pedidos já estão na barra de
  * baixo, e Devoluções tem porta própria na tela de Pedidos
- * (`BotaoDevolucoes` em `AdminOrdersView.tsx`).
+ * (o `AtalhosDaAba` de Pedidos, com o contador de devoluções abertas).
  */
 export function AtalhosDoInicio({
   onNavigate,

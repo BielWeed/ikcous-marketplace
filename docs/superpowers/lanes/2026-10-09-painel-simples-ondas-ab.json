@@ -1,0 +1,84 @@
+{
+  "plano": "painel-simples-ondas-ab",
+  "frentes": [
+    {
+      "nome": "atendimento-horario",
+      "descricao": "A1: a tela Atendimento para de regravar o horario (conserto de perda de dado)",
+      "posse": [
+        "src/views/admin/AdminWhatsAppConfigView.tsx",
+        "tests/front/atendimento-nao-grava-horario.test.tsx",
+        "tests/front/atendimento-formulario-direto.test.tsx",
+        "tests/front/ajustes-horario-de-atendimento.test.tsx",
+        "tests/front/admin-visual-canais-avisar.test.tsx"
+      ]
+    },
+    {
+      "nome": "barra-e-cabecalho",
+      "descricao": "A2+A3: barra inferior com nome acessivel e Voltar/sino com 44px no AdminLayout",
+      "posse": [
+        "src/components/layouts/AdminLayout.tsx",
+        "tests/front/admin-barra-tem-nome-acessivel.test.tsx",
+        "tests/front/admin-barra-nao-mente-a-aba-do-pdv.test.tsx",
+        "tests/front/admin-cabecalho-alvos-44.test.tsx",
+        "tests/front/admin-layout-badge-de-ajustes-nao-mente.test.tsx",
+        "tests/front/admin-layout-cracha-pedidos-pendentes.test.tsx",
+        "tests/front/sino-do-painel-leva-as-notificacoes.test.tsx"
+      ]
+    },
+    {
+      "nome": "loja-pronta",
+      "descricao": "A4+A5: funcao pura passosDaLojaPronta e o cartao do Inicio passa a usa-la",
+      "posse": [
+        "src/lib/loja-pronta.ts",
+        "src/components/admin/dashboard/LojaProntaEEstoqueBaixo.tsx",
+        "src/views/admin/AdminDashboardView.tsx",
+        "tests/front/loja-pronta.test.ts",
+        "tests/front/dashboard-diz-o-que-falta-para-vender.test.tsx",
+        "tests/front/dashboard-cep-oito-digitos.test.tsx"
+      ]
+    },
+    {
+      "nome": "nomes-e-portas",
+      "descricao": "B1+B8: NOMES_DO_PAINEL/PORTAS_DO_PAINEL e os primitivos AtalhosDaAba, AlternadorDeTelas, AcaoDoPainel",
+      "posse": [
+        "src/config/nomes-do-painel.ts",
+        "src/components/admin/primitivos/AtalhosDaAba.tsx",
+        "src/components/admin/primitivos/AlternadorDeTelas.tsx",
+        "src/components/admin/primitivos/AcaoDoPainel.tsx",
+        "tests/front/nomes-e-portas-do-painel.test.ts",
+        "tests/front/atalhos-da-aba.test.tsx"
+      ]
+    },
+    {
+      "nome": "guardas-do-painel",
+      "descricao": "B2+B3+B4: glossario com guarda de jargao, erro amigavel unico e regua visual, ambos com teto que so desce",
+      "posse": [
+        "src/lib/glossario-do-painel.ts",
+        "src/lib/erro-do-painel.ts",
+        "src/lib/crm.ts",
+        "tests/front/painel-sem-jargao.test.ts",
+        "tests/front/painel-sem-jargao.teto.json",
+        "tests/front/erro-do-painel.test.ts",
+        "tests/front/regua-visual-do-painel.test.ts",
+        "tests/front/regua-visual-do-painel.json",
+        "tests/front/crm-e-inicio-funcoes-puras.test.ts"
+      ]
+    },
+    {
+      "nome": "primitivos-base",
+      "descricao": "B5+B6+B7: FolhaDoPainel (ajuda acessivel), SeloDeStatus, EstadoVazio, EsqueletoDaLista, SecaoRecolhivel",
+      "posse": [
+        "src/components/admin/primitivos/FolhaDoPainel.tsx",
+        "src/components/admin/primitivos/SeloDeStatus.tsx",
+        "src/components/admin/primitivos/EstadoVazio.tsx",
+        "src/components/admin/primitivos/EsqueletoDaLista.tsx",
+        "src/components/admin/primitivos/SecaoRecolhivel.tsx",
+        "src/components/admin/AdminHelpModal.tsx",
+        "tests/front/ajuda-do-painel-e-dialogo.test.tsx",
+        "tests/front/primitivos-do-painel.test.tsx",
+        "tests/front/admin-orders-guia-do-pagamento-que-nao-fechou.test.tsx",
+        "tests/front/porta-de-avisar-clientes-mora-em-clientes.test.tsx"
+      ]
+    }
+  ]
+}

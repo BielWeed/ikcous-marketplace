@@ -275,13 +275,13 @@ describe("HistoricoCotacoesSection — o selo vermelho passa a dizer o motivo", 
     // O rodapé antigo dizia "Exibindo as 10 consultas mais recentes" com
     // uma ÚNICA linha de dado na tela — o número parava de bater com o que
     // o lojista via (achado ANOTADO). Sem a correção este teste falharia
-    // pelo motivo certo: a contagem de OCORRÊNCIAS (grupos) não aparece em
+    // pelo motivo certo: a contagem de LINHAS (grupos) não aparece em
     // lugar nenhum, só a contagem crua de logs.
     const rodape = hospedeiro.querySelector(
       "#historico-cotacoes-section > div:last-child",
     )?.textContent;
     expect(rodape).toMatch(/10 consultas/i);
-    expect(rodape).toMatch(/1 ocorrência/i);
+    expect(rodape).toMatch(/em 1 linha\b/i);
   });
 
   it("erros seguidos com motivos DIFERENTES não colapsam", async () => {

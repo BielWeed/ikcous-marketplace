@@ -58,6 +58,10 @@ on:
       - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
       - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
       - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
+      - "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   push:
@@ -84,6 +88,10 @@ on:
       - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
       - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
       - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
+      - "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-92-202.sql"
       - "scripts/frota/canais-de-backend.json"
       - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
@@ -425,6 +433,39 @@ jobs:
       - name: Prova viva do portao do cupom do PIX anulado (consultas 16a e 16b)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-portao-viva.cjs
+      # Portao da release para as migrations 20261212000000, 20261213000000 e 20261214000000 (o estoque
+      # do painel segue UMA regra; cada uma troca SO o corpo de UMA funcao): as consultas 17a (DEPOIS,
+      # 14 linhas) e 17b (ANTES, 11 linhas) do lote em scripts/frota/canais-de-backend.json, executadas
+      # num Postgres real como papel de leitura, cada estado numa transacao desfeita. 17b positiva no
+      # antes (os tres rollbacks; tambem em CRLF e depois da ida e volta em qualquer ordem); 17a
+      # positiva depois do apply real (LF, CRLF, 12->14 e 14->12, 2x, ida-volta-ida), igual a arvore
+      # inteira. Os 6 estados MISTOS reprovam so o corpo das que faltam (17a) e das que entraram (17b);
+      # a 8e segue positiva em todos. Cada defeito (corpo, ausente, sobrecarga, forma, EXECUTE por
+      # papel, colunas) reprova a SUA linha e leva o portao a NEGATIVA, nunca a POSITIVA; mutantes das
+      # consultas ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o conferir-banco.cjs
+      # e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA loja depende dela. CLONE
+      # proprio.
+      - name: Prova viva do portao do estoque do painel (consultas 17a e 17b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-do-painel-portao-viva.cjs
+      # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
+      # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
+      # minimo e editavel so pelo admin. Cada prova clona o banco.
+      - name: Prova viva do estoque baixo numa regua so (migrations 20261212 e 20261213)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-baixo-uma-regra-viva.cjs
+      - name: Prova viva do lucro do estoque so com custo (migration 20261214)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/inventario-so-com-custo-viva.cjs
+      - name: Prova viva do portao da 8e com as sucessoras da 99 (migrations 20261212 e 20261214)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portao-8e-aceita-sucessoras-viva.cjs
+      - name: Prova viva de caracterizacao da receita do mes (sem migration)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/receita-uma-regua-viva.cjs
+      - name: Prova viva do estoque minimo editavel so pelo admin (sem migration, transacao desfeita)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-minimo-editavel-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

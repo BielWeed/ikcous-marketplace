@@ -36,6 +36,7 @@ function criarContagemBuilder(contagem: number) {
   const builder: any = {};
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão de dashboard-escuta-a-tabela-certa e admin-layout-cracha-pedidos-pendentes.
   builder.then = (resolve: any, reject?: any) =>
@@ -189,7 +190,11 @@ describe("AdminLayout — o sino abre as Notificações do lojista", () => {
       );
     });
 
-    const sino = hospedeiro.querySelector("button.size-7");
+    // O botão do sino é o envoltório de 44px (A3); o `size-7` agora mora no
+    // círculo de dentro. O cabeçalho é o do celular — a lateral tem outra porta.
+    const sino = hospedeiro.querySelector(
+      'header button[aria-label="Notificações"]',
+    );
     expect(sino).toBeTruthy();
     return { onNavigate, sino: sino as HTMLButtonElement };
   }

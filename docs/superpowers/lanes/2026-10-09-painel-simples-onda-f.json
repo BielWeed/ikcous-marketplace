@@ -1,0 +1,133 @@
+{
+  "plano": "painel-simples-onda-f",
+  "frentes": [
+    {
+      "nome": "pedidos-para-preparar",
+      "descricao": "F1+F2+F3 (PEDIDO/DINHEIRO, revisor-risco): regra unica 'para preparar' em src/lib/pedidos-para-preparar.ts, espelho de painel_inicio (20261199:1582-1584); selo da aba Pedidos (AdminLayout) e a lista do sino (useAvisosDoLojista) deixam de contar PIX/cartao nao pago; topo de Pedidos vira Para preparar / Aguardando pagamento / A caminho / Entregues (sai Receita Hoje e Valor medio por venda, que vivem no Inicio e em Clientes)",
+      "posse": [
+        "src/lib/pedidos-para-preparar.ts",
+        "src/hooks/useNumerosDosPedidos.ts",
+        "src/components/layouts/AdminLayout.tsx",
+        "src/hooks/useAvisosDoLojista.ts",
+        "src/views/admin/AdminOrdersView.tsx",
+        "src/hooks/useAnularVendaDoBalcao.ts",
+        "src/hooks/useOrders.ts",
+        "tests/front/pedidos-para-preparar.test.ts",
+        "tests/front/pedidos-numeros-do-topo.test.tsx",
+        "tests/front/admin-layout-cracha-pedidos-pendentes.test.tsx",
+        "tests/front/admin-barra-tem-nome-acessivel.test.tsx",
+        "tests/front/admin-barra-nao-mente-a-aba-do-pdv.test.tsx",
+        "tests/front/admin-cabecalho-alvos-44.test.tsx",
+        "tests/front/admin-layout-badge-de-ajustes-nao-mente.test.tsx",
+        "tests/front/admin-layout-porta-unica.test.tsx",
+        "tests/front/badges-do-painel-agrupam-rajada.test.tsx",
+        "tests/front/nome-da-loja-painel-endereco.test.tsx",
+        "tests/front/selo-de-conexao-em-palavras.test.tsx",
+        "tests/front/sino-do-painel-acende-quando-consulta-falha.test.tsx",
+        "tests/front/sino-do-painel-leva-as-notificacoes.test.tsx",
+        "tests/front/use-avisos-do-lojista.test.ts",
+        "tests/front/admin-notifications-view.test.tsx",
+        "tests/front/admin-orders-acoes-pendentes-subtitulo-honesto.test.tsx",
+        "tests/front/admin-orders-total-concluido-e-aviso-pago-cancelado.test.tsx",
+        "tests/front/admin-orders-alertas-compactos.test.tsx",
+        "tests/front/pedidos-falam-a-lingua-da-loja.test.tsx",
+        "tests/front/admin-orders-cancelar-pela-edge.test.tsx",
+        "tests/front/admin-orders-card-whatsapp-sem-destinatario.test.tsx",
+        "tests/front/admin-orders-exporta-csv-do-periodo-inteiro.test.tsx",
+        "tests/front/admin-orders-exportar-csv-rotulo-da-pagina.test.tsx",
+        "tests/front/admin-orders-ficha-por-deep-link-nao-remonta.test.tsx",
+        "tests/front/admin-orders-filtro-pagamento-estado-vazio-honesto.test.tsx",
+        "tests/front/admin-orders-filtro-que-filtra.test.tsx",
+        "tests/front/admin-orders-guia-do-pagamento-que-nao-fechou.test.tsx",
+        "tests/front/admin-orders-payment-filter.test.tsx",
+        "tests/front/admin-orders-status-erro-cru-nao-duplica-toast.test.tsx",
+        "tests/front/admin-orders-vazio-reconhece-primeira-venda.test.tsx",
+        "tests/front/cancelar-enviado-otimista-marca-que-precisa-devolver.test.tsx",
+        "tests/front/ficha-do-pedido-copiar-endereco-falha-avisa.test.tsx",
+        "tests/front/ficha-do-pedido-pergunta-se-recebeu-ao-entregar.test.tsx",
+        "tests/front/ficha-do-pedido-whatsapp-sem-destinatario-nao-renderiza.test.tsx",
+        "tests/front/painel-avancar-rele-pedido-do-deep-link.test.tsx",
+        "tests/front/painel-avancar-rele-pedido-mudou.test.tsx",
+        "tests/front/painel-avisa-o-cliente-com-o-numero-que-ele-ve.test.tsx",
+        "tests/front/painel-avisa-pedido-pago-e-cancelado.test.tsx",
+        "tests/front/painel-botao-registrar-pagamento-recebido.test.tsx",
+        "tests/front/painel-de-pedidos-volta-da-pagina-que-nao-existe-mais.test.tsx",
+        "tests/front/painel-devolver-agora-desconta-estorno-em-curso.test.tsx",
+        "tests/front/painel-lista-estorno-devido.test.tsx",
+        "tests/front/pedido-presencial-canal-reseta-em-ver-pedidos.test.tsx",
+        "tests/front/pedido-presencial-filtro-de-canal.test.tsx",
+        "tests/front/recibo-impresso-nome-da-loja.test.tsx",
+        "tests/front/status-desconhecido-nao-quebra-a-tela.test.tsx",
+        "tests/front/use-orders-cancelados-insert-recarrega-com-debounce.test.tsx",
+        "tests/front/use-orders-cancelados-nao-baixa-o-banco-inteiro.test.tsx",
+        "tests/front/use-orders-sync-offline-preserva-filtros.test.tsx"
+      ]
+    },
+    {
+      "nome": "inicio-com-janela",
+      "descricao": "F4: Inicio com rotulo e janela - 'Vendas pagas hoje', 'Vendas pagas no mes' (mesma regua de crm__vendas: pago, pago_apos_expirar, recebido_na_entrega, dia do pagamento em SP), 'Contas vencidas' so no Para fazer (sai do rodape de Este mes), 'Devolucoes abertas' fica; ajuda do Inicio e a tabela do grafico de 14 dias com as mesmas palavras",
+      "posse": [
+        "src/components/admin/inicio/HojeNaLoja.tsx",
+        "src/components/admin/inicio/NumerosDoMes.tsx",
+        "src/components/admin/inicio/ParaFazer.tsx",
+        "src/components/admin/inicio/SerieDe14Dias.tsx",
+        "src/views/admin/AdminDashboardView.tsx",
+        "tests/front/inicio-diz-a-janela-de-cada-numero.test.tsx",
+        "tests/front/inicio-do-painel.test.tsx",
+        "tests/front/relatorios-falam-a-lingua-da-loja.test.tsx",
+        "tests/front/tile-de-kpi-superficie.test.tsx",
+        "tests/front/serie-de-14-dias.test.tsx",
+        "tests/front/dashboard-escuta-a-tabela-certa.test.tsx",
+        "tests/front/dashboard-estoque-carregando-fiacao.test.tsx",
+        "tests/front/dashboard-diz-o-que-falta-para-vender.test.tsx",
+        "tests/front/atalhos-do-inicio-so-dois-botoes-grandes.test.tsx"
+      ]
+    },
+    {
+      "nome": "estoque-um-limiar",
+      "descricao": "F5: o painel usa UMA regra de estoque baixo - precisaDeReposicao/LIMIAR_PADRAO_DE_ESTOQUE (src/utils/avisos-do-lojista.ts, valor 5 = P3 assumida) no selo Critico e nas cores de estoque de Produtos e no filtro 'low' de useProducts; nenhuma coluna, RPC ou migration",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "src/hooks/useProducts.ts",
+        "tests/front/estoque-baixo-um-limiar.test.ts",
+        "tests/front/admin-products-esgotado.test.tsx",
+        "tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx",
+        "tests/front/admin-products-margem-sem-custo.test.tsx",
+        "tests/front/admin-products-potencial-duas-casas-decimais.test.tsx",
+        "tests/front/admin-products-nao-afirma-vazio-antes-de-perguntar.test.tsx",
+        "tests/front/admin-products-um-so-aviso-ao-excluir.test.tsx",
+        "tests/front/admin-products-view-toast-de-exclusao.test.tsx",
+        "tests/front/admin-products-duplicar-duas-vezes-preserva-a-grade.test.tsx",
+        "tests/front/produto-sem-custo-grava-nulo-nao-zero.test.tsx"
+      ]
+    },
+    {
+      "nome": "clientes-de-onde-vem",
+      "descricao": "F6 (o que sobrou): Clientes diz que lista contas do app; Relatorios > Clientes diz que lista quem comprou no app e no balcao, quem pediu e nao pagou e quem tem conta sem compra. O botao WhatsApp da Ficha ja foi feito na onda 3 (linkWhatsappDoCliente) e nao muda",
+      "posse": [
+        "src/views/admin/AdminCustomersView.tsx",
+        "src/components/admin/crm/ClientesDoCrm.tsx",
+        "tests/front/clientes-dizem-de-onde-vem.test.tsx",
+        "tests/front/admin-customers-ordenacao-ltv-e-ajuda-honesta.test.tsx",
+        "tests/front/admin-customers-ticket-medio.test.tsx",
+        "tests/front/admin-customers-view-congelar-acesso-removido.test.tsx",
+        "tests/front/listas-falam-a-lingua-da-loja.test.tsx",
+        "tests/front/crm-clientes-grupos-novos-revisao.test.tsx",
+        "tests/front/crm-do-painel.test.tsx",
+        "tests/front/crm-contraste-aa.test.tsx"
+      ]
+    },
+    {
+      "nome": "balcao-anular-e-cancelar",
+      "descricao": "F7 (PEDIDO/DINHEIRO, so texto, revisor-risco): na ficha de uma venda do balcao (canal presencial) o bloco Pagamento explica Anular x Cancelar com a frase da 20261204 ('So da para anular no mesmo dia da venda.'); nenhum handler, regra (podeAnularVendaDoBalcao) ou chamada muda",
+      "posse": [
+        "src/components/admin/orders/OrderDetail.tsx",
+        "tests/front/balcao-explica-anular-e-cancelar.test.tsx",
+        "tests/front/ficha-do-pedido-anular-venda-do-balcao.test.tsx",
+        "tests/front/ficha-do-pedido-redesenho.test.tsx",
+        "tests/front/ficha-do-pedido-mesa-do-lojista.test.tsx",
+        "tests/front/pedido-presencial-rotulos.test.tsx"
+      ]
+    }
+  ]
+}

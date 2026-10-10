@@ -276,7 +276,7 @@ describe("editor de identidade sobre fotografia RPC", () => {
       asset: asset("custom.png", 192, 192),
     });
     await render();
-    await select("Trocar Ícone 192");
+    await select("Trocar Ícone pequeno (192 × 192)");
     await select("Trocar ícone do aplicativo");
     expect(h.prepareIcons).toHaveBeenCalledWith(
       expect.any(File),
@@ -288,7 +288,7 @@ describe("editor de identidade sobre fotografia RPC", () => {
     expect(host.textContent).toContain(
       "No Android, o ícone mostra a logo da loja sobre a cor principal.",
     );
-    // O envio avulso do "Ícone 192" já passa onProgress: a asserção olha só as
+    // O envio avulso do "Ícone pequeno (192 × 192)" já passa onProgress: a asserção olha só as
     // 4 chamadas do envio principal (as últimas), uma por papel, na ordem.
     expect(h.upload).toHaveBeenCalledTimes(5);
     const principal = h.upload.mock.calls.slice(-4);
@@ -591,13 +591,16 @@ describe("cancelamento, concorrência e resposta incerta", () => {
     await render();
     await type("store-name", "Meu nome");
     await click("Salvar identidade");
-    expect(input("store-city").value).toBe("Uberlândia");
+    // a cidade não é campo da marca, mas a tela de conflito a compara
+    expect(host.textContent).toContain("Cidade: Uberlândia / Cidade externa");
+    expect(host.querySelector("#store-city")).toBeNull();
     await click("Revisar meu rascunho");
-    expect(input("store-city").value).toBe("Cidade externa");
     expect(input("store-name").value).toBe("Meu nome");
     expect(h.save).toHaveBeenCalledTimes(1);
     await click("Salvar identidade");
     expect(h.save.mock.calls[1][0].expected.revision).toBe("4");
+    // a cidade externa não tocada entra no pacote da nova tentativa
+    expect(h.save.mock.calls[1][0].desired.store_city).toBe("Cidade externa");
   });
   it("conflito do servidor exige leitura antes de conciliar", async () => {
     h.save.mockResolvedValue({ status: "conflict", source: "server" });
@@ -916,5 +919,27 @@ describe("imagem original e fontes explícitas", () => {
     expect(h.save.mock.calls[0][0].desired.branding_assets.originals).toEqual([
       snapshot().identity.branding_assets.header,
     ]);
+  });
+});
+
+describe("alvos de toque de 44px na identidade (onda K · K-D)", () => {
+  it("todo campo de texto e de arquivo pede h-11 (vence o h-9 do Input) e a linha 'Usar também na abertura' tem 44px", async () => {
+    await render();
+    const campos = [
+      ...host.querySelectorAll<HTMLInputElement>("input:not([type=checkbox])"),
+    ];
+    expect(campos.length).toBeGreaterThan(5);
+    for (const campo of campos) {
+      expect(campo.className).toMatch(/\bh-11\b/);
+      expect(campo.className).not.toMatch(/\bh-9\b/);
+    }
+    const caixa = host.querySelector<HTMLInputElement>(
+      'label input[type="checkbox"]',
+    );
+    expect(caixa).not.toBeNull();
+    expect(caixa?.className).toMatch(/\bsize-5\b/);
+    const linha = caixa?.closest("label");
+    expect(linha?.textContent).toContain("Usar também na abertura");
+    expect(linha?.className).toMatch(/\bmin-h-11\b/);
   });
 });

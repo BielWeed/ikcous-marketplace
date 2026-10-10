@@ -108,7 +108,7 @@ const CustomPieLabel = React.memo(
           dy={labelDy}
           textAnchor="middle"
           dominantBaseline="middle"
-          className="pointer-events-none fill-zinc-400 text-[9px] font-black uppercase tracking-[0.15em] opacity-80 transition-all duration-300"
+          className="pointer-events-none fill-zinc-400 text-[11px] font-black uppercase tracking-[0.15em] opacity-80 transition-all duration-300"
         >
           {label}
         </text>
@@ -129,7 +129,7 @@ const CustomPieLabel = React.memo(
             dy="26"
             textAnchor="middle"
             dominantBaseline="middle"
-            className="pointer-events-none fill-admin-gold text-[10px] font-bold tracking-wide transition-all duration-300"
+            className="pointer-events-none fill-admin-gold text-[11px] font-bold tracking-wide transition-all duration-300"
           >
             {percentage}
           </text>
@@ -296,7 +296,7 @@ export const StrategicIntelligenceBlocks = React.memo(
               startAngle={startAngle}
               endAngle={endAngle}
               fill={fill}
-              stroke="#09090b"
+              stroke="hsl(var(--admin-bg))"
               strokeWidth={2}
               cornerRadius={6}
               style={{
@@ -348,7 +348,7 @@ export const StrategicIntelligenceBlocks = React.memo(
             <button
               type="button"
               onClick={onRetry}
-              className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-red-400 transition-colors hover:bg-red-500/20"
+              className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-red-400 transition-colors hover:bg-red-500/20"
             >
               Tentar novamente
             </button>
@@ -393,7 +393,7 @@ export const StrategicIntelligenceBlocks = React.memo(
               <li key={`sr-cat-${cat.name}`}>
                 Categoria {cat.name}: {formatCurrency(cat.value || 0)}
                 {cat.avg_ticket
-                  ? `, Ticket Médio: ${formatCurrency(cat.avg_ticket)}`
+                  ? `, Valor médio por venda: ${formatCurrency(cat.avg_ticket)}`
                   : ""}
               </li>
             ))}
@@ -444,7 +444,7 @@ export const StrategicIntelligenceBlocks = React.memo(
               donut fica ABAIXO da receita total, nunca acima. Par da frase
               guardado por tests/front/grafico-de-categorias-nao-promete-frete.test.tsx.
             */}
-            <p className="relative z-10 mb-3 text-[9px] font-medium normal-case leading-snug text-zinc-600 sm:mb-5">
+            <p className="relative z-10 mb-3 text-[11px] font-medium normal-case leading-snug text-zinc-600 sm:mb-5">
               Total deste gráfico = a receita total da loja (rateada por
               categoria, já líquida de desconto e com frete). Só fica abaixo se
               algum pedido tiver todos os produtos excluídos do catálogo.
@@ -471,7 +471,7 @@ export const StrategicIntelligenceBlocks = React.memo(
                       paddingAngle={3}
                       cornerRadius={8}
                       dataKey="value"
-                      stroke="#09090b"
+                      stroke="hsl(var(--admin-bg))"
                       strokeWidth={2.5}
                       isAnimationActive={!isMobile}
                       cx="50%"
@@ -515,10 +515,10 @@ export const StrategicIntelligenceBlocks = React.memo(
               {/* COLUNA DA TABELA DE LEGENDAS DETALHADAS */}
               <div className="flex w-full flex-col justify-center space-y-3 lg:w-[45%]">
                 <div className="hidden items-center justify-between border-b border-white/5 pb-2 lg:flex">
-                  <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
+                  <span className="text-[11px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                     Divisão de categorias
                   </span>
-                  <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
+                  <span className="text-[11px] font-bold uppercase leading-tight tracking-wider text-zinc-500">
                     Faturamento (%)
                   </span>
                 </div>
@@ -607,7 +607,7 @@ export const StrategicIntelligenceBlocks = React.memo(
                             <span className="text-[11px] font-black tabular-nums text-zinc-100">
                               {formatCurrency(entry.value)}
                             </span>
-                            <span className="min-w-[42px] rounded-md bg-admin-gold/10 px-1.5 py-0.5 text-center text-[9px] font-black text-admin-gold">
+                            <span className="min-w-[42px] rounded-md bg-admin-gold/10 px-1.5 py-0.5 text-center text-[11px] font-black text-admin-gold">
                               {percentage}%
                             </span>
                             <button
@@ -637,10 +637,10 @@ export const StrategicIntelligenceBlocks = React.memo(
 
                         {/* Sub Details Row */}
                         {!isInactive && (entry.avg_ticket || entry.orders) && (
-                          <div className="pl-5.5 mt-1.5 flex items-center gap-4 text-[10px] font-medium text-zinc-500">
+                          <div className="pl-5.5 mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-medium text-zinc-500">
                             {entry.avg_ticket && (
                               <span>
-                                Ticket M.:{" "}
+                                Valor médio por venda:{" "}
                                 <strong className="text-zinc-400">
                                   {formatCurrency(entry.avg_ticket)}
                                 </strong>

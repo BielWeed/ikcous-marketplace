@@ -120,12 +120,12 @@ function ListaAvaliacoes({ avaliacoes }: { avaliacoes: AvaliacaoDaFicha[] }) {
             {a.status === "pendente" && (
               <Badge
                 variant="secondary"
-                className="border-yellow-200/20 bg-yellow-100/10 text-[8px] font-black uppercase tracking-widest text-yellow-500"
+                className="border-yellow-200/20 bg-yellow-100/10 text-[11px] font-black uppercase tracking-widest text-yellow-500"
               >
                 Aguardando aprovação
               </Badge>
             )}
-            <span className="ml-auto text-[9px] font-bold uppercase tracking-widest text-zinc-600">
+            <span className="ml-auto text-[11px] font-bold uppercase tracking-widest text-zinc-600">
               {dataCurta(a.createdAt)}
             </span>
           </div>
@@ -134,7 +134,7 @@ function ListaAvaliacoes({ avaliacoes }: { avaliacoes: AvaliacaoDaFicha[] }) {
               “{a.comment}”
             </p>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
             <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-400">
               {a.produtoNome}
             </span>
@@ -142,7 +142,7 @@ function ListaAvaliacoes({ avaliacoes }: { avaliacoes: AvaliacaoDaFicha[] }) {
           </div>
           {a.merchantReply && (
             <div className="mt-2 rounded-lg border border-admin-gold/20 bg-admin-gold/5 p-2">
-              <p className="text-[8px] font-black uppercase tracking-widest text-admin-gold">
+              <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold">
                 Resposta da loja
               </p>
               <p className="mt-1 text-xs text-zinc-300">{a.merchantReply}</p>
@@ -172,7 +172,7 @@ function ListaPerguntas({ perguntas }: { perguntas: PerguntaDaFicha[] }) {
               {q.question}
             </p>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
             <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-400">
               {q.produtoNome}
             </span>
@@ -185,7 +185,7 @@ function ListaPerguntas({ perguntas }: { perguntas: PerguntaDaFicha[] }) {
                   key={r.id}
                   className="rounded-lg border border-zinc-800/60 bg-zinc-950/60 p-2"
                 >
-                  <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500">
+                  <p className="text-[11px] font-black uppercase tracking-widest text-zinc-500">
                     Resposta{" "}
                     <span className="text-zinc-700">
                       • {dataCurta(r.createdAt)}
@@ -247,7 +247,7 @@ export function VozClienteTab({
         <button
           type="button"
           onClick={onTentarDeNovo}
-          className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:border-admin-gold/30 hover:text-admin-gold"
+          className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-admin-gold/30 hover:text-admin-gold"
         >
           Tentar novamente
         </button>
@@ -269,7 +269,7 @@ export function VozClienteTab({
   return (
     <div className="space-y-6 p-4">
       <section className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/20">
-        <h3 className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/50 p-3 text-[10px] font-black uppercase tracking-[0.2em] text-white">
+        <h3 className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/50 p-3 text-[11px] font-black uppercase tracking-[0.2em] text-white">
           <Star className="size-3.5 text-admin-gold" />
           Avaliações
           <span className="ml-1 text-zinc-500">({avaliacoes.length})</span>
@@ -278,7 +278,7 @@ export function VozClienteTab({
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/20">
-        <h3 className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/50 p-3 text-[10px] font-black uppercase tracking-[0.2em] text-white">
+        <h3 className="flex items-center gap-2 border-b border-zinc-800/50 bg-zinc-900/50 p-3 text-[11px] font-black uppercase tracking-[0.2em] text-white">
           <MessageSquare className="size-3.5 text-admin-gold" />
           Perguntas
           <span className="ml-1 text-zinc-500">({perguntas.length})</span>

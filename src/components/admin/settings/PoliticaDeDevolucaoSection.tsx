@@ -7,6 +7,7 @@ import {
   LocalBufferedTextarea,
 } from "@/components/admin/LocalBufferedInput";
 import { Switch } from "@/components/ui/switch";
+import { useStore } from "@/contexts/StoreContext";
 import { useCategories } from "@/hooks/useCategories";
 import {
   METODOS_LOCAIS,
@@ -84,7 +85,7 @@ export function erroDoArrependimento(v: string): string | null {
   const n = inteiro(v);
   if (!Number.isInteger(n)) return "Informe o número de dias.";
   if (n < MINIMO_ARREPENDIMENTO_DIAS) {
-    return "Mínimo de 7 dias: é o prazo de arrependimento da lei para compras fora da loja física (CDC art. 49).";
+    return "Mínimo de 7 dias: é o direito de arrependimento que a lei garante em compras fora da loja física.";
   }
   if (n > 90) return "No máximo 90 dias.";
   return null;
@@ -101,7 +102,7 @@ export function erroDoVicio(v: string): string | null {
   const n = inteiro(v);
   if (!Number.isInteger(n)) return "Informe o número de dias.";
   if (n < MINIMO_VICIO_DIAS) {
-    return "Mínimo de 30 dias: é a garantia legal de produto não durável (CDC art. 26). Para produto durável a lei dá 90.";
+    return "Mínimo de 30 dias: é o prazo da lei para reclamar de defeito em produto não durável (o durável tem 90).";
   }
   if (n > 365) return "No máximo 365 dias.";
   return null;
@@ -110,7 +111,7 @@ export function erroDoVicio(v: string): string | null {
 const CAMPO =
   "h-11 w-full rounded-xl border border-white/5 bg-zinc-950 px-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
 const ROTULO =
-  "mb-1.5 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 const CAIXA =
   "space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5";
 
@@ -128,11 +129,27 @@ export function PoliticaDeDevolucaoSection({
   onDirtyMudou?: (sujo: boolean) => void;
 }>) {
   const { categories } = useCategories();
+  const { config } = useStore();
   const [salva, setSalva] = useState<PoliticaDevolucao | null>(null);
   const [form, setForm] = useState<FormDaPolitica | null>(null);
   const [erroDeLeitura, setErroDeLeitura] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // "Mesmo endereço da loja": só apresentação. Marcada = `endereco_devolucao`
+  // vazio, que já era "usa o endereço da loja"; o payload da RPC não muda.
+  // Desmarcar com o campo vazio também grava vazio (como antes).
+  const [mesmoEndereco, setMesmoEndereco] = useState(true);
+  // O endereço que estava no campo quando a caixa foi marcada: desmarcar de
+  // novo o devolve, em vez de apagar o que a loja tinha digitado.
+  const enderecoAntesDaCaixaRef = useRef("");
   const ativoRef = useRef(true);
+
+  const aplicar = useCallback((p: PoliticaDevolucao) => {
+    const novo = formDe(p);
+    setSalva(p);
+    setForm(novo);
+    setMesmoEndereco(novo.endereco_devolucao === "");
+    enderecoAntesDaCaixaRef.current = novo.endereco_devolucao;
+  }, []);
 
   const carregar = useCallback(async () => {
     setErroDeLeitura(false);
@@ -152,12 +169,11 @@ export function PoliticaDeDevolucaoSection({
         setErroDeLeitura(true);
         return;
       }
-      setSalva(lida);
-      setForm(formDe(lida));
+      aplicar(lida);
     } catch {
       if (ativoRef.current) setErroDeLeitura(true);
     }
-  }, []);
+  }, [aplicar]);
 
   useEffect(() => {
     ativoRef.current = true;
@@ -245,6 +261,17 @@ export function PoliticaDeDevolucaoSection({
     );
   }
 
+  function marcarMesmoEndereco(marcada: boolean) {
+    if (!form) return;
+    setMesmoEndereco(marcada);
+    if (marcada) {
+      enderecoAntesDaCaixaRef.current = form.endereco_devolucao;
+      mudar("endereco_devolucao", "");
+    } else {
+      mudar("endereco_devolucao", enderecoAntesDaCaixaRef.current);
+    }
+  }
+
   async function salvar() {
     if (!form || salvando) return;
     if (temErro) {
@@ -292,8 +319,7 @@ export function PoliticaDeDevolucaoSection({
         await carregar();
         return;
       }
-      setSalva(gravada);
-      setForm(formDe(gravada));
+      aplicar(gravada);
       toast.success("Política de trocas e devoluções salva.");
     } catch (e) {
       toast.error(mensagemDoErro(e, "Não foi possível salvar a política."));
@@ -368,7 +394,7 @@ export function PoliticaDeDevolucaoSection({
             />
           </div>
         </div>
-        <p className="text-[10px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-zinc-500">
           Arrependimento: mínimo 7 dias pela lei (compra pela internet),
           devolvendo tudo o que o cliente pagou, frete de ida incluso. Defeito:
           mínimo 30 dias; produto durável tem 90 pela lei. Troca por gosto é
@@ -400,7 +426,7 @@ export function PoliticaDeDevolucaoSection({
 
       <div className={CAIXA}>
         <h4 className={ROTULO}>Como o produto volta</h4>
-        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
           Pedidos locais (entrega da loja, retirada, balcão)
         </p>
         {METODOS_LOCAIS.map((m) => (
@@ -412,7 +438,7 @@ export function PoliticaDeDevolucaoSection({
             onMudar={(v) => alternarMetodo("metodos_locais", m, v)}
           />
         ))}
-        <p className="pt-1 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+        <p className="pt-1 text-[11px] font-bold uppercase tracking-widest text-zinc-500">
           Pedidos pelos Correios ou transportadora
         </p>
         {METODOS_NACIONAIS.map((m) => (
@@ -438,17 +464,32 @@ export function PoliticaDeDevolucaoSection({
           </p>
         )}
         <div>
-          <label htmlFor="politica-endereco" className={ROTULO}>
-            Endereço para devolução
+          <p className={ROTULO}>Endereço para devolução</p>
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs font-bold text-zinc-200">
+            <input
+              type="checkbox"
+              checked={mesmoEndereco}
+              onChange={(e) => marcarMesmoEndereco(e.target.checked)}
+              className="size-5 shrink-0 accent-admin-gold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-admin-gold"
+            />
+            Mesmo endereço da loja
           </label>
-          <LocalBufferedInput
-            id="politica-endereco"
-            value={form.endereco_devolucao}
-            maxLength={300}
-            placeholder="Vazio = o endereço da loja"
-            onFlush={(v) => mudar("endereco_devolucao", v)}
-            className={CAMPO}
-          />
+          {mesmoEndereco ? (
+            <p className="text-[11px] leading-relaxed text-zinc-400">
+              {config.storeAddress?.trim() ||
+                "A loja ainda não tem endereço. Cadastre em Minha loja."}
+            </p>
+          ) : (
+            <LocalBufferedInput
+              id="politica-endereco"
+              aria-label="Endereço para devolução"
+              value={form.endereco_devolucao}
+              maxLength={300}
+              placeholder="Rua, número, bairro e cidade"
+              onFlush={(v) => mudar("endereco_devolucao", v)}
+              className={CAMPO}
+            />
+          )}
         </div>
       </div>
 
@@ -472,7 +513,7 @@ export function PoliticaDeDevolucaoSection({
           ]}
           onMudar={(v) => mudar("frete_troca_pago_por", v)}
         />
-        <p className="text-[10px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-zinc-500">
           No arrependimento e no defeito o frete de volta é sempre da loja.
         </p>
       </div>
@@ -508,7 +549,7 @@ export function PoliticaDeDevolucaoSection({
             })}
           </div>
         )}
-        <p className="text-[10px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-zinc-500">
           Ex.: roupa íntima, cosméticos abertos. Defeito e arrependimento
           continuam valendo — a lei não deixa de fora.
         </p>
@@ -527,7 +568,7 @@ export function PoliticaDeDevolucaoSection({
           placeholder="Ex.: Aceitamos trocas em até 30 dias, com etiqueta e sem uso."
           className="w-full rounded-xl border border-white/5 bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none"
         />
-        <p className="text-right text-[10px] tabular-nums text-zinc-500">
+        <p className="text-right text-[11px] tabular-nums text-zinc-500">
           {form.texto_politica.length}/4000
         </p>
       </div>
@@ -564,7 +605,7 @@ function LinhaDeInterruptor({
     <div className="flex min-h-11 items-center justify-between gap-3">
       <span className="min-w-0">
         <span className="block text-xs font-bold text-zinc-200">{rotulo}</span>
-        <span className="block text-[10px] leading-snug text-zinc-500">
+        <span className="block text-[11px] leading-snug text-zinc-500">
           {ajuda}
         </span>
       </span>

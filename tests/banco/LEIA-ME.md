@@ -237,6 +237,54 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   `supabase_read_only_user` real e o pg_cron real nao foram medidos. **Nao prova** a IKCOUS nem a
   Savy.
 
+- **estoque baixo numa régua só (`estoque-baixo-uma-regra-viva.cjs`, via `rodar-isolado.cjs`)**:
+  as migrations `20261212000000` (Início) e `20261213000000` (filtro "low" de `get_admin_products_paged`). Nove
+  produtos (A–I) separam a soma das variações da coluna, a borda `<= 5`, o mínimo 0 e o NULL;
+  `painel_inicio`, `get_admin_analytics_v2`, o filtro e a conta do front dão o mesmo número (+4), com
+  controle pelo corpo antigo (Início +3; filtro A, B, E, F). Cobre também a porta (42501), reaplicar 2x,
+  preflight divergente sem escrever e o rollback. A 20261212 está na lista de `sucessoras-da-99.cjs` (as provas da 20261199 a desfazem).
+- **valor do estoque só com custo (`inventario-so-com-custo-viva.cjs`)**: a migration `20261214000000`
+  (`totalValue` só soma produto com custo; `totalCost`, alertas e chaves do JSON iguais), com controle pelo
+  corpo antigo (390 contra 90).
+- **portão da 8e com as sucessoras da 99 (`portao-8e-aceita-sucessoras-viva.cjs`, via `rodar-isolado.cjs`)**:
+  a 8e (rol da faixa 92-202) dá positiva na árvore inteira, no estado da `20261199000000` (via
+  `sucessoras-da-99.cjs`) e nos estados mistos (só a 12 / só a 14); corpo estranho, AUSENTE, sobrecarga e o
+  corpo da sucessora da outra função reprovam só a linha da função; mutantes do texto da consulta pegos.
+- **portão do estoque do painel (`estoque-do-painel-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `17a-conferir-estoque-do-painel-aplicado` (DEPOIS do apply, 14 linhas) e
+  `17b-antes-estoque-do-painel-corpos-vigentes` (ANTES, 11 linhas), a "prova de objetos" do lote
+  20261212000000 + 20261213000000 + 20261214000000 (três migrations independentes, cada uma troca só o corpo
+  de uma função). Cada estado numa transação desfeita, as consultas como papel de leitura. 17b positiva no
+  antes (os três rollback-manual, via `sucessoras-da-99.cjs` para a 12 e a 14), também em CRLF, depois da ida
+  e volta em qualquer ordem, com papel mínimo, `search_path` vazio e funções-isca em outro schema; 17a
+  positiva depois do apply dos arquivos (LF, CRLF, 12→14 e 14→12, 2x, ida-volta-ida), igual linha a linha à
+  árvore inteira. Os 6 estados mistos reprovam só o corpo das que faltam (17a) e das que entraram (17b), e a
+  8e segue positiva em todos os estados. Um defeito por vez reprovando a SUA linha (corpo com 1 byte ou 1
+  caractere, função ausente, sobrecarga, forma, EXECUTE a anon/PUBLIC ou sem authenticated, coluna
+  renomeada), mais os de várias linhas: `anon` ou `authenticated` inexistentes (renomeados numa transação
+  desfeita: as 3 linhas de EXECUTE com `papel ausente`) e o schema `public` renomeado (todas as linhas, o
+  controle com `0`); mutantes do texto das consultas (cada linha, inclusive o controle, o CRLF, o hash do
+  outro lado, o filtro do schema, a cláusula de cada papel, o `papel ausente` no formato da 16a, o
+  `to_regrole` trocado) deixam a prova vermelha; rol fechado e SQL truncado nunca viram positivo; o
+  `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limites declarados:** o
+  negativo do controle é o schema `public` renomeado (um papel cego ao `pg_proc` por permissão não é
+  montável neste Postgres); a cláusula de PUBLIC desligada e o `NOT a.attisdropped` são mutantes
+  EQUIVALENTES (medidos como tais); com o ledger completo e o lote já no SHA servido o portão decide NADA
+  sem pedir a 17a (o ponto cego que o runbook fecha mandando desfazer só pelo `aplicar-migrations.yml`);
+  `service_role` e o dono não são medidos; o `supabase_read_only_user` real não foi medido. **Não prova** a
+  IKCOUS nem a Savy.
+- **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
+  transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
+  final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e
+  imprime os achados A (venda estornada) e B (pago depois de expirar) com valor exato. Falha só em divergência
+  NÃO prevista. Não corrige nada.
+- **estoque mínimo editável (`estoque-minimo-editavel-viva.cjs`)**: sem migration; escreve só dentro de transação
+  desfeita, para provar grants/RLS/view — o admin grava
+  `estoque_minimo` (número e NULL) por `vw_produtos_admin` e por `produtos`; cliente e anon não.
+- **`sucessoras-da-99.cjs`** não é prova: é o módulo que lista as migrations que redefinem corpos da
+  `20261199000000` (20261212, 20261214) e as desfaz/reaplica para as provas antigas, e `conferirLista()`
+  reprova se aparecer uma sucessora que não esteja na lista.
+
 ## Como rodar
 
 **SÓ no CI** (regra do dono, 14/09: suíte de banco não roda na máquina do

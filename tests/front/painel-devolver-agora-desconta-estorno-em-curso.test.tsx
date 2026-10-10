@@ -567,7 +567,7 @@ describe("'Devolver agora' desconta o que o Mercado Pago já está devolvendo (L
     await esperarConferido("ped-frase");
 
     const texto = hospedeiro.textContent ?? "";
-    expect(texto).toContain("Estorno devido");
+    expect(texto).toContain("Devolver ao cliente");
     expect(texto).not.toContain("não devolve dinheiro nenhum");
     expect(texto).not.toContain("Estornar é uma ação sua");
     expect(texto).toContain("Os pedidos marcados com “Devolução em andamento”");

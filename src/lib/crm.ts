@@ -401,13 +401,13 @@ export function infoDoSegmento(segmento: SegmentoCrm): InfoDoSegmento {
   switch (segmento) {
     case "campeoes":
       return {
-        rotulo: "Campeões",
+        rotulo: "Melhores clientes",
         descricao: "Compram muito, sempre e há pouco tempo",
         tom: "otimo",
       };
     case "leais":
       return {
-        rotulo: "Leais",
+        rotulo: "Fiéis",
         descricao: "Voltam com frequência e gastam bem",
         tom: "otimo",
       };
@@ -437,25 +437,25 @@ export function infoDoSegmento(segmento: SegmentoCrm): InfoDoSegmento {
       };
     case "quase_dormindo":
       return {
-        rotulo: "Quase dormindo",
-        descricao: "Sumindo aos poucos",
+        rotulo: "Sumindo",
+        descricao: "Estão comprando cada vez menos",
         tom: "atencao",
       };
     case "em_risco":
       return {
-        rotulo: "Em risco",
+        rotulo: "Podem não voltar",
         descricao: "Compravam bem e pararam",
         tom: "risco",
       };
     case "nao_pode_perder":
       return {
-        rotulo: "Não pode perder",
+        rotulo: "Bons clientes sumindo",
         descricao: "Os melhores de antes, parados há tempo",
         tom: "risco",
       };
     case "hibernando":
       return {
-        rotulo: "Hibernando",
+        rotulo: "Parados há muito tempo",
         descricao: "Pouca compra, há muito tempo",
         tom: "neutro",
       };
@@ -720,32 +720,9 @@ export function formatarData(valor: string | null | undefined): string {
 
 // ─── Erro ────────────────────────────────────────────────────────────────
 
-/**
- * Frase que a lojista lê quando uma RPC do Início/CRM falha. Só nomeia a
- * causa quando o erro a distingue sem dúvida; o resto cai na frase genérica
- * (o erro bruto segue no console de quem chamou).
- */
-export function mensagemDeErroDoPainel(erro: unknown, acao: string): string {
-  const sinal = comoRegistro(erro) ?? VAZIO;
-  const codigo = comoTexto(sinal.code) ?? "";
-  const texto = comoTexto(sinal.message) ?? "";
-  // PGRST202 (PostgREST) / 42883 (Postgres): a função não existe — a
-  // migration deste painel ainda não foi aplicada no banco da loja.
-  if (codigo === "PGRST202" || codigo === "42883") {
-    return "Estes números ainda não foram ativados no banco da loja. Assim que a atualização for aplicada, eles aparecem aqui.";
-  }
-  if (codigo === "42501" || /permission denied/i.test(texto)) {
-    return "Sem permissão para ver estes números. Confirme que você entrou com a conta de administradora da loja.";
-  }
-  if (
-    /failed to fetch|networkerror|fetch failed|load failed|network request failed/i.test(
-      texto,
-    )
-  ) {
-    return "Sem conexão com o servidor. Verifique sua internet e tente de novo.";
-  }
-  return `Não foi possível ${acao} agora. Tente de novo em instantes.`;
-}
+// A fonte única da frase de erro mora em `erro-do-painel.ts`; os hooks do
+// Início/CRM continuam importando daqui.
+export { mensagemDeErroDoPainel } from "@/lib/erro-do-painel";
 
 // ─── Rótulos ─────────────────────────────────────────────────────────────
 
@@ -1113,7 +1090,7 @@ export const FAIXAS_DE_SEGMENTOS_DO_CRM: readonly FaixaDeSegmentosDoCrm[] = [
 ];
 
 /**
- * Texto da linha de filtro ativo da aba Clientes ("Mostrando: Em risco · 2").
+ * Texto da linha de filtro ativo da aba Clientes ("Mostrando: Podem não voltar · 2").
  * `null` quando nenhum segmento está selecionado (a lista mostra todos).
  */
 export function textoDoFiltroDeSegmento(

@@ -71,13 +71,13 @@ function textoDaLinha(linha: LinhaEstornoDoPedido): TextoDaLinha {
   if (linha.mp_status === "charged_back") {
     if (linha.status === "em_processamento") {
       return {
-        texto: `Contestação (chargeback) de ${valor} em análise no Mercado Pago — o valor fica reservado até a decisão.`,
+        texto: `Contestação no cartão de ${valor} em análise no Mercado Pago — o valor fica reservado até a decisão.`,
         podeTentarDeNovo: false,
       };
     }
     if (linha.status === "concluido") {
       return {
-        texto: `Contestação (chargeback) de ${valor} decidida contra a loja em ${quando}: o dinheiro voltou ao cliente.`,
+        texto: `Contestação no cartão de ${valor} decidida contra a loja em ${quando}: o dinheiro voltou ao cliente.`,
         podeTentarDeNovo: false,
       };
     }

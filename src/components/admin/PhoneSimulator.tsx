@@ -709,7 +709,7 @@ export const PhoneSimulator = memo(function PhoneSimulator({
                     <div className="mx-auto mt-3 flex w-full max-w-xs shrink-0 items-center gap-0.5 rounded-xl bg-zinc-100/60 p-1">
                       {[
                         { id: "description", label: "Detalhes" },
-                        { id: "reviews", label: "Reviews (15)" },
+                        { id: "reviews", label: "Avaliações (15)" },
                         { id: "questions", label: "Chat" },
                       ].map((tab) => {
                         const isActive = activeDetailTab === tab.id;

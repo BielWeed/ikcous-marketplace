@@ -1,3 +1,4 @@
+import { SecaoRecolhivel } from "@/components/admin/primitivos/SecaoRecolhivel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,26 +14,39 @@ export interface IdentitySettingsSectionProps {
   readonly active?: boolean;
   readonly onDirtyChange?: (dirty: boolean) => void;
 }
+// Cidade e UF NÃO são mais campos da marca: moram no Endereço da loja (Minha
+// loja, painel simples §4), que as grava junto com o CEP. O rascunho da marca
+// continua levando as duas no pacote de 8 chaves da `save_store_identity` (a
+// RPC recusa pacote incompleto) e a tela de conflito continua comparando as
+// duas — por isso `camposDoConflito` tem as seis, e `fields` só as que se
+// editam aqui.
+const camposEscondidos: readonly [keyof IdentityDraftFields, string, string][] =
+  [
+    ["storeCity", "Cidade", "store-city"],
+    ["storeState", "Estado (UF)", "store-state"],
+  ];
 const fields: readonly [keyof IdentityDraftFields, string, string][] = [
   ["storeName", "Nome da loja", "store-name"],
-  ["storeCity", "Cidade", "store-city"],
-  ["storeState", "Estado (UF)", "store-state"],
   ["primaryColor", "Cor principal", "store-color-hex"],
   ["secondaryColor", "Cor secundária", "store-secondary-color"],
   ["accentColor", "Cor de destaque", "store-accent-color"],
 ];
+const camposDoConflito: readonly [keyof IdentityDraftFields, string, string][] =
+  [fields[0], ...camposEscondidos, ...fields.slice(1)];
 const previews: readonly [IdentityAssetRole, string, string][] = [
   ["header", "Cabeçalho", "PNG, JPEG, WebP ou SVG"],
   ["loader", "Abertura", "PNG, JPEG, WebP ou SVG"],
   ["icon_512", "Ícone do aplicativo", "PNG, 512 × 512"],
   ["og", "Compartilhamento", "PNG, 1200 × 630"],
 ];
+// Nomes de gente (glossário do painel, "Ícones do app (avançado)"); os papéis
+// (`favicon`, `apple_touch`…) são os da RPC e não mudam.
 const advanced: readonly [IdentityAssetRole, string, string][] = [
-  ["favicon", "Favicon", "PNG, SVG ou ICO"],
-  ["apple_touch", "Ícone Apple", "PNG, 180 × 180"],
-  ["icon_192", "Ícone 192", "PNG, 192 × 192"],
-  ["icon_512", "Ícone 512", "PNG, 512 × 512"],
-  ["maskable_512", "Ícone com máscara", "PNG, 512 × 512"],
+  ["favicon", "Ícone da aba do navegador", "PNG, SVG ou ICO"],
+  ["apple_touch", "Ícone do iPhone", "PNG, 180 × 180"],
+  ["icon_192", "Ícone pequeno (192 × 192)", "PNG, 192 × 192"],
+  ["icon_512", "Ícone grande (512 × 512)", "PNG, 512 × 512"],
+  ["maskable_512", "Ícone do Android (recortado)", "PNG, 512 × 512"],
   ["og", "Arte de compartilhamento", "PNG, 1200 × 630"],
 ];
 function url(origin: string, asset: IdentityAsset) {
@@ -70,6 +84,7 @@ export function IdentitySettingsSection({
         {editor.phase === "error" && (
           <Button
             type="button"
+            className="min-h-11"
             disabled={!active}
             onClick={() => void editor.read()}
           >
@@ -87,12 +102,13 @@ export function IdentitySettingsSection({
     <div className="space-y-1.5">
       <Label
         htmlFor={`identity-upload-${encodeURIComponent(label)}`}
-        className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+        className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
       >
         {label}
       </Label>
       <Input
         id={`identity-upload-${encodeURIComponent(label)}`}
+        className="h-11"
         type="file"
         accept={
           target.kind === "app-icons" ||
@@ -111,7 +127,7 @@ export function IdentitySettingsSection({
         }}
       />
       <p className="text-xs text-zinc-400">
-        {hint}. Até 20 MiB, sem alterar o arquivo original.
+        {hint}. Até 20 MB, sem alterar o arquivo original.
       </p>
     </div>
   );
@@ -120,8 +136,8 @@ export function IdentitySettingsSection({
   return (
     <div className="space-y-5 text-zinc-200">
       <p className="text-sm text-zinc-400">
-        Nome, localização, cores e imagens da sua loja. Confira o rascunho antes
-        de salvar.
+        A cidade e a UF vêm do endereço da loja, no bloco abaixo. Confira o
+        rascunho antes de salvar.
       </p>
       <fieldset
         disabled={editor.locked}
@@ -137,23 +153,16 @@ export function IdentitySettingsSection({
             <div key={key} className="space-y-1.5">
               <Label
                 htmlFor={id}
-                className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+                className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
               >
                 {label}
               </Label>
               <div className="flex items-center gap-2">
                 <Input
                   id={id}
+                  className="h-11"
                   value={value}
-                  maxLength={key === "storeState" ? 2 : undefined}
-                  onChange={(e) =>
-                    editor.setField(
-                      key,
-                      key === "storeState"
-                        ? e.target.value.toUpperCase()
-                        : e.target.value,
-                    )
-                  }
+                  onChange={(e) => editor.setField(key, e.target.value)}
                 />
                 {color && (
                   <span
@@ -182,7 +191,7 @@ export function IdentitySettingsSection({
               aria-label={`Prévia: ${label}`}
               className="space-y-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl"
             >
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+              <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
                 {label}
               </h3>
               <div className="flex min-h-32 flex-col items-center justify-center gap-2 rounded-xl bg-zinc-900/80 p-3">
@@ -196,12 +205,13 @@ export function IdentitySettingsSection({
                 </span>
               </div>
               {role === "header" && (
-                <label className="flex items-center gap-2 text-xs">
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs">
                   <input
                     type="checkbox"
                     checked={alsoOpening}
                     disabled={editor.locked}
                     onChange={(e) => setAlsoOpening(e.target.checked)}
+                    className="size-5 accent-admin-gold"
                   />
                   Usar também na abertura
                 </label>
@@ -218,7 +228,7 @@ export function IdentitySettingsSection({
                           : [role],
                     },
                 role === "icon_512"
-                  ? `${hint}. Atualiza também os ícones Apple, 192 e com máscara, preservando as escolhas individuais deste rascunho`
+                  ? `${hint}. Atualiza também o ícone do iPhone, o pequeno e o do Android, preservando as escolhas individuais deste rascunho`
                   : hint,
               )}
               {role === "icon_512" && (
@@ -235,112 +245,115 @@ export function IdentitySettingsSection({
         Estas prévias mostram as escolhas da identidade; o aplicativo instalado
         pode apresentá-las em outros tamanhos.
       </p>
-      <details className="group rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl">
-        <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400 transition-colors group-open:text-admin-gold">
-          Mais imagens da loja (favicon, ícones, compartilhamento)
-        </summary>
-        <div className="mt-4 space-y-5">
-          {advanced.map(([role, label, hint]) => (
-            <div key={role}>
-              {uploadControl(
-                `Trocar ${label}`,
-                { kind: "asset", roles: [role] },
-                hint,
-              )}
-            </div>
-          ))}
-          <section
-            aria-label="Fontes guardadas"
-            className="space-y-3 border-t border-white/10 pt-4"
-          >
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Fontes guardadas ({draft.assets.originals.length}/8)
-            </h3>
-            <p className="text-xs text-zinc-400">
-              Retirar uma referência mantém o arquivo guardado, mas ele sai
-              desta lista. Mantenha ao menos uma fonte.
-            </p>
-            {draft.assets.originals.map((asset, index) => (
-              <div
-                key={`${asset.path}-${index}`}
-                className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/40 p-3"
-              >
-                <a
-                  href={url(editor.origin, asset)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 text-sm underline transition-colors hover:text-admin-gold"
-                >
-                  <img
-                    src={url(editor.origin, asset)}
-                    alt=""
-                    className="size-12 object-contain"
-                  />
-                  Abrir fonte {index + 1}
-                </a>
+      {/* Recolhida, mas montada: fechar só aplica `hidden` (SecaoRecolhivel),
+          então upload em curso e escolhas do rascunho não se perdem. */}
+      <div className="rounded-2xl border border-white/5 bg-zinc-950/40 px-4 pb-4 shadow-xl">
+        <SecaoRecolhivel titulo="Ícones do app (avançado)">
+          <div className="space-y-5">
+            {advanced.map(([role, label, hint]) => (
+              <div key={role}>
                 {uploadControl(
-                  `Substituir fonte ${index + 1}`,
-                  { kind: "source-replace", index },
-                  "PNG, JPEG, WebP, SVG ou ICO",
+                  `Trocar ${label}`,
+                  { kind: "asset", roles: [role] },
+                  hint,
                 )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={
-                    editor.locked || draft.assets.originals.length === 1
-                  }
-                  onClick={() => editor.removeSource(index)}
-                >
-                  Retirar referência {index + 1}
-                </Button>
               </div>
             ))}
-            {draft.assets.originals.length === 8 && (
-              <p className="text-sm text-amber-300">
-                Limite de oito fontes. Substitua ou retire uma referência para
-                guardar outra.
+            <section
+              aria-label="Fontes guardadas"
+              className="space-y-3 border-t border-white/10 pt-4"
+            >
+              <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                Fontes guardadas ({draft.assets.originals.length}/8)
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Retirar uma referência mantém o arquivo guardado, mas ele sai
+                desta lista. Mantenha ao menos uma fonte.
               </p>
-            )}
-            {uploadControl(
-              "Adicionar fonte",
-              { kind: "source-add" },
-              "PNG, JPEG, WebP, SVG ou ICO",
-            )}
-            <p className="text-xs text-zinc-400">
-              Guardar também como fonte, usando uma imagem já conferida:
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {previews.map(([role, label]) => {
-                // role is selected only from our closed preview list.
-                // eslint-disable-next-line security/detect-object-injection
-                const asset = draft.assets[role];
-                return (
+              {draft.assets.originals.map((asset, index) => (
+                <div
+                  key={`${asset.path}-${index}`}
+                  className="space-y-2 rounded-xl border border-white/10 bg-zinc-900/40 p-3"
+                >
+                  <a
+                    href={url(editor.origin, asset)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-3 text-sm underline transition-colors hover:text-admin-gold"
+                  >
+                    <img
+                      src={url(editor.origin, asset)}
+                      alt=""
+                      className="size-12 object-contain"
+                    />
+                    Abrir fonte {index + 1}
+                  </a>
+                  {uploadControl(
+                    `Substituir fonte ${index + 1}`,
+                    { kind: "source-replace", index },
+                    "PNG, JPEG, WebP, SVG ou ICO",
+                  )}
                   <Button
-                    key={role}
                     type="button"
                     variant="outline"
+                    className="min-h-11"
                     disabled={
-                      editor.locked ||
-                      draft.assets.originals.length === 8 ||
-                      draft.assets.originals.some(
-                        (source) => source.path === asset.path,
-                      )
+                      editor.locked || draft.assets.originals.length === 1
                     }
-                    onClick={() =>
-                      editor.keepSource({
-                        asset,
-                        url: url(editor.origin, asset),
-                      })
-                    }
+                    onClick={() => editor.removeSource(index)}
                   >
-                    Guardar {label.toLowerCase()} como fonte
+                    Retirar referência {index + 1}
                   </Button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-      </details>
+                </div>
+              ))}
+              {draft.assets.originals.length === 8 && (
+                <p className="text-sm text-amber-300">
+                  Limite de oito fontes. Substitua ou retire uma referência para
+                  guardar outra.
+                </p>
+              )}
+              {uploadControl(
+                "Adicionar fonte",
+                { kind: "source-add" },
+                "PNG, JPEG, WebP, SVG ou ICO",
+              )}
+              <p className="text-xs text-zinc-400">
+                Guardar também como fonte, usando uma imagem já conferida:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {previews.map(([role, label]) => {
+                  // role is selected only from our closed preview list.
+                  // eslint-disable-next-line security/detect-object-injection
+                  const asset = draft.assets[role];
+                  return (
+                    <Button
+                      key={role}
+                      type="button"
+                      variant="outline"
+                      className="min-h-11"
+                      disabled={
+                        editor.locked ||
+                        draft.assets.originals.length === 8 ||
+                        draft.assets.originals.some(
+                          (source) => source.path === asset.path,
+                        )
+                      }
+                      onClick={() =>
+                        editor.keepSource({
+                          asset,
+                          url: url(editor.origin, asset),
+                        })
+                      }
+                    >
+                      Guardar {label.toLowerCase()} como fonte
+                    </Button>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
+        </SecaoRecolhivel>
+      </div>
       {["preparing", "uploading", "verifying"].includes(editor.phase) && (
         <div role="status" className="space-y-2 text-sm">
           <p>
@@ -357,7 +370,12 @@ export function IdentitySettingsSection({
               confirmados
             </p>
           )}
-          <Button type="button" variant="outline" onClick={editor.cancelUpload}>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11"
+            onClick={editor.cancelUpload}
+          >
             Cancelar envio
           </Button>
         </div>
@@ -371,6 +389,7 @@ export function IdentitySettingsSection({
         <div className="space-y-3 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4">
           <Button
             type="button"
+            className="min-h-11"
             disabled={!active || editor.busy}
             onClick={() => void editor.read()}
           >
@@ -380,7 +399,7 @@ export function IdentitySettingsSection({
             <>
               <p className="text-sm">Sua escolha / configuração atual:</p>
               <ul className="space-y-1 text-sm">
-                {fields.map(([key, label]) => {
+                {camposDoConflito.map(([key, label]) => {
                   const rawKey = new Map<keyof IdentityDraftFields, string>([
                     ["storeName", "store_name"],
                     ["storeCity", "store_city"],
@@ -414,6 +433,7 @@ export function IdentitySettingsSection({
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
+                  className="min-h-11"
                   disabled={!active}
                   onClick={() => editor.resolveConflict(true)}
                 >
@@ -422,6 +442,7 @@ export function IdentitySettingsSection({
                 <Button
                   type="button"
                   variant="outline"
+                  className="min-h-11"
                   disabled={!active}
                   onClick={() => editor.resolveConflict(false)}
                 >
@@ -435,6 +456,7 @@ export function IdentitySettingsSection({
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
+          className="min-h-11"
           disabled={editor.locked || !editor.dirty}
           onClick={() => void editor.save()}
         >
@@ -446,6 +468,7 @@ export function IdentitySettingsSection({
           <Button
             type="button"
             variant="outline"
+            className="min-h-11"
             disabled={editor.locked || !editor.dirty}
             onClick={() => setDiscardRequested(true)}
           >
@@ -466,6 +489,7 @@ export function IdentitySettingsSection({
           <div className="flex flex-wrap gap-2">
             <Button
               type="button"
+              className="min-h-11"
               disabled={editor.locked}
               onClick={() => {
                 editor.discard();
@@ -477,6 +501,7 @@ export function IdentitySettingsSection({
             <Button
               type="button"
               variant="outline"
+              className="min-h-11"
               onClick={() => setDiscardRequested(false)}
             >
               Continuar editando

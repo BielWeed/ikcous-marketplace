@@ -309,11 +309,14 @@ describe("AdminOrdersView — ficha aberta por deep link não remonta quando `or
     return hospedeiro.textContent?.includes("Carregando Pedido");
   }
 
-  it("o botão do cabeçalho abre a lista de devoluções sem usar o evento do clique como id", async () => {
+  it("a porta de Devoluções da tela abre a lista de devoluções sem usar o evento do clique como id", async () => {
     const onNavigate = vi.fn();
     await renderizar(onNavigate, "");
-    const botao = hospedeiro.querySelector<HTMLButtonElement>(
-      '[data-acao="abrir-devolucoes"]',
+    // A porta é a do AtalhosDaAba (uma função, uma porta): achada pelo nome.
+    const botao = Array.from(hospedeiro.querySelectorAll("button")).find((b) =>
+      (b.getAttribute("aria-label") ?? b.textContent ?? "")
+        .trim()
+        .startsWith("Devoluções"),
     );
     expect(botao).not.toBeNull();
     await act(async () => botao?.click());

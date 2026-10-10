@@ -5,6 +5,7 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { DebouncedSearchInput } from "@/components/admin/DebouncedSearchInput";
 import { CartaoDaDevolucao } from "@/components/admin/devolucoes/CartaoDaDevolucao";
 import { DetalheDaDevolucao } from "@/components/admin/devolucoes/DetalheDaDevolucao";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useDevolucoesAdmin } from "@/hooks/useDevolucoesAdmin";
 import {
   STATUS_EM_ORDEM,
@@ -150,7 +151,7 @@ export function AdminDevolucoesView({
     <div className="pb-admin h-auto bg-[#09090b] text-white lg:pb-12">
       <div className="flex items-center justify-between gap-4 px-6 pb-2 pt-6">
         <AdminPageHeader
-          titulo="Devoluções"
+          titulo={NOMES_DO_PAINEL["admin-devolucoes"]}
           acoes={
             <button
               type="button"
@@ -192,7 +193,7 @@ export function AdminDevolucoesView({
                 {chip.n !== null && (
                   <span
                     className={cn(
-                      "rounded-md px-1.5 py-0.5 text-[10px] font-black tabular-nums",
+                      "rounded-md px-1.5 py-0.5 text-[11px] font-black tabular-nums",
                       pedeAcao
                         ? "bg-admin-gold text-black"
                         : "bg-white/5 text-zinc-300",
@@ -232,7 +233,7 @@ export function AdminDevolucoesView({
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start lg:gap-6">
           <div className="space-y-2" data-testid="lista-devolucoes">
             {lista.erro && (
-              <div className="admin-glass space-y-3 rounded-2xl border border-red-500/20 p-4">
+              <div className="space-y-3 rounded-2xl border border-red-500/20 bg-zinc-950/40 p-4 shadow-2xl backdrop-blur-2xl">
                 <p className="text-xs font-bold text-red-300">
                   Não consegui carregar as devoluções.
                 </p>

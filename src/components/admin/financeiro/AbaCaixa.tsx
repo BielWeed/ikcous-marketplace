@@ -74,7 +74,7 @@ function CaixaAberto({
       >
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Esperado na gaveta agora
             </p>
             <Dinheiro

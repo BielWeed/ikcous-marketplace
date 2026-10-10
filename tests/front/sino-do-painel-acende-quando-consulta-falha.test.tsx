@@ -79,6 +79,7 @@ function criarContagemBuilder(
   const builder: any = {};
   builder.select = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
+  builder.or = vi.fn(() => builder);
   builder.is = vi.fn(() => builder);
   // biome-ignore lint/suspicious/noThenProperty: mock do query builder thenable do Supabase — mesmo padrão dos vizinhos deste diretório.
   builder.then = (resolve: any, reject?: any) => {
@@ -208,7 +209,9 @@ async function montarPainel(raiz: Root, hospedeiro: HTMLDivElement) {
     );
   });
 
-  const sino = hospedeiro.querySelector("button.size-7");
+  const sino = hospedeiro.querySelector(
+    'header button[aria-label="Notificações"]',
+  );
   expect(sino).toBeTruthy();
   return sino as HTMLButtonElement;
 }

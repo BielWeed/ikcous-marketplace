@@ -1,7 +1,8 @@
 -- 8e — DEPOIS de aplicar as migrations 20261192..20261202 (ou quando um apply
 -- terminou em ESTADO DESCONHECIDO e é preciso saber o que ficou): confere, por
 -- OBJETO, que tudo o que elas criam existe e que o corpo vivo de cada uma das
--- 61 funções que elas definem é o corpo FINAL esperado.
+-- 61 funções que elas definem é o corpo FINAL esperado (ou, para duas delas, o
+-- da migration sucessora: ver OS DOIS ESTADOS).
 -- SÓ LEITURA, um único SELECT, só catálogo: nenhuma linha de cliente.
 --
 -- Saída: item | esperado | vivo | ok, com as linhas ok = false primeiro.
@@ -16,6 +17,29 @@
 -- corpo da própria migration. tests/ci_conferir_banco_test.ts recalcula todos a
 -- partir dos arquivos desta árvore e tests/banco/impressao-digital-viva.cjs
 -- roda esta consulta no PG real, depois de aplicar 92..202, como papel só-leitura.
+--
+-- OS DOIS ESTADOS (onda I-b, 09/10/2026). Esta consulta é a pré-checagem do
+-- backfill do ledger 92-202 e tem de dar positiva numa loja que ainda está no
+-- corpo da 20261199 E numa que já recebeu a migration SUCESSORA que redefine
+-- uma das 61 depois da 202 — senão ficaria vermelha para sempre depois do
+-- apply da sucessora. Hoje são duas, cada uma POR SI (função independente:
+-- uma loja pode ter só uma delas):
+--   * `painel_inicio`          → 20261212000000 (o início conta estoque baixo pela regra da loja);
+--   * `get_admin_analytics_v2` → 20261214000000 (o lucro do estoque só conta produto com custo).
+-- ATENÇÃO (cadeia futura): cada função tem UMA sucessora no CTE, a da ÚLTIMA migration que a
+-- redefine; uma terceira definição troca o hash e uma loja parada no intermediário passa a dar
+-- NEGATIVA (falha fechada). Quem escrever a próxima sucessora decide se mantém o intermediário.
+-- Para essas duas a linha "corpo final <fn>" aceita o md5 da 20261199 (o do
+-- `final`, que é o `esperado`) OU o md5 da sucessora DA PRÓPRIA função (CTE
+-- `sucessoras`); aceito, o `vivo` mostra o `esperado`. O rollback-manual de cada
+-- sucessora devolve o corpo da 99, que segue aceito. Nada mais foi afrouxado:
+-- corpo estranho (vivo = o md5 dele), função AUSENTE e sobrecarga múltipla
+-- (vivo = os md5 separados por vírgula) reprovam igual, e as outras 59 seguem
+-- exatas. tests/ci_conferir_banco_test.ts confere os hashes aceitos contra os
+-- arquivos (sucessoras = as migrations depois da 202 que redefinem uma das 61,
+-- com o md5 do corpo; o preflight delas e o rollback-manual citam os dois) e
+-- tests/banco/portao-8e-aceita-sucessoras-viva.cjs roda esta consulta no PG
+-- real nos estados 99, só 12, só 14 e árvore inteira, com os negativos.
 --
 -- Não confere ACL (GRANT/REVOKE) nem a política inteira — isso é o que o
 -- pós-voo de cada migration já afirma dentro da transação; aqui é só "o objeto
@@ -89,6 +113,9 @@ WITH corpos AS (
     ('solicitar_estorno', '069c3d12a470cc4708099d909c57ca02'),
     ('update_order_status_atomic', 'c8df4feb3f53b90922a6c8398371e394'),
     ('upsert_store_config', '9c56a9c6953e1d774a1ee97d5d8a7e16')
+), sucessoras(fn, h, versao) AS (VALUES
+    ('painel_inicio', 'f11d22d076c59ab54d1beb280954dd15', '20261212000000'),
+    ('get_admin_analytics_v2', '0a5f8c75bbeeda3777a6a7326a0e281c', '20261214000000')
 ), colunas(tabela, coluna) AS (VALUES
     ('order_refunds', 'mp_chargeback_id'),
     ('order_refunds', 'mp_chargeback_case_id'),
@@ -99,7 +126,10 @@ WITH corpos AS (
   SELECT 'controle: funcoes de public visiveis a este papel', '>0',
          CASE WHEN (SELECT count(*) FROM corpos) > 0 THEN '>0' ELSE '0' END
   UNION ALL
-  SELECT 'corpo final ' || f.fn, f.h, COALESCE(c.h, 'AUSENTE')
+  SELECT 'corpo final ' || f.fn, f.h,
+         CASE WHEN c.h IS NULL THEN 'AUSENTE'
+              WHEN c.h = f.h OR c.h IN (SELECT s.h FROM sucessoras s WHERE s.fn = f.fn) THEN f.h
+              ELSE c.h END
     FROM final f LEFT JOIN corpos c ON c.proname = f.fn
   UNION ALL
   SELECT 'coluna ' || k.tabela || '.' || k.coluna || ' existe', 'EXISTE',

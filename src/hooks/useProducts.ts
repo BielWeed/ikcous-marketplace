@@ -9,6 +9,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
+import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -143,6 +144,10 @@ async function syncOfflineUpdates(): Promise<boolean> {
         if (updates.originalPrice !== undefined)
           dbUpdates.preco_original = updates.originalPrice;
         if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        // `null` = volta ao padrão (5); zero é escolha da lojista. Só
+        // `undefined` ("não mexi") fica de fora — nunca `||` aqui.
+        if (updates.estoqueMinimo !== undefined)
+          dbUpdates.estoque_minimo = updates.estoqueMinimo;
         if (updates.category !== undefined)
           dbUpdates.categoria = updates.category;
         if (updates.images !== undefined) {
@@ -699,7 +704,14 @@ export function useProducts({ autoFetch = true } = {}) {
 
           // Apply Stock
           if (filters?.stock === "low") {
-            query = query.lte("estoque", 5);
+            // PostgREST não compara coluna com coluna: aqui só cabe o limiar
+            // padrão, sem o `estoque_minimo` do produto. Hoje NENHUM chamador
+            // passa `stock: "low"` (ramo morto aqui): a RPC admin
+            // `get_admin_products_paged` já filtra "low" pela regra única
+            // `estoque_efetivo <= COALESCE(estoque_minimo, 5)` (migration
+            // 20261213000000). Se um filtro "Estoque baixo" for exposto na loja
+            // por este caminho, ele também precisa dessa regra.
+            query = query.lte("estoque", LIMIAR_PADRAO_DE_ESTOQUE);
           }
 
           // Apply Category
@@ -877,6 +889,11 @@ export function useProducts({ autoFetch = true } = {}) {
             custo: productData.costPrice ?? null,
             preco_original: productData.originalPrice,
             estoque: productData.stock,
+            // `undefined` fica de fora (o banco aplica o padrão da coluna);
+            // `null` e zero vão como estão.
+            ...(productData.estoqueMinimo !== undefined
+              ? { estoque_minimo: productData.estoqueMinimo }
+              : {}),
             categoria: productData.category,
             imagem_url: productData.images[0] || null,
             imagem_urls: productData.images,
@@ -1090,6 +1107,9 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.originalPrice !== undefined)
           dbUpdates.preco_original = updates.originalPrice;
         if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        // Mesma regra da fila offline acima: `null` limpa, zero vale.
+        if (updates.estoqueMinimo !== undefined)
+          dbUpdates.estoque_minimo = updates.estoqueMinimo;
         if (updates.category !== undefined)
           dbUpdates.categoria = updates.category;
         if (updates.images !== undefined) {

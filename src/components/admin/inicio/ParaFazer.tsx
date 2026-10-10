@@ -100,7 +100,7 @@ export function ParaFazer({
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2
           id="inicio-para-fazer-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
         >
           Para fazer
         </h2>
