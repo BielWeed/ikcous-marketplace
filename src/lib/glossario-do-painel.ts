@@ -82,6 +82,15 @@ export const GLOSSARIO_DO_PAINEL: readonly EntradaDoGlossario[] = [
     lojista: "Lucro sobre o custo %",
     proibido: /Rendimento %/,
   },
+  // Onda J (acabamento no celular): as telas de Produtos já falam "Lucro sobre
+  // o custo"; a guarda não deixa "ROI", "Portfólio" nem "MiB" voltarem.
+  { tecnico: "ROI", lojista: "Lucro sobre o custo", proibido: /\bROI\b/ },
+  {
+    tecnico: "Portfólio",
+    lojista: "Seus produtos",
+    proibido: /Portf[óo]lio/,
+  },
+  { tecnico: "MiB", lojista: "MB", proibido: /\bMiB\b/ },
   { tecnico: "DRE", lojista: "Resultado", proibido: /\bDRE\b/ },
   {
     tecnico: "Competência",
