@@ -49,6 +49,7 @@ import {
 } from "@/hooks/useOrders";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 import { useViewTransition } from "@/hooks/useViewTransition";
+import { formatarInteiro } from "@/lib/crm";
 import { mapOrderFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
 import { pedidosParaCsv } from "@/lib/pedidos-csv";
@@ -555,29 +556,28 @@ export const AdminOrdersView = memo(function AdminOrdersView({
     () => [
       {
         label: "Para preparar",
-        value: paraPreparar === null ? "—" : paraPreparar.toString(),
+        value: formatarInteiro(paraPreparar),
         icon: Package,
         accent: "text-amber-500",
         subValue: SUBTITULO_PARA_PREPARAR,
       },
       {
         label: "Aguardando pagamento",
-        value:
-          aguardandoPagamento === null ? "—" : aguardandoPagamento.toString(),
+        value: formatarInteiro(aguardandoPagamento),
         icon: Clock,
         accent: "text-blue-500",
         subValue: "PIX ou cartão ainda não pago",
       },
       {
         label: "Em trânsito",
-        value: aCaminho === null ? "—" : aCaminho.toString(),
+        value: formatarInteiro(aCaminho),
         icon: Truck,
         accent: "text-indigo-500",
         subValue: "Enviados",
       },
       {
         label: "Finalizados",
-        value: stats.completed === null ? "—" : stats.completed.toString(),
+        value: formatarInteiro(stats.completed),
         icon: CheckCircle2,
         accent: "text-sky-500",
         subValue: "Desde o início · app e balcão",
@@ -1634,7 +1634,7 @@ export const AdminOrdersView = memo(function AdminOrdersView({
               <DebouncedSearchInput
                 id="orders-search"
                 name="search"
-                placeholder="Buscar pedidos..."
+                placeholder="Buscar…"
                 className="h-11 w-full rounded-xl border-zinc-800 bg-black/40 pl-10 text-xs font-bold text-white transition-all placeholder:text-zinc-600 focus:border-admin-gold/50 focus:ring-admin-gold/20"
                 value={searchQuery}
                 onChange={(val) => {

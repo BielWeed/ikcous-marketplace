@@ -291,7 +291,7 @@ export const AdminOrderCard = memo(function AdminOrderCard({
                   e.stopPropagation();
                   onWhatsApp(order);
                 }}
-                className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-300 active:scale-90"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-zinc-300 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/15 hover:text-emerald-300 active:scale-90"
               >
                 <MessageCircle className="size-[18px]" />
               </button>
