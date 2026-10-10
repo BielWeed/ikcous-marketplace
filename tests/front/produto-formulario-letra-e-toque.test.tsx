@@ -341,14 +341,7 @@ describe("AdminProductFormView — letra, toque e avisos (K-B)", () => {
         const ehDicaOuErro =
           /(?:^|[\s"'`])ml-1(?:[\s"'`]|$)/.test(tag) &&
           /(?:^|[\s"'`])block(?:[\s"'`]|$)/.test(tag);
-        // O <label> do botão "Tirar Foto" (estado vazio da galeria) é ação, não
-        // rótulo de campo: junto com os selos da foto, fica para a onda L.
-        const ehAcaoDaFoto = tag.includes('htmlFor="product-image-capture"');
-        if (
-          (ehLabel || ehDicaOuErro) &&
-          !ehAcaoDaFoto &&
-          TEXTO_MIUDO.test(tag)
-        ) {
+        if ((ehLabel || ehDicaOuErro) && TEXTO_MIUDO.test(tag)) {
           const linha = FONTE.slice(0, m.index).split("\n").length;
           ruins.push(`linha ${linha}: ${tag.slice(0, 90)}`);
         }
