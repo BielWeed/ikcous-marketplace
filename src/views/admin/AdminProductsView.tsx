@@ -673,7 +673,7 @@ export const AdminProductsView = memo(function AdminProductsView({
             <>
               <Button
                 disabled={isOffline}
-                className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[10px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
+                className="hidden h-11 shrink-0 items-center justify-center rounded-xl bg-admin-gold px-5 text-[11px] font-black uppercase tracking-widest text-black shadow-[0_0_15px_rgba(234,179,8,0.2)] transition-all hover:scale-105 hover:bg-admin-gold/90 active:scale-95 disabled:pointer-events-none disabled:opacity-50 sm:flex"
                 onClick={() => handleLocalNavigate("admin-product-form")}
               >
                 <Plus className="mr-2 size-4 shrink-0 stroke-[3]" />
@@ -693,15 +693,21 @@ export const AdminProductsView = memo(function AdminProductsView({
           <button
             type="button"
             onClick={() => toggleHelp("global-guide")}
-            className={cn(
-              "w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300 active:scale-95 shrink-0",
-              expandedHelp["global-guide"]
-                ? "bg-admin-gold border-admin-gold/40 text-black shadow-md shadow-admin-gold/10 scale-105"
-                : "bg-zinc-900/60 border-white/5 text-zinc-500 hover:text-white hover:border-white/10",
-            )}
+            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
             title="Guia Completo de Métricas e Ajuda"
           >
-            <HelpCircle className="size-4.5" />
+            {/* O botão é a área de toque de 44px; o círculo de 32px é só o desenho. */}
+            <span
+              aria-hidden="true"
+              className={cn(
+                "flex size-8 items-center justify-center rounded-full border transition-all duration-300",
+                expandedHelp["global-guide"]
+                  ? "bg-admin-gold border-admin-gold/40 text-black shadow-md shadow-admin-gold/10 scale-105"
+                  : "bg-zinc-900/60 border-white/5 text-zinc-500 group-hover:text-white group-hover:border-white/10",
+              )}
+            >
+              <HelpCircle className="size-4.5" />
+            </span>
           </button>
           {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
               tag que ficava verde após a carga. Desde o pedido do Gabriel de
@@ -803,7 +809,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   shouldScrollToTop.current = true;
                 }}
                 className={cn(
-                  "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[9px] font-black uppercase tracking-widest transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
+                  "relative isolate h-11 shrink-0 snap-center rounded-lg px-3 text-[11px] font-black uppercase tracking-wider transition-all before:absolute before:-z-10 before:inset-x-0 before:inset-y-[6px] before:rounded-lg before:border before:transition-all before:content-['']",
                   filterCategory === cat
                     ? "text-black before:border-admin-gold before:bg-admin-gold before:shadow-[0_0_20px_rgba(212,175,55,0.2)]"
                     : "text-zinc-500 before:border-zinc-800 before:bg-zinc-900/60 hover:text-white hover:before:bg-zinc-800",
@@ -830,7 +836,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <div
                           key={i}
                           className={cn(
-                            "admin-glass flex animate-pulse flex-col justify-between space-y-6 rounded-[2.5rem] border border-white/5 p-8 shadow-[0_20px_50px_rgba(0,0,0,0.3)]",
+                            "admin-glass flex animate-pulse flex-col justify-between space-y-6 rounded-[2.5rem] border border-white/5 p-8",
                             ALTURA_DO_ESQUELETO_DETALHADO,
                           )}
                         >
@@ -881,7 +887,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
                           key={i}
-                          className="admin-glass flex h-[284px] animate-pulse flex-col justify-between overflow-hidden rounded-3xl border border-white/5 shadow-lg"
+                          className="admin-glass flex h-[284px] animate-pulse flex-col justify-between overflow-hidden rounded-3xl border border-white/5"
                         >
                           <Skeleton className="aspect-square w-full animate-pulse bg-white/5" />
                           <div className="flex flex-col gap-2 p-3">
@@ -961,7 +967,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               type="button"
               onClick={() => setHelpTab("concepts")}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200",
+                "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "concepts"
                   ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/10"
                   : "text-zinc-400 hover:text-white hover:bg-white/5",
@@ -974,7 +980,7 @@ export const AdminProductsView = memo(function AdminProductsView({
               type="button"
               onClick={() => setHelpTab("simulator")}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200",
+                "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-200",
                 helpTab === "simulator"
                   ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/10"
                   : "text-zinc-400 hover:text-white hover:bg-white/5",
@@ -1201,14 +1207,14 @@ export const AdminProductsView = memo(function AdminProductsView({
               /* Simulador de Lucratividade */
               <div className="space-y-5">
                 <div className="space-y-4 rounded-3xl border border-white/5 bg-zinc-900/20 p-4">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                  <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Parâmetros do Produto
                   </h4>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
                       <label
                         htmlFor="sim-cost"
-                        className="mb-1 block text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-500"
                       >
                         Custo Unitário (R$)
                       </label>
@@ -1223,7 +1229,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simCost}
                           onChange={(e) => setSimCost(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1232,7 +1238,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     <div>
                       <label
                         htmlFor="sim-price"
-                        className="mb-1 block text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-500"
                       >
                         Preço de Venda (R$)
                       </label>
@@ -1247,7 +1253,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simPrice}
                           onChange={(e) => setSimPrice(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
                           placeholder="0.00"
                         />
                       </div>
@@ -1256,7 +1262,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     <div>
                       <label
                         htmlFor="sim-stock"
-                        className="mb-1 block text-[9px] font-black uppercase tracking-wider text-zinc-500"
+                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-500"
                       >
                         Unidades em Estoque
                       </label>
@@ -1270,7 +1276,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           autoComplete="off"
                           value={simStock}
                           onChange={(e) => setSimStock(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
+                          className="min-h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 py-2 pl-8 pr-3 font-mono text-xs text-white transition-all focus:border-admin-gold focus:outline-none"
                           placeholder="0"
                         />
                       </div>
@@ -1284,7 +1290,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       setSimPrice("15.00");
                       setSimStock("20");
                     }}
-                    className="flex items-center gap-1.5 pt-1 text-[8px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                    className="flex min-h-11 items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
                   >
                     <RefreshCw className="size-3" />
                     Resetar Simulador
@@ -1293,7 +1299,7 @@ export const AdminProductsView = memo(function AdminProductsView({
 
                 {/* Resultados do Painel Simulador */}
                 <div className="space-y-3">
-                  <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                  <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                     Análise de Performance
                   </h4>
 
@@ -1315,10 +1321,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <Sparkles className="size-4 animate-pulse" />
                     </div>
                     <div>
-                      <p className="text-[10px] font-black uppercase tracking-wider">
+                      <p className="text-[11px] font-black uppercase tracking-wider">
                         {simulatorMetrics.healthLabel}
                       </p>
-                      <p className="mt-0.5 text-[10px] font-medium leading-normal text-zinc-500">
+                      <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-500">
                         {simulatorMetrics.health === "excellent" &&
                           "Alta lucratividade por unidade! Ideal para alavancar vendas e suportar taxas operacionais confortavelmente."}
                         {simulatorMetrics.health === "good" &&
@@ -1345,7 +1351,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           "border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.03)]",
                       )}
                     >
-                      <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                         Margem de Lucro
                       </p>
                       <p
@@ -1364,7 +1370,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     </div>
 
                     <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                         Lucro sobre o custo (por unidade)
                       </p>
                       <p className="font-mono text-xl font-black text-blue-400">
@@ -1373,7 +1379,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     </div>
 
                     <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                         Lucro Líquido (Unit.)
                       </p>
                       <p className="font-mono text-xl font-black text-white">
@@ -1385,7 +1391,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     </div>
 
                     <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
                         Capital de Lote (Custo)
                       </p>
                       <p className="font-mono text-xl font-black text-zinc-400">
@@ -1400,7 +1406,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   <div className="relative flex h-20 items-center justify-between overflow-hidden rounded-2xl border border-admin-gold/10 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4">
                     <div className="absolute inset-0 bg-admin-gold/5" />
                     <div className="relative z-10">
-                      <p className="text-[8px] font-black uppercase tracking-widest text-admin-gold">
+                      <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold">
                         Retorno Total Estimado
                       </p>
                       <p className="mt-0.5 font-mono text-xl font-black text-white">
@@ -1409,7 +1415,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           minimumFractionDigits: 2,
                         })}
                       </p>
-                      <p className="text-[8px] font-medium text-zinc-500">
+                      <p className="text-[11px] font-medium text-zinc-500">
                         Faturamento Potencial: R${" "}
                         {simulatorMetrics.totalRevenue.toLocaleString("pt-BR", {
                           minimumFractionDigits: 2,
@@ -1587,7 +1593,7 @@ const AdminProductCard = memo(function AdminProductCard({
         <div className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-admin-gold to-transparent opacity-0 blur-2xl transition-opacity duration-700 group-hover:opacity-5" />
         <div
           className={cn(
-            "admin-glass content-visibility-detailed-card relative flex h-full flex-col overflow-hidden border-y border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all duration-500 group-hover:border-white/10 sm:rounded-[2.5rem] sm:border-x",
+            "admin-glass content-visibility-detailed-card relative flex h-full flex-col overflow-hidden border-white/5 transition-all duration-500 group-hover:border-white/10 sm:rounded-[2.5rem] sm:border-x",
             RESERVA_DO_CARTAO_DETALHADO,
           )}
         >
@@ -1659,7 +1665,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 <h4 className="line-clamp-2 break-words pr-12 text-xl font-black leading-[1.2] text-white transition-colors group-hover:text-admin-gold">
                   {product.name}
                 </h4>
-                <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                <p className="mt-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
                   {product.category}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -1760,7 +1766,7 @@ const AdminProductCard = memo(function AdminProductCard({
             {/* Inventory Specs */}
             <div className="flex flex-1 flex-col gap-4 pt-2">
               <div className="group/spec flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
                   Unidades em Estoque
                 </span>
                 <div className="flex items-center gap-2">
@@ -1799,7 +1805,7 @@ const AdminProductCard = memo(function AdminProductCard({
 
               <div className="mt-auto flex items-end justify-between border-t border-white/5 pt-6">
                 <div className="space-y-1">
-                  <p className="text-[8px] font-black uppercase tracking-[0.3em] text-admin-gold">
+                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-admin-gold">
                     Preço de Venda
                   </p>
                   <h4 className="text-3xl font-black tracking-tighter text-white">
@@ -1810,7 +1816,7 @@ const AdminProductCard = memo(function AdminProductCard({
                   </h4>
                 </div>
                 <div className="space-y-1 text-right">
-                  <p className="text-[8px] font-black uppercase tracking-[0.3em] text-emerald-500">
+                  <p className="text-[11px] font-black uppercase tracking-[0.12em] text-emerald-500">
                     Potencial
                   </p>
                   <p className="text-sm font-black tracking-tight text-white/80">
@@ -1841,7 +1847,7 @@ const AdminProductCard = memo(function AdminProductCard({
       onTouchStart={onPrefetch}
     >
       <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-admin-gold to-transparent opacity-0 blur-xl transition-opacity duration-700 group-hover:opacity-5" />
-      <div className="admin-glass content-visibility-compact-card relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/5 shadow-lg transition-all duration-500 group-hover:border-white/10">
+      <div className="admin-glass content-visibility-compact-card relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/5 transition-all duration-500 group-hover:border-white/10">
         {/* Image and Action Button */}
         <div className="relative aspect-square w-full overflow-hidden border-b border-white/5 bg-zinc-900">
           <LazyImage
