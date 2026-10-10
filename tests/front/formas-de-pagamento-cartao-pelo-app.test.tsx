@@ -158,6 +158,60 @@ describe("Formas de pagamento — Cartão pelo app", () => {
     );
   });
 
+  it("onda L: clicar no TEXTO 'Crédito' (o <label> de 44px) liga o crédito uma única vez", async () => {
+    await montar();
+    const texto = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Crédito",
+    );
+    if (!texto) throw new Error("O texto 'Crédito' não está na tela.");
+    expect(texto.closest("label")).not.toBeNull();
+    await clicar(texto as HTMLElement);
+
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
+    expect(banco.rpc).toHaveBeenCalledWith("salvar_config_pagamento_cartao", {
+      p_credito: true,
+      p_debito: false,
+      p_parcelas_max: 1,
+    });
+  });
+
+  it("onda L: clicar DIRETO no botão do switch de crédito grava uma única vez (o <label> não re-dispara o clique)", async () => {
+    await montar();
+    await clicar(credito());
+
+    expect(banco.rpc).toHaveBeenCalledTimes(1);
+    expect(banco.rpc).toHaveBeenCalledWith("salvar_config_pagamento_cartao", {
+      p_credito: true,
+      p_debito: false,
+      p_parcelas_max: 1,
+    });
+  });
+
+  it("onda L: crédito travado (sem PIX ligado e desligado): clicar no TEXTO não grava nada", async () => {
+    await montar({ pixLigado: false });
+    expect(credito().hasAttribute("disabled")).toBe(true);
+    const texto = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Crédito",
+    );
+    if (!texto) throw new Error("O texto 'Crédito' não está na tela.");
+    await clicar(texto as HTMLElement);
+
+    expect(banco.rpc).not.toHaveBeenCalled();
+    expect(credito().getAttribute("data-state")).toBe("unchecked");
+  });
+
+  it("onda L: débito travado (sem PIX ligado e desligado): clicar no TEXTO não grava nada", async () => {
+    await montar({ pixLigado: false });
+    expect(debito().hasAttribute("disabled")).toBe(true);
+    const texto = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Débito",
+    );
+    if (!texto) throw new Error("O texto 'Débito' não está na tela.");
+    await clicar(texto as HTMLElement);
+
+    expect(banco.rpc).not.toHaveBeenCalled();
+  });
+
   it("mudar o 'Parcelar em até' grava o teto novo, sem mexer nos tipos", async () => {
     banco.linha = { credito: true, debito: true, parcelas_max: 1 };
     await montar();

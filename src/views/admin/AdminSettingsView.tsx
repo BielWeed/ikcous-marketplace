@@ -204,7 +204,7 @@ const ConnectionDiagnosticsSection = memo(
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
           aria-expanded={isOpen}
-          className="group flex w-full select-none items-center justify-between rounded-2xl p-2 text-left transition-all hover:bg-white/5"
+          className="group flex min-h-11 w-full select-none items-center justify-between rounded-2xl p-2 text-left transition-all hover:bg-white/5"
         >
           <div className="flex items-center gap-4">
             <div className="relative flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/[0.18] to-amber-500/[0.04] text-amber-500 shadow-[0_2px_12px_-4px] shadow-amber-500/25 ring-1 ring-amber-500/20">
@@ -383,7 +383,7 @@ function SecaoColapsavel({
           setAberta((antes) => !antes);
         }}
         aria-expanded={aberta}
-        className="group flex w-full items-center justify-between gap-3 text-left"
+        className="group flex min-h-11 w-full items-center justify-between gap-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-3">
           <span className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">

@@ -176,7 +176,10 @@ export function FormasDePagamentoSection({
           (mesmo padrão imediato de AdminReviewsView: clique salva). */}
       <div className="space-y-2 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5">
         {FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM.map((forma) => (
-          <div key={forma} className="flex items-center justify-between gap-2">
+          <label
+            key={forma}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+          >
             <span className="text-xs text-zinc-300">
               {ROTULO_DA_FORMA.get(forma)}
             </span>
@@ -187,7 +190,7 @@ export function FormasDePagamentoSection({
               onCheckedChange={(checked) => alternar(forma, checked)}
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
+          </label>
         ))}
       </div>
 
@@ -268,6 +271,8 @@ function CartaoPeloAppBloco({
   });
   const [salvando, setSalvando] = useState(false);
   const idDasParcelas = useId();
+  const idDoCredito = useId();
+  const idDoDebito = useId();
 
   useEffect(() => {
     let vivo = true;
@@ -339,9 +344,13 @@ function CartaoPeloAppBloco({
 
       {config && (
         <>
-          <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor={idDoCredito}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+          >
             <span className="text-xs text-zinc-300">Crédito</span>
             <Switch
+              id={idDoCredito}
               checked={config.credito}
               disabled={!podeMexer || (!pixLigado && !config.credito)}
               aria-label="Cartão de crédito pelo app"
@@ -355,10 +364,14 @@ function CartaoPeloAppBloco({
               }
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
-          <div className="flex items-center justify-between gap-2">
+          </label>
+          <label
+            htmlFor={idDoDebito}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+          >
             <span className="text-xs text-zinc-300">Débito</span>
             <Switch
+              id={idDoDebito}
               checked={config.debito}
               disabled={!podeMexer || (!pixLigado && !config.debito)}
               aria-label="Cartão de débito pelo app"
@@ -372,7 +385,7 @@ function CartaoPeloAppBloco({
               }
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
+          </label>
           {config.debito && (
             <p className="text-[11px] leading-relaxed text-zinc-500">
               {CARTAO_PELO_APP.debito}
@@ -400,7 +413,7 @@ function CartaoPeloAppBloco({
                         : `Crédito em até ${parcelasMax}x`,
                     );
                   }}
-                  className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-admin-gold/50 disabled:opacity-50"
+                  className="min-h-11 rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-admin-gold/50 disabled:opacity-50"
                 >
                   {OPCOES_DE_PARCELAS.map((n) => (
                     <option
