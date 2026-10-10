@@ -269,10 +269,18 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     expect(classes(valor)).toEqual(
       expect.arrayContaining(["font-black", "tabular-nums", "text-white"]),
     );
-    // Dinheiro não pode ser cortado a 360px: até `sm` no máximo 18px.
+    // Dinheiro não pode ser cortado: 17px na base (360px), 24px de `sm`, 18px
+    // de volta em `lg` (grade de 4 colunas + sidebar: ~145px úteis a 1024px) e
+    // 24px de novo em `xl`.
     expect(classes(valor)).toEqual(
-      expect.arrayContaining(["text-lg", "sm:text-2xl"]),
+      expect.arrayContaining([
+        "text-[17px]",
+        "sm:text-2xl",
+        "lg:text-lg",
+        "xl:text-2xl",
+      ]),
     );
+    expect(classes(valor)).not.toContain("text-lg");
     expect(classes(valor)).not.toContain("text-xl");
     expect(classes(cartao)).toEqual(expect.arrayContaining(["px-3", "py-3.5"]));
 
@@ -366,7 +374,14 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
       rotuloNoDesenhoNovo(r, rotulo);
       comACasca(r.parentElement, CASCA_DO_CARTAO, rotulo);
     }
-    // Valor em dinheiro não vaza da célula de ~100px: 12px até `sm`.
+    // Valor em dinheiro não vaza da célula: uma coluna abaixo de `xs` (480px),
+    // três a partir dali (~115px úteis para os ~95px do valor), 12px até `sm`.
+    expect(classes(dt("Saiu").parentElement?.parentElement)).toEqual(
+      expect.arrayContaining(["grid-cols-1", "xs:grid-cols-3"]),
+    );
+    expect(classes(dt("Saiu").parentElement?.parentElement)).not.toContain(
+      "grid-cols-3",
+    );
     expect(classes(dt("Saiu").parentElement)).toContain("p-2");
     expect(classes(dt("Saiu").nextElementSibling)).toEqual(
       expect.arrayContaining(["text-xs", "sm:text-sm"]),

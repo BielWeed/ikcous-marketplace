@@ -161,9 +161,14 @@ export function BlocoKpi({
 }) {
   return (
     <div
-      // Valor em dinheiro nunca é cortado a 360px: abaixo de `sm` no máximo
-      // 18px (`text-lg`) e `px-3`. Template e não `cn`: o tailwind-merge trata `bg-gradient-to-*` como
-      // conflito de `bg-zinc-900/70` e descartaria o fundo da casca.
+      // Valor em dinheiro: 17px na base, 24px de `sm`, 18px em `lg` (grade de
+      // 4 colunas ao lado da sidebar: ~145px úteis a 1024px) e 24px de `xl`.
+      // Medido no Chromium, "−R$ 123.456,78" cabe a 360px (≈129/132px), a
+      // 1024px (≈137/145px) e a 1280px (≈182/209px). Folga curta: valor maior
+      // ou fonte mais larga que a medida volta a cortar (o `truncate` é só
+      // rede de segurança). Template e não `cn`: o tailwind-merge trata
+      // `bg-gradient-to-*` como conflito de `bg-zinc-900/70` e descartaria o
+      // fundo da casca.
       className={`relative flex min-w-0 flex-col gap-1.5 overflow-hidden px-3 py-3.5 shadow-lg ${CLASSE_CASCA_DO_CARTAO} ${ALTURA_MINIMA_DO_KPI}${className ? ` ${className}` : ""}`}
     >
       {/* O ícone fica num selo no canto (nunca some); o rótulo reserva a
@@ -189,7 +194,7 @@ export function BlocoKpi({
       >
         {rotulo}
       </span>
-      <div className="min-w-0 truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
+      <div className="min-w-0 truncate text-[17px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight lg:text-lg xl:text-2xl">
         {children}
       </div>
       {detalhe ? (

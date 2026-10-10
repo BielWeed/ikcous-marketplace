@@ -270,7 +270,7 @@ export function AbaExtrato({
             ]}
           />
         </div>
-        <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+        <dl className="mt-4 grid grid-cols-1 gap-2 text-center xs:grid-cols-3">
           <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Entrou</dt>
             <dd className="mt-1 text-xs font-black text-emerald-300 sm:text-sm">
