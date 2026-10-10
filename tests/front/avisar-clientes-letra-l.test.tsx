@@ -43,4 +43,26 @@ describe("Avisar clientes (Push) sem texto abaixo de 11px", () => {
     expect(fonte).not.toMatch(/text-\[9\.5px\]/);
     expect(fonte).toMatch(/text-\[11px\]/);
   });
+
+  // Com 11px os rótulos já não cabem na coluna do chip: quebrar a linha mostra
+  // o texto inteiro; `truncate` o esconderia onde antes cabia.
+  it("o rótulo do chip de segmento quebra linha (break-words) e não corta (truncate)", () => {
+    const classes = fonte.match(
+      /<span className="([^"]*)">\s*\{s\.label\}/,
+    )?.[1];
+    expect(classes).toBeDefined();
+    expect(classes).toMatch(/\bbreak-words\b/);
+    expect(classes).not.toMatch(/\btruncate\b/);
+  });
+
+  // O caminho do "Ao clicar" ocupa o espaço que sobra ao lado do selo (a 11px
+  // um limite fixo de 150px corta caminhos que antes cabiam); o truncate fica.
+  it("a linha 'Ao clicar' do histórico usa o espaço que sobra, não um limite fixo", () => {
+    const classes = fonte.match(/<span className="([^"]*)">\s*Ao clicar:/)?.[1];
+    expect(classes).toBeDefined();
+    expect(classes).not.toMatch(/max-w-\[150px\]/);
+    expect(classes).toMatch(/\bmin-w-0\b/);
+    expect(classes).toMatch(/\bflex-1\b/);
+    expect(classes).toMatch(/\btruncate\b/);
+  });
 });

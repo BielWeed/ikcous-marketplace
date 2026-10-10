@@ -1688,7 +1688,7 @@ export const AdminPushView = memo(function AdminPushView({
                     {item.body}
                   </p>
                   <div className="mt-1.5 flex items-center justify-between border-t border-white/5 pt-1 text-[11px]">
-                    <span className="font-mono text-zinc-500 truncate max-w-[150px]">
+                    <span className="min-w-0 flex-1 font-mono text-zinc-500 truncate">
                       Ao clicar: {item.url}
                     </span>
                     {/* Achado 11 da auditoria de 20/08/2026: o registro
@@ -1698,11 +1698,11 @@ export const AdminPushView = memo(function AdminPushView({
                             "ninguém confirmou ainda". O selo deixou de
                             afirmar sucesso sem olhar o número. */}
                     {item.recipient_count > 0 ? (
-                      <span className="font-bold uppercase text-admin-gold">
+                      <span className="shrink-0 pl-2 font-bold uppercase text-admin-gold">
                         Entregue
                       </span>
                     ) : (
-                      <span className="font-bold uppercase text-amber-400">
+                      <span className="shrink-0 pl-2 font-bold uppercase text-amber-400">
                         Não confirmada
                       </span>
                     )}
