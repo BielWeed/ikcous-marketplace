@@ -78,17 +78,29 @@ import { toast } from "sonner";
 
 let cachedProductsTotal = 0;
 
-// Altura que o cartão do modo detalhado ocupa ANTES de ser desenhado. O cartão
-// real mede 459 a 718px (mediana ~520px no celular e ~660px a partir de 1280px,
-// 4 colunas); o `content-visibility: auto` da classe do cartão reservava 440px
-// (src/index.css) e a lista pulava ao rolar. O `!` faz a reserva local vencer a
-// regra do index.css, que vem depois no CSS e tem a mesma especificidade.
+// Altura que o cartão do modo detalhado ocupa ANTES de ser desenhado. O
+// `content-visibility: auto` da classe do cartão reservava 440px (src/index.css)
+// e a lista pulava ao rolar. O `!` faz a reserva local vencer a regra do
+// index.css, que vem depois no CSS e tem a mesma especificidade.
+// Os números são a mediana do cartão MEDIDA em Chromium (Inter, nome em 2 linhas,
+// até 3 selos, 12 produtos de texto variado; altura da LINHA da grade, a que
+// empurra a rolagem), com a grade `md:2 lg:3 xl:4` e a coluna de 256px do menu:
+//   abaixo de md  1 coluna, 328-719px de cartão: 486-545 (mediana ~520)
+//   md  768-1023  2 colunas, 344-471px: 562-600 (~580)
+//   lg 1024-1535  3-4 colunas de 213-298px: 716-813 (~770). As 2 caixas de
+//                 métrica empilham de lg em diante (1 coluna), o que deixa o
+//                 cartão ~100-115px mais alto que a reserva antiga de 660px
+//   2xl ≥1536     4 colunas fixas de 280px (o conteúdo para em max-w-7xl): ~720
+// Dentro de cada faixa a altura varia ±6% com a largura; basta: o `auto` do
+// `contain-intrinsic-size` troca a reserva pela altura real assim que o cartão
+// é desenhado uma vez.
 // O esqueleto de carregamento usa os MESMOS números para não haver salto quando
 // os dados chegam. Strings literais de propósito: o Tailwind só gera classe que
 // aparece inteira no fonte. Mudou um número? Mude os dois (o teste confere).
 const RESERVA_DO_CARTAO_DETALHADO =
-  "![contain-intrinsic-size:auto_520px] xl:![contain-intrinsic-size:auto_660px]";
-const ALTURA_DO_ESQUELETO_DETALHADO = "h-[520px] xl:h-[660px]";
+  "![contain-intrinsic-size:auto_520px] md:![contain-intrinsic-size:auto_580px] lg:![contain-intrinsic-size:auto_770px] 2xl:![contain-intrinsic-size:auto_720px]";
+const ALTURA_DO_ESQUELETO_DETALHADO =
+  "h-[520px] md:h-[580px] lg:h-[770px] 2xl:h-[720px]";
 
 /** Percentual com 1 casa, em pt-BR ("130,2%", nunca "130.15%"): a mesma
  * grafia no cartão do topo, no simulador e no cartão detalhado. */
@@ -1731,7 +1743,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <span
                   className={cn(
-                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px]",
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] md:text-xl lg:text-[22px]",
                     margin === null && "text-zinc-400",
                     margin !== null && margin >= 40 && "text-emerald-500",
                     margin !== null &&
@@ -1753,7 +1765,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <span
                   className={cn(
-                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px]",
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] md:text-xl lg:text-[22px]",
                     roi === null && "text-zinc-400",
                     roi !== null && roi >= 100 && "text-emerald-500",
                     roi !== null && roi >= 50 && roi < 100 && "text-admin-gold",

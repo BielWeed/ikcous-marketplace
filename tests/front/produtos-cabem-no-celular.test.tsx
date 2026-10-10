@@ -336,6 +336,11 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       for (const valor of valores) {
         expect(valor.className).toContain("text-lg");
         expect(valor.className).toContain("sm:text-[22px]");
+        // a 768px (md) são 2 produtos por linha com as caixas lado a lado:
+        // "1.150,0%" a 22px sobra 2,1px; em 20px (md:text-xl) sobram ~10,9px.
+        // De lg em diante a coluna é única e os 22px voltam.
+        expect(valor.className).toContain("md:text-xl");
+        expect(valor.className).toContain("lg:text-[22px]");
         expect(valor.className).not.toContain("lg:text-[15px]");
         expect(valor.className).not.toContain("2xl:text-[22px]");
       }
