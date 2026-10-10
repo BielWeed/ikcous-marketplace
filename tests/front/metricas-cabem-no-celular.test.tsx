@@ -218,9 +218,84 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
     const esqueleto =
       hospedeiro.querySelector("div.animate-pulse")!.parentElement!;
     const classes = esqueleto.className.split(/\s+/);
-    expect(classes).toContain("min-h-24");
-    expect(classes).toContain("sm:min-h-[68px]");
+    // J2-B: o esqueleto mede o mesmo que o cartão real por breakpoint
+    // (~100px no celular, ~96px de 640px em diante) — antes eram 96 e 68px
+    // e o conteúdo abaixo pulava 11–28px quando os números chegavam.
+    expect(classes).toContain("min-h-[100px]");
+    expect(classes).toContain("sm:min-h-24");
+    expect(classes).not.toContain("min-h-24");
+    expect(classes).not.toContain("sm:min-h-[68px]");
     expect(classes.some((c) => /^(sm:)?h-(16|\[68px\])$/.test(c))).toBe(false);
+  });
+
+  it("a barra de cima reserva a altura da versão quebrada no celular (sem pulo quando os pontos chegam)", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    // Carregando: sem pontos, só título + "Expandir" (44px).
+    await montar(
+      <AdminKpiCarousel cards={cardsFake} title="Métricas" loading={true} />,
+    );
+    const barraCarregando = Array.from(
+      hospedeiro.querySelectorAll("button"),
+    ).find((b) => b.textContent?.includes("Expandir"))!.parentElement!
+      .parentElement!;
+    expect(barraCarregando.className.split(/\s+/)).toContain("min-h-[65px]");
+    expect(barraCarregando.className.split(/\s+/)).toContain("sm:min-h-11");
+
+    // Carregado: a mesma barra, com a mesma reserva.
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+    const barraPronta = Array.from(hospedeiro.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Expandir"),
+    )!.parentElement!.parentElement!;
+    expect(barraPronta.className.split(/\s+/)).toContain("min-h-[65px]");
+    expect(barraPronta.className.split(/\s+/)).toContain("sm:min-h-11");
+  });
+
+  it("a seta invisível não captura toque (pointer-events-none) e só vira clicável no hover/foco do computador", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    const proximo = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Próximo"]',
+    )!;
+    const anterior = hospedeiro.querySelector<HTMLButtonElement>(
+      'button[title="Anterior"]',
+    )!;
+    for (const seta of [proximo, anterior]) {
+      const classes = seta.className.split(/\s+/);
+      expect(classes).toContain("opacity-0");
+      expect(classes).toContain("pointer-events-none");
+    }
+    // Só o computador (sm:) devolve o toque, com mouse em cima ou foco.
+    const classesProximo = proximo.className.split(/\s+/);
+    expect(classesProximo).toContain(
+      "sm:group-hover/carousel:pointer-events-auto",
+    );
+    expect(classesProximo).toContain(
+      "sm:group-focus-within/carousel:pointer-events-auto",
+    );
+    // E o opacity-100 do hover também só a partir de sm: (seta visível =
+    // seta clicável; no celular nunca aparece "morta").
+    expect(classesProximo).toContain("sm:group-hover/carousel:opacity-100");
+    expect(classesProximo).not.toContain("group-hover/carousel:opacity-100");
+  });
+
+  it("o rótulo aceita 3 linhas de 640px em diante (sem cortar 'DINHEIRO PARADO EM…') e aperta o espaçamento entre letras", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    const rotulo = hospedeiro.querySelector("h3")!.previousElementSibling!;
+    const classes = rotulo.className.split(/\s+/);
+    // No celular continuam 2 linhas (o cartão não cresce além do medido).
+    expect(classes).toContain("line-clamp-2");
+    expect(classes).toContain("sm:line-clamp-3");
+    expect(classes).toContain("sm:tracking-[0.04em]");
+    // Nunca abaixo de 11px.
+    expect(classes).toContain("text-[11px]");
+    const tamanhos = classes
+      .filter((c) => c.includes("text-["))
+      .map((c) => Number.parseFloat(c.slice(c.indexOf("text-[") + 6)));
+    expect(tamanhos.length).toBeGreaterThan(0);
+    for (const tamanho of tamanhos) expect(tamanho).toBeGreaterThanOrEqual(11);
   });
 
   it("o ponto dourado do título não achata quando o título quebra", async () => {

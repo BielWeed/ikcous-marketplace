@@ -36,9 +36,10 @@ interface AdminKpiCarouselProps {
  * baixo) e slides mais densos — mais métricas visíveis na mesma largura.
  *
  * Altura: NATURAL, com piso de 64px (`min-h-16`; 68px no computador, `sm:`).
- * Rótulo, valor e subtítulo a 11px+ quebram em até 2 linhas e por isso um
- * cartão pode passar do piso (medido: ~68–96px no computador, mais alto no
- * celular de 360px). Todos os cartões de uma mesma faixa têm a MESMA altura
+ * Rótulo, valor e subtítulo a 11px+ quebram em até 2 linhas (o rótulo, até 3
+ * de 640px em diante, J2-B: "DINHEIRO PARADO EM…" era cortado a 1280px) e por
+ * isso um cartão pode passar do piso (medido: ~68–96px no computador, mais
+ * alto no celular de 360px). Todos os cartões de uma mesma faixa têm a MESMA altura
  * (o slide estica, `h-full`); o texto nunca é cortado nem desce de 11px.
  */
 const KpiCard = memo(function KpiCard({
@@ -83,7 +84,7 @@ const KpiCard = memo(function KpiCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 break-words text-[11px] font-black uppercase leading-tight tracking-[0.06em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
+        <p className="line-clamp-2 break-words text-[11px] font-black uppercase leading-tight tracking-[0.06em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400 sm:line-clamp-3 sm:tracking-[0.04em]">
           {stat.label}
         </p>
         {/* Valor na linha INTEIRA (pedido do Gabriel, 02/09: o dado completo
@@ -111,10 +112,11 @@ const KpiCard = memo(function KpiCard({
 
 const KpiSkeleton = memo(function KpiSkeleton() {
   return (
-    // Altura mínima próxima à do cartão real (medido: ~86–115px no celular,
-    // ~68–96px no computador) para o conteúdo abaixo não pular quando os
-    // números chegam.
-    <div className="flex min-h-24 select-none items-center gap-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:min-h-[68px] sm:py-2">
+    // Mesma altura do cartão real por breakpoint (J2-B: eram 96px no celular
+    // e 68px de 640px em diante, e o conteúdo abaixo pulava 11–28px quando os
+    // números chegavam): ~100px no celular e ~96px (`sm:min-h-24`) no
+    // computador, onde a faixa real mede ~95,5px (Produtos) a ~82px (Clientes).
+    <div className="flex min-h-[100px] select-none items-center gap-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:min-h-24 sm:py-2">
       <div className="size-9 animate-pulse rounded-xl bg-white/5" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
@@ -256,8 +258,12 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
     <div className="w-full space-y-2.5">
       {/* Control Bar */}
       {/* A barra QUEBRA linha (flex-wrap): cada ponto virou um alvo de 24px
-          de largura, e com 6+ cartões a 360px o "Expandir" saía da tela. */}
-      <div className="flex select-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-0">
+          de largura, e com 6+ cartões a 360px o "Expandir" saía da tela.
+          A altura é RESERVADA (J2-B): carregando a barra tinha 44px e, quando
+          os pontos apareciam e quebravam em 2 linhas no celular, ~64,5px —
+          o conteúdo abaixo pulava ~20px. `min-h-[65px]` = a versão quebrada;
+          de 640px em diante (`sm:`) cabe numa linha só, 44px (`min-h-11`). */}
+      <div className="flex min-h-[65px] select-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-0 sm:min-h-11">
         <div className="flex items-center gap-2">
           <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-admin-gold" />
           <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
@@ -362,7 +368,10 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
             </div>
           </div>
 
-          {/* Carousel Navigation Arrows - desktop only */}
+          {/* Setas - só no computador (sm:). Invisíveis = `pointer-events-none`
+              (J2-B: a seta de 32x32 com `opacity-0` ficava por cima da borda do
+              2º cartão e capturava o toque); o mouse em cima da faixa ou o
+              foco do teclado a mostram e devolvem o clique. */}
           {!loading && scrollSnaps.length > 1 && (
             <>
               <button
@@ -373,7 +382,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                   emblaApi?.scrollPrev();
                 }}
                 className={cn(
-                  "absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
+                  "absolute left-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 pointer-events-none sm:group-hover/carousel:opacity-100 sm:group-hover/carousel:pointer-events-auto sm:group-focus-within/carousel:opacity-100 sm:group-focus-within/carousel:pointer-events-auto transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
                   !canScrollPrev && "opacity-0 pointer-events-none",
                 )}
                 title="Anterior"
@@ -388,7 +397,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                   emblaApi?.scrollNext();
                 }}
                 className={cn(
-                  "absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 group-hover/carousel:opacity-100 transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
+                  "absolute right-0 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-zinc-950/90 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-white opacity-0 pointer-events-none sm:group-hover/carousel:opacity-100 sm:group-hover/carousel:pointer-events-auto sm:group-focus-within/carousel:opacity-100 sm:group-focus-within/carousel:pointer-events-auto transition-all duration-300 shadow-xl z-20 hover:border-admin-gold/30 active:scale-95",
                   !canScrollNext && "opacity-0 pointer-events-none",
                 )}
                 title="Próximo"
