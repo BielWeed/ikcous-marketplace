@@ -201,7 +201,7 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
 
     const classes = hospedeiro.querySelector("h3")!.className;
     for (const classe of [
-      "text-[22px]",
+      "text-lg",
       "sm:text-2xl",
       "tabular-nums",
       "leading-tight",

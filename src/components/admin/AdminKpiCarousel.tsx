@@ -68,7 +68,7 @@ const SETA_REVELADA =
  *   - o ícone fica num selo no canto superior direito (nunca some; o rótulo
  *     reserva a faixa dele com `pr-9`, então o valor usa a largura inteira);
  *   - rótulo em frase normal, 12px semibold, cinza 300 (contraste AA);
- *   - valor grande (22px no celular, 24px de 640px em diante), branco;
+ *   - valor grande (18px no celular, 24px de 640px em diante; 22px cortava "R$ 12.345,67" a 360px), branco;
  *   - subtítulo/rodapé 12px cinza 400, em linhas próprias;
  *   - borda de 10% e leve brilho no topo, para o cartão ter forma no fundo preto.
  *
@@ -111,7 +111,7 @@ const KpiCard = memo(function KpiCard({
         <p className="line-clamp-2 break-words pr-9 text-xs font-semibold leading-tight text-zinc-300">
           {stat.label}
         </p>
-        <h3 className="mt-1.5 truncate text-[22px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
+        <h3 className="mt-1.5 truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
           {stat.value}
         </h3>
         {stat.subValue && (
