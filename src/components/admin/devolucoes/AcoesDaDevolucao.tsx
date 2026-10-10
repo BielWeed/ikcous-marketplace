@@ -50,7 +50,7 @@ const BOTAO_PERIGO =
 const CAMPO =
   "w-full rounded-xl border border-white/10 bg-zinc-950 p-3 text-sm text-white placeholder:text-zinc-600 focus:border-admin-gold focus:outline-none";
 const ROTULO =
-  "mb-1.5 block text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500";
+  "mb-1.5 block text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500";
 
 /** O pedido foi pago pelo app (o reembolso volta pelo Mercado Pago)? */
 function pagoPeloApp(detalhe: DevolucaoDetalhe): boolean {
@@ -255,7 +255,7 @@ export function AcoesDaDevolucao({
       data-testid="acoes-devolucao"
       className="space-y-4 rounded-2xl border border-admin-gold/20 bg-zinc-950/40 p-4 shadow-2xl backdrop-blur-2xl sm:p-6"
     >
-      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-admin-gold">
+      <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-admin-gold">
         Próximo passo
       </h3>
 
@@ -587,7 +587,7 @@ export function AcoesDaDevolucao({
                     </button>
                   ))}
                 </div>
-                <p className="mt-1.5 text-[10px] text-zinc-500">
+                <p className="mt-1.5 text-[11px] text-zinc-500">
                   O cliente pediu: {rotuloResolucao(detalhe.resolucao_desejada)}
                 </p>
               </fieldset>
@@ -605,7 +605,7 @@ export function AcoesDaDevolucao({
                     onFlush={setValor}
                     className={cn(CAMPO, "h-11 py-0 tabular-nums")}
                   />
-                  <p className="text-[10px] leading-relaxed text-zinc-500">
+                  <p className="text-[11px] leading-relaxed text-zinc-500">
                     Itens {formatarReais(detalhe.valor_itens)}
                     {detalhe.valor_frete_ida > 0 &&
                       ` + frete de ida ${formatarReais(detalhe.valor_frete_ida)} (o pedido voltou inteiro)`}

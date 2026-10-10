@@ -138,7 +138,7 @@ export function QuemPodeUsarOCupom({
 
   return (
     <fieldset className="space-y-2" disabled={desabilitado}>
-      <legend className="mb-1.5 ml-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+      <legend className="mb-1.5 ml-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
         Quem pode usar
       </legend>
       <div role="radiogroup" aria-label="Quem pode usar" className="space-y-2">
@@ -198,7 +198,7 @@ export function QuemPodeUsarOCupom({
         <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-3">
           <label
             htmlFor="coupon-clientes-busca"
-            className="block text-[10px] font-bold uppercase tracking-wider text-zinc-500"
+            className="block text-[11px] font-bold uppercase tracking-wider text-zinc-500"
           >
             Adicionar cliente
           </label>
@@ -259,7 +259,7 @@ export function QuemPodeUsarOCupom({
                           </span>
                         )}
                       </span>
-                      <span className="flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                      <span className="flex shrink-0 items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-emerald-400">
                         <UserPlus aria-hidden="true" className="size-3.5" />
                         {jaEsta ? "Na lista" : "Adicionar"}
                       </span>
@@ -271,7 +271,7 @@ export function QuemPodeUsarOCupom({
           )}
 
           <div className="border-t border-white/5 pt-2">
-            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
               {carregandoClientes
                 ? "Carregando a lista…"
                 : `Na lista (${clientes.length})`}
@@ -285,7 +285,7 @@ export function QuemPodeUsarOCupom({
                 <button
                   type="button"
                   onClick={onCarregarDeNovo}
-                  className="min-h-11 shrink-0 rounded-lg px-3 text-[10px] font-bold uppercase tracking-wider text-white hover:bg-white/10"
+                  className="min-h-11 shrink-0 rounded-lg px-3 text-[11px] font-bold uppercase tracking-wider text-white hover:bg-white/10"
                 >
                   Carregar de novo
                 </button>
