@@ -8,20 +8,23 @@ import {
   motivoDaCotacao,
   nomeDoProvedorNoHistorico,
 } from "@/lib/motivo-da-cotacao";
+import { papel } from "@/lib/papeis-aria-da-tabela";
 import { supabase } from "@/lib/supabase";
 import { Boxes, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
 
-// J5: com `display: block` (o bloco do celular) o navegador apaga o papel de
-// tabela do leitor de tela, então os papéis voltam por atributo explícito. O
-// espalhamento (`{...papel("row")}`) é de propósito: escrito como `role="row"`
-// no JSX, as regras de a11y do eslint e do biome chamam de "redundante" o que
-// aqui é a única forma de manter a semântica.
-const papel = (
-  role: "table" | "rowgroup" | "row" | "columnheader" | "cell",
-) => ({
-  role,
-});
+// A coluna guarda milissegundos; a lojista lê segundos ("0,3 s"). Sem tempo
+// (0/nulo: consulta que nem chegou a sair) vira "—"; abaixo de um décimo de
+// segundo a casa decimal arredondaria para "0,0 s", então diz "menos de 0,1 s".
+const tempoDeResposta = (ms: number | null | undefined) => {
+  if (!ms) return "—";
+  if (ms < 100) return "menos de 0,1 s";
+  const segundos = (ms / 1000).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return `${segundos} s`;
+};
 
 // O histórico guarda o id da transportadora (`melhor_envio`); a lojista lê o
 // nome ("Melhor Envio"). A coluna é texto solto, mas `NOME_DO_PROVEDOR` é
@@ -300,9 +303,7 @@ export const HistoricoCotacoesSection = memo(
                         {...papel("cell")}
                         className="col-span-2 col-start-1 row-start-3 block font-mono text-zinc-400 sm:table-cell sm:p-2.5"
                       >
-                        {log.response_time_ms
-                          ? `${log.response_time_ms}ms`
-                          : "—"}
+                        {tempoDeResposta(log.response_time_ms)}
                       </td>
                       <td
                         {...papel("cell")}
