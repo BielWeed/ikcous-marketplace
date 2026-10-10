@@ -17,9 +17,9 @@
 //   e. nome longo continua em até 2 linhas (`line-clamp-2`, sem `truncate`).
 //
 // Montagem real (createRoot + act), mesmo molde de produtos-cabem-no-celular.
-import { type Root, createRoot } from "react-dom/client";
 import { act } from "react";
 import type { ReactNode } from "react";
+import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const deleteProduct = vi.fn();
@@ -153,7 +153,9 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
-    armazem = new Map<string, string>([["admin_products_view_mode", "detailed"]]);
+    armazem = new Map<string, string>([
+      ["admin_products_view_mode", "detailed"],
+    ]);
     vi.stubGlobal("localStorage", {
       getItem: (chave: string) => armazem.get(chave) ?? null,
       setItem: (chave: string, valor: string) => {
