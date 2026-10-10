@@ -1,3 +1,5 @@
+/* eslint-disable security/detect-non-literal-regexp --
+   padrões construídos só de constantes do próprio teste (breakpoints fixos), nunca de entrada externa */
 // @vitest-environment jsdom
 //
 // PAINEL SIMPLES, onda J2, frente J2-A ("produtos-detalhado-sem-corte").
