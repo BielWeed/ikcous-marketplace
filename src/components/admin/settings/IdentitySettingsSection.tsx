@@ -107,6 +107,7 @@ export function IdentitySettingsSection({
       </Label>
       <Input
         id={`identity-upload-${encodeURIComponent(label)}`}
+        className="h-11"
         type="file"
         accept={
           target.kind === "app-icons" ||
@@ -158,6 +159,7 @@ export function IdentitySettingsSection({
               <div className="flex items-center gap-2">
                 <Input
                   id={id}
+                  className="h-11"
                   value={value}
                   onChange={(e) => editor.setField(key, e.target.value)}
                 />
@@ -202,12 +204,13 @@ export function IdentitySettingsSection({
                 </span>
               </div>
               {role === "header" && (
-                <label className="flex items-center gap-2 text-xs">
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs">
                   <input
                     type="checkbox"
                     checked={alsoOpening}
                     disabled={editor.locked}
                     onChange={(e) => setAlsoOpening(e.target.checked)}
+                    className="size-5 accent-admin-gold"
                   />
                   Usar também na abertura
                 </label>

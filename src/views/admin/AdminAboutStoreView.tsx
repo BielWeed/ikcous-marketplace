@@ -318,7 +318,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   enderecoPrecisaCompletar
                 }
                 title="Salva o endereço e a descrição desta tela (o contato tem o próprio Salvar)"
-                className="flex h-10 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[10.5px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-[#e3c25e] hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
+                className="flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-950 shadow-[0_6px_20px_rgba(212,175,55,0.22)] transition-all hover:bg-admin-gold/90 hover:shadow-[0_8px_26px_rgba(212,175,55,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-admin-bg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 disabled:grayscale sm:gap-2.5 sm:px-5"
               >
                 {saving ? (
                   <>
@@ -434,7 +434,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
                   credentialless=""
                   className="pointer-events-none absolute left-0 top-[-56px] block h-[calc(100%+56px)] w-full border-0"
                 />
-                <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
+                <p className="absolute bottom-2 left-2 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500 shadow-sm">
                   Prévia do que o cliente vê
                 </p>
               </div>

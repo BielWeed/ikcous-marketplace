@@ -652,7 +652,7 @@ export const AdminShippingView = memo(function AdminShippingView({
         type="button"
         disabled={!podeClicarSalvar}
         onClick={handleSave}
-        className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-extrabold transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-50 ${infoBotaoSalvar.estilo}`}
+        className={`flex min-h-11 shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-extrabold transition-all active:scale-95 disabled:pointer-events-none disabled:opacity-50 ${infoBotaoSalvar.estilo}`}
       >
         {infoBotaoSalvar.icone}
         {infoBotaoSalvar.rotulo}
@@ -679,10 +679,15 @@ export const AdminShippingView = memo(function AdminShippingView({
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
-              className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+              className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
               title="Ajuda e explicação desta tela"
             >
-              <HelpCircle className="size-4" />
+              <span
+                aria-hidden="true"
+                className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+              >
+                <HelpCircle className="size-4" />
+              </span>
             </button>
           </AdminPageHeader>
         </div>

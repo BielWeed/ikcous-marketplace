@@ -921,3 +921,25 @@ describe("imagem original e fontes explícitas", () => {
     ]);
   });
 });
+
+describe("alvos de toque de 44px na identidade (onda K · K-D)", () => {
+  it("todo campo de texto e de arquivo pede h-11 (vence o h-9 do Input) e a linha 'Usar também na abertura' tem 44px", async () => {
+    await render();
+    const campos = [
+      ...host.querySelectorAll<HTMLInputElement>("input:not([type=checkbox])"),
+    ];
+    expect(campos.length).toBeGreaterThan(5);
+    for (const campo of campos) {
+      expect(campo.className).toMatch(/\bh-11\b/);
+      expect(campo.className).not.toMatch(/\bh-9\b/);
+    }
+    const caixa = host.querySelector<HTMLInputElement>(
+      'label input[type="checkbox"]',
+    );
+    expect(caixa).not.toBeNull();
+    expect(caixa?.className).toMatch(/\bsize-5\b/);
+    const linha = caixa?.closest("label");
+    expect(linha?.textContent).toContain("Usar também na abertura");
+    expect(linha?.className).toMatch(/\bmin-h-11\b/);
+  });
+});

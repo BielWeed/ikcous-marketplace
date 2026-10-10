@@ -1102,7 +1102,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
         <button
           type="button"
           onClick={() => carregar()}
-          className="self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
+          className="min-h-11 self-start rounded-lg border border-white/5 bg-zinc-900 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-white transition-colors hover:border-admin-gold/30"
         >
           Tentar de novo
         </button>
@@ -1202,7 +1202,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
             return (
               <label
                 key={provider}
-                className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
+                className={`flex min-h-11 items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs ${
                   podeLigar
                     ? "border-white/5 bg-zinc-900/40"
                     : "border-white/5 bg-zinc-900/20 opacity-50"
@@ -1214,7 +1214,7 @@ export const TransportadorasSection = memo(function TransportadorasSection({
                     checked={marcado}
                     disabled={desabilitada}
                     onChange={() => alternarLigado(provider)}
-                    className="size-4 accent-admin-gold"
+                    className="size-5 accent-admin-gold"
                   />
                   <span className="font-bold text-zinc-200">
                     {nomeDoProvedor(provider)}
@@ -1318,6 +1318,7 @@ function CartaoDoProvedor({
   // terminou, então `salvo` aqui já é o dado real, nunca placeholder).
   const [aberto, setAberto] = useState(() => temPendencia(provider, salvo));
   const idCorpo = useId();
+  const idModoDeTeste = useId();
   const quantidadeServicos =
     rascunho.servicosSelecionados?.size ?? salvo?.servicos?.length ?? 0;
   const resumo = resumoDoCartao(
@@ -1358,9 +1359,15 @@ function CartaoDoProvedor({
 
       <div id={idCorpo} hidden={!aberto} className="space-y-3 px-3.5 pb-3.5">
         {PROVEDORES_COM_SANDBOX.has(provider) && (
-          <div className="flex items-center justify-between gap-2">
+          // Tocar no texto também liga/desliga: o <label> envolve o Switch
+          // (só muda o rascunho `sandboxEscolhido`; grava no Salvar).
+          <label
+            htmlFor={idModoDeTeste}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2"
+          >
             <span className="text-xs text-zinc-400">Modo de teste</span>
             <Switch
+              id={idModoDeTeste}
               checked={sandboxAtual}
               // Revisão Opus (achado 1, R3-8): a trava é só para LIGAR o
               // sandbox — nunca para DESLIGAR. `ligado && sandboxAtual` (a
@@ -1374,7 +1381,7 @@ function CartaoDoProvedor({
               onCheckedChange={(checked) => onModoDeTesteMudou(checked)}
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
+          </label>
         )}
 
         {ligado && !sandboxAtual && PROVEDORES_COM_SANDBOX.has(provider) && (
@@ -1417,7 +1424,7 @@ function CartaoDoProvedor({
                 ? "Cole uma chave nova só se quiser trocar a salva..."
                 : "Cole aqui a chave de acesso da sua conta..."
             }
-            className="h-9 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
+            className="h-11 flex-1 rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none"
           />
           <button
             type="button"
@@ -1427,7 +1434,7 @@ function CartaoDoProvedor({
               (!rascunho.tokenDigitado.trim() && !temChave)
             }
             onClick={onTestar}
-            className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+            className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
           >
             {rascunho.testando ? (
               <RefreshCw className="size-3 animate-spin" />
@@ -1463,7 +1470,7 @@ function CartaoDoProvedor({
               aria-invalid={emailComAviso}
               onChange={(e) => onEmailMudou(e.target.value)}
               placeholder="voce@sualoja.com.br"
-              className={`h-9 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
+              className={`h-11 w-full rounded-lg border bg-zinc-950 px-3 text-xs text-white placeholder-zinc-600 focus:outline-none ${
                 emailComAviso
                   ? "border-red-500/50 focus:border-red-400"
                   : "border-white/5 focus:border-admin-gold"
@@ -1566,7 +1573,7 @@ function CartaoDoProvedor({
                 rascunho.testando ||
                 (!temChave && !rascunho.tokenDigitado.trim())
               }
-              className="flex items-center gap-1 text-[11px] font-bold text-admin-gold hover:underline disabled:opacity-40"
+              className="flex min-h-11 items-center gap-1 px-2 text-[11px] font-bold text-admin-gold hover:underline disabled:opacity-40"
             >
               <RefreshCw
                 className={`size-3 ${rascunho.carregandoServicos ? "animate-spin" : ""}`}
@@ -1616,7 +1623,7 @@ function CartaoDoProvedor({
                   return (
                     <label
                       key={servico.codigo}
-                      className="flex flex-col gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
+                      className="flex min-h-11 flex-col justify-center gap-0.5 rounded-lg border border-white/5 bg-zinc-900/40 px-2.5 py-1.5 text-xs"
                     >
                       <span className="flex items-center gap-2">
                         <input
@@ -1624,7 +1631,7 @@ function CartaoDoProvedor({
                           checked={marcado}
                           disabled={rascunho.testando || rascunho.salvando}
                           onChange={() => onAlternarServico(servico.codigo)}
-                          className="size-4 accent-admin-gold"
+                          className="size-5 accent-admin-gold"
                         />
                         <RotuloDoServico
                           transportadora={servico.transportadora}
@@ -1632,7 +1639,7 @@ function CartaoDoProvedor({
                         />
                       </span>
                       {servico.ausenteDaListaDaApi && (
-                        <span className="ml-6 text-[11px] font-semibold text-amber-300">
+                        <span className="ml-7 text-[11px] font-semibold text-amber-300">
                           A Frenet não listou este serviço para esta chave.
                           Aparecer no app de etiquetas não garante a cotação no
                           checkout: marque J&T, toque em Testar e só salve se
@@ -1640,7 +1647,7 @@ function CartaoDoProvedor({
                         </span>
                       )}
                       {exigeAgencia && (
-                        <span className="ml-6 flex items-start gap-1 text-[11px] font-semibold text-amber-300">
+                        <span className="ml-7 flex items-start gap-1 text-[11px] font-semibold text-amber-300">
                           <AlertCircle className="mt-px size-3 shrink-0" />
                           {AVISO_ID_EXIGE_AGENCIA}
                         </span>
@@ -1657,7 +1664,7 @@ function CartaoDoProvedor({
             type="button"
             disabled={rascunho.salvando || rascunho.testando}
             onClick={onSalvar}
-            className="flex shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            className="flex min-h-11 shrink-0 select-none items-center gap-1.5 rounded-lg border border-white/5 bg-zinc-900 px-3.5 py-2 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-all hover:border-admin-gold/30 hover:text-white active:scale-95 disabled:pointer-events-none disabled:opacity-40"
           >
             {rascunho.salvando ? (
               <RefreshCw className="size-3 animate-spin text-admin-gold" />
