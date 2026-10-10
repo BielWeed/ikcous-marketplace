@@ -1050,7 +1050,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                         {cartItems.length > 0 && (
                           <div className="mt-2 flex items-center gap-2">
                             <Badge className="border-none bg-green-500 text-[11px] font-black text-black shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                              {cartItems.length} itens
+                              {cartItems.length}{" "}
+                              {cartItems.length === 1 ? "produto" : "produtos"}
                             </Badge>
                             <Button
                               variant="ghost"

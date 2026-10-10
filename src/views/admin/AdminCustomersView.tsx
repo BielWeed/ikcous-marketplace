@@ -1135,7 +1135,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       </div>
 
       {/* Bottom KPIs: LTV & Pedidos */}
-      <div className="relative z-10 mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2 border-t border-white/5 pt-3">
+      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 border-t border-white/5 pt-3 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
         <div className="flex min-w-0 flex-col">
           <span className="min-w-0 break-words text-[11px] font-black uppercase tracking-wide text-zinc-600">
             Total já comprado
