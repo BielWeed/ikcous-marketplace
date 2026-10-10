@@ -41,6 +41,14 @@ let construcaoLanca = false;
  * `null` faz SÓ esta contagem devolver erro.
  */
 let abertosAConferir: number | null = 0;
+/**
+ * Onda J (J2): quando verdadeiro, as três contagens do topo passam de mil,
+ * para provar o separador de milhar pt-BR ("1.234", não "1234").
+ */
+let contagensDeMilhar = false;
+const PARA_PREPARAR_MILHAR = 1234;
+const AGUARDANDO_PAGAMENTO_MILHAR = 2345;
+const EM_TRANSITO_MILHAR = 3456;
 
 const CADEIA_DO_AVISO = `in:payment_status:${PAGAMENTOS_A_CONFERIR_EM_ABERTO.join(",")}`;
 const ehDoAviso = (cadeia: string[]) => cadeia.includes(CADEIA_DO_AVISO);
@@ -51,15 +59,19 @@ function respostaDaCadeia(cadeia: string[]) {
   if (texto.includes(statusAbertos)) {
     if (ehDoAviso(cadeia)) return abertosAConferir;
     if (texto.includes(`or:${FILTRO_POSTGREST_PARA_PREPARAR}`)) {
-      return PARA_PREPARAR;
+      return contagensDeMilhar ? PARA_PREPARAR_MILHAR : PARA_PREPARAR;
     }
     if (texto.includes("eq:payment_status:aguardando")) {
-      return AGUARDANDO_PAGAMENTO;
+      return contagensDeMilhar
+        ? AGUARDANDO_PAGAMENTO_MILHAR
+        : AGUARDANDO_PAGAMENTO;
     }
     // Lista de status sem filtro de pagamento: a conta velha (com PIX).
     return 99;
   }
-  if (texto.includes("eq:status:shipping")) return EM_TRANSITO;
+  if (texto.includes("eq:status:shipping")) {
+    return contagensDeMilhar ? EM_TRANSITO_MILHAR : EM_TRANSITO;
+  }
   return 77;
 }
 
@@ -217,6 +229,7 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     contagensFalham = false;
     construcaoLanca = false;
     abertosAConferir = 0;
+    contagensDeMilhar = false;
     mockAnalyticsStats = statsFake();
     const armazem = new Map<string, string>();
     vi.stubGlobal("localStorage", {
@@ -282,6 +295,25 @@ describe("AdminOrdersView — o topo diz um número por conceito", () => {
     );
     expect(valorDoCartao("Em trânsito")).toBe(String(EM_TRANSITO));
     expect(valorDoCartao("Finalizados")).toBe(String(FINALIZADOS));
+  });
+
+  it("contagens de milhar saem com ponto pt-BR nos três cartões das consultas: 1.234, 2.345, 3.456", async () => {
+    contagensDeMilhar = true;
+    await montar();
+    // Espera os três assentarem (saírem do "—") e só então compara cada um:
+    // um cartão sem formatar reprova na SUA asserção, não em timeout.
+    await esperarAte(() =>
+      ["Para preparar", "Aguardando pagamento", "Em trânsito"].every(
+        (rotulo) => {
+          const valor = valorDoCartao(rotulo);
+          return valor !== null && valor !== "—";
+        },
+      ),
+    );
+
+    expect(valorDoCartao("Para preparar")).toBe("1.234");
+    expect(valorDoCartao("Aguardando pagamento")).toBe("2.345");
+    expect(valorDoCartao("Em trânsito")).toBe("3.456");
   });
 
   it("as contagens são só de cabeçalho (head) em marketplace_orders", async () => {
