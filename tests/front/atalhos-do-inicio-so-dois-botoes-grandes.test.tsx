@@ -66,3 +66,17 @@ describe("AtalhosDoInicio — só os dois botões grandes", () => {
     expect(onNavigate).toHaveBeenLastCalledWith("admin-financeiro");
   });
 });
+
+describe("AtalhosDoInicio — desenho novo (10/10/2026)", () => {
+  it("a descrição de cada botão tem 12px (`text-xs`), nunca 11px, e o botão mantém o alvo grande", () => {
+    const tela = montar(<AtalhosDoInicio onNavigate={vi.fn()} />);
+    for (const botao of Array.from(tela.querySelectorAll("button"))) {
+      const descricao = botao.querySelector("span.mt-0\\.5");
+      expect(descricao).not.toBeNull();
+      expect(descricao?.classList.contains("text-xs")).toBe(true);
+      expect(descricao?.className).not.toContain("text-[11px]");
+      expect(descricao?.className).toContain("text-zinc-400");
+      expect(botao.className).toContain("min-h-[88px]");
+    }
+  });
+});

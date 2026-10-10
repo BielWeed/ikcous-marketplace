@@ -15,6 +15,8 @@ import type { AbrirFolha } from "./navegacao";
 import {
   CLASSE_BOTAO_PRIMARIO,
   CLASSE_BOTAO_SECUNDARIO,
+  CLASSE_CASCA_DO_CARTAO,
+  CLASSE_ROTULO_DO_CARTAO,
   CartaoSecao,
   Dinheiro,
   EsqueletoDeLista,
@@ -74,14 +76,12 @@ function CaixaAberto({
       >
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Esperado na gaveta agora
-            </p>
+            <p className={CLASSE_ROTULO_DO_CARTAO}>Esperado na gaveta agora</p>
             <Dinheiro
               valor={caixa.esperado}
               className="text-4xl font-black tracking-tighter text-white"
             />
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs font-medium text-zinc-400">
               Atualiza sozinho a cada venda em dinheiro.
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -127,7 +127,7 @@ function CaixaAberto({
           </div>
           <dl
             aria-label="Como o esperado é calculado"
-            className="rounded-2xl border border-white/5 bg-white/[0.02] px-4 py-2"
+            className={`px-4 py-2 ${CLASSE_CASCA_DO_CARTAO}`}
           >
             <LinhaDaConta
               rotulo="Abertura (troco)"
@@ -190,7 +190,7 @@ function CaixaAberto({
                     <p className="truncate text-sm font-bold text-white">
                       {movimento.descricao}
                     </p>
-                    <p className="text-[11px] text-zinc-500">
+                    <p className="text-xs text-zinc-400">
                       {formatarDataHora(movimento.em)}
                     </p>
                   </div>
@@ -248,7 +248,7 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
       ? diferencaDoFechamento(sessao.esperado, sessao.contado).situacao
       : null;
   return (
-    <li className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+    <li className={`flex flex-col gap-2 p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-bold text-white">
           {formatarDataHora(sessao.abertoEm)}
@@ -264,10 +264,10 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           <Etiqueta>{sessao.fechadoEm ? "Fechado" : "Aberto"}</Etiqueta>
         )}
       </div>
-      <p className="text-[11px] text-zinc-500">{sessao.contaNome}</p>
-      <dl className="grid grid-cols-3 gap-2 text-[11px]">
+      <p className="text-xs font-medium text-zinc-400">{sessao.contaNome}</p>
+      <dl className="grid grid-cols-3 gap-2 text-xs">
         <div>
-          <dt className="text-zinc-500">Esperado</dt>
+          <dt className={CLASSE_ROTULO_DO_CARTAO}>Esperado</dt>
           <dd className="font-bold text-zinc-100">
             {sessao.esperado === null ? (
               "—"
@@ -277,7 +277,7 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Contado</dt>
+          <dt className={CLASSE_ROTULO_DO_CARTAO}>Contado</dt>
           <dd className="font-bold text-zinc-100">
             {sessao.contado === null ? (
               "—"
@@ -287,7 +287,7 @@ function SessaoDoHistorico({ sessao }: { readonly sessao: SessaoDeCaixa }) {
           </dd>
         </div>
         <div>
-          <dt className="text-zinc-500">Diferença</dt>
+          <dt className={CLASSE_ROTULO_DO_CARTAO}>Diferença</dt>
           <dd
             className={cn(
               "font-bold",

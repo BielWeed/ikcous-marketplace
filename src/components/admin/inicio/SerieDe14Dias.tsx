@@ -135,7 +135,7 @@ export function SerieDe14Dias({
           aria-hidden="true"
         />
       ) : serieCompleta.length === 0 ? (
-        <p className="mt-4 flex h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-500">
+        <p className="mt-4 flex h-24 items-center justify-center rounded-xl border border-dashed border-white/10 text-xs text-zinc-400">
           Sem vendas registradas nos últimos 14 dias.
         </p>
       ) : (

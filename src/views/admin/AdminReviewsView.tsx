@@ -387,7 +387,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
         value: totalGlobalExibido,
         accent: "text-emerald-400",
         content: (
-          <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
+          <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
             {/* Item 8 do laudo de 29/08: a moderação é REAL (migration
                 20261031000000). O rótulo pulsante era decoração: não havia
                 fila nenhuma. Laudo 0109 (A-4): a contagem é do BANCO —
@@ -395,12 +395,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             {pendentesNoBanco > 0 ? (
               <>
                 <span className="size-1.5 animate-pulse rounded-full bg-amber-400" />
-                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
+                <span className="text-xs font-semibold text-amber-400">
                   {pendentesNoBanco} aguardando sua aprovação
                 </span>
               </>
             ) : (
-              <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+              <span className="text-xs font-medium text-zinc-400">
                 Nenhuma avaliação na fila de moderação
               </span>
             )}
@@ -480,7 +480,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="animate-pulse space-y-6 rounded-[2.5rem] border border-white/[0.05] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-6 lg:p-8"
+          className="animate-pulse space-y-6 rounded-2xl border border-white/10 bg-zinc-900/70 p-6 lg:p-8"
         >
           <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
             <div className="flex items-center gap-5">
@@ -506,7 +506,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
       {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
         <div
           key={i}
-          className="flex h-48 animate-pulse flex-col justify-between rounded-[2rem] border border-white/[0.05] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5"
+          className="flex h-48 animate-pulse flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 p-5"
         >
           <div>
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -730,7 +730,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       <span
                         className={`inline-block size-1.5 rounded-full ${config.enableReviews ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
                       />
-                      <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                      <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[11px] font-semibold tracking-wider text-zinc-300 uppercase">
                         {config.enableReviews ? "Ativo" : "Inativo"}
                       </span>
                     </div>
@@ -847,8 +847,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   layout
                   className="group relative"
                 >
-                  <div className="absolute -inset-px rounded-[2.5rem] bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <div className="content-visibility-auto relative overflow-hidden rounded-[2.5rem] border border-white/[0.05] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-6 shadow-2xl backdrop-blur-3xl transition-all duration-500 hover:border-white/10 hover:bg-white/[0.02] lg:p-8">
+                  <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                  <div className="content-visibility-auto relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-6 shadow-2xl transition-all duration-500 hover:border-white/20 lg:p-8">
                     {/* Review Header */}
                     <div className="mb-8 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
                       <div className="flex items-center gap-5">
@@ -875,7 +875,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             )}
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+                            <span className="text-xs font-semibold text-zinc-400">
                               Produto:
                             </span>
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-1 text-xs font-black text-admin-gold transition-colors group-hover:border-admin-gold/30">
@@ -893,15 +893,15 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       <div className="flex items-center gap-6">
                         <div className="hidden text-right sm:block">
-                          <p className="text-[11px] font-black uppercase leading-none tracking-wider text-zinc-600">
+                          <p className="text-[11px] font-black uppercase leading-none tracking-wider text-zinc-400">
                             Data da Postagem
                           </p>
                           <p className="mt-2 flex items-center justify-end gap-1.5 text-sm font-bold tracking-tighter text-zinc-400">
-                            <Clock className="size-3.5 text-zinc-500" />
+                            <Clock className="size-3.5 text-zinc-400" />
                             {formatDate(review.createdAt)}
                           </p>
                         </div>
-                        <div className="flex items-center gap-4 rounded-3xl border border-white/5 bg-zinc-900/60 p-4 ring-1 ring-white/5 backdrop-blur-xl">
+                        <div className="flex items-center gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
                           {renderStars(review.rating)}
                           {review.helpful > 0 && (
                             <>
@@ -933,7 +933,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="group/reply relative mb-8 overflow-hidden rounded-[2rem] border border-admin-gold/10 bg-admin-gold/[0.02] p-6 shadow-inner lg:p-8"
+                        className="group/reply relative mb-8 overflow-hidden rounded-2xl border border-admin-gold/10 bg-admin-gold/[0.02] p-6 shadow-inner lg:p-8"
                       >
                         <div className="absolute right-0 top-0 p-8 opacity-5 transition-opacity group-hover/reply:opacity-10">
                           <MessageSquare className="size-16 text-admin-gold" />
@@ -1033,7 +1033,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                           exit={{ opacity: 0, height: 0, marginTop: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="space-y-6 rounded-[2.5rem] border border-white/5 bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-white/5">
+                          <div className="space-y-6 rounded-2xl border border-white/5 bg-zinc-950/60 p-8 shadow-2xl ring-1 ring-white/5">
                             <div className="flex items-center gap-3">
                               <div className="flex size-8 items-center justify-center rounded-full bg-admin-gold/10">
                                 <MessageSquare className="size-4 text-admin-gold" />
@@ -1173,8 +1173,8 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   layout
                   className="group relative"
                 >
-                  <div className="absolute -inset-px rounded-[2rem] bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-                  <div className="content-visibility-auto relative flex h-full flex-col justify-between overflow-hidden rounded-[2rem] border border-white/[0.05] bg-zinc-950 bg-gradient-to-br from-zinc-900/40 to-zinc-950/80 p-5 shadow-2xl backdrop-blur-3xl transition-all duration-500 hover:border-white/10 hover:bg-white/[0.02]">
+                  <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-admin-gold/10 via-transparent to-emerald-500/5 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+                  <div className="content-visibility-auto relative flex h-full flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-5 shadow-2xl transition-all duration-500 hover:border-white/20">
                     <div>
                       {/* Header with avatar, name and star rating */}
                       <div className="mb-4 flex items-start justify-between gap-3">
@@ -1213,7 +1213,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {/* Product link tag */}
                       <div className="mb-3">
-                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-white/5 bg-zinc-900 px-2.5 py-0.5 text-[11px] font-black text-admin-gold">
+                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-white/10 bg-zinc-900/70 px-2.5 py-0.5 text-[11px] font-black text-admin-gold">
                           <Package className="size-3 shrink-0 text-admin-gold" />
                           <span className="truncate">{review.productName}</span>
                         </span>

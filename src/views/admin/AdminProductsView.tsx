@@ -78,17 +78,29 @@ import { toast } from "sonner";
 
 let cachedProductsTotal = 0;
 
-// Altura que o cartão do modo detalhado ocupa ANTES de ser desenhado. O cartão
-// real mede 459 a 718px (mediana ~520px no celular e ~660px a partir de 1280px,
-// 4 colunas); o `content-visibility: auto` da classe do cartão reservava 440px
-// (src/index.css) e a lista pulava ao rolar. O `!` faz a reserva local vencer a
-// regra do index.css, que vem depois no CSS e tem a mesma especificidade.
+// Altura que o cartão do modo detalhado ocupa ANTES de ser desenhado. O
+// `content-visibility: auto` da classe do cartão reservava 440px (src/index.css)
+// e a lista pulava ao rolar. O `!` faz a reserva local vencer a regra do
+// index.css, que vem depois no CSS e tem a mesma especificidade.
+// Os números são a mediana do cartão MEDIDA em Chromium (Inter, nome em 2 linhas,
+// até 3 selos, 12 produtos de texto variado; altura da LINHA da grade, a que
+// empurra a rolagem), com a grade `md:2 lg:3 xl:4` e a coluna de 256px do menu:
+//   abaixo de md  1 coluna, 328-719px de cartão: 486-545 (mediana ~520)
+//   md  768-1023  2 colunas, 344-471px: 562-600 (~580)
+//   lg 1024-1535  3-4 colunas de 213-298px: 716-813 (~770). As 2 caixas de
+//                 métrica empilham de lg em diante (1 coluna), o que deixa o
+//                 cartão ~100-115px mais alto que a reserva antiga de 660px
+//   2xl ≥1536     4 colunas fixas de 280px (o conteúdo para em max-w-7xl): ~720
+// Dentro de cada faixa a altura varia ±6% com a largura; basta: o `auto` do
+// `contain-intrinsic-size` troca a reserva pela altura real assim que o cartão
+// é desenhado uma vez.
 // O esqueleto de carregamento usa os MESMOS números para não haver salto quando
 // os dados chegam. Strings literais de propósito: o Tailwind só gera classe que
 // aparece inteira no fonte. Mudou um número? Mude os dois (o teste confere).
 const RESERVA_DO_CARTAO_DETALHADO =
-  "![contain-intrinsic-size:auto_520px] xl:![contain-intrinsic-size:auto_660px]";
-const ALTURA_DO_ESQUELETO_DETALHADO = "h-[520px] xl:h-[660px]";
+  "![contain-intrinsic-size:auto_520px] md:![contain-intrinsic-size:auto_580px] lg:![contain-intrinsic-size:auto_770px] 2xl:![contain-intrinsic-size:auto_720px]";
+const ALTURA_DO_ESQUELETO_DETALHADO =
+  "h-[520px] md:h-[580px] lg:h-[770px] 2xl:h-[720px]";
 
 /** Percentual com 1 casa, em pt-BR ("130,2%", nunca "130.15%"): a mesma
  * grafia no cartão do topo, no simulador e no cartão detalhado. */
@@ -1001,7 +1013,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     Indicadores Financeiros Globais
                   </h4>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="group relative rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-admin-gold/20 hover:bg-zinc-900/60">
+                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
                       <div className="mb-1.5 flex items-center gap-2">
                         <div className="rounded-lg bg-admin-gold/10 p-1 text-admin-gold">
                           <Coins className="size-3.5" />
@@ -1010,14 +1022,14 @@ export const AdminProductsView = memo(function AdminProductsView({
                           Dinheiro parado em estoque
                         </p>
                       </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-500">
+                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
                         Quanto você pagou pelas unidades que estão no estoque: o
                         dinheiro que está parado no estoque, pelo preço de
                         custo. A conta só considera produtos com custo
                         cadastrado.
                       </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
-                        <span className="text-[11px] font-bold uppercase text-zinc-600">
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
+                        <span className="text-[11px] font-bold uppercase text-zinc-400">
                           Fórmula:
                         </span>
                         <span className="font-black text-zinc-300">
@@ -1026,7 +1038,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </div>
                     </div>
 
-                    <div className="group relative rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-admin-gold/20 hover:bg-zinc-900/60">
+                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
                       <div className="mb-1.5 flex items-center gap-2">
                         <div className="rounded-lg bg-emerald-500/10 p-1 text-emerald-400">
                           <TrendingUp className="size-3.5" />
@@ -1035,14 +1047,14 @@ export const AdminProductsView = memo(function AdminProductsView({
                           Lucro se vender tudo
                         </p>
                       </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-500">
+                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
                         Quanto você ganharia vendendo pelo preço atual as
                         unidades que estão no estoque, menos o que elas
                         custaram. A conta só considera produtos com custo
                         cadastrado.
                       </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
-                        <span className="text-[11px] font-bold uppercase text-zinc-600">
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
+                        <span className="text-[11px] font-bold uppercase text-zinc-400">
                           Fórmula:
                         </span>
                         <span className="font-black text-zinc-300">
@@ -1051,7 +1063,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </div>
                     </div>
 
-                    <div className="group relative rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-admin-gold/20 hover:bg-zinc-900/60">
+                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
                       <div className="mb-1.5 flex items-center gap-2">
                         <div className="rounded-lg bg-blue-500/10 p-1 text-blue-400">
                           <Activity className="size-3.5" />
@@ -1060,12 +1072,12 @@ export const AdminProductsView = memo(function AdminProductsView({
                           Lucro sobre o custo
                         </p>
                       </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-500">
+                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
                         Quanto o estoque inteiro rende, em percentual, sobre o
                         que você pagou por ele.
                       </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
-                        <span className="text-[11px] font-bold uppercase text-zinc-600">
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
+                        <span className="text-[11px] font-bold uppercase text-zinc-400">
                           Fórmula:
                         </span>
                         <span className="font-black text-zinc-300">
@@ -1074,7 +1086,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </div>
                     </div>
 
-                    <div className="group relative rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-admin-gold/20 hover:bg-zinc-900/60">
+                    <div className="group relative rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-admin-gold/30">
                       <div className="mb-1.5 flex items-center gap-2">
                         <div className="rounded-lg bg-purple-500/10 p-1 text-purple-400">
                           <Layers className="size-3.5" />
@@ -1083,13 +1095,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                           Produtos Ativos
                         </p>
                       </div>
-                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-500">
+                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-400">
                         Proporção de produtos que estão ativos e visíveis para
                         compra pelos clientes no catálogo em relação ao total
                         cadastrado.
                       </p>
-                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
-                        <span className="text-[11px] font-bold uppercase text-zinc-600">
+                      <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
+                        <span className="text-[11px] font-bold uppercase text-zinc-400">
                           Fórmula:
                         </span>
                         <span className="font-black text-zinc-300">
@@ -1106,7 +1118,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     Métricas Individuais do Produto
                   </h4>
                   <div className="space-y-2.5">
-                    <div className="flex gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.05)]">
+                    <div className="flex gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-emerald-500/20 hover:shadow-[0_0_15px_rgba(16,185,129,0.05)]">
                       <div className="w-1 shrink-0 rounded-full bg-emerald-500" />
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-1.5">
@@ -1115,13 +1127,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                             Margem de Lucro %
                           </p>
                         </div>
-                        <p className="text-[11px] font-medium leading-relaxed text-zinc-500">
+                        <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                           Indica a porcentagem do preço final de venda que
                           corresponde ao lucro bruto.
                         </p>
-                        <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
+                        <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold uppercase text-zinc-600">
+                            <span className="text-[11px] font-bold uppercase text-zinc-400">
                               Fórmula:
                             </span>
                             <span className="font-black text-emerald-400">
@@ -1129,7 +1141,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1">
-                            <span className="text-[11px] font-bold uppercase text-zinc-600">
+                            <span className="text-[11px] font-bold uppercase text-zinc-400">
                               Exemplo:
                             </span>
                             <span className="font-medium text-zinc-400">
@@ -1140,7 +1152,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </div>
                     </div>
 
-                    <div className="flex gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.05)]">
+                    <div className="flex gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-blue-500/20 hover:shadow-[0_0_15px_rgba(59,130,246,0.05)]">
                       <div className="w-1 shrink-0 rounded-full bg-blue-500" />
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-1.5">
@@ -1149,14 +1161,14 @@ export const AdminProductsView = memo(function AdminProductsView({
                             Lucro sobre o custo %
                           </p>
                         </div>
-                        <p className="text-[11px] font-medium leading-relaxed text-zinc-500">
+                        <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                           Quanto você lucra para cada R$ 100 que pagou pelo
                           produto. É diferente da Margem de Lucro, que é
                           calculada sobre o preço de venda.
                         </p>
-                        <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
+                        <div className="flex flex-col gap-1 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-bold uppercase text-zinc-600">
+                            <span className="text-[11px] font-bold uppercase text-zinc-400">
                               Fórmula:
                             </span>
                             <span className="font-black text-blue-400">
@@ -1164,7 +1176,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                             </span>
                           </div>
                           <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-1">
-                            <span className="text-[11px] font-bold uppercase text-zinc-600">
+                            <span className="text-[11px] font-bold uppercase text-zinc-400">
                               Exemplo:
                             </span>
                             <span className="font-medium text-zinc-400">
@@ -1176,7 +1188,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </div>
                     </div>
 
-                    <div className="flex gap-4 rounded-2xl border border-white/5 bg-zinc-900/40 p-4 transition-all duration-300 hover:border-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.05)]">
+                    <div className="flex gap-4 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 hover:border-amber-500/20 hover:shadow-[0_0_15px_rgba(245,158,11,0.05)]">
                       <div className="w-1 shrink-0 rounded-full bg-amber-500" />
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-1.5">
@@ -1185,13 +1197,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                             Unidades em Estoque & Alerta Crítico
                           </p>
                         </div>
-                        <p className="text-[11px] font-medium leading-relaxed text-zinc-500">
+                        <p className="text-[11px] font-medium leading-relaxed text-zinc-400">
                           Quantidade física disponível. Quando o estoque chega
                           ao mínimo do produto ({LIMIAR_PADRAO_DE_ESTOQUE} se
                           ele não tiver um), um alerta crítico pisca no painel.
                         </p>
-                        <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-500">
-                          <span className="text-[11px] font-bold uppercase text-zinc-600">
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[11px] text-zinc-400">
+                          <span className="text-[11px] font-bold uppercase text-zinc-400">
                             Regra:
                           </span>
                           <span className="font-black text-amber-400">
@@ -1214,7 +1226,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     <div>
                       <label
                         htmlFor="sim-cost"
-                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-400"
                       >
                         Custo Unitário (R$)
                       </label>
@@ -1238,7 +1250,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     <div>
                       <label
                         htmlFor="sim-price"
-                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-400"
                       >
                         Preço de Venda (R$)
                       </label>
@@ -1262,7 +1274,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     <div>
                       <label
                         htmlFor="sim-stock"
-                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-500"
+                        className="mb-1 block text-[11px] font-black uppercase tracking-wider text-zinc-400"
                       >
                         Unidades em Estoque
                       </label>
@@ -1290,7 +1302,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       setSimPrice("15.00");
                       setSimStock("20");
                     }}
-                    className="flex min-h-11 items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                    className="flex min-h-11 items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-colors hover:text-white"
                   >
                     <RefreshCw className="size-3" />
                     Resetar Simulador
@@ -1324,7 +1336,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="text-[11px] font-black uppercase tracking-wider">
                         {simulatorMetrics.healthLabel}
                       </p>
-                      <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-500">
+                      <p className="mt-0.5 text-[11px] font-medium leading-normal text-zinc-400">
                         {simulatorMetrics.health === "excellent" &&
                           "Alta lucratividade por unidade! Ideal para alavancar vendas e suportar taxas operacionais confortavelmente."}
                         {simulatorMetrics.health === "good" &&
@@ -1339,8 +1351,10 @@ export const AdminProductsView = memo(function AdminProductsView({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div
-                      className={cn(
-                        "p-4 rounded-2xl bg-zinc-900/40 border transition-all duration-300 flex flex-col justify-between min-h-20",
+                      // A casca vai em template, FORA do `cn`: o tailwind-merge 3
+                      // trata `bg-gradient-to-b` como conflito de `bg-zinc-900/70`
+                      // (semântica do Tailwind 4) e apagaria a cor de fundo.
+                      className={`flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-all duration-300 ${cn(
                         simulatorMetrics.health === "excellent" &&
                           "border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.03)]",
                         simulatorMetrics.health === "good" &&
@@ -1349,14 +1363,14 @@ export const AdminProductsView = memo(function AdminProductsView({
                           "border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.03)]",
                         simulatorMetrics.health === "danger" &&
                           "border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.03)]",
-                      )}
+                      )}`}
                     >
-                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                      <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Margem de Lucro
                       </p>
                       <p
                         className={cn(
-                          "text-xl font-mono font-black",
+                          "whitespace-nowrap text-[17px] font-black leading-tight tabular-nums sm:text-[22px]",
                           simulatorMetrics.health === "excellent" &&
                             "text-emerald-400",
                           simulatorMetrics.health === "good" && "text-teal-400",
@@ -1369,36 +1383,40 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                     </div>
 
-                    <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                    <div className="flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
+                      <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Lucro sobre o custo (por unidade)
                       </p>
-                      <p className="font-mono text-xl font-black text-blue-400">
+                      <p className="whitespace-nowrap text-[17px] font-black tabular-nums leading-tight text-blue-400 sm:text-[22px]">
                         {percentualComUmaCasa(simulatorMetrics.roi)}
                       </p>
                     </div>
 
-                    <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                    <div className="flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
+                      <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Lucro Líquido (Unit.)
                       </p>
-                      <p className="font-mono text-xl font-black text-white">
+                      <p className="text-[17px] font-black tabular-nums leading-tight text-white sm:text-[22px]">
                         R${" "}
-                        {simulatorMetrics.unitProfit.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
+                        <span className="whitespace-nowrap">
+                          {simulatorMetrics.unitProfit.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
                       </p>
                     </div>
 
-                    <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
-                      <p className="text-[11px] font-black uppercase tracking-wider text-zinc-500">
+                    <div className="flex min-h-20 min-w-0 flex-col justify-between gap-1 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
+                      <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Capital de Lote (Custo)
                       </p>
-                      <p className="font-mono text-xl font-black text-zinc-400">
+                      <p className="text-[17px] font-black tabular-nums leading-tight text-zinc-400 sm:text-[22px]">
                         R${" "}
-                        {simulatorMetrics.totalCost.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
+                        <span className="whitespace-nowrap">
+                          {simulatorMetrics.totalCost.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -1415,7 +1433,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                           minimumFractionDigits: 2,
                         })}
                       </p>
-                      <p className="text-[11px] font-medium text-zinc-500">
+                      <p className="text-[11px] font-medium text-zinc-400">
                         Faturamento Potencial: R${" "}
                         {simulatorMetrics.totalRevenue.toLocaleString("pt-BR", {
                           minimumFractionDigits: 2,
@@ -1665,7 +1683,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 <h4 className="line-clamp-2 break-words pr-12 text-xl font-black leading-[1.2] text-white transition-colors group-hover:text-admin-gold">
                   {product.name}
                 </h4>
-                <p className="mt-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                <p className="mt-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
                   {product.category}
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -1677,7 +1695,7 @@ const AdminProductCard = memo(function AdminProductCard({
                       statusDoProdutoNoPainel(product) === "Esgotado" &&
                         "border-rose-500/20 bg-rose-500/10 text-rose-500",
                       statusDoProdutoNoPainel(product) === "Offline" &&
-                        "border-white/5 bg-zinc-800 text-zinc-500",
+                        "border-white/5 bg-zinc-800 text-zinc-400",
                     )}
                   >
                     {statusDoProdutoNoPainel(product)}
@@ -1703,70 +1721,66 @@ const AdminProductCard = memo(function AdminProductCard({
             </div>
 
             {/* Operational Metrics Grid */}
-            <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6">
-              <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 transition-colors group-hover:border-white/10">
-                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+            <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6 lg:grid-cols-1">
+              <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
+                {/* Selo no canto (padrão do KpiCard): o valor usa a largura toda. De lg em
+                    diante a grade é de 1 coluna (o cartão tem 3-4 por linha e a caixa
+                    ficaria com 34-67px úteis) */}
+                <div
+                  className={cn(
+                    "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border",
+                    margin === null
+                      ? "bg-white/[0.06] border-white/10 text-zinc-400"
+                      : margin >= 20
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                        : "bg-rose-500/10 border-rose-500/20 text-rose-500",
+                  )}
+                >
+                  <TrendingUp className="size-3.5" />
+                </div>
+                <p className="mb-3 pr-9 text-xs font-semibold leading-tight text-zinc-300">
                   Margem de Lucro
                 </p>
-                <div className="flex items-center justify-between">
-                  <span
-                    className={cn(
-                      "text-lg font-black tracking-tighter",
-                      margin === null && "text-zinc-500",
-                      margin !== null && margin >= 40 && "text-emerald-500",
-                      margin !== null &&
-                        margin >= 20 &&
-                        margin < 40 &&
-                        "text-admin-gold",
-                      margin !== null && margin < 20 && "text-rose-500",
-                    )}
-                  >
-                    {margin === null ? "—" : percentualComUmaCasa(margin)}
-                  </span>
-                  <div
-                    className={cn(
-                      "w-6 h-6 rounded-lg flex items-center justify-center border",
-                      margin === null
-                        ? "bg-zinc-800/50 border-white/10 text-zinc-500"
-                        : margin >= 20
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-                          : "bg-rose-500/10 border-rose-500/20 text-rose-500",
-                    )}
-                  >
-                    <TrendingUp className="size-3.5" />
-                  </div>
-                </div>
+                <span
+                  className={cn(
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] md:text-xl lg:text-[22px]",
+                    margin === null && "text-zinc-400",
+                    margin !== null && margin >= 40 && "text-emerald-500",
+                    margin !== null &&
+                      margin >= 20 &&
+                      margin < 40 &&
+                      "text-admin-gold",
+                    margin !== null && margin < 20 && "text-rose-500",
+                  )}
+                >
+                  {margin === null ? "—" : percentualComUmaCasa(margin)}
+                </span>
               </div>
-              <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 transition-colors group-hover:border-white/10">
-                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+              <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
+                <div className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-400">
+                  <ArrowUpRight className="size-3.5" />
+                </div>
+                <p className="mb-3 pr-9 text-xs font-semibold leading-tight text-zinc-300">
                   Lucro sobre o custo
                 </p>
-                <div className="flex items-center justify-between">
-                  <span
-                    className={cn(
-                      "text-lg font-black tracking-tighter",
-                      roi === null && "text-zinc-500",
-                      roi !== null && roi >= 100 && "text-emerald-500",
-                      roi !== null &&
-                        roi >= 50 &&
-                        roi < 100 &&
-                        "text-admin-gold",
-                      roi !== null && roi < 50 && "text-rose-500",
-                    )}
-                  >
-                    {roi === null ? "—" : percentualComUmaCasa(roi)}
-                  </span>
-                  <div className="flex size-6 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-400">
-                    <ArrowUpRight className="size-3.5" />
-                  </div>
-                </div>
+                <span
+                  className={cn(
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] md:text-xl lg:text-[22px]",
+                    roi === null && "text-zinc-400",
+                    roi !== null && roi >= 100 && "text-emerald-500",
+                    roi !== null && roi >= 50 && roi < 100 && "text-admin-gold",
+                    roi !== null && roi < 50 && "text-rose-500",
+                  )}
+                >
+                  {roi === null ? "—" : percentualComUmaCasa(roi)}
+                </span>
               </div>
             </div>
 
             {/* Inventory Specs */}
             <div className="flex flex-1 flex-col gap-4 pt-2">
               <div className="group/spec flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 transition-colors group-hover/spec:text-zinc-300">
                   Unidades em Estoque
                 </span>
                 <div className="flex items-center gap-2">
@@ -1791,7 +1805,7 @@ const AdminProductCard = memo(function AdminProductCard({
               </div>
 
               <div className="group/spec flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-400 transition-colors group-hover/spec:text-zinc-300">
                   Dinheiro parado em estoque
                 </span>
                 <span className="font-mono text-xs font-bold text-zinc-400">
@@ -1918,7 +1932,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 statusDoProdutoNoPainel(product) === "Esgotado" &&
                   "bg-rose-500/10 text-rose-500 border-rose-500/20",
                 statusDoProdutoNoPainel(product) === "Offline" &&
-                  "bg-zinc-800 text-zinc-500 border-white/5",
+                  "bg-zinc-800 text-zinc-400 border-white/5",
               )}
             >
               {statusDoProdutoNoPainel(product)}
@@ -1936,7 +1950,7 @@ const AdminProductCard = memo(function AdminProductCard({
         {/* Details */}
         <div className="flex flex-1 flex-col justify-between gap-2 p-3">
           <div className="min-w-0">
-            <p className="mb-1 truncate text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-500">
+            <p className="mb-1 truncate text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-400">
               {product.category}
             </p>
             <h4 className="line-clamp-2 break-words text-xs font-black leading-[1.3] text-white transition-colors group-hover:text-admin-gold">
@@ -1946,7 +1960,7 @@ const AdminProductCard = memo(function AdminProductCard({
 
           <div className="space-y-1">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="font-bold uppercase tracking-wider text-zinc-500">
+              <span className="font-bold uppercase tracking-wider text-zinc-400">
                 Estoque
               </span>
               <span

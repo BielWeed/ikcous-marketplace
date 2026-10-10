@@ -324,6 +324,82 @@ describe("Clientes no celular (J4)", () => {
     expect(cartao!.contains(rotuloPedidos!.nextElementSibling)).toBe(true);
   });
 
+  it("(b2) o rodapé de KPIs do cartão compacto usa o desenho novo do cartão de métrica", async () => {
+    h.modo = "compact";
+    await abrirLista();
+
+    const rotuloTotal = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Total já comprado",
+    );
+    expect(rotuloTotal).toBeDefined();
+    const linha = rotuloTotal!.parentElement?.parentElement;
+    // O rodapé virou um cartãozinho (casca com borda de 10%), não só uma
+    // linha com filete em cima.
+    expect(linha?.className).toContain("rounded-xl");
+    expect(linha?.className).toContain("border-white/10");
+
+    const rotuloPedidos = [...linha!.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Pedidos",
+    );
+    expect(rotuloPedidos).toBeDefined();
+    // Dinheiro nunca parte no meio do número: valor em 12px sem quebra, e o
+    // padding da caixa é enxuto (`px-2 py-2.5`) para o número caber.
+    const valorTotal = rotuloTotal!.nextElementSibling;
+    expect(valorTotal?.className).toContain("whitespace-nowrap");
+    expect(valorTotal?.className).toContain("text-xs");
+    expect(valorTotal?.className).not.toContain("break-words");
+    expect(rotuloPedidos!.nextElementSibling?.className).toContain("text-xs");
+    expect(linha?.className).toContain("px-2");
+    expect(linha?.className).toContain("py-2.5");
+
+    for (const rotulo of [rotuloTotal!, rotuloPedidos!]) {
+      // Rótulo em frase normal, 12px, cinza 300 — não uppercase miúdo cinza 600.
+      expect(rotulo.className).toContain("text-xs");
+      expect(rotulo.className).toContain("text-zinc-300");
+      expect(rotulo.className).not.toContain("uppercase");
+      expect(rotulo.className).not.toContain("text-zinc-600");
+    }
+  });
+
+  it("(b3) de lg a xl (com a sidebar) o rodapé empilha: o valor em dinheiro não encosta em 'Pedidos'", async () => {
+    h.modo = "compact";
+    await abrirLista();
+
+    const rotuloTotal = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Total já comprado",
+    );
+    expect(rotuloTotal).toBeDefined();
+    const linha = rotuloTotal!.parentElement?.parentElement;
+    // Medido no Chromium: com a sidebar w-64, de 1024 a ~1535px a coluna do
+    // valor (`whitespace-nowrap`, sem como ceder) passa da coluna `1fr` e
+    // sobrepõe "Pedidos". Nessa faixa o par vira uma coluna só; a partir de
+    // 2xl sobra largura e ele volta a ficar lado a lado.
+    const classes = (linha?.className ?? "").split(/\s+/);
+    expect(classes).toContain("lg:grid-cols-1");
+    expect(classes).toContain("lg:items-start");
+    expect(classes).toContain("2xl:grid-cols-[minmax(0,1fr)_auto]");
+    expect(classes).toContain("2xl:items-end");
+  });
+
+  it("(b4) o cartão compacto cede 8px de padding em lg (1024px) para o valor em dinheiro ter folga", async () => {
+    h.modo = "compact";
+    await abrirLista();
+
+    const rotuloTotal = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Total já comprado",
+    );
+    expect(rotuloTotal).toBeDefined();
+    const cartao = rotuloTotal!.closest('[role="button"]');
+    expect(cartao).not.toBeNull();
+    // Medido em Inter a 1024px (rodapé empilhado): "R$ 1.312.456,78" sobrava
+    // 1,1px. `lg:p-4` devolve 8px de largura ao rodapé (folga ~9px); `xl:p-5`
+    // volta ao padding de sm porque a 1280px a coluna já é larga.
+    const classes = (cartao?.className ?? "").split(/\s+/);
+    expect(classes).toContain("sm:p-5");
+    expect(classes).toContain("lg:p-4");
+    expect(classes).toContain("xl:p-5");
+  });
+
   it("o menu diz 'Ver ficha do cliente' e não mais 'Ver Perfil Elite'", async () => {
     h.modo = "compact";
     await abrirLista();

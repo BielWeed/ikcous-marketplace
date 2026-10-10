@@ -88,6 +88,13 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     expect(sobras).toEqual([]);
   });
 
+  it("f. rótulos de métrica sem cinza 600/700 (contraste mínimo zinc-400)", () => {
+    // rótulos uppercase miúdos que carregam informação: cartão de detalhe,
+    // "Fórmula/Exemplo/Regra" do guia e especificações do estoque
+    expect(FONTE).not.toMatch(/uppercase[^"]*text-zinc-[67]00/);
+    expect(FONTE).not.toMatch(/text-zinc-[67]00[^"]*uppercase/);
+  });
+
   it("e. nenhum literal com admin-glass carrega classe que ele apaga", () => {
     const literais: string[] = [];
     let desde = 0;

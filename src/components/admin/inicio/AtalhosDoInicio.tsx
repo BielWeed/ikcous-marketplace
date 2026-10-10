@@ -62,7 +62,7 @@ export function AtalhosDoInicio({
               <span className="block text-base font-black tracking-tight text-white">
                 {botao.titulo}
               </span>
-              <span className="mt-0.5 block text-[11px] leading-snug text-zinc-400">
+              <span className="mt-0.5 block text-xs leading-snug text-zinc-400">
                 {botao.descricao}
               </span>
             </span>
