@@ -202,7 +202,7 @@ export const LocalBufferedInput = memo(function LocalBufferedInput({
         />
       )}
       {error && (
-        <p className="ml-1 flex items-center gap-1 text-[10px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1">
+        <p className="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1">
           <AlertTriangle className="size-3.5 text-red-500" />
           {error}
         </p>
@@ -326,7 +326,7 @@ export const LocalBufferedTextarea = memo(function LocalBufferedTextarea({
         />
       )}
       {error && (
-        <p className="ml-1 flex items-center gap-1 text-[10px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1">
+        <p className="ml-1 flex items-center gap-1 text-[11px] font-bold text-red-400 duration-200 animate-in slide-in-from-top-1">
           <AlertTriangle className="size-3.5 text-red-500" />
           {error}
         </p>
