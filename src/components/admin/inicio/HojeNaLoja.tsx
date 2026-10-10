@@ -63,7 +63,7 @@ function DivisaoAppBalcao({
           <dd className="mt-0.5 truncate font-bold tabular-nums text-white">
             {formatarMoeda(online)}
             {total > 0 ? (
-              <span className="ml-1 font-semibold text-zinc-500">
+              <span className="ml-1 font-semibold text-zinc-400">
                 {formatarPercentual(pctApp, 0)}
               </span>
             ) : null}
@@ -78,7 +78,7 @@ function DivisaoAppBalcao({
           <dd className="mt-0.5 truncate font-bold tabular-nums text-white">
             {formatarMoeda(presencial)}
             {total > 0 ? (
-              <span className="ml-1 font-semibold text-zinc-500">
+              <span className="ml-1 font-semibold text-zinc-400">
                 {formatarPercentual(pctBalcao, 0)}
               </span>
             ) : null}
@@ -109,7 +109,7 @@ export function HojeNaLoja({
         >
           Hoje
         </h2>
-        <p className="truncate text-[11px] capitalize text-zinc-500">
+        <p className="truncate text-[11px] capitalize text-zinc-400">
           {DIA_DE_HOJE.format(new Date())}
         </p>
       </div>

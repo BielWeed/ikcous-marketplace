@@ -292,6 +292,46 @@ describe("Início do painel", () => {
     expect(texto(hospedeiro)).toContain("4 pendências");
   });
 
+  it("as linhas do 'Para fazer' usam o botão-linha novo; pendente segue âmbar", async () => {
+    h.respostas.set("painel_inicio", { data: PAINEL, error: null });
+    await montar();
+    await esperarAte(() => texto(hospedeiro).includes("pendências"));
+
+    // Pendente (5 pedidos): casca do botão-linha, mas com o âmbar de estado.
+    const pendente = botaoPorTexto(hospedeiro, "Pedidos para preparar");
+    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+      expect(pendente.classList.contains(classe)).toBe(true);
+    }
+    expect(pendente.className).toContain("amber-500");
+    expect(pendente.querySelector("svg.text-amber-300")).not.toBeNull();
+
+    // Em dia (caixa fechado): mesma casca, sem âmbar, selo de ícone dourado.
+    const paraFazer = hospedeiro.querySelector<HTMLElement>(
+      '[aria-labelledby="inicio-para-fazer-titulo"]',
+    );
+    if (!paraFazer) throw new Error("'Para fazer' não encontrado");
+    const emDia = botaoPorTexto(paraFazer, "Fechado");
+    for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
+      expect(emDia.classList.contains(classe)).toBe(true);
+    }
+    expect(emDia.className).not.toContain("amber");
+    // Selo neutro (o âmbar é o único amarelo da lista); o dourado só no hover.
+    const selo = emDia.querySelector("span.size-10");
+    expect(selo).not.toBeNull();
+    expect(selo?.className).toContain("bg-white/[0.06]");
+    expect(
+      (selo?.className ?? "")
+        .split(/\s+/)
+        .filter((c) => /^(border|bg)-admin-gold/.test(c)),
+    ).toEqual([]);
+    expect(selo?.querySelector("svg.text-zinc-400")).not.toBeNull();
+    // A seta cresceu para size-5.
+    expect(
+      emDia.querySelector("svg.lucide-chevron-right.size-5"),
+    ).not.toBeNull();
+    expect(emDia.className).not.toContain("rounded-xl");
+  });
+
   it("o cartão da loja mostra o ícone do app (quadrado), não a logo larga", async () => {
     // Pedido do dono (28/09): na Savy a logo-palavra "SAVY", transparente e
     // escura, sumia no quadrado escuro do cartão. O ícone do app (papel
