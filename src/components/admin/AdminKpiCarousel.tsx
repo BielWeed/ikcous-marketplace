@@ -42,26 +42,28 @@ const KpiCard = memo(function KpiCard({
   readonly stat: KpiCardConfig;
 }) {
   const Icon = stat.icon;
-  const temAlturaFixa = !stat.content && !stat.footer;
 
   return (
     <div
       className={cn(
-        // Altura FIXA nas métricas simples (Pedidos/Produtos/Clientes/
-        // Cupons/Dashboard): a faixa fica idêntica em qualquer tela — era
-        // isto que o dono pediu ("padronizada, uma não maior que a outra").
-        // Card com conteúdo extra (barra de progresso das Perguntas,
-        // rodapé dos Cupons) cresce o mínimo necessário com overflow
-        // escondido para nunca romper o desenho.
+        // Mesma altura na faixa inteira (o dono pediu "padronizada, uma não
+        // maior que a outra"), mas SEM travar a altura: o slide estica no
+        // flex do Embla (`h-full`) e o piso é 64px (68px no computador).
+        // No celular de 360px o rótulo e o subtítulo quebram em 2 linhas;
+        // altura fixa cortava o texto (decisão P-J4, onda J). Card com
+        // conteúdo extra (barra de progresso das Perguntas, rodapé dos
+        // Cupons) cresce o necessário, com overflow escondido para nunca
+        // romper o desenho.
         "group relative flex select-none items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg transition-colors duration-300 sm:gap-3",
-        temAlturaFixa ? "h-16 sm:h-[68px]" : "min-h-16 sm:min-h-[68px]",
+        "h-full min-h-16 sm:min-h-[68px]",
         stat.hoverBorder ||
           "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.06)]",
       )}
     >
       <div
         className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 shadow-inner transition-colors duration-300 group-hover:border-admin-gold/20",
+          // Abaixo de 480px o ícone some: o texto ganha ~46px (de ~87 para ~135px).
+          "hidden size-9 shrink-0 items-center xs:flex justify-center rounded-xl border border-white/5 bg-zinc-950 shadow-inner transition-colors duration-300 group-hover:border-admin-gold/20",
           stat.accent,
         )}
       >
@@ -74,28 +76,23 @@ const KpiCard = memo(function KpiCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[8.5px] font-black uppercase leading-none tracking-[0.18em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
+        <p className="line-clamp-2 break-words text-[11px] font-black uppercase leading-tight tracking-[0.06em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
           {stat.label}
         </p>
         {/* Valor na linha INTEIRA (pedido do Gabriel, 02/09: o dado completo
             não cabia — "R$ 1.31... / CAPITAL LIQ..." era valor e subtítulo
             brigando pela mesma linha). Empilhado em 3 linhas dentro da
             mesma altura: rótulo / valor / subtítulo. */}
-        <h3
-          className={cn(
-            "truncate font-black leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold sm:text-lg",
-            stat.subValue || stat.footer ? "text-base" : "text-lg",
-          )}
-        >
+        <h3 className="truncate text-[15px] font-black tabular-nums leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold xs:text-base sm:text-lg">
           {stat.value}
         </h3>
         {stat.subValue && (
-          <p className="truncate text-[9px] font-bold uppercase leading-none tracking-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="line-clamp-2 break-words text-[11px] font-bold leading-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
             {stat.subValue}
           </p>
         )}
         {stat.footer && (
-          <p className="truncate text-[8.5px] font-bold uppercase leading-none tracking-wider text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="line-clamp-2 break-words text-[11px] font-bold leading-tight text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
             {stat.footer}
           </p>
         )}
@@ -121,7 +118,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   cards,
   loading = false,
   title = "Métricas Principais",
-  autoplayInterval = 4000,
+  autoplayInterval = 0,
   active = true,
 }: AdminKpiCarouselProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -189,8 +186,12 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
     triggerReInit();
   }, [active, emblaApi, cards, loading]);
 
-  // Autoplay effect - pauses when tab is in background (Visibility API) or when panel view is inactive
+  // Autoplay DESLIGADO por padrão (P-J1, onda J: a faixa mudava sozinha a
+  // cada 4s e o cartão que o lojista procurava saía de vista). Quem passa
+  // `autoplayInterval` em milissegundos liga. Pausa com a aba em segundo
+  // plano (Visibility API) ou com a tela do painel inativa.
   useEffect(() => {
+    if (!autoplayInterval) return;
     if (!emblaApi || !active || isExpanded || isHovered || loading) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -247,14 +248,16 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
       <div className="flex select-none items-center justify-between px-0">
         <div className="flex items-center gap-2">
           <span className="size-1.5 animate-pulse rounded-full bg-admin-gold" />
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
             {title}
           </span>
         </div>
         <div className="flex items-center gap-3">
           {/* Navigation dot indicators - only in carousel mode */}
           {!isExpanded && !loading && scrollSnaps.length > 1 && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center">
+              {/* Cada ponto é um botão de 44px de altura (alvo de toque) com
+                  a bolinha visível por dentro, nomeado em português. */}
               {scrollSnaps.map((_, i) => (
                 <button
                   key={i}
@@ -263,19 +266,26 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                     triggerManualInteraction();
                     emblaApi?.scrollTo(i);
                   }}
-                  className={cn(
-                    "h-1 rounded-full transition-all duration-300",
-                    activeIndex === i ? "bg-admin-gold w-4" : "bg-white/10 w-1",
-                  )}
-                  title={`Ir para snap ${i + 1}`}
-                />
+                  className="flex h-11 w-6 items-center justify-center"
+                  aria-label={`Mostrar o grupo ${i + 1} de ${scrollSnaps.length}`}
+                  aria-current={activeIndex === i ? "true" : undefined}
+                >
+                  <span
+                    className={cn(
+                      "h-1 rounded-full transition-all duration-300",
+                      activeIndex === i
+                        ? "w-4 bg-admin-gold"
+                        : "w-1 bg-white/10",
+                    )}
+                  />
+                </button>
               ))}
             </div>
           )}
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/10 hover:bg-white/10 hover:text-white"
+            className="flex min-h-11 items-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/10 hover:bg-white/10 hover:text-white"
           >
             {isExpanded ? (
               <>
