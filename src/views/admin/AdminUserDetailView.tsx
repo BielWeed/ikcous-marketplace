@@ -35,6 +35,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { mapOrderFromDB, mapProductFromDB } from "@/lib/mappers";
 import { numeroDoPedido } from "@/lib/numero-do-pedido";
+import { papel } from "@/lib/papeis-aria-da-tabela";
 import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { precoVendido } from "@/lib/preco-vendido";
 import { supabase } from "@/lib/supabase";
@@ -63,18 +64,6 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
-// J2-D: com `display: block` (o bloco do celular) o navegador apaga o papel de
-// tabela do leitor de tela, então os papéis voltam por atributo explícito. O
-// espalhamento (`{...papel("row")}`) é de propósito: escrito como `role="row"`
-// no JSX, as regras de a11y do eslint e do biome chamam de "redundante" o que
-// aqui é a única forma de manter a semântica. (Mesmo helper do histórico de
-// consultas de frete, J5.)
-const papel = (
-  role: "table" | "rowgroup" | "row" | "columnheader" | "cell",
-) => ({
-  role,
-});
 
 interface Profile {
   id: string;
@@ -597,10 +586,15 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
-              className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+              className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
               title="Guia da ficha do cliente e ajuda"
             >
-              <HelpCircle className="size-4.5" />
+              <span
+                aria-hidden="true"
+                className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+              >
+                <HelpCircle className="size-4.5" />
+              </span>
             </button>
           </AdminPageHeader>
           <div className="mt-1 flex items-center gap-2">
@@ -631,7 +625,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
           </p>
           <button
             onClick={() => fetchUserData()}
-            className="mt-4 rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
+            className="mt-4 min-h-11 rounded-lg border border-white/10 bg-white/5 px-4 text-[11px] font-black uppercase tracking-widest text-white hover:border-amber-500/30"
           >
             Tentar novamente
           </button>
@@ -681,7 +675,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               {/* Direct WhatsApp Call CTA */}
               <div className="mt-4 w-full px-2">
                 <Button
-                  className="h-10 w-full gap-2 rounded-xl border-none bg-gradient-to-br from-green-500 to-green-600 text-[11px] font-black uppercase tracking-widest text-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.2)] transition-all duration-300 hover:from-green-400 hover:to-green-500 hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] disabled:pointer-events-none disabled:opacity-40"
+                  className="h-11 w-full gap-2 rounded-xl border-none bg-gradient-to-br from-green-500 to-green-600 text-[11px] font-black uppercase tracking-widest text-zinc-950 shadow-[0_0_15px_rgba(34,197,94,0.2)] transition-all duration-300 hover:from-green-400 hover:to-green-500 hover:shadow-[0_0_25px_rgba(34,197,94,0.4)] disabled:pointer-events-none disabled:opacity-40"
                   disabled={!linkWhatsapp || isOffline}
                   title={avisoDoWhatsapp}
                   onClick={() => {
@@ -809,7 +803,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
               <div className="group relative flex items-center justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4 shadow-sm transition-all hover:border-zinc-700">
                 <div className="flex min-w-0 flex-col">
                   <span className="mb-0.5 text-[11px] font-black uppercase tracking-[0.15em] text-zinc-500">
-                    Cesta / Pedidos
+                    Pedidos feitos
                   </span>
                   <span className="text-xl font-black tracking-tight text-white sm:text-2xl">
                     {pedidosQueContam.length}
@@ -960,10 +954,11 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                             <Package className="size-6 text-zinc-700" />
                           </div>
                           <p className="text-sm font-bold text-zinc-500">
-                            Fluxo Zerado
+                            Nenhum pedido ainda
                           </p>
                           <p className="mt-1 text-xs text-zinc-600">
-                            Este cliente ainda não integralizou aquisições.
+                            Quando este cliente comprar, os pedidos aparecem
+                            aqui.
                           </p>
                         </div>
                       ) : (
@@ -1029,7 +1024,8 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      className="size-8 rounded-lg text-zinc-500 hover:bg-admin-gold/10 hover:text-admin-gold"
+                                      aria-label={`Abrir o pedido ${numeroDoPedido(order.id)}`}
+                                      className="size-11 rounded-lg text-zinc-500 hover:bg-admin-gold/10 hover:text-admin-gold"
                                     >
                                       <ExternalLink className="size-4" />
                                     </Button>
@@ -1072,7 +1068,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                               size="sm"
                               onClick={handleClearUserCart}
                               disabled={isOffline}
-                              className="h-7 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[11px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
+                              className="min-h-11 rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 text-[11px] font-black uppercase tracking-widest text-red-500 shadow-sm transition-all hover:bg-red-500/20 disabled:pointer-events-none disabled:opacity-40"
                             >
                               Limpar Carrinho
                             </Button>
@@ -1198,10 +1194,21 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                             </span>
                                           )}
                                           {isVariantMissing && (
-                                            <span className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-red-500">
-                                              Variante Indisponível (ID:{" "}
-                                              {item.variantId})
-                                            </span>
+                                            <>
+                                              <span
+                                                title={`Código da variação: ${item.variantId}`}
+                                                className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-red-500"
+                                              >
+                                                Esta variação não existe mais
+                                              </span>
+                                              {/* O `title` não aparece no
+                                                  celular: o código fica à vista
+                                                  para a lojista passar ao
+                                                  suporte. */}
+                                              <span className="mt-0.5 break-all text-[11px] text-zinc-500">
+                                                Código: {item.variantId}
+                                              </span>
+                                            </>
                                           )}
                                         </div>
                                       </div>

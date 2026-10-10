@@ -475,10 +475,15 @@ export const AdminCustomersView = memo(function AdminCustomersView({
           <button
             type="button"
             onClick={() => setShowHelpModal(true)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+            className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
             title="Guia de Clientes e Ajuda"
           >
-            <HelpCircle className="size-4.5" />
+            <span
+              aria-hidden="true"
+              className="flex size-8 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+            >
+              <HelpCircle className="size-4.5" />
+            </span>
           </button>
           {/* Missão 06 (C3): ponto com estado real de conexão no lugar da
               tag que ficava verde após a carga. Desde o pedido do Gabriel de
