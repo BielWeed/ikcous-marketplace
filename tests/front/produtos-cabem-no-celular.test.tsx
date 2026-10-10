@@ -364,8 +364,68 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
     it.each([
       "src/views/admin/AdminProductsView.tsx",
       "src/views/admin/AdminProductFormView.tsx",
-    ])("%s não tem toFixed(…)%", (arquivo) => {
-      expect(codigoSemComentario(arquivo)).not.toMatch(/toFixed\(\d*\)\}?%/);
+    ])("%s não tem toFixed(…)% nem '33.3%' escrito à mão", (arquivo) => {
+      const codigo = codigoSemComentario(arquivo);
+      expect(codigo).not.toMatch(/toFixed\(\d*\)\}?%/);
+      // Percentual fixo de exemplo também em pt-BR ("33,3%", não "33.3%").
+      expect(codigo).not.toMatch(/\d\.\d+\s?%/);
+    });
+  });
+
+  describe("h. guia de métricas: exemplo e simulador em pt-BR e sem corte", () => {
+    async function abrirGuia() {
+      const ajuda = hospedeiro.querySelector(
+        'button[title="Guia Completo de Métricas e Ajuda"]',
+      ) as HTMLButtonElement | null;
+      expect(ajuda, "botão do guia ausente").not.toBeNull();
+      await act(async () => {
+        ajuda?.click();
+        await esperarMicrotarefas();
+      });
+    }
+
+    function botaoDoGuia(texto: string): HTMLButtonElement {
+      const botao = [...document.querySelectorAll("button")].find(
+        (b) => b.textContent?.trim() === texto,
+      );
+      if (!botao) throw new Error(`aba '${texto}' do guia ausente`);
+      return botao as HTMLButtonElement;
+    }
+
+    it("o exemplo da margem no dicionário diz '33,3%'", async () => {
+      montarProduto({});
+      await montar();
+      await abrirGuia();
+
+      const exemplo = [...document.querySelectorAll("span")].find((el) =>
+        el.textContent?.includes("Custo R$10 / Venda R$15"),
+      );
+      expect(exemplo, "exemplo da margem ausente").toBeDefined();
+      expect(exemplo?.textContent).toContain("33,3%");
+      expect(exemplo?.textContent).not.toContain("33.3%");
+    });
+
+    it("as 4 caixas do simulador crescem com o rótulo (min-h-20, nunca h-20)", async () => {
+      montarProduto({});
+      await montar();
+      await abrirGuia();
+      await act(async () => {
+        botaoDoGuia("Simulador").click();
+        await esperarMicrotarefas();
+      });
+
+      const rotulo = [...document.querySelectorAll("p")].find(
+        (el) => el.textContent === "Lucro sobre o custo (por unidade)",
+      );
+      expect(rotulo, "caixa 'por unidade' ausente").toBeDefined();
+      const grade = rotulo?.parentElement?.parentElement as HTMLElement;
+      const caixas = [...grade.children] as HTMLElement[];
+      expect(caixas).toHaveLength(4);
+      for (const caixa of caixas) {
+        const classes = caixa.className.split(/\s+/);
+        expect(classes).toContain("min-h-20");
+        expect(classes).not.toContain("h-20");
+      }
     });
   });
 });

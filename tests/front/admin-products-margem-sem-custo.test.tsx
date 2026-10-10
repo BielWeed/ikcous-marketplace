@@ -420,8 +420,26 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     expect(tela).toContain("Lucro se vender tudo");
     // O KPI do topo é markup ((Preço−Custo)÷Custo): "Margem" é só a do
     // produto, calculada sobre o preço. Os dois não podem ter o mesmo nome.
-    // Onda J: o cartão se chama "Lucro sobre o custo" (sem ROI/Portfólio).
-    expect(tela).toContain("Lucro sobre o custo");
+    // Onda J: o CARTÃO do topo se chama "Lucro sobre o custo" (sem
+    // ROI/Portfólio). Procurar só o texto na tela passaria com o rótulo do
+    // cartão revertido, porque o cartão detalhado do produto também usa essa
+    // frase — então sobe do subtítulo (exclusivo do cartão) até o menor
+    // elemento que tem o rótulo, e esse elemento tem que ser o cartão:
+    // com o valor (900 − 500) ÷ 500 = "80,0%" e sem rótulo de outro cartão.
+    const subtitulo = [...hospedeiro.querySelectorAll("*")].find(
+      (el) => el.textContent === "Média do estoque com custo",
+    );
+    expect(subtitulo, "subtítulo do cartão do topo ausente").toBeDefined();
+    let cartaoDoKpi = subtitulo?.parentElement ?? null;
+    while (
+      cartaoDoKpi &&
+      !cartaoDoKpi.textContent?.includes("Lucro sobre o custo")
+    ) {
+      cartaoDoKpi = cartaoDoKpi.parentElement;
+    }
+    expect(cartaoDoKpi?.textContent).toContain("80,0%");
+    expect(cartaoDoKpi?.textContent).not.toContain("Lucro se vender tudo");
+    expect(cartaoDoKpi?.textContent).not.toContain("Margem de Lucro");
     expect(tela).not.toContain("Margem %");
     expect(tela).not.toContain("Retorno sobre o custo");
     expect(tela).not.toContain("Capital Alocado");

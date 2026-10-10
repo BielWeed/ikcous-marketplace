@@ -1112,7 +1112,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                               Exemplo:
                             </span>
                             <span className="font-medium text-zinc-400">
-                              Custo R$10 / Venda R$15 ➜ Margem = 33.3%
+                              Custo R$10 / Venda R$15 ➜ Margem = 33,3%
                             </span>
                           </div>
                         </div>
@@ -1319,7 +1319,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                   <div className="grid grid-cols-2 gap-3">
                     <div
                       className={cn(
-                        "p-4 rounded-2xl bg-zinc-900/40 border transition-all duration-300 flex flex-col justify-between h-20",
+                        "p-4 rounded-2xl bg-zinc-900/40 border transition-all duration-300 flex flex-col justify-between min-h-20",
                         simulatorMetrics.health === "excellent" &&
                           "border-emerald-500/20 shadow-[0_0_15px_rgba(16,185,129,0.03)]",
                         simulatorMetrics.health === "good" &&
@@ -1348,7 +1348,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                     </div>
 
-                    <div className="flex h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                    <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                       <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
                         Lucro sobre o custo (por unidade)
                       </p>
@@ -1357,7 +1357,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                     </div>
 
-                    <div className="flex h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                    <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                       <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
                         Lucro Líquido (Unit.)
                       </p>
@@ -1369,7 +1369,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                     </div>
 
-                    <div className="flex h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
+                    <div className="flex min-h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                       <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
                         Capital de Lote (Custo)
                       </p>
