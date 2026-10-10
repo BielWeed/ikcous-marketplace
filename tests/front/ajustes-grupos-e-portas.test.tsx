@@ -199,6 +199,31 @@ describe("a tela de Ajustes", () => {
     expect(idas).toContain("admin-shipping");
   });
 
+  it("a porta tem o desenho de botão-linha do AtalhosDaAba (redesenho 10/10/2026)", () => {
+    const cartao = porta("Entrega e frete") as HTMLElement;
+    expect(cartao.className).toMatch(/\bmin-h-11\b/);
+    expect(cartao.className).toContain("rounded-2xl");
+    expect(cartao.className).toContain("border-white/10");
+    expect(cartao.className).toContain("bg-gradient-to-r");
+    // Nome: 15px bold, frase normal (nada de caixa-alta miúda com tracking largo).
+    const nome = cartao.querySelector("h3")!;
+    expect(nome.className).toContain("text-[15px]");
+    expect(nome.className).toContain("font-bold");
+    expect(nome.className).not.toContain("uppercase");
+    expect(nome.className).not.toContain("tracking-[0.2em]");
+    // Descrição: text-xs e contraste mínimo zinc-400 (nada de 11px/zinc-500).
+    const descricao = cartao.querySelector("p")!;
+    expect(descricao.className).toContain("text-xs");
+    expect(descricao.className).toContain("text-zinc-400");
+    expect(descricao.className).not.toContain("text-[11px]");
+    // Selo de ícone dourado e seta ChevronRight.
+    expect(cartao.querySelector("div.size-10")?.className).toContain(
+      "border-admin-gold/25",
+    );
+    expect(cartao.querySelector("svg.lucide-chevron-right")).not.toBeNull();
+    expect(cartao.querySelector("svg.lucide-arrow-up-right")).toBeNull();
+  });
+
   it("'Entrega e frete' é só a porta: nenhum acordeão de transportadoras em Ajustes (H5)", () => {
     // O acordeão "Transportadoras" (09/10/2026) foi para a tela de Frete no
     // mesmo dia (H5, painel simples): o frete mora num lugar só.
