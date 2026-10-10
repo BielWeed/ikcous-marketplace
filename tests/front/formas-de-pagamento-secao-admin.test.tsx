@@ -203,6 +203,39 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     );
   });
 
+  it("onda L: clicar DIRETO no botão do switch grava uma única vez (o <label> não re-dispara o clique)", async () => {
+    await abrirASecao();
+    await clicar(switchPorRotulo("Cartão na entrega ou retirada"));
+
+    expect(mockStore.updateConfig).toHaveBeenCalledTimes(1);
+    expect(mockStore.updateConfig).toHaveBeenCalledWith(
+      { formasPagamentoEntrega: ["pix", "cash"] },
+      { silentSuccess: true },
+    );
+  });
+
+  it("onda L: com o switch travado (salvando), clicar no TEXTO de outra forma não grava nada", async () => {
+    // Um salvamento que nunca termina mantém `salvando !== null`: todos os
+    // switches ficam desabilitados e o <label> não pode furar a trava.
+    mockStore.updateConfig.mockReturnValue(new Promise<boolean>(() => {}));
+    await abrirASecao();
+    await clicar(switchPorRotulo("Pix na entrega ou retirada"));
+    expect(mockStore.updateConfig).toHaveBeenCalledTimes(1);
+    expect(
+      switchPorRotulo("Dinheiro na entrega ou retirada").hasAttribute(
+        "disabled",
+      ),
+    ).toBe(true);
+
+    const texto = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Dinheiro na entrega/retirada",
+    );
+    if (!texto) throw new Error("O texto da forma não está na tela.");
+    await clicar(texto as HTMLElement);
+
+    expect(mockStore.updateConfig).toHaveBeenCalledTimes(1);
+  });
+
   it("desligar uma forma (não a última) chama updateConfig com a lista sem ela, em ordem CANÔNICA", async () => {
     await abrirASecao();
     await clicar(switchPorRotulo("Cartão na entrega ou retirada"));

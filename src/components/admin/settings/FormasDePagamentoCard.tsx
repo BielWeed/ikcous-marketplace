@@ -178,7 +178,7 @@ export function FormasDePagamentoSection({
         {FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM.map((forma) => (
           <label
             key={forma}
-            className="flex min-h-11 cursor-pointer items-center justify-between gap-2"
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
           >
             <span className="text-xs text-zinc-300">
               {ROTULO_DA_FORMA.get(forma)}
@@ -346,7 +346,7 @@ function CartaoPeloAppBloco({
         <>
           <label
             htmlFor={idDoCredito}
-            className="flex min-h-11 cursor-pointer items-center justify-between gap-2"
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
           >
             <span className="text-xs text-zinc-300">Crédito</span>
             <Switch
@@ -367,7 +367,7 @@ function CartaoPeloAppBloco({
           </label>
           <label
             htmlFor={idDoDebito}
-            className="flex min-h-11 cursor-pointer items-center justify-between gap-2"
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
           >
             <span className="text-xs text-zinc-300">Débito</span>
             <Switch

@@ -130,18 +130,21 @@ describe("L1 · Formas de pagamento: interruptores dentro de <label> de 44px (es
     expect(labels).toHaveLength(1);
     expect(labels[0]).toMatch(MIN_H_11);
     expect(labels[0]).toMatch(/\bcursor-pointer\b/);
+    expect(labels[0]).toContain("has-[:disabled]:cursor-not-allowed");
   });
 
   it("(b) Crédito: o Switch mora num <label> min-h-11", () => {
     const labels = labelsCom(fonte, 'aria-label="Cartão de crédito pelo app"');
     expect(labels).toHaveLength(1);
     expect(labels[0]).toMatch(MIN_H_11);
+    expect(labels[0]).toContain("has-[:disabled]:cursor-not-allowed");
   });
 
   it("(c) Débito: o Switch mora num <label> min-h-11", () => {
     const labels = labelsCom(fonte, 'aria-label="Cartão de débito pelo app"');
     expect(labels).toHaveLength(1);
     expect(labels[0]).toMatch(MIN_H_11);
+    expect(labels[0]).toContain("has-[:disabled]:cursor-not-allowed");
   });
 
   it("(d) o <select> das parcelas tem min-h-11", () => {
