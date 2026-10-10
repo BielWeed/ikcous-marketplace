@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Banknote,
   ChevronDown,
+  ChevronRight,
   CreditCard,
   HelpCircle,
   Layers,
@@ -439,7 +440,7 @@ function SecaoColapsavel({
 // Ícone de cada porta (o nome e a rota vêm de GRUPOS_DE_AJUSTES). Map + `.get`:
 // índice de variável acorda o object-injection do eslint. Guarda o ELEMENTO pronto, não o componente: um
 // componente tirado do Map no render dispara react-hooks/static-components.
-const CLASSE_DO_ICONE_DA_PORTA = "relative size-[18px]";
+const CLASSE_DO_ICONE_DA_PORTA = "size-5";
 const ICONE_DA_PORTA = new Map<TelaDoPainel, React.ReactNode>([
   [
     "admin-about-store",
@@ -484,24 +485,23 @@ function PortaDeAjustes({
           onNavigate(porta.tela);
         }
       }}
-      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 p-4 shadow-xl transition-all duration-300 hover:border-admin-gold/30 hover:bg-zinc-900/30 active:scale-[0.98]"
+      className="group flex min-h-11 cursor-pointer items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
     >
-      <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-admin-gold/[0.18] to-admin-gold/[0.04] text-admin-gold shadow-[0_2px_12px_-4px] shadow-admin-gold/25 ring-1 ring-admin-gold/20">
-        <span
-          aria-hidden="true"
-          className="absolute inset-0 rounded-[inherit] bg-gradient-to-br from-admin-gold/[0.32] to-admin-gold/[0.10] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-        />
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10 text-admin-gold">
         {ICONE_DA_PORTA.get(porta.tela)}
       </div>
       <div className="min-w-0 flex-1">
-        <h3 className="truncate text-xs font-black uppercase tracking-[0.2em] text-white">
+        <h3 className="truncate text-[15px] font-bold leading-tight text-white">
           {NOMES_DO_PAINEL[porta.tela]}
         </h3>
-        <p className="mt-0.5 truncate text-[11px] text-zinc-500">
+        <p className="mt-0.5 truncate text-xs text-zinc-400">
           {porta.descricao}
         </p>
       </div>
-      <ArrowUpRight className="size-4 shrink-0 text-zinc-500 transition-colors duration-300 group-hover:text-admin-gold" />
+      <ChevronRight
+        aria-hidden="true"
+        className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
+      />
     </div>
   );
 }
