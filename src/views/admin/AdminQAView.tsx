@@ -409,14 +409,14 @@ export const AdminQAView = memo(function AdminQAView({
         value: statsUnavailable ? "—" : pendingCount,
         accent: "text-amber-400",
         content: (
-          <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
+          <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
             <span
               className={cn(
                 "w-1.5 h-1.5 rounded-full bg-amber-500",
                 pendingCount > 0 && "animate-pulse",
               )}
             />
-            <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+            <span className="text-xs font-medium text-zinc-400">
               {statsUnavailable
                 ? "Erro ao atualizar"
                 : pendingCount > 0
@@ -438,7 +438,7 @@ export const AdminQAView = memo(function AdminQAView({
         value: statsUnavailable ? "—" : `${responseRate}%`,
         accent: "text-emerald-400",
         content: (
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900 animate-in fade-in">
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10 animate-in fade-in">
             <div
               className="h-full rounded-full bg-emerald-500 transition-all duration-500"
               style={{ width: `${responseRate}%` }}
@@ -460,9 +460,9 @@ export const AdminQAView = memo(function AdminQAView({
         value: statsUnavailable ? "—" : totalCount,
         accent: "text-sky-400",
         content: (
-          <div className="mt-3 flex items-center gap-1.5 animate-in fade-in">
-            <Clock className="size-3.5 text-zinc-500" />
-            <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+          <div className="mt-2 flex items-center gap-1.5 animate-in fade-in">
+            <Clock className="size-3.5 text-zinc-400" />
+            <span className="text-xs font-medium text-zinc-400">
               Desde o início
             </span>
           </div>
@@ -555,7 +555,7 @@ export const AdminQAView = memo(function AdminQAView({
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="divide-y divide-white/5 overflow-hidden rounded-3xl border border-white/5 bg-white/[0.01]"
+        className="divide-y divide-white/5 overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70"
       >
         {questions.map((q) => {
           const isAnswered = q.answers.length > 0;
@@ -604,7 +604,7 @@ export const AdminQAView = memo(function AdminQAView({
                       <span className="max-w-[150px] truncate text-xs font-bold text-white">
                         {q.customerName}
                       </span>
-                      <span className="text-[11px] font-bold text-zinc-500">
+                      <span className="text-[11px] font-bold text-zinc-400">
                         {new Date(q.createdAt).toLocaleDateString("pt-BR")}
                       </span>
                       <span className="max-w-[180px] truncate rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-bold text-zinc-400">
@@ -732,8 +732,8 @@ export const AdminQAView = memo(function AdminQAView({
                     exit={{ height: 0, opacity: 0 }}
                     className="mt-3 space-y-3 overflow-hidden pl-11"
                   >
-                    <div className="rounded-2xl border border-white/5 bg-white/[0.01] p-4">
-                      <span className="mb-1 block text-[11px] font-black uppercase tracking-widest text-zinc-500">
+                    <div className="rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4">
+                      <span className="mb-1 block text-xs font-semibold text-zinc-300">
                         Pergunta Completa
                       </span>
                       <p className="text-xs italic text-zinc-300">
@@ -748,7 +748,7 @@ export const AdminQAView = memo(function AdminQAView({
                           <span className="block text-[11px] font-black uppercase tracking-widest text-emerald-400">
                             Resposta da Loja
                           </span>
-                          <span className="text-[11px] font-bold text-zinc-500">
+                          <span className="text-[11px] font-bold text-zinc-400">
                             {new Date(
                               q.answers.at(-1)!.createdAt,
                             ).toLocaleDateString("pt-BR")}
@@ -790,7 +790,7 @@ export const AdminQAView = memo(function AdminQAView({
               key={q.id}
               variants={itemVariants}
               layout
-              className="content-visibility-auto group relative overflow-hidden rounded-[2rem] border border-white/5 bg-[#121214]/60 shadow-xl transition-all duration-300 hover:border-white/10 hover:bg-[#161619]/80 hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)]"
+              className="content-visibility-auto group relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent shadow-xl transition-all duration-300 hover:border-white/20 hover:shadow-[0_10px_30px_rgba(0,0,0,0.4)]"
             >
               <div className="bg-radial-gradient pointer-events-none absolute inset-0 from-emerald-500/[0.01] via-transparent to-transparent" />
 
@@ -808,14 +808,14 @@ export const AdminQAView = memo(function AdminQAView({
                         >
                           {initials}
                         </div>
-                        <span className="mt-0.5 text-[11px] font-black uppercase leading-none tracking-wider text-zinc-300">
+                        <span className="mt-0.5 text-xs font-bold leading-none text-zinc-200">
                           {q.customerName}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                        <Calendar className="size-3.5 text-zinc-500" />
-                        <span className="mt-0.5 text-[11px] font-black uppercase leading-none tracking-wider text-zinc-500">
+                        <Calendar className="size-3.5 text-zinc-400" />
+                        <span className="mt-0.5 text-xs font-semibold leading-none tabular-nums text-zinc-300">
                           {new Date(q.createdAt).toLocaleDateString("pt-BR")}
                         </span>
                       </div>
@@ -848,7 +848,7 @@ export const AdminQAView = memo(function AdminQAView({
                     </div>
 
                     {/* Product Reference */}
-                    <div className="group/product inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-1.5 pr-4 transition-all hover:border-emerald-500/20 hover:bg-white/10">
+                    <div className="group/product inline-flex items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 p-1.5 pr-4 transition-all hover:border-emerald-500/20 hover:bg-white/10">
                       <div className="relative size-9 shrink-0 overflow-hidden rounded-xl bg-zinc-800">
                         <LazyImage
                           src={
@@ -860,7 +860,7 @@ export const AdminQAView = memo(function AdminQAView({
                         />
                       </div>
                       <div className="flex min-w-0 flex-col">
-                        <span className="mb-1 text-[11px] font-black uppercase leading-none tracking-widest text-zinc-500">
+                        <span className="mb-1 text-xs font-semibold leading-none text-zinc-400">
                           Referente ao produto
                         </span>
                         <span className="max-w-[220px] truncate text-xs font-black uppercase text-zinc-300">
@@ -929,7 +929,7 @@ export const AdminQAView = memo(function AdminQAView({
                       {q.answers.map((ans) => (
                         <div
                           key={ans.id}
-                          className="group/ans relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-5"
+                          className="group/ans relative overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-5"
                         >
                           <div className="absolute left-0 top-0 h-full w-[3px] bg-emerald-500/40" />
                           <div className="mb-2 flex items-center justify-between">
@@ -942,7 +942,7 @@ export const AdminQAView = memo(function AdminQAView({
                               </span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <span className="mr-1 text-[11px] font-bold text-zinc-500">
+                              <span className="mr-1 text-[11px] font-bold text-zinc-400">
                                 {new Date(ans.createdAt).toLocaleDateString(
                                   "pt-BR",
                                 )}
