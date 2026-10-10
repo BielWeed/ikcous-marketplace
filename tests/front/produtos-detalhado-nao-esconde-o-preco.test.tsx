@@ -30,11 +30,12 @@ const onNavigate = vi.fn();
 const fetchExecutiveSummary = vi.fn();
 
 let produtosMock: any[] = [];
+let carregandoMock = false;
 
 vi.mock("@/hooks/useProducts", () => ({
   useProducts: () => ({
     products: produtosMock,
-    loading: false,
+    loading: carregandoMock,
     deleteProduct,
     toggleProductStatus,
     addProduct,
@@ -102,8 +103,25 @@ class ResizeObserverStub {
 // @ts-expect-error flag interna do React, sem tipo público.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Altura fixa em pixels: `h-[440px]`, `sm:h-[300px]`, `lg:max-h-[…]`. */
-const ALTURA_FIXA = /(^|:)(max-)?h-\[\d+px\]$/;
+/** Altura fixa, com ou sem variante (`sm:`, `xl:`) e com ou sem `!`: `h-[440px]`,
+ * `h-[27rem]`, `h-96`, `h-2.5`, `max-h-[300px]`, `max-h-96`. Não casa `h-full`,
+ * `min-h-*`, `flex-1` nem `size-*`. */
+const ALTURA_FIXA = /(^|:)!?(max-)?h-(\d+(\.\d+)?|\[\d+(\.\d+)?(px|rem|em)\])$/;
+
+/** Reserva do `content-visibility` e altura do esqueleto: pixels por breakpoint. */
+const RESERVA_NO_CELULAR = /^!\[contain-intrinsic-size:auto_(\d+)px\]$/;
+const RESERVA_NO_XL = /^xl:!\[contain-intrinsic-size:auto_(\d+)px\]$/;
+const ESQUELETO_NO_CELULAR = /^h-\[(\d+)px\]$/;
+const ESQUELETO_NO_XL = /^xl:h-\[(\d+)px\]$/;
+
+/** Primeiro número (px) da primeira classe que casa, ou undefined. */
+function pxDaClasse(classes: string[], padrao: RegExp): number | undefined {
+  for (const classe of classes) {
+    const achou = padrao.exec(classe);
+    if (achou) return Number(achou[1]);
+  }
+  return undefined;
+}
 
 function esperarMicrotarefas(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -120,6 +138,7 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
 
   beforeEach(() => {
     vi.clearAllMocks();
+    carregandoMock = false;
     produtosMock = [
       {
         id: "prod-1",
@@ -284,6 +303,114 @@ describe("Produtos, modo detalhado: o cartão não esconde o preço (onda J2, J2
       expect(classes).toContain("break-words");
       expect(classes).toContain("pr-12");
       expect(classes).not.toContain("truncate");
+    });
+  });
+  describe("f. o regex de altura fixa pega os disfarces e só eles", () => {
+    it.each([
+      "h-[440px]",
+      "sm:h-[300px]",
+      "xl:!h-[520px]",
+      "h-[27rem]",
+      "h-96",
+      "lg:h-72",
+      "h-2.5",
+      "max-h-[300px]",
+      "md:max-h-96",
+    ])("%s é altura fixa", (classe) => {
+      expect(ALTURA_FIXA.test(classe)).toBe(true);
+    });
+
+    it.each([
+      "h-full",
+      "h-auto",
+      "min-h-[440px]",
+      "min-h-96",
+      "flex-1",
+      "size-20",
+      "max-h-full",
+      "[contain-intrinsic-size:auto_520px]",
+    ])("%s não é", (classe) => {
+      expect(ALTURA_FIXA.test(classe)).toBe(false);
+    });
+  });
+
+  describe("g. o preço fica embaixo e alinhado entre cartões de alturas diferentes", () => {
+    it("o contêiner do preço é flex-col com gap (não space-y) e a linha do preço tem mt-auto", async () => {
+      await montar();
+
+      const linha = rotulo("Preço de Venda").parentElement
+        ?.parentElement as HTMLElement;
+      const conteiner = linha.parentElement as HTMLElement;
+      const classesDoConteiner = classesDe(conteiner);
+      expect(classesDoConteiner).toContain("flex");
+      expect(classesDoConteiner).toContain("flex-col");
+      expect(classesDoConteiner).toContain("flex-1");
+      expect(classesDoConteiner).toContain("gap-4");
+      // `space-y-*` põe margem no filho e vence o `mt-auto`.
+      expect(classesDoConteiner.some((c) => c.startsWith("space-y"))).toBe(
+        false,
+      );
+      expect(classesDe(linha)).toContain("mt-auto");
+    });
+  });
+
+  describe("h. reserva do content-visibility e esqueleto usam os mesmos números", () => {
+    it("o cartão sobrescreve o contain-intrinsic-size do index.css (com !) por breakpoint", async () => {
+      await montar();
+
+      const classes = classesDe(cartao());
+      const celular = pxDaClasse(classes, RESERVA_NO_CELULAR);
+      const xl = pxDaClasse(classes, RESERVA_NO_XL);
+      expect(celular, "reserva do celular ausente").toBeDefined();
+      expect(xl, "reserva do xl ausente").toBeDefined();
+      // O cartão real mede 459 a 718px: a reserva não pode ficar nos 440 antigos.
+      expect(celular).toBeGreaterThan(440);
+      expect(xl as number).toBeGreaterThan(celular as number);
+      expect(classes).toContain("content-visibility-detailed-card");
+    });
+
+    it("o esqueleto de carregamento tem a mesma altura da reserva, no celular e no xl", async () => {
+      carregandoMock = true;
+      produtosMock = [];
+      await montar();
+      const esqueleto = hospedeiro.querySelector(
+        ".admin-glass.animate-pulse",
+      ) as HTMLElement | null;
+      expect(esqueleto, "esqueleto do modo detalhado ausente").not.toBeNull();
+      const classesDoEsqueleto = classesDe(esqueleto as HTMLElement);
+      expect(classesDoEsqueleto).not.toContain("h-[440px]");
+
+      // Remonta com um produto para ler a reserva do cartão real.
+      carregandoMock = false;
+      produtosMock = [
+        {
+          id: "prod-2",
+          name: "Blusa",
+          category: "Blusas",
+          images: [],
+          isActive: true,
+          stock: 5,
+          price: 20,
+          costPrice: 10,
+          estoqueMinimo: null,
+        },
+      ];
+      await act(async () => {
+        raiz.unmount();
+      });
+      raiz = createRoot(hospedeiro);
+      await montar();
+      const classesDoCartao = classesDe(cartao());
+
+      expect(pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR)).toBe(
+        pxDaClasse(classesDoCartao, RESERVA_NO_CELULAR),
+      );
+      expect(pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_XL)).toBe(
+        pxDaClasse(classesDoCartao, RESERVA_NO_XL),
+      );
+      expect(
+        pxDaClasse(classesDoEsqueleto, ESQUELETO_NO_CELULAR),
+      ).toBeDefined();
     });
   });
 });

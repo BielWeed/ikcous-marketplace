@@ -78,6 +78,18 @@ import { toast } from "sonner";
 
 let cachedProductsTotal = 0;
 
+// Altura que o cartão do modo detalhado ocupa ANTES de ser desenhado. O cartão
+// real mede 459 a 718px (mediana ~520px no celular e ~660px a partir de 1280px,
+// 4 colunas); o `content-visibility: auto` da classe do cartão reservava 440px
+// (src/index.css) e a lista pulava ao rolar. O `!` faz a reserva local vencer a
+// regra do index.css, que vem depois no CSS e tem a mesma especificidade.
+// O esqueleto de carregamento usa os MESMOS números para não haver salto quando
+// os dados chegam. Strings literais de propósito: o Tailwind só gera classe que
+// aparece inteira no fonte. Mudou um número? Mude os dois (o teste confere).
+const RESERVA_DO_CARTAO_DETALHADO =
+  "![contain-intrinsic-size:auto_520px] xl:![contain-intrinsic-size:auto_660px]";
+const ALTURA_DO_ESQUELETO_DETALHADO = "h-[520px] xl:h-[660px]";
+
 /** Percentual com 1 casa, em pt-BR ("130,2%", nunca "130.15%"): a mesma
  * grafia no cartão do topo, no simulador e no cartão detalhado. */
 function percentualComUmaCasa(valor: number): string {
@@ -817,7 +829,10 @@ export const AdminProductsView = memo(function AdminProductsView({
                     ? Array.from({ length: 8 }).map((_, i) => (
                         <div
                           key={i}
-                          className="admin-glass flex h-[440px] animate-pulse flex-col justify-between space-y-6 rounded-[2.5rem] border border-white/5 p-8 shadow-[0_20px_50px_rgba(0,0,0,0.3)]"
+                          className={cn(
+                            "admin-glass flex animate-pulse flex-col justify-between space-y-6 rounded-[2.5rem] border border-white/5 p-8 shadow-[0_20px_50px_rgba(0,0,0,0.3)]",
+                            ALTURA_DO_ESQUELETO_DETALHADO,
+                          )}
                         >
                           <div className="flex items-start gap-6">
                             <Skeleton className="size-24 shrink-0 animate-pulse rounded-3xl bg-white/5" />
@@ -1570,7 +1585,12 @@ const AdminProductCard = memo(function AdminProductCard({
         onTouchStart={onPrefetch}
       >
         <div className="absolute inset-0 rounded-[2.5rem] bg-gradient-to-br from-admin-gold to-transparent opacity-0 blur-2xl transition-opacity duration-700 group-hover:opacity-5" />
-        <div className="admin-glass content-visibility-detailed-card relative flex h-full flex-col overflow-hidden border-y border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all duration-500 group-hover:border-white/10 sm:rounded-[2.5rem] sm:border-x">
+        <div
+          className={cn(
+            "admin-glass content-visibility-detailed-card relative flex h-full flex-col overflow-hidden border-y border-white/5 shadow-[0_20px_50px_rgba(0,0,0,0.3)] transition-all duration-500 group-hover:border-white/10 sm:rounded-[2.5rem] sm:border-x",
+            RESERVA_DO_CARTAO_DETALHADO,
+          )}
+        >
           {/* Header Action Overlay */}
           <div className="absolute right-4 top-4 z-20">
             <DropdownMenu>
@@ -1738,7 +1758,7 @@ const AdminProductCard = memo(function AdminProductCard({
             </div>
 
             {/* Inventory Specs */}
-            <div className="flex-1 space-y-4 pt-2">
+            <div className="flex flex-1 flex-col gap-4 pt-2">
               <div className="group/spec flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-700 transition-colors group-hover/spec:text-zinc-500">
                   Unidades em Estoque
