@@ -185,3 +185,95 @@ describe("CanaisDoCrm — paleta das formas de pagamento não colide com a ident
     );
   });
 });
+
+// Redesenho de 10/10/2026 (cartões de métrica): o resumo do período e os
+// blocos de canal ganham o mesmo desenho do KpiCard de AdminKpiCarousel.
+describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
+  let raiz: Root;
+  let hospedeiro: HTMLDivElement;
+
+  beforeEach(() => {
+    hospedeiro = document.createElement("div");
+    document.body.appendChild(hospedeiro);
+    raiz = createRoot(hospedeiro);
+  });
+
+  afterEach(() => {
+    act(() => raiz.unmount());
+    hospedeiro.remove();
+  });
+
+  async function montar() {
+    const { CanaisDoCrm } = await import("@/components/admin/crm/CanaisDoCrm");
+    const visao: VisaoDoCrm = {
+      kpis: { ...KPIS_VAZIOS, receita: 1000, pedidos: 10, ticketMedio: 100 },
+      canais: [
+        { canal: "online", receita: 800, pedidos: 8, ticketMedio: 100 },
+        { canal: "presencial", receita: 200, pedidos: 2, ticketMedio: 100 },
+      ],
+      formas: [{ forma: "pix", receita: 1000, pedidos: 10 }],
+      funil: {
+        visitas: null,
+        produtosVistos: null,
+        carrinhos: null,
+        pedidosCriados: null,
+        pedidosPagos: null,
+      },
+      pipeline: [],
+      segmentos: [],
+    };
+    await act(async () => {
+      raiz.render(
+        <CanaisDoCrm visao={visao} carregando={false} onNavigate={() => {}} />,
+      );
+    });
+  }
+
+  it("resumo do período: superfície nova, rótulo em frase normal e valor de 22px branco", async () => {
+    await montar();
+
+    const secao = hospedeiro.querySelector("section")!;
+    const superficie = secao.querySelector("div") as HTMLElement;
+    expect(superficie.classList.contains("border-white/10")).toBe(true);
+    expect(superficie.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(superficie.classList.contains("bg-gradient-to-b")).toBe(true);
+    expect(superficie.classList.contains("bg-zinc-900/60")).toBe(false);
+
+    const rotulo = Array.from(secao.querySelectorAll("p")).find(
+      (p) => texto(p) === "Total vendido",
+    )!;
+    expect(rotulo.classList.contains("text-xs")).toBe(true);
+    expect(rotulo.classList.contains("font-semibold")).toBe(true);
+    expect(rotulo.classList.contains("text-zinc-300")).toBe(true);
+    expect(rotulo.classList.contains("uppercase")).toBe(false);
+
+    const valor = rotulo.nextElementSibling as HTMLElement;
+    expect(valor.classList.contains("text-white")).toBe(true);
+    expect(valor.classList.contains("text-[22px]")).toBe(true);
+  });
+
+  it("bloco de canal: superfície nova e rótulos Pedidos / Valor médio em frase normal", async () => {
+    await montar();
+
+    const bloco = hospedeiro.querySelector(
+      'section[aria-labelledby="crm-canais-titulo"] ul > li > div',
+    ) as HTMLElement;
+    expect(bloco.classList.contains("border-white/10")).toBe(true);
+    expect(bloco.classList.contains("bg-zinc-900/70")).toBe(true);
+    expect(bloco.classList.contains("bg-gradient-to-b")).toBe(true);
+    expect(bloco.classList.contains("bg-zinc-950")).toBe(false);
+
+    const dts = Array.from(bloco.querySelectorAll("dt"));
+    expect(dts.map((d) => texto(d).trim())).toEqual([
+      "Pedidos",
+      "Valor médio por venda",
+    ]);
+    for (const dt of dts) {
+      expect(dt.classList.contains("uppercase")).toBe(false);
+      expect(dt.classList.contains("text-xs")).toBe(true);
+      expect(dt.classList.contains("text-zinc-300")).toBe(true);
+    }
+    // Nada de texto de 11px dentro do bloco.
+    expect(bloco.innerHTML).not.toMatch(/text-\[11px\]/);
+  });
+});
