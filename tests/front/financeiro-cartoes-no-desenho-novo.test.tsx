@@ -282,7 +282,12 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     );
     expect(classes(valor)).not.toContain("text-lg");
     expect(classes(valor)).not.toContain("text-xl");
-    expect(classes(cartao)).toEqual(expect.arrayContaining(["px-3", "py-3.5"]));
+    // Padding horizontal: 10px na base (360px: +4px de folga ao valor) e 12px
+    // de `sm` em diante.
+    expect(classes(cartao)).toEqual(
+      expect.arrayContaining(["px-2.5", "sm:px-3", "py-3.5"]),
+    );
+    expect(classes(cartao)).not.toContain("px-3");
 
     const detalhe = [...hospedeiro.querySelectorAll("div")].find(
       (el) => normalizar(el.textContent) === "no período",
