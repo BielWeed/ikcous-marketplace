@@ -50,12 +50,13 @@
  *              (renomeado numa transacao desfeita) -> as 3 linhas de EXECUTE, com `papel ausente` no
  *              vivo; o schema `public` renomeado (transacao desfeita) -> TODAS as linhas, o controle
  *              com '0'.
- *  MUTANTES    cada linha virando constante (a de controle tambem, e o controle sempre '>0'); o CRLF
- *              de cada corpo fora dos aceitos; o hash do ANTES nos aceitos da 17a (e o do DEPOIS nos da
- *              17b); o filtro `n.nspname = 'public'` das sobrecargas fora; a clausula de anon e de
- *              authenticated de cada linha de EXECUTE desligada, a de PUBLIC invertida, os papeis
- *              trocados no CTE `fn`, o `papel ausente` engolido pelo formato da 16a
- *              (`COALESCE(CASE WHEN f.exec_anon ...)`) e o `to_regrole` de um papel no lugar do outro
+ *  MUTANTES    cada linha virando constante (a de controle tambem, o controle sempre '>0' e sem o
+ *              filtro do schema); o CRLF de cada corpo fora dos aceitos; o hash do ANTES nos aceitos
+ *              da 17a (e o do DEPOIS nos da 17b); o filtro `n.nspname = 'public'` das sobrecargas
+ *              fora; a clausula de anon e de authenticated de cada linha de EXECUTE desligada, a de
+ *              PUBLIC invertida, os papeis trocados no CTE `fn`, o `papel ausente` engolido pelo
+ *              formato da 16a (`COALESCE(CASE WHEN f.exec_anon ...)`) e o `to_regrole` de um papel no
+ *              lugar do outro (a consulta mutada tem de ERRAR com 42704)
  *              -- cada um deixa um caso PASSAR e esta prova ficaria VERMELHA (a saida vermelha de cada
  *              um e' impressa). Dois mutantes sao EQUIVALENTES e a prova os MEDE como tais (ver LIMITES).
  *  FECHADO     resposta PARCIAL, linha duplicada, linha a mais e o rol de uma consulta julgando a
@@ -874,10 +875,17 @@ async function mutanteEquivalente(rotulo, consulta, trocas, caso) {
 }
 /**
  * Mutante pego pelo QUE a linha diz (o `checar` do caso) ou por ERRAR onde a consulta real responde:
- * a consulta real reprova `esperadas` e passa no `checar`; a mutada tem de falhar em algum dos dois
- * (ou dar erro do banco, que o portao trataria como SEM_EVIDENCIA, e esta prova como VERMELHA).
+ * a consulta real reprova `esperadas` e passa no `checar`. Sem `erro`, a mutada tem de RESPONDER e
+ * falhar no `exigirReprovadas` ou no `checar` (erro do banco nao conta: derruba a prova). Com `erro`,
+ * a mutada tem de ERRAR com exatamente esse SQLSTATE (o portao a trataria como SEM_EVIDENCIA).
  */
-async function mutanteComChecagem(rotulo, consulta, trocas, caso) {
+async function mutanteComChecagem(
+  rotulo,
+  consulta,
+  trocas,
+  caso,
+  { erro = null } = {},
+) {
   const sql = aplicarTrocas(rotulo, consulta, trocas);
   const [real] = (await noEstado(caso.montar, [consulta], caso.opcoes)).saidas;
   await exigirReprovadas(
@@ -887,10 +895,28 @@ async function mutanteComChecagem(rotulo, consulta, trocas, caso) {
     caso.esperadas,
   );
   caso.checar(real);
+  if (erro) {
+    let codigo = null;
+    try {
+      await noEstado(caso.montar, [{ sql }], caso.opcoes);
+    } catch (e) {
+      if (e instanceof assert.AssertionError) throw e;
+      codigo = e.code;
+      console.log(
+        `     mutante "${rotulo}" -> VERMELHO: a consulta mutada ERRA (${e.code}: ${String(e.message).slice(0, 120)}) onde a real responde`,
+      );
+    }
+    assert.equal(
+      codigo,
+      erro,
+      `${rotulo}: a consulta mutada tinha de errar com ${erro}`,
+    );
+    return;
+  }
+  const [mutante] = (await noEstado(caso.montar, [{ sql }], caso.opcoes))
+    .saidas;
   let pego = false;
   try {
-    const [mutante] = (await noEstado(caso.montar, [{ sql }], caso.opcoes))
-      .saidas;
     await exigirReprovadas(
       consulta,
       `mutante ${rotulo}`,
@@ -900,13 +926,7 @@ async function mutanteComChecagem(rotulo, consulta, trocas, caso) {
     caso.checar(mutante);
   } catch (e) {
     pego = true;
-    if (e instanceof assert.AssertionError) imprimeVermelho(rotulo, e);
-    else {
-      assert.ok(e.code, `${rotulo}: erro inesperado ${String(e)}`);
-      console.log(
-        `     mutante "${rotulo}" -> VERMELHO: a consulta mutada ERRA (${e.code}: ${String(e.message).slice(0, 120)}) onde a real responde`,
-      );
-    }
+    imprimeVermelho(rotulo, e);
   }
   assert.ok(pego, `${rotulo}: o MUTANTE passou despercebido`);
 }
@@ -1641,6 +1661,7 @@ async function provar(cloneDepois, cloneAntes) {
         ],
       ],
       casoDe(consulta, `${pre}-sem-authenticated`),
+      { erro: "42704" },
     );
     await mutanteComChecagem(
       `${r} CTE fn: to_regrole('authenticated') guardando anon`,
@@ -1652,6 +1673,7 @@ async function provar(cloneDepois, cloneAntes) {
         ],
       ],
       casoDe(consulta, `${pre}-sem-anon`),
+      { erro: "42704" },
     );
     // o controle sempre '>0': com o schema public renomeado a linha deixa de reprovar
     await mutanteNegativo(
@@ -1660,7 +1682,20 @@ async function provar(cloneDepois, cloneAntes) {
       trocasNaLinha("controle", consulta, CONTROLE, RE_CONTROLE, "'>0'"),
       casoDe(consulta, `${pre}-sem-schema-public`),
     );
-    nMutantes += 3;
+    // o controle sem o filtro do schema: conta as funcoes de pg_catalog (sempre > 0) e deixa de reprovar
+    await mutanteNegativo(
+      `${r} controle sem o filtro n.nspname = 'public'`,
+      consulta,
+      trocasNaLinha(
+        "controle",
+        consulta,
+        CONTROLE,
+        "WHERE n.nspname = 'public') > 0",
+        ") > 0",
+      ),
+      casoDe(consulta, `${pre}-sem-schema-public`),
+    );
+    nMutantes += 4;
   }
   // os EQUIVALENTES (LIMITES): medidos no caso que mais os favoreceria
   let nEquivalentes = 0;
@@ -1730,7 +1765,7 @@ async function provar(cloneDepois, cloneAntes) {
     nEquivalentes += 2;
   }
   ok(
-    `MUTANTES do texto das consultas: ${nMutantes} pegos (cada linha virando constante, menos a de controle; o CRLF de cada corpo fora dos aceitos; o hash do ANTES nos aceitos da 17a e o do DEPOIS nos da 17b; o filtro do schema nas sobrecargas; a clausula de anon e de authenticated de cada EXECUTE, a de PUBLIC invertida, os papeis trocados no CTE fn, o papel ausente no formato da 16a, o to_regrole de um papel no lugar do outro e o controle sempre '>0') -- a prova ficaria VERMELHA; ${nEquivalentes} EQUIVALENTES medidos como tais (PUBLIC desligado no EXECUTE e o NOT a.attisdropped de faltam), declarados nos LIMITES`,
+    `MUTANTES do texto das consultas: ${nMutantes} pegos (cada linha virando constante, inclusive a de controle (no schema public renomeado); o CRLF de cada corpo fora dos aceitos; o hash do ANTES nos aceitos da 17a e o do DEPOIS nos da 17b; o filtro do schema nas sobrecargas; a clausula de anon e de authenticated de cada EXECUTE, a de PUBLIC invertida, os papeis trocados no CTE fn, o papel ausente no formato da 16a, o to_regrole de um papel no lugar do outro (erro 42704 exigido), o controle sempre '>0' e o controle sem o filtro do schema) -- a prova ficaria VERMELHA; ${nEquivalentes} EQUIVALENTES medidos como tais (PUBLIC desligado no EXECUTE e o NOT a.attisdropped de faltam), declarados nos LIMITES`,
   );
 
   // ----------------------------------------------------------- ROL FECHADO
