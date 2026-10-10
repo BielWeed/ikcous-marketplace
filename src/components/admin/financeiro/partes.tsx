@@ -136,7 +136,11 @@ export const CLASSE_CASCA_DA_LINHA_BOTAO =
 export const CLASSE_SETA_DA_LINHA_BOTAO =
   "size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold";
 
-/** Piso ÚNICO do cartão de KPI e do esqueleto: o conteúdo não pula ao carregar. */
+/**
+ * Piso do cartão de KPI e do esqueleto (uma constante só, para não divergirem).
+ * É piso, não altura exata: com detalhe ou rótulo de duas linhas o cartão real
+ * passa disso e o conteúdo abaixo ainda se ajusta quando os números chegam.
+ */
 const ALTURA_MINIMA_DO_KPI = "min-h-[100px]";
 
 export function BlocoKpi({
@@ -157,9 +161,10 @@ export function BlocoKpi({
 }) {
   return (
     <div
-      // Template e não `cn`: o tailwind-merge trata `bg-gradient-to-*` como
+      // Valor em dinheiro nunca é cortado a 360px: abaixo de `sm` no máximo
+      // 18px (`text-lg`) e `px-3`. Template e não `cn`: o tailwind-merge trata `bg-gradient-to-*` como
       // conflito de `bg-zinc-900/70` e descartaria o fundo da casca.
-      className={`relative flex min-w-0 flex-col gap-1.5 overflow-hidden p-3.5 shadow-lg ${CLASSE_CASCA_DO_CARTAO} ${ALTURA_MINIMA_DO_KPI}${className ? ` ${className}` : ""}`}
+      className={`relative flex min-w-0 flex-col gap-1.5 overflow-hidden px-3 py-3.5 shadow-lg ${CLASSE_CASCA_DO_CARTAO} ${ALTURA_MINIMA_DO_KPI}${className ? ` ${className}` : ""}`}
     >
       {/* O ícone fica num selo no canto (nunca some); o rótulo reserva a
           faixa dele (`pr-9`) só quando há ícone, e o valor usa a largura toda. */}
@@ -184,7 +189,7 @@ export function BlocoKpi({
       >
         {rotulo}
       </span>
-      <div className="min-w-0 truncate text-xl font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
+      <div className="min-w-0 truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
         {children}
       </div>
       {detalhe ? (
@@ -218,7 +223,10 @@ export function EsqueletoDeKpis({
     >
       <span className="sr-only">Carregando…</span>
       {Array.from({ length: quantos }, (_, i) => (
-        <Skeleton key={i} className="h-[100px] rounded-2xl bg-white/5" />
+        <Skeleton
+          key={i}
+          className={`${ALTURA_MINIMA_DO_KPI} rounded-2xl bg-white/5`}
+        />
       ))}
     </div>
   );

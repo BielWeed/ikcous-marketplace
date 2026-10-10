@@ -269,7 +269,12 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     expect(classes(valor)).toEqual(
       expect.arrayContaining(["font-black", "tabular-nums", "text-white"]),
     );
-    expect(classes(valor)).not.toContain("text-lg");
+    // Dinheiro não pode ser cortado a 360px: até `sm` no máximo 18px.
+    expect(classes(valor)).toEqual(
+      expect.arrayContaining(["text-lg", "sm:text-2xl"]),
+    );
+    expect(classes(valor)).not.toContain("text-xl");
+    expect(classes(cartao)).toEqual(expect.arrayContaining(["px-3", "py-3.5"]));
 
     const detalhe = [...hospedeiro.querySelectorAll("div")].find(
       (el) => normalizar(el.textContent) === "no período",
@@ -308,7 +313,7 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
     const esqueletos = hospedeiro.querySelectorAll('[aria-busy="true"] > div');
     expect(esqueletos).toHaveLength(2);
     for (const esqueleto of esqueletos) {
-      expect(classes(esqueleto)).toContain("h-[100px]");
+      expect(classes(esqueleto)).toContain("min-h-[100px]");
       expect(classes(esqueleto)).not.toContain("h-[92px]");
       expect(classes(esqueleto)).toContain("rounded-2xl");
     }
@@ -361,6 +366,11 @@ describe("Financeiro — cartões e linhas-botão no desenho novo", () => {
       rotuloNoDesenhoNovo(r, rotulo);
       comACasca(r.parentElement, CASCA_DO_CARTAO, rotulo);
     }
+    // Valor em dinheiro não vaza da célula de ~100px: 12px até `sm`.
+    expect(classes(dt("Saiu").parentElement)).toContain("p-2");
+    expect(classes(dt("Saiu").nextElementSibling)).toEqual(
+      expect.arrayContaining(["text-xs", "sm:text-sm"]),
+    );
     // O valor não perde a cor de sinal.
     expect(classes(dt("Entrou").nextElementSibling)).toContain(
       "text-emerald-300",

@@ -271,23 +271,23 @@ export function AbaExtrato({
           />
         </div>
         <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-          <div className={`p-2.5 ${CLASSE_CASCA_DO_CARTAO}`}>
+          <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Entrou</dt>
-            <dd className="mt-1 text-sm font-black text-emerald-300">
+            <dd className="mt-1 text-xs font-black text-emerald-300 sm:text-sm">
               <Dinheiro valor={totais.entradas} sentido={1} />
             </dd>
           </div>
-          <div className={`p-2.5 ${CLASSE_CASCA_DO_CARTAO}`}>
+          <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Saiu</dt>
-            <dd className="mt-1 text-sm font-black text-red-300">
+            <dd className="mt-1 text-xs font-black text-red-300 sm:text-sm">
               <Dinheiro valor={totais.saidas} sentido={-1} />
             </dd>
           </div>
-          <div className={`p-2.5 ${CLASSE_CASCA_DO_CARTAO}`}>
+          <div className={`p-2 ${CLASSE_CASCA_DO_CARTAO}`}>
             <dt className={CLASSE_ROTULO_DO_CARTAO}>Resultado</dt>
             <dd
               className={cn(
-                "mt-1 text-sm font-black",
+                "mt-1 text-xs font-black sm:text-sm",
                 corDoValor(totais.entradas - totais.saidas),
               )}
             >
