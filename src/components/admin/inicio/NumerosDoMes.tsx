@@ -11,6 +11,7 @@ import type { View } from "@/types";
 import type { PainelInicio } from "@/types/painel";
 import {
   ArrowDownToLine,
+  ArrowUpFromLine,
   ChevronRight,
   Landmark,
   PiggyBank,
@@ -52,7 +53,7 @@ export function NumerosDoMes({
           Este mês
         </h2>
         {mes && mes.pedidos != null ? (
-          <p className="text-[11px] text-zinc-500">
+          <p className="text-[11px] text-zinc-400">
             <strong className="font-bold tabular-nums text-zinc-300">
               {formatarInteiro(mes.pedidos)}
             </strong>{" "}
@@ -119,18 +120,22 @@ export function NumerosDoMes({
       <button
         type="button"
         onClick={() => onNavigate("admin-financeiro")}
-        className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl border border-white/5 bg-zinc-950/40 px-3 py-2 text-left text-xs transition-colors hover:border-admin-gold/30 hover:bg-zinc-900/40"
+        className="group flex min-h-11 w-full items-center gap-3 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-r from-white/[0.05] to-transparent px-3.5 py-3 text-left shadow-lg transition-all hover:border-admin-gold/40 hover:from-admin-gold/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]"
       >
-        <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="text-zinc-400">
-            A pagar em 7 dias{" "}
-            <strong className="font-bold tabular-nums text-white">
-              {esqueleto ? "…" : formatarMoeda(painel?.aPagar7d)}
-            </strong>
-          </span>
+        <span
+          aria-hidden="true"
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-admin-gold/25 bg-admin-gold/10"
+        >
+          <ArrowUpFromLine className="size-5 text-admin-gold" />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm font-bold text-zinc-300">
+          A pagar em 7 dias{" "}
+          <strong className="font-black tabular-nums text-white">
+            {esqueleto ? "…" : formatarMoeda(painel?.aPagar7d)}
+          </strong>
         </span>
         <ChevronRight
-          className="size-4 shrink-0 text-zinc-500"
+          className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
           aria-hidden="true"
         />
       </button>

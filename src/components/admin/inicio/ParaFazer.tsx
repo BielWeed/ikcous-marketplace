@@ -77,6 +77,11 @@ function montarItens(painel: PainelInicio | null): ItemParaFazer[] {
   ];
 }
 
+// Casca do botão-linha (mesmo desenho do AtalhosDaAba); a cor de estado vem
+// de quem usa.
+const CASCA_DA_LINHA =
+  "group flex min-h-11 w-full items-center gap-3 rounded-2xl border bg-gradient-to-r to-transparent px-3 py-2.5 text-left shadow-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-admin-gold active:scale-[0.99]";
+
 /** "Para fazer": cada pendência com o seu número e o atalho para resolvê-la. */
 export function ParaFazer({
   painel,
@@ -124,24 +129,34 @@ export function ParaFazer({
             <button
               type="button"
               onClick={() => onNavigate(item.destino)}
-              className={cn(
-                "group flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+              // Template e não `cn`: o tailwind-merge trata `bg-<cor>` e
+              // `bg-gradient-to-r` como conflito e descartaria o gradiente.
+              className={`${CASCA_DA_LINHA} ${
                 item.pendente
-                  ? "border-amber-500/15 bg-amber-500/[0.04] hover:border-amber-500/30"
-                  : "border-white/5 bg-zinc-950/40 hover:border-white/10 hover:bg-zinc-900/40",
-              )}
+                  ? "border-amber-500/25 bg-amber-500/[0.04] from-amber-500/[0.10] hover:border-amber-500/45"
+                  : "border-white/10 bg-zinc-900/70 from-white/[0.05] hover:border-admin-gold/40 hover:from-admin-gold/[0.08]"
+              }`}
             >
-              <item.icone
-                className={cn(
-                  "size-4 shrink-0",
-                  item.pendente ? "text-amber-300" : "text-zinc-500",
-                )}
+              <span
                 aria-hidden="true"
-              />
+                className={cn(
+                  "flex size-10 shrink-0 items-center justify-center rounded-xl border",
+                  item.pendente
+                    ? "border-amber-500/30 bg-amber-500/10"
+                    : "border-admin-gold/25 bg-admin-gold/10",
+                )}
+              >
+                <item.icone
+                  className={cn(
+                    "size-5",
+                    item.pendente ? "text-amber-300" : "text-admin-gold",
+                  )}
+                />
+              </span>
               <span
                 className={cn(
-                  "min-w-0 flex-1 truncate text-xs font-semibold",
-                  item.pendente ? "text-white" : "text-zinc-400",
+                  "min-w-0 flex-1 line-clamp-2 text-sm font-bold leading-tight",
+                  item.pendente ? "text-white" : "text-zinc-300",
                 )}
               >
                 {item.rotulo}
@@ -164,7 +179,7 @@ export function ParaFazer({
                 </span>
               )}
               <ChevronRight
-                className="size-4 shrink-0 text-zinc-600 transition-transform group-hover:translate-x-0.5"
+                className="size-5 shrink-0 text-zinc-500 transition-transform group-hover:translate-x-0.5 group-hover:text-admin-gold"
                 aria-hidden="true"
               />
             </button>

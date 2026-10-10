@@ -174,7 +174,7 @@ export function CartaoDaAssinatura({
         {assinatura.valorMensal != null ? (
           <p className="text-sm font-bold tabular-nums text-zinc-300">
             {formatarMoeda(assinatura.valorMensal)}
-            <span className="font-semibold text-zinc-500">
+            <span className="font-semibold text-zinc-400">
               {rotuloDoCiclo(assinatura.ciclo)}
             </span>
           </p>
@@ -184,7 +184,7 @@ export function CartaoDaAssinatura({
       <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
         {assinatura.proximaCobrancaEm ? (
           <div>
-            <dt className="text-zinc-500">Próxima cobrança</dt>
+            <dt className="text-zinc-400">Próxima cobrança</dt>
             <dd className="font-bold tabular-nums text-white">
               {formatarData(assinatura.proximaCobrancaEm)}
             </dd>
@@ -192,7 +192,7 @@ export function CartaoDaAssinatura({
         ) : null}
         {assinatura.testeAte ? (
           <div>
-            <dt className="text-zinc-500">Teste até</dt>
+            <dt className="text-zinc-400">Teste até</dt>
             <dd className="font-bold tabular-nums text-white">
               {formatarData(assinatura.testeAte)}
             </dd>
@@ -200,7 +200,7 @@ export function CartaoDaAssinatura({
         ) : null}
         {assinatura.inicioEm ? (
           <div>
-            <dt className="text-zinc-500">Cliente desde</dt>
+            <dt className="text-zinc-400">Cliente desde</dt>
             <dd className="font-bold tabular-nums text-white">
               {formatarData(assinatura.inicioEm)}
             </dd>
@@ -232,7 +232,7 @@ export function CartaoDaAssinatura({
             </li>
           ))}
           {recursosEscondidos > 0 ? (
-            <li className="rounded-full px-1 py-0.5 text-[11px] font-semibold text-zinc-500">
+            <li className="rounded-full px-1 py-0.5 text-[11px] font-semibold text-zinc-400">
               +{recursosEscondidos}
             </li>
           ) : null}
