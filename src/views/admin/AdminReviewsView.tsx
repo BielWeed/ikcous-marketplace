@@ -395,12 +395,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
             {pendentesNoBanco > 0 ? (
               <>
                 <span className="size-1.5 animate-pulse rounded-full bg-amber-400" />
-                <span className="text-[9px] font-bold uppercase tracking-widest text-amber-400">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400">
                   {pendentesNoBanco} aguardando sua aprovação
                 </span>
               </>
             ) : (
-              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+              <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                 Nenhuma avaliação na fila de moderação
               </span>
             )}
@@ -570,7 +570,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   className="shrink-0 rounded-lg border border-admin-gold/20 bg-admin-gold/10 px-2 py-0.5"
                   title="Total de avaliações"
                 >
-                  <p className="text-[9px] font-black uppercase tracking-widest text-admin-gold sm:text-[10px]">
+                  <p className="text-[11px] font-black uppercase tracking-widest text-admin-gold">
                     {totalReviews}
                   </p>
                 </div>
@@ -579,12 +579,12 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                   title="Média global de estrelas"
                 >
                   <Star className="size-3 fill-admin-gold text-admin-gold" />
-                  <span className="text-[9px] font-black tracking-widest text-white sm:text-[10px]">
+                  <span className="text-[11px] font-black tracking-widest text-white">
                     {/* CORRIGE 1 da revisao 2305: o title diz "Média
                       global" — o valor é o GLOBAL, nunca o filtrado. */}
                     {mediaGlobalExibida}
                   </span>
-                  <span className="hidden text-[8px] font-bold text-zinc-500 sm:inline">
+                  <span className="hidden text-[11px] font-bold text-zinc-500 sm:inline">
                     MÉDIA
                   </span>
                 </div>
@@ -626,7 +626,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       setRatingFilter("all");
                       setPage(0);
                     }}
-                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                    className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
                       ratingFilter === "all"
                         ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
                         : "text-zinc-500 hover:bg-white/5 hover:text-white"
@@ -641,7 +641,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                         setRatingFilter(star);
                         setPage(0);
                       }}
-                      className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[9px] font-black uppercase tracking-widest transition-all ${
+                      className={`flex items-center gap-1 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all ${
                         ratingFilter === star
                           ? "bg-admin-gold text-black shadow-lg shadow-admin-gold/20"
                           : "text-zinc-500 hover:bg-white/5 hover:text-white"
@@ -730,7 +730,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       <span
                         className={`inline-block size-1.5 rounded-full ${config.enableReviews ? "animate-pulse bg-emerald-500" : "bg-zinc-600"}`}
                       />
-                      <span className="text-[9px] font-semibold tracking-wider text-zinc-500 uppercase">
+                      <span className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
                         {config.enableReviews ? "Ativo" : "Inativo"}
                       </span>
                     </div>
@@ -868,14 +868,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                               {review.customerName}
                             </p>
                             {review.verified && (
-                              <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
+                              <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.15em] text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]">
                                 <ShieldCheck className="size-3.5" />
                                 Compra Verificada
                               </div>
                             )}
                           </div>
                           <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                            <span className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
                               Produto:
                             </span>
                             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-3 py-1 text-xs font-black text-admin-gold transition-colors group-hover:border-admin-gold/30">
@@ -893,7 +893,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       <div className="flex items-center gap-6">
                         <div className="hidden text-right sm:block">
-                          <p className="text-[10px] font-black uppercase leading-none tracking-widest text-zinc-600">
+                          <p className="text-[11px] font-black uppercase leading-none tracking-wider text-zinc-600">
                             Data da Postagem
                           </p>
                           <p className="mt-2 flex items-center justify-end gap-1.5 text-sm font-bold tracking-tighter text-zinc-400">
@@ -908,7 +908,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                               <div className="h-4 w-px bg-zinc-800" />
                               <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1">
                                 <ThumbsUp className="size-3 fill-emerald-400/20 text-emerald-400" />
-                                <span className="text-[10px] font-bold tracking-tighter text-white">
+                                <span className="text-[11px] font-bold tracking-tighter text-white">
                                   {review.helpful}
                                 </span>
                               </div>
@@ -942,7 +942,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                           <div className="flex size-8 items-center justify-center rounded-xl bg-admin-gold shadow-lg shadow-admin-gold/20">
                             <MessageSquare className="size-4 text-black" />
                           </div>
-                          <span className="text-[10px] font-black uppercase italic tracking-[0.2em] text-white">
+                          <span className="text-[11px] font-black uppercase italic tracking-[0.2em] text-white">
                             Resposta Oficial da Loja
                           </span>
                         </div>
@@ -969,7 +969,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             handleAprovar(review.id);
                           }}
                           disabled={isOffline}
-                          className="flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] disabled:pointer-events-none disabled:opacity-40"
+                          className="flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-lg shadow-emerald-500/20 transition-all duration-300 hover:scale-[1.02] disabled:pointer-events-none disabled:opacity-40"
                         >
                           <ShieldCheck className="size-3.5" />
                           Aprovar e Publicar
@@ -983,7 +983,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             setReplyingTo(review.id);
                             setReplyText("");
                           }}
-                          className="flex items-center gap-2 rounded-2xl bg-admin-gold px-6 py-3 text-[10px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/10 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                          className="flex items-center gap-2 rounded-2xl bg-admin-gold px-6 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/10 transition-all hover:scale-[1.02] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                         >
                           <MessageSquare className="size-3.5" /> Responder
                         </button>
@@ -993,18 +993,18 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {confirmDeleteId === review.id ? (
                         <div className="flex items-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 p-2 duration-300 animate-in slide-in-from-right-4">
-                          <span className="px-3 text-[9px] font-black uppercase tracking-widest text-red-400">
+                          <span className="px-3 text-[11px] font-black uppercase tracking-widest text-red-400">
                             Confirmar exclusão?
                           </span>
                           <button
                             onClick={() => handleDelete(review.id)}
-                            className="rounded-xl bg-red-600 px-5 py-2.5 font-sans text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-red-600/20 transition-all hover:bg-red-500"
+                            className="rounded-xl bg-red-600 px-5 py-2.5 font-sans text-[11px] font-black uppercase tracking-widest text-white shadow-lg shadow-red-600/20 transition-all hover:bg-red-500"
                           >
                             Sim, Apagar
                           </button>
                           <button
                             onClick={() => setConfirmDeleteId(null)}
-                            className="rounded-xl bg-white/5 px-5 py-2.5 text-[10px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-white/10"
+                            className="rounded-xl bg-white/5 px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-400 transition-all hover:bg-white/10"
                           >
                             Cancelar
                           </button>
@@ -1038,14 +1038,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                               <div className="flex size-8 items-center justify-center rounded-full bg-admin-gold/10">
                                 <MessageSquare className="size-4 text-admin-gold" />
                               </div>
-                              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">
+                              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-white">
                                 Formulário de Resposta
                               </span>
                             </div>
 
                             {/* Suggested Responses */}
                             <div className="space-y-2.5">
-                              <span className="block text-[9px] font-black uppercase tracking-widest text-zinc-500">
+                              <span className="block text-[11px] font-black uppercase tracking-widest text-zinc-500">
                                 Sugestões de Resposta Rápida:
                               </span>
                               <div className="flex flex-wrap gap-2">
@@ -1096,7 +1096,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             {isOffline && (
                               <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-red-400">
                                 <AlertCircle className="size-4 shrink-0 animate-pulse" />
-                                <span className="text-[10px] font-black uppercase tracking-wider">
+                                <span className="text-[11px] font-black uppercase tracking-wider">
                                   Modo Offline Ativo
                                 </span>
                               </div>
@@ -1104,7 +1104,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                             <div className="flex items-center justify-end gap-4">
                               <button
                                 onClick={() => setReplyingTo(null)}
-                                className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
+                                className="px-6 py-3 text-[11px] font-black uppercase tracking-widest text-zinc-500 transition-colors hover:text-white"
                                 disabled={isSubmittingReply}
                               >
                                 Cancelar
@@ -1139,7 +1139,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                     haptic.error();
                                   }
                                 }}
-                                className="rounded-2xl bg-admin-gold px-8 py-3 text-[10px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale"
+                                className="rounded-2xl bg-admin-gold px-8 py-3 text-[11px] font-black uppercase tracking-widest text-black shadow-xl shadow-admin-gold/20 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:grayscale"
                                 disabled={
                                   isSubmittingReply ||
                                   !replyText.trim() ||
@@ -1198,14 +1198,14 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                 <ShieldCheck className="text-emerald-450 size-3.5 shrink-0" />
                               )}
                             </div>
-                            <span className="block text-[8px] font-bold uppercase tracking-tight text-zinc-550">
+                            <span className="block text-[11px] font-bold uppercase tracking-tight text-zinc-550">
                               {formatDate(review.createdAt)}
                             </span>
                           </div>
                         </div>
                         <div className="flex shrink-0 items-center gap-1 rounded-lg border border-white/5 bg-zinc-900/80 px-2 py-1">
                           <Star className="size-3 fill-admin-gold text-admin-gold" />
-                          <span className="text-[10px] font-black text-white">
+                          <span className="text-[11px] font-black text-white">
                             {review.rating}
                           </span>
                         </div>
@@ -1213,7 +1213,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
 
                       {/* Product link tag */}
                       <div className="mb-3">
-                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-white/5 bg-zinc-900 px-2.5 py-0.5 text-[10px] font-black text-admin-gold">
+                        <span className="inline-flex max-w-full items-center gap-1 truncate rounded-full border border-white/5 bg-zinc-900 px-2.5 py-0.5 text-[11px] font-black text-admin-gold">
                           <Package className="size-3 shrink-0 text-admin-gold" />
                           <span className="truncate">{review.productName}</span>
                         </span>
@@ -1228,7 +1228,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       {review.merchantReply && (
                         <div className="mb-4 flex items-start gap-2 rounded-xl border border-admin-gold/10 bg-admin-gold/[0.02] p-3">
                           <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-admin-gold" />
-                          <p className="line-clamp-2 text-[10px] italic text-admin-gold/80">
+                          <p className="line-clamp-2 text-[11px] italic text-admin-gold/80">
                             "{review.merchantReply}"
                           </p>
                         </div>
@@ -1237,7 +1237,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                       {/* Item 8 do laudo de 29/08: a fila de moderação é
                           real — pendente fica marcada no modo compacto. */}
                       {review.status === "pendente" && (
-                        <span className="inline-flex w-fit items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-amber-400">
+                        <span className="inline-flex w-fit items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-400">
                           Em moderação
                         </span>
                       )}
@@ -1289,13 +1289,13 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                         <div className="flex items-center gap-1 rounded-xl border border-red-500/20 bg-red-500/10 p-1 duration-300 animate-in slide-in-from-right-4">
                           <button
                             onClick={() => handleDelete(review.id)}
-                            className="bg-red-650 hover:bg-red-550 rounded-lg px-2 py-1 text-[9px] font-black uppercase text-white transition-all"
+                            className="bg-red-650 hover:bg-red-550 rounded-lg px-2 py-1 text-[11px] font-black uppercase text-white transition-all"
                           >
                             Sim
                           </button>
                           <button
                             onClick={() => setConfirmDeleteId(null)}
-                            className="rounded-lg bg-white/5 px-2 py-1 text-[9px] font-black text-zinc-400 transition-all hover:bg-white/10"
+                            className="rounded-lg bg-white/5 px-2 py-1 text-[11px] font-black text-zinc-400 transition-all hover:bg-white/10"
                           >
                             Não
                           </button>
@@ -1326,7 +1326,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                         >
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                              <span className="text-[8px] font-black uppercase tracking-widest text-white">
+                              <span className="text-[11px] font-black uppercase tracking-widest text-white">
                                 Responder
                               </span>
                               <button
@@ -1343,7 +1343,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                     setReplyingTo(null);
                                   }
                                 }}
-                                className="text-[10px] text-zinc-550 hover:text-white"
+                                className="text-[11px] text-zinc-550 hover:text-white"
                               >
                                 ✕
                               </button>
@@ -1390,7 +1390,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
                                     haptic.error();
                                   }
                                 }}
-                                className="rounded-lg bg-admin-gold px-4 py-1.5 text-[9px] font-black uppercase text-black transition-all hover:scale-105 disabled:opacity-50"
+                                className="rounded-lg bg-admin-gold px-4 py-1.5 text-[11px] font-black uppercase text-black transition-all hover:scale-105 disabled:opacity-50"
                                 disabled={
                                   isSubmittingReply ||
                                   !replyText.trim() ||
@@ -1490,7 +1490,7 @@ export const AdminReviewsView = memo(function AdminReviewsView({
           </p>
 
           <div className="space-y-3">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
               Principais Recursos
             </h4>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
