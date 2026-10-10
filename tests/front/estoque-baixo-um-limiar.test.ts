@@ -275,11 +275,12 @@ describe.each(["compact", "detailed"] as const)(
       return el as HTMLElement;
     }
 
-    /** O selo "Crítico" só existe no cartão detalhado; o sinal comum aos
-     * dois modos é a cor do número do estoque (`text-rose-500`). */
+    /** Desde a onda J (P-J2) o selo "Crítico" aparece nos DOIS modos, além
+     * da cor do número do estoque (`text-rose-500`). O número sai sem zero à
+     * esquerda ("5", não "05"). */
     function numeroDoEstoque(): HTMLElement {
       const alvo = [...cartao().querySelectorAll("span")].find((el) =>
-        /^\d{2,}$/.test(el.textContent ?? ""),
+        /^\d+$/.test(el.textContent ?? ""),
       );
       if (!alvo) throw new Error("Número do estoque não está no cartão.");
       return alvo as HTMLElement;
@@ -293,7 +294,7 @@ describe.each(["compact", "detailed"] as const)(
 
     function esperado(baixo: boolean) {
       expect(numeroDoEstoque().className.includes("text-rose-500")).toBe(baixo);
-      if (viewMode === "detailed") expect(temSeloCritico()).toBe(baixo);
+      expect(temSeloCritico()).toBe(baixo);
     }
 
     it("estoque 5 e mínimo NULL: usa o limiar padrão (5) e é baixo", async () => {

@@ -78,6 +78,15 @@ import { toast } from "sonner";
 
 let cachedProductsTotal = 0;
 
+/** Percentual com 1 casa, em pt-BR ("130,2%", nunca "130.15%"): a mesma
+ * grafia no cartão do topo, no simulador e no cartão detalhado. */
+function percentualComUmaCasa(valor: number): string {
+  return `${valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
 interface AdminProductsViewProps {
   onNavigate: (view: View, id?: string) => void;
   active?: boolean;
@@ -369,14 +378,14 @@ export const AdminProductsView = memo(function AdminProductsView({
       },
       {
         id: "roi-portfolio",
-        label: "ROI do Portfólio",
+        label: "Lucro sobre o custo",
         value:
           financialStats.avgRoi !== null
-            ? `${financialStats.avgRoi.toFixed(2)}%`
+            ? percentualComUmaCasa(financialStats.avgRoi)
             : "—",
         icon: DollarSign,
         accent: "text-blue-500",
-        subValue: "Lucro sobre o custo %",
+        subValue: "Média do estoque com custo",
       },
       {
         id: "produtos-cadastrados",
@@ -739,9 +748,16 @@ export const AdminProductsView = memo(function AdminProductsView({
               />
             </div>
 
+            {/* O nome diz o que o TOQUE faz (o ícone sozinho não tem nome
+                para o leitor de tela); sem aria-pressed: não é liga/desliga. */}
             <Button
               variant="outline"
               size="icon"
+              aria-label={
+                viewMode === "detailed"
+                  ? "Mostrar em grade"
+                  : "Mostrar em lista com detalhes"
+              }
               onClick={() =>
                 setViewMode((prev) =>
                   prev === "detailed" ? "compact" : "detailed",
@@ -850,7 +866,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
                           key={i}
-                          className="admin-glass flex h-[250px] animate-pulse flex-col justify-between overflow-hidden rounded-3xl border border-white/5 shadow-lg"
+                          className="admin-glass flex h-[284px] animate-pulse flex-col justify-between overflow-hidden rounded-3xl border border-white/5 shadow-lg"
                         >
                           <Skeleton className="aspect-square w-full animate-pulse bg-white/5" />
                           <div className="flex flex-col gap-2 p-3">
@@ -1019,13 +1035,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                         <div className="rounded-lg bg-blue-500/10 p-1 text-blue-400">
                           <Activity className="size-3.5" />
                         </div>
-                        <p className="text-[9px] font-black uppercase tracking-wider text-white">
-                          ROI do Portfólio
+                        <p className="text-[11px] font-black uppercase tracking-wider text-white">
+                          Lucro sobre o custo
                         </p>
                       </div>
-                      <p className="mb-3 text-[10px] font-medium leading-relaxed text-zinc-500">
-                        Retorno médio percentual sobre o capital total investido
-                        para obter o lote de produtos cadastrados.
+                      <p className="mb-3 text-[11px] font-medium leading-relaxed text-zinc-500">
+                        Quanto o estoque inteiro rende, em percentual, sobre o
+                        que você pagou por ele.
                       </p>
                       <div className="flex items-center justify-between rounded-xl border border-white/5 bg-black/40 p-2 font-mono text-[9px] text-zinc-500">
                         <span className="text-[8px] font-bold uppercase text-zinc-600">
@@ -1328,16 +1344,16 @@ export const AdminProductsView = memo(function AdminProductsView({
                             "text-rose-400",
                         )}
                       >
-                        {simulatorMetrics.margin.toFixed(1)}%
+                        {percentualComUmaCasa(simulatorMetrics.margin)}
                       </p>
                     </div>
 
                     <div className="flex h-20 flex-col justify-between rounded-2xl border border-white/5 bg-zinc-900/40 p-4">
                       <p className="text-[8px] font-black uppercase tracking-wider text-zinc-500">
-                        ROI Unitário
+                        Lucro sobre o custo (por unidade)
                       </p>
                       <p className="font-mono text-xl font-black text-blue-400">
-                        {simulatorMetrics.roi.toFixed(1)}%
+                        {percentualComUmaCasa(simulatorMetrics.roi)}
                       </p>
                     </div>
 
@@ -1601,10 +1617,10 @@ const AdminProductCard = memo(function AdminProductCard({
           </div>
 
           {/* Main Content */}
-          <div className="flex h-full flex-col space-y-8 p-8">
+          <div className="flex h-full flex-col space-y-8 p-5 sm:p-8">
             {/* Visual Identity */}
-            <div className="flex items-start gap-6">
-              <div className="relative size-24 flex-shrink-0 overflow-hidden rounded-3xl border border-white/5 bg-zinc-900 shadow-2xl transition-transform duration-700 group-hover:scale-105">
+            <div className="flex items-start gap-4 sm:gap-6">
+              <div className="relative size-20 flex-shrink-0 sm:size-24 overflow-hidden rounded-3xl border border-white/5 bg-zinc-900 shadow-2xl transition-transform duration-700 group-hover:scale-105">
                 <LazyImage
                   src={product.images[0] || "https://via.placeholder.com/150"}
                   alt={product.name}
@@ -1617,7 +1633,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 )}
               </div>
               <div className="min-w-0 flex-1 pt-2">
-                <h4 className="truncate text-xl font-black leading-[1.2] text-white transition-colors group-hover:text-admin-gold">
+                <h4 className="line-clamp-2 break-words pr-12 text-xl font-black leading-[1.2] text-white transition-colors group-hover:text-admin-gold">
                   {product.name}
                 </h4>
                 <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600">
@@ -1626,7 +1642,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge
                     className={cn(
-                      "rounded-lg border px-2.5 py-1 text-[8px] font-black uppercase tracking-widest backdrop-blur-md transition-all",
+                      "rounded-lg border px-2.5 py-1 text-[11px] font-black uppercase tracking-widest backdrop-blur-md transition-all",
                       statusDoProdutoNoPainel(product) === "Em Operação" &&
                         "border-emerald-500/20 bg-emerald-500/10 text-emerald-500",
                       statusDoProdutoNoPainel(product) === "Esgotado" &&
@@ -1638,18 +1654,18 @@ const AdminProductCard = memo(function AdminProductCard({
                     {statusDoProdutoNoPainel(product)}
                   </Badge>
                   {!hasCost ? (
-                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
+                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
                       Sem Custo Cadastrado
                     </Badge>
                   ) : (
                     product.costPrice <= 0.1 && (
-                      <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
+                      <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
                         Custo Suspeito
                       </Badge>
                     )
                   )}
                   {estoqueBaixo && (
-                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[8px] font-black uppercase tracking-widest text-amber-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
+                    <Badge className="animate-pulse rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[11px] font-black uppercase tracking-widest text-amber-500 shadow-[0_0_15px_rgba(234,179,8,0.2)]">
                       Crítico
                     </Badge>
                   )}
@@ -1660,7 +1676,7 @@ const AdminProductCard = memo(function AdminProductCard({
             {/* Operational Metrics Grid */}
             <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6">
               <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 transition-colors group-hover:border-white/10">
-                <p className="mb-2 text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
                   Margem de Lucro
                 </p>
                 <div className="flex items-center justify-between">
@@ -1676,7 +1692,7 @@ const AdminProductCard = memo(function AdminProductCard({
                       margin !== null && margin < 20 && "text-rose-500",
                     )}
                   >
-                    {margin === null ? "—" : `${margin.toFixed(1)}%`}
+                    {margin === null ? "—" : percentualComUmaCasa(margin)}
                   </span>
                   <div
                     className={cn(
@@ -1693,8 +1709,8 @@ const AdminProductCard = memo(function AdminProductCard({
                 </div>
               </div>
               <div className="rounded-2xl border border-white/5 bg-zinc-900/50 p-4 transition-colors group-hover:border-white/10">
-                <p className="mb-2 text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600">
-                  ROI de Rendimento
+                <p className="mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                  Lucro sobre o custo
                 </p>
                 <div className="flex items-center justify-between">
                   <span
@@ -1709,7 +1725,7 @@ const AdminProductCard = memo(function AdminProductCard({
                       roi !== null && roi < 50 && "text-rose-500",
                     )}
                   >
-                    {roi === null ? "—" : `${roi.toFixed(1)}%`}
+                    {roi === null ? "—" : percentualComUmaCasa(roi)}
                   </span>
                   <div className="flex size-6 items-center justify-center rounded-lg border border-blue-500/20 bg-blue-500/10 text-blue-400">
                     <ArrowUpRight className="size-3.5" />
@@ -1740,7 +1756,7 @@ const AdminProductCard = memo(function AdminProductCard({
                       estoqueBaixo ? "text-rose-500" : "text-white",
                     )}
                   >
-                    {product.stock.toString().padStart(2, "0")}
+                    {product.stock}
                   </span>
                 </div>
               </div>
@@ -1797,7 +1813,7 @@ const AdminProductCard = memo(function AdminProductCard({
   return (
     <motion.div
       layout
-      className="group relative h-[250px] transform-gpu"
+      className="group relative h-[284px] transform-gpu"
       onMouseEnter={onPrefetch}
       onTouchStart={onPrefetch}
     >
@@ -1867,7 +1883,7 @@ const AdminProductCard = memo(function AdminProductCard({
           <div className="absolute bottom-2 left-2 z-10 flex flex-col gap-1">
             <Badge
               className={cn(
-                "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
+                "text-[11px] font-black uppercase tracking-widest px-2 py-0.5 rounded border backdrop-blur-md transition-all self-start",
                 statusDoProdutoNoPainel(product) === "Em Operação" &&
                   "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
                 statusDoProdutoNoPainel(product) === "Esgotado" &&
@@ -1878,22 +1894,29 @@ const AdminProductCard = memo(function AdminProductCard({
             >
               {statusDoProdutoNoPainel(product)}
             </Badge>
+            {/* Estoque baixo em PALAVRA, não só na cor do número (P-J2): a
+                mesma regra `estoqueBaixo` e o mesmo selo do modo detalhado. */}
+            {estoqueBaixo && (
+              <Badge className="self-start rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-black uppercase tracking-widest text-amber-500 backdrop-blur-md">
+                Crítico
+              </Badge>
+            )}
           </div>
         </div>
 
         {/* Details */}
         <div className="flex flex-1 flex-col justify-between gap-2 p-3">
           <div className="min-w-0">
-            <p className="mb-1 text-[8px] font-black uppercase leading-none tracking-widest text-zinc-500">
+            <p className="mb-1 truncate text-[11px] font-black uppercase leading-[1.25] tracking-widest text-zinc-500">
               {product.category}
             </p>
-            <h4 className="truncate text-xs font-black leading-[1.3] text-white transition-colors group-hover:text-admin-gold">
+            <h4 className="line-clamp-2 break-words text-xs font-black leading-[1.3] text-white transition-colors group-hover:text-admin-gold">
               {product.name}
             </h4>
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center justify-between text-[9px]">
+            <div className="flex items-center justify-between text-[11px]">
               <span className="font-bold uppercase tracking-wider text-zinc-500">
                 Estoque
               </span>
@@ -1903,12 +1926,12 @@ const AdminProductCard = memo(function AdminProductCard({
                   estoqueBaixo ? "text-rose-500" : "text-white",
                 )}
               >
-                {product.stock.toString().padStart(2, "0")}
+                {product.stock}
               </span>
             </div>
 
             <div className="flex items-baseline justify-between border-t border-white/5 pt-1">
-              <span className="text-[8px] font-bold uppercase tracking-wider text-admin-gold">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-admin-gold">
                 Preço
               </span>
               <span className="font-mono text-xs font-black text-white">
