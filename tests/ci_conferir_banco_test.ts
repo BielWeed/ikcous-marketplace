@@ -7988,3 +7988,60 @@ Deno.test("17a/17b — o que as consultas ESPERAM nasce dos arquivos: forma pelo
     },
   );
 });
+
+Deno.test("17a/17b — o rpc-ci.yml roda a prova viva do portão do estoque do painel no job bloqueante (sem continue-on-error, depois de aplica) e é disparado pelas duas consultas", async () => {
+  const yaml = await Deno.readTextFile(`${RAIZ}/.github/workflows/rpc-ci.yml`);
+  const inicioBloqueante = yaml.indexOf("\n  contrato-dinheiro:");
+  const inicioInformacional = yaml.indexOf("\n  provas-informacionais:");
+  assert(inicioBloqueante > 0 && inicioInformacional > inicioBloqueante);
+  const bloqueante = yaml.slice(inicioBloqueante, inicioInformacional);
+  assert(!/^\s*continue-on-error:/m.test(bloqueante));
+  const prova = "estoque-do-painel-portao-viva";
+  const linhas = bloqueante.split("\n");
+  const k = linhas.indexOf(
+    `        run: node tests/banco/rodar-isolado.cjs tests/banco/${prova}.cjs`,
+  );
+  assert(k >= 2, `o passo de ${prova} não está no job bloqueante`);
+  assertEquals(
+    linhas[k - 1],
+    "        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}",
+  );
+  assertEquals(
+    linhas[k - 2],
+    "      - name: Prova viva do portao do estoque do painel (consultas 17a e 17b)",
+  );
+  assert(
+    bloqueante.indexOf(linhas.at(k) ?? "") > bloqueante.indexOf("id: aplica"),
+  );
+  assert(!yaml.slice(inicioInformacional).includes(prova));
+  // o portão roda uma vez só, e o arquivo da prova existe
+  assertEquals(bloqueante.split(`tests/banco/${prova}.cjs`).length - 1, 1);
+  assert(
+    (await Deno.stat(`${RAIZ}/tests/banco/${prova}.cjs`)).isFile,
+    `tests/banco/${prova}.cjs não existe`,
+  );
+  for (const gatilho of ["pull_request:", "push:"]) {
+    const ini = yaml.indexOf(`\n  ${gatilho}`);
+    assert(ini > 0, `não achei o gatilho ${gatilho}`);
+    const bloco = yaml.slice(ini, yaml.indexOf("\n  workflow_dispatch:"));
+    const caminhos =
+      gatilho === "pull_request:"
+        ? bloco.slice(0, bloco.indexOf("\n  push:"))
+        : bloco;
+    for (const arquivo of [
+      "scripts/publicacao/conferir-banco.cjs",
+      `scripts/publicacao/consultas/${NOME_17A}.sql`,
+      `scripts/publicacao/consultas/${NOME_17B}.sql`,
+      "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql",
+      "scripts/frota/canais-de-backend.json",
+      "scripts/frota/publicar-release.mjs",
+      "supabase/migrations/**",
+      "tests/banco/**",
+    ])
+      assertStringIncludes(
+        caminhos,
+        `- "${arquivo}"`,
+        `${gatilho} sem o caminho ${arquivo}`,
+      );
+  }
+});

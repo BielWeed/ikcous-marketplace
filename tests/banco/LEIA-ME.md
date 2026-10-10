@@ -250,6 +250,23 @@ invariantes abaixo são executadas contra o banco que nasceu delas.
   a 8e (rol da faixa 92-202) dá positiva na árvore inteira, no estado da `20261199000000` (via
   `sucessoras-da-99.cjs`) e nos estados mistos (só a 12 / só a 14); corpo estranho, AUSENTE, sobrecarga e o
   corpo da sucessora da outra função reprovam só a linha da função; mutantes do texto da consulta pegos.
+- **portão do estoque do painel (`estoque-do-painel-portao-viva.cjs`, via `rodar-isolado.cjs`)**: as
+  consultas `17a-conferir-estoque-do-painel-aplicado` (DEPOIS do apply, 14 linhas) e
+  `17b-antes-estoque-do-painel-corpos-vigentes` (ANTES, 11 linhas), a "prova de objetos" do lote
+  20261212000000 + 20261213000000 + 20261214000000 (três migrations independentes, cada uma troca só o corpo
+  de uma função). Cada estado numa transação desfeita, as consultas como papel de leitura. 17b positiva no
+  antes (os três rollback-manual, via `sucessoras-da-99.cjs` para a 12 e a 14), também em CRLF, depois da ida
+  e volta em qualquer ordem, com papel mínimo, `search_path` vazio e funções-isca em outro schema; 17a
+  positiva depois do apply dos arquivos (LF, CRLF, 12→14 e 14→12, 2x, ida-volta-ida), igual linha a linha à
+  árvore inteira. Os 6 estados mistos reprovam só o corpo das que faltam (17a) e das que entraram (17b), e a
+  8e segue positiva em todos os estados. Um defeito por vez reprovando a SUA linha (corpo com 1 byte ou 1
+  caractere, função ausente, sobrecarga, forma, EXECUTE a anon/PUBLIC ou sem authenticated, coluna
+  renomeada); mutantes do texto das consultas (cada linha, o CRLF, o hash do outro lado, o filtro do schema,
+  a cláusula de cada papel) deixam a prova vermelha; rol fechado e SQL truncado nunca viram positivo; o
+  `conferir-banco.cjs` de verdade e o lote real fecham em APLICAR / NADA / PARAR. **Limites declarados:** a
+  linha de controle não tem negativo local; a cláusula de PUBLIC desligada e o `NOT a.attisdropped` são
+  mutantes EQUIVALENTES (medidos como tais); `service_role` e o dono não são medidos; o
+  `supabase_read_only_user` real não foi medido. **Não prova** a IKCOUS nem a Savy.
 - **receita do mês, caracterização (`receita-uma-regua-viva.cjs`)**: sem migration; escreve só dentro de
   transação desfeita. Seis pedidos (cinco pelos caminhos de produção, o de entrega paga na hora com o estado
   final inserido) comparam Início, CRM e Financeiro; afirma a igualdade onde ela vale e

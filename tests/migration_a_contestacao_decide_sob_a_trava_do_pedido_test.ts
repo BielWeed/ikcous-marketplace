@@ -432,6 +432,8 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/inventario-so-com-custo-viva.cjs",
     // 8e (rol 92-202): aceita o corpo da 20261199 OU o da sucessora (20261212, 20261214), cada funcao por si.
     "tests/banco/portao-8e-aceita-sucessoras-viva.cjs",
+    // 20261212000000 a 20261214000000: o portao da release (consultas 17a e 17b do lote) decide certo.
+    "tests/banco/estoque-do-painel-portao-viva.cjs",
     // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
     "tests/banco/receita-uma-regua-viva.cjs",
     "tests/banco/estoque-minimo-editavel-viva.cjs",
