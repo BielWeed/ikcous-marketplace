@@ -10,9 +10,18 @@
 //
 // Mesmo casco de mocks de admin-orders-card-whatsapp-sem-destinatario.
 import type { Order } from "@/types";
+import type { AdminOrdersView as TipoTela } from "@/views/admin/AdminOrdersView";
 import { act } from "react";
 import { type Root, createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 vi.mock("@/contexts/StoreContext", () => ({
   useStore: () => ({
@@ -93,6 +102,15 @@ describe("AdminOrdersView — Pedidos cabe no celular (onda J, J2)", () => {
   let raiz: Root;
   let hospedeiro: HTMLDivElement;
 
+  // O `import()` frio da tela é caro (puxa a árvore inteira): fica na
+  // preparação, uma vez, com timeout explícito — não dentro de cada caso
+  // nem do `beforeEach`. `import type` é apagado na compilação.
+  let Tela: typeof TipoTela;
+
+  beforeAll(async () => {
+    ({ AdminOrdersView: Tela } = await import("@/views/admin/AdminOrdersView"));
+  }, 60_000);
+
   beforeEach(async () => {
     mockOrders = [pedidoFake()];
     const armazem = new Map<string, string>();
@@ -120,7 +138,7 @@ describe("AdminOrdersView — Pedidos cabe no celular (onda J, J2)", () => {
     document.body.appendChild(hospedeiro);
     raiz = createRoot(hospedeiro);
 
-    const { AdminOrdersView } = await import("@/views/admin/AdminOrdersView");
+    const AdminOrdersView = Tela;
     await act(async () => {
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
@@ -132,7 +150,6 @@ describe("AdminOrdersView — Pedidos cabe no celular (onda J, J2)", () => {
     });
     hospedeiro.remove();
     vi.unstubAllGlobals();
-    vi.resetModules();
     mockOrders = [];
   });
 
