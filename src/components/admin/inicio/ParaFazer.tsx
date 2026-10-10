@@ -143,13 +143,15 @@ export function ParaFazer({
                   "flex size-10 shrink-0 items-center justify-center rounded-xl border",
                   item.pendente
                     ? "border-amber-500/30 bg-amber-500/10"
-                    : "border-admin-gold/25 bg-admin-gold/10",
+                    : "border-white/10 bg-white/[0.06] group-hover:border-admin-gold/25 group-hover:bg-admin-gold/10",
                 )}
               >
                 <item.icone
                   className={cn(
                     "size-5",
-                    item.pendente ? "text-amber-300" : "text-admin-gold",
+                    item.pendente
+                      ? "text-amber-300"
+                      : "text-zinc-400 group-hover:text-admin-gold",
                   )}
                 />
               </span>

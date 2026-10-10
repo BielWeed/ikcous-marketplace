@@ -280,7 +280,9 @@ describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
     }
     expect(cartao?.className).toContain("border-white/10");
     // Seta no padrão novo: ChevronRight de 20px.
-    expect(cartao?.querySelector("svg.size-5")).not.toBeNull();
+    expect(
+      cartao?.querySelector("svg.lucide-chevron-right.size-5"),
+    ).not.toBeNull();
   });
 
   it("o rótulo do tipo é legível (nada de cinza 500) e o nome do aviso é 15px", async () => {
@@ -292,11 +294,21 @@ describe("AvisoCard — desenho de botão-linha novo (10/10/2026)", () => {
     expect(cartao?.querySelector("h3")?.className).toContain("text-[15px]");
   });
 
-  it("a legenda do bloco e o texto da tela vazia também passam do cinza 500", async () => {
+  it("a legenda do bloco também passa do cinza 500", async () => {
     await montar();
     const legenda = container?.querySelector(
       '[data-bloco="de-olho"] h2 + span',
     );
     expect(legenda?.className).not.toMatch(/text-zinc-[567]00/);
+  });
+
+  it("o texto da tela vazia também passa do cinza 500", async () => {
+    AVISOS = [];
+    const raizDom = await montar();
+    const texto = Array.from(raizDom.querySelectorAll("p")).find((p) =>
+      p.textContent?.includes("Nenhum pedido"),
+    );
+    expect(texto).toBeTruthy();
+    expect(texto?.className).not.toMatch(/text-zinc-[567]00/);
   });
 });

@@ -195,7 +195,9 @@ describe("Início: cada número diz o conceito e a janela", () => {
     for (const classe of ["rounded-2xl", "min-h-11", "bg-gradient-to-r"]) {
       expect(botao?.classList.contains(classe)).toBe(true);
     }
-    expect(botao?.querySelector("svg.size-5")).not.toBeNull();
+    expect(
+      botao?.querySelector("svg.lucide-chevron-right.size-5"),
+    ).not.toBeNull();
   });
 
   it("(b3) o resumo do mês não usa cinza 500 em texto", () => {

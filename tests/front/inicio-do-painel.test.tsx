@@ -315,9 +315,20 @@ describe("Início do painel", () => {
       expect(emDia.classList.contains(classe)).toBe(true);
     }
     expect(emDia.className).not.toContain("amber");
-    expect(emDia.querySelector("span.size-10")).not.toBeNull();
-    // A seta cresceu para size-5 e o rótulo não é mais 12px miúdo.
-    expect(emDia.querySelector("svg.size-5")).not.toBeNull();
+    // Selo neutro (o âmbar é o único amarelo da lista); o dourado só no hover.
+    const selo = emDia.querySelector("span.size-10");
+    expect(selo).not.toBeNull();
+    expect(selo?.className).toContain("bg-white/[0.06]");
+    expect(
+      (selo?.className ?? "")
+        .split(/\s+/)
+        .filter((c) => /^(border|bg)-admin-gold/.test(c)),
+    ).toEqual([]);
+    expect(selo?.querySelector("svg.text-zinc-400")).not.toBeNull();
+    // A seta cresceu para size-5.
+    expect(
+      emDia.querySelector("svg.lucide-chevron-right.size-5"),
+    ).not.toBeNull();
     expect(emDia.className).not.toContain("rounded-xl");
   });
 
