@@ -97,7 +97,7 @@ export function StatusPagamentoPix({
         type="button"
         onClick={() => setAberto((antes) => !antes)}
         aria-expanded={aberto}
-        className="flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.02]"
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.02]"
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <Wallet

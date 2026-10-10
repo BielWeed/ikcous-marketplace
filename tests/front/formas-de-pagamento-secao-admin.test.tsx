@@ -187,6 +187,22 @@ describe("AdminSettingsView — Formas de pagamento (pix/card/cash na entrega)",
     ).toBe("checked");
   });
 
+  it("onda L: clicar no TEXTO da forma (o <label> de 44px) alterna o switch uma única vez", async () => {
+    await abrirASecao();
+    const texto = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent === "Cartão na entrega/retirada",
+    );
+    if (!texto) throw new Error("O texto da forma não está na tela.");
+    expect(texto.closest("label")).not.toBeNull();
+    await clicar(texto as HTMLElement);
+
+    expect(mockStore.updateConfig).toHaveBeenCalledTimes(1);
+    expect(mockStore.updateConfig).toHaveBeenCalledWith(
+      { formasPagamentoEntrega: ["pix", "cash"] },
+      { silentSuccess: true },
+    );
+  });
+
   it("desligar uma forma (não a última) chama updateConfig com a lista sem ela, em ordem CANÔNICA", async () => {
     await abrirASecao();
     await clicar(switchPorRotulo("Cartão na entrega ou retirada"));

@@ -241,7 +241,7 @@ function Expansor({
         type="button"
         onClick={onAlternar}
         aria-expanded={aberto}
-        className="group flex w-full items-center justify-between gap-3 p-3 text-left"
+        className="group flex min-h-11 w-full items-center justify-between gap-3 p-3 text-left"
       >
         <span className="flex min-w-0 items-center gap-2.5">
           <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-admin-gold/10 text-admin-gold ring-1 ring-admin-gold/20">
@@ -721,7 +721,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
           <button
             type="button"
             onClick={ler}
-            className="shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-2.5 py-1 font-bold text-admin-gold hover:bg-admin-gold/20"
+            className="min-h-11 shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-2.5 py-1 font-bold text-admin-gold hover:bg-admin-gold/20"
           >
             Tentar de novo
           </button>
@@ -822,7 +822,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
             <button
               type="button"
               onClick={copiarPrompt}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
+              className={`flex min-h-11 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all active:scale-95 ${
                 copiado
                   ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
                   : "border-admin-gold/30 bg-admin-gold/10 text-admin-gold hover:bg-admin-gold/20"
@@ -863,7 +863,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 placeholder="APP_USR-…"
                 autoComplete="off"
                 spellCheck={false}
-                className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -891,7 +891,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a chave secreta de produção…"
                 }
                 autoComplete="new-password"
-                className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
             </div>
 
@@ -922,7 +922,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     : "Cole aqui a senha dos avisos da sua loja"
                 }
                 autoComplete="new-password"
-                className="h-9 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                className="h-11 w-full rounded-lg border border-white/5 bg-zinc-950 px-3 font-mono text-xs text-white placeholder-zinc-600 focus:border-admin-gold focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
               />
               {!config.mascara_webhook && (
                 <p className="text-[11px] leading-relaxed text-amber-300">
@@ -938,7 +938,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 type="button"
                 disabled={salvando || carregando || isOffline || alternandoPix}
                 onClick={salvar}
-                className="flex items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
+                className="flex min-h-11 items-center gap-1.5 rounded-lg bg-admin-gold px-4 py-2 text-xs font-black text-zinc-950 transition-all hover:brightness-110 active:scale-95 disabled:opacity-40"
               >
                 {salvando ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -957,7 +957,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     ? "Salve as chaves primeiro — o teste fala com o Mercado Pago usando o que está salvo."
                     : undefined
                 }
-                className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
+                className="flex min-h-11 items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-2 text-xs font-bold text-admin-gold hover:bg-admin-gold/20 active:scale-95 disabled:opacity-40"
               >
                 {testando ? (
                   <RefreshCw className="size-3.5 animate-spin" />
@@ -1017,7 +1017,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                       alternandoPix || isOffline || testando || salvando
                     }
                     onClick={() => pausarOuRetomar(!config.pix_ligado)}
-                    className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                    className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
                   >
                     {config.pix_ligado
                       ? "Desligar o pagamento pelo app"
@@ -1059,7 +1059,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                 type="button"
                 disabled={alternandoPix || isOffline || testando || salvando}
                 onClick={() => pausarOuRetomar(false)}
-                className="shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
+                className="min-h-11 shrink-0 rounded-lg border border-white/10 bg-zinc-800 px-3 py-1.5 text-[11px] font-bold text-zinc-200 hover:bg-zinc-700 active:scale-95 disabled:opacity-40"
               >
                 Pausar
               </button>
@@ -1080,7 +1080,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                   type="button"
                   disabled={alternandoPix || isOffline || testando || salvando}
                   onClick={() => pausarOuRetomar(true)}
-                  className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                  className="min-h-11 shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
                 >
                   Retomar
                 </button>
@@ -1152,7 +1152,7 @@ export const MercadoPagoSection = memo(function MercadoPagoSection({
                     type="button"
                     disabled={testeBloqueado}
                     onClick={testarConexao}
-                    className="flex items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
+                    className="flex min-h-11 items-center gap-1.5 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-1.5 text-[11px] font-bold text-amber-200 hover:bg-amber-500/25 active:scale-95 disabled:opacity-40"
                   >
                     {testando ? (
                       <RefreshCw className="size-3.5 animate-spin" />
