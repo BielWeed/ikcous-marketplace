@@ -104,6 +104,9 @@ vi.mock("sonner", () => ({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const ID = "product-estoque-minimo";
+const MENSAGEM_NAO_INTEIRO =
+  "Use um número inteiro: 0, 1, 2… (sem vírgula nem sinal de menos).";
+const MENSAGEM_GRANDE_DEMAIS = "Número grande demais. Use um valor menor.";
 
 const produtoDoBanco = {
   id: "prod-1",
@@ -374,19 +377,19 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
   });
 
   describe("d. negativo, decimal e acima do máximo do banco não passam", () => {
+    // Onda J: duas mensagens em palavras da loja; o teto (2147483647)
+    // continua valendo, mas não aparece mais na tela.
     it.each([
-      ["negativo", "-3"],
-      ["decimal", "2.5"],
-      ["acima do máximo do banco", "3000000000"],
+      ["negativo", "-3", MENSAGEM_NAO_INTEIRO],
+      ["decimal", "2.5", MENSAGEM_NAO_INTEIRO],
+      ["acima do máximo do banco", "3000000000", MENSAGEM_GRANDE_DEMAIS],
     ])(
       "%s (%s): mostra o erro no campo, desliga o salvar e não grava",
-      async (_nome, texto) => {
+      async (_nome, texto, mensagem) => {
         await montar("prod-1");
         await digitarCampo(ID, texto);
 
-        expect(secao("Avançado").textContent).toContain(
-          "Use um número inteiro de 0 a 2147483647.",
-        );
+        expect(secao("Avançado").textContent).toContain(mensagem);
         expect(botao("Salvar").disabled).toBe(true);
 
         await act(async () => {
@@ -415,9 +418,7 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       await digitarCampo(ID, "-3");
       await digitarCampo(ID, "4");
 
-      expect(secao("Avançado").textContent).not.toContain(
-        "Use um número inteiro de 0 a 2147483647.",
-      );
+      expect(secao("Avançado").textContent).not.toContain(MENSAGEM_NAO_INTEIRO);
       expect(botao("Salvar").disabled).toBe(false);
     });
 
@@ -426,8 +427,9 @@ describe("AdminProductFormView — Avisar quando o estoque chegar a", () => {
       await digitarCampo(ID, "2147483647");
 
       expect(secao("Avançado").textContent).not.toContain(
-        "Use um número inteiro de 0 a 2147483647.",
+        MENSAGEM_GRANDE_DEMAIS,
       );
+      expect(secao("Avançado").textContent).not.toContain(MENSAGEM_NAO_INTEIRO);
       await salvarEdicao();
       expect(updateProduct).toHaveBeenCalledTimes(1);
       expect(updateProduct.mock.calls[0][1].estoqueMinimo).toBe(2147483647);

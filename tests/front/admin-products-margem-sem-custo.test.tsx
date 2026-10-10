@@ -358,8 +358,9 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
     // Margem = (100-0)/100*100 = 100%. Número verdadeiro: o produto não tem
     // custo, e é isso que a margem diz.
+    // Onda J: percentual em pt-BR, com vírgula.
     const { margemTexto } = lerMargemERoi();
-    expect(margemTexto).toBe("100.0%");
+    expect(margemTexto).toBe("100,0%");
 
     // ROI = (100-0)/0*100 = divisão por zero — não é número, vira "—".
     const { roiTexto } = lerMargemERoi();
@@ -398,8 +399,8 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
 
     const { margemTexto, roiTexto } = lerMargemERoi();
     // margin = (15-10)/15*100 = 33.333...% ; roi = (15-10)/10*100 = 50%
-    expect(margemTexto).toBe("33.3%");
-    expect(roiTexto).toBe("50.0%");
+    expect(margemTexto).toBe("33,3%");
+    expect(roiTexto).toBe("50,0%");
 
     const { capitalTexto, potencialTexto } = lerCapitalEPotencial();
     // invested = 10 * 20 = 200 ; totalProfit = 15*20 - 200 = 100
@@ -419,7 +420,26 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
     expect(tela).toContain("Lucro se vender tudo");
     // O KPI do topo é markup ((Preço−Custo)÷Custo): "Margem" é só a do
     // produto, calculada sobre o preço. Os dois não podem ter o mesmo nome.
-    expect(tela).toContain("Lucro sobre o custo %");
+    // Onda J: o CARTÃO do topo se chama "Lucro sobre o custo" (sem
+    // ROI/Portfólio). Procurar só o texto na tela passaria com o rótulo do
+    // cartão revertido, porque o cartão detalhado do produto também usa essa
+    // frase — então sobe do subtítulo (exclusivo do cartão) até o menor
+    // elemento que tem o rótulo, e esse elemento tem que ser o cartão:
+    // com o valor (900 − 500) ÷ 500 = "80,0%" e sem rótulo de outro cartão.
+    const subtitulo = [...hospedeiro.querySelectorAll("*")].find(
+      (el) => el.textContent === "Média do estoque com custo",
+    );
+    expect(subtitulo, "subtítulo do cartão do topo ausente").toBeDefined();
+    let cartaoDoKpi = subtitulo?.parentElement ?? null;
+    while (
+      cartaoDoKpi &&
+      !cartaoDoKpi.textContent?.includes("Lucro sobre o custo")
+    ) {
+      cartaoDoKpi = cartaoDoKpi.parentElement;
+    }
+    expect(cartaoDoKpi?.textContent).toContain("80,0%");
+    expect(cartaoDoKpi?.textContent).not.toContain("Lucro se vender tudo");
+    expect(cartaoDoKpi?.textContent).not.toContain("Margem de Lucro");
     expect(tela).not.toContain("Margem %");
     expect(tela).not.toContain("Retorno sobre o custo");
     expect(tela).not.toContain("Capital Alocado");
