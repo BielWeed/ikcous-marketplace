@@ -33,8 +33,13 @@ interface AdminKpiCarouselProps {
  * mostrar UM número, com o carrossel mostrando só 4 por vez no desktop).
  * O dono virou a versão em grade e decidiu: carrossel fica, card encolhe.
  * Layout horizontal (ícone + rótulo em cima, valor grande na linha de
- * baixo, ~64px de altura) e slides mais densos — mais métricas visíveis
- * na mesma largura, metade da altura.
+ * baixo) e slides mais densos — mais métricas visíveis na mesma largura.
+ *
+ * Altura: NATURAL, com piso de 64px (`min-h-16`; 68px no computador, `sm:`).
+ * Rótulo, valor e subtítulo a 11px+ quebram em até 2 linhas e por isso um
+ * cartão pode passar do piso (medido: ~68–96px no computador, mais alto no
+ * celular de 360px). Todos os cartões de uma mesma faixa têm a MESMA altura
+ * (o slide estica, `h-full`); o texto nunca é cortado nem desce de 11px.
  */
 const KpiCard = memo(function KpiCard({
   stat,
@@ -42,26 +47,30 @@ const KpiCard = memo(function KpiCard({
   readonly stat: KpiCardConfig;
 }) {
   const Icon = stat.icon;
-  const temAlturaFixa = !stat.content && !stat.footer;
 
   return (
     <div
       className={cn(
-        // Altura FIXA nas métricas simples (Pedidos/Produtos/Clientes/
-        // Cupons/Dashboard): a faixa fica idêntica em qualquer tela — era
-        // isto que o dono pediu ("padronizada, uma não maior que a outra").
-        // Card com conteúdo extra (barra de progresso das Perguntas,
-        // rodapé dos Cupons) cresce o mínimo necessário com overflow
-        // escondido para nunca romper o desenho.
-        "group relative flex select-none items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg transition-colors duration-300 sm:gap-3",
-        temAlturaFixa ? "h-16 sm:h-[68px]" : "min-h-16 sm:min-h-[68px]",
+        // Mesma altura na faixa inteira (o dono pediu "padronizada, uma não
+        // maior que a outra"), mas SEM travar a altura: o slide estica no
+        // flex do Embla (`h-full`), com piso de 64px (`min-h-16`) e 68px de
+        // `sm:` para cima. A altura é a natural do texto: rótulo e subtítulo
+        // quebram em 2 linhas, e travar a altura cortava o texto (decisão
+        // P-J4 reescrita, onda J: ~68–96px no computador). No computador o
+        // padding vertical é menor (`sm:py-2`) para devolver espaço ao
+        // texto. Card com conteúdo extra (barra de progresso das Perguntas,
+        // rodapé dos Cupons) cresce o necessário, com overflow escondido
+        // para nunca romper o desenho.
+        "group relative flex select-none items-center gap-2.5 overflow-hidden rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg transition-colors duration-300 sm:gap-3 sm:py-2",
+        "h-full min-h-16 sm:min-h-[68px]",
         stat.hoverBorder ||
           "hover:border-admin-gold/30 hover:shadow-[0_0_30px_rgba(212,175,55,0.06)]",
       )}
     >
       <div
         className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/5 bg-zinc-950 shadow-inner transition-colors duration-300 group-hover:border-admin-gold/20",
+          // Abaixo de 480px o ícone some: o texto ganha ~46px (de ~87 para ~135px).
+          "hidden size-9 shrink-0 items-center xs:flex justify-center rounded-xl border border-white/5 bg-zinc-950 shadow-inner transition-colors duration-300 group-hover:border-admin-gold/20",
           stat.accent,
         )}
       >
@@ -74,28 +83,23 @@ const KpiCard = memo(function KpiCard({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[8.5px] font-black uppercase leading-none tracking-[0.18em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
+        <p className="line-clamp-2 break-words text-[11px] font-black uppercase leading-tight tracking-[0.06em] text-zinc-500 transition-colors duration-300 group-hover:text-zinc-400">
           {stat.label}
         </p>
         {/* Valor na linha INTEIRA (pedido do Gabriel, 02/09: o dado completo
             não cabia — "R$ 1.31... / CAPITAL LIQ..." era valor e subtítulo
             brigando pela mesma linha). Empilhado em 3 linhas dentro da
             mesma altura: rótulo / valor / subtítulo. */}
-        <h3
-          className={cn(
-            "truncate font-black leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold sm:text-lg",
-            stat.subValue || stat.footer ? "text-base" : "text-lg",
-          )}
-        >
+        <h3 className="truncate text-[15px] font-black tabular-nums leading-tight tracking-tighter text-white transition-colors duration-300 group-hover:text-admin-gold xs:text-base xs:leading-tight sm:text-lg sm:leading-tight">
           {stat.value}
         </h3>
         {stat.subValue && (
-          <p className="truncate text-[9px] font-bold uppercase leading-none tracking-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="line-clamp-2 break-words text-[11px] font-bold leading-tight text-zinc-600 opacity-80 transition-colors duration-300 group-hover:text-zinc-500">
             {stat.subValue}
           </p>
         )}
         {stat.footer && (
-          <p className="truncate text-[8.5px] font-bold uppercase leading-none tracking-wider text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
+          <p className="line-clamp-2 break-words text-[11px] font-bold leading-tight text-zinc-600 transition-colors duration-300 group-hover:text-zinc-500">
             {stat.footer}
           </p>
         )}
@@ -107,7 +111,10 @@ const KpiCard = memo(function KpiCard({
 
 const KpiSkeleton = memo(function KpiSkeleton() {
   return (
-    <div className="flex h-16 select-none items-center gap-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:h-[68px]">
+    // Altura mínima próxima à do cartão real (medido: ~86–115px no celular,
+    // ~68–96px no computador) para o conteúdo abaixo não pular quando os
+    // números chegam.
+    <div className="flex min-h-24 select-none items-center gap-3 rounded-2xl border border-white/[0.04] bg-zinc-950 bg-gradient-to-br from-zinc-900/50 to-zinc-950/80 p-3 shadow-lg sm:min-h-[68px] sm:py-2">
       <div className="size-9 animate-pulse rounded-xl bg-white/5" />
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
@@ -121,7 +128,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   cards,
   loading = false,
   title = "Métricas Principais",
-  autoplayInterval = 4000,
+  autoplayInterval = 0,
   active = true,
 }: AdminKpiCarouselProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -189,8 +196,12 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
     triggerReInit();
   }, [active, emblaApi, cards, loading]);
 
-  // Autoplay effect - pauses when tab is in background (Visibility API) or when panel view is inactive
+  // Autoplay DESLIGADO por padrão (P-J1, onda J: a faixa mudava sozinha a
+  // cada 4s e o cartão que o lojista procurava saía de vista). Quem passa
+  // `autoplayInterval` em milissegundos liga. Pausa com a aba em segundo
+  // plano (Visibility API) ou com a tela do painel inativa.
   useEffect(() => {
+    if (!autoplayInterval) return;
     if (!emblaApi || !active || isExpanded || isHovered || loading) return;
 
     let interval: ReturnType<typeof setInterval> | undefined;
@@ -244,17 +255,21 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
   return (
     <div className="w-full space-y-2.5">
       {/* Control Bar */}
-      <div className="flex select-none items-center justify-between px-0">
+      {/* A barra QUEBRA linha (flex-wrap): cada ponto virou um alvo de 24px
+          de largura, e com 6+ cartões a 360px o "Expandir" saía da tela. */}
+      <div className="flex select-none flex-wrap items-center justify-between gap-x-3 gap-y-1 px-0">
         <div className="flex items-center gap-2">
-          <span className="size-1.5 animate-pulse rounded-full bg-admin-gold" />
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-admin-gold" />
+          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
             {title}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-x-3">
           {/* Navigation dot indicators - only in carousel mode */}
           {!isExpanded && !loading && scrollSnaps.length > 1 && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 flex-wrap items-center justify-end">
+              {/* Cada ponto é um botão de 44px de altura (alvo de toque) com
+                  a bolinha visível por dentro, nomeado em português. */}
               {scrollSnaps.map((_, i) => (
                 <button
                   key={i}
@@ -263,19 +278,26 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                     triggerManualInteraction();
                     emblaApi?.scrollTo(i);
                   }}
-                  className={cn(
-                    "h-1 rounded-full transition-all duration-300",
-                    activeIndex === i ? "bg-admin-gold w-4" : "bg-white/10 w-1",
-                  )}
-                  title={`Ir para snap ${i + 1}`}
-                />
+                  className="flex h-11 w-6 items-center justify-center"
+                  aria-label={`Mostrar o grupo ${i + 1} de ${scrollSnaps.length}`}
+                  aria-current={activeIndex === i ? "true" : undefined}
+                >
+                  <span
+                    className={cn(
+                      "h-1 rounded-full transition-all duration-300",
+                      activeIndex === i
+                        ? "w-4 bg-admin-gold"
+                        : "w-1 bg-white/10",
+                    )}
+                  />
+                </button>
               ))}
             </div>
           )}
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[9px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/10 hover:bg-white/10 hover:text-white"
+            className="flex min-h-11 items-center gap-1.5 rounded-xl border border-white/5 bg-white/5 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-zinc-400 transition-all hover:border-white/10 hover:bg-white/10 hover:text-white"
           >
             {isExpanded ? (
               <>
