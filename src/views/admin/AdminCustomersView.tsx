@@ -25,6 +25,7 @@ import { useAnalytics } from "@/hooks/useAnalytics";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrefetchOnHover } from "@/hooks/usePrefetchOnHover";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import { rotuloDoPapel } from "@/lib/papel-da-conta";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import type { View } from "@/types";
@@ -885,7 +886,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
               {customer.role === "admin" && (
                 <Shield className="mr-1 inline-flex hidden size-2.5 md:block" />
               )}
-              {customer.role}
+              {rotuloDoPapel(customer.role)}
             </Badge>
           </div>
           <div className="mt-2 flex items-center gap-2">
@@ -928,7 +929,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
       <div className="grid grid-cols-2 justify-between gap-4 md:col-span-3 md:flex md:items-center md:justify-end">
         {/* Desktop: LTV | Mobile: Col 1 */}
         <div className="flex flex-col items-start gap-1.5 md:w-full md:items-end">
-          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 md:hidden">
+          <span className="text-[11px] font-black uppercase tracking-wide text-zinc-600 md:hidden">
             Total já comprado
           </span>
           <div className="flex min-w-[100px] items-center gap-1.5 rounded-xl border border-zinc-800/80 bg-gradient-to-br from-zinc-900 to-zinc-950 px-3 py-2 text-sm font-black text-white shadow-inner transition-colors group-hover:border-admin-gold/30 md:min-w-0 xl:text-base">
@@ -943,7 +944,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
 
         {/* Desktop: Orders | Mobile: Col 2 */}
         <div className="flex flex-col items-end gap-1.5 md:items-center">
-          <span className="text-right text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 md:hidden">
+          <span className="text-right text-[11px] font-black uppercase tracking-wide text-zinc-600 md:hidden">
             Pedidos
           </span>
           <div className="flex size-10 shrink-0 items-center justify-center rounded-[0.8rem] border border-zinc-800/80 bg-gradient-to-b from-zinc-900 to-zinc-950 shadow-inner transition-colors group-hover:border-admin-gold/50 group-hover:bg-black group-hover:text-admin-gold sm:size-11">
@@ -997,7 +998,7 @@ const CustomerRowDetailed = memo(function CustomerRowDetailed({
                 onClick={() => onNavigate("admin-user-detail", customer.id)}
               >
                 <Shield className="mr-2 size-4 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
-                Ver Perfil Elite
+                Ver ficha do cliente
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="group flex cursor-pointer items-center gap-1 rounded-xl p-3 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
@@ -1082,7 +1083,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
                   onClick={() => onNavigate("admin-user-detail", customer.id)}
                 >
                   <Shield className="mr-2 size-3.5 shrink-0 text-zinc-400 transition-colors group-focus:text-black" />
-                  Ver Perfil Elite
+                  Ver ficha do cliente
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className="group flex cursor-pointer items-center gap-1 rounded-xl p-2.5 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors focus:bg-admin-gold focus:text-black"
@@ -1110,7 +1111,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
                   : "bg-zinc-950 text-zinc-500 border-zinc-800/80 shadow-inner",
               )}
             >
-              {customer.role}
+              {rotuloDoPapel(customer.role)}
             </Badge>
             <span className="rounded border border-white/5 bg-black/20 px-1 py-0.5 font-mono text-[11px] font-bold text-zinc-600">
               #{customer.id.slice(0, 8).toUpperCase()}
@@ -1134,9 +1135,9 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       </div>
 
       {/* Bottom KPIs: LTV & Pedidos */}
-      <div className="relative z-10 mt-4 flex items-center justify-between gap-2 border-t border-white/5 pt-3">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 border-t border-white/5 pt-3 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
+        <div className="flex min-w-0 flex-col">
+          <span className="min-w-0 break-words text-[11px] font-black uppercase tracking-wide text-zinc-600">
             Total já comprado
           </span>
           <span className="mt-0.5 text-xs font-black text-white">
@@ -1147,7 +1148,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
           </span>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+          <span className="text-[11px] font-black uppercase tracking-wide text-zinc-600">
             Pedidos
           </span>
           <span className="mt-0.5 text-xs font-black text-admin-gold">

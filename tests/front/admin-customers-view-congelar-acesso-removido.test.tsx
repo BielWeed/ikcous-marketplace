@@ -192,7 +192,7 @@ describe("AdminCustomersView — 'Congelar Acesso' sai do menu de gestão", () =
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).not.toContain("Congelar Acesso");
-    expect(texto).toContain("Ver Perfil Elite");
+    expect(texto).toContain("Ver ficha do cliente");
     expect(texto).toContain("Notificação Push");
   });
 
@@ -203,7 +203,7 @@ describe("AdminCustomersView — 'Congelar Acesso' sai do menu de gestão", () =
 
     const texto = hospedeiro.textContent ?? "";
     expect(texto).not.toContain("Congelar Acesso");
-    expect(texto).toContain("Ver Perfil Elite");
+    expect(texto).toContain("Ver ficha do cliente");
     expect(texto).toContain("Notificação Push");
   });
 
