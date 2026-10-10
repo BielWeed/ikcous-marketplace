@@ -1265,8 +1265,8 @@ export function AdminLayout({
                     onTouchStart={() => handleMouseEnter(item.view, true)}
                     className={cn(
                       "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 transform-gpu",
-                      // Contraste sobre QUALQUER fundo: com o vidro quase
-                      // opaco (zinc-950/95), ícone inativo é zinc-300 (AA
+                      // Contraste sobre QUALQUER fundo: com o fundo
+                      // sólido (zinc-950), ícone inativo é zinc-300 (AA
                       // sobre escuro) — na barra translúcida antiga os
                       // ícones sumiam ao rolar sobre conteúdo claro
                       // (relato do Gabriel, 02/09).
