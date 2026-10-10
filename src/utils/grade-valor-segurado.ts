@@ -9,9 +9,10 @@
  * o que a lojista ainda não decidiu:
  *  - preço: as linhas de preço VAZIO (o "Auto"). Um preço digitado na linha,
  *    inclusive 0,00 de brinde, nunca é sobrescrito;
- *  - estoque: as linhas cujo estoque ela NUNCA mexeu (`estoqueEditado`). Não
- *    se usa "é 0" como sinal de "intocado": um 0 digitado de propósito numa
- *    linha (mexeu e voltou a 0) tem que continuar 0.
+ *  - estoque: as linhas cujo estoque ela NUNCA mexeu (`estoqueEditado`) e as
+ *    que ela apagou de verdade (campo vazio = ainda não decidiu). Não se usa
+ *    "é 0" como sinal de "intocado": um 0 digitado de propósito numa linha
+ *    (mexeu e voltou a 0) tem que continuar 0.
  *
  * Função pura: devolve as linhas já preenchidas e o resultado entra na MESMA
  * conta de `resolverPrecoDaGrade` — o preço do produto e o estoque saem de uma
@@ -48,8 +49,11 @@ export function preencherComSegurado<T extends LinhaComValores>(
 
   let preencheu = false;
   const preenchidas = linhas.map((linha) => {
-    const preencheEstoque =
-      estoque !== "" && !linha.estoqueEditado && linha.estoque !== estoque;
+    // Estoque apagado de verdade ("") é "não decidido", mesmo tendo sido mexido.
+    const estoqueEmAberto =
+      linha.estoque.trim() === "" ||
+      (!linha.estoqueEditado && linha.estoque !== estoque);
+    const preencheEstoque = estoque !== "" && estoqueEmAberto;
     const preenchePreco =
       preco !== "" && precoDaLinha(linha.preco) === undefined;
     if (!preencheEstoque && !preenchePreco) return linha;

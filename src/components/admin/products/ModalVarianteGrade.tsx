@@ -314,6 +314,12 @@ export function ModalVarianteGrade({
         preco: limparNumero(aplicarPreco) || linha.preco,
       })),
     );
+    // O que foi aplicado deixa de ser "segurado": sem isto o mesmo valor voltava
+    // a preencher, ao salvar, a linha que a lojista esvaziou para deixar em
+    // "Auto" (preço) ou ainda por decidir (estoque). Só volta a valer se ela
+    // digitar de novo nos campos.
+    setAplicarEstoque("");
+    setAplicarPreco("");
     toast.info(
       `Aplicado para as ${linhas.length} linhas — ajuste aí embaixo só a que precisar.`,
     );

@@ -130,8 +130,9 @@ export function LinhasDaGrade({
             className="ml-1 text-[11px] font-bold leading-tight text-amber-400"
             data-testid="valor-segurado-aviso"
           >
-            Este valor será usado nas linhas vazias ao salvar. Clique em
-            "Aplicar para todas" para colocar em todas as linhas.
+            Este valor será usado nas linhas que você ainda não preencheu ao
+            salvar. Clique em "Aplicar para todas" para colocar em todas as
+            linhas.
           </p>
         )}
         {precoDoProdutoEmReais === null && !produtoSemPreco ? (

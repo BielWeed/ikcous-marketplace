@@ -361,7 +361,9 @@ describe("grade — a frase que avisa do valor segurado (g)", () => {
     expect(aviso()).toBeNull();
 
     segurarPreco("5000");
-    expect(aviso()?.textContent).toContain("será usado nas linhas vazias");
+    expect(aviso()?.textContent).toContain(
+      "será usado nas linhas que você ainda não preencheu",
+    );
     expect(aviso()?.textContent).toContain("Aplicar para todas");
 
     aplicarParaTodas();
@@ -386,6 +388,104 @@ describe("grade — a frase que avisa do valor segurado (g)", () => {
   });
 });
 
+describe("grade — o que já foi aplicado pelo botão deixa de ser segurado (B1)", () => {
+  it("(B1) produto com preço: aplicar 60, apagar o preço de uma linha para deixar Auto e salvar — a linha fica Auto, não 60", () => {
+    montar("50.00");
+    irParaOPasso2();
+    segurarPreco("6000");
+    aplicarParaTodas();
+    precoDaLinha("M", "");
+    efetivar();
+
+    expect(porTamanho("M")?.priceOverride).toBeUndefined();
+    expect(porTamanho("P")?.priceOverride).toBe(60);
+    expect(porTamanho("G")?.priceOverride).toBe(60);
+    expect(precoEntregue()).toBeUndefined();
+  });
+
+  it("(B1) depois de aplicar os campos de cima ficam vazios e o aviso não aparece, mesmo com uma linha esvaziada", () => {
+    montar("50.00");
+    irParaOPasso2();
+    segurarPreco("6000");
+    segurarEstoque("10");
+    aplicarParaTodas();
+
+    expect(porRotulo("Preço para todas as linhas").value).toBe("");
+    expect(porRotulo("Estoque para todas as linhas").value).toBe("");
+    expect(aviso()).toBeNull();
+
+    precoDaLinha("M", "");
+    expect(aviso()).toBeNull();
+  });
+
+  it("(B1) estoque: aplicar 10 e esvaziar uma linha — o segurado já aplicado não volta a preencher por cima", () => {
+    montar("");
+    irParaOPasso2();
+    segurarEstoque("10");
+    aplicarParaTodas();
+    estoqueDaLinha("M", "");
+    efetivar();
+
+    expect(porTamanho("M")?.stockIncrement).toBe(0);
+    expect(porTamanho("P")?.stockIncrement).toBe(10);
+    expect(porTamanho("G")?.stockIncrement).toBe(10);
+  });
+
+  it("(B1) estoque: aplicar 10 e mudar uma linha para 3 — ela fica 3", () => {
+    montar("");
+    irParaOPasso2();
+    segurarEstoque("10");
+    aplicarParaTodas();
+    estoqueDaLinha("M", "3");
+    efetivar();
+
+    expect(entregue().map((l) => l.stockIncrement)).toEqual([10, 3, 10]);
+  });
+
+  it("(B1) depois de aplicar, digitar um valor NOVO volta a segurar (e só preenche o que está vazio)", () => {
+    montar("50.00");
+    irParaOPasso2();
+    segurarPreco("6000");
+    aplicarParaTodas();
+    precoDaLinha("M", "");
+    segurarPreco("8000");
+    expect(aviso()).not.toBeNull();
+    efetivar();
+
+    expect(porTamanho("M")?.priceOverride).toBe(80);
+    expect(porTamanho("P")?.priceOverride).toBe(60);
+  });
+});
+
+describe("grade — estoque vazio é 'não decidido' (R1) e sair do campo sem digitar não conta como mexer (R2)", () => {
+  it("(R1) a lojista apaga o 0 de uma linha e há estoque segurado 10: a linha recebe o 10 como as outras", () => {
+    montar("");
+    irParaOPasso2();
+    estoqueDaLinha("M", "");
+    segurarEstoque("10");
+    efetivar();
+
+    expect(entregue().map((l) => l.stockIncrement)).toEqual([10, 10, 10]);
+  });
+
+  it("(R2) focar e sair do estoque de uma linha SEM digitar não trava a linha: o segurado entra nela", () => {
+    montar("");
+    irParaOPasso2();
+    const campoM = porRotulo("Estoque de M");
+    act(() => {
+      campoM.focus();
+    });
+    act(() => {
+      campoM.blur();
+    });
+    segurarEstoque("10");
+    efetivar();
+
+    expect(porTamanho("M")?.stockIncrement).toBe(10);
+    expect(entregue().map((l) => l.stockIncrement)).toEqual([10, 10, 10]);
+  });
+});
+
 describe("preencherComSegurado — a regra pura", () => {
   const base = [
     { name: "Tamanho", value: "P", estoque: "0", preco: "" },
@@ -407,6 +507,23 @@ describe("preencherComSegurado — a regra pura", () => {
   it("preço segurado só entra onde o preço está vazio e usa a mesma limpeza do botão (vírgula vira ponto)", () => {
     const r = preencherComSegurado(base, "", "49,90");
     expect(r.linhas.map((l) => l.preco)).toEqual(["49.90", "70.00"]);
+  });
+
+  it("linha com estoque vazio de verdade (apagado) recebe o segurado mesmo marcada como editada", () => {
+    const r = preencherComSegurado(
+      [
+        {
+          name: "Tamanho",
+          value: "P",
+          estoque: "",
+          preco: "",
+          estoqueEditado: true,
+        },
+      ],
+      "10",
+      "",
+    );
+    expect(r.linhas.map((l) => l.estoque)).toEqual(["10"]);
   });
 
   it("não muta as linhas de entrada", () => {
