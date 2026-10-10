@@ -650,7 +650,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                               <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Desconto
                               </p>
-                              <p className="break-words text-xl font-black italic tabular-nums text-white">
+                              <p className="whitespace-nowrap text-lg font-black italic tabular-nums text-white">
                                 {coupon.type === "percentage"
                                   ? `${coupon.value ?? 0}% OFF`
                                   : `R$ ${Number(coupon.value ?? 0).toFixed(2)}`}
@@ -660,7 +660,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                               <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Mínimo Compra
                               </p>
-                              <p className="break-words text-xl font-black tabular-nums text-white">
+                              <p className="whitespace-nowrap text-lg font-black tabular-nums text-white">
                                 {/* Achado 15 da auditoria de 20/08/2026:
                                     `.toFixed(0)` arredondava R$ 49,90 para
                                     "R$ 50" — valor que não existe, e que

@@ -8,8 +8,8 @@
 //      para 11px trocando o espaçamento de letras `tracking-widest` por
 //      `tracking-wider`, para a caixa crescer sem estourar.
 //  (c) O que NÃO muda: a altura h-11 dos botões "Cancelar" e "Salvar".
-/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex --
-   lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes, sem backtracking sobre entrada externa */
+/* eslint-disable security/detect-non-literal-fs-filename, security/detect-unsafe-regex, security/detect-non-literal-regexp --
+   lê arquivos-fonte do próprio repositório (caminhos constantes deste teste, não entrada de usuário); regex constantes (os rótulos interpolados são literais fixos do próprio teste), sem backtracking sobre entrada externa */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -138,14 +138,33 @@ describe("cupons — mini-caixas do bilhete no desenho novo do cartão de métri
   }
 
   it("as caixas Desconto e Mínimo Compra têm a casca do KpiCard", () => {
-    const caixas = linhasCom(
-      ler(LISTA),
-      "rounded-2xl border border-white/10 bg-zinc-900/70",
-    );
-    expect(caixas).toHaveLength(2);
-    for (const linha of caixas) {
-      expect(linha).toMatch(/\bbg-gradient-to-b\b/);
-      expect(linha).toMatch(/\bfrom-white\/\[0\.06\]/);
+    // Ancorado nos rótulos: o <div> que abre logo antes de cada um.
+    for (const rotulo of ["Desconto", "Mínimo Compra"]) {
+      const posRotulo = fonte.search(
+        new RegExp(`<p className="[^"]*">\\s*${rotulo}\\s*</p>`),
+      );
+      expect(posRotulo, `rótulo ${rotulo}`).toBeGreaterThan(-1);
+      const caixa = fonte.slice(
+        fonte.lastIndexOf("<div", posRotulo),
+        posRotulo,
+      );
+      expect(caixa).toMatch(/\brounded-2xl\b/);
+      expect(caixa).toMatch(/\bborder-white\/10\b/);
+      expect(caixa).toMatch(/\bbg-gradient-to-b\b/);
+      expect(caixa).toMatch(/\bfrom-white\/\[0\.06\]/);
+      expect(caixa).toMatch(/\bmin-w-0\b/);
+    }
+  });
+
+  it("o dinheiro das caixas nunca parte no meio do número (whitespace-nowrap, 18px)", () => {
+    for (const ancora of ["% OFF`", "formatCurrency(coupon.minPurchase"]) {
+      const antes = fonte.slice(0, fonte.indexOf(ancora));
+      const abertura = antes.slice(antes.lastIndexOf('<p className="'));
+      const classes = /^<p className="([^"]*)"/.exec(abertura)?.[1] ?? "";
+      expect(classes, ancora).toMatch(/\bwhitespace-nowrap\b/);
+      expect(classes, ancora).toMatch(/\btext-lg\b/);
+      expect(classes, ancora).not.toMatch(/\bbreak-words\b/);
+      expect(classes, ancora).not.toMatch(/\btext-(?:xl|2xl|3xl)\b/);
     }
   });
 

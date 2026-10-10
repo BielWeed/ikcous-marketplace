@@ -1145,14 +1145,16 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       {/* Bottom KPIs: LTV & Pedidos */}
       {/* Rodapé no desenho do cartão de métrica (10/10/2026): cartãozinho com
           brilho no topo, rótulo em frase normal 12px cinza 300, números
-          brancos e tabulares. O rótulo cede (`min-w-0 break-words`) e a
-          grade empilha abaixo de 480px, para o valor nunca sair do cartão. */}
-      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.04] bg-gradient-to-b from-white/[0.06] to-transparent p-3 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
+          brancos e tabulares. Dinheiro NUNCA parte no meio do número: o valor
+          é `whitespace-nowrap` em 12px (com 16px e `break-words` o número
+          se partia a 390px e em todo notebook de 1024–1440px). Quem cede é o
+          rótulo (`min-w-0 break-words`); a grade empilha abaixo de 480px. */}
+      <div className="relative z-10 mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/10 bg-white/[0.04] bg-gradient-to-b from-white/[0.06] to-transparent px-2 py-2.5 xs:grid-cols-[minmax(0,1fr)_auto] xs:items-end">
         <div className="flex min-w-0 flex-col">
           <span className="min-w-0 break-words text-xs font-semibold tracking-wide text-zinc-300">
             Total já comprado
           </span>
-          <span className="mt-0.5 break-words text-base font-black tabular-nums text-white">
+          <span className="mt-0.5 whitespace-nowrap text-xs font-black tabular-nums text-white">
             <span className="mr-0.5 text-xs font-semibold text-zinc-400">
               R$
             </span>
@@ -1165,7 +1167,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
           <span className="text-xs font-semibold tracking-wide text-zinc-300">
             Pedidos
           </span>
-          <span className="mt-0.5 text-base font-black tabular-nums text-admin-gold">
+          <span className="mt-0.5 text-xs font-black tabular-nums text-admin-gold">
             {formatarInteiro(customer.orders_count || 0)}
           </span>
         </div>

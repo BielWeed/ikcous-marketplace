@@ -342,6 +342,16 @@ describe("Clientes no celular (J4)", () => {
       (s) => s.textContent?.trim() === "Pedidos",
     );
     expect(rotuloPedidos).toBeDefined();
+    // Dinheiro nunca parte no meio do número: valor em 12px sem quebra, e o
+    // padding da caixa é enxuto (`px-2 py-2.5`) para o número caber.
+    const valorTotal = rotuloTotal!.nextElementSibling;
+    expect(valorTotal?.className).toContain("whitespace-nowrap");
+    expect(valorTotal?.className).toContain("text-xs");
+    expect(valorTotal?.className).not.toContain("break-words");
+    expect(rotuloPedidos!.nextElementSibling?.className).toContain("text-xs");
+    expect(linha?.className).toContain("px-2");
+    expect(linha?.className).toContain("py-2.5");
+
     for (const rotulo of [rotuloTotal!, rotuloPedidos!]) {
       // Rótulo em frase normal, 12px, cinza 300 — não uppercase miúdo cinza 600.
       expect(rotulo.className).toContain("text-xs");
