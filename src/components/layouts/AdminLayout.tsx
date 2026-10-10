@@ -1217,10 +1217,12 @@ export function AdminLayout({
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
               // Sem `admin-glass` de propósito: a `.admin-glass` (index.css,
-              // @layer utilities) sai DEPOIS de `.bg-zinc-950/95` no CSS final
+              // @layer utilities) sai DEPOIS do `bg-zinc-950` no CSS final
               // e vencia o fundo e a borda — a barra ficava translúcida e o
-              // conteúdo aparecia por baixo dos rótulos.
-              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950/95 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
+              // conteúdo aparecia por baixo dos rótulos. Fundo SÓLIDO e sem
+              // blur: com 95% + backdrop-blur o texto de baixo ainda se lia
+              // no render; opaco, o blur não serve a nada.
+              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,

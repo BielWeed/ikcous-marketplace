@@ -7,8 +7,9 @@
 // por baixo dos rótulos.
 //
 // O CONTRATO (este arquivo):
-//   1. O <nav> fixo do celular NÃO tem `admin-glass` e mantém o fundo
-//      `bg-zinc-950/95`, a borda e o blur explícitos.
+//   1. O <nav> fixo do celular NÃO tem `admin-glass`, tem fundo SÓLIDO
+//      `bg-zinc-950` (sem sufixo de opacidade, sem blur: com 95% + blur o
+//      texto de baixo ainda se lia no render — onda J2-C) e mantém a borda.
 //   2. O selo de número da aba Pedidos sobe de 8px para 11px (`text-[11px]`,
 //      `h-5 min-w-5`).
 import { act } from "react";
@@ -142,13 +143,16 @@ describe("AdminLayout — a barra inferior do celular cobre o conteúdo", () => 
     return nav!;
   }
 
-  it("o nav móvel não tem `admin-glass` e mantém fundo, borda e blur explícitos", async () => {
+  it("o nav móvel não tem `admin-glass`, tem fundo sólido (sem opacidade) e mantém a borda", async () => {
     const nav = await montar();
     const classes = nav.className.split(/\s+/);
     expect(classes).not.toContain("admin-glass");
-    expect(classes).toContain("bg-zinc-950/95");
+    expect(classes).toContain("bg-zinc-950");
+    // Nenhum fundo com sufixo de opacidade (`bg-zinc-950/95`, `bg-…/80`…).
+    expect(classes.filter((c) => /^bg-.+\/\d+$/.test(c))).toEqual([]);
     expect(classes).toContain("border-white/15");
-    expect(classes).toContain("backdrop-blur-2xl");
+    // Fundo opaco: o blur não serve a nada.
+    expect(classes).not.toContain("backdrop-blur-2xl");
   });
 
   it("o selo de número da aba Pedidos tem 11px", async () => {
