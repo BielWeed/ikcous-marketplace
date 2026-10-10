@@ -71,7 +71,7 @@ export function PainelRecolhivel({
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {aberta && comPendencia && (
-            <span className="text-[9px] font-black uppercase tracking-widest text-amber-400">
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-400">
               Resolva o erro para fechar
             </span>
           )}
