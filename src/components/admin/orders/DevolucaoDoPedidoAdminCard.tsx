@@ -4,10 +4,7 @@ import {
   SeloDoStatus,
   SeloDoTipo,
 } from "@/components/admin/devolucoes/SelosDaDevolucao";
-import {
-  pedirParaAbrirDevolucao,
-  useDevolucoesDoPedidoAdmin,
-} from "@/hooks/useDevolucoesAdmin";
+import { useDevolucoesDoPedidoAdmin } from "@/hooks/useDevolucoesAdmin";
 import {
   ehStatusAberto,
   formatarDia,
@@ -29,7 +26,7 @@ export function DevolucaoDoPedidoAdminCard({
 }: Readonly<{
   orderId: string;
   /** Navega para `admin-devolucoes` (sem ele, o card só informa). */
-  onAbrirDevolucoes?: () => void;
+  onAbrirDevolucoes?: (id: string) => void;
 }>) {
   const { devolucoes, erro, recarregar } = useDevolucoesDoPedidoAdmin(
     orderId,
@@ -38,14 +35,14 @@ export function DevolucaoDoPedidoAdminCard({
 
   if (erro) {
     return (
-      <div className="admin-glass flex items-center justify-between gap-3 rounded-2xl border border-white/5 p-4 text-white">
-        <p className="text-[11px] font-bold text-zinc-400">
+      <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 text-white">
+        <p className="text-xs font-medium text-zinc-400">
           Não consegui conferir as devoluções deste pedido.
         </p>
         <button
           type="button"
           onClick={recarregar}
-          className="min-h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-[11px] font-bold text-zinc-200"
+          className="min-h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-medium text-zinc-200"
         >
           Tentar de novo
         </button>
@@ -57,16 +54,15 @@ export function DevolucaoDoPedidoAdminCard({
 
   function abrir(id: string) {
     if (!onAbrirDevolucoes) return;
-    pedirParaAbrirDevolucao(id);
-    onAbrirDevolucoes();
+    onAbrirDevolucoes(id);
   }
 
   return (
     <section
       data-testid="devolucao-do-pedido-admin"
-      className="admin-glass space-y-3 rounded-2xl border border-white/5 p-4 text-white shadow-2xl sm:p-6"
+      className="space-y-3 rounded-2xl border border-white/5 bg-white/[0.03] p-4 text-white sm:p-5"
     >
-      <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+      <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-200">
         <RotateCcw className="size-4" />
         Devolução do produto
       </h3>
@@ -94,7 +90,7 @@ export function DevolucaoDoPedidoAdminCard({
                     <SeloDoStatus status={d.status} />
                     <SeloDoTipo tipo={d.tipo} />
                   </div>
-                  <p className="text-[11px] text-zinc-400">
+                  <p className="text-xs text-zinc-400">
                     {rotuloResolucao(d.resolucao_desejada)} ·{" "}
                     {rotuloMetodo(d.metodo_retorno)} ·{" "}
                     <span className="tabular-nums">
@@ -103,7 +99,7 @@ export function DevolucaoDoPedidoAdminCard({
                     · {formatarDia(d.created_at)}
                   </p>
                   {d.status === "solicitada" && (
-                    <p className="text-[11px] font-bold text-amber-300">
+                    <p className="text-xs font-medium text-amber-300">
                       Aguardando a sua resposta
                     </p>
                   )}
@@ -112,7 +108,7 @@ export function DevolucaoDoPedidoAdminCard({
                   <ArrowUpRight
                     className={cn(
                       "size-4 shrink-0 transition-colors group-hover:text-admin-gold",
-                      aberta ? "text-admin-gold" : "text-zinc-600",
+                      aberta ? "text-admin-gold" : "text-zinc-500",
                     )}
                   />
                 )}

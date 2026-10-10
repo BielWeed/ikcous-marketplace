@@ -164,14 +164,44 @@
     "451 / teto 453 — baixou -2 — abaixe o teto'. A queda NÃO veio do lote 60-66: o",
     "CI da base já media 451 (o #767 também mediu 451 local). O lote 60-66 entra com",
     "0 warning novo líquido (catraca local 451). Biome ficou 15/1. Baixado SÓ DEPOIS",
-    "do CI, como as quedas anteriores."
+    "do CI, como as quedas anteriores.",
+    "",
+    "09/10/2026 — warnings de eslint de 451 para 410 e erros do Biome de 15 para 14.",
+    "Medido no CI, run 37948243220 (PR #785, painel simples ondas C-E, 0879be1c, job",
+    "'Catraca de lint'): 'eslint warnings 410 / teto 451 / baixou -41' e 'biome errors",
+    "14 / teto 15 / baixou -1'. A queda VEIO do PR: a tela Atendimento (a",
+    "AdminWhatsAppConfigView, com dezenas de warnings) foi apagada e o código que a",
+    "substitui nasce limpo. Baixado SÓ DEPOIS do CI, como as quedas anteriores.",
+    "",
+    "09/10/2026 — warnings de eslint de 410 para 409. Medido localmente com a catraca",
+    "(PR #785, ondas G e H, lote 2: 'eslint warnings 409 / teto 410 / baixou -1'); a",
+    "medição local bateu com a do CI nas duas quedas anteriores desta série (410 e 14).",
+    "A queda veio do PR: o acordeão de Transportadoras saiu de Ajustes (um warning de",
+    "classe h-8.5 junto). Baixado depois do CI verde (12/12) no commit b1bf2ba1.",
+    "",
+    "09/10/2026 — erros do Biome de 14 para 13. Medido com a catraca local (PR #785,",
+    "onda F: 'biome errors 13 / teto 14 / baixou -1'), nas duas rodadas da integração. A",
+    "queda veio do PR: o teste admin-layout-cracha-pedidos-pendentes tinha um erro de",
+    "formatação do Biome na base e foi reescrito. Baixado depois do CI verde (12/12) no",
+    "commit ac85a98c.",
+    "",
+    "10/10/2026 — warnings de eslint de 409 para 408. Medido na catraca local e no CI",
+    "(PR #785, onda K: 'eslint warnings 408 / teto 409 / baixou -1', job 114155536560, CI",
+    "15/15 verde no commit 1502ef0a). A queda veio do PR: o cabeçalho móvel do painel",
+    "trocou a cor literal e o blur por bg-zinc-950, e a classe fora de ordem saiu junto.",
+    "Baixado depois do CI verde.",
+    "",
+    "10/10/2026 — warnings de eslint de 408 para 407. Medido na catraca local e confirmado",
+    "no CI (PR #785, onda L: 'eslint warnings 407 / teto 408 / baixou -1'; CI 15/15 verde no",
+    "commit 823b8ce0, job 114171264293). A queda veio do PR: a tela de Banners deixou de ter",
+    "uma classe fora de ordem ao trocar o texto miúdo. Baixado depois do CI verde."
   ],
   "eslint": {
     "errors": 0,
-    "warnings": 451
+    "warnings": 407
   },
   "biome": {
-    "errors": 15,
+    "errors": 13,
     "warnings": 1
   }
 }

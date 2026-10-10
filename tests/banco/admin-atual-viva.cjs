@@ -52,6 +52,7 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const { desfazerSucessorasDa99 } = require("./sucessoras-da-99.cjs");
 
 const NOME_MIGRATION = "20261197000000_dinheiro_exige_admin_atual.sql";
 const CAMINHO_MIGRATION = path.join(
@@ -268,6 +269,20 @@ const POSTERIORES_A_97 = [
     nome: "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
     noAr: `SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim`,
   },
+  // 20261204000000: anular_venda_presencial usa is_admin_atual(). No FIM da
+  // lista de proposito: as provas abaixo enderecam 202/200/99/98 por indice.
+  {
+    nome: "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql",
+    noAr: `SELECT to_regprocedure('public.anular_venda_presencial(uuid,text)') IS NOT NULL AS sim`,
+  },
+  // 20261208000000: o checkout mostra os cupons da cliente. As funcoes do painel
+  // (admin_cupom_clientes, admin_cupom_definir_clientes) e a politica de cupom_clientes
+  // usam is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
+    noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
+  },
 ];
 
 async function desfazerPosterioresNaTransacao(cliente) {
@@ -276,6 +291,9 @@ async function desfazerPosterioresNaTransacao(cliente) {
     HASH_98_REEMITIR,
     "a 98 tem de estar no ar (pelo hash do reemitir que ela deixa)",
   );
+  // As sucessoras da 99 (20261212, 20261214: redefinem corpos dela) saem
+  // primeiro — sem isso o rollback da 99 recusa (B1_BASELINE_DIVERGENT).
+  await desfazerSucessorasDa99(cliente);
   for (const { nome, noAr } of POSTERIORES_A_97) {
     const caminho = path.join(
       __dirname,
@@ -1321,6 +1339,9 @@ PROVAS.push({
     };
     const desfazer = async (i) => {
       const nome = POSTERIORES_A_97[i].nome;
+      // Índice 2 = a 99: as sucessoras dela (tests/banco/sucessoras-da-99.cjs)
+      // saem antes, senão o rollback da 99 recusa.
+      if (i === 2) await desfazerSucessorasDa99(cliente);
       await cliente.query(
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- caminho montado de literais do próprio teste.
         fs.readFileSync(
@@ -1533,7 +1554,9 @@ PROVAS.push({
     //     fora da recomendada (98, 99, 200, 202) também passa.
     await cliente.query("BEGIN");
     try {
-      for (const i of [3, 2, 1, 0]) {
+      // Do FIM da lista para o começo (a 208, a 204, a 98, a 99, a 200, a 202): quem
+      // entra no fim de POSTERIORES_A_97 entra aqui sozinho.
+      for (let i = POSTERIORES_A_97.length - 1; i >= 0; i -= 1) {
         if (await noAr(i)) await desfazer(i);
       }
       await cliente.query(rollback);

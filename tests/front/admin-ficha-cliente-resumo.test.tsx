@@ -351,7 +351,7 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
 
     // 100 + 50. Nem 999 (cancelado pago), nem 30 (aguardando), nem 40 (nulo),
     // nem 90 (devolvido) entram.
-    expect(valorDoCard("LTV Total")).toBe("R$ 150,00");
+    expect(valorDoCard("Total já comprado")).toBe("R$ 150,00");
   });
 
   it("Ticket Médio é o dinheiro dividido pelos pedidos pagos", async () => {
@@ -359,7 +359,7 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
 
     // 150 ÷ 2 = 75. Não é 150 ÷ 4 (os que contam) — pedido sem dinheiro no
     // denominador diluiria o tíquete.
-    expect(valorDoCard("Ticket Médio")).toBe("R$ 75,00");
+    expect(valorDoCard("Valor médio por venda")).toBe("R$ 75,00");
   });
 
   it("Última Compra é a data do pedido que conta mais recente, não a do cancelado", async () => {
@@ -398,8 +398,8 @@ describe("AdminUserDetailView — os cartões do resumo no ar", () => {
     ];
     await abrirFicha();
 
-    expect(valorDoCard("LTV Total")).toBe("R$ 0,00");
-    expect(valorDoCard("Ticket Médio")).toBe("R$ 0,00");
+    expect(valorDoCard("Total já comprado")).toBe("R$ 0,00");
+    expect(valorDoCard("Valor médio por venda")).toBe("R$ 0,00");
 
     const etiqueta = [...hospedeiro.querySelectorAll("span")].find(
       (s) => s.textContent?.trim() === "Última Compra",

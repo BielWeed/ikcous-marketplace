@@ -81,7 +81,7 @@ export const PASSOS_DO_GUIA: readonly PassoDoGuia[] = [
   {
     titulo: "Volte aqui: cole as três chaves e salve",
     descricao:
-      'Copie a Public Key e o Access Token de produção. Na mesma aplicação do Mercado Pago, configure Webhooks de produção com o endereço de notificações da sua loja e copie a Assinatura secreta para o campo "Chave de notificações (obrigatória para receber pelo app)". Ao salvar as três chaves, o app testa a conexão sozinho e, se der certo, libera o Pix pelo app automaticamente — não existe botão de ligar. O cartão pelo app se liga ou desliga em Formas de pagamento. Esse teste confirma o Access Token, não a assinatura do webhook: sem a assinatura da sua loja, o pagamento pelo app não é liberado, e a chave global do app não substitui a sua. Se quiser parar de receber por um tempo, use "Pausar" nesta tela; "Retomar" volta ao normal. A vitrine reflete a mudança em até 1 minuto. Para o dinheiro cair na sua conta, confira também sua CHAVE PIX na área do Pix do Mercado Pago.',
+      'Copie a chave pública (Public Key) e a chave secreta (Access Token) de produção. Na mesma aplicação do Mercado Pago, ligue o aviso automático de pagamento de produção (lá se chama "Webhooks") com o endereço de notificações da sua loja e copie a senha dos avisos (lá aparece como "Assinatura secreta") para o campo "Senha dos avisos (Chave de notificações)". Ao salvar as três chaves, o app testa a conexão sozinho e, se der certo, libera o Pix pelo app automaticamente — não existe botão de ligar. O cartão pelo app se liga ou desliga em Formas de pagamento. Esse teste confirma a chave secreta, não a senha dos avisos: sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado, e a chave global do app não substitui a sua. Se quiser parar de receber por um tempo, use "Pausar" nesta tela; "Retomar" volta ao normal. A vitrine reflete a mudança em até 1 minuto. Para o dinheiro cair na sua conta, confira também sua CHAVE PIX na área do Pix do Mercado Pago.',
   },
 ];
 
@@ -183,7 +183,7 @@ COMO EU QUERO QUE VOCÊ ME GUIE
 - Me lembre de conferir se a minha conta do Mercado Pago tem uma CHAVE PIX cadastrada (na área do Pix do app). Sem ela, o dinheiro do Pix não tem onde cair.
 
 NO FINAL: CONFIGURE A CHAVE DE NOTIFICAÇÕES ANTES DE RECEBER PELO APP
-Depois que eu tiver a Public Key e o Access Token, explique em uma frase para que serve a assinatura: ela permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago. Leve-me até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar e copiar a "Assinatura secreta". Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Chave de notificações (obrigatória para receber pelo app)". Sem ela, não me diga que o recebimento pelo app está liberado. Um aviso assinado e a atualização do pedido ainda precisam ser validados.
+Depois que eu tiver a Public Key e o Access Token, explique em uma frase para que serve a assinatura: ela permite ao meu aplicativo conferir que o aviso de "pagamento aprovado" veio mesmo do Mercado Pago. Leve-me até ela, um passo por vez: na mesma aplicação do painel, abrir "Webhooks" (ou "Notificações"), escolher "Configurar notificações", modo "Produção", ${trechoDaUrl}, marcar os eventos de pagamento ("Pagamentos" e, se aparecer, "Pedidos" ou "Orders"), salvar e copiar a "Assinatura secreta". Eu vou colar essa assinatura no aplicativo da minha loja, no campo "Senha dos avisos (Chave de notificações)". Sem ela, não me diga que o recebimento pelo app está liberado. Um aviso assinado e a atualização do pedido ainda precisam ser validados.
 
 SEGURANÇA
 Essas chaves são SECRETAS. Eu só vou usá-las no painel do Mercado Pago e dentro do aplicativo da minha loja. Não vou enviá-las para ninguém, nem colar em outro site, nem colar aqui nesta conversa. Se eu tentar colar uma chave aqui, me avise para não fazer isso.`;
@@ -200,7 +200,7 @@ export const PROMPT_PARA_AGENTE_MP = montarPromptParaAgenteMp({
 
 /** Recado de segurança exibido embaixo do formulário. */
 export const RECADO_DE_SEGURANCA =
-  "Suas chaves ficam guardadas cifradas no servidor do seu app. Ninguém vê o Access Token inteiro — nem aqui na tela, que mostra só o finalzinho para você reconhecer qual colou.";
+  "Suas chaves ficam guardadas cifradas no servidor do seu app. Ninguém vê a chave secreta inteira — nem aqui na tela, que mostra só o finalzinho para você reconhecer qual colou.";
 
 /**
  * Textos do bloco "Cartão pelo app" (FormasDePagamentoCard.tsx). Fatos da

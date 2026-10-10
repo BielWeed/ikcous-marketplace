@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 //
-// Dashboard do painel admin ganha um bloco que diz, sem o lojista ter de
-// adivinhar: quantos produtos estão acabando (com atalho para a lista) e se
-// a loja já está pronta para vender (3 pré-requisitos, cada pendência já
-// levando para a tela certa).
+// Início do painel: o bloco que diz, sem a lojista ter de adivinhar, quantos
+// produtos estão acabando (com atalho para a lista) e se a loja já está
+// pronta para vender. O cartão da loja pronta é GUIADO (E3 do painel simples):
+// "4 de 6 prontos", UM botão grande "Próximo passo: …" que leva ao destino do
+// primeiro passo pendente, a lista dos seis recolhida (botão com
+// `aria-expanded`) e, com 6/6, só a linha "Loja pronta para vender". O horário
+// de atendimento NÃO conta.
 //
 // O componente é PURO (mesma escolha de StatusPagamentoPix.tsx): recebe tudo
 // por props, não lê import.meta.env, não chama hook de dados. Isso é o que
-// permite os testes abaixo exercitarem cada estado sem montar o Dashboard
+// permite os testes abaixo exercitarem cada estado sem montar o Início
 // inteiro nem stubar Supabase.
 //
 // Sem @testing-library/react (não instalado neste projeto) — mesmo padrão
 // dos outros testes de componente (ver tests/front/admin-kpi-carousel-compacto.test.tsx).
-import { act } from "react";
+import { LojaProntaEEstoqueBaixo } from "@/components/admin/dashboard/LojaProntaEEstoqueBaixo";
+import { montarEnderecoDaLoja } from "@/lib/endereco-da-loja";
+import { type ComponentProps, act } from "react";
 import { type Root, createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,12 +25,50 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // dos outros testes de componente deste projeto.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
+type Props = ComponentProps<typeof LojaProntaEEstoqueBaixo>;
+
+const ENDERECO_PRONTO = montarEnderecoDaLoja({
+  cep: "01310100",
+  rua: "Avenida Paulista",
+  numero: "1578",
+  complemento: "",
+  bairro: "Bela Vista",
+  cidade: "São Paulo",
+  uf: "SP",
+});
+
+/** Loja toda pronta (6/6); cada teste estraga só o que quer provar. Repare:
+ * nenhum horário de atendimento aqui — ele não faz parte da contagem. */
+const CONFIG_PRONTA: Props["config"] = {
+  storeName: "Ateliê da Serra",
+  logoUrl: "https://exemplo.test/logo.png",
+  originCep: ENDERECO_PRONTO.originCep,
+  storeAddress: ENDERECO_PRONTO.storeAddress,
+  whatsappNumber: "(34) 99999-9999",
+};
+
+function propsDoCartao(parcial: Partial<Props> = {}): Props {
+  return {
+    stats: { inventoryAlerts: 0 },
+    config: CONFIG_PRONTA,
+    ligado: true,
+    chaveOk: true,
+    formasNaEntrega: [],
+    produtos: [{ isActive: true }],
+    configCarregando: false,
+    produtosCarregando: false,
+    onNavigate: vi.fn(),
+    onTentarDeNovo: vi.fn(),
+    ...parcial,
+  };
+}
+
 let hospedeiro: HTMLDivElement;
 let raiz: Root;
 
-async function montar(elemento: React.ReactElement) {
+async function montar(parcial: Partial<Props> = {}) {
   await act(async () => {
-    raiz.render(elemento);
+    raiz.render(<LojaProntaEEstoqueBaixo {...propsDoCartao(parcial)} />);
   });
 }
 
@@ -46,6 +89,23 @@ async function clicar(botao: HTMLButtonElement) {
   });
 }
 
+/** O botão que recolhe/abre a lista dos seis passos. */
+function botaoDaLista(): HTMLButtonElement | undefined {
+  return Array.from(
+    hospedeiro.querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
+  )[0];
+}
+
+async function abrirALista() {
+  const botao = botaoDaLista();
+  expect(botao).toBeTruthy();
+  await clicar(botao!);
+}
+
+function linhasDaLista(): HTMLLIElement[] {
+  return Array.from(hospedeiro.querySelectorAll<HTMLLIElement>("ul > li"));
+}
+
 describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () => {
   beforeEach(() => {
     hospedeiro = document.createElement("div");
@@ -60,26 +120,11 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
     hospedeiro.remove();
   });
 
-  // ── Aceite 1: o card de estoque mostra o número e navega para os avisos ──
+  // ── O card de estoque mostra o número e navega para os avisos ──
   it("card de estoque mostra o número de stats.inventoryAlerts e o clique navega para admin-notifications", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
     const onNavigate = vi.fn();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 3 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={onNavigate}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    await montar({ stats: { inventoryAlerts: 3 }, onNavigate });
 
     expect(hospedeiro.textContent).toContain("3");
     expect(hospedeiro.textContent).toMatch(/3 produtos/);
@@ -93,48 +138,17 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 
   // ── A1 (laudo 08/09): "1 produtos" está errado — plural fixo ──
   it("com inventoryAlerts = 1, o card diz '1 produto' (singular), NUNCA '1 produtos'", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+    await montar({ stats: { inventoryAlerts: 1 } });
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 1 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    expect(hospedeiro.textContent).toMatch(/1 produto\b/);
+    expect(hospedeiro.textContent).toMatch(/1 produto(?!s)/);
     expect(hospedeiro.textContent).not.toMatch(/1 produtos/);
   });
 
-  // ── Aceite 2: "não sei" nunca é zero ──
+  // ── "Não sei" nunca é zero ──
   it("stats nulo: o card diz que não conseguiu conferir, NUNCA mostra 0, e tem botão de tentar de novo", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
     const onTentarDeNovo = vi.fn();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={null}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={onTentarDeNovo}
-      />,
-    );
+    await montar({ stats: null, onTentarDeNovo });
 
     // Nunca "0" no lugar do número de estoque — "não sei" não é zero.
     expect(botaoComTexto(/estoque baixo/i)).toBeFalsy();
@@ -149,31 +163,12 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
 
   // ── D-carregando: a busca ainda está em andamento não é falha ──
   //
-  // Antes desta frente, o card de estoque só conhecia dois estados (número
-  // ou falha) — em toda abertura do Dashboard sem cache, `stats` nasce
-  // `null` e a RPC só é disparada depois do `setTimeout` de 320ms em
-  // AdminDashboardView, então o lojista lia "não foi possível conferir o
-  // estoque" antes mesmo da busca começar. `estoqueCarregando` distingue
-  // "ainda não sei porque estou buscando" de "busquei e não consegui".
+  // Em toda abertura do Início sem cache, `stats` nasce `null` e a RPC só é
+  // disparada depois de um atraso, então o lojista lia "não foi possível
+  // conferir o estoque" antes mesmo da busca começar. `estoqueCarregando`
+  // distingue "ainda não sei porque estou buscando" de "busquei e não consegui".
   it("estoqueCarregando=true e stats=null: mostra o estado de carregando, NUNCA a mensagem de falha nem o botão de tentar de novo", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={null}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        estoqueCarregando={true}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    await montar({ stats: null, estoqueCarregando: true });
 
     expect(hospedeiro.textContent).not.toMatch(
       /não consegui|não foi possível/i,
@@ -184,25 +179,9 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
   });
 
   it("estoqueCarregando=false e stats=null: continua no estado de falha, com o botão de tentar de novo (comportamento já provado, não pode regredir)", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
     const onTentarDeNovo = vi.fn();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={null}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        estoqueCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={onTentarDeNovo}
-      />,
-    );
+    await montar({ stats: null, estoqueCarregando: false, onTentarDeNovo });
 
     expect(hospedeiro.textContent).toMatch(/não consegui|não foi possível/i);
     const tentar = botaoComTexto(/tentar de novo/i);
@@ -212,25 +191,13 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
   });
 
   it("estoqueCarregando=true mas com stats.inventoryAlerts=3: o número em mãos ganha do carregando, mostra 3", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
     const onNavigate = vi.fn();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 3 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        estoqueCarregando={true}
-        onNavigate={onNavigate}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    await montar({
+      stats: { inventoryAlerts: 3 },
+      estoqueCarregando: true,
+      onNavigate,
+    });
 
     expect(hospedeiro.textContent).toMatch(/3 produtos/);
     expect(hospedeiro.textContent).not.toMatch(/conferindo estoque/i);
@@ -241,424 +208,289 @@ describe("LojaProntaEEstoqueBaixo — o painel diz o que falta para vender", () 
   });
 
   it("inventoryAlerts não numérico (ex.: veio como string do banco): mesmo tratamento de 'não sei'", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: Number.NaN }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    await montar({ stats: { inventoryAlerts: Number.NaN } });
 
     expect(hospedeiro.textContent).toMatch(/não consegui|não foi possível/i);
     expect(botaoComTexto(/tentar de novo/i)).toBeTruthy();
   });
 
-  // ── Aceite 3: CEP de origem ──
-  it("CEP de origem vazio: item pendente, e o clique navega para admin-shipping", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+  // ── E3: o cartão guiado, nos seis passos ──
+
+  it("faltando WhatsApp e produto: diz '4 de 6 prontos'", async () => {
+    await montar({
+      config: { ...CONFIG_PRONTA, whatsappNumber: "" },
+      produtos: [{ isActive: false }],
+    });
+
+    expect(hospedeiro.textContent).toContain("4 de 6 prontos");
+    expect(hospedeiro.textContent).not.toMatch(/loja pronta para vender/i);
+  });
+
+  it("UM botão grande 'Próximo passo: <primeiro pendente>' leva ao destino do passo", async () => {
     const onNavigate = vi.fn();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep=""
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={onNavigate}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    // WhatsApp (3º) e produto (6º) pendentes: o primeiro é o WhatsApp.
+    await montar({
+      config: { ...CONFIG_PRONTA, whatsappNumber: "" },
+      produtos: [{ isActive: false }],
+      onNavigate,
+    });
 
-    const cepPendente = botaoComTexto(/cep/i);
-    expect(cepPendente).toBeTruthy();
-    await clicar(cepPendente!);
-    expect(onNavigate).toHaveBeenCalledWith("admin-shipping");
+    const proximos = Array.from(hospedeiro.querySelectorAll("button")).filter(
+      (botao) => (botao.textContent ?? "").includes("Próximo passo"),
+    );
+    expect(proximos).toHaveLength(1);
+    expect(proximos[0].textContent).toBe("Próximo passo: Cadastrar WhatsApp");
+
+    await clicar(proximos[0]);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith("admin-about-store");
   });
 
-  it("CEP de origem ausente (undefined): mesmo tratamento de pendente", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+  it.each([
+    {
+      caso: "nome e logo",
+      parcial: { config: { ...CONFIG_PRONTA, logoUrl: "" } },
+      texto: "Próximo passo: Cadastrar nome e logo da loja",
+      destino: "admin-about-store",
+    },
+    {
+      caso: "como você recebe (sem PIX e sem forma na entrega)",
+      parcial: { ligado: false, chaveOk: false, formasNaEntrega: [] },
+      texto: "Próximo passo: Configurar como você recebe",
+      destino: "admin-settings",
+    },
+    {
+      caso: "primeiro produto (só um inativo)",
+      parcial: { produtos: [{ isActive: false }] },
+      texto: "Próximo passo: Cadastrar um produto ativo",
+      destino: "admin-products",
+    },
+  ] as const)(
+    "o próximo passo '$caso' leva para $destino",
+    async ({ parcial, texto, destino }) => {
+      const onNavigate = vi.fn();
+      await montar({ ...parcial, onNavigate } as Partial<Props>);
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep={undefined}
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+      const proximo = botaoComTexto("Próximo passo");
+      expect(proximo?.textContent).toBe(texto);
+      await clicar(proximo!);
+      expect(onNavigate).toHaveBeenCalledWith(destino);
+    },
+  );
 
-    expect(botaoComTexto(/cep/i)).toBeTruthy();
+  it("a lista dos seis nasce RECOLHIDA: botão com aria-expanded=false e nenhum item na tela", async () => {
+    await montar({ config: { ...CONFIG_PRONTA, whatsappNumber: "" } });
+
+    const botao = botaoDaLista();
+    expect(botao).toBeTruthy();
+    expect(botao!.getAttribute("aria-expanded")).toBe("false");
+    expect(linhasDaLista()).toHaveLength(0);
   });
 
-  it("CEP de origem preenchido: item feito, sem botão", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+  it("o botão abre e fecha a lista: aria-expanded vira true com os seis passos e volta a false", async () => {
+    await montar({
+      config: { ...CONFIG_PRONTA, whatsappNumber: "" },
+      produtos: [{ isActive: false }],
+    });
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    await abrirALista();
+    const botao = botaoDaLista()!;
+    expect(botao.getAttribute("aria-expanded")).toBe("true");
+    // O botão aponta para a lista que controla.
+    const alvo = botao.getAttribute("aria-controls");
+    expect(alvo).toBeTruthy();
+    expect(document.getElementById(alvo!)).toBeTruthy();
 
-    expect(botaoComTexto(/cep/i)).toBeFalsy();
+    const linhas = linhasDaLista();
+    expect(linhas).toHaveLength(6);
+    const texto = (indice: number) => linhas.at(indice)?.textContent ?? "";
+    expect(texto(0)).toMatch(/nome e logo/i);
+    expect(texto(1)).toMatch(/endereço/i);
+    expect(texto(2)).toMatch(/whatsapp/i);
+    expect(texto(3)).toMatch(/pix/i);
+    expect(texto(4)).toMatch(/entrega/i);
+    expect(texto(5)).toMatch(/produto/i);
+
+    await clicar(botaoDaLista()!);
+    expect(botaoDaLista()!.getAttribute("aria-expanded")).toBe("false");
+    expect(linhasDaLista()).toHaveLength(0);
   });
 
-  // ── Aceite 4: PIX, mesma regra do StatusPagamentoPix ──
-  it("PIX ligado e com chave: item feito", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+  it("na lista aberta, cada passo pendente é um botão que leva ao seu destino (inclusive a entrega, em admin-shipping)", async () => {
+    const onNavigate = vi.fn();
+    // Sem CEP nem endereço: o endereço e a entrega ficam pendentes juntos.
+    await montar({
+      config: { ...CONFIG_PRONTA, originCep: "", storeAddress: null },
+      ligado: false,
+      chaveOk: false,
+      formasNaEntrega: [],
+      produtos: [],
+      onNavigate,
+    });
+    await abrirALista();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    const linhas = linhasDaLista();
+    const destinoDe = async (indice: number) => {
+      onNavigate.mockClear();
+      const botao = linhas.at(indice)?.querySelector("button");
+      expect(botao).toBeTruthy();
+      await clicar(botao!);
+      return onNavigate.mock.calls[0]?.[0];
+    };
 
-    expect(botaoComTexto(/pix/i)).toBeFalsy();
+    expect(linhas[0].querySelector("button")).toBeNull(); // nome e logo: feito
+    expect(await destinoDe(1)).toBe("admin-about-store");
+    expect(linhas[2].querySelector("button")).toBeNull(); // WhatsApp: feito
+    expect(await destinoDe(3)).toBe("admin-settings");
+    expect(await destinoDe(4)).toBe("admin-shipping");
+    expect(await destinoDe(5)).toBe("admin-products");
   });
 
-  it("PIX ligado sem chave pública: pendente, clique navega para admin-settings", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
+  it("6 de 6: vira só a linha 'Loja pronta para vender' — sem contagem, sem próximo passo, sem lista", async () => {
+    await montar();
+
+    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).not.toContain("de 6 prontos");
+    expect(hospedeiro.textContent).not.toContain("Próximo passo");
+    expect(hospedeiro.textContent).not.toContain(
+      "Sua loja está pronta para vender?",
     );
+    expect(botaoDaLista()).toBeUndefined();
+    expect(linhasDaLista()).toHaveLength(0);
+    // O card de estoque continua ao lado.
+    expect(hospedeiro.textContent).toMatch(/estoque baixo/i);
+  });
+
+  it("o horário de atendimento não conta: sem horário nenhum, a loja com os seis feitos está pronta", async () => {
+    await montar({
+      config: { ...CONFIG_PRONTA, businessHours: "" } as Props["config"],
+    });
+
+    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).not.toMatch(/hor[áa]rio/i);
+  });
+
+  it("loja só com pagamento na entrega (sem PIX): 'Como você recebe' está feito e a loja pronta", async () => {
+    await montar({ ligado: false, chaveOk: false, formasNaEntrega: ["cash"] });
+
+    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
+    expect(hospedeiro.textContent).not.toContain("Configurar como você recebe");
+  });
+
+  it("loja só na entrega: a lista aberta diz 'Pagamento na entrega configurado', não 'PIX'", async () => {
+    await montar({
+      ligado: false,
+      chaveOk: false,
+      formasNaEntrega: ["cash"],
+      produtos: [],
+    });
+    await abrirALista();
+
+    const recebe = linhasDaLista()[3].textContent ?? "";
+    expect(recebe).toMatch(/pagamento na entrega configurado/i);
+    expect(recebe).not.toMatch(/pix/i);
+  });
+
+  it("loja sem PIX e sem nenhuma forma na entrega: continua pendente, leva para admin-settings", async () => {
     const onNavigate = vi.fn();
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={false}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={onNavigate}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+    await montar({
+      ligado: false,
+      chaveOk: false,
+      formasNaEntrega: [],
+      onNavigate,
+    });
 
-    const pixPendente = botaoComTexto(/pix/i);
-    expect(pixPendente).toBeTruthy();
-    await clicar(pixPendente!);
+    const pendente = botaoComTexto(
+      "Próximo passo: Configurar como você recebe",
+    );
+    expect(pendente).toBeTruthy();
+    await clicar(pendente!);
     expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
   });
 
-  it("PIX desligado: pendente, clique também navega para admin-settings", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-    const onNavigate = vi.fn();
+  it("produto: só um INATIVO na lista conta como pendente; com um ativo, feito (isActive, não o tamanho da lista)", async () => {
+    await montar({ produtos: [{ isActive: false }] });
+    expect(hospedeiro.textContent).toContain("5 de 6 prontos");
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={false}
-        chaveOk={false}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={onNavigate}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    const pixPendente = botaoComTexto(/pix/i);
-    expect(pixPendente).toBeTruthy();
-    await clicar(pixPendente!);
-    expect(onNavigate).toHaveBeenCalledWith("admin-settings");
+    await montar({ produtos: [{ isActive: false }, { isActive: true }] });
+    expect(hospedeiro.textContent).toContain("Loja pronta para vender");
   });
 
-  // ── Aceite 5: produto ativo — tem de ser isActive, não products.length ──
-  it("nenhum produto ativo (lista só com produto INATIVO): pendente, clique navega para admin-products", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-    const onNavigate = vi.fn();
+  // ── "Entrega" no Início: só o que já está na config (sem chamada de rede) ──
+  it("sem CEP completo a entrega fica pendente; com CEP de oito dígitos, feita", async () => {
+    await montar({
+      config: { ...CONFIG_PRONTA, originCep: "1234", storeAddress: null },
+    });
+    await abrirALista();
+    expect(linhasDaLista()[4].textContent).toMatch(/configurar a entrega/i);
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: false }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={onNavigate}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    const produtoPendente = botaoComTexto(/produto ativo/i);
-    expect(produtoPendente).toBeTruthy();
-    await clicar(produtoPendente!);
-    expect(onNavigate).toHaveBeenCalledWith("admin-products");
+    await montar({
+      config: { ...CONFIG_PRONTA, storeAddress: null },
+    });
+    expect(linhasDaLista()[4].textContent).toMatch(/entrega configurada/i);
   });
 
-  it("com 1+ produto ativo: feito, e os 3 itens feitos dizem que a loja está pronta para vender", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+  // ── Carregando: "conferindo…", nunca "pendente" nem "pronta" (alarme falso) ──
+  it("config e produtos ainda carregando: nada de 'Próximo passo', de contagem nem de 'Loja pronta'; só 'Conferindo…'", async () => {
+    await montar({
+      config: {},
+      ligado: true,
+      chaveOk: true,
+      produtos: [],
+      configCarregando: true,
+      produtosCarregando: true,
+    });
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: false }, { isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    expect(botaoComTexto(/produto ativo/i)).toBeFalsy();
-    // Frase declarativa (ponto final) — distinta do título "...vender?"
-    // (interrogação), que aparece em TODA renderização do bloco.
-    expect(hospedeiro.textContent).toMatch(/está pronta para vender\./);
-  });
-
-  // ── D4 — enquanto carrega, "conferindo…", nunca "pendente" (alarme falso) ──
-  it("config e produtos ainda carregando: os itens mostram 'conferindo…', não 'pendente' nem 'feito'", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    // chaveOk=true (não false): depois de A3 o item PIX não depende mais de
-    // configCarregando — resolve direto para "feito"/"pendente". Para este
-    // teste continuar cobrindo "nenhum PENDENTE aparece enquanto carrega",
-    // a combinação usada é a que resolve PIX como feito (sem botão), e não
-    // como "conferindo" — isso é coberto à parte pelo teste de A3 abaixo.
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep={undefined}
-        ligado={true}
-        chaveOk={true}
-        produtos={[]}
-        configCarregando={true}
-        produtosCarregando={true}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    // Nenhum botão de pendência aparece enquanto carrega — alarme falso é
-    // exatamente o que D4 proíbe.
-    expect(botaoComTexto(/cep/i)).toBeFalsy();
-    expect(botaoComTexto(/pix/i)).toBeFalsy();
-    expect(botaoComTexto(/produto ativo/i)).toBeFalsy();
     expect(hospedeiro.textContent).toMatch(/conferindo/i);
-    // E o bloco não pode alegar que a loja está pronta sem ter conferido.
-    expect(hospedeiro.textContent).not.toMatch(/está pronta para vender\./);
+    expect(hospedeiro.textContent).not.toContain("Próximo passo");
+    expect(hospedeiro.textContent).not.toContain("de 6 prontos");
+    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
+
+    await abrirALista();
+    // Nenhum botão de pendência enquanto carrega.
+    for (const linha of linhasDaLista()) {
+      expect(linha.querySelector("button")).toBeNull();
+    }
+    const textos = linhasDaLista().map((linha) => linha.textContent ?? "");
+    // PIX vem do build: resolve na hora, mesmo com a config carregando.
+    expect(textos[3]).toMatch(/pagamento pix configurado/i);
+    // Os outros cinco dizem QUAL item estão conferindo (leitor de tela não
+    // adivinha por posição) e são distintos entre si.
+    const conferindo = textos.filter((texto) => /conferindo/i.test(texto));
+    expect(conferindo).toHaveLength(5);
+    expect(new Set(conferindo).size).toBe(5);
+    expect(textos[0]).toMatch(/nome e logo/i);
+    expect(textos[2]).toMatch(/whatsapp/i);
+    expect(textos[5]).toMatch(/produto/i);
   });
 
-  // ── A2 (laudo 08/09, achado mais importante): trava dos 3 itens ──
-  //
-  // O revisor mostrou, mutando, que um 4º item acrescentado ao array `itens`
-  // com estado "feito" passa pelos 16 testes antigos sem nenhum ficar
-  // vermelho. O número de itens do checklist é DECISÃO DE PRODUTO do dono
-  // ("nenhum item além desses três") — não é escolha de quem programa, e até
-  // aqui nada impedia um 4º item de entrar em silêncio. Os dois testes
-  // abaixo contam de verdade os `<li>` renderizados dentro da lista do
-  // checklist (não um seletor que possa "passar por acaso" contando outra
-  // coisa) e travam em exatamente 3, nomeando quais são os três.
-  it("checklist com os 3 itens 'feito': exatamente 3 <li>, e são PIX, CEP e produto ativo — nenhum a mais", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
+  it("só os produtos carregando: não se chama 'Próximo passo' nem 'pronta' antes de saber tudo", async () => {
+    await montar({ produtos: [], produtosCarregando: true });
 
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
-    expect(itensDoChecklist.length).toBe(3);
-    expect(itensDoChecklist[0]!.textContent ?? "").toMatch(/pix/i);
-    expect(itensDoChecklist[1]!.textContent ?? "").toMatch(/cep/i);
-    expect(itensDoChecklist[2]!.textContent ?? "").toMatch(/produto ativo/i);
+    expect(hospedeiro.textContent).toMatch(/conferindo/i);
+    expect(hospedeiro.textContent).not.toContain("Próximo passo");
+    expect(hospedeiro.textContent).not.toContain("Loja pronta para vender");
   });
 
-  it("checklist com os 3 itens 'pendente': exatamente 3 <li>, e são PIX, CEP e produto ativo — nenhum a mais", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep=""
-        ligado={false}
-        chaveOk={false}
-        produtos={[]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
-    expect(itensDoChecklist.length).toBe(3);
-    expect(itensDoChecklist[0]!.textContent ?? "").toMatch(/pix/i);
-    expect(itensDoChecklist[1]!.textContent ?? "").toMatch(/cep/i);
-    expect(itensDoChecklist[2]!.textContent ?? "").toMatch(/produto ativo/i);
-  });
-
-  // ── A3 (laudo 08/09): PIX não depende do carregamento da loja ──
-  //
-  // A resposta do item PIX vem de constantes de BUILD (`ligado`/`chaveOk`,
-  // calculadas no import e que nunca mudam) — não do StoreContext. Antes,
-  // o item ficava em "Conferindo…" enquanto `configCarregando` era `true`,
-  // mesmo já sabendo a resposta: "não sei" na direção errada. Os outros dois
-  // itens (CEP, produto) continuam gated pelo carregamento deles, porque
-  // esses sim dependem de dado que ainda não chegou.
-  it("PIX resolve direto para 'feito' mesmo com configCarregando=true; CEP continua 'conferindo'", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep="38500-000"
-        ligado={true}
-        chaveOk={true}
-        produtos={[{ isActive: true }]}
-        configCarregando={true}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
-    const textoPix = itensDoChecklist[0]!.textContent ?? "";
-    const textoCep = itensDoChecklist[1]!.textContent ?? "";
-
-    expect(textoPix).toMatch(/pagamento pix configurado/i);
-    expect(textoPix).not.toMatch(/conferindo/i);
-    expect(textoCep).toMatch(/conferindo/i);
-  });
-
-  // ── A4 (laudo 08/09): durante o carregamento, dizer QUAL item está ──
-  //
-  // Antes, os itens em carregamento mostravam o texto idêntico "Conferindo…"
-  // sem identificação — quem usa leitor de tela não sabia o que estava
-  // sendo conferido. Depois de A3, o item PIX nunca mais fica em
-  // "carregando" (resolve na hora), então só CEP e produto podem estar
-  // carregando ao mesmo tempo; o teste cobre exatamente esses dois e exige
-  // que cada linha identifique o próprio item.
-  it("com CEP e produto carregando, cada linha mostra um texto distinto que identifica o próprio item", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 0 }}
-        originCep={undefined}
-        ligado={true}
-        chaveOk={true}
-        produtos={[]}
-        configCarregando={true}
-        produtosCarregando={true}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
-
-    const itensDoChecklist = hospedeiro.querySelectorAll("ul > li");
-    const textoCep = itensDoChecklist[1]!.textContent ?? "";
-    const textoProduto = itensDoChecklist[2]!.textContent ?? "";
-
-    expect(textoCep).toMatch(/conferindo/i);
-    expect(textoProduto).toMatch(/conferindo/i);
-    expect(textoCep).not.toBe(textoProduto);
-    expect(textoCep).toMatch(/cep/i);
-    expect(textoProduto).toMatch(/produto/i);
-  });
-
-  // ── Aceite 7: acessibilidade ──
-  it("o card de estoque e cada item pendente têm nome acessível (são <button>)", async () => {
-    const { LojaProntaEEstoqueBaixo } = await import(
-      "@/components/admin/dashboard/LojaProntaEEstoqueBaixo"
-    );
-
-    await montar(
-      <LojaProntaEEstoqueBaixo
-        stats={{ inventoryAlerts: 5 }}
-        originCep=""
-        ligado={false}
-        chaveOk={false}
-        produtos={[]}
-        configCarregando={false}
-        produtosCarregando={false}
-        onNavigate={vi.fn()}
-        onTentarDeNovo={vi.fn()}
-      />,
-    );
+  // ── Acessibilidade ──
+  it("o card de estoque, o próximo passo e o botão da lista têm nome acessível (são <button> com texto)", async () => {
+    await montar({
+      stats: { inventoryAlerts: 5 },
+      config: {},
+      ligado: false,
+      chaveOk: false,
+      produtos: [],
+    });
+    await abrirALista();
 
     for (const botao of Array.from(hospedeiro.querySelectorAll("button"))) {
       expect((botao.textContent ?? "").trim().length).toBeGreaterThan(0);
     }
     expect(botaoComTexto(/estoque baixo/i)).toBeTruthy();
-    expect(botaoComTexto(/cep/i)).toBeTruthy();
-    expect(botaoComTexto(/pix/i)).toBeTruthy();
-    expect(botaoComTexto(/produto ativo/i)).toBeTruthy();
+    expect(botaoComTexto(/próximo passo/i)).toBeTruthy();
   });
 });
 
@@ -762,9 +594,9 @@ describe("equivalência: o limiar do front é o MESMO literal gravado na migrati
     ).toEqual([]);
   });
 
-  it("a definição VIVA é a de maior carimbo — hoje, 20261199000000", () => {
+  it("a definição VIVA é a de maior carimbo — hoje, 20261214000000", () => {
     expect(CAMINHO_DA_VIVA).toContain(
-      "20261199000000_portas_do_painel_exigem_admin_atual.sql",
+      "20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql",
     );
   });
 

@@ -248,14 +248,16 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(passo2).toContain(
       "a ficha do pedido passar a mostrar “Devolver R$ …”, no quadro “Devolução de dinheiro”, não toque nele: depois de enviar, devolver é perder o produto e o dinheiro",
     );
-    expect(passo2).not.toMatch(/“Estorno devido” com o botão “Devolver/);
+    // Painel simples (onda 3): a lista “Estorno devido” passou a se chamar
+    // “Devolver ao cliente” (glossário); as regras do texto não mudaram.
+    expect(passo2).not.toMatch(/“Devolver ao cliente” com o botão “Devolver/);
     expect(passo2).toContain(
       "toque em “Já estornei no Mercado Pago”, na lista “Devolver agora”",
     );
     // B2b (revisão financeira): a corrida — cancelou no instante em que o
     // webhook confirmou, e o servidor já criou a devolução automática.
     expect(itens.at(0)).toContain(
-      "Se o pedido aparecer em “Estorno devido” com o aviso “Devolução em andamento”, o Mercado Pago já está devolvendo o dinheiro ao cliente (ou analisando uma disputa): não envie o produto nem devolva por outro meio",
+      "Se o pedido aparecer em “Devolver ao cliente” com o aviso “Devolução em andamento”, o Mercado Pago já está devolvendo o dinheiro ao cliente (ou analisando uma disputa): não envie o produto nem devolva por outro meio",
     );
     // B2b rodada 2 (revisão financeira): a FALTA do aviso não prova que o
     // app não reconheceu a cobrança. Com a leitura pendente ou falha, a
@@ -273,7 +275,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     // o dinheiro voltou ao cliente: manda conferir no painel do MP.
     const linhaEstornado = itens.at(2) ?? "";
     expect(linhaEstornado).toContain(
-      "Se o selo de pagamento do pedido mostrar “Estornado”, o Mercado Pago registrou uma devolução ou uma contestação (chargeback) desse pagamento: não envie o produto antes de conferir no painel do Mercado Pago se o dinheiro voltou ao cliente",
+      "Se o selo de pagamento do pedido mostrar “Estornado”, o Mercado Pago registrou uma devolução ou uma contestação no cartão desse pagamento: não envie o produto antes de conferir no painel do Mercado Pago se o dinheiro voltou ao cliente",
     );
     expect(linhaEstornado).not.toContain("já voltou ao cliente");
     expect(passo2).not.toContain("já voltou ao cliente");
@@ -284,7 +286,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
       i.includes("o app ainda não reconheceu essa cobrança"),
     );
     expect(itens.at(naoReconheceu)).toContain(
-      "Se o pedido não aparecer em “Estorno devido” e o selo de pagamento dele não começar com “Pago” nem com “Estornado”, o app ainda não reconheceu essa cobrança",
+      "Se o pedido não aparecer em “Devolver ao cliente” e o selo de pagamento dele não começar com “Pago” nem com “Estornado”, o app ainda não reconheceu essa cobrança",
     );
     // "combine o envio" só existe na linha logo abaixo, presa a ESSE caso.
     const combine = itens.filter((i) => i.includes("combine o envio"));
@@ -326,7 +328,9 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     // devido" com o botão de devolver na ficha — o guia tem de mandar NÃO
     // tocar e deixar o registro em Anotações internas.
     expect(texto).toContain(
-      "Esse pedido vai continuar no aviso de pedidos cancelados como “Estorno devido”, e a ficha dele vai continuar mostrando o botão “Devolver R$ …”.",
+      // Revisão da onda 3: a lista se chama “Devolver ao cliente” e o guia
+      // manda NÃO devolver — a ressalva desfaz a contradição aparente.
+      "Esse pedido vai continuar no aviso de pedidos cancelados como “Devolver ao cliente” (mesmo com esse nome, não é para devolver), e a ficha dele vai continuar mostrando o botão “Devolver R$ …”.",
     );
     expect(texto).toContain(
       "Não toque nele: depois de enviar, devolver é perder o produto e o dinheiro.",
@@ -365,7 +369,7 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
         arquivo: "src/views/admin/AlertasCancelados.tsx",
       },
       {
-        rotulo: "Estorno devido",
+        rotulo: "Devolver ao cliente",
         arquivo: "src/views/admin/AlertasCancelados.tsx",
       },
       // o campo de anotação da ficha do pedido
@@ -417,7 +421,8 @@ describe("Guia do pagamento que não fechou — o que ele diz", () => {
     expect(texto).toContain("“Devolver R$ …”");
     expect(texto).toContain("“Devolver agora”");
     expect(texto).toContain("“Já estornei no Mercado Pago”");
-    expect(texto).toContain("“Estorno devido”");
+    expect(texto).toContain("“Devolver ao cliente”");
+    expect(texto).not.toContain("Estorno devido");
     expect(texto).toContain("“Anotações internas”");
     expect(texto).toContain("“Devolução em andamento”");
     expect(texto).toContain(
@@ -476,7 +481,8 @@ describe("Guia do pagamento que não fechou — ligado ao modal de ajuda da tela
       raiz.render(<AdminOrdersView onNavigate={vi.fn()} active={true} />);
     });
 
-    // Fechado, o modal não renderiza nada (AdminHelpModal: `if (!isOpen)`).
+    // Fechado, o modal não renderiza nada (a FolhaDoPainel do Radix só monta
+    // o conteúdo com `aberta`).
     expect(document.body.textContent).not.toContain(TITULO_DO_GUIA);
 
     const botaoDeAjuda = hospedeiro.querySelector<HTMLButtonElement>(

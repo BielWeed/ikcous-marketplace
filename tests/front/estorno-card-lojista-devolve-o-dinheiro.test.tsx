@@ -374,7 +374,7 @@ describe("EstornoCard — o lojista devolve o dinheiro do pedido pelo painel", (
     await montar();
 
     expect(texto()).toContain(
-      "Contestação (chargeback) de R$ 30,00 em análise no Mercado Pago — o valor fica reservado até a decisão.",
+      "Contestação no cartão de R$ 30,00 em análise no Mercado Pago — o valor fica reservado até a decisão.",
     );
     expect(botaoComTexto("Tentar de novo")).toBeUndefined();
     expect(botaoComTexto("Devolver R$ 70,00")).toBeDefined();

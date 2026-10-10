@@ -116,8 +116,10 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     await act(async () => {
       chaves.click();
     });
+    // H6: a dica usa o nome da loja para a chave ("Senha dos avisos"), o
+    // mesmo do rótulo do campo — não "assinatura".
     expect(document.body.textContent).toContain(
-      "Sem a assinatura da sua loja, o pagamento pelo app não é liberado",
+      "Sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado",
     );
     expect(document.body.textContent).toContain(
       "a chave global do app não substitui a sua",
@@ -198,14 +200,17 @@ describe("MercadoPagoSection — o guia com o prompt pronto", () => {
     await abrirGuia();
     expect(document.body.textContent).toContain("Assinatura secreta");
     const chaves = botaoPorTexto("Suas chaves");
-    await act(async () => {
-      chaves.click();
-    });
+    // Abrir, não alternar: com pendência a camada já abre sozinha (H6).
+    if (chaves.getAttribute("aria-expanded") !== "true") {
+      await act(async () => {
+        chaves.click();
+      });
+    }
     expect(document.body.textContent).toContain(
-      "Chave de notificações (obrigatória para receber pelo app)",
+      "Senha dos avisos (Chave de notificações) — obrigatória para receber pelo app",
     );
     expect(document.body.textContent).toContain(
-      "Sem a assinatura da sua loja, o pagamento pelo app não é liberado",
+      "Sem a senha dos avisos da sua loja, o pagamento pelo app não é liberado",
     );
   });
 

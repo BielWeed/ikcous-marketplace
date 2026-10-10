@@ -931,7 +931,9 @@ try {
       ring: getComputedStyle(document.activeElement).boxShadow,
       outline: getComputedStyle(document.activeElement).outlineStyle,
     }));
-    assert.equal(focus.id, "store-city");
+    // Cidade e UF saíram da marca (moram no Endereço da loja, em Minha loja):
+    // depois do nome vem a cor principal.
+    assert.equal(focus.id, "store-color-hex");
     assert(
       focus.ring !== "none" || focus.outline !== "none",
       "NO_KEYBOARD_FOCUS_INDICATOR",
@@ -1018,7 +1020,9 @@ try {
     );
   });
   await test("explicit-source-without-reupload", async () => {
-    await page.click("details summary");
+    await page.click(
+      'section[aria-label="Ícones do app (avançado)"] > button[aria-expanded]',
+    );
     const before = counts();
     await clickButton("Guardar cabeçalho como fonte");
     await textPresent("Fontes guardadas (2/8)");
@@ -1031,7 +1035,9 @@ try {
       linked.sha256,
     );
     assert.equal(actual.identity.branding_assets.loader.sha256, linked.sha256);
-    await page.click("details summary");
+    await page.click(
+      'section[aria-label="Ícones do app (avançado)"] > button[aria-expanded]',
+    );
   });
   let canceledPreview;
   await test("cancel-first-chunk", async () => {
@@ -1098,10 +1104,12 @@ try {
     const before = counts();
     await clickButton("Conferir configuração atual");
     await textPresent("Sua escolha / configuração atual:");
+    // A cidade não é campo da marca, mas a tela de conflito a compara.
+    await textPresent("Cidade do outro ator");
     assert.equal(counts().formSave, before.formSave);
     await clickButton("Revisar meu rascunho");
     await textPresent("Rascunho revisado.");
-    assert.equal(await value("store-city"), "Cidade do outro ator");
+    assert.equal(await page.$("#store-city"), null);
     assert.equal(await value("store-name"), "Meu rascunho conservado");
     assert.equal(counts().formSave, before.formSave);
     await clickButton("Salvar identidade");

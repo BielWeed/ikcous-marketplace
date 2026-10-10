@@ -106,9 +106,9 @@ export function SerieDe14Dias({
       <div className="flex items-baseline justify-between gap-3">
         <h2
           id="inicio-serie-titulo"
-          className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+          className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
         >
-          Últimos 14 dias
+          Vendas pagas · 14 dias
         </h2>
         <p className="text-right text-[11px] text-zinc-400" aria-live="polite">
           {pontoMarcado ? (
@@ -177,7 +177,7 @@ export function SerieDe14Dias({
                       <span
                         data-testid="serie-14d-pico"
                         className={cn(
-                          "pointer-events-none absolute -top-4 whitespace-nowrap text-[9px] font-bold tabular-nums text-zinc-400",
+                          "pointer-events-none absolute -top-4 whitespace-nowrap text-[11px] font-bold tabular-nums text-zinc-400",
                           // O rótulo é bem mais largo que uma coluna
                           // (~24px): centralizado, ele estoura a borda do
                           // cartão quando o pico é uma das últimas colunas
@@ -249,7 +249,7 @@ export function SerieDe14Dias({
                       data-testid="serie-14d-rotulo-mes"
                       aria-hidden="true"
                       className={cn(
-                        "text-[9px] uppercase leading-none text-zinc-400",
+                        "text-[11px] uppercase leading-none text-zinc-400",
                         !mostrarMes && "invisible",
                       )}
                     >
@@ -258,7 +258,7 @@ export function SerieDe14Dias({
                     <span
                       data-testid="serie-14d-rotulo-dia"
                       className={cn(
-                        "text-[10px] leading-none tabular-nums",
+                        "text-[11px] leading-none tabular-nums",
                         hoje ? "font-bold text-admin-gold" : "text-zinc-400",
                       )}
                     >
@@ -270,11 +270,11 @@ export function SerieDe14Dias({
             })}
           </div>
           <table className="sr-only">
-            <caption>Receita por dia nos últimos 14 dias</caption>
+            <caption>Vendas pagas por dia nos últimos 14 dias</caption>
             <thead>
               <tr>
                 <th scope="col">Dia</th>
-                <th scope="col">Receita</th>
+                <th scope="col">Vendas pagas</th>
               </tr>
             </thead>
             <tbody>

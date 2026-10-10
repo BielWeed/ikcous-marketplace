@@ -335,7 +335,7 @@ export function CategoriaFolha({
   return (
     <FolhaFinanceira
       titulo={categoria ? "Editar categoria" : "Nova categoria"}
-      descricao="A categoria diz em que linha da DRE o valor aparece."
+      descricao="A categoria diz em que linha do resultado o valor aparece."
       aoFechar={aoFechar}
       rodape={
         <Rodape
@@ -373,7 +373,9 @@ export function CategoriaFolha({
           />
         </div>
         <fieldset className="flex flex-col gap-2">
-          <legend className={`${CLASSE_ROTULO} mb-1.5`}>Grupo da DRE</legend>
+          <legend className={`${CLASSE_ROTULO} mb-1.5`}>
+            Linha do resultado
+          </legend>
           {grupos.map((grupo) => {
             const escolhido = form.grupoDre === grupo;
             return (

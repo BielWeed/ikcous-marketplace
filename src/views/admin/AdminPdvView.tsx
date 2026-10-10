@@ -31,7 +31,9 @@ import { FechamentoDaVenda } from "@/components/admin/pdv/FechamentoDaVenda";
 import { LeitorDeCodigo } from "@/components/admin/pdv/LeitorDeCodigo";
 import { ReciboDaVenda } from "@/components/admin/pdv/ReciboDaVenda";
 import { branding } from "@/config/branding";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useStore } from "@/contexts/StoreContext";
+import { useAnularVendaDoBalcao } from "@/hooks/useAnularVendaDoBalcao";
 import {
   chaveDoItemDoCupom,
   useVendaPresencial,
@@ -64,6 +66,10 @@ export function AdminPdvView({
   onSetBackOverride,
 }: AdminPdvViewProps): ReactElement {
   const { estado, despachar, subtotal, limparCupom } = useVendaPresencial();
+  const { anular } = useAnularVendaDoBalcao();
+  // Amarra o pedido do recibo (o botão do recibo só conhece o motivo).
+  const anularEstaVenda = (orderId: string) => (motivo: string) =>
+    anular(orderId, motivo);
   const { config } = useStore();
   const storeName = config.storeName?.trim() || branding.appName;
 
@@ -263,6 +269,8 @@ export function AdminPdvView({
     readonly user_id: string | null;
     readonly customer_name: string;
     readonly customer_data: { readonly whatsapp?: string | null } | null;
+    /** `to_jsonb(o.*)`: a linha inteira, então o status também vem. */
+    readonly status?: string;
   }
 
   // O literal que a migration grava em `customer_name` quando a venda nasce
@@ -410,6 +418,18 @@ export function AdminPdvView({
     const resposta = data as unknown as RespostaDoFechamento;
     const pedido = resposta.order;
 
+    // Retentativa de uma venda que JÁ foi gravada e depois ANULADA (a chave de
+    // idempotência devolve o mesmo pedido): o recibo de uma compra que não vale
+    // mais seria mostrado como se valesse. A recusa leva `code` 22023 para a
+    // tradução do fechamento mostrar a frase e oferecer "nova venda".
+    if (resposta.ja_existia && pedido.status === "cancelled") {
+      throw {
+        code: "22023",
+        message:
+          "Esta venda já foi anulada. Comece uma venda nova para registrar de novo.",
+      };
+    }
+
     const recibo: ReciboDaVendaRegistrada = {
       orderId: pedido.id,
       // Seis últimos caracteres, maiúsculos — mesma regra de
@@ -479,7 +499,7 @@ export function AdminPdvView({
     // "os botões não têm rolagem suficiente para eu poder clicar".
     <div className="pb-admin flex flex-col gap-4 lg:pb-12">
       <div className="flex items-center justify-between gap-3">
-        <AdminPageHeader titulo="Vender" />
+        <AdminPageHeader titulo={NOMES_DO_PAINEL["admin-pdv"]} />
       </div>
 
       <LeitorDeCodigo
@@ -536,6 +556,7 @@ export function AdminPdvView({
           despachar={despachar}
           limparCupom={limparCupom}
           storeName={storeName}
+          aoAnular={anularEstaVenda(estado.recibo.orderId)}
         />
       )}
     </div>

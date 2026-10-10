@@ -103,6 +103,10 @@ import { getPaymentStatusConfig } from "./OrderStatusBadge";
  *     pago: continua em "Estorno devido" (AlertasCancelados.tsx:379-397) e a
  *     ficha continua com "Devolver R$ …" (OrderDetail.tsx:1604-1610). O
  *     registro para quem vier depois é o campo "Anotações internas" da ficha.
+ *   - Painel simples (onda 3, glossário): a lista que os itens acima chamam
+ *     de "Estorno devido" hoje se chama "Devolver ao cliente" na tela
+ *     (AlertasCancelados), e o texto diz "contestação no cartão" no lugar de
+ *     chargeback. Só o nome mudou: a lista e as regras são as mesmas.
  *
  * Os rótulos de selo vêm do MESMO config do selo, não de cópia; os rótulos
  * de botão/quadro são conferidos contra o arquivo que os desenha em
@@ -122,7 +126,7 @@ export function GuiaDoPagamentoQueNaoFechou() {
 
   return (
     <div className="space-y-3">
-      <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+      <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400">
         Pagamento que não fechou sozinho
       </h4>
 
@@ -152,7 +156,7 @@ export function GuiaDoPagamentoQueNaoFechou() {
             Mercado Pago:
             <ul className="mt-1 list-inside list-disc space-y-1 pl-3">
               <li>
-                Se o pedido aparecer em “Estorno devido” com o aviso “
+                Se o pedido aparecer em “Devolver ao cliente” com o aviso “
                 {TERMO_EM_ANDAMENTO}”, o Mercado Pago já está devolvendo o
                 dinheiro ao cliente (ou analisando uma disputa): não envie o
                 produto nem devolva por outro meio. Se o aviso disser “sem
@@ -167,13 +171,12 @@ export function GuiaDoPagamentoQueNaoFechou() {
               </li>
               <li>
                 Se o selo de pagamento do pedido mostrar “{estornado}”, o
-                Mercado Pago registrou uma devolução ou uma contestação
-                (chargeback) desse pagamento: não envie o produto antes de
-                conferir no painel do Mercado Pago se o dinheiro voltou ao
-                cliente.
+                Mercado Pago registrou uma devolução ou uma contestação no
+                cartão desse pagamento: não envie o produto antes de conferir no
+                painel do Mercado Pago se o dinheiro voltou ao cliente.
               </li>
               <li>
-                Se o pedido não aparecer em “Estorno devido” e o selo de
+                Se o pedido não aparecer em “Devolver ao cliente” e o selo de
                 pagamento dele não começar com “{pago}” nem com “{estornado}”, o
                 app ainda não reconheceu essa cobrança: o dinheiro está na sua
                 conta, mas aqui pode não aparecer aviso nem botão de devolução —
@@ -197,8 +200,8 @@ export function GuiaDoPagamentoQueNaoFechou() {
               </li>
               <li>
                 Se você já devolveu pelo painel do Mercado Pago e o pedido
-                aparecer em “Estorno devido”, toque em “Já estornei no Mercado
-                Pago”, na lista “Devolver agora”.
+                aparecer em “Devolver ao cliente”, toque em “Já estornei no
+                Mercado Pago”, na lista “Devolver agora”.
               </li>
             </ul>
           </li>
@@ -244,13 +247,13 @@ export function GuiaDoPagamentoQueNaoFechou() {
             fica por sua conta, fora do app: o pedido continua cancelado aqui, e
             a peça já voltou ao estoque — tire as unidades enviadas à mão no
             cadastro do produto (campo “Quantidade em Estoque”). Esse pedido vai
-            continuar no aviso de pedidos cancelados como “Estorno devido”, e a
-            ficha dele vai continuar mostrando o botão “Devolver R$ …”. Não
-            toque nele: depois de enviar, devolver é perder o produto e o
-            dinheiro. Para quem abrir o pedido depois saber, escreva em
-            “Anotações internas” da ficha: produto enviado em [data], combinado
-            com o cliente, não devolver. Não toque em “Já estornei”: nenhum
-            dinheiro foi devolvido.
+            continuar no aviso de pedidos cancelados como “Devolver ao cliente”
+            (mesmo com esse nome, não é para devolver), e a ficha dele vai
+            continuar mostrando o botão “Devolver R$ …”. Não toque nele: depois
+            de enviar, devolver é perder o produto e o dinheiro. Para quem abrir
+            o pedido depois saber, escreva em “Anotações internas” da ficha:
+            produto enviado em [data], combinado com o cliente, não devolver.
+            Não toque em “Já estornei”: nenhum dinheiro foi devolvido.
           </li>
         </ol>
       </div>

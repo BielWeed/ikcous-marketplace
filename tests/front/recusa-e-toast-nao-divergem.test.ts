@@ -182,6 +182,16 @@ const CORPUS: ReadonlyArray<{ rotulo: string; erro: unknown }> = [
     ),
   },
 
+  // CUPONS DESLIGADOS (migration 20261203000000, issue #645): o gatilho de
+  // marketplace_orders recusa pedido com cupom quando a chave está desligada.
+  // Frase sem código de cupom, P0001 com texto: o painel NUNCA pode mandar
+  // "tentar de novo" (o pedido provadamente não nasceu, mas a regra do
+  // cabeçalho vale para toda frase do banco).
+  {
+    rotulo: "13. cupons desligados pela loja (chave enable_coupons)",
+    erro: p0001("Os cupons estão desativados nesta loja."),
+  },
+
   // SQLSTATE genérico: aborto de transação dentro do Postgres, sem ser P0001.
   {
     rotulo: "SQLSTATE genérico (deadlock 40P01)",

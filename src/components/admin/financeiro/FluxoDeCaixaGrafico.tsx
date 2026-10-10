@@ -270,7 +270,7 @@ export function FluxoDeCaixaGrafico({
           aria-label="Gráfico do fluxo de caixa dos últimos 30 dias. A tabela logo abaixo tem os mesmos números."
           className="flex flex-col"
         >
-          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400">
+          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-zinc-400">
             Saldo
           </p>
           {semLinhaDeSaldo ? (
@@ -373,7 +373,7 @@ export function FluxoDeCaixaGrafico({
               ("R$ 200") — dois painéis com escalas independentes, fáceis de
               ler como um só. */}
           <div className="my-1.5 h-px w-full bg-white/5" />
-          <p className="text-[9px] font-black uppercase tracking-[0.15em] text-zinc-400">
+          <p className="text-[11px] font-black uppercase tracking-[0.15em] text-zinc-400">
             Entradas e saídas
           </p>
           <div className="h-[170px] w-full min-w-0">
@@ -458,7 +458,7 @@ export function FluxoDeCaixaGrafico({
         </summary>
         <div className="max-h-72 overflow-y-auto px-2 pb-2">
           <table className="w-full text-left text-xs tabular-nums">
-            <thead className="sticky top-0 bg-zinc-950 text-[10px] uppercase tracking-wider text-zinc-500">
+            <thead className="sticky top-0 bg-zinc-950 text-[11px] uppercase tracking-wider text-zinc-500">
               <tr>
                 <th scope="col" className="p-2 font-black">
                   Dia

@@ -79,17 +79,19 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
   }
   return (
     <div className={cn("space-y-3 text-sm text-zinc-300")}>
-      <p>
-        Informe quando a loja atende. Em branco, o aplicativo omite o horário.
-      </p>
-      <label htmlFor="store-business-hours">Horário de atendimento</label>
+      <label
+        htmlFor="store-business-hours"
+        className="block text-[11px] font-black uppercase tracking-wider text-zinc-400"
+      >
+        Dias e horários
+      </label>
       <input
         id="store-business-hours"
         value={value}
         disabled={saving || !active}
         onChange={(event) => setValue(event.target.value)}
         placeholder="Ex: Ter a Sáb, 9h às 18h"
-        className="h-10 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
+        className="h-11 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 text-sm text-white"
       />
       {error && (
         <p role="alert">
@@ -101,7 +103,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
           type="button"
           disabled={saving || !active || !dirty}
           onClick={() => void save()}
-          className="rounded-lg border border-white/10 px-3 py-2"
+          className="min-h-11 rounded-xl bg-admin-gold px-4 font-black text-black disabled:opacity-40"
         >
           {saving ? "Salvando…" : "Salvar horário"}
         </button>
@@ -113,7 +115,7 @@ const BusinessHoursEditor = memo(function BusinessHoursEditor({
             setValue(saved);
             setError(false);
           }}
-          className="rounded-lg border border-white/10 px-3 py-2"
+          className="min-h-11 rounded-xl border border-white/15 bg-white/5 px-4 font-bold text-white disabled:opacity-40"
         >
           Descartar horário
         </button>

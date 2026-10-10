@@ -198,7 +198,7 @@ function DestaqueDeConversaoEmVenda({
       <div>
         <p
           className={cn(
-            "text-[10px] font-black uppercase tracking-widest",
+            "text-[11px] font-black uppercase tracking-widest",
             classes.rotulo,
           )}
         >
@@ -431,7 +431,7 @@ function Pipeline({
                         {rotuloDoStatusDoPedido(etapa.status)}
                       </span>
                       {parado ? (
-                        <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                        <span className="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-300">
                           <Clock className="size-3" aria-hidden="true" />
                           parado há {idade}
                         </span>

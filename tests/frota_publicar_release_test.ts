@@ -35,6 +35,7 @@ import {
   evidenciaDaProva,
   importsRelativos,
   lerArgumentos,
+  lerCanais,
   lerVeredicto,
   migrationsDaRelease,
   problemasAntesDoPromote,
@@ -61,6 +62,27 @@ const K8 = "8k-subtotal-divergente-ou-vazia-provada";
 // A conferência de subtotal ANTIGA (legada): o portão não a usa mais.
 const C8_LEGADA = "8c-subtotal-divergente";
 const TOPO = "c".repeat(40);
+// O lote da migration 20261203000000 (cupons desligados, #645): consulta do lote (DEPOIS) e de ausência (ANTES).
+const A10 = "10a-conferir-cupons-desligados-aplicado";
+const B10 = "10b-antes-cupons-desligados-gatilho-e-corpo";
+// O lote da migration 20261204000000 (a venda do balcão se anula no mesmo dia): consulta do lote (DEPOIS) e de ausência (ANTES).
+const A11 = "11a-conferir-anular-venda-presencial-aplicado";
+const B11 = "11b-antes-anular-venda-presencial-funcao-ausente";
+// O lote das migrations 20261205000000 e 20261206000000 (o cupom preso diz quando a vaga volta; a vaga do pedido nunca cobrado volta em 1 h): consulta do lote (DEPOIS) e de ausência (ANTES).
+const A12 = "12a-conferir-cupom-preso-aplicado";
+const B12 = "12b-antes-cupom-preso-funcoes-ausentes";
+// O lote da migration 20261207000000 (a coluna duplicada de contagem de uso do cupom e apagada): consulta do lote (DEPOIS) e a do ANTES (aqui o contrario do precedente: a coluna tem de estar PRESENTE e zerada).
+const A14 = "14a-conferir-contador-duplicado-apagado";
+const B14 = "14b-antes-contador-duplicado-coluna-presente-e-zerada";
+// O lote da migration 20261208000000 (o checkout mostra os cupons da cliente): consulta do lote (DEPOIS) e de ausência (ANTES).
+const A15 = "15a-conferir-cupons-do-checkout-aplicado";
+const B15 = "15b-antes-cupons-do-checkout-pecas-ausentes";
+// O lote das migrations 20261209000000 e 20261210000000 (o cupom do PIX anulado volta em minutos): consulta do lote (DEPOIS) e de ausência (ANTES).
+const A16 = "16a-conferir-pix-anulado-aplicado";
+const B16 = "16b-antes-pix-anulado-foto-ausente";
+// O lote das migrations 20261212000000, 20261213000000 e 20261214000000 (o estoque do painel segue UMA regra; cada uma só troca o corpo de UMA função): consulta do lote (DEPOIS) e a do ANTES (os corpos vigentes).
+const A17 = "17a-conferir-estoque-do-painel-aplicado";
+const B17 = "17b-antes-estoque-do-painel-corpos-vigentes";
 
 const politica = {
   projetoVercel: { id: "prj_X", time: "team_Y" },
@@ -2190,8 +2212,24 @@ Deno.test("lerCanais — o canais-de-backend.json real declara o lote 60-66 só 
 // FECHADO exato. Antes, uma resposta com UMA linha ok=true gerava um veredito
 // aparentemente positivo, e o portão publicava em cima dela.
 // ===========================================================================
-const { ROL_DA_9A, ROL_DA_8E, ROL_DA_8K, ROL_FECHADO_POR_CONSULTA } =
-  requireCjs("../scripts/publicacao/conferir-banco.cjs");
+const {
+  ROL_DA_9A,
+  ROL_DA_8E,
+  ROL_DA_8K,
+  ROL_DA_10A,
+  ROL_DA_12A,
+  ROL_DA_12B,
+  ROL_DA_14A,
+  ROL_DA_14B,
+  ROL_DA_15A,
+  ROL_DA_15B,
+  ROL_DA_16A,
+  ROL_DA_16B,
+  ROL_DA_17A,
+  ROL_DA_17B,
+  ROL_DA_10B,
+  ROL_FECHADO_POR_CONSULTA,
+} = requireCjs("../scripts/publicacao/conferir-banco.cjs");
 const linhasOk = (rol: string[]) =>
   rol.map((item) => ({ item, esperado: "x", vivo: "x", ok: true }));
 
@@ -2271,6 +2309,17 @@ Deno.test("rol fechado: UMA fonte — o contrato por consulta do conferir-banco.
   assertEquals(ROL_FECHADO_POR_CONSULTA[PROVA_9A], ROL_DA_9A);
   assertEquals(ROL_FECHADO_POR_CONSULTA[PROVA], ROL_DA_8E);
   assertEquals(ROL_FECHADO_POR_CONSULTA[K8], ROL_DA_8K);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A10], ROL_DA_10A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B10], ROL_DA_10B);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A15], ROL_DA_15A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B15], ROL_DA_15B);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A16], ROL_DA_16A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B16], ROL_DA_16B);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A17], ROL_DA_17A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B17], ROL_DA_17B);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A10) && CONSULTAS_DE_ROL_FECHADO.has(B10),
+  );
   assert(
     CONSULTAS_DE_ROL_FECHADO.has(K8),
     "a 8k do portão é de rol fechado: só vale com rol=ok",
@@ -2281,6 +2330,14 @@ for (const [consulta, rol, projeto, ref] of [
   [PROVA_9A, ROL_DA_9A, "ikcous-publicada", CAF],
   [PROVA, ROL_DA_8E, "savy", SAVY],
   [K8, ROL_DA_8K, "savy", SAVY],
+  [A10, ROL_DA_10A, "savy", SAVY],
+  [B10, ROL_DA_10B, "savy", SAVY],
+  [A15, ROL_DA_15A, "savy", SAVY],
+  [B15, ROL_DA_15B, "savy", SAVY],
+  [A16, ROL_DA_16A, "savy", SAVY],
+  [B16, ROL_DA_16B, "savy", SAVY],
+  [A17, ROL_DA_17A, "ikcous-publicada", CAF],
+  [B17, ROL_DA_17B, "savy", SAVY],
 ] as Array<[string, string[], string, string]>) {
   Deno.test(`veredictoDaConsulta ${consulta}: resposta que NÃO é o rol exato NUNCA vira veredito positivo (rol=invalido) e o portão a trata como SEM_EVIDENCIA`, async () => {
     for (const [nome, monta] of RESPOSTAS_QUE_NAO_SAO_O_ROL) {
@@ -2414,4 +2471,1903 @@ Deno.test("portão, 60-66 (9a) na CAF: resposta parcial da 9a NUNCA vira backfil
   const r2 = await executar(ok.d, true);
   assertEquals(comandosGh(r2.relatorio).length, 1);
   assertStringIncludes(r2.relatorio, "gravar_ledger=60-66");
+});
+
+// ===========================================================================
+// O LOTE 20261203000000 (cupons desligados não dão desconto, issue #645) do
+// canais-de-backend.json REAL — como o portão o enxerga nas duas lojas assinantes.
+// Lote de UMA migration, de apply normal (sem backfillLedger, sem nuncaAplicar).
+// Os dublês são os de sempre; o lote vem do ARQUIVO, não de uma cópia.
+// ===========================================================================
+const V203 = "20261203000000";
+const ARQ203 = "20261203000000_cupons_desligados_nao_dao_desconto.sql";
+const LOTE_REAL_203 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A10,
+);
+const LOJAS_203: Array<[string, string]> = [
+  [CAF, "ikcous-publicada"],
+  [SAVY, "savy"],
+];
+type Estado203 = {
+  quando?: string;
+  okFalse?: number;
+  rol?: string | null;
+} | null;
+
+/** Runs e logs de 10a/10b para as DUAS lojas (a mesma situação em cada uma). */
+function evidenciasDoLote203(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 100;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, s, linhas] of [
+      [A10, a, 21],
+      [B10, b, 6],
+    ] as Array<[string, Estado203, number]>) {
+      if (!s) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, s.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        s.okFalse ?? 0,
+        linhas,
+        s.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+function depsLote203(
+  ledgerTem203: boolean,
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote203(a, b);
+  const ledger = ledgerTem203 ? ["20261190000000", V203] : ["20261190000000"];
+  const x = deps({
+    ledger: { [CAF]: ledger, [SAVY]: ledger },
+    runsConferir: runs,
+    logs,
+    // as duas lojas servem o BASE: a 20261203000000 é NOVA para elas
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? ["20261190000000_a.sql", ARQ203, `rollback-manual-${ARQ203}`]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_203] };
+  return x;
+}
+/** Os comandos `gh` do relatório que são DESTA loja. */
+const comandosDaLoja = (relatorio: string, projeto: string) =>
+  comandosGh(relatorio).filter((c) => c.includes(`-f "projeto=${projeto}"`));
+const NEG203 = { okFalse: 5 };
+
+Deno.test("lote 20261203000000 — o canais-de-backend.json real o declara como lote de UMA migration de apply normal: consulta 10a, ausência 10b, sem backfill, sem nuncaAplicar, nas duas lojas", () => {
+  assert(LOTE_REAL_203, "o lote da 10a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_203.versoes, [V203]);
+  assertEquals(LOTE_REAL_203.ausenciaConfirmadaPor, B10);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_203[campo], undefined, campo);
+  // a 10a e a 10b são de rol fechado, e os lotes antigos continuam como estavam
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A10) && CONSULTAS_DE_ROL_FECHADO.has(B10),
+  );
+  const todos = lerCanais().provasDeObjetos.map((p: any) => p.consulta);
+  assertEquals(todos, [PROVA, PROVA_9A, A10, A11, A12, A14, A15, A16, A17]);
+});
+
+Deno.test("lote 20261203000000 — SEM evidência nenhuma: o único comando por loja é a 10a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote203(false);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A10}"`);
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+  assert(!r.relatorio.includes("GRAVAR"), r.relatorio);
+});
+
+Deno.test("lote 20261203000000 — 10a NEGATIVA (a migration ainda não está no banco) e SEM a 10b: pede SÓ a 10b; nenhum apply", async () => {
+  const { d } = depsLote203(false, NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B10}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261203000000 — 10a NEGATIVA + 10b POSITIVA (da mesma janela ou mais nova): o comando é o APPLY do arquivo COMPLETO com o SHA efetivo, e nenhum backfill", async () => {
+  const { d } = depsLote203(false, NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(cmds[0], `-f "migracoes=${ARQ203}"`);
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+  assert(!r.relatorio.includes("confirmar"), r.relatorio);
+});
+
+Deno.test("lote 20261203000000 — a 10b MAIS VELHA que a 10a negativa não vale: pede a 10b de novo, nenhum apply", async () => {
+  const { d } = depsLote203(
+    false,
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B10}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261203000000 — 10a NEGATIVA e 10b NEGATIVA (gatilho já existe ou corpo da validate fora do baseline): PARADO, nenhum comando de banco", async () => {
+  const { d } = depsLote203(false, NEG203, { okFalse: 2 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B10),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261203000000 — objetos JÁ no banco (10a POSITIVA) mas o ledger sem a versão: PARADO (o lote não declara backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote203(false, {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assert(!r.relatorio.includes("GRAVAR"), r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261203000000 — apply feito (ledger com a versão) e 10a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote203(true, {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261203000000 — ledger com a versão mas SEM a 10a: ainda exige a prova de objetos (a migration é nova para a loja); com a 10a NEGATIVA: PARADO", async () => {
+  const sem = depsLote203(true);
+  const r1 = await executar(sem.d, true);
+  assertEquals(r1.codigo, 1, r1.relatorio);
+  assertEquals(sem.chamadas.promover.length, 0);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r1.relatorio, projeto);
+    assertEquals(cmds.length, 1, r1.relatorio);
+    assertStringIncludes(cmds[0], `-f "consulta=${A10}"`);
+  }
+  const neg = depsLote203(true, NEG203);
+  const r2 = await executar(neg.d, true);
+  assertEquals(r2.codigo, 1, r2.relatorio);
+  assertEquals(comandosGh(r2.relatorio), [], r2.relatorio);
+  assertEquals(neg.chamadas.promover.length, 0);
+  assert(
+    r2.bloqueios.some((b: any) => b.motivo.includes("PARAR")),
+    JSON.stringify(r2.bloqueios),
+  );
+});
+
+Deno.test("lote 20261203000000 — veredito da 10a sem rol=ok (rol=invalido ou veredito antigo) é SEM evidência: pede a 10a de novo, nunca libera", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote203(true, { rol });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A10}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261203000000 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release (era o defeito): migration nova sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote203(false);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes(
+            `migration nova ${V203} sem prova de objetos declarada`,
+          ),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+// ===========================================================================
+// O LOTE 20261204000000 (a venda do balcão se anula no mesmo dia) do
+// canais-de-backend.json REAL — como o portão o enxerga nas duas lojas
+// assinantes. Lote de UMA migration, de apply normal (sem backfillLedger, sem
+// nuncaAplicar). A consulta do lote é a 11a (14 linhas), a de ausência a 11b (8).
+// ===========================================================================
+const V204 = "20261204000000";
+const ARQ204 = "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql";
+const LOTE_REAL_204 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A11,
+);
+function evidenciasDoLote204(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 200;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, st, linhas] of [
+      [A11, a, 14],
+      [B11, b, 9],
+    ] as Array<[string, Estado203, number]>) {
+      if (!st) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, st.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        st.okFalse ?? 0,
+        linhas,
+        st.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+function depsLote204(
+  ledgerTem204: boolean,
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote204(a, b);
+  const ledger = ledgerTem204 ? ["20261190000000", V204] : ["20261190000000"];
+  const x = deps({
+    ledger: { [CAF]: ledger, [SAVY]: ledger },
+    runsConferir: runs,
+    logs,
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? ["20261190000000_a.sql", ARQ204, `rollback-manual-${ARQ204}`]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_204] };
+  return x;
+}
+
+Deno.test("lote 20261204000000 — o canais-de-backend.json real o declara como lote de UMA migration de apply normal: consulta 11a, ausência 11b, sem backfill, sem nuncaAplicar", () => {
+  assert(LOTE_REAL_204, "o lote da 11a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_204.versoes, [V204]);
+  assertEquals(LOTE_REAL_204.ausenciaConfirmadaPor, B11);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_204[campo], undefined, campo);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A11) && CONSULTAS_DE_ROL_FECHADO.has(B11),
+  );
+});
+
+Deno.test("lote 20261204000000 — SEM evidência: o único comando por loja é a 11a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote204(false);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A11}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261204000000 — 11a NEGATIVA (a migration ainda não está no banco) e SEM a 11b: pede SÓ a 11b; nenhum apply", async () => {
+  const { d } = depsLote204(false, NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B11}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261204000000 — 11a NEGATIVA + 11b POSITIVA (da mesma janela ou mais nova): o comando é o APPLY do arquivo COMPLETO com o SHA efetivo, e nenhum backfill", async () => {
+  const { d } = depsLote204(false, NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(cmds[0], `-f "migracoes=${ARQ204}"`);
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+});
+
+Deno.test("lote 20261204000000 — a 11b MAIS VELHA que a 11a negativa não vale: pede a 11b de novo, nenhum apply", async () => {
+  const { d } = depsLote204(
+    false,
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B11}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261204000000 — 11a e 11b NEGATIVAS (função já existe com outro corpo ou dependência fora do esperado): PARADO, nenhum comando de banco", async () => {
+  const { d } = depsLote204(false, NEG203, { okFalse: 2 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B11),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261204000000 — função JÁ no banco (11a POSITIVA) mas o ledger sem a versão: PARADO (sem backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote204(false, {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261204000000 — apply feito (ledger com a versão) e 11a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote204(true, {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261204000000 — veredito da 11a sem rol=ok é SEM evidência: pede a 11a de novo, nunca libera", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote204(true, { rol });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A11}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261204000000 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release: migration nova sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote204(false);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes(
+            `migration nova ${V204} sem prova de objetos declarada`,
+          ),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+// ===========================================================================
+// O LOTE 20261205000000 + 20261206000000 (o cupom preso diz quando a vaga volta;
+// a vaga do pedido nunca cobrado volta em 1 h) do canais-de-backend.json REAL —
+// como o portão o enxerga nas duas lojas assinantes. Lote de DUAS migrations, de
+// apply normal (sem backfillLedger, sem nuncaAplicar). A consulta do lote é a 12a
+// (24 linhas), a de ausência a 12b (10).
+// ===========================================================================
+const V205 = "20261205000000";
+const V206 = "20261206000000";
+const ARQ205 = "20261205000000_o_cupom_preso_diz_quando_a_vaga_volta.sql";
+const ARQ206 =
+  "20261206000000_a_vaga_do_cupom_nunca_cobrado_volta_em_uma_hora.sql";
+const LOTE_REAL_205 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A12,
+);
+function evidenciasDoLote205(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 300;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, st, linhas] of [
+      [A12, a, 24],
+      [B12, b, 10],
+    ] as Array<[string, Estado203, number]>) {
+      if (!st) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, st.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        st.okFalse ?? 0,
+        linhas,
+        st.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+/** `ledger` = as versões do lote que o ledger JÁ tem (nenhuma, só a 1205 ou as duas). */
+function depsLote205(
+  ledger: string[],
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote205(a, b);
+  const registro = ["20261190000000", ...ledger];
+  const x = deps({
+    ledger: { [CAF]: registro, [SAVY]: registro },
+    runsConferir: runs,
+    logs,
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? [
+          "20261190000000_a.sql",
+          ARQ205,
+          `rollback-manual-${ARQ205}`,
+          ARQ206,
+          `rollback-manual-${ARQ206}`,
+        ]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_205] };
+  return x;
+}
+
+Deno.test("lote 20261205+06 — o canais-de-backend.json real o declara como lote de DUAS migrations de apply normal, na ordem: consulta 12a, ausência 12b, sem backfill, sem nuncaAplicar", () => {
+  assert(LOTE_REAL_205, "o lote da 12a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_205.versoes, [V205, V206]);
+  assertEquals(LOTE_REAL_205.ausenciaConfirmadaPor, B12);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_205[campo], undefined, campo);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A12) && CONSULTAS_DE_ROL_FECHADO.has(B12),
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A12], ROL_DA_12A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B12], ROL_DA_12B);
+});
+
+Deno.test("lote 20261205+06 — SEM evidência: o único comando por loja é a 12a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote205([]);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A12}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261205+06 — 12a NEGATIVA (as migrations ainda não estão no banco) e SEM a 12b: pede SÓ a 12b; nenhum apply", async () => {
+  const { d } = depsLote205([], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B12}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261205+06 — 12a NEGATIVA + 12b POSITIVA: UM comando de apply com os DOIS arquivos, 20261205 antes de 20261206, o SHA efetivo e nenhum backfill", async () => {
+  const { d } = depsLote205([], NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(
+      cmds[0],
+      `-f "migracoes=${ARQ205},${ARQ206}"`,
+      "a 20261206 exige a 20261205 no banco: as duas vão juntas e nesta ordem",
+    );
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+});
+
+Deno.test("lote 20261205+06 — a 12b MAIS VELHA que a 12a negativa não vale: pede a 12b de novo, nenhum apply", async () => {
+  const { d } = depsLote205(
+    [],
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B12}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261205+06 — 12a e 12b NEGATIVAS (funções novas já existem, ou a varredura tem outro corpo): PARADO, nenhum comando de banco", async () => {
+  const { d } = depsLote205([], NEG203, { okFalse: 2 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B12),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261205+06 — só a 20261205 no ledger (a 20261206 falhou ou não rodou) e as duas consultas NEGATIVAS: PARADO para diagnóstico, nenhum apply", async () => {
+  const { d } = depsLote205([V205], NEG203, { okFalse: 2 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) => b.alvo.includes(ref) && b.motivo.includes("PARAR"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261205+06 — objetos JÁ no banco (12a POSITIVA) mas o ledger sem as versões: PARADO (sem backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote205([], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261205+06 — apply feito (ledger com as duas versões) e 12a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote205([V205, V206], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261205+06 — ledger com as duas versões mas a 12a NEGATIVA (um objeto divergiu): nunca libera", async () => {
+  const { d, chamadas } = depsLote205([V205, V206], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+});
+
+Deno.test("lote 20261205+06 — veredito da 12a sem rol=ok é SEM evidência: pede a 12a de novo, nunca libera", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote205([V205, V206], { rol });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A12}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261205+06 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release: migrations novas sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote205([]);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    for (const v of [V205, V206])
+      assert(
+        r.bloqueios.some(
+          (b: any) =>
+            b.alvo.includes(ref) &&
+            b.motivo.includes(
+              `migration nova ${v} sem prova de objetos declarada`,
+            ),
+        ),
+        `${v}: ${JSON.stringify(r.bloqueios)}`,
+      );
+});
+
+// ===========================================================================
+// O LOTE 20261207000000 (a coluna duplicada de contagem de uso do cupom e apagada)
+// do canais-de-backend.json REAL — como o portão o enxerga nas duas lojas assinantes.
+// Lote de UMA migration, de apply normal (sem backfillLedger, sem nuncaAplicar). A
+// consulta do lote é a 14a (4 linhas); a do ANTES (campo ausenciaConfirmadaPor) é a 14b
+// (11 linhas) e confirma o CONTRÁRIO do precedente: a coluna PRESENTE e zerada. O portão
+// só exige que ela seja POSITIVA e mais nova que a 14a negativa; não interpreta o que ela
+// mede (o mecanismo de decidirLote não muda).
+// ===========================================================================
+const V207 = "20261207000000";
+const ARQ207 = "20261207000000_o_contador_duplicado_do_cupom_morre.sql";
+const LOTE_REAL_207 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A14,
+);
+function evidenciasDoLote207(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 700;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, st, linhas] of [
+      [A14, a, 4],
+      [B14, b, 13],
+    ] as Array<[string, Estado203, number]>) {
+      if (!st) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, st.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        st.okFalse ?? 0,
+        linhas,
+        st.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+/** `ledger` = as versões do lote que o ledger JÁ tem (nenhuma ou a 20261207). */
+function depsLote207(
+  ledger: string[],
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote207(a, b);
+  const registro = ["20261190000000", ...ledger];
+  const x = deps({
+    ledger: { [CAF]: registro, [SAVY]: registro },
+    runsConferir: runs,
+    logs,
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? ["20261190000000_a.sql", ARQ207, `rollback-manual-${ARQ207}`]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_207] };
+  return x;
+}
+
+Deno.test("lote 20261207 — o canais-de-backend.json real o declara como lote de UMA migration de apply normal: consulta 14a, o ANTES na 14b, sem backfill, sem nuncaAplicar, e as duas de rol fechado", () => {
+  assert(LOTE_REAL_207, "o lote da 14a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_207.versoes, [V207]);
+  assertEquals(LOTE_REAL_207.ausenciaConfirmadaPor, B14);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_207[campo], undefined, campo);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A14) && CONSULTAS_DE_ROL_FECHADO.has(B14),
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A14], ROL_DA_14A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B14], ROL_DA_14B);
+  assertEquals(ROL_DA_14A.length, 4);
+  assertEquals(ROL_DA_14B.length, 13);
+});
+
+Deno.test("lote 20261207 — SEM evidência: o único comando por loja é a 14a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote207([]);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A14}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261207 — 14a NEGATIVA (a coluna ainda existe) e SEM a 14b: pede SÓ a 14b; nenhum apply", async () => {
+  const { d } = depsLote207([], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B14}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261207 — 14a NEGATIVA + 14b POSITIVA (coluna presente e zerada): o comando é o APPLY do arquivo COMPLETO com o SHA efetivo, e nenhum backfill", async () => {
+  const { d } = depsLote207([], NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(cmds[0], `-f "migracoes=${ARQ207}"`);
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+});
+
+Deno.test("lote 20261207 — a 14b MAIS VELHA que a 14a negativa não vale: pede a 14b de novo, nenhum apply", async () => {
+  const { d } = depsLote207(
+    [],
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B14}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261207 — 14a e 14b NEGATIVAS (um valor diferente de 0, um NULL ou um dependente da coluna): PARADO para o dono decidir, nenhum comando de banco", async () => {
+  const { d } = depsLote207([], NEG203, { okFalse: 1 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B14),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261207 — coluna JÁ apagada (14a POSITIVA) mas o ledger sem a versão: PARADO (sem backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote207([], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261207 — apply feito (ledger com a versão) e 14a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote207([V207], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261207 — ledger com a versão mas a 14a NEGATIVA (a coluna voltou ou o contador mudou de forma): nunca libera", async () => {
+  const { d, chamadas } = depsLote207([V207], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+});
+
+Deno.test("lote 20261207 — veredito da 14a sem rol=ok é SEM evidência: pede a 14a de novo, nunca libera", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote207([V207], { rol });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A14}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261207 — veredito da 14b sem rol=ok NÃO autoriza o apply (nunca vira positivo): pede a 14b de novo", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote207([], NEG203, {
+      rol,
+      quando: "2026-10-06T19:10:00Z",
+    });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    assert(
+      !r.relatorio.includes("aplicar-migrations.yml"),
+      `${rol}: ${r.relatorio}`,
+    );
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${B14}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261207 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release: migration nova sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote207([]);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes(
+            `migration nova ${V207} sem prova de objetos declarada`,
+          ),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+// ===========================================================================
+// O LOTE 20261208000000 (o checkout mostra os cupons da cliente) do
+// canais-de-backend.json REAL — como o portão o enxerga nas duas lojas assinantes.
+// Lote de UMA migration, de apply normal (sem backfillLedger, sem nuncaAplicar). A
+// consulta do lote é a 15a (37 linhas); a de ausência (campo ausenciaConfirmadaPor) é a
+// 15b (15 linhas): nada do que a migration cria existe e o banco está na base que o
+// pré-voo exige. O portão só exige que ela seja POSITIVA e mais nova que a 15a negativa;
+// não interpreta o que ela mede (o mecanismo de decidirLote não muda).
+// ===========================================================================
+const V208 = "20261208000000";
+const ARQ208 = "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql";
+const LOTE_REAL_208 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A15,
+);
+function evidenciasDoLote208(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 800;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, st, linhas] of [
+      [A15, a, 37],
+      [B15, b, 15],
+    ] as Array<[string, Estado203, number]>) {
+      if (!st) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, st.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        st.okFalse ?? 0,
+        linhas,
+        st.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+/** `ledger` = as versões do lote que o ledger JÁ tem (nenhuma ou a 20261207). */
+function depsLote208(
+  ledger: string[],
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote208(a, b);
+  const registro = ["20261190000000", ...ledger];
+  const x = deps({
+    ledger: { [CAF]: registro, [SAVY]: registro },
+    runsConferir: runs,
+    logs,
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? ["20261190000000_a.sql", ARQ208, `rollback-manual-${ARQ208}`]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_208] };
+  return x;
+}
+
+Deno.test("lote 20261208 — o canais-de-backend.json real o declara como lote de UMA migration de apply normal: consulta 15a, a AUSÊNCIA na 15b, sem backfill, sem nuncaAplicar, e as duas de rol fechado", () => {
+  assert(LOTE_REAL_208, "o lote da 15a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_208.versoes, [V208]);
+  assertEquals(LOTE_REAL_208.ausenciaConfirmadaPor, B15);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_208[campo], undefined, campo);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A15) && CONSULTAS_DE_ROL_FECHADO.has(B15),
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A15], ROL_DA_15A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B15], ROL_DA_15B);
+  assertEquals(ROL_DA_15A.length, 37);
+  assertEquals(ROL_DA_15B.length, 15);
+});
+
+Deno.test("lote 20261208 — SEM evidência: o único comando por loja é a 15a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote208([]);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A15}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261208 — 15a NEGATIVA (a migration ainda não está no banco) e SEM a 15b: pede SÓ a 15b; nenhum apply", async () => {
+  const { d } = depsLote208([], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B15}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261208 — 15a NEGATIVA + 15b POSITIVA (nenhuma peça nova existe e a base é a do pré-voo): o comando é o APPLY do arquivo COMPLETO com o SHA efetivo, e nenhum backfill", async () => {
+  const { d } = depsLote208([], NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(cmds[0], `-f "migracoes=${ARQ208}"`);
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+});
+
+Deno.test("lote 20261208 — a 15b MAIS VELHA que a 15a negativa não vale: pede a 15b de novo, nenhum apply", async () => {
+  const { d } = depsLote208(
+    [],
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B15}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261208 — 15a e 15b NEGATIVAS (meia migration, gatilho da 203 ausente, corpo da validação fora da 203 ou peça alheia no caminho): PARADO para o dono decidir, nenhum comando de banco", async () => {
+  const { d } = depsLote208([], NEG203, { okFalse: 1 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B15),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261208 — objetos JÁ no banco (15a POSITIVA) mas o ledger sem a versão: PARADO (sem backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote208([], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261208 — apply feito (ledger com a versão) e 15a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote208([V208], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261208 — ledger com a versão mas a 15a NEGATIVA (uma peça sumiu ou divergiu depois do apply: gatilho, política, corpo da validação): nunca libera", async () => {
+  const { d, chamadas } = depsLote208([V208], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+});
+
+Deno.test("lote 20261208 — veredito da 15a sem rol=ok é SEM evidência: pede a 15a de novo, nunca libera", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote208([V208], { rol });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A15}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261208 — veredito da 15b sem rol=ok NÃO autoriza o apply (nunca vira positivo): pede a 15b de novo", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote208([], NEG203, {
+      rol,
+      quando: "2026-10-06T19:10:00Z",
+    });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    assert(
+      !r.relatorio.includes("aplicar-migrations.yml"),
+      `${rol}: ${r.relatorio}`,
+    );
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${B15}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261208 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release: migration nova sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote208([]);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes(
+            `migration nova ${V208} sem prova de objetos declarada`,
+          ),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+// ===========================================================================
+// O LOTE 20261209000000 + 20261210000000 (o cupom do PIX anulado volta em minutos)
+// do canais-de-backend.json REAL — como o portão o enxerga nas duas lojas
+// assinantes. Lote de DUAS migrations, de apply normal (sem backfillLedger, sem
+// nuncaAplicar). A consulta do lote é a 16a (32 linhas); a de ausência (campo
+// ausenciaConfirmadaPor) é a 16b (14 linhas): a foto da cobrança ainda não existe e
+// o banco está na base que o pré-voo exige. O portão só exige que a 16b seja POSITIVA
+// e mais nova que a 16a negativa; não interpreta o que ela mede.
+// ===========================================================================
+const V209 = "20261209000000";
+const V210 = "20261210000000";
+const ARQ209 = "20261209000000_a_foto_da_cobranca_no_cancelamento.sql";
+const ARQ210 =
+  "20261210000000_a_vaga_do_cupom_do_pix_anulado_volta_em_minutos.sql";
+const LOTE_REAL_209 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A16,
+);
+function evidenciasDoLote209(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 900;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, st, linhas] of [
+      [A16, a, 32],
+      [B16, b, 14],
+    ] as Array<[string, Estado203, number]>) {
+      if (!st) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, st.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        st.okFalse ?? 0,
+        linhas,
+        st.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+/** `ledger` = as versões do lote que o ledger JÁ tem (nenhuma, só a 1209 ou as duas). */
+function depsLote209(
+  ledger: string[],
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote209(a, b);
+  const registro = ["20261190000000", ...ledger];
+  const x = deps({
+    ledger: { [CAF]: registro, [SAVY]: registro },
+    runsConferir: runs,
+    logs,
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? [
+          "20261190000000_a.sql",
+          ARQ209,
+          `rollback-manual-${ARQ209}`,
+          ARQ210,
+          `rollback-manual-${ARQ210}`,
+        ]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_209] };
+  return x;
+}
+
+Deno.test("lote 20261209+10 — o canais-de-backend.json real o declara como lote de DUAS migrations de apply normal, na ordem: consulta 16a, ausência 16b, sem backfill, sem nuncaAplicar, as duas de rol fechado", () => {
+  assert(LOTE_REAL_209, "o lote da 16a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_209.versoes, [V209, V210]);
+  assertEquals(LOTE_REAL_209.ausenciaConfirmadaPor, B16);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_209[campo], undefined, campo);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A16) && CONSULTAS_DE_ROL_FECHADO.has(B16),
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A16], ROL_DA_16A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B16], ROL_DA_16B);
+  assertEquals(ROL_DA_16A.length, 32);
+  assertEquals(ROL_DA_16B.length, 14);
+  // as versões do lote existem como arquivo, com o rollback ao lado
+  for (const v of [V209, V210]) {
+    const arq = v === V209 ? ARQ209 : ARQ210;
+    assert(
+      Deno.statSync(`supabase/migrations/${arq}`).isFile,
+      `falta a migration ${arq}`,
+    );
+    assert(
+      Deno.statSync(`supabase/migrations/rollback-manual-${arq}`).isFile,
+      `falta o rollback ${arq}`,
+    );
+  }
+});
+
+Deno.test("lote 20261209+10 — o _comentario do lote registra o que o banco NÃO prova: a pré-condição das functions no ar (A3), o teste do webhook, a ordem das lojas e que as duas migrations são aditivas; e o do lote 12 registra que a 12a aceita os dois estados", () => {
+  const c = String(LOTE_REAL_209._comentario);
+  for (const trecho of [
+    "ADITIVAS",
+    "medir a versao das FUNCTIONS no ar em CADA loja",
+    "test/pix-anulado-webhook-20261009",
+    "IKCOUS, depois Savy",
+    "a 20261210 exige a foto da 20261209",
+    "Almeida, Brand Meliz e Space",
+  ])
+    assertStringIncludes(c, trecho);
+  const c12 = String(LOTE_REAL_205._comentario);
+  assertStringIncludes(c12, "DEPOIS DO LOTE 16");
+  assertStringIncludes(c12, "TAMBEM o estado que a 20261210000000 deixa");
+});
+
+Deno.test("lote 20261209+10 — SEM evidência: o único comando por loja é a 16a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote209([]);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A16}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261209+10 — 16a NEGATIVA (as migrations ainda não estão no banco) e SEM a 16b: pede SÓ a 16b; nenhum apply", async () => {
+  const { d } = depsLote209([], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B16}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261209+10 — 16a NEGATIVA + 16b POSITIVA: UM comando de apply com os DOIS arquivos, 20261209 antes de 20261210, o SHA efetivo e nenhum backfill", async () => {
+  const { d } = depsLote209([], NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(
+      cmds[0],
+      `-f "migracoes=${ARQ209},${ARQ210}"`,
+      "a 20261210 exige a foto da 20261209 no banco: as duas vão juntas e nesta ordem",
+    );
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+});
+
+Deno.test("lote 20261209+10 — a 16b MAIS VELHA que a 16a negativa não vale: pede a 16b de novo, nenhum apply", async () => {
+  const { d } = depsLote209(
+    [],
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B16}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261209+10 — 16a e 16b NEGATIVAS (a foto já existe, ou o auxiliar/a varredura têm outro corpo): PARADO, nenhum comando de banco", async () => {
+  const { d } = depsLote209([], NEG203, { okFalse: 2 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B16),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261209+10 — só a 20261209 no ledger (a 20261210 falhou ou não rodou) e as duas consultas NEGATIVAS: PARADO para diagnóstico, nenhum apply", async () => {
+  const { d } = depsLote209([V209], NEG203, { okFalse: 2 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) => b.alvo.includes(ref) && b.motivo.includes("PARAR"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261209+10 — só a 20261209 no ledger e a 16a POSITIVA (impossível sem a 20261210, mas o ledger é quem manda): nunca libera, nenhum apply nem gravação", async () => {
+  const { d, chamadas } = depsLote209([V209], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+});
+
+Deno.test("lote 20261209+10 — objetos JÁ no banco (16a POSITIVA) mas o ledger sem as versões: PARADO (sem backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote209([], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261209+10 — apply feito (ledger com as duas versões) e 16a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote209([V209, V210], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261209+10 — ledger com as duas versões mas a 16a NEGATIVA (um objeto sumiu ou divergiu depois do apply): nunca libera", async () => {
+  const { d, chamadas } = depsLote209([V209, V210], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+});
+
+Deno.test("lote 20261209+10 — veredito da 16a sem rol=ok é SEM evidência: pede a 16a de novo, nunca libera", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d, chamadas } = depsLote209([V209, V210], { rol });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    assertEquals(chamadas.promover.length, 0, `${rol}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A16}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261209+10 — veredito da 16b sem rol=ok NÃO autoriza o apply (nunca vira positivo): pede a 16b de novo", async () => {
+  for (const rol of ["invalido", null]) {
+    const { d } = depsLote209([], NEG203, {
+      rol,
+      quando: "2026-10-06T19:10:00Z",
+    });
+    const r = await executar(d, true);
+    assertEquals(r.codigo, 1, `${rol}: ${r.relatorio}`);
+    assert(
+      !r.relatorio.includes("aplicar-migrations.yml"),
+      `${rol}: ${r.relatorio}`,
+    );
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(r.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${r.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${B16}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261209+10 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release: as duas migrations novas sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote209([]);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    for (const v of [V209, V210])
+      assert(
+        r.bloqueios.some(
+          (b: any) =>
+            b.alvo.includes(ref) &&
+            b.motivo.includes(
+              `migration nova ${v} sem prova de objetos declarada`,
+            ),
+        ),
+        `${v}: ${JSON.stringify(r.bloqueios)}`,
+      );
+});
+
+// ===========================================================================
+// GUARDA DE COBERTURA (09/10/2026): toda migration da frente nova (versão >=
+// 20261192000000, a primeira do lote 92-202) que não é rollback está em
+// EXATAMENTE UM lote do canais-de-backend.json REAL ou em
+// `migrationsForaDaRelease` do politica.json REAL. Sem isto, uma migration nova
+// sem lote só aparece como bloqueio no ensaio da release (publicar-release.mjs:
+// "migration nova … sem prova de objetos declarada"), e uma migration em DOIS
+// lotes teria duas decisões para a mesma versão.
+// ===========================================================================
+Deno.test("guarda: toda migration (fora rollback) com versão >= 20261192000000 está em EXATAMENTE um lote do canais-de-backend.json ou em migrationsForaDaRelease", async () => {
+  const lotes = lerCanais().provasDeObjetos;
+  const politicaReal = JSON.parse(
+    await Deno.readTextFile("scripts/frota/politica.json"),
+  );
+  const fora = (politicaReal.migrationsForaDaRelease ?? []).map(
+    (m: any) => m.versao,
+  );
+  const versoes: string[] = [];
+  for await (const e of Deno.readDir("supabase/migrations"))
+    if (e.isFile && /^\d{14}_.*\.sql$/.test(e.name))
+      versoes.push(e.name.slice(0, 14));
+  const novas = versoes.filter((v) => v >= "20261192000000").sort();
+  assert(novas.includes("20261192000000"), "a 20261192000000 sumiu da árvore");
+  const erradas = novas
+    .map((v) => ({
+      v,
+      n:
+        lotes.filter((l: any) => (l.versoes ?? []).includes(v)).length +
+        fora.filter((x: string) => x === v).length,
+    }))
+    .filter((x) => x.n !== 1);
+  assertEquals(
+    erradas,
+    [],
+    "cada migration nova tem de estar em exatamente um lote (ou fora da release)",
+  );
+  // e nenhum lote declara versão que não existe como arquivo
+  for (const l of lotes)
+    for (const v of l.versoes ?? [])
+      assert(versoes.includes(v), `${l.consulta}: versão ${v} sem arquivo`);
+});
+
+// ===========================================================================
+// O LOTE 20261212000000 + 20261213000000 + 20261214000000 (o estoque do painel
+// segue UMA regra) do canais-de-backend.json REAL — como o portão o enxerga nas
+// duas lojas assinantes. Lote de TRÊS migrations INDEPENDENTES, de apply normal
+// (sem backfillLedger, sem nuncaAplicar): cada uma só troca o CORPO de UMA função
+// (painel_inicio, get_admin_products_paged, get_admin_analytics_v2). A consulta do
+// lote é a 17a (14 linhas); a de ausência (campo ausenciaConfirmadaPor) é a 17b
+// (11 linhas): os três corpos de antes, uma sobrecarga, o EXECUTE e as colunas. O
+// portão só exige que a 17b seja POSITIVA e mais nova que a 17a negativa; não
+// interpreta o que ela mede. `decidirLote` não muda para este lote.
+// ===========================================================================
+const V212 = "20261212000000";
+const V213 = "20261213000000";
+const V214 = "20261214000000";
+const ARQ212 =
+  "20261212000000_o_inicio_conta_estoque_baixo_pela_regra_da_loja.sql";
+const ARQ213 =
+  "20261213000000_o_filtro_de_estoque_baixo_do_admin_segue_a_regra.sql";
+const ARQ214 =
+  "20261214000000_o_lucro_do_estoque_so_conta_produto_com_custo.sql";
+const LOTE_REAL_212 = lerCanais().provasDeObjetos.find(
+  (p: any) => p.consulta === A17,
+);
+function evidenciasDoLote212(a: Estado203, b: Estado203) {
+  const runs: any[] = [];
+  const logs: Record<number, string> = {};
+  let id = 1200;
+  for (const [ref, projeto] of LOJAS_203) {
+    for (const [consulta, st, linhas] of [
+      [A17, a, 14],
+      [B17, b, 11],
+    ] as Array<[string, Estado203, number]>) {
+      if (!st) continue;
+      id += 1;
+      runs.push(
+        runConferir(id, consulta, projeto, st.quando ?? "2026-10-06T19:00:00Z"),
+      );
+      logs[id] = logConsulta(
+        consulta,
+        ref,
+        OUTRO,
+        st.okFalse ?? 0,
+        linhas,
+        st.rol,
+      );
+    }
+  }
+  return { runs, logs };
+}
+/** `ledger` = as versões do lote que o ledger JÁ tem (nenhuma, parte ou as três). */
+function depsLote212(
+  ledger: string[],
+  a: Estado203 = null,
+  b: Estado203 = null,
+) {
+  const { runs, logs } = evidenciasDoLote212(a, b);
+  const registro = ["20261190000000", ...ledger];
+  const x = deps({
+    ledger: { [CAF]: registro, [SAVY]: registro },
+    runsConferir: runs,
+    logs,
+    // as duas lojas servem o BASE: as três migrations são NOVAS para elas
+    sondas: [
+      sonda("ickous-marketplace.vercel.app", CAF, "IKCOUS - imports", BASE),
+      sonda("savycollection.vercel.app", SAVY, "Savy", BASE),
+      sonda("almeidastore.vercel.app", TESTE, "Almeida Store", BASE),
+      {
+        dominio: "manut.vercel.app",
+        ficha: { status: 503, caderneta: "miss", refs: [] },
+      },
+    ],
+  });
+  x.d.listarMigrationsNoSha = async (sha: string) =>
+    sha === SHA
+      ? [
+          "20261190000000_a.sql",
+          ARQ212,
+          `rollback-manual-${ARQ212}`,
+          ARQ213,
+          `rollback-manual-${ARQ213}`,
+          ARQ214,
+          `rollback-manual-${ARQ214}`,
+        ]
+      : ["20261190000000_a.sql"];
+  x.d.canais = { ...canais, provasDeObjetos: [LOTE_REAL_212] };
+  return x;
+}
+
+Deno.test("lote 20261212+13+14 — o canais-de-backend.json real o declara como lote de TRÊS migrations de apply normal, na ordem: consulta 17a, ausência 17b, sem nenhum campo a mais, as duas de rol fechado (14 e 11)", () => {
+  assert(LOTE_REAL_212, "o lote da 17a não está no canais-de-backend.json");
+  assertEquals(LOTE_REAL_212.versoes, [V212, V213, V214]);
+  assertEquals(LOTE_REAL_212.ausenciaConfirmadaPor, B17);
+  assertEquals(Object.keys(LOTE_REAL_212).sort(), [
+    "_comentario",
+    "ausenciaConfirmadaPor",
+    "consulta",
+    "versoes",
+  ]);
+  for (const campo of [
+    "backfillLedger",
+    "nuncaAplicar",
+    "soNosRefs",
+    "conferenciasAntesDoApply",
+  ])
+    assertEquals(LOTE_REAL_212[campo], undefined, campo);
+  assert(
+    CONSULTAS_DE_ROL_FECHADO.has(A17) && CONSULTAS_DE_ROL_FECHADO.has(B17),
+  );
+  assertEquals(ROL_FECHADO_POR_CONSULTA[A17], ROL_DA_17A);
+  assertEquals(ROL_FECHADO_POR_CONSULTA[B17], ROL_DA_17B);
+  assertEquals(ROL_DA_17A.length, 14);
+  assertEquals(ROL_DA_17B.length, 11);
+  // o lote vem DEPOIS do lote 16 no arquivo
+  const consultas = lerCanais().provasDeObjetos.map((p: any) => p.consulta);
+  assertEquals(consultas.indexOf(A17), consultas.indexOf(A16) + 1);
+  // as versões do lote existem como arquivo, com o rollback ao lado
+  for (const arq of [ARQ212, ARQ213, ARQ214]) {
+    assert(
+      Deno.statSync(`supabase/migrations/${arq}`).isFile,
+      `falta a migration ${arq}`,
+    );
+    assert(
+      Deno.statSync(`supabase/migrations/rollback-manual-${arq}`).isFile,
+      `falta o rollback ${arq}`,
+    );
+  }
+});
+
+Deno.test("lote 20261212+13+14 — o _comentario do lote registra o que o portão não mede: três migrations independentes, só corpo, o caminho 17a -> 17b -> apply, o estado parcial, a 8e, a ordem das lojas e do front e os rollbacks", () => {
+  const c = String(LOTE_REAL_212._comentario);
+  assert(/^[\x20-\x7e]*$/.test(c), "o _comentario é ASCII, como os outros");
+  for (const trecho of [
+    "TRES migrations INDEPENDENTES",
+    "sem backfillLedger e sem nuncaAplicar",
+    "so troca o CORPO de UMA funcao",
+    "IKCOUS e Savy",
+    "Almeida, Brand Meliz e Space",
+    "na ordem 12, 13, 14 (independentes)",
+    "ESTADO PARCIAL",
+    "rollback-manual",
+    "aplicar-migrations.yml",
+    "17a POSITIVA",
+    "ROL FECHADO (14 e 11",
+    "a 8e JA aceita",
+    "backfill 92-202",
+    "IKCOUS, depois Savy",
+    "AdminProductsView",
+    "20261199000000",
+    "17b POSITIVA e a 17a NEGATIVA",
+  ])
+    assertStringIncludes(c, trecho);
+});
+
+Deno.test("lote 20261212+13+14 — SEM evidência: o único comando por loja é a 17a (só leitura); nenhum apply", async () => {
+  const { d } = depsLote212([]);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${A17}"`);
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+  assert(!r.relatorio.includes("GRAVAR"), r.relatorio);
+});
+
+Deno.test("lote 20261212+13+14 — 17a NEGATIVA (o lote ainda não está no banco) e SEM a 17b: pede SÓ a 17b; nenhum apply", async () => {
+  const { d } = depsLote212([], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B17}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261212+13+14 — 17a NEGATIVA + 17b POSITIVA: UM comando de apply com os TRÊS arquivos na ordem 12, 13, 14, o SHA efetivo e nenhum backfill", async () => {
+  const { d } = depsLote212([], NEG203, { quando: "2026-10-06T19:10:00Z" });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], "aplicar-migrations.yml");
+    assertStringIncludes(
+      cmds[0],
+      `-f "migracoes=${ARQ212},${ARQ213},${ARQ214}"`,
+    );
+    assertStringIncludes(cmds[0], `-f "expected_sha=${TOPO}"`);
+  }
+  assert(!r.relatorio.includes("gravar_ledger"), r.relatorio);
+});
+
+Deno.test("lote 20261212+13+14 — a 17b MAIS VELHA que a 17a negativa não vale: pede a 17b de novo, nenhum apply", async () => {
+  const { d } = depsLote212(
+    [],
+    { ...NEG203, quando: "2026-10-06T19:30:00Z" },
+    { quando: "2026-10-06T19:00:00Z" },
+  );
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  for (const [, projeto] of LOJAS_203) {
+    const cmds = comandosDaLoja(r.relatorio, projeto);
+    assertEquals(cmds.length, 1, `${projeto}: ${r.relatorio}`);
+    assertStringIncludes(cmds[0], `-f "consulta=${B17}"`);
+  }
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261212+13+14 — 17a e 17b NEGATIVAS (estado parcial: parte do lote já aplicada, ou um corpo, a ACL ou uma coluna fora do esperado): PARADO citando a 17b, nenhum comando de banco", async () => {
+  const { d } = depsLote212([], NEG203, { okFalse: 1 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes(B17),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261212+13+14 — só a 20261212 no ledger e as duas consultas NEGATIVAS: PARADO para diagnóstico, nenhum apply", async () => {
+  const { d } = depsLote212([V212], NEG203, { okFalse: 1 });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) => b.alvo.includes(ref) && b.motivo.includes("PARAR"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261212+13+14 — só a 20261212 no ledger e a 17a POSITIVA (o ledger é quem manda): nunca libera, nenhum apply nem gravação", async () => {
+  const { d, chamadas } = depsLote212([V212], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+});
+
+Deno.test("lote 20261212+13+14 — ledger com 20261212 e 20261213, 17a NEGATIVA e 17b POSITIVA: PARADO por contradição (a 17b diz AUSENTE e o ledger diz parte), nenhum apply", async () => {
+  const { d, chamadas } = depsLote212([V212, V213], NEG203, {
+    quando: "2026-10-06T19:10:00Z",
+  });
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("PARAR") &&
+          b.motivo.includes("contradição") &&
+          b.motivo.includes(V214),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261212+13+14 — objetos JÁ no banco (17a POSITIVA) mas o ledger sem as versões: PARADO (sem backfillLedger), nenhum apply nem gravação", async () => {
+  const { d } = depsLote212([], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  for (const [ref] of LOJAS_203)
+    assert(
+      r.bloqueios.some(
+        (b: any) =>
+          b.alvo.includes(ref) &&
+          b.motivo.includes("não declara backfillLedger"),
+      ),
+      JSON.stringify(r.bloqueios),
+    );
+});
+
+Deno.test("lote 20261212+13+14 — apply feito (ledger com as três versões) e 17a POSITIVA: nada a fazer, a release é liberada", async () => {
+  const { d, chamadas } = depsLote212([V212, V213, V214], {});
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 0, r.relatorio);
+  assertEquals(comandosGh(r.relatorio), [], r.relatorio);
+  assertEquals(chamadas.promover.length, 1);
+});
+
+Deno.test("lote 20261212+13+14 — ledger com as três versões mas a 17a NEGATIVA (um corpo divergiu depois do apply): nunca libera", async () => {
+  const { d, chamadas } = depsLote212([V212, V213, V214], NEG203);
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  assert(!r.relatorio.includes("aplicar-migrations.yml"), r.relatorio);
+});
+
+Deno.test("lote 20261212+13+14 — veredito da 17a ou da 17b sem rol=ok é SEM evidência: pede a mesma consulta de novo, nunca libera nem aplica", async () => {
+  for (const rol of ["invalido", null]) {
+    const a = depsLote212([V212, V213, V214], { rol });
+    const ra = await executar(a.d, true);
+    assertEquals(ra.codigo, 1, `${rol}: ${ra.relatorio}`);
+    assertEquals(a.chamadas.promover.length, 0, `${rol}`);
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(ra.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${ra.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${A17}"`);
+    }
+    const b = depsLote212([], NEG203, { rol, quando: "2026-10-06T19:10:00Z" });
+    const rb = await executar(b.d, true);
+    assertEquals(rb.codigo, 1, `${rol}: ${rb.relatorio}`);
+    assert(
+      !rb.relatorio.includes("aplicar-migrations.yml"),
+      `${rol}: ${rb.relatorio}`,
+    );
+    for (const [, projeto] of LOJAS_203) {
+      const cmds = comandosDaLoja(rb.relatorio, projeto);
+      assertEquals(cmds.length, 1, `${rol}: ${rb.relatorio}`);
+      assertStringIncludes(cmds[0], `-f "consulta=${B17}"`);
+    }
+  }
+});
+
+Deno.test("lote 20261212+13+14 — SEM o lote no canais-de-backend.json o portão BLOQUEIA a release: as três migrations novas sem prova de objetos declarada, nas duas lojas", async () => {
+  const { d, chamadas } = depsLote212([]);
+  d.canais = { ...canais, provasDeObjetos: [] };
+  const r = await executar(d, true);
+  assertEquals(r.codigo, 1, r.relatorio);
+  assertEquals(chamadas.promover.length, 0);
+  for (const [ref] of LOJAS_203)
+    for (const v of [V212, V213, V214])
+      assert(
+        r.bloqueios.some(
+          (b: any) =>
+            b.alvo.includes(ref) &&
+            b.motivo.includes(
+              `migration nova ${v} sem prova de objetos declarada`,
+            ),
+        ),
+        `${v}: ${JSON.stringify(r.bloqueios)}`,
+      );
 });

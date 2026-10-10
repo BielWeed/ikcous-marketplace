@@ -270,7 +270,7 @@ export function AbaExtrato({
         </div>
         <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-            <dt className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Entrou
             </dt>
             <dd className="text-sm font-black text-emerald-300">
@@ -278,7 +278,7 @@ export function AbaExtrato({
             </dd>
           </div>
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-            <dt className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Saiu
             </dt>
             <dd className="text-sm font-black text-red-300">
@@ -286,7 +286,7 @@ export function AbaExtrato({
             </dd>
           </div>
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2">
-            <dt className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Resultado
             </dt>
             <dd
@@ -348,7 +348,7 @@ export function AbaExtrato({
           ) : null}
           <div
             aria-hidden="true"
-            className="hidden border-b border-white/5 px-3 pb-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
+            className="hidden border-b border-white/5 px-3 pb-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600 lg:grid lg:grid-cols-[minmax(0,2.2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] lg:gap-4"
           >
             <span>Descrição</span>
             <span>Categoria</span>

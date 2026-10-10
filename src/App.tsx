@@ -190,6 +190,7 @@ import { StoreProvider, useStore } from "@/contexts/StoreContext";
 import { useCartActions, useCartState } from "@/hooks/useCart";
 import type { Product, SortOption, View } from "@/types";
 import { haptic } from "@/utils/haptic";
+import { destinoDoPopstate } from "@/utils/volta-do-navegador-no-painel";
 
 // F1 "loja abre mais rápido" (frente glm-perf-1paint-0309, 04/09/2026):
 // Header, BottomNav e CartReminder usam framer-motion e eram importados
@@ -421,25 +422,25 @@ const getNavigationDirection = (
   const adminViewIndices: Record<string, number> = {
     admin: 0,
     "admin-dashboard": 0,
-    "admin-push": 0.5,
+    "admin-push": 3.3,
     "admin-notifications": 0.3,
     "admin-orders": 1,
     "admin-pdv": 1.2,
     "admin-crm": 0.1,
     "admin-financeiro": 0.2,
     "admin-devolucoes": 1.1,
-    "admin-reviews": 1.4,
-    "admin-qa": 1.6,
+    "admin-reviews": 3.1,
+    "admin-qa": 3.2,
     "admin-products": 2,
     "admin-product-form": 2.4,
     "admin-coupons": 2.5,
     "admin-coupon-form": 2.52,
     "admin-banners": 2.6,
     "admin-carousels": 2.62,
-    "admin-shipping": 2.7,
-    "admin-shipping-national": 2.72,
+    "admin-shipping": 4.3,
+    "admin-shipping-national": 4.32,
     "admin-customers": 3,
-    "admin-whatsapp-config": 3.4,
+    "admin-whatsapp-config": 4.25,
     "admin-about-store": 4.2,
     "admin-user-detail": 3.5,
     "admin-settings": 4,
@@ -998,6 +999,29 @@ const AppContent = () => {
         return;
       }
 
+      // Devoluções é lista + ficha na MESMA tela: trocar só a ficha (`?id=`)
+      // não é navegação de página. Sem View Transition — o callback dela roda
+      // depois de a tela já ter registrado o Voltar da ficha nova e o
+      // `setBackOverride(null)` do caminho abaixo o apagaria — e sem zerar o
+      // override. Só esta tela: nas demais que trocam apenas o id (produto →
+      // produto, com a foto do card indo para a foto principal) o caminho
+      // abaixo continua valendo.
+      if (!isDifferentView && targetView === "admin-devolucoes") {
+        latestTargetViewRef.current = { view: targetView, id };
+        setSelectedProductId(id || null);
+        const path = id ? `/${targetView}?id=${id}` : `/${targetView}`;
+        const currentPathAndSearch =
+          globalThis.location.pathname + globalThis.location.search;
+        if (currentPathAndSearch !== path) {
+          globalThis.history.pushState(
+            { view: targetView, id, from: currView },
+            "",
+            path,
+          );
+        }
+        return;
+      }
+
       const fromView = currView;
       const dir = getNavigationDirection(currView, targetView);
       navigationDirectionRef.current = dir;
@@ -1113,6 +1137,7 @@ const AppContent = () => {
             "admin-coupon-form",
             "admin-user-detail",
             "admin-orders",
+            "admin-devolucoes",
             "admin-push",
           ].includes(targetView) &&
           id
@@ -1736,120 +1761,17 @@ const AppContent = () => {
       if (validViews.includes(path as View)) {
         let targetView = path as View;
 
-        // Intercept popstate exit from sub-admin views to non-admin views, routing them back to parent admin views instead
-        const currView = currentViewRef.current;
-        const subAdminViews = [
-          "admin-product-form",
-          "admin-user-detail",
-          "admin-push",
-          "admin-pdv",
-          "admin-crm",
-          "admin-financeiro",
-          "admin-devolucoes",
-          "admin-banners",
-          "admin-carousels",
-          "admin-coupons",
-          "admin-coupon-form",
-          "admin-shipping",
-          "admin-shipping-national",
-          "admin-reviews",
-          "admin-qa",
-          "admin-whatsapp-config",
-          "admin-about-store",
-        ];
-        if (
-          subAdminViews.includes(currView) &&
-          !targetView.startsWith("admin")
-        ) {
+        // Voltar do navegador saindo de uma sub-tela do painel para FORA dele:
+        // vai ao PAI da tela, a mesma regra do botão Voltar
+        // (`paiDaTelaDoAdmin`, sem origem). A regra mora em UM lugar:
+        // `destinoDoPopstate` (src/utils/volta-do-navegador-no-painel.ts).
+        const pai = destinoDoPopstate(currentViewRef.current);
+        if (pai !== null && !targetView.startsWith("admin")) {
           console.log(
-            `[App] Intercepted popstate exit from sub-admin: ${currView} to ${targetView}. Rerouting to parent admin view.`,
+            `[App] Intercepted popstate exit from sub-admin: ${currentViewRef.current} to ${targetView}. Rerouting to ${pai}.`,
           );
-          if (currView === "admin-coupon-form") {
-            targetView = "admin-coupons";
-            globalThis.history.replaceState(
-              { view: "admin-coupons" },
-              "",
-              "/admin-coupons",
-            );
-          } else if (
-            currView === "admin-product-form" ||
-            currView === "admin-coupons" ||
-            currView === "admin-shipping"
-          ) {
-            targetView = "admin-products";
-            globalThis.history.replaceState(
-              { view: "admin-products" },
-              "",
-              "/admin-products",
-            );
-          } else if (currView === "admin-shipping-national") {
-            // Mesmo pai de paiDaTelaDoAdmin("admin-shipping-national", ...):
-            // sub-view do botão "Estratégias do frete nacional →" dentro de
-            // admin-shipping — o Voltar do navegador volta para a tela de
-            // Frete, nunca para admin-products (nova-tela.md:39/45).
-            targetView = "admin-shipping";
-            globalThis.history.replaceState(
-              { view: "admin-shipping" },
-              "",
-              "/admin-shipping",
-            );
-          } else if (currView === "admin-about-store") {
-            // Porta única: a tela "Sobre a Loja" nasce do cartão nos Ajustes
-            // — o Voltar do navegador volta para lá, nunca para a vitrine.
-            targetView = "admin-settings";
-            globalThis.history.replaceState(
-              { view: "admin-settings" },
-              "",
-              "/admin-settings",
-            );
-          } else if (
-            currView === "admin-user-detail" ||
-            currView === "admin-whatsapp-config"
-          ) {
-            targetView = "admin-customers";
-            globalThis.history.replaceState(
-              { view: "admin-customers" },
-              "",
-              "/admin-customers",
-            );
-          } else if (
-            currView === "admin-push" ||
-            currView === "admin-banners" ||
-            currView === "admin-pdv" ||
-            currView === "admin-crm" ||
-            currView === "admin-financeiro"
-          ) {
-            // Mesmo pai de `paiDaTelaDoAdmin("admin-pdv", ...)` — o
-            // checklist (nova-tela.md:39) avisa que já existem casos onde o
-            // reroute do popstate diverge do pai declarado ali; aqui os dois
-            // concordam de propósito.
-            targetView = "admin-dashboard";
-            globalThis.history.replaceState(
-              { view: "admin-dashboard" },
-              "",
-              "/admin-dashboard",
-            );
-          } else if (currView === "admin-carousels") {
-            // Mesmo pai declarado por getParentView() no AdminLayout, para o
-            // Voltar do navegador e o botão Voltar irem ao mesmo lugar.
-            targetView = "admin-settings";
-            globalThis.history.replaceState(
-              { view: "admin-settings" },
-              "",
-              "/admin-settings",
-            );
-          } else if (
-            currView === "admin-reviews" ||
-            currView === "admin-qa" ||
-            currView === "admin-devolucoes"
-          ) {
-            targetView = "admin-orders";
-            globalThis.history.replaceState(
-              { view: "admin-orders" },
-              "",
-              "/admin-orders",
-            );
-          }
+          targetView = pai;
+          globalThis.history.replaceState({ view: pai }, "", `/${pai}`);
         }
 
         // Mesma lista redirecionável de `handleNavigate` (acima neste
@@ -2131,6 +2053,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentViewRef.current) &&
                   selectedProductIdRef.current
@@ -2169,6 +2092,7 @@ const AppContent = () => {
                     "admin-coupon-form",
                     "admin-user-detail",
                     "admin-orders",
+                    "admin-devolucoes",
                     "admin-push",
                   ].includes(currentView) && selectedProductId
                 ? `/${currentView}?id=${selectedProductId}`

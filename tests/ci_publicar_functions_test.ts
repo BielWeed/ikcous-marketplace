@@ -801,3 +801,178 @@ Deno.test("publicar-functions: `functions` exatamente `listar` em ikcous-publica
   assertEquals(loja.outputs.modo, "publicar");
   assertEquals(loja.outputs.nomes, "credenciais-mercado-pago");
 });
+
+// 09/10/2026: o comprovante da venda de balcão compartilha
+// `_shared/pedido.ts` e `_shared/comprovante.ts` com as functions financeiras
+// E com a send-order-confirmation. Se a release muda esses arquivos e a
+// send-order-confirmation não pode ser publicada nas lojas reais, a release
+// trava (ela ficaria PARADA pelo nome). Por isso IKCOUS e Savy — e SÓ elas —
+// admitem a sexta function. Almeida (loja cliente de teste) continua nas cinco.
+Deno.test("publicar-functions: send-order-confirmation sobe na IKCOUS e na Savy, só ali, e as cinco financeiras continuam iguais", async (t) => {
+  const sha = "a".repeat(40);
+  const CONFIRMACAO = "send-order-confirmation";
+
+  for (const projeto of ["ikcous-publicada", "savy"]) {
+    await t.step(
+      `${projeto} admite a ${CONFIRMACAO}, sozinha ou junto das financeiras`,
+      async () => {
+        const sozinha = await validar(projeto, CONFIRMACAO, sha);
+        assertEquals(sozinha.codigo, 0, sozinha.stdout + sozinha.stderr);
+        assertEquals(sozinha.outputs.nomes, CONFIRMACAO);
+        assertEquals(
+          sozinha.outputs.ref,
+          projeto === "savy" ? REF_SAVY : REF_IKCOUS_PUBLICADA,
+        );
+
+        const junto = await validar(
+          projeto,
+          `criar-pagamento,${CONFIRMACAO}`,
+          sha,
+        );
+        assertEquals(junto.codigo, 0, junto.stdout + junto.stderr);
+        assertEquals(junto.outputs.nomes, `criar-pagamento ${CONFIRMACAO}`);
+      },
+    );
+
+    await t.step(
+      `${projeto} continua exigindo o SHA exato para a ${CONFIRMACAO}`,
+      async () => {
+        for (const expected of ["", "b".repeat(40), "a".repeat(39)]) {
+          const r = await validar(projeto, CONFIRMACAO, expected);
+          assertEquals(r.codigo, 1, expected);
+          assertStringIncludes(r.stdout, "exige expected_sha");
+          assertEquals(r.outputs, {});
+        }
+      },
+    );
+
+    await t.step(
+      `${projeto} continua RECUSANDO todas as outras fora das cinco`,
+      async () => {
+        for (const nome of [
+          "send-otp-email",
+          "notify-new-order",
+          "send-push",
+          "calculate-shipping",
+          "melhor-envio-etiqueta",
+          "_shared",
+          "send-order-whatsapp",
+        ]) {
+          for (const pedido of [
+            nome,
+            `${CONFIRMACAO},${nome}`,
+            `${nome} criar-pagamento`,
+          ]) {
+            const r = await validar(projeto, pedido, sha);
+            assertEquals(
+              r.codigo,
+              1,
+              `${projeto}: "${pedido}" deveria ser recusado`,
+            );
+            assertEquals(
+              r.outputs,
+              {},
+              `${projeto}: "${pedido}" não pode virar output`,
+            );
+          }
+        }
+      },
+    );
+  }
+
+  await t.step(
+    "Almeida NÃO ganhou a send-order-confirmation: recusa com a mensagem de sempre",
+    async () => {
+      for (const pedido of [CONFIRMACAO, `criar-pagamento,${CONFIRMACAO}`]) {
+        const r = await validar("almeida", pedido, sha);
+        assertEquals(r.codigo, 1, pedido);
+        assertStringIncludes(
+          r.stdout,
+          "só admite as cinco Functions financeiras",
+        );
+        assertEquals(r.outputs, {});
+      }
+    },
+  );
+
+  await t.step(
+    "o apelido `cobranca` continua sendo SÓ as cinco (a sexta não entra por ele)",
+    async () => {
+      for (const projeto of ["ikcous-publicada", "savy", "almeida"]) {
+        const r = await validar(projeto, "cobranca", sha);
+        assertEquals(r.codigo, 0, r.stdout + r.stderr);
+        assertEquals(r.outputs.nomes, AS_CINCO_DA_COBRANCA);
+        assert(!r.outputs.nomes.includes(CONFIRMACAO));
+      }
+    },
+  );
+
+  await t.step(
+    "fora das lojas cliente nada mudou: loja e sandbox seguem sem trava de nome",
+    async () => {
+      for (const projeto of ["loja", "sandbox"]) {
+        const r = await validar(projeto, CONFIRMACAO);
+        assertEquals(r.codigo, 0, r.stdout + r.stderr);
+        assertEquals(r.outputs.nomes, CONFIRMACAO);
+      }
+    },
+  );
+
+  await t.step(
+    "nenhum passo do workflow passa --no-verify-jwt (a verdade é o config.toml)",
+    () => {
+      assert(
+        !semComentarios(Deno.readTextFileSync(WORKFLOW)).includes(
+          "--no-verify-jwt",
+        ),
+      );
+    },
+  );
+});
+
+// O portão da release (scripts/frota/publicar-release.mjs) só imprime comando
+// de publicação para o que está em `functionsPublicaveis` do canal; o workflow
+// é quem de fato aceita ou recusa o nome. Se as duas listas divergirem, ou a
+// release imprime um comando que o workflow recusa, ou trava uma function que
+// o workflow aceitaria. Este teste roda o bash REAL do workflow contra cada
+// pasta de supabase/functions/ e exige a mesma resposta do JSON, nos dois sentidos.
+Deno.test("publicar-functions: o JSON dos canais e o workflow concordam, function por function, nos dois sentidos", async () => {
+  const canais = JSON.parse(
+    await Deno.readTextFile(`${RAIZ}/scripts/frota/canais-de-backend.json`),
+  );
+  const naoPublicadas = new Set(["_shared", ...canais.funcoesNaoPublicadas]);
+  assert(
+    naoPublicadas.has("send-order-whatsapp"),
+    "send-order-whatsapp precisa continuar fora da lista",
+  );
+  const pastas: string[] = [];
+  for await (const e of Deno.readDir(`${RAIZ}/supabase/functions`)) {
+    if (e.isDirectory && !naoPublicadas.has(e.name)) pastas.push(e.name);
+  }
+  pastas.sort();
+  assert(pastas.length >= 10, `pastas achadas: ${pastas.join(",")}`);
+
+  const sha = "a".repeat(40);
+  const nomesDosCanais = Object.values(canais.canais).map((c) => c.nome);
+  assertEquals(nomesDosCanais.sort(), ["IKCOUS", "Savy"]);
+
+  for (const [ref, canal] of Object.entries(canais.canais)) {
+    const publicaveis = new Set(canal.functionsPublicaveis);
+    for (const nome of publicaveis) {
+      assert(
+        pastas.includes(nome),
+        `${canal.nome}: "${nome}" está em functionsPublicaveis mas não existe em supabase/functions/`,
+      );
+    }
+    for (const nome of pastas) {
+      const r = await validar(canal.functions, nome, sha);
+      assertEquals(
+        r.codigo === 0,
+        publicaveis.has(nome),
+        `${canal.nome} (${ref}): o workflow ${r.codigo === 0 ? "ACEITA" : "RECUSA"} "${nome}", mas o JSON ${publicaveis.has(nome) ? "a lista como publicável" : "não a lista"}`,
+      );
+      // O apelido do canal tem de resolver para a MESMA loja da chave do JSON.
+      if (r.codigo === 0) assertEquals(r.outputs.ref, ref);
+    }
+  }
+});

@@ -147,7 +147,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
               aria-checked={ativo}
               disabled={desabilitado}
               onClick={() => onEscolherEstrategia(e.id)}
-              className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
+              className={`flex min-h-11 items-start gap-2.5 rounded-xl border px-4 py-3 text-left transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 ${
                 ativo
                   ? "border-admin-accent/70 bg-admin-accent/10"
                   : "border-white/10 hover:border-white/25"
@@ -155,7 +155,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
             >
               <span
                 aria-hidden="true"
-                className={`mt-0.5 flex size-[17px] shrink-0 items-center justify-center rounded-full border text-[10px] font-black ${
+                className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
                   ativo
                     ? "border-admin-accent bg-admin-accent text-zinc-950"
                     : "border-zinc-600 text-transparent"
@@ -203,7 +203,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                   aria-checked={ativo}
                   disabled={desabilitado}
                   onClick={() => onTipoDesconto(tipo)}
-                  className={`rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                  className={`min-h-11 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                     ativo
                       ? "border-admin-accent/70 bg-admin-accent/10 text-zinc-100"
                       : "border-white/10 text-zinc-400 hover:border-white/25"
@@ -324,7 +324,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                   aria-checked={ativo}
                   disabled={desabilitado}
                   onClick={() => onAlcance(a.id)}
-                  className={`rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
+                  className={`min-h-11 rounded-lg border px-3.5 py-2 text-[12.5px] font-bold transition-colors disabled:pointer-events-none disabled:opacity-50 ${
                     ativo
                       ? "border-admin-accent/70 bg-admin-accent/10 text-zinc-100"
                       : "border-white/10 text-zinc-400 hover:border-white/25"
@@ -347,7 +347,7 @@ export const EstrategiaNacionalBloco = memo(function EstrategiaNacionalBloco({
                 type="button"
                 onClick={() => onAlcance("mais_barata")}
                 disabled={desabilitado}
-                className="shrink-0 rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                className="flex min-h-11 shrink-0 items-center rounded-lg border border-amber-500/30 px-2.5 py-1 text-[11px] font-bold text-amber-300 transition-colors hover:border-amber-400/50 hover:text-amber-200 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               >
                 Limitar à mais barata
               </button>

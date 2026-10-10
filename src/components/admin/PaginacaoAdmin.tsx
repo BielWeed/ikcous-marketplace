@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { formatarInteiro } from "@/lib/crm";
 import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -42,8 +43,9 @@ export function PaginacaoAdmin({
         className,
       )}
     >
-      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
-        Exibindo {primeiro} - {ultimo} de {totalItens}
+      <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">
+        Exibindo {formatarInteiro(primeiro)} - {formatarInteiro(ultimo)} de{" "}
+        {formatarInteiro(totalItens)}
       </p>
       {totalPaginas > 1 && (
         <div className="flex gap-2">
@@ -52,7 +54,7 @@ export function PaginacaoAdmin({
             size="sm"
             onClick={() => aoMudar(Math.max(0, paginaEfetiva - 1))}
             disabled={paginaEfetiva === 0}
-            className="h-10 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
+            className="h-11 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
           >
             <ChevronLeft className="mr-1.5 size-4" /> Anterior
           </Button>
@@ -63,7 +65,7 @@ export function PaginacaoAdmin({
               aoMudar(Math.min(totalPaginas - 1, paginaEfetiva + 1))
             }
             disabled={paginaEfetiva >= totalPaginas - 1}
-            className="h-10 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
+            className="h-11 rounded-xl border-white/5 bg-zinc-950/60 px-4 text-zinc-400 transition-all hover:bg-zinc-800 hover:text-white"
           >
             Próximo <ChevronRight className="ml-1.5 size-4" />
           </Button>

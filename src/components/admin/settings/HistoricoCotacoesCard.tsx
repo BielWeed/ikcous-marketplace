@@ -1,8 +1,38 @@
-import { buscarConfiguracaoDeFrete } from "@/components/admin/settings/TransportadorasCard";
+import {
+  NOME_DO_PROVEDOR,
+  type ProvedorFrete,
+  buscarConfiguracaoDeFrete,
+} from "@/components/admin/settings/TransportadorasCard";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  motivoDaCotacao,
+  nomeDoProvedorNoHistorico,
+} from "@/lib/motivo-da-cotacao";
+import { papel } from "@/lib/papeis-aria-da-tabela";
 import { supabase } from "@/lib/supabase";
 import { Boxes, RefreshCw } from "lucide-react";
 import { Fragment, memo, useCallback, useEffect, useState } from "react";
+
+// A coluna guarda milissegundos; a lojista lê segundos ("0,3 s"). Sem tempo
+// (0/nulo: consulta que nem chegou a sair) vira "—"; abaixo de um décimo de
+// segundo a casa decimal arredondaria para "0,0 s", então diz "menos de 0,1 s".
+const tempoDeResposta = (ms: number | null | undefined) => {
+  if (!ms) return "—";
+  if (ms < 100) return "menos de 0,1 s";
+  const segundos = (ms / 1000).toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  return `${segundos} s`;
+};
+
+// O histórico guarda o id da transportadora (`melhor_envio`); a lojista lê o
+// nome ("Melhor Envio"). A coluna é texto solto, mas `NOME_DO_PROVEDOR` é
+// indexado pela união fechada `ProvedorFrete`: o cast só deixa o `.get`
+// compilar, e um id desconhecido devolve `undefined` (o texto cai no
+// fallback de `nomeDoProvedorNoHistorico`/`motivoDaCotacao`).
+const nomeDaTransportadora = (id: string) =>
+  NOME_DO_PROVEDOR.get(id as ProvedorFrete);
 
 /**
  * Achado HistoricoCotacoesCard-100: a edge function AGUARDA a gravação do
@@ -70,11 +100,14 @@ function cortarMotivoExibido(motivo: string): string {
 }
 
 /**
- * Card "Histórico de cotações de frete" da tela de Ajustes.
+ * Card "Consultas de frete" da tela de Frete (painel "Consultas de frete",
+ * sob "Avançado").
  *
- * MODOU DE TELA (frente glm-visual-admin-0209, pedido do Gabriel em
- * 02/09/2026): a tabela de cotações vivia no pé da tela de Frete. Registro
- * técnico de diagnóstico — aqui virou seção colapsável, nascida fechada.
+ * MUDOU DE TELA DUAS VEZES: a tabela de cotações vivia no pé da tela de
+ * Frete, foi para Ajustes como seção colapsável (frente
+ * glm-visual-admin-0209, 02/09/2026) e voltou para a tela de Frete no painel
+ * simples (H5, 09/10/2026: o frete mora num lugar só). Registro técnico de
+ * diagnóstico — painel nascido fechado.
  *
  * O motivo do estado vazio lê os provedores LIGADOS (RELEASE 1.5.7 v2,
  * EMENDA R2: `ler_configuracao_frete`, nunca o espelho
@@ -91,13 +124,13 @@ function cortarMotivoExibido(motivo: string): string {
  * silêncio de quem ainda não recebeu tentativa de fora (ou pode ser uma
  * loja recusando toda venda nacional sem que a lojista saiba).
  *
- * Busca no mount: a seção só monta quando o lojista a expande, então cada
- * abertura traz a leitura fresca — o mesmo efeito do "expandia e buscava" da
- * tela antiga, sem controle extra.
+ * Busca no mount: a tela de Frete só monta a seção com o painel aberto,
+ * então cada abertura traz a leitura fresca — o mesmo efeito do "expandia e
+ * buscava" da tela antiga, sem controle extra.
  *
- * LOTE E (13/09/2026, peça C — salão e porão): o card `rounded-3xl
- * border-white/5` é da casca (SecaoColapsavel) — aqui sobra conteúdo puro,
- * no mesmo idioma da seção de Transportadoras ao lado.
+ * LOTE E (13/09/2026, peça C — salão e porão): a casca é de quem hospeda
+ * (hoje o `PainelRecolhivel` da tela de Frete) — aqui sobra conteúdo puro,
+ * no mesmo idioma da seção de Transportadoras.
  */
 export const HistoricoCotacoesSection = memo(
   function HistoricoCotacoesSection() {
@@ -186,22 +219,57 @@ export const HistoricoCotacoesSection = memo(
             Nenhuma cotação registrada recentemente.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-white/5 bg-zinc-950/60">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                  <th className="p-2.5">Quando</th>
-                  <th className="p-2.5">Destino</th>
-                  <th className="p-2.5">Transportadora</th>
-                  <th className="p-2.5">Tempo</th>
-                  <th className="p-2.5">Status</th>
+          <div className="rounded-2xl border border-white/5 bg-zinc-950/60 sm:overflow-x-auto">
+            {/* J5 (celular): abaixo de `sm:` cada consulta é um BLOCO (grade de
+              duas colunas: Quando · Status / CEP · Transportadora / Tempo) e
+              a tabela não rola na lateral; de `sm:` para cima volta a ser
+              tabela. `display: block` tira a semântica de tabela do leitor de
+              tela, por isso os papéis ARIA estão escritos. Os cabeçalhos
+              ficam só para leitor de tela (`sr-only`) no celular, onde cada
+              valor já tem a posição que o explica. */}
+            <table
+              {...papel("table")}
+              className="block w-full text-left text-xs sm:table"
+            >
+              <thead
+                {...papel("rowgroup")}
+                className="sr-only sm:not-sr-only sm:table-header-group"
+              >
+                <tr
+                  {...papel("row")}
+                  className="border-b border-white/5 text-[11px] font-black uppercase tracking-wide text-zinc-500 sm:table-row"
+                >
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Quando
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    CEP do cliente
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Transportadora
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Tempo
+                  </th>
+                  <th {...papel("columnheader")} className="p-2.5">
+                    Status
+                  </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5 text-zinc-300">
+              <tbody
+                {...papel("rowgroup")}
+                className="block text-zinc-300 sm:table-row-group sm:divide-y sm:divide-white/5"
+              >
                 {grupos.map(({ log, repeticoes }) => (
                   <Fragment key={log.id}>
-                    <tr className="hover:bg-white/5">
-                      <td className="p-2.5 font-mono text-[11px] text-zinc-400">
+                    <tr
+                      {...papel("row")}
+                      className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-white/5 px-3 pb-1 pt-3 first:border-t-0 hover:bg-white/5 sm:table-row sm:border-t-0 sm:p-0"
+                    >
+                      <td
+                        {...papel("cell")}
+                        className="col-start-1 row-start-1 block whitespace-nowrap font-mono text-[11px] text-zinc-400 sm:table-cell sm:p-2.5"
+                      >
                         {new Date(log.created_at).toLocaleString("pt-BR", {
                           day: "2-digit",
                           month: "2-digit",
@@ -209,7 +277,10 @@ export const HistoricoCotacoesSection = memo(
                           minute: "2-digit",
                         })}
                       </td>
-                      <td className="p-2.5 font-semibold text-white">
+                      <td
+                        {...papel("cell")}
+                        className="col-start-1 row-start-2 block whitespace-nowrap font-semibold text-white sm:table-cell sm:p-2.5"
+                      >
                         {/* Linha com campo nulo não pode derrubar a seção
                                 inteira (achado A2 da revisão adversária: o
                                 original carregou este mesmo risco — guardado
@@ -219,17 +290,27 @@ export const HistoricoCotacoesSection = memo(
                           "$1-$2",
                         )}
                       </td>
-                      <td className="p-2.5 capitalize text-zinc-300">
-                        {(log.provider ?? "").replace("_", " ")}
+                      <td
+                        {...papel("cell")}
+                        className="col-start-2 row-start-2 block min-w-0 break-words text-right text-zinc-300 sm:table-cell sm:p-2.5 sm:text-left"
+                      >
+                        {nomeDoProvedorNoHistorico(
+                          log.provider,
+                          nomeDaTransportadora,
+                        )}
                       </td>
-                      <td className="p-2.5 font-mono text-zinc-400">
-                        {log.response_time_ms
-                          ? `${log.response_time_ms}ms`
-                          : "—"}
+                      <td
+                        {...papel("cell")}
+                        className="col-span-2 col-start-1 row-start-3 block font-mono text-zinc-400 sm:table-cell sm:p-2.5"
+                      >
+                        {tempoDeResposta(log.response_time_ms)}
                       </td>
-                      <td className="p-2.5">
+                      <td
+                        {...papel("cell")}
+                        className="col-start-2 row-start-1 block text-right sm:table-cell sm:p-2.5 sm:text-left"
+                      >
                         <span
-                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                          className={`inline-flex rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase ${
                             log.status === "success"
                               ? "bg-emerald-500/20 text-emerald-300"
                               : log.status === "contingency"
@@ -240,7 +321,7 @@ export const HistoricoCotacoesSection = memo(
                           {log.status === "success"
                             ? "Sucesso"
                             : log.status === "contingency"
-                              ? "Contingência"
+                              ? "Valor de reserva"
                               : "Erro"}
                           {repeticoes > 1 ? ` ×${repeticoes}` : ""}
                         </span>
@@ -264,16 +345,25 @@ export const HistoricoCotacoesSection = memo(
                         `LIMITE_MOTIVO_EXIBIDO` caracteres para não empurrar
                         o resto da tabela para fora da tela no celular. */}
                     {log.status !== "success" && log.error_message ? (
-                      <tr className="bg-white/[0.02]">
+                      <tr
+                        {...papel("row")}
+                        className="block bg-white/[0.02] px-3 pb-3 sm:table-row sm:p-0"
+                      >
                         <td
+                          {...papel("cell")}
                           colSpan={5}
                           title={log.error_message}
-                          className="px-2.5 pb-2.5 pt-0 text-[11px] leading-relaxed text-zinc-400"
+                          className="block break-words text-[11px] leading-relaxed text-zinc-400 sm:table-cell sm:px-2.5 sm:pb-2.5 sm:pt-0"
                         >
                           <span className="font-bold text-zinc-300">
                             Motivo:{" "}
                           </span>
-                          {cortarMotivoExibido(log.error_message)}
+                          {cortarMotivoExibido(
+                            motivoDaCotacao(
+                              log.error_message,
+                              nomeDaTransportadora,
+                            ),
+                          )}
                         </td>
                       </tr>
                     ) : null}
@@ -302,10 +392,9 @@ export const HistoricoCotacoesSection = memo(
                 // tela e não bater com o número. As duas contagens, lado a
                 // lado, continuam corretas nos dois sentidos.
                 <>
-                  Exibindo {logs.length}{" "}
-                  {logs.length === 1 ? "consulta" : "consultas"} mais recente
-                  {logs.length === 1 ? "" : "s"} em {grupos.length}{" "}
-                  {grupos.length === 1 ? "ocorrência" : "ocorrências"}
+                  {logs.length} consultas recentes em {grupos.length}{" "}
+                  {grupos.length === 1 ? "linha" : "linhas"} — as repetidas
+                  aparecem juntas (×2).
                 </>
               )}
             </span>
@@ -314,7 +403,7 @@ export const HistoricoCotacoesSection = memo(
             type="button"
             onClick={fetchLogs}
             disabled={loadingLogs}
-            className="ml-auto flex items-center gap-1 font-bold text-admin-gold hover:underline"
+            className="ml-auto flex min-h-11 items-center gap-1 px-3 font-bold text-admin-gold hover:underline"
           >
             <RefreshCw
               className={`size-3 ${loadingLogs ? "animate-spin" : ""}`}

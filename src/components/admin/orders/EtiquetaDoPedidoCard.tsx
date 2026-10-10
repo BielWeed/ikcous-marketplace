@@ -21,7 +21,6 @@ import {
   ExternalLink,
   PackageCheck,
   RefreshCw,
-  Truck,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -433,29 +432,48 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
     setCompraFase("ocioso");
   }, []);
 
+  // Redesenho da ficha (08/10/2026): o card vira UMA LINHA da lista de envio
+  // (a casca com borda mora em OrderDetail; aqui só o conteúdo da linha). A
+  // lógica, os botões e os estados são os mesmos — só a casca, a tipografia
+  // (nada abaixo de 12px, sem caixa alta espaçada) e o estado "indisponível"
+  // mudaram: o aviso âmbar grande virou rótulo + motivo cinza na mesma linha.
+  const indisponivel =
+    cargaFase === "ok" && pedido && elegibilidade?.estado === "indisponivel"
+      ? elegibilidade
+      : null;
+
   return (
-    <div
-      id="etiqueta-do-pedido"
-      className="admin-glass space-y-4 rounded-[2rem] border border-white/5 p-5"
-    >
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <h3 className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          <Truck className="size-3.5 text-zinc-500" />
+    <div id="etiqueta-do-pedido" className="space-y-3 px-4 py-3.5">
+      {/* O motivo é o que o SISTEMA devolveu (instruções como "confirme o
+          pagamento" ou "gere no site da SuperFrete"): aparece INTEIRO, quebrando
+          linha — nunca cortado, porque toque no celular não mostra `title`.
+          O rótulo "Etiqueta de envio" substitui o antigo prefixo "Etiqueta pelo
+          app indisponível —". */}
+      <div
+        data-testid={indisponivel ? "etiqueta-indisponivel" : undefined}
+        className="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+      >
+        <h3 className="shrink-0 text-sm font-medium text-zinc-200">
           Etiqueta de envio
         </h3>
+        {indisponivel && (
+          <p className="min-w-0 flex-1 basis-48 text-xs leading-relaxed text-zinc-400">
+            {indisponivel.motivo}
+          </p>
+        )}
       </div>
 
       {cargaFase === "carregando" && (
-        <Skeleton className="h-16 w-full rounded-xl bg-white/5" />
+        <Skeleton className="h-10 w-full rounded-xl bg-white/5" />
       )}
 
       {cargaFase === "erro" && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-center text-xs font-semibold text-red-300">
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-center text-sm font-medium text-red-300">
           Não foi possível carregar os dados da etiqueta.{" "}
           <button
             type="button"
             onClick={fetchPedido}
-            className="font-black underline hover:no-underline"
+            className="font-semibold underline hover:no-underline"
           >
             Tentar de novo
           </button>
@@ -463,7 +481,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
       )}
 
       {cargaFase === "vazio" && (
-        <p className="text-xs text-zinc-400">Pedido não encontrado.</p>
+        <p className="text-sm text-zinc-400">Pedido não encontrado.</p>
       )}
 
       {cargaFase === "ok" && pedido && elegibilidade && (
@@ -471,16 +489,16 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           {mensagemResultado?.tipo === "erro" && (
             <p
               data-testid="erro-etiqueta"
-              className="rounded-lg border border-red-500/20 bg-red-500/10 px-2.5 py-2 text-[10.5px] font-semibold leading-snug text-red-300 duration-200 animate-in fade-in"
+              className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm font-medium leading-snug text-red-300 duration-200 animate-in fade-in"
             >
               {mensagemResultado.texto}
             </p>
           )}
 
           {elegibilidade.estado === "emitida" && (
-            <div className="space-y-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 duration-200 animate-in fade-in">
-              <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-300">
-                <CheckCircle2 className="size-3.5 shrink-0" />
+            <div className="space-y-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 duration-200 animate-in fade-in">
+              <div className="flex items-center gap-2 text-sm font-medium text-emerald-300">
+                <CheckCircle2 className="size-4 shrink-0" />
                 <span>
                   {mensagemResultado?.tipo === "sucesso"
                     ? "Etiqueta gerada e vinculada ao pedido!"
@@ -490,20 +508,20 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                 </span>
               </div>
 
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/60 px-2.5 py-2">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2">
                 <div className="min-w-0">
-                  <span className="block text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                  <span className="block text-xs text-zinc-400">
                     Código de rastreio
                   </span>
                   <span
-                    className="block truncate font-mono text-xs font-bold text-white"
+                    className="block break-all font-mono text-sm font-medium text-white"
                     data-testid="codigo-rastreio"
                   >
                     {pedido.tracking_code ||
                       "Ainda sem código — atualize depois da postagem"}
                   </span>
                 </div>
-                <Barcode className="size-4 shrink-0 text-zinc-500" />
+                <Barcode className="size-4 shrink-0 text-zinc-400" />
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -512,9 +530,9 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     href={pedido.shipping_label_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-admin-gold transition-colors hover:bg-admin-gold/20 active:scale-95"
+                    className="flex h-10 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold/10 px-3 text-sm font-medium text-admin-gold transition-colors hover:bg-admin-gold/20 active:scale-95"
                   >
-                    <ExternalLink className="size-3" />
+                    <ExternalLink className="size-4" />
                     <span>Abrir etiqueta</span>
                   </a>
                 )}
@@ -522,28 +540,17 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={handleConsultarRastreio}
                   disabled={consultandoRastreio || isOffline}
-                  className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-zinc-900 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
+                  className="flex h-10 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white active:scale-95 disabled:opacity-40"
                 >
                   <RefreshCw
-                    className={`size-3 ${consultandoRastreio ? "animate-spin" : ""}`}
+                    className={`size-4 ${consultandoRastreio ? "animate-spin" : ""}`}
                   />
                   <span>Atualizar rastreio</span>
                 </button>
               </div>
 
-              <p className="text-[9.5px] leading-snug text-zinc-500">
+              <p className="text-xs leading-snug text-zinc-400">
                 Reimpressão ou cancelamento: pela sua conta no Melhor Envio.
-              </p>
-            </div>
-          )}
-
-          {elegibilidade.estado === "indisponivel" && (
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
-              <p className="flex items-start gap-1.5 text-[10.5px] font-bold leading-snug text-amber-200">
-                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
-                <span>
-                  Etiqueta pelo app indisponível — {elegibilidade.motivo}
-                </span>
               </p>
             </div>
           )}
@@ -551,24 +558,24 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
           {elegibilidade.estado === "precisa_cpf" && (
             <div
               data-testid="precisa-cpf"
-              className="space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in"
+              className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in"
             >
-              <p className="flex items-start gap-1.5 text-[10.5px] font-bold leading-snug text-amber-200">
-                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-200">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
                 <span>
                   O Melhor Envio exige o CPF do destinatário para emitir a
                   etiqueta.
                   {elegibilidade.cpfInvalido && (
-                    <span className="mt-1 block font-semibold text-amber-100/90">
+                    <span className="mt-1 block font-normal text-amber-100/90">
                       O CPF salvo neste pedido é inválido — corrija abaixo.
                     </span>
                   )}
                 </span>
               </p>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <label
                   htmlFor="cpf-destinatario"
-                  className="block text-[9px] font-bold uppercase tracking-widest text-zinc-500"
+                  className="block text-xs text-zinc-300"
                 >
                   CPF do destinatário
                 </label>
@@ -584,12 +591,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                     setCpfInput(formatarCpfEnquantoDigita(e.target.value));
                     setCpfErro(null);
                   }}
-                  className="w-full rounded-lg border border-white/10 bg-black/60 px-2.5 py-2 font-mono text-xs font-bold text-white outline-none focus:border-admin-gold/50 disabled:opacity-40"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 font-mono text-sm font-medium text-white outline-none focus:border-admin-gold/50 disabled:opacity-40"
                 />
                 {cpfErro && (
                   <p
                     data-testid="erro-cpf"
-                    className="text-[10.5px] font-semibold leading-snug text-red-300"
+                    className="text-sm font-medium leading-snug text-red-300"
                   >
                     {cpfErro}
                   </p>
@@ -598,12 +605,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={handleSalvarCpf}
                   disabled={cpfSalvando || isOffline}
-                  className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                  className="flex h-11 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                 >
                   {cpfSalvando ? (
-                    <RefreshCw className="size-3 animate-spin" />
+                    <RefreshCw className="size-4 animate-spin" />
                   ) : (
-                    <CheckCircle2 className="size-3" />
+                    <CheckCircle2 className="size-4" />
                   )}
                   <span>{cpfSalvando ? "Salvando…" : "Salvar CPF"}</span>
                 </button>
@@ -616,30 +623,30 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
               type="button"
               onClick={abrirConfirmacao}
               disabled={isOffline}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 py-2.5 text-xs font-bold text-black shadow-lg shadow-amber-500/20 transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
             >
-              <PackageCheck className="size-3.5" />
+              <PackageCheck className="size-4" />
               <span>Gerar etiqueta</span>
             </button>
           )}
 
           {elegibilidade.estado === "disponivel" && compraFase !== "ocioso" && (
-            <div className="space-y-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in">
-              <p className="flex items-start gap-1.5 text-[10.5px] font-bold leading-snug text-amber-200">
-                <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-400" />
+            <div className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 duration-200 animate-in fade-in">
+              <p className="flex items-start gap-2 text-sm font-medium leading-snug text-amber-200">
+                <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-400" />
                 <span>
                   A etiqueta é comprada com o saldo da SUA conta no Melhor
                   Envio.
-                  <span className="mt-1 block font-semibold text-amber-100/90">
+                  <span className="mt-1 block font-normal text-amber-100/90">
                     Serviço: {elegibilidade.servico}
                   </span>
-                  <span className="mt-1 block font-semibold text-amber-100/90">
+                  <span className="mt-1 block font-normal text-amber-100/90">
                     Frete pago pelo cliente: R${" "}
                     {freteEfetivoDoPedido(pedido).toFixed(2).replace(".", ",")}
                   </span>
                   <span
                     data-testid="cpf-mascarado"
-                    className="mt-1 block font-semibold text-amber-100/90"
+                    className="mt-1 block font-normal text-amber-100/90"
                   >
                     CPF do destinatário: {mascararCpf(pedido.cpf)}
                   </span>
@@ -650,12 +657,12 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={handleGerarEtiqueta}
                   disabled={compraFase === "gerando" || isOffline}
-                  className="flex items-center gap-1.5 rounded-lg border border-admin-gold/30 bg-admin-gold px-3.5 py-2 text-[10px] font-black uppercase tracking-widest text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+                  className="flex h-11 items-center gap-1.5 rounded-xl border border-admin-gold/30 bg-admin-gold px-4 text-sm font-semibold text-black transition-all hover:opacity-90 active:scale-95 disabled:pointer-events-none disabled:opacity-40"
                 >
                   {compraFase === "gerando" ? (
-                    <RefreshCw className="size-3 animate-spin" />
+                    <RefreshCw className="size-4 animate-spin" />
                   ) : (
-                    <CheckCircle2 className="size-3" />
+                    <CheckCircle2 className="size-4" />
                   )}
                   <span>
                     {compraFase === "gerando"
@@ -667,7 +674,7 @@ export const EtiquetaDoPedidoCard = memo(function EtiquetaDoPedidoCard({
                   type="button"
                   onClick={cancelarConfirmacao}
                   disabled={compraFase === "gerando"}
-                  className="rounded-lg px-2.5 py-2 text-[10px] font-bold text-zinc-400 transition-colors hover:text-white disabled:opacity-40"
+                  className="h-11 rounded-xl px-3 text-sm font-medium text-zinc-300 transition-colors hover:text-white disabled:opacity-40"
                 >
                   Cancelar
                 </button>

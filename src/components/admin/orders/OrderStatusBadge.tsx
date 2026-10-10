@@ -49,18 +49,20 @@ export const statusConfig: Record<
   cancelled: {
     label: "Cancelado",
     icon: XCircle,
-    color: "text-zinc-500",
+    // zinc-400 (e nao 500): sobre o fundo escuro do painel o 500 dava ~3,6:1,
+    // abaixo do minimo AA de 4,5:1; o 400 da ~6,7:1.
+    color: "text-zinc-400",
     bgColor: "bg-zinc-500/10",
     borderColor: "border-zinc-500/20",
-    className: "text-zinc-500",
+    className: "text-zinc-400",
   },
 };
 
 /**
- * "padrao" é o selo de sempre (9px, usado na ficha e nas filas). "cartao" é
- * a escala do card de pedido da lista (AdminOrderCard): 10px com menos
- * espaçamento entre letras, mais respiro e um ponto de cor na frente — o
- * selo antigo ficava ilegível ao lado do valor em tela de celular.
+ * "padrao" é o selo de sempre (usado na ficha e nas filas). "cartao" é
+ * a escala do card de pedido da lista (AdminOrderCard): mais respiro e um
+ * ponto de cor na frente — o selo antigo ficava ilegível ao lado do valor em
+ * tela de celular. Os dois têm o rótulo em 11px (piso do painel).
  */
 type TamanhoDoSelo = "padrao" | "cartao";
 
@@ -93,8 +95,8 @@ export const OrderStatusBadge = memo(function OrderStatusBadge({
       <span
         className={`uppercase ${
           cartao
-            ? "text-[10px] font-bold tracking-wider"
-            : "text-[9px] font-black tracking-widest"
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
         } ${cfg.color}`}
       >
         {cfg.label}
@@ -206,7 +208,8 @@ export const paymentStatusConfig: Record<PaymentStatusKey, PaymentStatusEntry> =
     },
     sem_cobranca: {
       label: "Sem cobrança online",
-      color: "text-zinc-500",
+      // Mesmo motivo do "Cancelado": zinc-500 ficava abaixo de 4,5:1.
+      color: "text-zinc-400",
       bgColor: "bg-zinc-500/10",
       borderColor: "border-zinc-500/20",
     },
@@ -374,8 +377,8 @@ export const PaymentStatusBadge = memo(function PaymentStatusBadge({
       <span
         className={`truncate uppercase ${
           tamanho === "cartao"
-            ? "text-[10px] font-bold tracking-wider"
-            : "text-[9px] font-black tracking-widest"
+            ? "text-[11px] font-bold tracking-wider"
+            : "text-[11px] font-black tracking-wider"
         } ${cfg.color}`}
       >
         {compact ? (cfg.shortLabel ?? label) : label}

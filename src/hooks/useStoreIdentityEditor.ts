@@ -14,6 +14,8 @@ import {
   normalizeSupabaseOrigin,
 } from "@/lib/storeIdentity";
 import {
+  APP_ICON_ROLES,
+  type AppIconRole,
   type IdentityDraftChange,
   type IdentityDraftFields,
   type IdentityEditorDraft,
@@ -40,6 +42,7 @@ type Phase =
   | "verifying"
   | "saving"
   | "checking"
+  | "syncing"
   | "pending"
   | "conflict";
 interface EditorState {
@@ -52,6 +55,7 @@ interface EditorState {
   progress?: { uploadedBytes: number; totalBytes: number };
 }
 export type IdentityUploadTarget =
+  | { kind: "app-icons" }
   | { kind: "asset"; roles: readonly IdentityAssetRole[] }
   | { kind: "source-add" }
   | { kind: "source-replace"; index: number };
@@ -70,9 +74,23 @@ const busyPhases: readonly Phase[] = [
   "checking",
 ];
 
+// O fundo do maskable é pintado com a cor principal, e o canvas ignora em
+// silêncio um fillStyle inválido e fica preto. A cor do rascunho vale se passar
+// pela regra da loja; senão vale a salva; sem nenhuma válida, não há ícone.
+function appIconColor(draft: IdentityEditorDraft): string | null {
+  for (const candidate of [
+    draft.fields.primaryColor,
+    draft.expected.identity.primary_color ?? "",
+  ]) {
+    const color = validaCorDaLoja(candidate);
+    if (color.ok) return color.cor;
+  }
+  return null;
+}
+
 export function useStoreIdentityEditor(active = true) {
   const auth = useAuth();
-  const { refresh } = useStore();
+  const { refresh, config } = useStore();
   let origin = "";
   try {
     origin = normalizeSupabaseOrigin(lerSupabaseUrl());
@@ -259,6 +277,32 @@ export function useStoreIdentityEditor(active = true) {
       });
     }
   }
+  // A cidade e a UF da loja são gravadas pelo Endereço (Minha loja), por fora
+  // deste editor — mas continuam no pacote de 8 chaves da `save_store_identity`,
+  // que compara a fotografia INTEIRA. Sem reler, o próximo "Salvar identidade"
+  // (a cor, por exemplo) levaria a cidade ANTIGA: reverteria o endereço ou
+  // cairia em conflito. Releitura silenciosa: rascunho limpo → fotografia nova;
+  // rascunho com edição → a edição fica e o resto adota a fotografia nova (a
+  // mesma conciliação do "Revisar meu rascunho", sem esperar o clique).
+  async function syncExternalLocation() {
+    const before = model.current;
+    if (before.phase !== "editing" || !before.draft) return;
+    const op = start("syncing");
+    if (!op) return;
+    try {
+      const current = await readAdminStoreIdentity(op.options);
+      if (!op.isCurrent()) return;
+      const draft = identityEditorDraftIsDirty(before.draft, op.origin)
+        ? reconcileIdentityEditorDraft(before.draft, current, op.origin)
+        : createIdentityEditorDraft(current, op.origin);
+      finish({ scope: before.scope, phase: "editing", draft });
+    } catch {
+      if (!op.isCurrent()) return;
+      // Não deu para reler: o rascunho fica como estava; se a cidade mudou de
+      // fato, o servidor recusa o salvamento e o fluxo de conflito resolve.
+      finish({ ...before, phase: "editing", message: undefined });
+    }
+  }
   useEffect(() => {
     if (active && allowed && origin && model.current.phase === "idle")
       void read();
@@ -304,13 +348,95 @@ export function useStoreIdentityEditor(active = true) {
   async function upload(file: File, target: IdentityUploadTarget) {
     if (!editable()) return;
     const before = model.current;
+    const iconColor =
+      target.kind === "app-icons" ? appIconColor(before.draft!) : null;
+    if (target.kind === "app-icons" && !iconColor) {
+      publish({
+        ...before,
+        message: "Defina a cor principal antes de enviar o ícone.",
+      });
+      return;
+    }
     const op = start("preparing");
     if (!op) return;
     try {
-      const { prepareIdentityImage } = await import(
+      const { prepareIdentityImage, prepareIdentityAppIcons } = await import(
         "@/lib/prepareIdentityImage"
       );
       if (!op.isCurrent()) return;
+      if (target.kind === "app-icons") {
+        const prepared = await prepareIdentityAppIcons(file, {
+          signal: op.options.signal,
+          primaryColor: iconColor!,
+          logoUrl: `${op.origin}/storage/v1/object/public/branding/${before.draft!.assets.header.path}`,
+        });
+        if (!op.isCurrent()) return;
+        const candidates = Object.fromEntries(
+          APP_ICON_ROLES.map((role) => {
+            // role belongs to APP_ICON_ROLES.
+            // eslint-disable-next-line security/detect-object-injection
+            const { asset } = prepared[role];
+            return [
+              role,
+              {
+                asset,
+                url: `${op.origin}/storage/v1/object/public/branding/${asset.path}`,
+              },
+            ];
+          }),
+        ) as Record<AppIconRole, VerifiedPublicIdentityAsset>;
+        changeIdentityEditorDraft(
+          before.draft!,
+          { kind: "app-icons", uploaded: candidates },
+          op.origin,
+        );
+        const { uploadIdentityImage } = await import(
+          "@/lib/uploadIdentityImage"
+        );
+        if (!op.isCurrent()) return;
+        publish({ ...model.current, phase: "uploading" });
+        const uploaded = new Map<string, VerifiedPublicIdentityAsset>();
+        for (const role of APP_ICON_ROLES) {
+          // role belongs to APP_ICON_ROLES.
+          // eslint-disable-next-line security/detect-object-injection
+          const image = prepared[role];
+          if (!uploaded.has(image.asset.path)) {
+            uploaded.set(
+              image.asset.path,
+              await uploadIdentityImage(image, {
+                ...op.options,
+                onProgress: (progress) => {
+                  if (op.isCurrent())
+                    publish({
+                      ...model.current,
+                      phase:
+                        progress.stage === "verifying"
+                          ? "verifying"
+                          : "uploading",
+                      progress,
+                    });
+                },
+              }),
+            );
+            if (!op.isCurrent()) return;
+          }
+          // role belongs to APP_ICON_ROLES.
+          // eslint-disable-next-line security/detect-object-injection
+          candidates[role] = uploaded.get(image.asset.path)!;
+        }
+        finish({
+          ...before,
+          phase: "editing",
+          draft: changeIdentityEditorDraft(
+            before.draft!,
+            { kind: "app-icons", uploaded: candidates },
+            op.origin,
+          ),
+          message:
+            "Ícones conferidos no rascunho. Salve a identidade para usar esta escolha.",
+        });
+        return;
+      }
       const prepared = await prepareIdentityImage(file, {
         signal: op.options.signal,
       });
@@ -499,6 +625,33 @@ export function useStoreIdentityEditor(active = true) {
     rendered.scope === scope && allowed && origin
       ? rendered
       : { scope, phase: "idle" as const };
+  // Cidade/UF do config mudaram por fora (o Endereço gravou)? Reler uma vez por
+  // valor novo; se o rascunho já tem esses valores, não há o que reler.
+  const cidadeEUf = `${config.storeCity ?? ""}\u0000${config.storeState ?? ""}`;
+  const cidadeEUfConferida = useRef(cidadeEUf);
+  useEffect(() => {
+    if (cidadeEUfConferida.current === cidadeEUf) return;
+    if (!active || !allowed || !state.draft || state.phase !== "editing")
+      return;
+    cidadeEUfConferida.current = cidadeEUf;
+    const guardada = state.draft.expected.identity;
+    if (
+      (guardada.store_city ?? "") === (config.storeCity ?? "") &&
+      (guardada.store_state ?? "") === (config.storeState ?? "")
+    )
+      return;
+    void syncExternalLocation();
+    // `syncExternalLocation` lê o modelo mais novo por ref; só estes sinais a disparam.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    cidadeEUf,
+    active,
+    allowed,
+    state.phase,
+    state.draft,
+    config.storeCity,
+    config.storeState,
+  ]);
   const busy = busyPhases.includes(state.phase);
   const dirty =
     !!state.draft &&

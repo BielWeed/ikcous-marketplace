@@ -4,6 +4,7 @@ import {
   Linha,
   PontoEstado,
 } from "@/components/admin/shipping/primitivas-direcao-d";
+import type { View } from "@/types";
 import { memo, useState } from "react";
 
 /**
@@ -35,10 +36,12 @@ import { memo, useState } from "react";
  * "Permitir retirada na loja" grava a chave `store-pickup` em
  * `enabledShippingMethods` (o pai calcula a lista a partir do config
  * ATUAL, preservando os serviços de transportadora). A cliente da MESMA
- * área da entrega local vê "Retirar na loja", grátis, com o endereço da
- * página Sobre a Loja. Sem esse endereço a chave NÃO liga: a mensagem
- * manda cadastrar em Admin → Sobre a Loja (a edge também não oferece a
- * retirada sem endereço — a chave ligada ali seria chave que mente).
+ * área da entrega local vê "Retirar na loja", grátis, com o endereço de
+ * Minha loja — aqui ele só aparece para LEITURA (D7, painel simples: o
+ * endereço tem uma casa só). Sem esse endereço a chave NÃO liga: a tela
+ * explica e oferece "Cadastrar endereço em Minha loja" (a edge também não
+ * oferece a retirada sem endereço — a chave ligada ali seria chave que
+ * mente).
  */
 export const FreteLocalBloco = memo(function FreteLocalBloco({
   valor,
@@ -54,6 +57,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   retirada = false,
   onRetirada,
   enderecoDaLoja,
+  onNavigate,
   mostrarCabecalho = true,
 }: {
   readonly valor: number;
@@ -73,6 +77,9 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
   readonly onRetirada?: (ligada: boolean) => void;
   /** `store_address` salvo — sem ele a retirada não liga. */
   readonly enderecoDaLoja?: string | null;
+  /** Leva a Minha loja (`admin-about-store`), onde o endereço se cadastra.
+   * Ausente = sem botão (nada de botão morto). */
+  readonly onNavigate?: (view: View) => void;
   /** `false` quando um `PainelRecolhivel` externo já mostra o título e o
    * estado (tela de Frete unificada, 23/09/2026) — evita cabeçalho em
    * dobro. Default `true` preserva o uso isolado (e os testes). */
@@ -160,7 +167,7 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
           onChange={(e) => onFaixa(e.target.value)}
           placeholder="Ex: 38500-000, 38500-999"
           disabled={desabilitado}
-          className="h-10 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
+          className="h-11 w-full rounded-xl border border-white/10 bg-zinc-900/60 px-3.5 font-mono text-[13px] text-zinc-100 placeholder-zinc-600 transition-colors focus:border-admin-accent focus:outline-none disabled:opacity-50 md:w-56"
         />
       </Linha>
 
@@ -171,9 +178,18 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
             dica={
               temEndereco
                 ? `Quem é da mesma área da entrega local pode buscar o pedido de graça em: ${(enderecoDaLoja ?? "").trim()}`
-                : "Quem é da mesma área da entrega local pode buscar o pedido de graça no endereço da loja."
+                : "Para oferecer a retirada, cadastre o endereço da loja em Minha loja — a cliente precisa saber onde buscar o pedido."
             }
           >
+            {!temEndereco && onNavigate && (
+              <button
+                type="button"
+                onClick={() => onNavigate("admin-about-store")}
+                className="flex min-h-11 shrink-0 items-center rounded-lg border border-white/10 px-3.5 py-2 text-[12px] font-bold text-zinc-300 transition-colors hover:border-white/25 hover:text-white active:scale-95"
+              >
+                Cadastrar endereço em Minha loja
+              </button>
+            )}
             <Chave
               rotulo="Permitir retirada na loja"
               ligada={retirada}
@@ -193,8 +209,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               role="alert"
               className="mt-2 text-[12.5px] leading-snug text-amber-300"
             >
-              Para ligar a retirada, cadastre o endereço da loja em Admin →
-              Sobre a Loja. A cliente precisa saber onde buscar.
+              Para ligar a retirada, cadastre o endereço da loja em Minha loja.
+              A cliente precisa saber onde buscar.
             </p>
           )}
           {retirada && !temEndereco && (
@@ -203,8 +219,8 @@ export const FreteLocalBloco = memo(function FreteLocalBloco({
               className="mt-2 text-[12.5px] leading-snug text-amber-300"
             >
               A retirada está ligada, mas a loja está sem endereço: a opção não
-              aparece para a cliente até você cadastrar o endereço em Admin →
-              Sobre a Loja.
+              aparece para a cliente até você cadastrar o endereço em Minha
+              loja.
             </p>
           )}
         </>

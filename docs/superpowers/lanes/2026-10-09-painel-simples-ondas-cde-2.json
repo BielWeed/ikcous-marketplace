@@ -1,0 +1,65 @@
+{
+  "plano": "painel-simples-ondas-cde-2",
+  "frentes": [
+    {
+      "nome": "contato-e-atendimento",
+      "descricao": "D9-D12 + E4: WhatsApp e mensagem de compartilhar viram blocos de Minha loja, secaoInicial=contato, admin-whatsapp-config vira apelido (apaga AdminWhatsAppConfigView), guarda de fonte unica e 'Falta preencher' no topo de Minha loja",
+      "posse": [
+        "src/components/admin/minha-loja/**",
+        "src/views/admin/AdminAboutStoreView.tsx",
+        "src/views/admin/AdminWhatsAppConfigView.tsx",
+        "src/components/layouts/AdminArea.tsx",
+        "src/hooks/usePrefetchOnHover.ts",
+        "tests/front/minha-loja-contato.test.tsx",
+        "tests/front/atendimento-abre-minha-loja.test.tsx",
+        "tests/front/endereco-e-horario-tem-um-dono.test.ts",
+        "tests/front/atendimento-presets-abre.test.tsx",
+        "tests/front/admin-whatsapp-folha-modelos-fecha.test.tsx",
+        "tests/front/atendimento-formulario-direto.test.tsx",
+        "tests/front/admin-visual-canais-avisar.test.tsx",
+        "tests/front/atendimento-nao-grava-horario.test.tsx",
+        "tests/front/ajustes-horario-de-atendimento.test.tsx",
+        "tests/front/nome-da-loja-whatsapp.test.tsx",
+        "tests/front/admin-sobre-a-loja-salva-sem-apagar.test.tsx",
+        "tests/front/horario-resposta-da-sessao.test.tsx",
+        "tests/front/ajustes-identidade-e-horario-so-em-sobre-a-loja.test.tsx",
+        "tests/front/sobre-a-loja-iframe-credentialless.test.tsx",
+        "tests/front/minha-loja-endereco-por-cep.test.tsx",
+        "tests/front/minha-loja-marca-nao-reverte-cidade.test.tsx",
+        "tests/front/carregando-usa-nome-do-painel.test.tsx",
+        "tests/front/admin-pdv-registro-no-roteador.test.tsx",
+        "tests/front/portao-do-painel-engasgo-de-rede-nao-expulsa.test.tsx"
+      ]
+    },
+    {
+      "nome": "cartao-guiado",
+      "descricao": "E3: o cartao do Inicio passa aos seis passos ('4 de 6 prontos', um botao 'Proximo passo', lista recolhida, 6/6 vira uma linha) e a funcao antiga de 3 itens sai",
+      "posse": [
+        "src/components/admin/dashboard/LojaProntaEEstoqueBaixo.tsx",
+        "src/views/admin/AdminDashboardView.tsx",
+        "src/lib/loja-pronta.ts",
+        "tests/front/dashboard-diz-o-que-falta-para-vender.test.tsx",
+        "tests/front/inicio-do-painel.test.tsx",
+        "tests/front/dashboard-cep-oito-digitos.test.tsx",
+        "tests/front/dashboard-estoque-carregando-fiacao.test.tsx",
+        "tests/front/dashboard-escuta-a-tabela-certa.test.tsx",
+        "tests/front/atalhos-do-inicio-so-dois-botoes-grandes.test.tsx",
+        "tests/front/loja-pronta.test.ts"
+      ]
+    },
+    {
+      "nome": "ajustes-status",
+      "descricao": "E5: Ajustes troca o cartao 'Como esta sua loja' por subtitulo de status em cada grupo (mesma funcao dos seis passos) e leva 'Conexao' para Ferramentas",
+      "posse": [
+        "src/views/admin/AdminSettingsView.tsx",
+        "src/components/admin/settings/grupos-de-ajustes.ts",
+        "tests/front/admin-ajustes-salao-e-porao.test.tsx",
+        "tests/front/ajustes-disclosure-do-diagnostico.test.tsx",
+        "tests/front/admin-settings-pix-acompanha-o-interruptor.test.tsx",
+        "tests/front/admin-settings-secoes-colapsaveis.test.tsx",
+        "tests/front/formas-de-pagamento-secao-admin.test.tsx",
+        "tests/front/ajustes-grupos-e-portas.test.tsx"
+      ]
+    }
+  ]
+}

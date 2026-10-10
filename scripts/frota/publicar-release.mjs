@@ -398,6 +398,20 @@ export const CONSULTAS_DE_ROL_FECHADO = new Set([
   "9a-conferir-60-a-66-aplicado",
   "8e-conferir-92-a-202-aplicado",
   "8k-subtotal-divergente-ou-vazia-provada",
+  "10a-conferir-cupons-desligados-aplicado",
+  "10b-antes-cupons-desligados-gatilho-e-corpo",
+  "11a-conferir-anular-venda-presencial-aplicado",
+  "11b-antes-anular-venda-presencial-funcao-ausente",
+  "12a-conferir-cupom-preso-aplicado",
+  "12b-antes-cupom-preso-funcoes-ausentes",
+  "14a-conferir-contador-duplicado-apagado",
+  "14b-antes-contador-duplicado-coluna-presente-e-zerada",
+  "15a-conferir-cupons-do-checkout-aplicado",
+  "15b-antes-cupons-do-checkout-pecas-ausentes",
+  "16a-conferir-pix-anulado-aplicado",
+  "16b-antes-pix-anulado-foto-ausente",
+  "17a-conferir-estoque-do-painel-aplicado",
+  "17b-antes-estoque-do-painel-corpos-vigentes",
 ]);
 
 /** Lê a linha VEREDITO-CONSULTA que scripts/publicacao/conferir-banco.cjs imprime. */

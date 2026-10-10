@@ -711,7 +711,7 @@ async function rodarConsulta({ ref, token, consulta }) {
 }
 
 /** `VEREDITO-CONSULTA consulta=… ref=… sha=… linhas=N ok_false=K ok_nao_booleano=J`, ou null sem coluna `ok`.
- * Nas consultas de ROL FECHADO (9a, 8e, 8k — `ROL_FECHADO_POR_CONSULTA`) a linha
+ * Nas consultas de ROL FECHADO (9a, 8e, 8k, 10a, 10b, 11a, 11b, 12a, 12b, 14a, 14b, 15a, 15b, 16a, 16b, 17a, 17b — `ROL_FECHADO_POR_CONSULTA`) a linha
  * ganha ` rol=ok` SÓ quando a resposta é EXATAMENTE o rol (colunas, itens, sem
  * faltar, repetir nem sobrar, `ok` booleano em todas); qualquer outra coisa sai
  * ` rol=invalido`, e o portão (`evidenciaDaProva`) nunca a trata como positiva. */
@@ -996,6 +996,364 @@ const ROL_DA_8K = [
   "pedidos com soma dos itens diferente do subtotal",
   "vazia provada",
 ];
+/** O rol da 10a (a prova de objetos do lote da migration 20261203000000, cupons
+ * desligados não dão desconto — issue #645): as 21 linhas que
+ * scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql devolve,
+ * cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira
+ * `AUSENTE` na própria linha, nunca some uma linha). Como a 8k, NÃO serve de
+ * pré-checagem de ledger (o lote não tem backfill: é de apply normal): o portão a
+ * lê como `consulta` do lote e só a aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/cupons-desligados-portao-viva.cjs prova, num Postgres real, que este
+ * rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_10A = [
+  "controle: funcoes de public visiveis a este papel",
+  "funcao do gatilho: EXECUTE para PUBLIC",
+  "funcao do gatilho: EXECUTE para anon",
+  "funcao do gatilho: EXECUTE para authenticated",
+  "funcao do gatilho: SECURITY DEFINER",
+  "funcao do gatilho: corpo (sha256)",
+  "funcao do gatilho: linguagem e retorno",
+  "funcao do gatilho: search_path",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: condicao WHEN",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: existe em marketplace_orders",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: funcao executada",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: habilitado",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: momento e evento",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "indice marketplace_orders_chave_da_compra_unica: existe",
+  "validate_coupon_secure_v2: EXECUTE para PUBLIC",
+  "validate_coupon_secure_v2: EXECUTE para authenticated",
+  "validate_coupon_secure_v2: SECURITY DEFINER",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: search_path",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+
+/** O rol da 10b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as
+ * 6 linhas que scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql
+ * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
+const ROL_DA_10B = [
+  "coluna marketplace_orders.coupon_id: existe",
+  "coluna store_config.enable_coupons: existe",
+  "controle: funcoes de public visiveis a este papel",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: ausente em marketplace_orders",
+  "validate_coupon_secure_v2: corpo e o baseline (sha256)",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 11a (a prova de objetos do lote da migration 20261204000000, a venda do
+ * balcão se anula no mesmo dia): as 14 linhas que
+ * scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente
+ * vira `AUSENTE` na própria linha). Como a 10a, NÃO serve de pré-checagem de ledger
+ * (o lote não tem backfill: é de apply normal). tests/banco/anular-venda-portao-viva.cjs
+ * prova, num Postgres real, que este rol é EXATAMENTE o que a consulta devolve. */
+const ROL_DA_11A = [
+  "anular_venda_presencial: EXECUTE para PUBLIC",
+  "anular_venda_presencial: EXECUTE para anon",
+  "anular_venda_presencial: EXECUTE para authenticated",
+  "anular_venda_presencial: EXECUTE para service_role",
+  "anular_venda_presencial: SECURITY DEFINER",
+  "anular_venda_presencial: corpo (sha256)",
+  "anular_venda_presencial: linguagem e retorno",
+  "anular_venda_presencial: search_path",
+  "anular_venda_presencial: sobrecargas",
+  "controle: funcoes de public visiveis a este papel",
+  "dependencia devolver_estoque(uuid): existe",
+  "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin_atual(): existe",
+  "dependencia pedido__mudar_status(...): existe",
+];
+/** O rol da 11b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as 8
+ * linhas que scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql
+ * devolve — o que o pré-voo da migration exige, lido ANTES de aplicar. */
+const ROL_DA_11B = [
+  "anular_venda_presencial: ausente",
+  "colunas usadas: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "dependencia devolver_estoque(uuid): existe",
+  "dependencia fin__dia e fin__hoje: existem",
+  "dependencia is_admin(): existe",
+  "dependencia is_admin_atual(): corpo e o esperado (md5)",
+  "dependencia pedido__mudar_status(...): corpo e o esperado (md5)",
+  "tabelas usadas: existem",
+];
+/** O rol da 12a (a prova de objetos do lote das migrations 20261205000000 e
+ * 20261206000000, o cupom preso diz quando a vaga volta e a vaga do pedido nunca
+ * cobrado volta em 1 h): as 24 linhas que
+ * scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql devolve, cada uma
+ * UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha). Como a 10a e a 11a, NÃO serve de pré-checagem de ledger (o lote não
+ * tem backfill: é de apply normal). A linha do job do cron diz `NAO VERIFICAVEL` (e
+ * fica ok) só quando a RLS do cron.job vale para o papel (row_security_active) e ele
+ * não vê job nenhum: ver o cabeçalho da consulta.
+ * tests/banco/cupom-preso-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_12A = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "cupom__vaga_volta_em: corpo (sha256)",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia auth.uid(): existe",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para PUBLIC",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para anon",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE para authenticated",
+  "devolver_cupons_de_pedidos_mortos: SECURITY DEFINER",
+  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  "devolver_cupons_de_pedidos_mortos: search_path",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "donos da varredura e da RPC: EXECUTE no auxiliar",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "vaga_do_cupom_presa: EXECUTE para PUBLIC",
+  "vaga_do_cupom_presa: EXECUTE para anon",
+  "vaga_do_cupom_presa: EXECUTE para authenticated",
+  "vaga_do_cupom_presa: EXECUTE para service_role",
+  "vaga_do_cupom_presa: SECURITY DEFINER",
+  "vaga_do_cupom_presa: corpo (sha256)",
+  "vaga_do_cupom_presa: linguagem e retorno",
+  "vaga_do_cupom_presa: search_path",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 12b (a consulta de AUSÊNCIA do mesmo lote, `ausenciaConfirmadaPor`): as 10
+ * linhas que scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql
+ * devolve — o que os pré-voos das duas migrations exigem, lido ANTES de aplicar. */
+const ROL_DA_12B = [
+  "colunas usadas: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: ausente",
+  "dependencia auth.uid(): existe",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: corpo e o da 20260970 (sha256)",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "tabelas usadas: existem",
+  "vaga_do_cupom_presa: ausente",
+];
+/** O rol da 14a (a prova de objetos do lote da migration 20261207000000, o contador
+ * duplicado do cupom morre — apaga `coupons.used_count`): as 4 linhas que
+ * scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql devolve, cada
+ * uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha). Como a 10a, a 11a e a 12a, NÃO serve de pré-checagem de ledger (o lote
+ * não tem backfill: é de apply normal).
+ * tests/banco/contador-duplicado-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_14A = [
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: coluna",
+  "public.coupons: tabela",
+];
+/** O rol da 14b (a consulta do ANTES do mesmo lote, `ausenciaConfirmadaPor`): as 13
+ * linhas que scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql
+ * devolve — a condição em que o dono aprovou apagar (coluna PRESENTE e zerada, nada
+ * dependendo dela), lida ANTES de aplicar. Aqui o "antes" é o contrário da 10b/11b/12b:
+ * a coluna tem de EXISTIR. */
+const ROL_DA_14B = [
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.usage_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: coluna presente",
+  "coupons.used_count: comentario proprio",
+  "coupons.used_count: dependentes (fora o default da propria coluna)",
+  "coupons.used_count: forma do baseline (integer, aceita NULL, DEFAULT 0)",
+  "coupons.used_count: linhas com valor diferente de 0 (NULL conta)",
+  "coupons.used_count: permissao propria por coluna (attacl)",
+  "funcoes de qualquer schema que citam used_count",
+  "gatilhos que citam used_count",
+  "politicas de public que citam used_count",
+  "public.coupons: a seguranca por linha vale para este papel",
+  "visoes de public que citam used_count",
+];
+/** O rol da 15a (a prova de objetos do lote da migration 20261208000000, o checkout mostra os cupons
+ * da cliente): as 37 linhas que scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql
+ * devolve, cada uma UMA vez, as mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na
+ * própria linha, nunca some uma linha). Como a 10a, a 11a, a 12a e a 14a, NÃO serve de pré-checagem de
+ * ledger (o lote não tem backfill: é de apply normal): o portão a lê como `consulta` do lote e só a
+ * aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/cupons-do-checkout-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_15A = [
+  "admin_cupom_clientes: EXECUTE",
+  "admin_cupom_clientes: corpo (sha256)",
+  "admin_cupom_clientes: forma",
+  "admin_cupom_clientes: sobrecargas",
+  "admin_cupom_definir_clientes: EXECUTE",
+  "admin_cupom_definir_clientes: corpo (sha256)",
+  "admin_cupom_definir_clientes: forma",
+  "admin_cupom_definir_clientes: sobrecargas",
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.alcance: CHECK coupons_alcance_check",
+  "coupons.alcance: coluna (tipo, NOT NULL, default)",
+  "cupom_clientes: colunas",
+  "cupom_clientes: politicas (nome, comando, papeis)",
+  "cupom_clientes: privilegios de PUBLIC",
+  "cupom_clientes: privilegios de anon",
+  "cupom_clientes: privilegios de authenticated",
+  "cupom_clientes: regra da politica de leitura",
+  "cupom_clientes: seguranca por linha (RLS) ligada",
+  "cupons_do_checkout: EXECUTE",
+  "cupons_do_checkout: corpo (sha256)",
+  "cupons_do_checkout: forma",
+  "cupons_do_checkout: sobrecargas",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: condicao WHEN",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: existe em marketplace_orders",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: funcao executada",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: habilitado",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: momento e evento",
+  "gatilhos de cupom no pedido: ordem de disparo",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "pedido_com_cupom_so_nasce_para_a_lista: EXECUTE",
+  "pedido_com_cupom_so_nasce_para_a_lista: corpo (sha256)",
+  "pedido_com_cupom_so_nasce_para_a_lista: forma",
+  "pedido_com_cupom_so_nasce_para_a_lista: sobrecargas",
+  "validate_coupon_secure_v2: EXECUTE",
+  "validate_coupon_secure_v2: corpo (sha256)",
+  "validate_coupon_secure_v2: forma",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 15b (a consulta de AUSÊNCIA do lote da migration 20261208000000,
+ * `ausenciaConfirmadaPor`): as 15 linhas que
+ * scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql devolve — o que o
+ * pré-voo da migration exige (colunas, funções do admin atual, gatilho da 20261203000000 ativo,
+ * índice único da chave de compra, corpo da validação igual ao da 20261203000000) e a AUSÊNCIA de
+ * tudo que ela cria, lidos ANTES de aplicar. Como a 10b/11b/12b, e ao contrário da 14b, o "antes"
+ * aqui é a ausência dos objetos novos.
+ * tests/banco/cupons-do-checkout-portao-viva.cjs prova, num Postgres real, que este rol é
+ * EXATAMENTE o que a consulta devolve. */
+const ROL_DA_15B = [
+  "admin_cupom_clientes: funcao",
+  "admin_cupom_definir_clientes: funcao",
+  "colunas que as pecas da migration leem: existem",
+  "controle: funcoes de public visiveis a este papel",
+  "coupons.alcance: coluna",
+  "coupons_alcance_check: constraint",
+  "cupom_clientes: tabela",
+  "cupons_do_checkout: funcao",
+  "gatilho tr_pedido_com_cupom_exige_a_chave_ligada: ativo (BEFORE INSERT)",
+  "gatilho tr_pedido_com_cupom_so_nasce_para_a_lista: ausente em marketplace_orders",
+  "indice marketplace_orders_chave_da_compra_unica: definicao",
+  "is_admin, is_admin_atual e rls_admin_atual: existem",
+  "pedido_com_cupom_so_nasce_para_a_lista: funcao",
+  "validate_coupon_secure_v2: corpo e o da 20261203000000 (sha256)",
+  "validate_coupon_secure_v2: sobrecargas",
+];
+/** O rol da 16a (a prova de objetos do lote das migrations 20261209000000 e 20261210000000, o cupom
+ * do PIX anulado volta em minutos): as 32 linhas que
+ * scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql devolve, cada uma UMA vez, as
+ * mesmas em qualquer estado do banco (objeto ausente vira `AUSENTE` na própria linha, nunca some uma
+ * linha). Como a 10a, a 11a, a 12a, a 14a e a 15a, NÃO serve de pré-checagem de ledger (o lote não tem
+ * backfill: é de apply normal): o portão a lê como `consulta` do lote e só a aceita como POSITIVA ou
+ * NEGATIVA com ` rol=ok`.
+ * tests/banco/cupom-pix-anulado-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_16A = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "cupom__vaga_volta_em: assinatura",
+  "cupom__vaga_volta_em: corpo (sha256)",
+  "cupom__vaga_volta_em: forma",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: EXECUTE",
+  "devolver_cupons_de_pedidos_mortos: corpo (sha256)",
+  "devolver_cupons_de_pedidos_mortos: forma",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "donos da varredura e da RPC: EXECUTE no auxiliar",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: condicao WHEN",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: existe em marketplace_orders",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: funcao executada",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: habilitado",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: momento e evento",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "pedido__foto_da_cobranca_ao_cancelar: EXECUTE para PUBLIC, anon, authenticated e service_role",
+  "pedido__foto_da_cobranca_ao_cancelar: corpo (sha256)",
+  "pedido__foto_da_cobranca_ao_cancelar: forma",
+  "pedido__foto_da_cobranca_ao_cancelar: sobrecargas",
+  "pedido_cobranca_ao_cancelar: chave estrangeira",
+  "pedido_cobranca_ao_cancelar: chave primaria",
+  "pedido_cobranca_ao_cancelar: colunas (nome, tipo, NOT NULL, default)",
+  "pedido_cobranca_ao_cancelar: politicas",
+  "pedido_cobranca_ao_cancelar: privilegios de PUBLIC, anon, authenticated e service_role",
+  "pedido_cobranca_ao_cancelar: seguranca por linha (RLS) ligada",
+  "vaga_do_cupom_presa: EXECUTE",
+  "vaga_do_cupom_presa: corpo (sha256)",
+  "vaga_do_cupom_presa: forma",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 16b (a consulta de AUSÊNCIA do lote das migrations 20261209000000 e 20261210000000,
+ * `ausenciaConfirmadaPor`): as 14 linhas que
+ * scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql devolve — o que os pré-voos das
+ * duas migrations exigem (colunas de marketplace_orders, o auxiliar de 9 parâmetros, a RPC e a varredura
+ * com os corpos das 20261205/20261206 e UMA sobrecarga cada, a função `devolver_uso_cupom`, o job de
+ * 15 em 15 minutos ativo) e a AUSÊNCIA de tudo que a 20261209000000 cria (tabela, função e gatilho da foto), lidos ANTES
+ * de aplicar. Como a 10b/11b/12b/15b, o "antes" aqui é a ausência dos objetos novos.
+ * tests/banco/cupom-pix-anulado-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_16B = [
+  "controle: funcoes de public visiveis a este papel",
+  "cupom__vaga_volta_em: assinatura",
+  "cupom__vaga_volta_em: corpo e o da 20261206000000 (sha256)",
+  "cupom__vaga_volta_em: sobrecargas",
+  "dependencia devolver_uso_cupom(uuid): existe",
+  "devolver_cupons_de_pedidos_mortos: corpo e o da 20261206000000 (sha256)",
+  "devolver_cupons_de_pedidos_mortos: sobrecargas",
+  "gatilho tr_pedido_foto_da_cobranca_ao_cancelar: ausente em marketplace_orders",
+  "job devolver-cupons-de-pedidos-mortos: agendado a cada 15 min e ativo",
+  "marketplace_orders: colunas que o gatilho e as funcoes leem",
+  "pedido__foto_da_cobranca_ao_cancelar: funcao",
+  "pedido_cobranca_ao_cancelar: tabela",
+  "vaga_do_cupom_presa: corpo e o da 20261205000000 (sha256)",
+  "vaga_do_cupom_presa: sobrecargas",
+];
+/** O rol da 17a (a prova de objetos do lote das migrations 20261212000000, 20261213000000 e
+ * 20261214000000, o estoque do painel segue UMA regra: cada uma só troca o CORPO de UMA função): as 14
+ * linhas que scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql devolve, cada uma
+ * UMA vez, as mesmas em qualquer estado do banco (função ausente vira `AUSENTE` na própria linha, nunca
+ * some uma linha) — por função (`get_admin_analytics_v2`, `get_admin_products_paged`, `painel_inicio`)
+ * sobrecargas, forma, corpo e EXECUTE, mais o controle e as colunas. Como a 10a/11a/12a/14a/15a/16a, NÃO
+ * serve de pré-checagem de ledger (o lote não tem backfill: é de apply normal): o portão a lê como
+ * `consulta` do lote e só a aceita como POSITIVA ou NEGATIVA com ` rol=ok`.
+ * tests/banco/estoque-do-painel-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_17A = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: EXECUTE",
+  "get_admin_analytics_v2: corpo e o da 20261214000000 (sha256)",
+  "get_admin_analytics_v2: forma",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_products_paged: EXECUTE",
+  "get_admin_products_paged: corpo e o da 20261213000000 (sha256)",
+  "get_admin_products_paged: forma",
+  "get_admin_products_paged: sobrecargas",
+  "painel_inicio: EXECUTE",
+  "painel_inicio: corpo e o da 20261212000000 (sha256)",
+  "painel_inicio: forma",
+  "painel_inicio: sobrecargas",
+  "produtos e product_variants: colunas que os corpos novos leem",
+];
+/** O rol da 17b (a consulta de AUSÊNCIA do lote das migrations 20261212000000, 20261213000000 e
+ * 20261214000000, o estoque do painel segue UMA regra; `ausenciaConfirmadaPor`): as 11 linhas que
+ * scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql devolve — o que os
+ * pré-voos das três migrations exigem (o corpo VIGENTE de antes de `get_admin_analytics_v2` e
+ * `painel_inicio`, o da 20261199000000, e de `get_admin_products_paged`, o da baseline; UMA sobrecarga
+ * cada), o EXECUTE que o CREATE OR REPLACE preserva (só authenticated) e as colunas de `produtos` e
+ * `product_variants` que os trechos novos leem, lidos ANTES de aplicar. Ao contrário da 10b/11b/12b/15b/16b,
+ * o "antes" aqui não é a ausência de objeto novo: é o corpo velho de cada função (o lote só troca corpos).
+ * tests/banco/estoque-do-painel-portao-viva.cjs prova, num Postgres real, que este rol é EXATAMENTE o
+ * que a consulta devolve. */
+const ROL_DA_17B = [
+  "controle: funcoes de public visiveis a este papel",
+  "get_admin_analytics_v2: EXECUTE",
+  "get_admin_analytics_v2: corpo e o da 20261199000000 (sha256)",
+  "get_admin_analytics_v2: sobrecargas",
+  "get_admin_products_paged: EXECUTE",
+  "get_admin_products_paged: corpo e o da 20260806000000 (sha256)",
+  "get_admin_products_paged: sobrecargas",
+  "painel_inicio: EXECUTE",
+  "painel_inicio: corpo e o da 20261199000000 (sha256)",
+  "painel_inicio: sobrecargas",
+  "produtos e product_variants: colunas que os corpos novos leem",
+];
+
 /** O CONTRATO ÚNICO do rol fechado, pela CONSULTA: a pré-checagem do ledger
  * (`conferirAntesDeGravar`) e o veredito que o portão lê (`veredictoDaConsulta`)
  * usam ESTA tabela — a lista não existe em outro lugar. As consultas das faixas
@@ -1004,6 +1362,20 @@ const ROL_FECHADO_POR_CONSULTA = {
   "9a-conferir-60-a-66-aplicado": ROL_DA_9A,
   "8e-conferir-92-a-202-aplicado": ROL_DA_8E,
   "8k-subtotal-divergente-ou-vazia-provada": ROL_DA_8K,
+  "10a-conferir-cupons-desligados-aplicado": ROL_DA_10A,
+  "10b-antes-cupons-desligados-gatilho-e-corpo": ROL_DA_10B,
+  "11a-conferir-anular-venda-presencial-aplicado": ROL_DA_11A,
+  "11b-antes-anular-venda-presencial-funcao-ausente": ROL_DA_11B,
+  "12a-conferir-cupom-preso-aplicado": ROL_DA_12A,
+  "12b-antes-cupom-preso-funcoes-ausentes": ROL_DA_12B,
+  "14a-conferir-contador-duplicado-apagado": ROL_DA_14A,
+  "14b-antes-contador-duplicado-coluna-presente-e-zerada": ROL_DA_14B,
+  "15a-conferir-cupons-do-checkout-aplicado": ROL_DA_15A,
+  "15b-antes-cupons-do-checkout-pecas-ausentes": ROL_DA_15B,
+  "16a-conferir-pix-anulado-aplicado": ROL_DA_16A,
+  "16b-antes-pix-anulado-foto-ausente": ROL_DA_16B,
+  "17a-conferir-estoque-do-painel-aplicado": ROL_DA_17A,
+  "17b-antes-estoque-do-painel-corpos-vigentes": ROL_DA_17B,
 };
 const COLUNAS_DO_ROL = ["esperado", "item", "ok", "vivo"];
 
@@ -1550,6 +1922,20 @@ module.exports = {
   ROL_DA_9A,
   ROL_DA_8E,
   ROL_DA_8K,
+  ROL_DA_10A,
+  ROL_DA_10B,
+  ROL_DA_11A,
+  ROL_DA_11B,
+  ROL_DA_12A,
+  ROL_DA_12B,
+  ROL_DA_14A,
+  ROL_DA_14B,
+  ROL_DA_15A,
+  ROL_DA_15B,
+  ROL_DA_16A,
+  ROL_DA_16B,
+  ROL_DA_17A,
+  ROL_DA_17B,
   ROL_FECHADO_POR_CONSULTA,
   estruturaDoRolFechado,
   FAIXAS_DO_LEDGER_POR_LOJA_EXPLICITA,

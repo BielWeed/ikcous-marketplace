@@ -33,6 +33,13 @@ vi.mock("@/hooks/useCategories", () => ({
     ],
   }),
 }));
+vi.mock("@/contexts/StoreContext", () => ({
+  useStore: () => ({
+    config: { storeAddress: "Rua das Flores, 100 — Centro" },
+    isLoaded: true,
+    updateConfig: vi.fn(),
+  }),
+}));
 vi.mock("sonner", () => ({ toast }));
 
 // @ts-expect-error flag interna do React, sem tipo público.
@@ -116,10 +123,10 @@ describe("mínimos legais da política (funções puras)", () => {
     const { erroDaTroca, erroDoArrependimento, erroDoVicio } = await import(
       "@/components/admin/settings/PoliticaDeDevolucaoSection"
     );
-    expect(erroDoArrependimento("6")).toContain("CDC art. 49");
+    expect(erroDoArrependimento("6")).toContain("direito de arrependimento");
     expect(erroDoArrependimento("7")).toBeNull();
     expect(erroDoArrependimento("91")).toBe("No máximo 90 dias.");
-    expect(erroDoVicio("29")).toContain("CDC art. 26");
+    expect(erroDoVicio("29")).toContain("reclamar de defeito");
     expect(erroDoVicio("90")).toBeNull();
     expect(erroDaTroca("0")).toBeNull();
     expect(erroDaTroca("")).toBe("Informe o número de dias.");
@@ -132,11 +139,11 @@ describe("PoliticaDeDevolucaoSection", () => {
     expect(botao("Política salva")?.disabled).toBe(true);
 
     await digitar("politica-arrependimento", "5");
-    expect(hospedeiro.textContent).toContain("CDC art. 49");
+    expect(hospedeiro.textContent).toContain("direito de arrependimento");
     expect(botao("Salvar política")?.disabled).toBe(true);
 
     await digitar("politica-vicio", "20");
-    expect(hospedeiro.textContent).toContain("CDC art. 26");
+    expect(hospedeiro.textContent).toContain("reclamar de defeito");
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -164,12 +171,23 @@ describe("PoliticaDeDevolucaoSection", () => {
           prazo_vicio_dias: 90,
           categorias_sem_troca: ["Moda íntima"],
           metodos_locais: ["entrega_na_loja", "coleta"],
+          endereco_devolucao: "",
         }),
       }),
     );
     expect(toast.success).toHaveBeenCalled();
     expect(botao("Política salva")).toBeTruthy();
     expect(onDirtyMudou).toHaveBeenLastCalledWith(false);
+  });
+
+  it("endereço vazio: a caixa 'Mesmo endereço da loja' no lugar do campo", async () => {
+    await montar();
+    const caixa = Array.from(
+      hospedeiro.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+    ).find((c) => c.labels?.[0]?.textContent?.includes("Mesmo endereço"));
+    expect(caixa?.checked).toBe(true);
+    expect(hospedeiro.querySelector("#politica-endereco")).toBeNull();
+    expect(hospedeiro.textContent).toContain("Rua das Flores, 100 — Centro");
   });
 
   it("recusa do servidor aparece como veio", async () => {

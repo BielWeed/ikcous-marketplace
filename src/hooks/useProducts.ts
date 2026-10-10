@@ -9,6 +9,7 @@ import { mapProductFromDB } from "@/lib/mappers";
 import { redimensionarImagem } from "@/lib/redimensiona-imagem";
 import { supabase } from "@/lib/supabase";
 import type { Product, ProductVariant } from "@/types";
+import { LIMIAR_PADRAO_DE_ESTOQUE } from "@/utils/avisos-do-lojista";
 import { TruthGate } from "@/utils/truth_gate";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -143,6 +144,10 @@ async function syncOfflineUpdates(): Promise<boolean> {
         if (updates.originalPrice !== undefined)
           dbUpdates.preco_original = updates.originalPrice;
         if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        // `null` = volta ao padrão (5); zero é escolha da lojista. Só
+        // `undefined` ("não mexi") fica de fora — nunca `||` aqui.
+        if (updates.estoqueMinimo !== undefined)
+          dbUpdates.estoque_minimo = updates.estoqueMinimo;
         if (updates.category !== undefined)
           dbUpdates.categoria = updates.category;
         if (updates.images !== undefined) {
@@ -431,9 +436,17 @@ function traduzirRecusaConhecida(error: unknown): string | null {
  * Variação sem SKU nunca colide (NULL não conta como repetido) e nem gera
  * consulta. Falha da consulta NÃO bloqueia (sem veredito, o cadastro segue —
  * a colisão real que escapar vira o 23505 traduzido acima).
+ *
+ * Na EDIÇÃO (`ignorarProdutoId` = o produto que está sendo editado) as
+ * variações que este mesmo lote vai REGRAVAR já têm o SKU delas no banco, e não
+ * podem ser recusadas por isso — sem a exceção, todo produto com SKU recusaria
+ * a si mesmo. A exceção é só para as linhas do próprio produto que o lote
+ * regrava (mesmo `id`): uma irmã do mesmo produto que fica de fora do lote
+ * continua dona do SKU depois do salvar, então segue contando como colisão.
  */
 async function conferirSkusDasVariacoes(
-  variantes: ReadonlyArray<{ sku?: string | null }>,
+  variantes: ReadonlyArray<{ id?: string | null; sku?: string | null }>,
+  ignorarProdutoId?: string,
 ): Promise<string | null> {
   const skus = variantes
     .map((v) => (typeof v.sku === "string" ? v.sku.trim() : ""))
@@ -451,11 +464,26 @@ async function conferirSkusDasVariacoes(
   try {
     const { data, error } = await supabase
       .from("product_variants")
-      .select("sku, product_id, produtos(nome, deleted_at)" as any)
+      .select("id, sku, product_id, produtos(nome, deleted_at)" as any)
       .in("sku", skus);
     if (error) throw error;
 
-    const linha = ((data ?? []) as any[])[0];
+    const idsRegravados = new Set(
+      variantes
+        .map((v) => v.id)
+        .filter(
+          (id): id is string =>
+            typeof id === "string" && id !== "" && !id.startsWith("temp-"),
+        ),
+    );
+    const linha = ((data ?? []) as any[]).find(
+      (l) =>
+        !(
+          ignorarProdutoId !== undefined &&
+          l.product_id === ignorarProdutoId &&
+          idsRegravados.has(l.id)
+        ),
+    );
     if (!linha) return null;
 
     const dono = Array.isArray(linha.produtos)
@@ -676,7 +704,14 @@ export function useProducts({ autoFetch = true } = {}) {
 
           // Apply Stock
           if (filters?.stock === "low") {
-            query = query.lte("estoque", 5);
+            // PostgREST não compara coluna com coluna: aqui só cabe o limiar
+            // padrão, sem o `estoque_minimo` do produto. Hoje NENHUM chamador
+            // passa `stock: "low"` (ramo morto aqui): a RPC admin
+            // `get_admin_products_paged` já filtra "low" pela regra única
+            // `estoque_efetivo <= COALESCE(estoque_minimo, 5)` (migration
+            // 20261213000000). Se um filtro "Estoque baixo" for exposto na loja
+            // por este caminho, ele também precisa dessa regra.
+            query = query.lte("estoque", LIMIAR_PADRAO_DE_ESTOQUE);
           }
 
           // Apply Category
@@ -854,6 +889,11 @@ export function useProducts({ autoFetch = true } = {}) {
             custo: productData.costPrice ?? null,
             preco_original: productData.originalPrice,
             estoque: productData.stock,
+            // `undefined` fica de fora (o banco aplica o padrão da coluna);
+            // `null` e zero vão como estão.
+            ...(productData.estoqueMinimo !== undefined
+              ? { estoque_minimo: productData.estoqueMinimo }
+              : {}),
             categoria: productData.category,
             imagem_url: productData.images[0] || null,
             imagem_urls: productData.images,
@@ -1067,6 +1107,9 @@ export function useProducts({ autoFetch = true } = {}) {
         if (updates.originalPrice !== undefined)
           dbUpdates.preco_original = updates.originalPrice;
         if (updates.stock !== undefined) dbUpdates.estoque = updates.stock;
+        // Mesma regra da fila offline acima: `null` limpa, zero vale.
+        if (updates.estoqueMinimo !== undefined)
+          dbUpdates.estoque_minimo = updates.estoqueMinimo;
         if (updates.category !== undefined)
           dbUpdates.categoria = updates.category;
         if (updates.images !== undefined) {
@@ -1838,6 +1881,13 @@ export function useProducts({ autoFetch = true } = {}) {
         for (const variant of variants) {
           TruthGate.verifyVariantAxiom(variant, { costPrice: parentCost });
         }
+
+        // SKU de variação é único na loja inteira: conferir ANTES de gravar
+        // qualquer linha, para a lojista ler qual SKU e de quem é, em vez da
+        // frase genérica do banco no fim do salvar. As variações deste produto
+        // que o lote regrava não contam contra si mesmas.
+        const recusaDeSku = await conferirSkusDasVariacoes(variants, productId);
+        if (recusaDeSku) throw new RecusaDoCadastroDeProduto(recusaDeSku);
 
         const dbVariants = variants.map((v) => {
           const item: any = {

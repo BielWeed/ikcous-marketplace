@@ -43,12 +43,13 @@ describe("critério 5 — prévia do WhatsApp usa o endereço da loja", () => {
   });
 
   async function abrirPrevia() {
-    const { AdminWhatsAppConfigView } = await import(
-      "@/views/admin/AdminWhatsAppConfigView"
+    const { ContatoDaLoja } = await import(
+      "@/components/admin/minha-loja/ContatoDaLoja"
     );
     // Formulário direto (frente lote-b-telas-admin, 12/09): a prévia mora
-    // direto no bloco 3, sempre na árvore — não há mais seção para expandir.
-    await act(async () => raiz.render(<AdminWhatsAppConfigView active />));
+    // direto no bloco, sempre na árvore — não há mais seção para expandir.
+    // Desde o painel simples (D9/D11) o bloco é o Contato de Minha loja.
+    await act(async () => raiz.render(<ContatoDaLoja />));
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });

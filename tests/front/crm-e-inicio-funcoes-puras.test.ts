@@ -620,6 +620,10 @@ describe("formatadores", () => {
     expect(mensagemDeErroDoPainel(new Error("boom"), "carregar o CRM")).toBe(
       "Não foi possível carregar o CRM agora. Tente de novo em instantes.",
     );
+    // A regra completa mora em erro-do-painel.test.ts; aqui só a reexportação.
+    expect(
+      mensagemDeErroDoPainel(new TypeError("Failed to fetch"), "carregar"),
+    ).toBe("Sem conexão — confira a internet e tente de novo.");
   });
 });
 
@@ -631,7 +635,9 @@ describe("segmentos RFM e WhatsApp", () => {
       expect(info.rotulo.length).toBeGreaterThan(0);
       expect(info.descricao.length).toBeGreaterThan(0);
     }
-    expect(infoDoSegmento("nao_pode_perder").rotulo).toBe("Não pode perder");
+    expect(infoDoSegmento("nao_pode_perder").rotulo).toBe(
+      "Bons clientes sumindo",
+    );
     expect(infoDoSegmento("pediu_nao_pagou").rotulo).toBe("Pediu e não pagou");
     expect(infoDoSegmento("nunca_comprou").rotulo).toBe(
       "Cadastrado, nunca comprou",

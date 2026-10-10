@@ -1,10 +1,4 @@
-import {
-  AlertTriangle,
-  CheckCircle2,
-  CreditCard,
-  Loader2,
-  XCircle,
-} from "lucide-react";
+import { AlertTriangle, CreditCard, Loader2, XCircle } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -148,37 +142,25 @@ export function FormasDePagamentoSection({
 
   return (
     <div className="space-y-3">
-      {/* Status do pagamento pelo app — NUNCA um switch aqui: ligar exige
-          credencial do Mercado Pago, que só é cadastrada na seção própria.
-          Duplicar o switch permitiria "ligar" sem chave nenhuma. */}
+      {/* Pagamento pelo app — NUNCA um switch aqui: ligar exige credencial
+          do Mercado Pago, que só é cadastrada na seção própria. Duplicar o
+          switch permitiria "ligar" sem chave nenhuma. Desde H6 (painel
+          simples) a linha também não repete o estado ("Ligado/Desligado"):
+          o status do PIX é só o termômetro no topo de Pagamentos. Aqui fica
+          o atalho para a seção do Mercado Pago. */}
       <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/5 bg-zinc-950/40 px-4 py-3">
-        <span className="flex min-w-0 items-center gap-2.5">
-          {/* CheckCircle2/XCircle, não CircleCheck/CircleOff: mesmo
-              significado (ligado/desligado), mas os dois primeiros já
-              chegam ao bundle por outro caminho (CheckCircle2 em
-              MercadoPagoSection.tsx, no MESMO chunk do admin; XCircle em
-              13 arquivos do app) — importar um ícone NUNCA visto antes
-              soma o SVG inteiro dele ao vendor-lucide compartilhado; um já
-              presente não soma nada. Medido no re-review de tamanho do
-              commit 277ec288: ~111 B de brotli só destes dois ícones. */}
-          {pixLigado ? (
-            <CheckCircle2 className="size-4 shrink-0 text-emerald-400" />
-          ) : (
-            <XCircle className="size-4 shrink-0 text-zinc-500" />
-          )}
-          <span className="min-w-0">
-            <span className="block truncate text-[11px] font-bold text-zinc-200">
-              Pagar pelo app (PIX)
-            </span>
-            <span className="block text-[10px] text-zinc-500">
-              {pixLigado ? "Ligado" : "Desligado"}
-            </span>
+        <span className="min-w-0">
+          <span className="block truncate text-[11px] font-bold text-zinc-200">
+            Pagar pelo app (PIX)
+          </span>
+          <span className="block text-[11px] text-zinc-500">
+            As chaves e o Pausar ficam na seção Mercado Pago.
           </span>
         </span>
         <button
           type="button"
           onClick={onAbrirMercadoPago}
-          className="shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95"
+          className="min-h-11 shrink-0 rounded-lg border border-admin-gold/30 bg-admin-gold/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-widest text-admin-gold transition-all hover:bg-admin-gold/20 active:scale-95"
         >
           Configurar credenciais
         </button>
@@ -194,7 +176,10 @@ export function FormasDePagamentoSection({
           (mesmo padrão imediato de AdminReviewsView: clique salva). */}
       <div className="space-y-2 rounded-2xl border border-white/5 bg-zinc-950/40 p-3.5">
         {FORMAS_DE_PAGAMENTO_NA_ENTREGA_EM_ORDEM.map((forma) => (
-          <div key={forma} className="flex items-center justify-between gap-2">
+          <label
+            key={forma}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+          >
             <span className="text-xs text-zinc-300">
               {ROTULO_DA_FORMA.get(forma)}
             </span>
@@ -205,7 +190,7 @@ export function FormasDePagamentoSection({
               onCheckedChange={(checked) => alternar(forma, checked)}
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
+          </label>
         ))}
       </div>
 
@@ -215,7 +200,8 @@ export function FormasDePagamentoSection({
           do crítico de desenho: o aviso tem de NOMEAR se o pagamento pelo
           app já está pronto de verdade (chave publicada) ou só ligado por
           fora — "ligado" sem chave é o mesmo estado quebrado que o
-          termômetro de Mercado Pago já denuncia em "Minha loja está no ar?". */}
+          termômetro do PIX, no topo de Pagamentos, já denuncia. Não é status
+          repetido: é a consequência para quem compra (ninguém finaliza). */}
       {semNenhumaNaEntrega && (
         <div className="flex items-start gap-2.5 rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-3.5 py-3">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-400" />
@@ -285,6 +271,8 @@ function CartaoPeloAppBloco({
   });
   const [salvando, setSalvando] = useState(false);
   const idDasParcelas = useId();
+  const idDoCredito = useId();
+  const idDoDebito = useId();
 
   useEffect(() => {
     let vivo = true;
@@ -336,7 +324,7 @@ function CartaoPeloAppBloco({
           <span className="block text-[11px] font-bold text-zinc-200">
             {CARTAO_PELO_APP.titulo}
           </span>
-          <span className="block text-[10px] text-zinc-500">
+          <span className="block text-[11px] text-zinc-500">
             {CARTAO_PELO_APP.subtitulo}
           </span>
         </span>
@@ -356,9 +344,13 @@ function CartaoPeloAppBloco({
 
       {config && (
         <>
-          <div className="flex items-center justify-between gap-2">
+          <label
+            htmlFor={idDoCredito}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+          >
             <span className="text-xs text-zinc-300">Crédito</span>
             <Switch
+              id={idDoCredito}
               checked={config.credito}
               disabled={!podeMexer || (!pixLigado && !config.credito)}
               aria-label="Cartão de crédito pelo app"
@@ -372,10 +364,14 @@ function CartaoPeloAppBloco({
               }
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
-          <div className="flex items-center justify-between gap-2">
+          </label>
+          <label
+            htmlFor={idDoDebito}
+            className="flex min-h-11 cursor-pointer items-center justify-between gap-2 has-[:disabled]:cursor-not-allowed"
+          >
             <span className="text-xs text-zinc-300">Débito</span>
             <Switch
+              id={idDoDebito}
               checked={config.debito}
               disabled={!podeMexer || (!pixLigado && !config.debito)}
               aria-label="Cartão de débito pelo app"
@@ -389,9 +385,9 @@ function CartaoPeloAppBloco({
               }
               className="scale-75 data-[state=checked]:bg-admin-gold"
             />
-          </div>
+          </label>
           {config.debito && (
-            <p className="text-[10px] leading-relaxed text-zinc-500">
+            <p className="text-[11px] leading-relaxed text-zinc-500">
               {CARTAO_PELO_APP.debito}
             </p>
           )}
@@ -417,7 +413,7 @@ function CartaoPeloAppBloco({
                         : `Crédito em até ${parcelasMax}x`,
                     );
                   }}
-                  className="rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-admin-gold/50 disabled:opacity-50"
+                  className="min-h-11 rounded-lg border border-white/10 bg-zinc-900 px-2 py-1 font-mono text-xs font-bold text-white focus:outline-none focus:ring-1 focus:ring-admin-gold/50 disabled:opacity-50"
                 >
                   {OPCOES_DE_PARCELAS.map((n) => (
                     <option
@@ -430,7 +426,7 @@ function CartaoPeloAppBloco({
                   ))}
                 </select>
               </div>
-              <p className="text-[10px] leading-relaxed text-zinc-500">
+              <p className="text-[11px] leading-relaxed text-zinc-500">
                 {CARTAO_PELO_APP.parcelas}
               </p>
             </div>

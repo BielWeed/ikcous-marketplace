@@ -45,6 +45,25 @@ on:
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
       - "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql"
+      - "scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql"
+      - "scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql"
+      - "scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql"
+      - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
+      - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
+      - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
+      - "scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql"
+      - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
+      - "scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql"
+      - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
+      - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
+      - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
+      - "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-92-202.sql"
+      - "scripts/frota/canais-de-backend.json"
+      - "scripts/frota/publicar-release.mjs"
   push:
     branches: [develop, claude/app-major-upgrade-wmc8x2]
     paths:
@@ -56,6 +75,25 @@ on:
       - "scripts/publicacao/consultas/9a-conferir-60-a-66-aplicado.sql"
       - "scripts/publicacao/consultas/ledger-60-66.sql"
       - "scripts/publicacao/consultas/8k-subtotal-divergente-ou-vazia-provada.sql"
+      - "scripts/publicacao/consultas/10a-conferir-cupons-desligados-aplicado.sql"
+      - "scripts/publicacao/consultas/10b-antes-cupons-desligados-gatilho-e-corpo.sql"
+      - "scripts/publicacao/consultas/11a-conferir-anular-venda-presencial-aplicado.sql"
+      - "scripts/publicacao/consultas/11b-antes-anular-venda-presencial-funcao-ausente.sql"
+      - "scripts/publicacao/consultas/12a-conferir-cupom-preso-aplicado.sql"
+      - "scripts/publicacao/consultas/12b-antes-cupom-preso-funcoes-ausentes.sql"
+      - "scripts/publicacao/consultas/13a-contador-duplicado-do-cupom-so-leitura.sql"
+      - "scripts/publicacao/consultas/14a-conferir-contador-duplicado-apagado.sql"
+      - "scripts/publicacao/consultas/14b-antes-contador-duplicado-coluna-presente-e-zerada.sql"
+      - "scripts/publicacao/consultas/15a-conferir-cupons-do-checkout-aplicado.sql"
+      - "scripts/publicacao/consultas/15b-antes-cupons-do-checkout-pecas-ausentes.sql"
+      - "scripts/publicacao/consultas/16a-conferir-pix-anulado-aplicado.sql"
+      - "scripts/publicacao/consultas/16b-antes-pix-anulado-foto-ausente.sql"
+      - "scripts/publicacao/consultas/17a-conferir-estoque-do-painel-aplicado.sql"
+      - "scripts/publicacao/consultas/17b-antes-estoque-do-painel-corpos-vigentes.sql"
+      - "scripts/publicacao/consultas/8e-conferir-92-a-202-aplicado.sql"
+      - "scripts/publicacao/consultas/ledger-92-202.sql"
+      - "scripts/frota/canais-de-backend.json"
+      - "scripts/frota/publicar-release.mjs"
   workflow_dispatch:
 
 permissions:
@@ -229,6 +267,205 @@ jobs:
       - name: Prova viva da 8k (subtotal divergente, ou vazia PROVADA)
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/rodar-isolado.cjs tests/banco/subtotal-vazia-provada-viva.cjs
+      # Cupons desligados (migration 20261203000000, issue #645, 08/10/2026):
+      # com store_config.enable_coupons IS FALSE nenhum pedido novo nasce com
+      # cupom (gatilho BEFORE INSERT em marketplace_orders, pela v24 E pela
+      # v23) e a validação recusa com o motivo; ligada/NULL/sem linha segue como
+      # antes; o retry idempotente de pedido criado antes devolve o mesmo
+      # pedido; ACL e rollback byte a byte; mutantes (sem gatilho, IS NOT TRUE,
+      # validação sem a checagem) ficam vermelhos. CLONE próprio.
+      - name: Prova viva dos cupons desligados (migration 20261203000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-desligados-viva.cjs
+      # Portao da release para a migration 20261203000000 (cupons desligados,
+      # issue #645, 08/10/2026): as consultas 10a (DEPOIS) e 10b (ANTES) do lote
+      # em scripts/frota/canais-de-backend.json, executadas num Postgres real como
+      # papel de leitura. 10b positiva num banco montado SEM a migration; 10a
+      # positiva depois do apply real (e com os corpos em CRLF); defeitos
+      # isolados (gatilho ausente/desabilitado/sem WHEN/outro evento, corpo
+      # divergente de 1 byte, funcao sem search_path, EXECUTE para PUBLIC, indice
+      # unico ausente ou de outra forma) reprovam cada um a SUA linha e levam o
+      # portao a NEGATIVA, nunca a POSITIVA; mutantes da consulta (sem o hash, sem o
+      # WHEN, sem o habilitado) deixam um negativo passar e a prova ficaria
+      # vermelha; erro de SQL nao vira positivo. BLOQUEANTE: o portao de CADA loja
+      # depende dela. Monta o SEU banco-base pre-203 (CLONE proprio).
+      - name: Prova viva do portao dos cupons desligados (consultas 10a e 10b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-desligados-portao-viva.cjs
+      # Anular venda do balcão (migration 20261204000000, 08/10/2026): só o admin
+      # de AGORA (o funcionário rebaixado com o JWT ainda dizendo admin é recusado
+      # sem escrever, nas duas fontes do papel), só canal presencial, só no mesmo dia
+      # da loja (as duas bordas da virada, qualquer fuso de sessão), motivo
+      # obrigatório, sem devolução nem estorno do app, estoque devolvido UMA vez
+      # (inclusive com duas conexões reais), Financeiro e caixa fechando em zero,
+      # ordem global das travas, pré-voo e rollback; cada guarda tirada (mutante)
+      # deixa a prova vermelha. CLONE próprio.
+      - name: Prova viva de anular a venda do balcão (migration 20261204000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/anular-venda-viva.cjs
+      # Portão da release para a migration 20261204000000: as consultas 11a (DEPOIS)
+      # e 11b (ANTES) do lote em scripts/frota/canais-de-backend.json, executadas num
+      # Postgres real como papel de leitura. 11b positiva num banco SEM a função; 11a
+      # positiva depois do apply real (LF e CRLF); cada defeito (SECURITY INVOKER, sem
+      # search_path, EXECUTE para PUBLIC/anon/service_role, authenticated revogado, corpo
+      # com 1 byte a mais, sobrecarga extra, função ausente) reprova a SUA linha e leva o
+      # portão a NEGATIVA, nunca a POSITIVA; mutantes da consulta ficam vermelhos; erro de
+      # SQL não vira positivo; ponta a ponta com o conferir-banco.cjs e o lote real:
+      # APLICAR, NADA ou PARAR. BLOQUEANTE: o portão de CADA loja depende dela. CLONE próprio.
+      - name: Prova viva do portão de anular a venda do balcão (consultas 11a e 11b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/anular-venda-portao-viva.cjs
+      # Cupom preso (migrations 20261205000000 e 20261206000000, issues #210 e
+      # #116, 09/10/2026): a RPC vaga_do_cupom_presa só LÊ e só responde ao DONO
+      # do pedido cancelado (outro usuário, outro código, cupom inativo, sem
+      # sessão e anon recebem nada); pedidos criados pelos caminhos REAIS
+      # (v23/v24, cancelamento do cliente, da borda e do lojista, pagamento
+      # tardio, expiração, envio e retorno) provam que o auxiliar diz "volta"
+      # SE E SOMENTE SE a varredura devolve; a vaga volta de verdade (a validação
+      # do cupom aceita depois); pré-voo recusa SEM gravar (inclusive 1 byte a mais
+      # no corpo da varredura), rollbacks byte a byte e cada guarda tirada
+      # (mutante) deixa a prova vermelha. CLONE próprio.
+      - name: Prova viva do cupom preso (migrations 20261205000000 e 20261206000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-viva.cjs
+      # Portao da release para as migrations 20261205000000 e 20261206000000: as
+      # consultas 12a (DEPOIS) e 12b (ANTES) do lote em scripts/frota/canais-de-backend.json,
+      # executadas num Postgres real como papel de leitura. 12b positiva num banco SEM as
+      # funcoes novas; 12a positiva depois do apply real (LF e CRLF); cada defeito (corpo com
+      # 1 byte a mais, EXECUTE indevido, dono sem EXECUTE no auxiliar, job inativo ou fora do
+      # horario, objeto ausente) reprova a SUA linha e leva o portao a NEGATIVA, nunca a
+      # POSITIVA; mutantes da consulta ficam vermelhos; erro de SQL nao vira positivo; ponta a
+      # ponta com o conferir-banco.cjs e o lote real: APLICAR (as duas migrations, em ordem),
+      # NADA ou PARAR. BLOQUEANTE: o portao de CADA loja depende dela. CLONE proprio.
+      - name: Prova viva do portao do cupom preso (consultas 12a e 12b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-preso-portao-viva.cjs
+      # Consulta 13a (so leitura, 09/10/2026): a medicao que decide se `coupons.used_count`
+      # pode ser apagada. O item "dependentes" excluia TODO pg_attrdef e escondia uma coluna
+      # GERADA que cita used_count; agora so o default da PROPRIA coluna fica de fora. A prova
+      # roda a consulta num Postgres real (base, coluna gerada, visao, indice) e o mutante
+      # "voltar a excluir todo pg_attrdef" deixa a prova vermelha. CLONE proprio.
+      - name: Prova viva da consulta 13a (dependentes da coluna do contador duplicado)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/consulta-13a-contador-duplicado-viva.cjs
+      # O contador duplicado do cupom morre (migration 20261207000000, 09/10/2026): apaga a
+      # coluna duplicada de contagem de uso de `coupons` SO com toda linha em 0 exato e nada
+      # dependendo dela. Prova viva: tudo 0 aplica e o resto do banco (colunas, dados,
+      # usage_count, corpo de toda funcao, politicas, ACL) fica IGUAL; valor, NULL, visao,
+      # funcao, coluna GERADA, forma diferente, RLS e usage_count ausente RECUSAM sem gravar
+      # nada; corrida com 2 conexoes e lock_timeout; atomicidade; rollback identico ao
+      # baseline; cada guarda tirada (mutante) deixa a prova vermelha. CLONE proprio.
+      - name: Prova viva do contador duplicado do cupom (migration 20261207000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-viva.cjs
+      # Portao da release para a migration 20261207000000: as consultas 14a (DEPOIS) e 14b
+      # (ANTES) do lote em scripts/frota/canais-de-backend.json, executadas num Postgres real como
+      # papel de leitura. Aqui o ANTES e' o contrario do precedente 12b: 14b positiva com a coluna
+      # PRESENTE e zerada; 14a positiva depois do apply real (LF e CRLF). Cada defeito (valor
+      # diferente de 0, NULL, visao, indice, coluna GERADA que cita a coluna, funcao que a cita,
+      # forma diferente, RLS, usage_count ausente ou em outra forma) reprova a SUA linha e leva o
+      # portao a NEGATIVA, nunca a POSITIVA; mutantes da
+      # consulta ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o
+      # conferir-banco.cjs e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA
+      # loja depende dela. CLONE proprio.
+      - name: Prova viva do portao do contador duplicado do cupom (consultas 14a e 14b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/contador-duplicado-portao-viva.cjs
+      # O checkout mostra os cupons da cliente (migration 20261208000000, 09/10/2026): a
+      # lista do checkout (anon ve so 'todos os clientes'; a dona ve o exclusivo dela, outra
+      # nao; o secreto nunca; sem esgotado, vencido ou inativo; LIMIT 20); a validacao diz
+      # 'invalido' para exclusivo alheio ANTES de qualquer motivo e mantem a frase do limite
+      # de uso; o gatilho do pedido recusa exclusivo de outra conta e de visitante sem gastar a
+      # vaga, e TEM o atalho de retentativa da 20261203 (2 conexoes reais com COMMIT: a
+      # cliente tirada da lista no meio de uma compra repetida recebe o MESMO pedido, nao
+      # um em dobro); o painel so aceita o admin ATUAL (rebaixado com sessao velha recusado
+      # nas 2 funcoes e sem ler a lista); ida e volta (reaplicar 2x, rollback devolve o corpo
+      # da 203 byte a byte, dado que ja existia, atomicidade, envelope REPEATABLE READ,
+      # lock_timeout com pedido em andamento); cada guarda tirada (mutante) deixa a prova
+      # vermelha. CLONE proprio.
+      - name: Prova viva dos cupons do checkout (migration 20261208000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-viva.cjs
+      # Portao da release para a migration 20261208000000: as consultas 15a (DEPOIS, 37 linhas) e
+      # 15b (ANTES, 15 linhas) do lote em scripts/frota/canais-de-backend.json, executadas num
+      # Postgres real como papel de leitura. 15b positiva na base SEM a migration (tambem com o
+      # baseline em CRLF e depois do rollback manual); 15a positiva depois do apply real (LF,
+      # CRLF e ida-volta-ida). Cada defeito (coluna, CHECK, RLS, politica, privilegio, forma e
+      # corpo de cada uma das 5 funcoes, gatilho e a ORDEM dele, indice, meia migration)
+      # reprova a SUA linha e leva o portao a NEGATIVA, nunca a POSITIVA; mutantes da consulta
+      # ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o conferir-banco.cjs
+      # e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA loja depende dela.
+      # CLONE proprio.
+      - name: Prova viva do portao dos cupons do checkout (consultas 15a e 15b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupons-do-checkout-portao-viva.cjs
+      # O cupom preso depois de "cancelou com o PIX gerado" volta em minutos, nao em 24 h
+      # (09/10/2026). BLOCO DA FOTO (migration 20261209000000): um gatilho grava, no instante em
+      # que o pedido vira 'cancelled', a foto da cobranca dele numa tabela fechada. A prova cobre a
+      # foto em todos os caminhos reais de cancelamento (edge, cliente, admin, expiracao, v23),
+      # recancelar sem foto nova, reativar e cancelar de novo sobrescreve, nenhum acesso de fora
+      # (anon/authenticated/service_role), 2 cancelamentos simultaneos = 1 foto, dado antigo sem
+      # foto, o envelope REPEATABLE READ de producao (a migration espera o pedido em andamento sem
+      # parar o checkout, recusa em 4 s sem gravar, sem 40P01 com dois pedidos cruzados), ida e
+      # volta (aplicar, rollback, reaplicar 2x, catalogo exato) e cada guarda tirada (mutante)
+      # deixa a prova vermelha. CLONE proprio.
+      # BLOCO DA VAGA (migration 20261210000000): a varredura do cupom, o auxiliar (que passa de 9 a
+      # 13 parametros) e a RPC do checkout leem a foto; o cupom do PIX anulado volta no prazo do PIX
+      # (nunca em '-infinity') SE E SOMENTE SE a foto prova que nunca houve cartao. A prova cobre a
+      # tabela de 33 casos (cada condicao violada sozinha), o pagamento fantasma (divergente, uso do
+      # cupom intacto), 2 conexoes reais (varredura x confirmar_pagamento, x liberar, 2 varreduras),
+      # o envelope REPEATABLE READ (sem 40P01), a atomicidade (falha depois do DROP), ida e volta
+      # byte a byte, a ordem de desfazer 1210 -> 1209 -> 1206 -> 1205 e um mutante por guarda.
+      - name: Prova viva do cupom do PIX anulado (migrations 20261209000000 e 20261210000000)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-viva.cjs
+      # Portao da release para as migrations 20261209000000 e 20261210000000: as consultas 16a
+      # (DEPOIS, 32 linhas) e 16b (ANTES, 14 linhas) do lote em scripts/frota/canais-de-backend.json,
+      # executadas num Postgres real como papel de leitura. 16b positiva na base SEM as duas (tambem
+      # com os arquivos de antes em CRLF e depois dos dois rollbacks manuais); 16a positiva depois do
+      # apply real (LF, CRLF e rollback seguido de novo apply). Cada defeito (coluna, chave, RLS,
+      # politica, privilegio, corpo e forma das 4 funcoes, EXECUTE por papel, gatilho e o WHEN dele,
+      # estado MISTURADO, so a 20261209 aplicada, job) reprova a SUA linha e leva o portao a
+      # NEGATIVA, nunca a POSITIVA; mutantes das consultas ficam vermelhos; erro de SQL nao vira
+      # positivo; a 12a (cupom preso) segue positiva no estado que o lote deixa; ponta a ponta com o
+      # conferir-banco.cjs e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA loja
+      # depende dela. CLONE proprio.
+      - name: Prova viva do portao do cupom do PIX anulado (consultas 16a e 16b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/cupom-pix-anulado-portao-viva.cjs
+      # Portao da release para as migrations 20261212000000, 20261213000000 e 20261214000000 (o estoque
+      # do painel segue UMA regra; cada uma troca SO o corpo de UMA funcao): as consultas 17a (DEPOIS,
+      # 14 linhas) e 17b (ANTES, 11 linhas) do lote em scripts/frota/canais-de-backend.json, executadas
+      # num Postgres real como papel de leitura, cada estado numa transacao desfeita. 17b positiva no
+      # antes (os tres rollbacks; tambem em CRLF e depois da ida e volta em qualquer ordem); 17a
+      # positiva depois do apply real (LF, CRLF, 12->14 e 14->12, 2x, ida-volta-ida), igual a arvore
+      # inteira. Os 6 estados MISTOS reprovam so o corpo das que faltam (17a) e das que entraram (17b);
+      # a 8e segue positiva em todos. Cada defeito (corpo, ausente, sobrecarga, forma, EXECUTE por
+      # papel, colunas) reprova a SUA linha e leva o portao a NEGATIVA, nunca a POSITIVA; mutantes das
+      # consultas ficam vermelhos; erro de SQL nao vira positivo; ponta a ponta com o conferir-banco.cjs
+      # e o lote real: APLICAR, NADA ou PARAR. BLOQUEANTE: o portao de CADA loja depende dela. CLONE
+      # proprio.
+      - name: Prova viva do portao do estoque do painel (consultas 17a e 17b)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-do-painel-portao-viva.cjs
+      # Onda I do painel simples (20261212 a 20261214): o estoque baixo e uma regua so (Inicio, lista, analytics),
+      # o valor do estoque so conta produto com custo, a receita do mes e caracterizada (sem migration) e o estoque
+      # minimo e editavel so pelo admin. Cada prova clona o banco.
+      - name: Prova viva do estoque baixo numa regua so (migrations 20261212 e 20261213)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-baixo-uma-regra-viva.cjs
+      - name: Prova viva do lucro do estoque so com custo (migration 20261214)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/inventario-so-com-custo-viva.cjs
+      - name: Prova viva do portao da 8e com as sucessoras da 99 (migrations 20261212 e 20261214)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/portao-8e-aceita-sucessoras-viva.cjs
+      - name: Prova viva de caracterizacao da receita do mes (sem migration)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/receita-uma-regua-viva.cjs
+      - name: Prova viva do estoque minimo editavel so pelo admin (sem migration, transacao desfeita)
+        if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
+        run: node tests/banco/rodar-isolado.cjs tests/banco/estoque-minimo-editavel-viva.cjs
       - name: Prova os invariantes de dinheiro
         if: ${{ !cancelled() && steps.aplica.outcome == 'success' }}
         run: node tests/banco/invariantes-dinheiro.cjs

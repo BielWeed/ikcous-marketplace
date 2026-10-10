@@ -19,7 +19,10 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { STATUS_PEDIDOS_COM_ACAO_PENDENTE } from "@/components/layouts/AdminLayout";
+import {
+  FILTRO_POSTGREST_PARA_PREPARAR,
+  STATUS_PARA_PREPARAR,
+} from "@/lib/pedidos-para-preparar";
 
 // Reatribuiveis e lidos no momento da consulta: e assim que um caso troca
 // uma fonte por uma que falha sem remontar o dible inteiro.
@@ -38,6 +41,11 @@ let RESPOSTA_AVALIACOES: unknown = { data: [], error: null };
 let RESPOSTA_PRODUTOS: unknown = { products: [], total: 0 };
 
 const CHAMADAS_DE_IN: Array<[string, string[]]> = [];
+const CHAMADAS_DE_OR: string[] = [];
+// Pedidos com PIX/cartao ainda nao pago (status aberto e `aguardando`): o
+// dible do banco so os devolve se a consulta NAO aplicar o `.or` da regra
+// unica "para preparar" (onda F, F2b). Vazio por padrao.
+let PIX_AGUARDANDO_NO_BANCO: unknown[] = [];
 let tabelasConsultadas: string[] = [];
 
 const { loadProductsFalso } = vi.hoisted(() => ({
@@ -51,11 +59,25 @@ function criarBuilder(tabela: string) {
     CHAMADAS_DE_IN.push([coluna, [...valores]]);
     return builder;
   });
+  let filtrouOPagamento = false;
+  builder.or = vi.fn((filtro: string) => {
+    CHAMADAS_DE_OR.push(filtro);
+    if (filtro === FILTRO_POSTGREST_PARA_PREPARAR) filtrouOPagamento = true;
+    return builder;
+  });
   builder.is = vi.fn(() => builder);
+  const respostaDosPedidos = () => {
+    const resposta = RESPOSTA_PEDIDOS as { data: unknown; error: unknown };
+    if (filtrouOPagamento || !Array.isArray(resposta.data)) return resposta;
+    return {
+      ...resposta,
+      data: [...resposta.data, ...PIX_AGUARDANDO_NO_BANCO],
+    };
+  };
   // biome-ignore lint/suspicious/noThenProperty: dible do query builder thenable do Supabase — mesmo padrao de sino-do-painel-leva-onde-o-alerta-aponta.
   builder.then = (resolve: unknown, reject?: unknown) =>
     Promise.resolve(
-      tabela === "reviews" ? RESPOSTA_AVALIACOES : RESPOSTA_PEDIDOS,
+      tabela === "reviews" ? RESPOSTA_AVALIACOES : respostaDosPedidos(),
     ).then(resolve as never, reject as never);
   return builder;
 }
@@ -163,6 +185,8 @@ function produtoDeExemplo(extra: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   CHAMADAS_DE_IN.length = 0;
+  CHAMADAS_DE_OR.length = 0;
+  PIX_AGUARDANDO_NO_BANCO = [];
   tabelasConsultadas = [];
   RESPOSTA_PEDIDOS = { data: [pedidoDeExemplo()], error: null };
   RESPOSTA_PERGUNTAS = { data: { total_count: 3 }, error: null };
@@ -202,10 +226,33 @@ describe("useAvisosDoLojista", () => {
 
     expect(CHAMADAS_DE_IN).toContainEqual([
       "status",
-      [...STATUS_PEDIDOS_COM_ACAO_PENDENTE],
+      [...STATUS_PARA_PREPARAR],
     ]);
     expect(tabelasConsultadas).toContain("marketplace_orders");
     expect(tabelasConsultadas).toContain("reviews");
+  });
+
+  it("PIX/cartao ainda nao pago nao vira 'esperando voce': a consulta leva o filtro de pagamento", async () => {
+    // Onda F (F2b): o PIX gerado e ainda nao pago espera a CLIENTE, nao o
+    // lojista. A lista do sino aplica a mesma regra do selo de Pedidos e do
+    // "Pedidos para preparar" do Inicio.
+    PIX_AGUARDANDO_NO_BANCO = [
+      {
+        id: "ped-pix",
+        customer_name: "Joana",
+        total: 120,
+        created_at: "2026-08-24T11:00:00.000Z",
+      },
+    ];
+
+    const { atual } = await montarSonda();
+
+    expect(CHAMADAS_DE_OR).toContain(FILTRO_POSTGREST_PARA_PREPARAR);
+    const titulosDePedido = atual()
+      .avisos.filter((a) => a.tipo === "pedido")
+      .map((a) => a.titulo);
+    expect(titulosDePedido).toEqual(["Pedido de Maria esperando você"]);
+    expect(titulosDePedido.join(" ")).not.toContain("Joana");
   });
 
   it("o cracha conta so os avisos que contam, e isso e diferente do total", async () => {

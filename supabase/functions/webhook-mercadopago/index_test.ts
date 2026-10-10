@@ -7107,6 +7107,152 @@ Deno.test("PIX — order expirada (bank_transfer) continua 'order expirada' sem 
   assertEquals(registro.chamadasLiberar.length, 0);
 });
 
+// Migration 20261206000000 (a vaga do cupom de um pedido NUNCA cobrado volta 45 min
+// depois de expires_at, e não 24 h): essa pista rápida só é segura porque, com a vaga
+// de cobrança VAZIA (gateway_payment_id NULL), `confirmar_pagamento` devolve
+// 'divergente' e nenhum pagamento se liga ao pedido. Uma das três dependências está
+// AQUI: o webhook só ADOTA uma cobrança (grava o id na vaga vazia/em verificação)
+// quando ela é de CARTÃO. Se um dia ele adotasse um PIX aprovado, o pedido cuja vaga o
+// cupom já devolveu poderia ser confirmado como pago depois de a vaga voltar — pagamento
+// que vale, pedido cancelado e cupom reusado. O banco não prova isto (é código da edge):
+// este teste prova.
+Deno.test("migration 20261206 — PIX aprovado com a vaga de cobrança VAZIA (ou em sentinela) NÃO é adotado pelo webhook: a vaga segue como estava (a pista rápida do cupom depende disso); o mesmo pedido com CARTÃO adota (controle)", async () => {
+  ambienteDoWebhook();
+  const silencio = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const avisoReal = console.warn;
+    const erroReal = console.error;
+    console.warn = () => {};
+    console.error = () => {};
+    try {
+      return await fn();
+    } finally {
+      console.warn = avisoReal;
+      console.error = erroReal;
+    }
+  };
+  const rodar = async (tipo: string, vagaInicial: string | null) => {
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      total: 149.9,
+      total_amount: null,
+      gateway_payment_id: vagaInicial,
+    };
+    // `confirmar_pagamento` real devolve 'divergente' quando o id aprovado não é o que
+    // está na vaga (guarda da 20261195) — o dublê espelha isso para o caso sem adoção.
+    const supabase = clienteFalso({
+      rpcResultado: tipo === "bank_transfer" ? "divergente" : "pago",
+      pedido,
+      registro,
+    });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const resposta = await silencio(() =>
+      handler(req, {
+        supabase,
+        fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", tipo)),
+        enviarPush: async () => {},
+        enviarPushContado: () => Promise.resolve(1),
+        enviarComprovante: async () => {},
+      })
+    );
+    return { resposta, registro, pedido };
+  };
+
+  for (const vagaInicial of [null, `verificando:${UUID_PEDIDO}:c0`]) {
+    const { resposta, registro, pedido } = await rodar("bank_transfer", vagaInicial);
+    assertEquals(resposta.status, 200, `PIX, vaga ${vagaInicial}`);
+    assertEquals(
+      registro.chamadasUpdateMarketplaceOrders.length,
+      0,
+      `PIX, vaga ${vagaInicial}: o webhook NÃO pode gravar o id do PIX na vaga (adoção é só de cartão)`,
+    );
+    assertEquals(pedido.gateway_payment_id, vagaInicial, `PIX, vaga ${vagaInicial}: a vaga segue como estava`);
+  }
+
+  // controle: o mesmo pedido, de CARTÃO, adota — sem isto o teste acima poderia passar
+  // porque o dublê nunca adota nada.
+  for (const vagaInicial of [null, `verificando:${UUID_PEDIDO}:c0`]) {
+    const { resposta, registro, pedido } = await rodar("credit_card", vagaInicial);
+    assertEquals(resposta.status, 200, `cartão, vaga ${vagaInicial}`);
+    assertEquals(registro.chamadasUpdateMarketplaceOrders.length, 1, `cartão, vaga ${vagaInicial}`);
+    assertEquals(pedido.gateway_payment_id, ID_ORDER_CARTAO_MP, `cartão, vaga ${vagaInicial}: adotado`);
+  }
+});
+
+// Migration 20261210 (desenho "cupom preso depois de cancelar com o PIX gerado": a vaga
+// do cupom de um pedido CANCELADO com PIX anulado volta em minutos, e não em 24 h).
+// Essa pista só é segura se, com o pedido CANCELADO e a vaga de cobrança VAZIA
+// (gateway_payment_id NULL, depois que `liberar_cobranca_do_pedido` a esvaziou), um PIX
+// aprovado tarde NÃO for ligado ao pedido: `confirmar_pagamento` devolve 'divergente'
+// (nada se liga) e o cupom devolvido não vira cupom 2x. A dependência (c) é DESTE
+// arquivo: a ADOÇÃO da vaga pelo webhook (index.ts ~1909-1946) só existe para CARTÃO
+// (`ordemDeCartaoNaNotificacao`); para PIX não há adoção. O webhook adota SEM conferir o
+// status do pedido — por isso o que segura o PIX aqui é a forma da cobrança, não o
+// `cancelled`. (A dependência (d), `criar-pagamento` recusar pedido cancelado, é de
+// outra edge e não é provada por este teste.)
+Deno.test("migration 20261210 — pedido CANCELADO + vaga VAZIA + PIX aprovado: o webhook NÃO adota o PIX (não liga o pagamento ao pedido); o CARTÃO no mesmo cenário adota (controle)", async () => {
+  ambienteDoWebhook();
+  const silencio = async <T>(fn: () => Promise<T>): Promise<T> => {
+    const avisoReal = console.warn;
+    const erroReal = console.error;
+    console.warn = () => {};
+    console.error = () => {};
+    try {
+      return await fn();
+    } finally {
+      console.warn = avisoReal;
+      console.error = erroReal;
+    }
+  };
+  const rodar = async (tipo: string, statusDoPedido: string) => {
+    const registro = { chamadasRpc: [], chamadasLiberar: [], chamadasUpdateMarketplaceOrders: [] };
+    const pedido = {
+      id: UUID_PEDIDO,
+      customer_name: "Maria",
+      total: 149.9,
+      total_amount: null,
+      status: statusDoPedido,
+      gateway_payment_id: null,
+    };
+    // `confirmar_pagamento` real devolve 'divergente' quando a vaga está vazia (guarda
+    // da 20261195): nada se liga ao pedido. O dublê espelha isso para o caso PIX.
+    const supabase = clienteFalso({
+      rpcResultado: tipo === "bank_transfer" ? "divergente" : "pago",
+      pedido,
+      registro,
+    });
+    const req = await requisicaoAssinada(ID_ORDER_TESTE, { corpoExtra: { type: "order" } });
+    const resposta = await silencio(() =>
+      handler(req, {
+        supabase,
+        fetchImpl: fetchConsulta(200, orderDoMp("processed", "accredited", tipo)),
+        enviarPush: async () => {},
+        enviarPushContado: () => Promise.resolve(1),
+        enviarComprovante: async () => {},
+      })
+    );
+    return { resposta, registro, pedido };
+  };
+
+  const pix = await rodar("bank_transfer", "cancelled");
+  assertEquals(pix.resposta.status, 200);
+  assertEquals(
+    pix.registro.chamadasUpdateMarketplaceOrders.length,
+    0,
+    "pedido cancelado, vaga vazia, PIX aprovado: o webhook NÃO pode gravar o id do PIX na vaga (adoção é só de cartão)",
+  );
+  assertEquals(pix.pedido.gateway_payment_id, null, "a vaga segue vazia");
+  assertEquals(pix.registro.chamadasRpc.length, 1, "a decisão fica com confirmar_pagamento, que devolve 'divergente' com a vaga vazia");
+
+  // controle: o mesmo dublê, de CARTÃO (pedido em andamento), adota — sem isto o teste
+  // acima poderia passar só porque o dublê nunca adota nada.
+  const cartao = await rodar("credit_card", "pending");
+  assertEquals(cartao.resposta.status, 200);
+  assertEquals(cartao.registro.chamadasUpdateMarketplaceOrders.length, 1);
+  assertEquals(cartao.pedido.gateway_payment_id, ID_ORDER_CARTAO_MP, "cartão: adotado");
+});
+
 Deno.test("PIX — order CANCELADA (a troca PIX -> cartão da criar-pagamento) só libera a vaga: a notificação que chega antes da própria criar-pagamento liberar não pode matar o pedido", async () => {
   ambienteDoWebhook();
   const registro = { chamadasRpc: [], chamadasLiberar: [] };

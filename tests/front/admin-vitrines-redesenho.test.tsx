@@ -909,3 +909,304 @@ describe("dado antigo e avisos", () => {
     expect(painel()?.textContent).toContain("Nenhum produto aparece");
   });
 });
+
+// ── "Concluir" não pode jogar fora o nome digitado (PR #764, revisão) ────
+//
+// O campo de nome grava ao SAIR dele. Clicar em "Concluir" tira o foco do
+// campo (a gravação sai nesse instante, assíncrona) e logo em seguida fecha o
+// painel. O texto só existia no campo — ao fechar, ele sumia: se a gravação
+// falhasse (ou estivesse sem internet), o lojista via o erro, reabria o painel
+// e o nome antigo estava de volta, sem nada para tentar de novo.
+//
+// Regra agora: "Concluir" espera a gravação do nome e SÓ fecha se ela foi
+// confirmada. Se falhou, o painel fica aberto com o texto digitado e o botão
+// tenta de novo; "Fechar" (X) continua descartando, sem trava.
+describe("Concluir não perde o nome digitado", () => {
+  // `clearAllMocks` limpa as chamadas mas deixa a implementação (e a fila de
+  // `...Once` que um teste não consumiu): voltar ao normal.
+  afterEach(() => {
+    updateConfig.mockReset();
+    updateConfig.mockImplementation(async () => true);
+  });
+
+  async function abrirKitsEDigitar(novoNome: string) {
+    await montar();
+    await clicar(porRotulo("Editar vitrine Kits de presente"));
+    const nome = painel()?.querySelector<HTMLInputElement>(
+      "#vitrine-title-custom_1",
+    ) as HTMLInputElement;
+    await act(async () => {
+      nome.focus();
+    });
+    await digitar(nome, novoNome);
+    return nome;
+  }
+  // O que o navegador faz ao apertar o botão: tira o foco do campo ANTES do clique.
+  async function concluirComoNoNavegador(nome: HTMLInputElement) {
+    await act(async () => {
+      nome.blur();
+    });
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+  }
+  const campoDeNome = () =>
+    painel()?.querySelector<HTMLInputElement>("#vitrine-title-custom_1");
+
+  it("se a gravação falha, o painel continua aberto com o texto digitado e avisa no painel", async () => {
+    updateConfig.mockResolvedValue(false);
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+
+    // um toque em Concluir = a gravação do blur, e nada além disso
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(painel()).not.toBeNull();
+    expect(campoDeNome()?.value).toBe("Presentes");
+    expect(painel()?.querySelector('[role="alert"]')?.textContent).toContain(
+      "nome",
+    );
+  });
+
+  it("falha imediata: o toque que vem junto do blur usa o resultado dele; só o toque SEGUINTE grava de novo", async () => {
+    updateConfig.mockResolvedValue(false);
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    expect(updateConfig).toHaveBeenCalledTimes(2);
+    expect(painel()).not.toBeNull();
+    // e o botão voltou ao normal depois da falha
+    const botao = botaoComTexto("Concluir", painel() as HTMLElement);
+    expect(botao.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("depois da falha, Concluir tenta de novo o MESMO nome e fecha quando grava", async () => {
+    updateConfig.mockResolvedValue(false);
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    expect(painel()).not.toBeNull();
+
+    updateConfig.mockResolvedValue(true);
+    updateConfig.mockClear();
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(ultimaGravacao()).toEqual({
+      homeSections: [
+        secaoLancamentos,
+        { ...secaoKits, title: "Presentes" },
+        secaoDestaques,
+      ],
+    });
+    expect(painel()).toBeNull();
+  });
+
+  it("sem internet, Concluir não fecha, não grava e guarda o texto; voltando a rede, grava e fecha", async () => {
+    await montar();
+    await clicar(porRotulo("Editar vitrine Kits de presente"));
+    offline = true;
+    await montar();
+    const nome = campoDeNome() as HTMLInputElement;
+    await act(async () => {
+      nome.focus();
+    });
+    await digitar(nome, "Presentes");
+    await concluirComoNoNavegador(nome);
+
+    expect(updateConfig).not.toHaveBeenCalled();
+    // um toque, um aviso (o do blur) — sem repetir o toast
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(painel()).not.toBeNull();
+    expect(campoDeNome()?.value).toBe("Presentes");
+
+    // o toque seguinte tenta de novo (e avisa de novo, pois segue sem rede)
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    expect(toastError).toHaveBeenCalledTimes(2);
+    expect(updateConfig).not.toHaveBeenCalled();
+    expect(painel()).not.toBeNull();
+
+    offline = false;
+    await montar();
+    await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(painel()).toBeNull();
+  });
+
+  it("gravação lenta: Concluir espera a confirmação para fechar, sem gravar duas vezes", async () => {
+    let confirmar: (salvou: boolean) => void = () => {};
+    updateConfig.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolver) => {
+          confirmar = resolver;
+        }),
+    );
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    expect(painel()).not.toBeNull();
+
+    // tocar de novo enquanto espera não dispara outra gravação
+    await clicar(botaoComTexto("Salvando…", painel() as HTMLElement));
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      confirmar(true);
+    });
+    expect(painel()).toBeNull();
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("enquanto espera, o botão fica desabilitado e diz 'Salvando…'; o X fecha mesmo com a gravação pendurada", async () => {
+    updateConfig.mockImplementationOnce(() => new Promise<boolean>(() => {}));
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+
+    const botao = botaoComTexto("Salvando…", painel() as HTMLElement);
+    expect(botao.hasAttribute("disabled")).toBe(true);
+    expect(painel()?.textContent).not.toContain("Concluir");
+
+    await clicar(porRotulo("Fechar", painel() as HTMLElement));
+    expect(painel()).toBeNull();
+  });
+
+  it("depois que a gravação lenta falha, o botão volta ao normal e o toque seguinte tenta de novo", async () => {
+    let confirmar: (salvou: boolean) => void = () => {};
+    updateConfig.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolver) => {
+          confirmar = resolver;
+        }),
+    );
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    await act(async () => {
+      confirmar(false);
+    });
+
+    const botao = botaoComTexto("Concluir", painel() as HTMLElement);
+    expect(botao.hasAttribute("disabled")).toBe(false);
+    expect(painel()).not.toBeNull();
+
+    await clicar(botao);
+    expect(updateConfig).toHaveBeenCalledTimes(2);
+    expect(painel()).toBeNull();
+  });
+
+  describe("texto novo digitado enquanto 'Salvando…'", () => {
+    // Duas gravações controláveis: a 1ª (do blur) e a 2ª (de um nome mais novo).
+    function gravacoesControlaveis() {
+      const resolvers: Array<(salvou: boolean) => void> = [];
+      const pendurada = () =>
+        new Promise<boolean>((resolver) => {
+          resolvers.push(resolver);
+        });
+      updateConfig.mockImplementationOnce(pendurada);
+      updateConfig.mockImplementationOnce(pendurada);
+      return resolvers;
+    }
+    const pausa = (ms: number) =>
+      act(async () => {
+        await new Promise((resolver) => setTimeout(resolver, ms));
+      });
+
+    it("o campo de nome fica somente leitura enquanto salva, e volta a editar depois", async () => {
+      const resolvers = gravacoesControlaveis();
+      const nome = await abrirKitsEDigitar("Presentes");
+      expect(campoDeNome()?.readOnly).toBe(false);
+      await concluirComoNoNavegador(nome);
+
+      expect(campoDeNome()?.readOnly).toBe(true);
+      // não desmontou nem perdeu o texto
+      expect(campoDeNome()).toBe(nome);
+      expect(campoDeNome()?.value).toBe("Presentes");
+
+      await act(async () => {
+        resolvers[0](false);
+      });
+      expect(campoDeNome()?.readOnly).toBe(false);
+    });
+
+    it("pausa de mais de 200 ms: a 2ª gravação ainda corre quando a 1ª confirma, e a folha NÃO fecha", async () => {
+      const resolvers = gravacoesControlaveis();
+      const nome = await abrirKitsEDigitar("Presentes");
+      await concluirComoNoNavegador(nome);
+      // (o campo é somente leitura de verdade; aqui o texto entra pelo DOM de
+      // propósito, para provar a barreira de depois do await)
+      await digitar(nome, "Presentes de Natal");
+      await pausa(250);
+      expect(updateConfig).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        resolvers[0](true);
+      });
+      expect(painel()).not.toBeNull();
+      expect(campoDeNome()?.value).toBe("Presentes de Natal");
+
+      // a 2ª confirma: o toque seguinte só fecha, sem gravar de novo
+      await act(async () => {
+        resolvers[1](true);
+      });
+      expect(painel()).not.toBeNull();
+      await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+      expect(updateConfig).toHaveBeenCalledTimes(2);
+      expect(ultimaGravacao()).toEqual({
+        homeSections: [
+          secaoLancamentos,
+          { ...secaoKits, title: "Presentes de Natal" },
+          secaoDestaques,
+        ],
+      });
+      expect(painel()).toBeNull();
+    });
+
+    it("se a 2ª gravação falha, a folha segue aberta com o texto novo e avisa; o toque seguinte tenta de novo", async () => {
+      const resolvers = gravacoesControlaveis();
+      const nome = await abrirKitsEDigitar("Presentes");
+      await concluirComoNoNavegador(nome);
+      await digitar(nome, "Presentes de Natal");
+      await pausa(250);
+
+      await act(async () => {
+        resolvers[0](true);
+      });
+      await act(async () => {
+        resolvers[1](false);
+      });
+      expect(painel()).not.toBeNull();
+      expect(campoDeNome()?.value).toBe("Presentes de Natal");
+      expect(painel()?.querySelector('[role="alert"]')).not.toBeNull();
+
+      // (o 1º toque pode só consumir o resultado da falha; o seguinte regrava)
+      for (let toques = 0; toques < 2 && painel(); toques++) {
+        await clicar(botaoComTexto("Concluir", painel() as HTMLElement));
+      }
+      expect(updateConfig).toHaveBeenCalledTimes(3);
+      expect(ultimaGravacao().homeSections[1].title).toBe("Presentes de Natal");
+      expect(painel()).toBeNull();
+    });
+  });
+
+  it("caminho feliz: grava uma vez e fecha", async () => {
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(ultimaGravacao()).toEqual({
+      homeSections: [
+        secaoLancamentos,
+        { ...secaoKits, title: "Presentes" },
+        secaoDestaques,
+      ],
+    });
+    expect(painel()).toBeNull();
+  });
+
+  it("a trava não prende o lojista: depois da falha, Fechar (X) descarta e fecha", async () => {
+    updateConfig.mockResolvedValue(false);
+    const nome = await abrirKitsEDigitar("Presentes");
+    await concluirComoNoNavegador(nome);
+    expect(painel()).not.toBeNull();
+
+    updateConfig.mockClear();
+    await clicar(porRotulo("Fechar", painel() as HTMLElement));
+    expect(painel()).toBeNull();
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+});

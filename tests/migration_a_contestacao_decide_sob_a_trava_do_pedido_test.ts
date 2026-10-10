@@ -402,6 +402,41 @@ Deno.test("rpc-ci: no job do dinheiro TODAS as provas rodam mesmo depois de uma 
     "tests/banco/lote-60-66-viva.cjs",
     // 8k: a conferência de subtotal do portão (a 8c com a prova de loja VAZIA) decide certo.
     "tests/banco/subtotal-vazia-provada-viva.cjs",
+    // 20261203000000: cupons desligados não dão desconto (gatilho + validação).
+    "tests/banco/cupons-desligados-viva.cjs",
+    // 20261203000000: o portão da release (consultas 10a e 10b do lote) decide certo.
+    "tests/banco/cupons-desligados-portao-viva.cjs",
+    // 20261204000000: a venda do balcão se anula no mesmo dia (só o admin de agora).
+    "tests/banco/anular-venda-viva.cjs",
+    // 20261204000000: o portão da release (consultas 11a e 11b do lote) decide certo.
+    "tests/banco/anular-venda-portao-viva.cjs",
+    // 20261205000000 e 20261206000000: o cupom preso diz quando a vaga volta, e a vaga do pedido nunca cobrado volta em 1 h.
+    "tests/banco/cupom-preso-viva.cjs",
+    // 20261205000000 e 20261206000000: o portao da release (consultas 12a e 12b do lote) decide certo.
+    "tests/banco/cupom-preso-portao-viva.cjs",
+    // Consulta 13a: o item dos dependentes da coluna do contador duplicado conta a coluna gerada que a cita.
+    "tests/banco/consulta-13a-contador-duplicado-viva.cjs",
+    // 20261207000000: a coluna duplicada de contagem de uso do cupom e apagada (recusas sem gravar, corrida, rollback).
+    "tests/banco/contador-duplicado-viva.cjs",
+    // 20261207000000: o portao da release (consultas 14a e 14b do lote) decide certo.
+    "tests/banco/contador-duplicado-portao-viva.cjs",
+    // 20261208000000: o checkout mostra os cupons da cliente (lista, exclusivo, gatilho com o atalho de retentativa, painel do admin atual, ida e volta).
+    "tests/banco/cupons-do-checkout-viva.cjs",
+    "tests/banco/cupons-do-checkout-portao-viva.cjs",
+    // 20261209000000: a foto da cobranca no cancelamento (gatilho, tabela fechada, envelope, ida e volta).
+    "tests/banco/cupom-pix-anulado-viva.cjs",
+    // 20261209000000 e 20261210000000: o portao da release (consultas 16a e 16b do lote) decide certo.
+    "tests/banco/cupom-pix-anulado-portao-viva.cjs",
+    // 20261212000000 a 20261214000000: estoque baixo numa regua so e o valor do estoque so com custo.
+    "tests/banco/estoque-baixo-uma-regra-viva.cjs",
+    "tests/banco/inventario-so-com-custo-viva.cjs",
+    // 8e (rol 92-202): aceita o corpo da 20261199 OU o da sucessora (20261212, 20261214), cada funcao por si.
+    "tests/banco/portao-8e-aceita-sucessoras-viva.cjs",
+    // 20261212000000 a 20261214000000: o portao da release (consultas 17a e 17b do lote) decide certo.
+    "tests/banco/estoque-do-painel-portao-viva.cjs",
+    // Onda I (so leitura): a receita do mes caracterizada e o estoque minimo editavel so pelo admin.
+    "tests/banco/receita-uma-regua-viva.cjs",
+    "tests/banco/estoque-minimo-editavel-viva.cjs",
   ];
   for (const prova of PROVAS_DO_DINHEIRO) {
     assertEquals(

@@ -79,6 +79,7 @@ const {
   lerDatabaseUrlEfemera,
   anexarAoSummary,
 } = require("./efemero.cjs");
+const { SUCESSORAS_DA_99 } = require("./sucessoras-da-99.cjs");
 
 const U_CLIENTE = "71111111-1111-1111-1111-111111111111";
 const U_OUTRO = "71111111-1111-1111-1111-111111111112";
@@ -1668,6 +1669,15 @@ const NOME_1197 = "20261197000000_dinheiro_exige_admin_atual.sql";
 // DENTRO da transação, na ordem inversa da aplicação; o ROLLBACK do fim
 // devolve tudo. Cada uma só é desfeita se estiver no ar.
 const POSTERIORES_A_97 = [
+  // As sucessoras da 99 (20261212, 20261214 — redefinem corpos dela;
+  // tests/banco/sucessoras-da-99.cjs), na ordem inversa da aplicação: com
+  // qualquer uma no ar, o rollback da 99 abaixo recusa. "No ar" = o corpo vivo
+  // é exatamente o que ela deixa.
+  ...[...SUCESSORAS_DA_99].reverse().map(({ nome, noAr }) => ({ nome, noAr })),
+  {
+    nome: "20261204000000_a_venda_do_balcao_se_anula_no_mesmo_dia.sql",
+    noAr: `SELECT to_regprocedure('public.anular_venda_presencial(uuid,text)') IS NOT NULL AS sim`,
+  },
   {
     nome: "20261202000000_as_politicas_do_pedido_e_do_financeiro_exigem_o_admin_atual.sql",
     noAr: `SELECT EXISTS (
@@ -1689,6 +1699,14 @@ const POSTERIORES_A_97 = [
   {
     nome: "20261198000000_cancelar_pedido_anula_a_cobranca.sql",
     noAr: `SELECT to_regprocedure('public.cancelar_pedido_com_cobranca(uuid,uuid,text,text,text)') IS NOT NULL AS sim`,
+  },
+  // 20261208000000: o checkout mostra os cupons da cliente. As funcoes do painel
+  // (admin_cupom_clientes, admin_cupom_definir_clientes) e a politica de cupom_clientes
+  // usam is_admin_atual()/rls_admin_atual(): sem esta entrada o rollback da 97 recusa
+  // (B1_BASELINE_DIVERGENT). No FIM da lista de proposito.
+  {
+    nome: "20261208000000_o_checkout_mostra_os_cupons_da_cliente.sql",
+    noAr: `SELECT to_regprocedure('public.admin_cupom_clientes(uuid)') IS NOT NULL AS sim`,
   },
 ];
 

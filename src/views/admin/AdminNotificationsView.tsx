@@ -1,4 +1,5 @@
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { NOMES_DO_PAINEL } from "@/config/nomes-do-painel";
 import { useAvisosDoLojista } from "@/hooks/useAvisosDoLojista";
 import type { View } from "@/types";
 import type { Aviso, TipoDeAviso } from "@/utils/avisos-do-lojista";
@@ -101,7 +102,7 @@ const LinhaDeAviso = memo(function LinhaDeAviso({
       </div>
 
       <div className="min-w-0 flex-1">
-        <span className="mb-0.5 block text-[9px] font-black uppercase leading-none tracking-widest text-zinc-500">
+        <span className="mb-0.5 block text-[11px] font-black uppercase leading-none tracking-wider text-zinc-500">
           {rotulo}
           {quando ? ` · ${quando}` : ""}
         </span>
@@ -140,10 +141,10 @@ function Bloco({
   return (
     <section data-bloco={nome} className="space-y-2">
       <div className="flex items-baseline justify-between gap-2 px-1">
-        <h2 className="text-[10px] font-black uppercase tracking-widest text-admin-gold/70">
+        <h2 className="text-[11px] font-black uppercase tracking-widest text-admin-gold/70">
           {titulo}
         </h2>
-        <span className="text-[10px] text-zinc-500">{legenda}</span>
+        <span className="text-[11px] text-zinc-500">{legenda}</span>
       </div>
       {avisos.map((aviso) => (
         <LinhaDeAviso key={aviso.id} aviso={aviso} onNavigate={onNavigate} />
@@ -181,8 +182,10 @@ export const AdminNotificationsView = memo(function AdminNotificationsView({
               {/* Onda 4 da reforma visual (03/09): o título tinha fórmula
                   própria (text-base) — agora nasce do AdminPageHeader, igual
                   ao resto do painel. */}
-              <AdminPageHeader titulo="Notificações" />
-              <p className="mt-1 text-[10px] leading-none text-zinc-500">
+              <AdminPageHeader
+                titulo={NOMES_DO_PAINEL["admin-notifications"]}
+              />
+              <p className="mt-1 text-[11px] leading-none text-zinc-500">
                 O que está esperando por você
               </p>
             </div>
