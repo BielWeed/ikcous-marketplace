@@ -315,7 +315,7 @@ export const AdminKpiCarousel = memo(function AdminKpiCarousel({
                     triggerManualInteraction();
                     emblaApi?.scrollTo(i);
                   }}
-                  className="flex h-11 w-6 items-center justify-center"
+                  className="flex size-11 items-center justify-center"
                   aria-label={`Mostrar o grupo ${i + 1} de ${scrollSnaps.length}`}
                   aria-current={activeIndex === i ? "true" : undefined}
                 >

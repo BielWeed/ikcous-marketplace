@@ -860,7 +860,7 @@ export function AdminLayout({
               onMouseEnter={() => handleMouseEnter("admin-pdv")}
               onMouseLeave={handleMouseLeave}
               onTouchStart={() => handleMouseEnter("admin-pdv", true)}
-              className="mb-1 flex w-full items-center gap-3.5 rounded-2xl bg-admin-gold px-4 py-3.5 text-left text-[10px] font-black uppercase tracking-widest text-black transition-transform active:scale-95"
+              className="mb-1 flex w-full items-center gap-3.5 rounded-2xl bg-admin-gold px-4 py-3.5 text-left text-[11px] font-black uppercase tracking-widest text-black transition-transform active:scale-95"
             >
               <ScanBarcode className="size-4.5" />
               <span className="flex-grow">Vender</span>
@@ -889,7 +889,7 @@ export function AdminLayout({
                   onMouseLeave={handleMouseLeave}
                   onTouchStart={() => handleMouseEnter(item.view, true)}
                   className={cn(
-                    "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 text-left font-black uppercase text-[10px] tracking-widest transform-gpu w-full",
+                    "flex items-center gap-3.5 px-4 py-3.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 text-left font-black uppercase text-[11px] tracking-widest transform-gpu w-full",
                     isActive
                       ? "text-admin-gold"
                       : "text-zinc-500 hover:text-zinc-300",
@@ -921,7 +921,7 @@ export function AdminLayout({
                   />
                   <span className="flex-grow">{item.label}</span>
                   {item.view === "admin-orders" && pendingOrdersCount > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[9px] font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] duration-200 animate-in zoom-in-95">
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-black text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] duration-200 animate-in zoom-in-95">
                       {pendingOrdersCount}
                     </span>
                   )}
@@ -950,7 +950,7 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(parentView as any)}
             onMouseLeave={handleMouseLeave}
-            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
             <ArrowLeft className="size-4 text-zinc-400" />{" "}
             <span>{isSubView ? "Voltar" : "Perfil"}</span>
@@ -971,7 +971,7 @@ export function AdminLayout({
             }}
             onMouseEnter={() => handleMouseEnter(notificationBellTarget)}
             onMouseLeave={handleMouseLeave}
-            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
+            className="relative flex h-11 w-full transform-gpu items-center justify-start gap-3 rounded-2xl border border-white/5 bg-zinc-900/60 px-4 py-3.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color,transform] duration-200 hover:bg-zinc-800 hover:text-white active:scale-95"
           >
             <Bell className="size-4 text-admin-gold" />{" "}
             <span>Notificações</span>
@@ -986,7 +986,7 @@ export function AdminLayout({
       <div className="relative flex h-full flex-1 flex-col overflow-hidden">
         {/* Offline Alert Banner */}
         {isOffline && (
-          <div className="relative z-[70] flex shrink-0 select-none items-center justify-center gap-2 border-b border-red-500/20 bg-red-500/10 px-6 py-2.5 text-center text-[10px] font-black uppercase tracking-widest text-red-400 duration-300 animate-in fade-in slide-in-from-top">
+          <div className="relative z-[70] flex shrink-0 select-none items-center justify-center gap-2 border-b border-red-500/20 bg-red-500/10 px-6 py-2.5 text-center text-[11px] font-black uppercase tracking-widest text-red-400 duration-300 animate-in fade-in slide-in-from-top">
             <span className="size-1.5 animate-pulse rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
             <span>
               Conexão perdida. Criação, edição e exclusão de dados estão
@@ -995,9 +995,11 @@ export function AdminLayout({
           </div>
         )}
 
-        {/* Compact Header - Mobile Only */}
+        {/* Compact Header - Mobile Only. Fundo SÓLIDO e sem blur: é `sticky` e
+            a lista rola por baixo dele (mesmo caso da barra inferior); com
+            95% + blur o texto de baixo ainda se lia atrás dos títulos. */}
         <header
-          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-[#09090b]/95 px-3.5 py-0 backdrop-blur-xl shadow-md lg:hidden"
+          className="sticky top-0 z-50 flex-shrink-0 border-b border-white/5 bg-zinc-950 px-3.5 py-0 shadow-md lg:hidden"
           style={
             {
               viewTransitionName: isViewTransitionSupported
@@ -1028,7 +1030,7 @@ export function AdminLayout({
                   // o lojista vê mora no <span> de dentro.
                   className="group flex min-h-11 min-w-11 transform-gpu items-center justify-center rounded-full bg-transparent p-0 transition-transform duration-200 hover:bg-transparent active:scale-95 dark:hover:bg-transparent"
                 >
-                  <span className="flex h-7 items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[10px] font-bold uppercase tracking-widest text-white transition-[background-color] duration-200 group-hover:bg-zinc-800">
+                  <span className="flex h-7 items-center gap-1.5 rounded-full border border-white/5 bg-zinc-900 px-2.5 text-[11px] font-bold uppercase tracking-widest text-white transition-[background-color] duration-200 group-hover:bg-zinc-800">
                     <ArrowLeft className="size-3.5 text-zinc-400" />{" "}
                     <span className="inline">
                       {isSubView ? "Voltar" : "Perfil"}
@@ -1138,7 +1140,7 @@ export function AdminLayout({
                       new CustomEvent("admin:open-new-banner-dialog"),
                     );
                   }}
-                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-black shadow-[0_2px_10px_rgba(255,191,0,0.2)] transition-all active:scale-95"
+                  className="group flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-[#FFBF00]/30 bg-gradient-to-r from-[#FFBF00] via-amber-450 to-amber-500 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-black shadow-[0_2px_10px_rgba(255,191,0,0.2)] transition-all active:scale-95"
                 >
                   <Plus className="size-3 stroke-[3px]" />
                   <span>Novo Banner</span>
