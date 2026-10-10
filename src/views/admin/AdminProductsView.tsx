@@ -1562,7 +1562,10 @@ const AdminProductCard = memo(function AdminProductCard({
     return (
       <motion.div
         layout
-        className="group relative h-[440px] transform-gpu"
+        // Sem altura fixa: o cartão cresce com o conteúdo (preço, custo, estoque
+        // e "Potencial" nunca ficam escondidos). O `content-visibility: auto`
+        // segue na classe do cartão, com o `contain-intrinsic-size` dela.
+        className="group relative transform-gpu"
         onMouseEnter={onPrefetch}
         onTouchStart={onPrefetch}
       >
@@ -1617,7 +1620,7 @@ const AdminProductCard = memo(function AdminProductCard({
           </div>
 
           {/* Main Content */}
-          <div className="flex h-full flex-col space-y-8 p-5 sm:p-8">
+          <div className="flex flex-1 flex-col space-y-8 p-5 sm:p-8">
             {/* Visual Identity */}
             <div className="flex items-start gap-4 sm:gap-6">
               <div className="relative size-20 flex-shrink-0 overflow-hidden rounded-3xl border border-white/5 bg-zinc-900 shadow-2xl transition-transform duration-700 group-hover:scale-105 sm:size-24">
