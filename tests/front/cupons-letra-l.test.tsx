@@ -4,7 +4,7 @@
 //  (a) A lista e o formulário de cupons não têm texto abaixo de 11px (a régua do
 //      painel: `text-[6px]` … `text-[10.5px]`), fora de comentário.
 //  (b) A pílula "Ativo/Inativo" do bilhete (era 6px), os rótulos "Desconto" e
-//      "Mínimo Compra" do bilhete (7px) e o selo do alcance da lista (8px) sobem
+//      "Mínimo Compra" do bilhete (7px) e o selo de status da lista (8px) sobem
 //      para 11px trocando o espaçamento de letras `tracking-widest` por
 //      `tracking-wider`, para a caixa crescer sem estourar.
 //  (c) O que NÃO muda: a altura h-11 dos botões "Cancelar" e "Salvar".
@@ -94,7 +94,7 @@ describe("cupons — pílula e selos do bilhete crescem sem estourar", () => {
     expect(coladas).toEqual([]);
   });
 
-  it("o selo do alcance da lista é 11px com tracking-wider", () => {
+  it("o selo de status da lista é 11px com tracking-wider", () => {
     const [selo, ...resto] = linhasCom(ler(LISTA), "classesDoSeloPorRotulo[");
     const alvo = [selo, ...resto].filter((l) => l.includes("className="));
     expect(alvo).toHaveLength(1);
