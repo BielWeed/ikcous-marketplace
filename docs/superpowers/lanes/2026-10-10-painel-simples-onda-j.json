@@ -1,0 +1,105 @@
+{
+  "plano": "painel-simples-onda-j",
+  "frentes": [
+    {
+      "nome": "metricas-cabem",
+      "descricao": "J1 (ROTINA): o cartao de metrica do AdminKpiCarousel cabe no celular de 360px - rotulo e subtitulo de 11px em ate 2 linhas (sem truncate/leading-none, o acento volta), icone escondido abaixo de xs, cartoes da mesma faixa com a mesma altura; carrossel sem autoplay (P-J1); pontos e Expandir/Carrossel com alvo de toque e nome em portugues",
+      "posse": [
+        "src/components/admin/AdminKpiCarousel.tsx",
+        "tests/front/admin-kpi-carousel-compacto.test.tsx",
+        "tests/front/metricas-cabem-no-celular.test.tsx"
+      ]
+    },
+    {
+      "nome": "pedidos-no-celular",
+      "descricao": "J2 (ROTINA; o caminho *order* acende o revisor-risco, que so confere que nada alem de texto/formato mudou): 'Finalizados' com separador de milhar pt-BR (formatarInteiro), busca com placeholder que cabe, botao de exportar com a palavra da loja (P-J3), WhatsApp do cartao do pedido com 44px",
+      "posse": [
+        "src/views/admin/AdminOrdersView.tsx",
+        "src/components/admin/orders/AdminOrderCard.tsx",
+        "tests/front/pedidos-cabem-no-celular.test.tsx",
+        "tests/front/pedidos-numeros-do-topo.test.tsx",
+        "tests/front/admin-orders-exportar-csv-rotulo-da-pagina.test.tsx",
+        "tests/front/admin-orders-exporta-csv-do-periodo-inteiro.test.tsx",
+        "tests/front/pedido-presencial-filtro-de-canal.test.tsx",
+        "tests/front/admin-orders-card-whatsapp-sem-destinatario.test.tsx",
+        "tests/front/admin-order-card-redesenho.test.tsx",
+        "tests/front/admin-order-card-forma-de-pagamento.test.tsx",
+        "tests/front/pedidos-falam-a-lingua-da-loja.test.tsx"
+      ]
+    },
+    {
+      "nome": "produtos-no-celular",
+      "descricao": "J3 (ROTINA): Produtos sem ROI/Portfolio ('Lucro sobre o custo'), percentuais pt-BR (virgula), estoque sem zero a esquerda; grade mostra o selo 'Critico' em palavra alem da cor, a mesma regra precisaDeReposicao do modo detalhado (P-J2); nome em ate 2 linhas; modo detalhado com nome em 2 linhas e padding de celular; botao grade/lista com nome acessivel. Formulario: Salvar/Publicar com 44px e 11px, codigo de barras inteiro (botao da camera abaixo do campo no celular), texto sem PDV ('na tela Vender'), erro do estoque minimo humano mantendo o teto 2147483647, dicas das fotos e selo 'Principal' com 11px",
+      "posse": [
+        "src/views/admin/AdminProductsView.tsx",
+        "src/views/admin/AdminProductFormView.tsx",
+        "tests/front/produtos-cabem-no-celular.test.tsx",
+        "tests/front/produto-formulario-no-celular.test.tsx",
+        "tests/front/admin-products-margem-sem-custo.test.tsx",
+        "tests/front/admin-products-esgotado.test.tsx",
+        "tests/front/admin-products-kpi-apos-mexer-no-catalogo.test.tsx",
+        "tests/front/estoque-baixo-um-limiar.test.ts",
+        "tests/front/produto-estoque-minimo.test.tsx",
+        "tests/front/admin-product-form-codigo-de-barras.test.tsx",
+        "tests/front/admin-product-form-ler-com-a-camera.test.tsx",
+        "tests/front/produto-fala-a-lingua-da-loja.test.tsx",
+        "tests/front/produto-basico-primeiro.test.tsx"
+      ]
+    },
+    {
+      "nome": "clientes-no-celular",
+      "descricao": "J4 (ROTINA): no cartao de cliente o numero de Pedidos fica dentro do cartao em 360px; o tipo de conta aparece em portugues ('Cliente', 'Administrador', 'Gerente', 'Vendedor') pela funcao pura nova src/lib/papel-da-conta.ts, na lista e na ficha; a ficha troca 'estrutura de checkout'/'Elementos' por palavras da loja",
+      "posse": [
+        "src/lib/papel-da-conta.ts",
+        "src/views/admin/AdminCustomersView.tsx",
+        "src/views/admin/AdminUserDetailView.tsx",
+        "tests/front/papel-da-conta.test.ts",
+        "tests/front/clientes-cabem-no-celular.test.tsx",
+        "tests/front/listas-falam-a-lingua-da-loja.test.tsx",
+        "tests/front/admin-customers-ordenacao-ltv-e-ajuda-honesta.test.tsx",
+        "tests/front/admin-customers-ticket-medio.test.tsx",
+        "tests/front/admin-customers-view-congelar-acesso-removido.test.tsx",
+        "tests/front/admin-ficha-cliente-resumo.test.tsx",
+        "tests/front/admin-ficha-cliente-abas.test.tsx",
+        "tests/front/admin-user-detail-pedidos-que-contam.test.tsx"
+      ]
+    },
+    {
+      "nome": "historico-de-consultas",
+      "descricao": "J5 (ROTINA; so front - a edge calculate-shipping nao muda): Consultas de frete legiveis no celular - cada consulta em bloco (sem rolagem lateral), CEP sem quebrar, Status e Transportadora sempre visiveis; motivoDaCotacao traduz 'tempo esgotado: ...' e 'falha de rede: ...' da edge (provedores.ts:259) e o texto tecnico entre parenteses; rodape sem 'em N ocorrencias'; Atualizar com 44px",
+      "posse": [
+        "src/components/admin/settings/HistoricoCotacoesCard.tsx",
+        "src/lib/motivo-da-cotacao.ts",
+        "tests/front/motivo-da-cotacao.test.ts",
+        "tests/front/historico-de-consultas-legivel.test.tsx",
+        "tests/front/historico-de-consultas-no-celular.test.tsx",
+        "tests/front/admin-shipping-historico-honesto.test.tsx",
+        "tests/front/admin-shipping-historico-mostra-o-motivo.test.tsx"
+      ]
+    },
+    {
+      "nome": "minha-loja-textos",
+      "descricao": "J6 (ROTINA): Minha loja sem linguagem interna - 'MiB' vira 'MB', sem 'checkout' no Contato, sem 'peca futura' na Descricao, sem a descricao repetida do Horario; 'Salvar horario'/'Descartar horario' com cara de botao (primario/secundario, 44px, desligado visivel)",
+      "posse": [
+        "src/views/admin/AdminAboutStoreView.tsx",
+        "src/components/admin/settings/BusinessHoursSection.tsx",
+        "src/components/admin/settings/IdentitySettingsSection.tsx",
+        "tests/front/minha-loja-fala-a-lingua-da-loja.test.tsx",
+        "tests/front/ajustes-horario-de-atendimento.test.tsx",
+        "tests/front/horario-resposta-da-sessao.test.tsx",
+        "tests/front/identity-settings-section.test.tsx",
+        "tests/front/admin-settings-identidade-da-loja.test.tsx",
+        "tests/front/admin-sobre-a-loja-salva-sem-apagar.test.tsx"
+      ]
+    },
+    {
+      "nome": "barra-inferior",
+      "descricao": "J7 (ROTINA): a barra inferior do celular fica opaca - .admin-glass (index.css, @layer utilities, emitida DEPOIS de bg-zinc-950/95 no CSS final) vencia o fundo e a borda e deixava o conteudo aparecer por baixo dos rotulos; o selo de numero da aba sobe de 8px para 11px",
+      "posse": [
+        "src/components/layouts/AdminLayout.tsx",
+        "tests/front/barra-inferior-cobre-o-conteudo.test.tsx",
+        "tests/front/admin-barra-tem-nome-acessivel.test.tsx"
+      ]
+    }
+  ]
+}
