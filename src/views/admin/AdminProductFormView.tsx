@@ -117,6 +117,15 @@ function normalizarCodigoBarras(valor: string): string {
   return valor.trim().replace(/\s+/g, "");
 }
 
+/** Percentual com 1 casa, em pt-BR ("33,3%", nunca "33.3%") — a mesma grafia
+ * da lista de produtos. */
+function percentualComUmaCasa(valor: number): string {
+  return `${valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}%`;
+}
+
 // C5.3 — o leitor de câmera (LeitorDeCodigo, componente de C2) só entra no
 // chunk desta tela quando o lojista realmente clica em "Ler com a câmera":
 // import DINÂMICO via `React.lazy`, do mesmo jeito que `conferirCodigoNoBanco`
@@ -309,9 +318,14 @@ interface ProductFormFields {
   lengthCm: string;
 }
 
-// 2147483647 é o maior número que a coluna (inteiro de 32 bits) guarda.
+// 2147483647 é o maior número que a coluna (inteiro de 32 bits) guarda. O
+// teto continua valendo, mas a tela não mostra esse número (onda J): são
+// duas mensagens, uma para o que não é inteiro e outra para o grande demais.
 const ESTOQUE_MINIMO_MAXIMO = 2147483647;
-const MENSAGEM_ESTOQUE_MINIMO_INVALIDO = `Use um número inteiro de 0 a ${ESTOQUE_MINIMO_MAXIMO}.`;
+const MENSAGEM_ESTOQUE_MINIMO_INVALIDO =
+  "Use um número inteiro: 0, 1, 2… (sem vírgula nem sinal de menos).";
+const MENSAGEM_ESTOQUE_MINIMO_GRANDE_DEMAIS =
+  "Número grande demais. Use um valor menor.";
 
 /**
  * Lê o campo "Avisar quando o estoque chegar a". Vazio vira `null` (volta ao
@@ -331,7 +345,7 @@ function lerEstoqueMinimo(texto: string): {
   }
   const numero = Math.max(0, Math.trunc(Number(limpo)));
   if (!Number.isSafeInteger(numero) || numero > ESTOQUE_MINIMO_MAXIMO) {
-    return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_INVALIDO };
+    return { valor: null, erro: MENSAGEM_ESTOQUE_MINIMO_GRANDE_DEMAIS };
   }
   return { valor: numero, erro: "" };
 }
@@ -2627,7 +2641,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       >
                         Código de barras
                       </label>
-                      <div className="flex gap-2">
+                      {/* No celular o botão desce para baixo do campo: lado a
+                          lado, os 13 dígitos não cabiam (onda J). */}
+                      <div className="flex flex-col gap-2 xs:flex-row">
                         <LocalBufferedInput
                           id="variant-codigo-barras"
                           name="variant-codigo-barras"
@@ -2657,7 +2673,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           <button
                             type="button"
                             onClick={() => setLeitorAberto("variacao")}
-                            className="flex shrink-0 items-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
+                            className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95"
                             title="Ler com a câmera"
                           >
                             <Camera className="size-4" />
@@ -2667,7 +2683,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       </div>
                       <span className="ml-1 mt-1 block text-[10px] leading-tight text-zinc-500">
                         Opcional. É o código impresso na embalagem desta
-                        variação; o PDV lê ele pela câmera.
+                        variação; a tela Vender lê ele pela câmera.
                       </span>
                       {variantCodigoBarrasError && (
                         <span className="ml-1 mt-1 block text-[10px] font-bold text-red-500">
@@ -2942,7 +2958,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               // segundo clique nessa janela.
               disabled={botaoDeSalvarDesligado}
               className={cn(
-                "px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[9px] md:text-[10px] border shrink-0",
+                "min-h-11 min-w-11 px-3 py-2 md:px-4 md:py-2.5 rounded-xl flex items-center justify-center gap-1.5 md:gap-2 transition-all active:scale-[0.98] font-black uppercase tracking-wider text-[11px] border shrink-0",
                 isOffline
                   ? "bg-zinc-900 border-rose-500/20 text-rose-400 cursor-not-allowed"
                   : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-emerald-950 border-white/10 shadow-lg shadow-emerald-500/20 disabled:from-zinc-800/80 disabled:to-zinc-800/80 disabled:text-zinc-500 disabled:border-white/5 disabled:shadow-none disabled:pointer-events-none",
@@ -3148,16 +3164,16 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           ? "Solte para enviar!"
                           : "Adicionar Fotos do Produto"}
                       </p>
-                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                      <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">
                         Arraste as imagens aqui ou clique para buscar
                       </p>
                     </div>
-                    <div className="flex items-center gap-3 pt-2 text-[8px] font-black uppercase tracking-widest text-zinc-650">
+                    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-2 text-[11px] font-black uppercase tracking-wider text-zinc-650">
                       <span>Proporção ideal: 4:5</span>
                       <span className="size-1 rounded-full bg-zinc-700" />
                       <span>Máx: 10 fotos</span>
                       <span className="size-1 rounded-full bg-zinc-700" />
-                      <span>Até 12MB cada</span>
+                      <span>Até 12 MB cada</span>
                     </div>
                   </div>
                   <input
@@ -3232,7 +3248,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 <button
                                   type="button"
                                   onClick={() => openAdjuster(image, index)}
-                                  className="flex size-9 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
+                                  className="flex size-11 items-center justify-center rounded-lg bg-emerald-500 text-emerald-950 shadow-lg transition-all hover:scale-110 hover:bg-emerald-400 active:scale-95"
                                   title="Ajustar e Cortar"
                                 >
                                   <Scissors className="size-4" />
@@ -3240,7 +3256,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                                 <button
                                   type="button"
                                   onClick={() => removeImage(index)}
-                                  className="flex size-9 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
+                                  className="flex size-11 items-center justify-center rounded-lg bg-red-500 text-white shadow-lg transition-all hover:scale-110 hover:bg-red-400 active:scale-95"
                                   title="Excluir"
                                 >
                                   <Trash2 className="size-4" />
@@ -3297,7 +3313,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           {/* Cover / Index Badge */}
                           <div
                             className={cn(
-                              "absolute bottom-2.5 left-2.5 z-10 rounded-md border px-1.5 py-0.5 text-[7px] font-black uppercase tracking-widest backdrop-blur-md",
+                              "absolute bottom-2.5 left-2.5 z-10 rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider backdrop-blur-md",
                               isCover
                                 ? "border-emerald-400/50 bg-emerald-500/90 text-emerald-950 shadow-md"
                                 : "border-white/10 bg-black/55 text-white/60",
@@ -3509,10 +3525,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                         dos produtos de mercado ou o do seu fornecedor),
                         diferente do código interno (que é uso interno seu).
                         Precisa ser único no catálogo inteiro: o mesmo código
-                        não pode estar em outro produto ou variação. É o que o
-                        leitor do PDV bipa no balcão. Se o produto tem
-                        variações, cadastre o código em CADA variação — a caixa
-                        da PP é diferente da caixa da M.
+                        não pode estar em outro produto ou variação. É o que a
+                        tela Vender lê no balcão. Se o produto tem variações,
+                        cadastre o código em CADA variação — a caixa da PP é
+                        diferente da caixa da M.
                       </span>
                     </li>
                     <li className="flex items-start gap-2.5">
@@ -4060,7 +4076,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                       <span
                         className={`text-sm font-black ${marginPct > 30 ? "text-emerald-500" : "text-orange-500"}`}
                       >
-                        {marginPct.toFixed(1)}%
+                        {percentualComUmaCasa(marginPct)}
                       </span>
                     </div>
                   </div>
@@ -4096,9 +4112,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                           </b>{" "}
                           O valor total que você pagou para adquirir ou fabricar
                           o produto. Esse dado é estritamente confidencial e é
-                          usado apenas pelo sistema para calcular a margem de
-                          lucro e o retorno sobre investimento (ROI) exibidos
-                          abaixo.
+                          usado apenas pelo sistema para calcular a margem e o
+                          lucro exibidos abaixo.
                         </span>
                       </li>
                       <li className="flex items-start gap-2.5">
@@ -4421,7 +4436,9 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               >
                 Código de barras
               </label>
-              <div className="flex gap-2">
+              {/* No celular o botão desce para baixo do campo: lado a lado,
+                  os 13 dígitos não cabiam (onda J). */}
+              <div className="flex flex-col gap-2 xs:flex-row">
                 <LocalBufferedInput
                   id="product-codigo-barras"
                   name="product-codigo-barras"
@@ -4439,7 +4456,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                     aoSairDoCampoDeCodigoDeBarras(e.target.value, "produto")
                   }
                   placeholder="Ex: 7891234567890"
-                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 text-sm font-black text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
+                  className="w-full rounded-xl border border-white/5 bg-zinc-950/50 px-4 py-3 font-mono text-sm font-black tabular-nums text-white transition-all placeholder:text-zinc-800 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 sm:rounded-2xl sm:px-6 sm:py-5"
                 />
                 {/* C5.3 — some sem câmera: o leitor físico USB digita direto
                     no campo acima, sem precisar deste botão. */}
@@ -4447,7 +4464,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   <button
                     type="button"
                     onClick={() => setLeitorAberto("produto")}
-                    className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
+                    className="flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 text-[11px] font-black uppercase tracking-widest text-emerald-500 transition-all hover:bg-emerald-500 hover:text-emerald-950 active:scale-95 sm:rounded-2xl"
                     title="Ler com a câmera"
                   >
                     <Camera className="size-4" />
@@ -4456,8 +4473,8 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 )}
               </div>
               <span className="ml-1 mt-1 block text-[11px] leading-tight text-zinc-400">
-                Opcional. É o código impresso na embalagem; o PDV lê ele pela
-                câmera.
+                Opcional. É o código impresso na embalagem; a tela Vender lê ele
+                pela câmera.
               </span>
               {codigoBarrasError && (
                 <span className="ml-1 mt-1 block text-[11px] font-bold text-red-500">
@@ -4595,7 +4612,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   variação precisa ser único). O{" "}
                   <strong className="text-white">Código de Barras</strong> é
                   opcional, identifica a embalagem física, precisa ser único no
-                  catálogo inteiro e é o que o leitor do PDV bipa no balcão.
+                  catálogo inteiro e é o que a tela Vender lê no balcão.
                 </p>
               </div>
 
@@ -4660,10 +4677,10 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                 O Código de Barras (opcional) identifica a EMBALAGEM física do
                 produto — diferente do código interno, que é uso interno seu.
                 Ele precisa ser único no catálogo inteiro (o mesmo código não
-                pode estar em outro produto ou variação) e é o que o leitor do
-                PDV lê no balcão. Se o produto tem variações, cadastre o código
-                em CADA variação: a caixa da PP tem um código diferente da caixa
-                da M.
+                pode estar em outro produto ou variação) e é o que a tela Vender
+                lê no balcão. Se o produto tem variações, cadastre o código em
+                CADA variação: a caixa da PP tem um código diferente da caixa da
+                M.
               </li>
             </ul>
           </div>

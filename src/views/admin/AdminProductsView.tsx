@@ -1620,7 +1620,7 @@ const AdminProductCard = memo(function AdminProductCard({
           <div className="flex h-full flex-col space-y-8 p-5 sm:p-8">
             {/* Visual Identity */}
             <div className="flex items-start gap-4 sm:gap-6">
-              <div className="relative size-20 flex-shrink-0 sm:size-24 overflow-hidden rounded-3xl border border-white/5 bg-zinc-900 shadow-2xl transition-transform duration-700 group-hover:scale-105">
+              <div className="relative size-20 flex-shrink-0 overflow-hidden rounded-3xl border border-white/5 bg-zinc-900 shadow-2xl transition-transform duration-700 group-hover:scale-105 sm:size-24">
                 <LazyImage
                   src={product.images[0] || "https://via.placeholder.com/150"}
                   alt={product.name}
@@ -1907,7 +1907,7 @@ const AdminProductCard = memo(function AdminProductCard({
         {/* Details */}
         <div className="flex flex-1 flex-col justify-between gap-2 p-3">
           <div className="min-w-0">
-            <p className="mb-1 truncate text-[11px] font-black uppercase leading-[1.25] tracking-widest text-zinc-500">
+            <p className="mb-1 truncate text-[11px] font-black uppercase leading-tight tracking-widest text-zinc-500">
               {product.category}
             </p>
             <h4 className="line-clamp-2 break-words text-xs font-black leading-[1.3] text-white transition-colors group-hover:text-admin-gold">
