@@ -445,7 +445,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         <BlocoNumerado
           numero="3"
           titulo="Horário de atendimento"
-          descricao="Expediente publicado na página Sobre a Loja e no rodapé da home."
+          descricao="Aparece na página Sobre a Loja e no rodapé da página inicial."
         >
           <BusinessHoursSection
             active={active}
@@ -475,15 +475,15 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             className="mt-2 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 py-3 text-sm leading-relaxed text-white"
           />
           <p className="mt-1.5 text-[11px] text-zinc-500">
-            Texto simples: uma linha em branco vira parágrafo. Formatação rica
-            (texto em negrito, imagens) é peça futura.
+            Texto simples: deixe uma linha em branco para começar outro
+            parágrafo.
           </p>
         </BlocoNumerado>
 
         <BlocoNumerado
           numero="5"
           titulo="Contato"
-          descricao="O WhatsApp da loja — o MESMO número do botão da página Sobre a Loja, do checkout, dos pedidos e do perfil — e a mensagem que vai junto quando alguém compartilha um produto."
+          descricao="O WhatsApp da loja — o MESMO número do botão da página Sobre a Loja, da finalização da compra, dos pedidos e do perfil — e a mensagem que vai junto quando alguém compartilha um produto."
           refDoTitulo={guardarTitulo("contato")}
         >
           <ContatoDaLoja

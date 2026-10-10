@@ -125,7 +125,7 @@ export function IdentitySettingsSection({
         }}
       />
       <p className="text-xs text-zinc-400">
-        {hint}. Até 20 MiB, sem alterar o arquivo original.
+        {hint}. Até 20 MB, sem alterar o arquivo original.
       </p>
     </div>
   );
@@ -134,8 +134,8 @@ export function IdentitySettingsSection({
   return (
     <div className="space-y-5 text-zinc-200">
       <p className="text-sm text-zinc-400">
-        Nome, cores e imagens da sua loja. A cidade e a UF vêm do endereço da
-        loja, no bloco abaixo. Confira o rascunho antes de salvar.
+        A cidade e a UF vêm do endereço da loja, no bloco abaixo. Confira o
+        rascunho antes de salvar.
       </p>
       <fieldset
         disabled={editor.locked}
