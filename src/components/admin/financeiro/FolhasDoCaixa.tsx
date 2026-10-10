@@ -28,6 +28,8 @@ import {
   CLASSE_BOTAO_PRIMARIO,
   CLASSE_BOTAO_SECUNDARIO,
   CLASSE_CAMPO,
+  CLASSE_CASCA_DO_CARTAO,
+  CLASSE_ROTULO_DO_CARTAO,
   Campo,
   Dinheiro,
   EstadoDeErro,
@@ -529,34 +531,32 @@ function ComparativoDoFechamento({
       className="grid grid-cols-3 gap-2"
       aria-label="Esperado, contado e diferença"
     >
-      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-        <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          Esperado
-        </dt>
+      <div className={`p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
+        <dt className={CLASSE_ROTULO_DO_CARTAO}>Esperado</dt>
         <dd className="mt-1 text-sm font-black text-white">
           {esperado === null ? "—" : <Dinheiro valor={esperado} />}
         </dd>
       </div>
-      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-        <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          Contado
-        </dt>
+      <div className={`p-3 ${CLASSE_CASCA_DO_CARTAO}`}>
+        <dt className={CLASSE_ROTULO_DO_CARTAO}>Contado</dt>
         <dd className="mt-1 text-sm font-black text-white">
           {contado === null ? "—" : <Dinheiro valor={contado} />}
         </dd>
       </div>
       <div
-        className={cn(
-          "rounded-xl border p-3",
-          situacao === "quebra" && "border-red-500/30 bg-red-500/10",
-          situacao === "sobra" && "border-amber-500/30 bg-amber-500/10",
-          situacao === "bateu" && "border-emerald-500/30 bg-emerald-500/10",
-          situacao === null && "border-white/5 bg-white/[0.02]",
-        )}
+        className={
+          situacao === null
+            ? `p-3 ${CLASSE_CASCA_DO_CARTAO}`
+            : cn(
+                "rounded-2xl border p-3",
+                situacao === "quebra" && "border-red-500/30 bg-red-500/10",
+                situacao === "sobra" && "border-amber-500/30 bg-amber-500/10",
+                situacao === "bateu" &&
+                  "border-emerald-500/30 bg-emerald-500/10",
+              )
+        }
       >
-        <dt className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
-          {rotuloDiferenca}
-        </dt>
+        <dt className={CLASSE_ROTULO_DO_CARTAO}>{rotuloDiferenca}</dt>
         <dd
           className={cn(
             "mt-1 text-sm font-black",
