@@ -282,7 +282,7 @@ describe("ficha, Clientes e consultas — acabamento da onda K", () => {
       expect(depois).not.toContain("integralizou");
     });
 
-    it("variação que sumiu diz 'Esta variação não existe mais', com o id só no title", async () => {
+    it("variação que sumiu diz 'Esta variação não existe mais', com o código visível e no title", async () => {
       estado.carrinho = [
         {
           id: "ci-1",
@@ -299,21 +299,38 @@ describe("ficha, Clientes e consultas — acabamento da onda K", () => {
       expect(texto).toContain("Esta variação não existe mais");
       expect(texto).not.toContain("Variante Indisponível");
       expect(texto).not.toContain("(ID:");
-      expect(texto).not.toContain("var-sumida-123");
+      // O código aparece em texto (no celular o title não existe): a lojista
+      // o lê ao falar com o suporte.
+      expect(texto).toContain("Código: var-sumida-123");
 
       const selo = [...hospedeiro.querySelectorAll("span")].find(
         (s) => s.textContent?.trim() === "Esta variação não existe mais",
       );
       expect(selo?.getAttribute("title")).toContain("var-sumida-123");
+
+      const codigo = [...hospedeiro.querySelectorAll("span")].find(
+        (s) => s.textContent?.trim() === "Código: var-sumida-123",
+      );
+      expect(codigo, "código em linha própria").toBeDefined();
+      // Quebra em qualquer ponto para não estourar a coluna a 360px; letra >= 11px.
+      expect(classesDe(codigo)).toContain("break-all");
+      expect(codigo?.className).not.toMatch(/text-\[(?:[6-9]|10(?:\.5)?)px\]/);
     });
 
     it("o toque tem 44px: WhatsApp, Limpar Carrinho, ajuda e abrir o pedido", async () => {
       estado.pedidos = [
         {
-          id: "pedido-1",
+          id: "pedido-aaa111",
           status: "delivered",
           total: 20,
           created_at: "2026-08-01T00:00:00Z",
+          items: [],
+        },
+        {
+          id: "pedido-bbb222",
+          status: "delivered",
+          total: 30,
+          created_at: "2026-08-02T00:00:00Z",
           items: [],
         },
       ];
@@ -338,15 +355,17 @@ describe("ficha, Clientes e consultas — acabamento da onda K", () => {
       );
 
       await abrirAba("Ped");
-      const abrir = hospedeiro.querySelector(
-        'button[aria-label="Abrir o pedido"]',
-      );
+      // O nome acessível leva o número do pedido: cada linha tem o seu.
+      const abrirTodos = [
+        ...hospedeiro.querySelectorAll('button[aria-label^="Abrir o pedido"]'),
+      ];
       expect(
-        abrir,
-        "ícone de abrir o pedido com nome acessível",
-      ).not.toBeNull();
-      expect(classesDe(abrir)).toContain("size-11");
-      expect(classesDe(abrir)).not.toContain("size-8");
+        abrirTodos.map((b) => b.getAttribute("aria-label")).sort(),
+      ).toEqual(["Abrir o pedido AAA111", "Abrir o pedido BBB222"]);
+      for (const abrir of abrirTodos) {
+        expect(classesDe(abrir)).toContain("size-11");
+        expect(classesDe(abrir)).not.toContain("size-8");
+      }
 
       await abrirAba("Carr");
       const limpar = botaoPorTexto("Limpar Carrinho");

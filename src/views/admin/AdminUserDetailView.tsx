@@ -1024,7 +1024,7 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                     <Button
                                       variant="ghost"
                                       size="icon"
-                                      aria-label="Abrir o pedido"
+                                      aria-label={`Abrir o pedido ${numeroDoPedido(order.id)}`}
                                       className="size-11 rounded-lg text-zinc-500 hover:bg-admin-gold/10 hover:text-admin-gold"
                                     >
                                       <ExternalLink className="size-4" />
@@ -1194,12 +1194,21 @@ export const AdminUserDetailView = memo(function AdminUserDetailView({
                                             </span>
                                           )}
                                           {isVariantMissing && (
-                                            <span
-                                              title={`Código da variação: ${item.variantId}`}
-                                              className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-red-500"
-                                            >
-                                              Esta variação não existe mais
-                                            </span>
+                                            <>
+                                              <span
+                                                title={`Código da variação: ${item.variantId}`}
+                                                className="mt-0.5 w-fit rounded border border-red-500/20 bg-red-500/10 px-1 py-0.5 text-[11px] font-black uppercase tracking-widest text-red-500"
+                                              >
+                                                Esta variação não existe mais
+                                              </span>
+                                              {/* O `title` não aparece no
+                                                  celular: o código fica à vista
+                                                  para a lojista passar ao
+                                                  suporte. */}
+                                              <span className="mt-0.5 break-all text-[11px] text-zinc-500">
+                                                Código: {item.variantId}
+                                              </span>
+                                            </>
                                           )}
                                         </div>
                                       </div>
