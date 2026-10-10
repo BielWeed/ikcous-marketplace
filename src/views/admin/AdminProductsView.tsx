@@ -1709,9 +1709,11 @@ const AdminProductCard = memo(function AdminProductCard({
             </div>
 
             {/* Operational Metrics Grid */}
-            <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6">
+            <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6 lg:grid-cols-1">
               <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
-                {/* Selo no canto (padrão do KpiCard): o valor usa a largura toda */}
+                {/* Selo no canto (padrão do KpiCard): o valor usa a largura toda. De lg em
+                    diante a grade é de 1 coluna (o cartão tem 3-4 por linha e a caixa
+                    ficaria com 34-67px úteis) */}
                 <div
                   className={cn(
                     "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border",
@@ -1729,7 +1731,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <span
                   className={cn(
-                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] lg:text-[15px] 2xl:text-[22px]",
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px]",
                     margin === null && "text-zinc-400",
                     margin !== null && margin >= 40 && "text-emerald-500",
                     margin !== null &&
@@ -1751,7 +1753,7 @@ const AdminProductCard = memo(function AdminProductCard({
                 </p>
                 <span
                   className={cn(
-                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] lg:text-[15px] 2xl:text-[22px]",
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px]",
                     roi === null && "text-zinc-400",
                     roi !== null && roi >= 100 && "text-emerald-500",
                     roi !== null && roi >= 50 && roi < 100 && "text-admin-gold",

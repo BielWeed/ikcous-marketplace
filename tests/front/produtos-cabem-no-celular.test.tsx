@@ -317,6 +317,30 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
       expect(cartao("detailed").textContent).not.toMatch(JARGAO);
     });
 
+    it("as 2 caixas empilham de lg em diante e o valor não cresce nem encolhe por breakpoint largo", async () => {
+      montarProduto({ price: 15, costPrice: 10 });
+      await montar("detailed");
+
+      const valores = [
+        ...cartao("detailed").querySelectorAll(
+          "span.font-black.tracking-tighter.tabular-nums",
+        ),
+      ];
+      expect(valores).toHaveLength(2);
+      // a grade das 2 caixas: lado a lado no celular, 1 coluna de lg em diante
+      // (selo no canto + valor precisam de >= 113px úteis; em 3-4 colunas do
+      // cartão a caixa sobra com 34-67px e o rótulo ficava por baixo do selo)
+      const grade = valores[0].closest("div.grid");
+      expect(grade?.className).toContain("grid-cols-2");
+      expect(grade?.className).toContain("lg:grid-cols-1");
+      for (const valor of valores) {
+        expect(valor.className).toContain("text-lg");
+        expect(valor.className).toContain("sm:text-[22px]");
+        expect(valor.className).not.toContain("lg:text-[15px]");
+        expect(valor.className).not.toContain("2xl:text-[22px]");
+      }
+    });
+
     it("o nome inteiro em 2 linhas, sem ficar embaixo do menu ⋮", async () => {
       montarProduto({});
       await montar("detailed");
