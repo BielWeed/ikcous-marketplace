@@ -535,9 +535,14 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
                     onClick={() => setShowHelpModal(true)}
                     aria-label="Ajuda"
                     title="Ajuda"
-                    className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors hover:text-white"
+                    className="group flex min-h-11 min-w-11 items-center justify-center rounded-[12px]"
                   >
-                    <HelpCircle className="size-[17px]" />
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 items-center justify-center rounded-[12px] border border-white/5 bg-zinc-900 text-zinc-300 transition-colors group-hover:text-white"
+                    >
+                      <HelpCircle className="size-[17px]" />
+                    </span>
                   </button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -788,7 +793,7 @@ export const AdminCarouselsView = memo(function AdminCarouselsView({
             página inicial do aplicativo. Toque em uma vitrine para editar.
           </p>
           <div className="space-y-2">
-            <h4 className="border-l-2 border-admin-gold pl-2 text-[10px] font-black uppercase tracking-wider text-white">
+            <h4 className="border-l-2 border-admin-gold pl-2 text-[11px] font-black uppercase tracking-wider text-white">
               Recursos Avançados
             </h4>
             <ul className="list-disc space-y-1 pl-4 text-zinc-400">
