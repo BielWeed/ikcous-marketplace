@@ -229,7 +229,7 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
     });
   }
 
-  it("resumo do período: superfície nova, rótulo em frase normal e valor de 22px branco", async () => {
+  it("resumo do período: superfície nova, rótulo em frase normal e valor de 18px branco", async () => {
     await montar();
 
     const secao = hospedeiro.querySelector("section")!;
@@ -249,7 +249,10 @@ describe("CanaisDoCrm — desenho novo do cartão de métrica", () => {
 
     const valor = rotulo.nextElementSibling as HTMLElement;
     expect(valor.classList.contains("text-white")).toBe(true);
-    expect(valor.classList.contains("text-[22px]")).toBe(true);
+    // Faixa de 3 colunas (~102px úteis a 390px): 18px no celular, 20px de sm.
+    expect(valor.classList.contains("text-lg")).toBe(true);
+    expect(valor.classList.contains("sm:text-xl")).toBe(true);
+    expect(valor.classList.contains("text-[22px]")).toBe(false);
   });
 
   it("bloco de canal: superfície nova e rótulos Pedidos / Valor médio em frase normal", async () => {

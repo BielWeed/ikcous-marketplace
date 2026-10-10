@@ -82,7 +82,10 @@ describe("TileDeKpi — prop `superficie` decide o cartão (CRM x Início)", () 
     )!;
     expect(valor.classList.contains("text-white")).toBe(true);
     expect(valor.classList.contains("font-black")).toBe(true);
-    expect(valor.classList.contains("text-[22px]")).toBe(true);
+    // Dinheiro não pode cortar a 360px: 18px no celular, 24px de sm em diante.
+    expect(valor.classList.contains("text-lg")).toBe(true);
+    expect(valor.classList.contains("sm:text-2xl")).toBe(true);
+    expect(valor.classList.contains("text-[22px]")).toBe(false);
 
     // Subtítulo 12px, zinc-400 (mínimo de contraste).
     const rodape = Array.from(cartao.querySelectorAll("div")).find(

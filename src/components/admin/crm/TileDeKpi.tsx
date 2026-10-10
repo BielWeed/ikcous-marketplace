@@ -36,7 +36,7 @@ const SUPERFICIE_DO_TILE =
  * por isso o canto mora no CORPO do tile, não em `superficie`.
  *
  * Tipografia como no `KpiCard`: rótulo em frase normal 12px semibold zinc-300
- * (contraste AA), valor branco de 22px (24px de 640px em diante), rodapé
+ * (contraste AA), valor branco de 18px (24px de 640px em diante; dinheiro não pode cortar a 360px), rodapé
  * 12px zinc-400, ícone num selo de 32px.
  */
 export function TileDeKpi({
@@ -88,7 +88,7 @@ export function TileDeKpi({
         </div>
       ) : (
         <div className="min-w-0 space-y-1">
-          <p className="truncate text-[22px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
+          <p className="truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
             {valorCompacto && valorCompacto !== valor ? (
               <>
                 <span className="sm:hidden">{valorCompacto}</span>

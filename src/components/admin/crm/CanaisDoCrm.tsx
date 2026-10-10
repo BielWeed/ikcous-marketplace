@@ -121,7 +121,7 @@ function ItemDoResumo({
       <p className="break-words text-xs font-semibold leading-tight text-zinc-300">
         {rotulo}
       </p>
-      <p className="mt-1.5 truncate text-[22px] font-black tabular-nums leading-tight text-white sm:text-2xl sm:leading-tight">
+      <p className="mt-1.5 truncate text-lg font-black tabular-nums leading-tight text-white sm:text-xl sm:leading-tight">
         {valorCompacto && valorCompacto !== valor ? (
           <>
             <span className="sm:hidden">{valorCompacto}</span>
@@ -199,7 +199,7 @@ function BlocoDeCanal({
         </p>
       ) : (
         <>
-          <p className="truncate text-[22px] font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
+          <p className="truncate text-lg font-black tabular-nums leading-tight tracking-tight text-white sm:text-2xl sm:leading-tight">
             {formatarMoeda(canal.receita)}
           </p>
           <dl className="grid grid-cols-2 gap-2 text-xs">
