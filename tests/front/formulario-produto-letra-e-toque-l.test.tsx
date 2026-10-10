@@ -142,6 +142,35 @@ describe("AdminProductFormView — letra e toque (onda L, L5)", () => {
     );
   });
 
+  it("f2. a linha da variação cabe a 360px: lado esquerdo encolhe e as pílulas quebram linha", () => {
+    const inicio = FONTE.indexOf("const VariantItem = React.memo(");
+    const trecho = FONTE.slice(inicio);
+    // lado esquerdo: o primeiro <div> depois do cartão
+    const cartao = trecho.indexOf('<div className="group flex');
+    expect(cartao).toBeGreaterThan(-1);
+    const esquerdo = tagAPartirDe(inicio + trecho.indexOf("<div", cartao + 5));
+    expect(esquerdo).toContain("min-w-0");
+    // <div> interno do texto: o que contém o data-testid
+    const testid = trecho.indexOf('data-testid="variante-cadastrada"');
+    const interno = tagAPartirDe(
+      inicio +
+        trecho.lastIndexOf("<div", trecho.lastIndexOf("<div", testid) - 1),
+    );
+    expect(interno).toContain("min-w-0");
+    // linha das pílulas de estoque/preço
+    const pilulas = tagDe("div", "tracking-tighter", inicio);
+    expect(pilulas).toContain("flex-wrap");
+  });
+
+  it("f3. editar e excluir da variação têm nome acessível", () => {
+    const inicio = FONTE.indexOf("const VariantItem = React.memo(");
+    const trecho = FONTE.slice(inicio);
+    expect(trecho).toContain("aria-label={`Editar variação ${variant.value}`}");
+    expect(trecho).toContain(
+      "aria-label={`Excluir variação ${variant.value}`}",
+    );
+  });
+
   it("g. 'Visualizar App' (botão flutuante) em 11px", () => {
     const posicao = FONTE.indexOf("Visualizar App");
     expect(posicao).toBeGreaterThan(-1);

@@ -4817,7 +4817,7 @@ const VariantItem = React.memo(function VariantItem({
 }: VariantItemProps) {
   return (
     <div className="group flex items-center justify-between rounded-2xl border border-white/5 bg-zinc-900 p-4 transition-all hover:border-emerald-500/30">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         {variant.imageUrl && (
           <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-white/5">
             <LazyImage
@@ -4827,7 +4827,7 @@ const VariantItem = React.memo(function VariantItem({
             />
           </div>
         )}
-        <div>
+        <div className="min-w-0">
           <div className="mb-1 flex items-center gap-2">
             <span
               data-testid="variante-cadastrada"
@@ -4841,7 +4841,7 @@ const VariantItem = React.memo(function VariantItem({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4 text-[11px] font-black uppercase tracking-tighter text-zinc-500">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-black uppercase tracking-tighter text-zinc-500">
             <span className="flex items-center gap-1.5 rounded-md border border-white/5 bg-white/5 px-2 py-1">
               <Package className="size-3 text-zinc-400" />
               <span className="text-zinc-300">
@@ -4861,6 +4861,7 @@ const VariantItem = React.memo(function VariantItem({
         <button
           type="button"
           onClick={() => onEdit(variant)}
+          aria-label={`Editar variação ${variant.value}`}
           className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-white/5 hover:text-white"
         >
           <Edit2 className="size-3.5" />
@@ -4886,6 +4887,7 @@ const VariantItem = React.memo(function VariantItem({
         <button
           type="button"
           onClick={() => onDelete(variant.id)}
+          aria-label={`Excluir variação ${variant.value}`}
           className="flex size-11 items-center justify-center rounded-lg text-zinc-600 transition-all hover:bg-red-500/5 hover:text-red-500"
         >
           <Trash2 className="size-3.5" />
