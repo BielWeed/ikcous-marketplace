@@ -290,7 +290,7 @@ describe("AdminProductsView — achado 8: produto sem custo não afirma margem/R
   function lerMargemERoi() {
     const spans = [
       ...cartaoDoProduto().querySelectorAll(
-        "span.text-lg.font-black.tracking-tighter",
+        "span.font-black.tracking-tighter.tabular-nums",
       ),
     ];
     expect(spans).toHaveLength(2);

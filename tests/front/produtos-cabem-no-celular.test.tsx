@@ -302,7 +302,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
 
       const textos = [
         ...cartao("detailed").querySelectorAll(
-          "span.text-lg.font-black.tracking-tighter",
+          "span.font-black.tracking-tighter.tabular-nums",
         ),
       ].map((el) => el.textContent);
       expect(textos).toEqual(["33,3%", "50,0%"]);
@@ -426,6 +426,38 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         expect(classes).toContain("min-h-20");
         expect(classes).not.toContain("h-20");
       }
+    });
+
+    it("as 4 caixas do simulador usam o desenho novo de cartão de métrica", async () => {
+      montarProduto({});
+      await montar();
+      await abrirGuia();
+      await act(async () => {
+        botaoDoGuia("Simulador").click();
+        await esperarMicrotarefas();
+      });
+
+      const rotulo = [...document.querySelectorAll("p")].find(
+        (el) => el.textContent === "Lucro sobre o custo (por unidade)",
+      );
+      const grade = rotulo?.parentElement?.parentElement as HTMLElement;
+      for (const caixa of [...grade.children] as HTMLElement[]) {
+        const classes = caixa.className.split(/\s+/);
+        expect(classes).toContain("rounded-2xl");
+        expect(classes).toContain("bg-zinc-900/70");
+        expect(classes).toContain("bg-gradient-to-b");
+        const [rotuloDaCaixa, valorDaCaixa] = [...caixa.children];
+        // rótulo em frase normal, cinza 300; valor grande e tabular
+        expect(rotuloDaCaixa.className).toContain("text-xs");
+        expect(rotuloDaCaixa.className).toContain("text-zinc-300");
+        expect(rotuloDaCaixa.className).not.toContain("uppercase");
+        expect(valorDaCaixa.className).toContain("text-[22px]");
+        expect(valorDaCaixa.className).toContain("tabular-nums");
+      }
+      // a borda de "Margem de Lucro" segue colorida pela saúde da margem
+      expect(grade.children[0].className).toMatch(
+        /border-(emerald|teal|amber|rose)-500\/20/,
+      );
     });
   });
 });
