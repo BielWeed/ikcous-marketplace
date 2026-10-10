@@ -10,8 +10,8 @@
 //      min-w-11`); o círculo visível mora no <span> interno (padrão A3);
 //   b. os três campos do simulador têm `min-h-11`;
 //   c. "Resetar Simulador" tem `min-h-11` e letra de 11px;
-//   d. o texto abaixo de 11px que sobra está SÓ na aba "Conceitos" do guia
-//      (fica para a onda L) — nada fora dela;
+//   d. nenhum texto abaixo de 11px no arquivo todo (a aba "Conceitos" do guia
+//      foi a última a subir, na onda L);
 //   e. `admin-glass` não divide o elemento com classe que ele apaga
 //      (`shadow-lg`, `shadow-[…]`, `border-y`); o esqueleto continua com
 //      `admin-glass` (o seletor `.admin-glass.animate-pulse` de
@@ -80,17 +80,10 @@ describe("Produtos — toque de 44px, letra de 11px e vidro (K-B)", () => {
     expect(FONTE).toContain("Resetar Simulador"); // o texto não muda
   });
 
-  it("d. texto abaixo de 11px só sobra na aba 'Conceitos' do guia (onda L)", () => {
-    const abre = FONTE.indexOf('{helpTab === "concepts" ? (');
-    const fecha = FONTE.indexOf("/* Simulador de Lucratividade */");
-    expect(abre).toBeGreaterThan(-1);
-    expect(fecha).toBeGreaterThan(abre);
-
-    const fora = FONTE.slice(0, abre) + FONTE.slice(fecha);
-    const sobras = [...fora.matchAll(TEXTO_MIUDO)].map((m) => {
-      const real = m.index < abre ? m.index : m.index + (fecha - abre);
-      const linha = FONTE.slice(0, real).split("\n").length;
-      return `${m[0]} (linha aprox. ${linha})`;
+  it("d. o arquivo todo não tem texto abaixo de 11px (aba Conceitos incluída)", () => {
+    const sobras = [...FONTE.matchAll(TEXTO_MIUDO)].map((m) => {
+      const linha = FONTE.slice(0, m.index).split("\n").length;
+      return `${m[0]} (linha ${linha})`;
     });
     expect(sobras).toEqual([]);
   });
