@@ -306,6 +306,13 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         ),
       ].map((el) => el.textContent);
       expect(textos).toEqual(["33,3%", "50,0%"]);
+      // percentual nunca é partido no meio: uma linha só, sem break-words
+      for (const valor of cartao("detailed").querySelectorAll(
+        "span.font-black.tracking-tighter.tabular-nums",
+      )) {
+        expect(valor.className).toContain("whitespace-nowrap");
+        expect(valor.className).not.toContain("break-words");
+      }
       expect(cartao("detailed").textContent).toContain("Lucro sobre o custo");
       expect(cartao("detailed").textContent).not.toMatch(JARGAO);
     });
@@ -441,6 +448,7 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         (el) => el.textContent === "Lucro sobre o custo (por unidade)",
       );
       const grade = rotulo?.parentElement?.parentElement as HTMLElement;
+      expect(grade.children).toHaveLength(4);
       for (const caixa of [...grade.children] as HTMLElement[]) {
         const classes = caixa.className.split(/\s+/);
         expect(classes).toContain("rounded-2xl");
@@ -451,8 +459,14 @@ describe("Produtos cabem no celular (onda J, J3)", () => {
         expect(rotuloDaCaixa.className).toContain("text-xs");
         expect(rotuloDaCaixa.className).toContain("text-zinc-300");
         expect(rotuloDaCaixa.className).not.toContain("uppercase");
-        expect(valorDaCaixa.className).toContain("text-[22px]");
+        // abaixo de `sm` no máximo 18px; 22px de `sm` em diante; o número
+        // nunca é partido no meio (nowrap no valor ou no <span> do número)
+        expect(valorDaCaixa.className).toContain("sm:text-[22px]");
+        expect(valorDaCaixa.className).not.toMatch(/(?:^|\s)text-(?:xl|2xl)/);
         expect(valorDaCaixa.className).toContain("tabular-nums");
+        expect(valorDaCaixa.className).not.toContain("break-words");
+        const numero = valorDaCaixa.querySelector("span") ?? valorDaCaixa;
+        expect(numero.className).toContain("whitespace-nowrap");
       }
       // a borda de "Margem de Lucro" segue colorida pela saúde da margem
       expect(grade.children[0].className).toMatch(

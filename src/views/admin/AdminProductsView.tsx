@@ -1358,7 +1358,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       </p>
                       <p
                         className={cn(
-                          "break-words text-[22px] font-black leading-tight tabular-nums",
+                          "whitespace-nowrap text-[17px] font-black leading-tight tabular-nums sm:text-[22px]",
                           simulatorMetrics.health === "excellent" &&
                             "text-emerald-400",
                           simulatorMetrics.health === "good" && "text-teal-400",
@@ -1375,7 +1375,7 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Lucro sobre o custo (por unidade)
                       </p>
-                      <p className="break-words text-[22px] font-black leading-tight tabular-nums text-blue-400">
+                      <p className="whitespace-nowrap text-[17px] font-black tabular-nums leading-tight text-blue-400 sm:text-[22px]">
                         {percentualComUmaCasa(simulatorMetrics.roi)}
                       </p>
                     </div>
@@ -1384,11 +1384,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Lucro Líquido (Unit.)
                       </p>
-                      <p className="break-words text-[22px] font-black leading-tight tabular-nums text-white">
+                      <p className="text-[17px] font-black tabular-nums leading-tight text-white sm:text-[22px]">
                         R${" "}
-                        {simulatorMetrics.unitProfit.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
+                        <span className="whitespace-nowrap">
+                          {simulatorMetrics.unitProfit.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
                       </p>
                     </div>
 
@@ -1396,11 +1398,13 @@ export const AdminProductsView = memo(function AdminProductsView({
                       <p className="text-xs font-semibold leading-tight text-zinc-300">
                         Capital de Lote (Custo)
                       </p>
-                      <p className="break-words text-[22px] font-black leading-tight tabular-nums text-zinc-400">
+                      <p className="text-[17px] font-black tabular-nums leading-tight text-zinc-400 sm:text-[22px]">
                         R${" "}
-                        {simulatorMetrics.totalCost.toLocaleString("pt-BR", {
-                          minimumFractionDigits: 2,
-                        })}
+                        <span className="whitespace-nowrap">
+                          {simulatorMetrics.totalCost.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -1706,62 +1710,56 @@ const AdminProductCard = memo(function AdminProductCard({
 
             {/* Operational Metrics Grid */}
             <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-6">
-              <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
-                <p className="mb-2 text-xs font-semibold leading-tight text-zinc-300">
+              <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
+                {/* Selo no canto (padrão do KpiCard): o valor usa a largura toda */}
+                <div
+                  className={cn(
+                    "absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border",
+                    margin === null
+                      ? "bg-white/[0.06] border-white/10 text-zinc-400"
+                      : margin >= 20
+                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+                        : "bg-rose-500/10 border-rose-500/20 text-rose-500",
+                  )}
+                >
+                  <TrendingUp className="size-3.5" />
+                </div>
+                <p className="mb-3 pr-9 text-xs font-semibold leading-tight text-zinc-300">
                   Margem de Lucro
                 </p>
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 break-words text-[22px] font-black leading-tight tracking-tighter tabular-nums",
-                      margin === null && "text-zinc-400",
-                      margin !== null && margin >= 40 && "text-emerald-500",
-                      margin !== null &&
-                        margin >= 20 &&
-                        margin < 40 &&
-                        "text-admin-gold",
-                      margin !== null && margin < 20 && "text-rose-500",
-                    )}
-                  >
-                    {margin === null ? "—" : percentualComUmaCasa(margin)}
-                  </span>
-                  <div
-                    className={cn(
-                      "flex size-8 shrink-0 items-center justify-center rounded-xl border",
-                      margin === null
-                        ? "bg-white/[0.06] border-white/10 text-zinc-400"
-                        : margin >= 20
-                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
-                          : "bg-rose-500/10 border-rose-500/20 text-rose-500",
-                    )}
-                  >
-                    <TrendingUp className="size-3.5" />
-                  </div>
-                </div>
+                <span
+                  className={cn(
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] lg:text-[15px] 2xl:text-[22px]",
+                    margin === null && "text-zinc-400",
+                    margin !== null && margin >= 40 && "text-emerald-500",
+                    margin !== null &&
+                      margin >= 20 &&
+                      margin < 40 &&
+                      "text-admin-gold",
+                    margin !== null && margin < 20 && "text-rose-500",
+                  )}
+                >
+                  {margin === null ? "—" : percentualComUmaCasa(margin)}
+                </span>
               </div>
-              <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
-                <p className="mb-2 text-xs font-semibold leading-tight text-zinc-300">
+              <div className="relative min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-4 transition-colors group-hover:border-white/20">
+                <div className="absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-400">
+                  <ArrowUpRight className="size-3.5" />
+                </div>
+                <p className="mb-3 pr-9 text-xs font-semibold leading-tight text-zinc-300">
                   Lucro sobre o custo
                 </p>
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 break-words text-[22px] font-black leading-tight tracking-tighter tabular-nums",
-                      roi === null && "text-zinc-400",
-                      roi !== null && roi >= 100 && "text-emerald-500",
-                      roi !== null &&
-                        roi >= 50 &&
-                        roi < 100 &&
-                        "text-admin-gold",
-                      roi !== null && roi < 50 && "text-rose-500",
-                    )}
-                  >
-                    {roi === null ? "—" : percentualComUmaCasa(roi)}
-                  </span>
-                  <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/10 text-blue-400">
-                    <ArrowUpRight className="size-3.5" />
-                  </div>
-                </div>
+                <span
+                  className={cn(
+                    "block whitespace-nowrap text-lg font-black leading-tight tracking-tighter tabular-nums sm:text-[22px] lg:text-[15px] 2xl:text-[22px]",
+                    roi === null && "text-zinc-400",
+                    roi !== null && roi >= 100 && "text-emerald-500",
+                    roi !== null && roi >= 50 && roi < 100 && "text-admin-gold",
+                    roi !== null && roi < 50 && "text-rose-500",
+                  )}
+                >
+                  {roi === null ? "—" : percentualComUmaCasa(roi)}
+                </span>
               </div>
             </div>
 
