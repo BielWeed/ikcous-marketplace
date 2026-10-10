@@ -1217,10 +1217,12 @@ export function AdminLayout({
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
               // Sem `admin-glass` de propósito: a `.admin-glass` (index.css,
-              // @layer utilities) sai DEPOIS de `.bg-zinc-950/95` no CSS final
+              // @layer utilities) sai DEPOIS do `bg-zinc-950` no CSS final
               // e vencia o fundo e a borda — a barra ficava translúcida e o
-              // conteúdo aparecia por baixo dos rótulos.
-              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950/95 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
+              // conteúdo aparecia por baixo dos rótulos. Fundo SÓLIDO e sem
+              // blur: com 95% + backdrop-blur o texto de baixo ainda se lia
+              // no render; opaco, o blur não serve a nada.
+              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1263,8 +1265,8 @@ export function AdminLayout({
                     onTouchStart={() => handleMouseEnter(item.view, true)}
                     className={cn(
                       "flex flex-col items-center gap-0.5 sm:gap-1 flex-1 py-2.5 rounded-2xl relative transition-[color,transform] duration-200 active:scale-95 group z-10 transform-gpu",
-                      // Contraste sobre QUALQUER fundo: com o vidro quase
-                      // opaco (zinc-950/95), ícone inativo é zinc-300 (AA
+                      // Contraste sobre QUALQUER fundo: com o fundo
+                      // sólido (zinc-950), ícone inativo é zinc-300 (AA
                       // sobre escuro) — na barra translúcida antiga os
                       // ícones sumiam ao rolar sobre conteúdo claro
                       // (relato do Gabriel, 02/09).
