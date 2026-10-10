@@ -117,7 +117,7 @@ export const OrderReceipt = memo(function OrderReceipt({
 
         <div className="mt-8 border-t border-dashed border-black pt-4 text-center">
           <p className="text-xs">Obrigado pela preferência!</p>
-          <p className="mt-2 text-[10px] text-gray-400">
+          <p className="mt-2 text-[11px] text-gray-400">
             {typeof window !== "undefined" ? window.location.hostname : ""}
           </p>
         </div>

@@ -28,7 +28,7 @@ export function SeloDoStatus({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest",
+        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider",
         COR_DO_TOM_NO_PAINEL.get(tomDoStatus(status)),
         className,
       )}
@@ -45,7 +45,7 @@ export function SeloDoTipo({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-widest",
+        "inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider",
         COR_DO_TIPO.get(tipo),
         className,
       )}

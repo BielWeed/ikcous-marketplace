@@ -193,7 +193,7 @@ export function AdminDevolucoesView({
                 {chip.n !== null && (
                   <span
                     className={cn(
-                      "rounded-md px-1.5 py-0.5 text-[10px] font-black tabular-nums",
+                      "rounded-md px-1.5 py-0.5 text-[11px] font-black tabular-nums",
                       pedeAcao
                         ? "bg-admin-gold text-black"
                         : "bg-white/5 text-zinc-300",
