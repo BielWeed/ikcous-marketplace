@@ -168,11 +168,32 @@ describe("cupons — mini-caixas do bilhete no desenho novo do cartão de métri
     const classes = /^<div className="([^"]*)"/.exec(grade)?.[1] ?? "";
     expect(classes.split(/\s+/)).toEqual(
       expect.arrayContaining([
-        "grid-cols-2",
+        "grid-cols-1",
+        "xs:grid-cols-2",
         "lg:grid-cols-1",
         "2xl:grid-cols-2",
       ]),
     );
+    // Abaixo de 480px (xs) a caixa de par ocupa ~240px úteis: coluna única.
+    expect(classes.split(/\s+/)).not.toContain("grid-cols-2");
+  });
+
+  it("as mini-caixas Desconto/Mínimo usam p-3 (não p-3.5): +4px de folga ao dinheiro", () => {
+    // Medido em Inter: "R$ 1.500,00" entrava 11px no padding de 14px a 360px
+    // e sobrava 3,9px a 390 e 2,9px a 768. Com p-3 sobram 7,9 e 6,9px.
+    for (const rotulo of ["Desconto", "Mínimo Compra"]) {
+      const pos = fonte.search(
+        new RegExp(`<p className="[^"]*">\\s*${rotulo}\\s*</p>`),
+      );
+      expect(pos, rotulo).toBeGreaterThan(-1);
+      const antes = fonte.slice(0, pos);
+      const abertura = antes.slice(antes.lastIndexOf('<div className="'));
+      const classes = (
+        /^<div className="([^"]*)"/.exec(abertura)?.[1] ?? ""
+      ).split(/\s+/);
+      expect(classes, rotulo).toContain("p-3");
+      expect(classes, rotulo).not.toContain("p-3.5");
+    }
   });
 
   it("o dinheiro das caixas nunca parte no meio do número (whitespace-nowrap, 18px)", () => {

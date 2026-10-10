@@ -381,6 +381,25 @@ describe("Clientes no celular (J4)", () => {
     expect(classes).toContain("2xl:items-end");
   });
 
+  it("(b4) o cartão compacto cede 8px de padding em lg (1024px) para o valor em dinheiro ter folga", async () => {
+    h.modo = "compact";
+    await abrirLista();
+
+    const rotuloTotal = [...hospedeiro.querySelectorAll("span")].find(
+      (s) => s.textContent?.trim() === "Total já comprado",
+    );
+    expect(rotuloTotal).toBeDefined();
+    const cartao = rotuloTotal!.closest('[role="button"]');
+    expect(cartao).not.toBeNull();
+    // Medido em Inter a 1024px (rodapé empilhado): "R$ 1.312.456,78" sobrava
+    // 1,1px. `lg:p-4` devolve 8px de largura ao rodapé (folga ~9px); `xl:p-5`
+    // volta ao padding de sm porque a 1280px a coluna já é larga.
+    const classes = (cartao?.className ?? "").split(/\s+/);
+    expect(classes).toContain("sm:p-5");
+    expect(classes).toContain("lg:p-4");
+    expect(classes).toContain("xl:p-5");
+  });
+
   it("o menu diz 'Ver ficha do cliente' e não mais 'Ver Perfil Elite'", async () => {
     h.modo = "compact";
     await abrirLista();

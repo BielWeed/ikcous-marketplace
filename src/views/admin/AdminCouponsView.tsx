@@ -642,7 +642,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                       {/* Lower Section */}
                       <div className="mt-4 flex flex-1 flex-col justify-between pt-6">
                         <div>
-                          <div className="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-1 2xl:grid-cols-2">
+                          <div className="mb-4 grid grid-cols-1 gap-4 xs:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
                             {/* Mini-caixas no desenho do KpiCard (10/10/2026):
                                 casca com brilho no topo, rótulo em frase
                                 normal 12px cinza 300, valor branco tabular.
@@ -652,7 +652,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                                 cortado pela borda do bilhete; por isso a
                                 grade vira coluna única nessa faixa e volta
                                 a par em 2xl. */}
-                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5">
+                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3">
                               <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Desconto
                               </p>
@@ -662,7 +662,7 @@ export const AdminCouponsView = memo(function AdminCouponsView({
                                   : `R$ ${Number(coupon.value ?? 0).toFixed(2)}`}
                               </p>
                             </div>
-                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 text-right">
+                            <div className="min-w-0 rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3 text-right">
                               <p className="mb-1 text-xs font-semibold text-zinc-300">
                                 Mínimo Compra
                               </p>

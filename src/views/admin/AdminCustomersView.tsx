@@ -1041,7 +1041,7 @@ const CustomerRowCompact = memo(function CustomerRowCompact({
       }}
       onMouseEnter={onPrefetch}
       onTouchStart={onPrefetch}
-      className="content-visibility-auto group relative flex min-h-[170px] cursor-pointer flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 backdrop-blur-md transition-all duration-500 hover:scale-[1.01] hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] sm:p-5"
+      className="content-visibility-auto group relative flex min-h-[170px] cursor-pointer flex-col justify-between rounded-2xl border border-white/10 bg-zinc-900/70 bg-gradient-to-b from-white/[0.06] to-transparent p-3.5 backdrop-blur-md transition-all duration-500 hover:scale-[1.01] hover:border-admin-gold/30 hover:shadow-[0_15px_40px_rgba(212,175,55,0.05)] active:scale-[0.98] sm:p-5 lg:p-4 xl:p-5"
     >
       {/* Glow Background */}
       <div className="pointer-events-none absolute inset-0 z-0 rounded-2xl bg-gradient-to-br from-admin-gold/0 via-transparent to-admin-gold/0 transition-all duration-700 group-hover:from-admin-gold/5 group-hover:to-transparent" />
