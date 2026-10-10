@@ -445,7 +445,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
         <BlocoNumerado
           numero="3"
           titulo="Horário de atendimento"
-          descricao="Aparece na página Sobre a Loja e no rodapé da página inicial."
+          descricao="Aparece na página Sobre a Loja e no rodapé da página inicial. Em branco, não aparece."
         >
           <BusinessHoursSection
             active={active}
@@ -475,8 +475,7 @@ export const AdminAboutStoreView = memo(function AdminAboutStoreView({
             className="mt-2 w-full rounded-xl border border-white/10 bg-black/50 px-3.5 py-3 text-sm leading-relaxed text-white"
           />
           <p className="mt-1.5 text-[11px] text-zinc-500">
-            Texto simples: deixe uma linha em branco para começar outro
-            parágrafo.
+            Texto simples, sem negrito nem imagens.
           </p>
         </BlocoNumerado>
 

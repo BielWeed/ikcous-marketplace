@@ -138,11 +138,13 @@ describe("Minha loja — texto sem linguagem interna", () => {
 
   it("o Horário não repete a descrição do bloco dentro do campo", () => {
     const texto = hospedeiro.textContent ?? "";
-    const vezes = texto.split("Informe quando a loja atende").length - 1;
-    expect(vezes).toBeLessThanOrEqual(1);
+    expect(texto).not.toContain("Informe quando a loja atende");
     expect(texto).toContain(
       "Aparece na página Sobre a Loja e no rodapé da página inicial.",
     );
+    // O aviso útil (limpar o campo tira o horário do app) mora só na descrição.
+    expect(texto).toContain("Em branco, não aparece");
+    expect(texto).not.toContain("o aplicativo omite o horário");
     expect(texto).not.toContain("Expediente publicado");
     // A Marca também não diz duas vezes o que o cabeçalho do bloco já disse.
     expect(texto).not.toContain("Nome, cores e imagens da sua loja");
@@ -169,6 +171,12 @@ describe("Minha loja — texto sem linguagem interna", () => {
       'label[for="store-business-hours"]',
     );
     expect(rotulo?.textContent).toBe("Dias e horários");
+  });
+
+  it("a Descrição não diz duas vezes a regra da linha em branco", () => {
+    const texto = hospedeiro.textContent ?? "";
+    expect(texto.split("linha em branco").length - 1).toBe(1);
+    expect(texto).toContain("Texto simples, sem negrito nem imagens.");
   });
 
   it("a dica das imagens da marca diz 'Até 20 MB'", () => {
