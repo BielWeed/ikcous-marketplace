@@ -13,6 +13,7 @@ import {
   primeiroSkuEmColisao,
   skusDaGrade,
 } from "@/utils/grade-de-combinacoes";
+import { limparNumero, resolverPrecoDaGrade } from "@/utils/preco-da-grade";
 import {
   SEPARADOR_DE_ATRIBUTOS,
   dividirEmAtributos,
@@ -75,10 +76,20 @@ interface ModalVarianteGradeProps {
    *  Melhor esforço: pode vir vazio se a lista de produtos não carregou —
    *  aí a guarda final é a conferência do salvar e a UNIQUE do banco. */
   skusDaLoja: string[];
+  /** O campo Preço de Venda do formulário, como está agora (vazio = a lojista
+   *  ainda não preencheu). Decide se o preço digitado na grade vira o do
+   *  produto (campo vazio) ou vale só para as combinações novas (já tem). */
+  precoDoProduto: string;
   /** Entrega as linhas ao formulário. Devolve `true` se ele as aceitou (o
    *  modal então fecha e não aceita um segundo "Efetivar") e `false` se
-   *  recusou (o modal fica aberto para o lojista corrigir). */
-  onEfetivar: (linhas: LinhaProntaDaGrade[]) => boolean;
+   *  recusou (o modal fica aberto para o lojista corrigir). O segundo
+   *  argumento é o Preço de Venda que a grade dá ao produto (só quando o
+   *  campo estava vazio e todas as linhas tinham preço): as linhas iguais a
+   *  ele já vão em Auto. */
+  onEfetivar: (
+    linhas: LinhaProntaDaGrade[],
+    precoDoProduto?: number,
+  ) => boolean;
 }
 
 interface GrupoNoForm {
@@ -153,25 +164,6 @@ function valoresDoGrupo(grupo: GrupoNoForm, variantes: ProductVariant[]) {
   ];
 }
 
-// Mesma limpeza do preço do modal unitário ("89,90" → "89.90"): o valor
-// digitado só vira número na hora de efetivar, não a cada tecla.
-const limparNumero = (val: string): string => {
-  if (!val) return "";
-  let clean = val.replace(",", ".").replace(/[^\d.-]/g, "");
-  const parts = clean.split(".");
-  if (parts.length > 2) {
-    clean = `${parts[0]}.${parts.slice(1).join("")}`;
-  }
-  return clean;
-};
-
-const precoDaLinha = (bruto: string): number | undefined => {
-  const limpo = limparNumero(bruto);
-  if (!limpo) return undefined;
-  const numero = Number.parseFloat(limpo);
-  return Number.isNaN(numero) ? undefined : Math.max(0, numero);
-};
-
 const estoqueDaLinha = (bruto: string): number =>
   Number.parseInt(bruto.replace(/\D/g, "")) || 0;
 
@@ -182,6 +174,7 @@ export function ModalVarianteGrade({
   sugestoesDeAtributo,
   grupoUnicoEmUso,
   skusDaLoja,
+  precoDoProduto,
   onEfetivar,
 }: ModalVarianteGradeProps) {
   const [passo, setPasso] = useState<1 | 2>(1);
@@ -352,6 +345,10 @@ export function ModalVarianteGrade({
       });
       return;
     }
+    const { precos, precoDoProduto: precoParaOProduto } = resolverPrecoDaGrade(
+      precoDoProduto,
+      linhas.map((linha) => linha.preco),
+    );
     const aceitou = onEfetivar(
       linhas.map((linha, i) => {
         // `.at(i)` em vez de `skus[i]`: a indexação dinâmica acende o warning
@@ -361,14 +358,23 @@ export function ModalVarianteGrade({
           name: linha.name,
           value: linha.value,
           stockIncrement: estoqueDaLinha(linha.estoque),
-          priceOverride: precoDaLinha(linha.preco),
+          priceOverride: precos.at(i),
           sku: sku === "" ? undefined : sku,
           active: true as const,
         };
       }),
+      precoParaOProduto,
     );
     if (aceitou) jaEfetivouRef.current = true;
   };
+
+  // A sugestão do passo 2: só um preço de produto que já vale (maior que zero).
+  // "Sem preço" é a MESMA conta da regra (`resolverPrecoDaGrade`): campo vazio.
+  // Um "0,00" digitado não é vazio — a grade não escreve por cima dele.
+  const produtoSemPreco = precoDoProduto.trim() === "";
+  const precoDoProdutoNumero = Number.parseFloat(precoDoProduto);
+  const precoDoProdutoValido =
+    precoDoProdutoNumero > 0 ? precoDoProdutoNumero : undefined;
 
   const titulo =
     variantesExistentes.length > 0
@@ -553,6 +559,8 @@ export function ModalVarianteGrade({
                 <LinhasDaGrade
                   linhas={linhas}
                   quantasExistentes={variantesExistentes.length}
+                  precoDoProduto={precoDoProdutoValido}
+                  produtoSemPreco={produtoSemPreco}
                   skusPrevistos={skusPrevistos}
                   skuBase={skuBase}
                   onSkuBase={setSkuBase}
