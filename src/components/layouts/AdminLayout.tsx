@@ -1216,7 +1216,11 @@ export function AdminLayout({
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: 120, opacity: 0 }}
               transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="admin-glass fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950/95 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
+              // Sem `admin-glass` de propósito: a `.admin-glass` (index.css,
+              // @layer utilities) sai DEPOIS de `.bg-zinc-950/95` no CSS final
+              // e vencia o fundo e a borda — a barra ficava translúcida e o
+              // conteúdo aparecia por baixo dos rótulos.
+              className="fixed left-4 right-4 z-[60] mx-auto flex max-w-lg items-center justify-between rounded-[2rem] border border-white/15 bg-zinc-950/95 p-2 shadow-[0_20px_40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden"
               style={
                 {
                   bottom: `calc(0.75rem + ${visualBottomOffset}px + var(--safe-area-bottom-fixed, env(safe-area-inset-bottom, 0px)) * 0.5)`,
@@ -1297,7 +1301,7 @@ export function AdminLayout({
                     {item.view === "admin-orders" && pendingOrdersCount > 0 && (
                       <span
                         aria-hidden="true"
-                        className="absolute right-2 top-1 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                        className="absolute right-2 top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-black text-white shadow-[0_0_8px_rgba(239,68,68,0.5)]"
                       >
                         {pendingOrdersCount}
                       </span>
