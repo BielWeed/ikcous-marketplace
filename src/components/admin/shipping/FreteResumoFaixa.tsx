@@ -68,7 +68,7 @@ export const FreteResumoFaixa = memo(function FreteResumoFaixa({
                   : "border-t border-white/5 md:border-l md:border-t-0"
               }`}
             >
-              <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">
                 {ponto && (
                   <span
                     aria-hidden="true"
