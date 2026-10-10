@@ -28,19 +28,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const emblaFalso = vi.hoisted(() => {
+  const estado = { grupos: [0, 1, 2] };
   const api = {
     on: () => api,
     off: () => api,
     reInit: () => {},
     selectedScrollSnap: () => 0,
-    scrollSnapList: () => [0, 1, 2],
+    scrollSnapList: () => estado.grupos,
     canScrollPrev: () => false,
     canScrollNext: () => true,
     scrollNext: vi.fn(),
     scrollPrev: vi.fn(),
     scrollTo: vi.fn(),
   };
-  return { api, ref: () => {} };
+  return { api, estado, ref: () => {} };
 });
 
 vi.mock("embla-carousel-react", () => ({
@@ -79,6 +80,7 @@ async function carregarCarrossel() {
 describe("AdminKpiCarousel — cabe no celular de 360px", () => {
   beforeEach(() => {
     emblaFalso.api.scrollNext.mockClear();
+    emblaFalso.estado.grupos = [0, 1, 2];
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -174,6 +176,91 @@ describe("AdminKpiCarousel — cabe no celular de 360px", () => {
     expect(expandir).toBeTruthy();
     expect(expandir!.className).toContain("min-h-11");
   });
+
+  it("o valor mantém tamanho, algarismos tabulares e entrelinha em todos os tamanhos de tela", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    const classes = hospedeiro.querySelector("h3")!.className;
+    for (const classe of [
+      "text-[15px]",
+      "xs:text-base",
+      "sm:text-lg",
+      "tabular-nums",
+      "leading-tight",
+      // text-base/text-lg trazem line-height próprio (24/28px) que anularia o
+      // leading-tight: a entrelinha tem que ser refeita em cada tamanho.
+      "xs:leading-tight",
+      "sm:leading-tight",
+    ]) {
+      expect(classes.split(/\s+/)).toContain(classe);
+    }
+  });
+
+  it("o cartão tem padding vertical menor no computador e altura mínima, nunca travada", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    const cartao = hospedeiro.querySelector("h3")!.closest(".group")!;
+    const classes = cartao.className.split(/\s+/);
+    expect(classes).toContain("sm:py-2");
+    expect(classes).toContain("min-h-16");
+    expect(classes).toContain("sm:min-h-[68px]");
+    expect(classes.some((c) => /^(sm:)?h-(16|\[68px\])$/.test(c))).toBe(false);
+  });
+
+  it("o esqueleto tem a altura mínima de um cartão real (o conteúdo abaixo não pula)", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(
+      <AdminKpiCarousel cards={cardsFake} title="Métricas" loading={true} />,
+    );
+
+    const esqueleto =
+      hospedeiro.querySelector("div.animate-pulse")!.parentElement!;
+    const classes = esqueleto.className.split(/\s+/);
+    expect(classes).toContain("min-h-24");
+    expect(classes).toContain("sm:min-h-[68px]");
+    expect(classes.some((c) => /^(sm:)?h-(16|\[68px\])$/.test(c))).toBe(false);
+  });
+
+  it("o ponto dourado do título não achata quando o título quebra", async () => {
+    const AdminKpiCarousel = await carregarCarrossel();
+    await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+    const ponto = hospedeiro.querySelector("span.animate-pulse");
+    expect(ponto!.className).toContain("shrink-0");
+  });
+
+  it.each([6, 8])(
+    "com %i grupos a barra de cima quebra linha e o 'Expandir' fica dentro dela",
+    async (quantos) => {
+      emblaFalso.estado.grupos = Array.from({ length: quantos }, (_, i) => i);
+      const AdminKpiCarousel = await carregarCarrossel();
+      await montar(<AdminKpiCarousel cards={cardsFake} title="Métricas" />);
+
+      const pontos = hospedeiro.querySelectorAll(
+        'button[aria-label^="Mostrar o grupo"]',
+      );
+      expect(pontos.length).toBe(quantos);
+      // Alvo de toque de 44px preservado.
+      for (const ponto of pontos) expect(ponto.className).toContain("h-11");
+
+      const expandir = Array.from(hospedeiro.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Expandir"),
+      )!;
+      // Do botão até a barra: cada nível que o contém tem que poder quebrar
+      // linha (o jsdom não mede layout — a medida em pixels foi feita no
+      // Chromium a 360px; aqui fica a classe que a garante).
+      const grupoDireito = expandir.parentElement!;
+      const barra = grupoDireito.parentElement!;
+      const grupoDosPontos = pontos[0].parentElement!;
+      expect(barra.className).toContain("flex-wrap");
+      expect(grupoDireito.className).toContain("flex-wrap");
+      expect(grupoDireito.className).toContain("max-w-full");
+      expect(grupoDosPontos.className).toContain("flex-wrap");
+      expect(grupoDosPontos.parentElement).toBe(grupoDireito);
+    },
+  );
 
   it("a faixa NÃO anda sozinha por padrão", async () => {
     vi.useFakeTimers();
