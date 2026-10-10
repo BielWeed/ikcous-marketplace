@@ -423,6 +423,38 @@ describe("AdminProductFormView — o preço da grade vira o Preço de Venda", ()
       ).toHaveLength(0);
     });
 
+    it("a frase do passo 2 só promete 'vira o dele' quando o campo do produto está vazio de verdade", async () => {
+      await montarNovo();
+      await abrirGradeDe4();
+      expect(textoDe("preco-do-produto-na-grade")).toContain("vira o dele");
+
+      // Preço de Venda "0,00" (inválido, mas NÃO vazio): a regra não escreve por
+      // cima, então a frase não pode prometer que o preço da grade vira o dele.
+      await act(async () => {
+        clicarObrigatorio("← Voltar");
+      });
+      await act(async () => {
+        clicarObrigatorio("Cancelar");
+      });
+      await digitarCampo("product-sale-price", "0");
+      expect(valorDoCampo("product-sale-price")).toBe("0,00");
+      await abrirGradeDe4();
+      const frase = textoDe("preco-do-produto-na-grade") ?? "";
+      expect(frase).not.toContain("vira o dele");
+      expect(frase).toContain("só para estas combinações novas");
+
+      // E o que a frase diz é o que acontece: o preço da grade NÃO vai para o produto.
+      await digitarCampo("grade-aplicar-preco", "60,00");
+      await act(async () => {
+        clicarObrigatorio("Aplicar para todas");
+      });
+      await act(async () => {
+        clicarObrigatorio("Salvar 4 variações");
+      });
+      expect(valorDoCampo("product-sale-price")).toBe("0,00");
+      expect(textoDe("preco-veio-da-grade")).toBeNull();
+    });
+
     it("clicar duas vezes em Salvar não aplica o preço (nem as linhas) em dobro", async () => {
       await montarNovo();
       await abrirGradeDe4();

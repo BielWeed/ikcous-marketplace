@@ -32,6 +32,10 @@ interface LinhasDaGradeProps {
   /** O Preço de Venda que o produto já tem (maior que zero), ou `undefined`
    *  quando o campo ainda está vazio — muda a sugestão e a frase do bloco. */
   precoDoProduto: number | undefined;
+  /** O campo Preço de Venda está VAZIO (a mesma conta de `resolverPrecoDaGrade`).
+   *  Sem preço válido e sem estar vazio (ex.: "0,00"), a grade não escreve por
+   *  cima e a frase não pode prometer que o preço digitado vira o do produto. */
+  produtoSemPreco: boolean;
   /** O SKU previsto de cada linha, na mesma ordem (vazio = "sem SKU"). */
   skusPrevistos: string[];
   skuBase: string;
@@ -53,6 +57,7 @@ export function LinhasDaGrade({
   linhas,
   quantasExistentes,
   precoDoProduto,
+  produtoSemPreco,
   skusPrevistos,
   skuBase,
   onSkuBase,
@@ -110,7 +115,16 @@ export function LinhasDaGrade({
         >
           Aplicar para todas
         </button>
-        {precoDoProdutoEmReais === null ? (
+        {precoDoProdutoEmReais === null && !produtoSemPreco ? (
+          <p
+            className="ml-1 text-[11px] leading-tight text-zinc-500"
+            data-testid="preco-do-produto-na-grade"
+          >
+            O Preço de Venda do produto ainda não está certo (corrija no
+            formulário). O preço digitado aqui vale só para estas combinações
+            novas.
+          </p>
+        ) : precoDoProdutoEmReais === null ? (
           <p
             className="ml-1 text-[11px] leading-tight text-zinc-500"
             data-testid="preco-do-produto-na-grade"

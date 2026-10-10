@@ -369,6 +369,9 @@ export function ModalVarianteGrade({
   };
 
   // A sugestão do passo 2: só um preço de produto que já vale (maior que zero).
+  // "Sem preço" é a MESMA conta da regra (`resolverPrecoDaGrade`): campo vazio.
+  // Um "0,00" digitado não é vazio — a grade não escreve por cima dele.
+  const produtoSemPreco = precoDoProduto.trim() === "";
   const precoDoProdutoNumero = Number.parseFloat(precoDoProduto);
   const precoDoProdutoValido =
     precoDoProdutoNumero > 0 ? precoDoProdutoNumero : undefined;
@@ -557,6 +560,7 @@ export function ModalVarianteGrade({
                   linhas={linhas}
                   quantasExistentes={variantesExistentes.length}
                   precoDoProduto={precoDoProdutoValido}
+                  produtoSemPreco={produtoSemPreco}
                   skusPrevistos={skusPrevistos}
                   skuBase={skuBase}
                   onSkuBase={setSkuBase}

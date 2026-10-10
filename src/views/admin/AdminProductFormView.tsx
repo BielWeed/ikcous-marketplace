@@ -1673,6 +1673,11 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     setShowVariantForm(true);
   }, []);
 
+  // O Preço de Venda como texto: um rascunho restaurado pode trazer o preço
+  // como número (rascunho de produto copiado do banco), e `.trim()` em número
+  // derrubava a tela inteira na restauração.
+  const precoDoProdutoTexto = String(formData.price ?? "");
+
   /**
    * Grade: as linhas que o modal entregou entram na lista como variantes
    * comuns com id `temp-` — o MESMO caminho da variante unitária. A gravação
@@ -1708,7 +1713,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
     // sobrescrito. A trava de cima já recusou antes de chegar aqui, então
     // recusa não deixa preço pela metade.
     const aplicaPrecoDaGrade =
-      precoDaGrade !== undefined && formData.price.trim() === "";
+      precoDaGrade !== undefined && precoDoProdutoTexto.trim() === "";
     setFormData((prev) => {
       const jaTem = new Set(prev.variants.map((v) => chaveDaIdentidade(v)));
       const novas = linhas.filter(
@@ -1726,7 +1731,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
       ]);
       return aplicaPrecoDaGrade &&
         precoDaGrade !== undefined &&
-        prev.price.trim() === ""
+        String(prev.price ?? "").trim() === ""
         ? { ...comVariacoes, price: precoDaGrade.toFixed(2) }
         : comVariacoes;
     });
@@ -2922,7 +2927,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
         )}
         grupoUnicoEmUso={gruposDeVariacao(formData.variants).at(0) ?? null}
         skusDaLoja={skusDaLoja}
-        precoDoProduto={formData.price}
+        precoDoProduto={precoDoProdutoTexto}
         onEfetivar={handleEfetivarGrade}
       />
 
@@ -3712,7 +3717,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
               )}
               {!priceError &&
                 precoVeioDaGrade &&
-                formData.price.trim() !== "" &&
+                precoDoProdutoTexto.trim() !== "" &&
                 formData.variants.length > 0 && (
                   <span
                     data-testid="preco-veio-da-grade"
@@ -3723,7 +3728,7 @@ const FormularioDoProduto = React.memo(function FormularioDoProduto({
                   </span>
                 )}
               {!priceError &&
-                formData.price.trim() === "" &&
+                precoDoProdutoTexto.trim() === "" &&
                 formData.variants.some((v) => v.priceOverride == null) && (
                   <span
                     data-testid="preco-das-variacoes-sem-preco"
