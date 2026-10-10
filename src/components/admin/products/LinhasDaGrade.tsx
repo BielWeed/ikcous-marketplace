@@ -22,6 +22,10 @@ export interface LinhaNoPasso2 {
   value: string;
   estoque: string;
   preco: string;
+  /** A lojista mexeu no estoque desta linha (digitou nela ou usou "Aplicar para
+   *  todas"). É o que separa "0 que ela deixou" de "0 que ela digitou": o
+   *  estoque segurado só preenche as linhas que ela nunca mexeu. */
+  estoqueEditado?: boolean;
 }
 
 interface LinhasDaGradeProps {
@@ -45,6 +49,10 @@ interface LinhasDaGradeProps {
   aplicarPreco: string;
   onAplicarPreco: (valor: string) => void;
   onAplicarParaTodas: () => void;
+  /** Há valor digitado em "Aplicar para todas" que ainda não foi aplicado e que
+   *  vai preencher linhas ao efetivar (`grade-valor-segurado.ts`): mostra a
+   *  frase que avisa, para a lojista não achar que ele se perdeu. */
+  valorSeguradoPendente: boolean;
   /** Troca o estoque ou o preço de UMA linha (índice na ordem da grade). */
   onMudarLinha: (
     indice: number,
@@ -66,6 +74,7 @@ export function LinhasDaGrade({
   aplicarPreco,
   onAplicarPreco,
   onAplicarParaTodas,
+  valorSeguradoPendente,
   onMudarLinha,
 }: LinhasDaGradeProps) {
   const precoDoProdutoEmReais =
@@ -115,6 +124,17 @@ export function LinhasDaGrade({
         >
           Aplicar para todas
         </button>
+        {valorSeguradoPendente && (
+          <p
+            role="status"
+            className="ml-1 text-[11px] font-bold leading-tight text-amber-400"
+            data-testid="valor-segurado-aviso"
+          >
+            Este valor será usado nas linhas que você ainda não preencheu ao
+            salvar. Clique em "Aplicar para todas" para colocar em todas as
+            linhas.
+          </p>
+        )}
         {precoDoProdutoEmReais === null && !produtoSemPreco ? (
           <p
             className="ml-1 text-[11px] leading-tight text-zinc-500"

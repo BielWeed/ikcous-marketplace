@@ -13,6 +13,7 @@ import {
   primeiroSkuEmColisao,
   skusDaGrade,
 } from "@/utils/grade-de-combinacoes";
+import { preencherComSegurado } from "@/utils/grade-valor-segurado";
 import { limparNumero, resolverPrecoDaGrade } from "@/utils/preco-da-grade";
 import {
   SEPARADOR_DE_ATRIBUTOS,
@@ -302,13 +303,23 @@ export function ModalVarianteGrade({
   };
 
   const aplicarParaTodas = () => {
+    const estoqueAplicado = aplicarEstoque.replace(/\D/g, "");
     setLinhas((prev) =>
       prev.map((linha) => ({
         ...linha,
-        estoque: aplicarEstoque.replace(/\D/g, "") || linha.estoque,
+        estoque: estoqueAplicado || linha.estoque,
+        // Aplicar é a lojista decidindo o estoque de TODAS as linhas: o
+        // segurado de depois não passa por cima.
+        estoqueEditado: linha.estoqueEditado || estoqueAplicado !== "",
         preco: limparNumero(aplicarPreco) || linha.preco,
       })),
     );
+    // O que foi aplicado deixa de ser "segurado": sem isto o mesmo valor voltava
+    // a preencher, ao salvar, a linha que a lojista esvaziou para deixar em
+    // "Auto" (preço) ou ainda por decidir (estoque). Só volta a valer se ela
+    // digitar de novo nos campos.
+    setAplicarEstoque("");
+    setAplicarPreco("");
     toast.info(
       `Aplicado para as ${linhas.length} linhas — ajuste aí embaixo só a que precisar.`,
     );
@@ -320,11 +331,24 @@ export function ModalVarianteGrade({
     valor: string,
   ) => {
     setLinhas((prev) =>
-      prev.map((linha, j) =>
-        j === indice ? { ...linha, [campo]: valor } : linha,
-      ),
+      prev.map((linha, j) => {
+        if (j !== indice) return linha;
+        // O campo entrega o valor também ao sair dele sem digitar nada: só
+        // conta como "mexeu no estoque" se o valor de fato mudou.
+        const mexeuNoEstoque = campo === "estoque" && valor !== linha.estoque;
+        return {
+          ...linha,
+          [campo]: valor,
+          estoqueEditado: linha.estoqueEditado || mexeuNoEstoque,
+        };
+      }),
     );
   };
+
+  // O valor digitado em "Aplicar para todas" e não aplicado fica SEGURADO e
+  // preenche as linhas vazias ao efetivar (`grade-valor-segurado.ts`).
+  const { linhas: linhasEfetivas, preencheu: valorSeguradoPendente } =
+    preencherComSegurado(linhas, aplicarEstoque, aplicarPreco);
 
   const efetivar = () => {
     if (jaEfetivouRef.current) return;
@@ -345,12 +369,15 @@ export function ModalVarianteGrade({
       });
       return;
     }
+    // Preço e estoque saem das linhas EFETIVAS (com o valor segurado já
+    // preenchido): uma fonte só para o que vai nas variantes e para o Preço de
+    // Venda que a grade dá ao produto.
     const { precos, precoDoProduto: precoParaOProduto } = resolverPrecoDaGrade(
       precoDoProduto,
-      linhas.map((linha) => linha.preco),
+      linhasEfetivas.map((linha) => linha.preco),
     );
     const aceitou = onEfetivar(
-      linhas.map((linha, i) => {
+      linhasEfetivas.map((linha, i) => {
         // `.at(i)` em vez de `skus[i]`: a indexação dinâmica acende o warning
         // de object injection da catraca (o teto de warnings do repo não sobe).
         const sku = skus.at(i) ?? "";
@@ -569,6 +596,7 @@ export function ModalVarianteGrade({
                   aplicarPreco={aplicarPreco}
                   onAplicarPreco={setAplicarPreco}
                   onAplicarParaTodas={aplicarParaTodas}
+                  valorSeguradoPendente={valorSeguradoPendente}
                   onMudarLinha={mudarLinha}
                 />
               )}
