@@ -196,7 +196,7 @@ export function AlertasCancelados({
   // teste painel-lista-estorno-devido), o sinal permanente é o próprio
   // botão, que nasce mesmo sem pendência; o texto completo fica a um clique.
   const avisoIncompleto = incompleto ? (
-    <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-5">
+    <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/20 bg-zinc-950/40 p-5 shadow-2xl backdrop-blur-2xl">
       <div className="flex items-start gap-3">
         <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-500">
           <AlertTriangle className="size-4" />
@@ -266,7 +266,7 @@ export function AlertasCancelados({
               nunca sumir em silêncio — é o mesmo motivo do BLOQUEIA da
               revisão de 17/09. */}
           {temForaDaJanela && (
-            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/20 p-6">
+            <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/20 bg-zinc-950/40 p-6 shadow-2xl backdrop-blur-2xl">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
@@ -304,7 +304,7 @@ export function AlertasCancelados({
               o defeito passar despercebido antes, escondido só numa
               etiqueta do cartão que rola para fora de vista. */}
           {temDinheiroPreso && (
-            <div className="admin-glass relative overflow-hidden rounded-[2rem] border-amber-500/30 bg-amber-500/5 p-6">
+            <div className="relative overflow-hidden rounded-[2rem] border border-amber-500/30 bg-amber-500/5 p-6 shadow-2xl backdrop-blur-2xl">
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent" />
               <div className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">

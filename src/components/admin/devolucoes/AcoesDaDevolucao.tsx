@@ -253,7 +253,7 @@ export function AcoesDaDevolucao({
   return (
     <section
       data-testid="acoes-devolucao"
-      className="admin-glass space-y-4 rounded-2xl border border-admin-gold/20 p-4 shadow-2xl sm:p-6"
+      className="space-y-4 rounded-2xl border border-admin-gold/20 bg-zinc-950/40 p-4 shadow-2xl backdrop-blur-2xl sm:p-6"
     >
       <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-admin-gold">
         Próximo passo
@@ -458,7 +458,7 @@ export function AcoesDaDevolucao({
             também recusa sozinha se o pagamento já tiver sido confirmado, mas
             nem sempre há esse marcador gravado).
           </p>
-          <label className="flex items-start gap-2 text-[11px] font-bold text-zinc-300">
+          <label className="flex min-h-11 items-start gap-2 text-[11px] font-bold text-zinc-300">
             <input
               type="checkbox"
               checked={confirmado}
@@ -467,7 +467,7 @@ export function AcoesDaDevolucao({
                   e.target.checked ? detalhe.me_reverse_id : null,
                 )
               }
-              className="mt-0.5 size-4 shrink-0"
+              className="mt-0.5 size-5 shrink-0"
             />
             Conferi em Meus envios que este envio NÃO foi pago.
           </label>

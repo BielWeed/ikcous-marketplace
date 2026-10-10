@@ -233,7 +233,7 @@ export function AdminDevolucoesView({
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start lg:gap-6">
           <div className="space-y-2" data-testid="lista-devolucoes">
             {lista.erro && (
-              <div className="admin-glass space-y-3 rounded-2xl border border-red-500/20 p-4">
+              <div className="space-y-3 rounded-2xl border border-red-500/20 bg-zinc-950/40 p-4 shadow-2xl backdrop-blur-2xl">
                 <p className="text-xs font-bold text-red-300">
                   Não consegui carregar as devoluções.
                 </p>

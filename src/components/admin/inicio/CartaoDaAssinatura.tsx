@@ -49,7 +49,7 @@ function Cabecalho() {
   return (
     <h2
       id="inicio-assinatura-titulo"
-      className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400"
+      className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-zinc-400"
     >
       <Crown className="size-3.5 text-admin-gold" aria-hidden="true" />
       Sua assinatura
@@ -94,7 +94,7 @@ export function CartaoDaAssinatura({
           <button
             type="button"
             onClick={onTentarDeNovo}
-            className="mt-4 flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-4 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-white/5"
+            className="mt-4 flex min-h-11 items-center gap-2 rounded-xl border border-white/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-white/5"
           >
             <RefreshCw className="size-3.5" aria-hidden="true" />
             Tentar de novo
@@ -158,7 +158,7 @@ export function CartaoDaAssinatura({
         <Cabecalho />
         <span
           className={cn(
-            "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wider",
+            "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-black uppercase tracking-wider",
             classes.cracha,
           )}
         >
@@ -226,13 +226,13 @@ export function CartaoDaAssinatura({
           {recursosVisiveis.map((recurso) => (
             <li
               key={recurso}
-              className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-zinc-300"
+              className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-zinc-300"
             >
               {recurso}
             </li>
           ))}
           {recursosEscondidos > 0 ? (
-            <li className="rounded-full px-1 py-0.5 text-[10px] font-semibold text-zinc-500">
+            <li className="rounded-full px-1 py-0.5 text-[11px] font-semibold text-zinc-500">
               +{recursosEscondidos}
             </li>
           ) : null}
@@ -246,7 +246,7 @@ export function CartaoDaAssinatura({
               href={assinatura.gerenciarUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-[10px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90"
+              className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-admin-gold px-4 text-[11px] font-black uppercase tracking-widest text-black transition-colors hover:bg-admin-gold/90"
             >
               <ExternalLink className="size-3.5" aria-hidden="true" />
               Gerenciar assinatura
@@ -258,7 +258,7 @@ export function CartaoDaAssinatura({
               href={suporte}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-4 text-[10px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5"
+              className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 px-4 text-[11px] font-black uppercase tracking-widest text-zinc-200 transition-colors hover:bg-white/5"
             >
               <MessageCircle className="size-3.5" aria-hidden="true" />
               Suporte

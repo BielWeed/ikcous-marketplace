@@ -949,7 +949,7 @@ function OrderFinanceCard({
                 type="button"
                 onClick={() => onRegistrarPagamento(order.id, false)}
                 disabled={registrandoPagamento}
-                className="h-10 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+                className="h-11 shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-zinc-300 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
               >
                 Desfazer
               </button>

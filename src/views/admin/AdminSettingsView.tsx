@@ -236,7 +236,7 @@ const ConnectionDiagnosticsSection = memo(
         >
           <div className="overflow-hidden">
             <div className="pt-2">
-              <div className="admin-glass group relative overflow-hidden border-y border-white/5 p-3.5 shadow-2xl sm:rounded-2xl sm:border-x sm:p-4">
+              <div className="admin-glass group relative overflow-hidden p-3.5 sm:rounded-2xl sm:p-4">
                 <div className="flex flex-col gap-3">
                   <p className="text-left text-[11px] leading-snug text-zinc-400">
                     Teste se a internet deste aparelho chega bem até a sua loja.
@@ -820,10 +820,15 @@ export const AdminSettingsView = memo(function AdminSettingsView({
             <button
               type="button"
               onClick={() => setShowHelpModal(true)}
-              className="flex size-7 shrink-0 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 hover:border-white/10 hover:text-white active:scale-95"
+              className="group flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full active:scale-95"
               title="Guia de Configurações e Ajuda"
             >
-              <HelpCircle className="size-4" />
+              <span
+                aria-hidden="true"
+                className="flex size-7 items-center justify-center rounded-full border border-white/5 bg-zinc-900/60 text-zinc-500 transition-all duration-300 group-hover:border-white/10 group-hover:text-white"
+              >
+                <HelpCircle className="size-4" />
+              </span>
             </button>
           </AdminPageHeader>
         </div>
